@@ -81,6 +81,11 @@ function _idemKey() {
 }
 var currentCheckNumber = null;
 var currentCustomerName = null;
+// Per-scene idempotency key for POST /orders. If SEND/SAVE fails after
+// the backend already created the order (e.g. client timeout), retrying
+// with the same key causes the ledger to return the same event instead
+// of minting a duplicate C-NNN. Cleared once currentOrderId is set.
+var createOrderIdemKey = null;
 
 function _handleNameTap() {
   if (!currentOrderId) {
@@ -374,6 +379,7 @@ defineScene({
     isSending      = false;
     currentCheckNumber = null;
     currentCustomerName = null;
+    createOrderIdemKey = null;
     modHistory     = [];
     modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], panelEl: null, hasPizza: false };
     _bottomBar     = null;
@@ -410,6 +416,16 @@ defineScene({
   },
 
   unmount: function() {
+    // Fire-and-forget auto-save for unexpected unmounts (logout, force
+    // scene swap). handleClose() already awaits, so when BACK is used
+    // this is a no-op (everything is already flushed). The fetch body
+    // is built synchronously so the in-flight request survives the
+    // scene teardown.
+    try {
+      var hasUnsent = ticket.some(function(inst) { return !inst.sent; });
+      if (hasUnsent && !isSending) handleSaveOnly();
+    } catch (_) { /* best-effort only */ }
+
     if (_header) { _header.destroy(); _header = null; }
     OrderSummary.unlockItemRender();
     OrderSummary.hide();
@@ -425,6 +441,7 @@ defineScene({
     isSending      = false;
     currentCheckNumber = null;
     currentCustomerName = null;
+    createOrderIdemKey = null;
     _bottomBar     = null;
     _mainArea      = null;
     _gridEl        = null;
@@ -3426,9 +3443,13 @@ async function handleSaveOnly() {
   try {
     // Step 1 — create order if needed
     if (!currentOrderId) {
+      if (!createOrderIdemKey) createOrderIdemKey = _idemKey();
       var createRes = await fetch(API + '/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type':    'application/json',
+          'Idempotency-Key': createOrderIdemKey,
+        },
         body: JSON.stringify({
           guest_count:   (sceneParams.seatNumbers && sceneParams.seatNumbers.length) || 1,
           seat_numbers:  sceneParams.seatNumbers || null,
@@ -3466,6 +3487,7 @@ async function handleSaveOnly() {
     if (anyFailed) throw new Error('Some items failed to save');
 
     showToast('Items saved', { bg: T.greenWarm, duration: 1500 });
+    if (currentOrderId) SceneManager.emit('order:updated', { orderId: currentOrderId });
   } catch (err) {
     console.warn('[KINDpos] Save failed:', err);
     showToast('Save failed', { bg: T.verm });
@@ -3508,9 +3530,13 @@ async function handleSend() {
   try {
     // Step 1 — create order on first send, reuse on subsequent sends
     if (!currentOrderId) {
+      if (!createOrderIdemKey) createOrderIdemKey = _idemKey();
       var createRes = await fetch(API + '/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type':    'application/json',
+          'Idempotency-Key': createOrderIdemKey,
+        },
         body: JSON.stringify({
           guest_count:   (sceneParams.seatNumbers && sceneParams.seatNumbers.length) || 1,
           seat_numbers:  sceneParams.seatNumbers || null,
@@ -3578,6 +3604,10 @@ async function handleSend() {
   renderTicket();
   rebuildBottomBar();
 
+  // Notify other scenes (server-landing, etc.) that this check just
+  // changed state so any subscribed tile refreshes.
+  if (currentOrderId) SceneManager.emit('order:updated', { orderId: currentOrderId });
+
   // Reset hex nav — ticket stays visible for PAY
 
 }
@@ -3601,7 +3631,21 @@ function deepCopyTicket(src) {
 }
 
 // ── CLOSE (X button) ────────────────────────────
-function handleClose() {
+// Auto-saves unsent items before navigating. Any items the server typed
+// are persisted to the backend (without kitchen-send) so they survive
+// BACK, logout, or an unexpected scene swap.
+async function handleClose() {
+  var hasUnsent = ticket.some(function(inst) { return !inst.sent; });
+  if (hasUnsent) {
+    try {
+      await handleSaveOnly();
+    } catch (err) {
+      // Swallow — user's intent is to leave; surface a soft warning so
+      // they know work MAY be unsaved but don't block navigation.
+      console.warn('[KINDpos] Auto-save on close failed:', err);
+      showToast('Items may not have saved — check the order', { bg: T.verm, duration: 2500 });
+    }
+  }
   OrderSummary.hide();
   SceneManager.mountWorking('check-overview', {
     checkId: currentOrderId || sceneParams.recallOrderId,

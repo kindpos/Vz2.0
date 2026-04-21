@@ -1474,9 +1474,13 @@ function persistSeats(state) {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ seat_numbers: nums }),
-      }).catch(function(err) {
-        console.warn('[KINDpos] Seat update failed:', err);
-      });
+      })
+        .then(function() {
+          SceneManager.emit('order:updated', { orderId: state.orderId });
+        })
+        .catch(function(err) {
+          console.warn('[KINDpos] Seat update failed:', err);
+        });
     }
 
     // First POST — create the order with the seats attached. Caller
@@ -1497,6 +1501,7 @@ function persistSeats(state) {
         state.orderId     = order.order_id || order.id;
         state.checkNumber = order.check_number || '';
         if (state.checkNumber) setSceneName(state.checkNumber);
+        SceneManager.emit('order:updated', { orderId: state.orderId });
       })
       .catch(function(err) {
         console.warn('[KINDpos] Order create-with-seats failed:', err);

@@ -220,6 +220,32 @@ async def test_seats_updated_does_not_orphan_items(client):
 
 
 @pytest.mark.asyncio
+async def test_create_order_is_idempotent(client):
+    """Retrying POST /orders with the same Idempotency-Key returns the
+    original order instead of minting a duplicate C-NNN."""
+    headers = {"Idempotency-Key": "create_abc123"}
+    body = {"server_id": "srv-09", "server_name": "Tasha",
+            "seat_numbers": [1, 2]}
+
+    r1 = await client.post("/api/v1/orders", json=body, headers=headers)
+    assert r1.status_code == 201
+    first = r1.json()
+
+    # Retry — same key, same body → same order (not a new C-NNN)
+    r2 = await client.post("/api/v1/orders", json=body, headers=headers)
+    assert r2.status_code == 201  # route still returns 201, just the same row
+    second = r2.json()
+    assert second["order_id"] == first["order_id"]
+    assert second["check_number"] == first["check_number"]
+
+    # A fresh key does mint a new order
+    r3 = await client.post("/api/v1/orders", json=body,
+                           headers={"Idempotency-Key": "create_def456"})
+    assert r3.status_code == 201
+    assert r3.json()["order_id"] != first["order_id"]
+
+
+@pytest.mark.asyncio
 async def test_seated_empty_check_shows_on_landing(client):
     """A check with seats but no items must appear in GET /orders so the
     server can resume it after logging out."""

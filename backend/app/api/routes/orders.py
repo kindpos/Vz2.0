@@ -316,9 +316,27 @@ async def get_order_or_404(ledger: EventLedger, order_id: str) -> Order:
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
         request: CreateOrderRequest,
+        http_request: Request = None,
         ledger: EventLedger = Depends(get_ledger),
 ):
-    """Create a new order."""
+    """Create a new order.
+
+    Accepts an optional Idempotency-Key header. If a prior request with
+    the same key already produced an order, return that order instead of
+    minting a new one — prevents duplicate C-NNN checks when the client
+    retries a POST that the server actually accepted (e.g. after a
+    network timeout).
+    """
+    idem_key = http_request.headers.get("idempotency-key") if http_request else None
+
+    if idem_key:
+        prior = await ledger.get_event_by_idempotency_key(idem_key)
+        if prior is not None:
+            prior_order_id = prior.payload.get("order_id")
+            if prior_order_id:
+                order = await get_order_or_404(ledger, prior_order_id)
+                return OrderResponse.from_order(order)
+
     order_id = f"order_{uuid.uuid4().hex[:12]}"
 
     # Unified sequential check number: C-001, C-002, ... (ledger-wide counter
@@ -342,6 +360,7 @@ async def create_order(
         customer_name=request.customer_name,
         check_number=check_number,
         seat_numbers=seat_numbers,
+        idempotency_key=idem_key,
     )
     # Set correlation_id for ORDER_CREATED
     event = event.model_copy(update={"correlation_id": order_id})

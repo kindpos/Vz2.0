@@ -354,6 +354,24 @@ class EventLedger:
         row = await cursor.fetchone()
         return self._row_to_event(row) if row else None
 
+    async def get_event_by_idempotency_key(self, idempotency_key: str) -> Optional[Event]:
+        """Look up the event an idempotency key resolved to. Used by
+        routes that need to return the original response after a dup
+        write is blocked (e.g. POST /orders retry).
+        """
+        if not idempotency_key:
+            return None
+        cursor = await self._db.execute(
+            """
+            SELECT sequence_number, event_id, timestamp, terminal_id, event_type,
+                   payload, user_id, user_role, correlation_id, previous_checksum, checksum, idempotency_key
+            FROM events WHERE idempotency_key = ? LIMIT 1
+            """,
+            (idempotency_key,),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_event(row) if row else None
+
     async def get_events_by_correlation(self, correlation_id: str) -> list[Event]:
         """Get all events with a given correlation ID (e.g., all events for an order)."""
         cursor = await self._db.execute(
