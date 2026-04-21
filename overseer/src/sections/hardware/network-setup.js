@@ -3,6 +3,7 @@
 // Gateway row pinned sticky inside scrollable 2-column terminal grid.
 
 import { T, withAlpha } from '../../ui/tokens.js';
+import { showToast } from '../../ui/forms.js';
 import { buildRouterSVG } from '../../hardware/device-silhouettes.js';
 import { buildTerminalCard } from '../../hardware/terminal-card.js';
 import { buildAddDeviceOverlay } from '../../hardware/add-device-overlay.js';
@@ -378,13 +379,62 @@ export function buildNetworkSetupScene(container) {
         gatewayEl.replaceWith(fresh);
     }).catch(() => {});
 
+    // ── Wire card action-row events ───────────────────────────────────
+
+    // + ADD DEVICE pill on a card → open overlay with that terminal pre-selected
+    const onAddDevice = (e) => {
+        const terminalId = e.detail?.terminalId;
+        const terminal = SEED_TERMINALS.find(t => t.id === terminalId);
+        const ordered = terminal
+            ? [terminal, ...SEED_TERMINALS.filter(t => t.id !== terminalId)]
+            : SEED_TERMINALS;
+        buildAddDeviceOverlay({ terminals: ordered });
+    };
+
+    // TEST ALL pill → POST /api/v1/hardware/test for every saved device by MAC
+    const onTestAll = async (e) => {
+        const terminalId = e.detail?.terminalId;
+        let devices;
+        try {
+            const res = await fetch('/api/v1/hardware/devices');
+            devices = res.ok ? await res.json() : [];
+        } catch { devices = []; }
+
+        if (!devices.length) {
+            showToast('No saved devices to test', 'warn');
+            return;
+        }
+
+        const results = await Promise.allSettled(
+            devices.map(d =>
+                fetch('/api/v1/hardware/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mac: d.mac }),
+                }).then(r => r.json())
+            )
+        );
+
+        const passed = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+        const total  = results.length;
+        const type   = passed === total ? 'success' : passed === 0 ? 'error' : 'warn';
+        showToast(`TEST ALL — ${passed}/${total} devices reachable`, type);
+    };
+
+    container.addEventListener('kindpos:addDevice', onAddDevice);
+    container.addEventListener('kindpos:testAll',   onTestAll);
+
     // ── Listen for device-added events to refresh ─────────────────────
     _cleanupListener = () => {};
     const onDevicesAdded = () => {
         buildNetworkSetupScene(container);
     };
     window.addEventListener('kindpos:devicesAdded', onDevicesAdded);
-    _cleanupListener = () => window.removeEventListener('kindpos:devicesAdded', onDevicesAdded);
+    _cleanupListener = () => {
+        window.removeEventListener('kindpos:devicesAdded', onDevicesAdded);
+        container.removeEventListener('kindpos:addDevice', onAddDevice);
+        container.removeEventListener('kindpos:testAll',   onTestAll);
+    };
 }
 
 export function cleanupNetworkSetup(container) {
