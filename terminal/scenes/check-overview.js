@@ -2220,6 +2220,11 @@ function _openTransfer(state) {
       }).then(function(r) {
         if (r.ok) showToast('Transferred to ' + server.employee_name, { bg: T.greenWarm });
         else      showToast('Transfer failed',                         { bg: T.verm });
+      }).catch(function() {
+        // Network/offline — without this the promise hangs forever and
+        // the server sees no toast, no retry, no signal that the transfer
+        // did NOT happen. Explicit catch so the op is recoverable.
+        showToast('Transfer failed — check connection', { bg: T.verm });
       });
     },
     onCancel: function() {},

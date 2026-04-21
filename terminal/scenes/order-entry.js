@@ -3579,8 +3579,15 @@ async function handleSend() {
       throw new Error('Some items failed to send');
     }
 
-    // Step 3 — send to kitchen + trigger kitchen ticket print
-    await fetch(API + '/orders/' + currentOrderId + '/send', { method: 'POST' });
+    // Step 3 — send to kitchen + trigger kitchen ticket print. Must check
+    // r.ok: fetch resolves for 4xx/5xx too, so without this guard a 500
+    // here would let us fall through to line 3586 and mark every item
+    // `sent` even though kitchen never got them — UI and ledger diverge.
+    var sendRes = await fetch(API + '/orders/' + currentOrderId + '/send', { method: 'POST' });
+    if (!sendRes.ok) {
+      renderTicket();
+      throw new Error('Send to kitchen failed: HTTP ' + sendRes.status);
+    }
 
     // Mark remaining items as sent (order-level confirmation)
     ticket.forEach(function(inst) { inst.sent = true; });

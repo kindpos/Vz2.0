@@ -726,30 +726,31 @@ async def patch_order(
     """Update order fields. Supports server transfer and check naming."""
     order = await get_order_or_404(ledger, order_id)
 
+    # Collect every field change and write them as one batch so a failure
+    # in the middle can't leave the order half-updated (e.g. transferred to
+    # a new server but still showing the old customer name).
+    batch = []
     if request.server_id is not None:
-        event = order_transferred(
+        batch.append(order_transferred(
             terminal_id=settings.terminal_id,
             order_id=order_id,
             server_id=request.server_id,
             server_name=request.server_name or "",
-        )
-        await ledger.append(event)
-
+        ))
     if request.customer_name is not None:
-        event = check_named(
+        batch.append(check_named(
             terminal_id=settings.terminal_id,
             order_id=order_id,
             customer_name=request.customer_name,
-        )
-        await ledger.append(event)
-
+        ))
     if request.guest_count is not None:
-        event = guest_count_updated(
+        batch.append(guest_count_updated(
             terminal_id=settings.terminal_id,
             order_id=order_id,
             guest_count=request.guest_count,
-        )
-        await ledger.append(event)
+        ))
+    if batch:
+        await ledger.append_batch(batch)
 
     order = await get_order_or_404(ledger, order_id)
     return OrderResponse.from_order(order)
@@ -796,7 +797,12 @@ async def add_item(
     _validate_2dp(request.price, "price")
     if request.modifiers:
         for mod in request.modifiers:
+            # Validate both fields: `modifier_price` is what SPIn/device sync
+            # reads; `mod.price` is what's actually persisted in the event
+            # payload at line 863. Historically only the former was gated,
+            # so a 3dp `mod.price` could slip through and land in the ledger.
             _validate_2dp(mod.modifier_price, "modifier_price")
+            _validate_2dp(mod.price, "modifier price")
 
     order = await get_order_or_404(ledger, order_id)
 
@@ -847,7 +853,12 @@ async def add_item(
     )
     result = await ledger.append(event)
     if result is None:
-        # Duplicate blocked by ledger — return current order state
+        # Duplicate blocked by ledger — return current order state.
+        # IMPORTANT: don't emit the inline MODIFIER_APPLIED events either.
+        # The generated item_id is fresh on each retry, so those modifiers
+        # would attach to an item_id that has no ITEM_ADDED event — the
+        # projection discards them as no-ops but they pollute the ledger,
+        # the audit trail, and print context rebuilds.
         _logger.warning("BLOCKED duplicate item POST (idempotency_key=%s)", idem_key)
         order = await get_order_or_404(ledger, order_id)
         return OrderResponse.from_order(order)
@@ -961,10 +972,21 @@ async def apply_modifier(
             detail=f"Cannot modify items on {order.status} order"
         )
 
-    if not any(item.item_id == item_id for item in order.items):
+    target = next((i for i in order.items if i.item_id == item_id), None)
+    if target is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Item {item_id} not found in order"
+        )
+
+    # Block modifier changes after the item has fired to the kitchen. The
+    # kitchen ticket is already printed — a MODIFIER_APPLIED event here
+    # would silently diverge the check from what's being cooked. Voids
+    # must go through the void flow (manager PIN gate) instead.
+    if target.sent:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Item already sent to kitchen — void and re-add to change modifiers",
         )
 
     event = modifier_applied(
@@ -1102,13 +1124,12 @@ async def void_payment(
             detail=f"Payment {payment_id} is {target.status}, not confirmed"
         )
 
-    if order.status == "closed":
-        await ledger.append(order_reopened(
-            terminal_id=settings.terminal_id,
-            order_id=order_id,
-        ))
-
-    event = create_event(
+    # Write reopen + cancel atomically. Previously these were two separate
+    # append() calls: if the second failed mid-flight, the order was
+    # reopened but the payment was still marked confirmed — leaving the
+    # projection inconsistent (open order + fully paid) until a manual
+    # fix. append_batch holds the write lock across both inserts.
+    cancel_event = create_event(
         event_type=EventType.PAYMENT_CANCELLED,
         terminal_id=settings.terminal_id,
         correlation_id=order_id,
@@ -1119,7 +1140,14 @@ async def void_payment(
             "approved_by": body.approved_by,
         },
     )
-    await ledger.append(event)
+    batch = []
+    if order.status == "closed":
+        batch.append(order_reopened(
+            terminal_id=settings.terminal_id,
+            order_id=order_id,
+        ))
+    batch.append(cancel_event)
+    await ledger.append_batch(batch)
 
     order = await get_order_or_404(ledger, order_id)
     return OrderResponse.from_order(order)
