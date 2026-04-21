@@ -50,6 +50,7 @@ import { buildShiftConfigScene,    cleanupShiftConfig    } from './sections/shif
 import { buildTipoutRulesScene,    cleanupTipoutRules    } from './sections/tipout-rules.js';
 import { buildHomeScene,           cleanupHome           } from './sections/home.js';
 import { buildStaffRolesScene,    cleanupStaffRoles     } from './sections/staff-roles.js';
+import { buildPayrollAttendanceScene, cleanupPayrollAttendance } from './sections/payroll-attendance.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -74,12 +75,14 @@ const NAV = [
         id: 'staff',
         label: 'STAFF',
         subs: [
-            { id: 'employee-management', label: 'Staff List'     },
-            { id: 'staff-roles',         label: 'Roles'          },
-            { id: 'time-attendance',  label: 'Time & Attendance' },
-            { id: 'payroll-tips',     label: 'Payroll & Tips'    },
-            { id: 'tipout-rules',     label: 'Tipout Rules'      },
-            { id: 'shift-config',     label: 'Shift Config'      },
+            // Post-Nostalgia structure: three mockup entries.
+            // time-attendance / payroll-tips / tipout-rules / shift-config
+            // stay registered below for deep-link compatibility but no
+            // longer appear in the sidebar — their features now live
+            // inside the Payroll & Attendance tabs.
+            { id: 'employee-management', label: 'Staff List'         },
+            { id: 'staff-roles',         label: 'Roles'              },
+            { id: 'payroll-attendance',  label: 'Payroll & Attendance' },
         ]
     },
     {
@@ -338,6 +341,11 @@ function registerAllSections() {
         name: 'staff-roles',
         mount: (container) => buildStaffRolesScene(container),
         unmount: (container) => cleanupStaffRoles(container),
+    });
+    SceneManager.register({
+        name: 'payroll-attendance',
+        mount: (container) => buildPayrollAttendanceScene(container),
+        unmount: (container) => cleanupPayrollAttendance(container),
     });
     SceneManager.register({
         name: 'store-info',
