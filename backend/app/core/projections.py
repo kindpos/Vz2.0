@@ -77,6 +77,11 @@ class Order:
     guest_count: int = 1
     status: str = "open"  # open, paid, closed, voided
 
+    # Authoritative list of seat numbers on the check. Set explicitly via
+    # ORDER_CREATED / SEATS_UPDATED, and auto-extended when an ITEM_ADDED
+    # lands on a seat not yet in the list (legacy replay compatibility).
+    seat_numbers: list[int] = field(default_factory=list)
+
     items: list[OrderItem] = field(default_factory=list)
     payments: list[Payment] = field(default_factory=list)
     discounts: list[dict] = field(default_factory=list)
@@ -192,6 +197,7 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                 server_name=payload.get("server_name"),
                 customer_name=payload.get("customer_name"),
                 guest_count=payload.get("guest_count", 1),
+                seat_numbers=list(payload.get("seat_numbers") or []),
                 created_at=event.timestamp,
             )
             if tax_rate is not None:
@@ -232,6 +238,13 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
             if order:
                 order.guest_count = payload.get("guest_count", order.guest_count)
 
+        elif event.event_type == EventType.SEATS_UPDATED:
+            if order:
+                seats = payload.get("seat_numbers")
+                if seats is not None:
+                    order.seat_numbers = list(seats)
+                    order.guest_count = max(1, len(order.seat_numbers))
+
         # --- ITEMS ---
 
         elif event.event_type == EventType.ITEM_ADDED:
@@ -248,6 +261,11 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                     added_at=event.timestamp,
                 )
                 order.items.append(item)
+                # Keep seat_numbers in sync for legacy events that never
+                # emitted SEATS_UPDATED. Only extends — shrinking is done
+                # via explicit SEATS_UPDATED.
+                if item.seat_number is not None and item.seat_number not in order.seat_numbers:
+                    order.seat_numbers.append(item.seat_number)
 
         elif event.event_type == EventType.ITEM_REMOVED:
             if order:

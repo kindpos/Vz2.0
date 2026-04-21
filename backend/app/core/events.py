@@ -51,6 +51,7 @@ class EventType(str, Enum):
     ORDER_VOIDED = "order.voided"
     ORDER_TRANSFERRED = "order.transferred"
     GUEST_COUNT_UPDATED = "guest_count.updated"
+    SEATS_UPDATED = "seats.updated"
     CHECK_NAMED = "check.named"
     CHECK_ABANDONED = "check.abandoned"
 
@@ -333,24 +334,28 @@ def order_created(
         guest_count: int = 1,
         customer_name: Optional[str] = None,
         check_number: Optional[str] = None,
+        seat_numbers: Optional[list[int]] = None,
         **kwargs
 ) -> Event:
     """Create an ORDER_CREATED event."""
     # Accept and discard order_type kwarg from legacy callers; field has
     # been removed from the active schema but tests still pass it.
     kwargs.pop("order_type", None)
+    payload = {
+        "order_id": order_id,
+        "check_number": check_number,
+        "table": table,
+        "server_id": server_id,
+        "server_name": server_name,
+        "guest_count": guest_count,
+        "customer_name": customer_name,
+    }
+    if seat_numbers is not None:
+        payload["seat_numbers"] = list(seat_numbers)
     return create_event(
         event_type=EventType.ORDER_CREATED,
         terminal_id=terminal_id,
-        payload={
-            "order_id": order_id,
-            "check_number": check_number,
-            "table": table,
-            "server_id": server_id,
-            "server_name": server_name,
-            "guest_count": guest_count,
-            "customer_name": customer_name,
-        },
+        payload=payload,
         **kwargs
     )
 
@@ -408,6 +413,30 @@ def guest_count_updated(
         payload={
             "order_id": order_id,
             "guest_count": guest_count,
+        },
+        correlation_id=order_id,
+        **kwargs
+    )
+
+
+def seats_updated(
+        terminal_id: str,
+        order_id: str,
+        seat_numbers: list[int],
+        **kwargs
+) -> Event:
+    """Create a SEATS_UPDATED event — authoritative list of seats on the check.
+
+    Unlike GUEST_COUNT_UPDATED (a scalar count), this event carries the
+    actual seat numbers so seats can exist without any items attached
+    (e.g. a server seats a party of 4 before ordering).
+    """
+    return create_event(
+        event_type=EventType.SEATS_UPDATED,
+        terminal_id=terminal_id,
+        payload={
+            "order_id": order_id,
+            "seat_numbers": list(seat_numbers),
         },
         correlation_id=order_id,
         **kwargs

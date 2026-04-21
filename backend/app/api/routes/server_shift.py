@@ -209,7 +209,9 @@ async def checkout_status(
     unadjusted_tips = 0
 
     for order in orders:
-        if order.status == "open" and not order.is_empty:
+        # Seated-but-not-ordered checks count as open too; only true
+        # ghosts (no items, no seats) are ignored.
+        if order.status == "open" and (not order.is_empty or order.seat_numbers):
             open_checks += 1
         elif order.status in ("closed", "paid"):
             # Check if any card payment lacks a tip adjustment

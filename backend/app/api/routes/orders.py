@@ -40,6 +40,7 @@ from app.core.events import (
     order_transferred,
     check_named,
     guest_count_updated,
+    seats_updated,
     item_added,
     item_removed,
     item_modified,
@@ -93,6 +94,14 @@ class CreateOrderRequest(BaseModel):
     server_name: Optional[str] = None
     guest_count: int = 1
     customer_name: Optional[str] = None
+    # Authoritative list of seats the server set up on the check.
+    # When provided, takes precedence over guest_count for seat tracking.
+    seat_numbers: Optional[list[int]] = None
+
+
+class UpdateSeatsRequest(BaseModel):
+    """Request to replace the seat list on an existing order."""
+    seat_numbers: list[int]
 
 
 class InlineModifier(BaseModel):
@@ -193,6 +202,7 @@ class OrderResponse(BaseModel):
     server_name: Optional[str]
     customer_name: Optional[str] = None
     guest_count: int
+    seat_numbers: list[int] = []
     status: str
     items: list[OrderItemResponse]
     payments: list[PaymentResponse] = []
@@ -216,6 +226,7 @@ class OrderResponse(BaseModel):
             server_name=order.server_name,
             customer_name=order.customer_name,
             guest_count=order.guest_count,
+            seat_numbers=list(order.seat_numbers or []),
             status=order.status,
             items=[
                 OrderItemResponse(
@@ -296,15 +307,21 @@ async def create_order(
     total_orders = await ledger.count_events_by_type(EventType.ORDER_CREATED)
     check_number = f"C-{total_orders + 1:03d}"
 
+    # Derive guest_count from seat_numbers when provided, so the two stay
+    # consistent. Explicit guest_count wins if no seats supplied.
+    seat_numbers = list(request.seat_numbers) if request.seat_numbers else None
+    guest_count = len(seat_numbers) if seat_numbers else request.guest_count
+
     event = order_created(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         table=request.table,
         server_id=request.server_id,
         server_name=request.server_name,
-        guest_count=request.guest_count,
+        guest_count=guest_count,
         customer_name=request.customer_name,
         check_number=check_number,
+        seat_numbers=seat_numbers,
     )
     # Set correlation_id for ORDER_CREATED
     event = event.model_copy(update={"correlation_id": order_id})
@@ -362,7 +379,12 @@ async def list_active_orders(
     """Get all active (open or printed) orders."""
     events = await get_current_day_events(ledger, limit=10000)
     orders = project_orders(events)
-    active_orders = [o for o in orders.values() if o.status == "open" and not o.is_empty]
+    # Show open orders with either items or explicit seats; "ghost" checks
+    # (no items AND no seats) are filtered out.
+    active_orders = [
+        o for o in orders.values()
+        if o.status == "open" and (not o.is_empty or o.seat_numbers)
+    ]
     active_orders.sort(key=lambda o: o.created_at or datetime.min, reverse=True)
     return [OrderResponse.from_order(o) for o in active_orders]
 
@@ -374,7 +396,12 @@ async def list_open_orders(
     """Get all open orders."""
     events = await get_current_day_events(ledger, limit=10000)
     orders = project_orders(events)
-    open_orders = [o for o in orders.values() if o.status == "open" and not o.is_empty]
+    # Show open orders with either items or explicit seats; "ghost" checks
+    # (no items AND no seats) are filtered out.
+    open_orders = [
+        o for o in orders.values()
+        if o.status == "open" and (not o.is_empty or o.seat_numbers)
+    ]
     open_orders.sort(key=lambda o: o.created_at or datetime.min, reverse=True)
     return [OrderResponse.from_order(o) for o in open_orders]
 
@@ -664,6 +691,33 @@ async def patch_order(
             guest_count=request.guest_count,
         )
         await ledger.append(event)
+
+    order = await get_order_or_404(ledger, order_id)
+    return OrderResponse.from_order(order)
+
+
+@router.put("/{order_id}/seats", response_model=OrderResponse)
+async def update_seats(
+        order_id: str,
+        request: UpdateSeatsRequest,
+        ledger: EventLedger = Depends(get_ledger),
+):
+    """Replace the authoritative list of seat numbers on an order.
+
+    Used when a server adds or removes seats on a check before (or after)
+    items have been ordered. Emits a single SEATS_UPDATED event carrying
+    the full seat list — readers replace, never merge.
+    """
+    await get_order_or_404(ledger, order_id)
+
+    # De-duplicate and sort for deterministic replay, then persist.
+    seats = sorted({int(s) for s in request.seat_numbers})
+    event = seats_updated(
+        terminal_id=settings.terminal_id,
+        order_id=order_id,
+        seat_numbers=seats,
+    )
+    await ledger.append(event)
 
     order = await get_order_or_404(ledger, order_id)
     return OrderResponse.from_order(order)

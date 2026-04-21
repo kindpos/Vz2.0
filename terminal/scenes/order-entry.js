@@ -3430,10 +3430,11 @@ async function handleSaveOnly() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          guest_count: (sceneParams.seatNumbers && sceneParams.seatNumbers.length) || 1,
+          guest_count:   (sceneParams.seatNumbers && sceneParams.seatNumbers.length) || 1,
+          seat_numbers:  sceneParams.seatNumbers || null,
           customer_name: null,
-          server_id:   sceneParams.employeeId || null,
-          server_name: sceneParams.employeeName || null,
+          server_id:     sceneParams.employeeId || null,
+          server_name:   sceneParams.employeeName || null,
         }),
       });
       if (!createRes.ok) throw new Error('Order create failed: ' + createRes.status);
@@ -3511,10 +3512,11 @@ async function handleSend() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          guest_count: (sceneParams.seatNumbers && sceneParams.seatNumbers.length) || 1,
+          guest_count:   (sceneParams.seatNumbers && sceneParams.seatNumbers.length) || 1,
+          seat_numbers:  sceneParams.seatNumbers || null,
           customer_name: null,
-          server_id:   sceneParams.employeeId || null,
-          server_name: sceneParams.employeeName || null,
+          server_id:     sceneParams.employeeId || null,
+          server_name:   sceneParams.employeeName || null,
         }),
       });
       if (!createRes.ok) throw new Error('Order create failed: ' + createRes.status);

@@ -95,6 +95,21 @@ function orderToSeats(order, minSeats) {
   var bySeat = {};
   var allIds = [];
 
+  // 1. Seed from order.seat_numbers (authoritative) — preserves seats
+  //    that have no items yet.
+  if (order && Array.isArray(order.seat_numbers)) {
+    for (var s = 0; s < order.seat_numbers.length; s++) {
+      var num = order.seat_numbers[s];
+      var sid = 'S-' + String(num).padStart(3, '0');
+      if (!bySeat[sid]) {
+        bySeat[sid] = { id: sid, number: num, items: [] };
+        allIds.push(sid);
+      }
+    }
+  }
+
+  // 2. Attach items to their seats (and create any seat missing from
+  //    seat_numbers — legacy replay compatibility).
   if (order && Array.isArray(order.items)) {
     for (var i = 0; i < order.items.length; i++) {
       var it = order.items[i];
@@ -215,6 +230,7 @@ defineScene({
     _mode:         null,
     _summaryItemMap:{},
     _osActive:     false,
+    _mountParams:  null,
   },
 
   render: function(container, params, state) {
@@ -239,6 +255,7 @@ defineScene({
     state._lpTimers     = [];
     state._mode         = null;
     state._osActive     = false;
+    state._mountParams  = params;   // persistSeats() reads employee info
     state.seats = orderToSeats(null, 1);
 
     var _landing = params.returnLanding || 'server-landing';
@@ -1412,16 +1429,7 @@ function addSeat(state) {
     number: num,
     items:  [],
   });
-
-  if (state.orderId) {
-    fetch('/api/v1/orders/' + state.orderId, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        guest_count: Math.max.apply(null, state.seats.map(function(s) { return s.number; })),
-      }),
-    });
-  }
+  persistSeats(state);
   rerenderTopArea(state);
 }
 
@@ -1441,17 +1449,51 @@ function deleteSeat(state, seatId) {
   }
   state.seats.splice(seatIdx, 1);
   delete state.selected[seatId];
-
-  if (state.orderId && state.seats.length > 0) {
-    fetch('/api/v1/orders/' + state.orderId, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        guest_count: Math.max.apply(null, state.seats.map(function(s) { return s.number; })),
-      }),
-    });
-  }
+  persistSeats(state);
   rerenderTopArea(state);
+}
+
+// Push the current seat layout to the backend. Creates the order on first
+// call (no orderId yet) and replaces the seat list thereafter. Seats live
+// in the backend as a first-class list, so they survive scene unmount,
+// logout, and lack-of-items.
+function persistSeats(state) {
+  var nums = state.seats.map(function(s) { return s.number; });
+  if (nums.length === 0) return;
+
+  if (state.orderId) {
+    fetch('/api/v1/orders/' + state.orderId + '/seats', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ seat_numbers: nums }),
+    }).catch(function(err) {
+      console.warn('[KINDpos] Seat update failed:', err);
+    });
+    return;
+  }
+
+  // First POST — create the order with the seats attached. Caller params
+  // captured at mount time carry the employee identity.
+  var params = state._mountParams || {};
+  fetch('/api/v1/orders', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      server_id:    params.employeeId || null,
+      server_name:  params.employeeName || null,
+      seat_numbers: nums,
+    }),
+  })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(order) {
+      if (!order) return;
+      state.orderId     = order.order_id || order.id;
+      state.checkNumber = order.check_number || '';
+      if (state.checkNumber) setSceneName(state.checkNumber);
+    })
+    .catch(function(err) {
+      console.warn('[KINDpos] Order create-with-seats failed:', err);
+    });
 }
 
 // Tiny × button overlay for empty seats. Tapping removes the seat.

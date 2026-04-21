@@ -94,6 +94,80 @@ async def test_get_order_not_found(client):
 
 
 @pytest.mark.asyncio
+async def test_seats_persist_without_items(client):
+    """Seats set via POST /orders and PUT /orders/:id/seats survive even
+    when the check has zero items — covers the "logout wipes seats" and
+    "items on one seat wipes other seats" bugs.
+    """
+    # Create order with three seats and no items
+    resp = await client.post("/api/v1/orders", json={
+        "table": "T-1", "server_id": "srv-01", "server_name": "Maria",
+        "seat_numbers": [1, 2, 3],
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    oid = data["order_id"]
+    assert data["seat_numbers"] == [1, 2, 3]
+    assert data["guest_count"] == 3
+    assert data["items"] == []
+
+    # GET — seats are still on the projection after a round-trip (simulates
+    # what happens after logout / scene remount).
+    resp = await client.get(f"/api/v1/orders/{oid}")
+    assert resp.status_code == 200
+    assert resp.json()["seat_numbers"] == [1, 2, 3]
+
+    # Add a 4th seat via PUT
+    resp = await client.put(f"/api/v1/orders/{oid}/seats", json={
+        "seat_numbers": [1, 2, 3, 4],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["seat_numbers"] == [1, 2, 3, 4]
+    assert resp.json()["guest_count"] == 4
+
+    # Add one item to seat 2 only — seats 1, 3, 4 must still be present
+    resp = await client.post(f"/api/v1/orders/{oid}/items", json={
+        "menu_item_id": "burger-01", "name": "Burger",
+        "price": 10.00, "quantity": 1, "seat_number": 2,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert sorted(data["seat_numbers"]) == [1, 2, 3, 4]
+    assert len(data["items"]) == 1
+    assert data["items"][0]["seat_number"] == 2
+
+    # Remove seat 4 via PUT (seat had no items)
+    resp = await client.put(f"/api/v1/orders/{oid}/seats", json={
+        "seat_numbers": [1, 2, 3],
+    })
+    assert resp.status_code == 200
+    assert sorted(resp.json()["seat_numbers"]) == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_seated_empty_check_shows_on_landing(client):
+    """A check with seats but no items must appear in GET /orders so the
+    server can resume it after logging out."""
+    resp = await client.post("/api/v1/orders", json={
+        "server_id": "srv-02", "server_name": "Carlos",
+        "seat_numbers": [1, 2],
+    })
+    oid = resp.json()["order_id"]
+
+    # /orders (unfiltered list) — check appears
+    resp = await client.get("/api/v1/orders?server_id=srv-02")
+    assert resp.status_code == 200
+    ids = [o["order_id"] for o in resp.json()]
+    assert oid in ids
+
+    # /orders/open — seated empty check still counts as open
+    resp = await client.get("/api/v1/orders/open")
+    assert resp.status_code == 200
+    ids = [o["order_id"] for o in resp.json()]
+    assert oid in ids
+
+
+@pytest.mark.asyncio
 async def test_add_items_and_send(client, ledger):
     """POST items, then POST send — items marked sent, events written."""
     # Create order
