@@ -26,7 +26,11 @@ import {
     numberField, chipGroup, openModal, showToast,
 } from '../ui/forms.js';
 import { pushChanges } from '../services/config-push.js';
-import { ROLES as FALLBACK_ROLES, loadEmployeeData } from '../data/sample-employees.js';
+import { ROLES as FALLBACK_ROLES, loadEmployeeData, getRoleLabel } from '../data/sample-employees.js';
+import {
+    ACTIVE_SHIFTS, WEEKLY_TIMECARDS, SHIFT_DETAILS, EDIT_REASONS,
+    DAY_LABELS, getDayIndex, calcDuration, durationColor, getWeeklyTotals,
+} from '../data/sample-timedata.js';
 
 /* ------------------------------------------
    MODULE STATE
@@ -42,6 +46,26 @@ let _tipoutRoles = [];
 let _tipoutCategories = [];
 
 const TIPOUT_BASIS_OPTIONS = ['Net Sales', 'Gross Tips', 'Net Tips'];
+
+// Clock Records tab state.
+let _clockSubView = 'live';   // 'live' | 'week'
+let _clockRefreshTimer = null;
+
+// Role identity colors — matches the mockup's .role-chip styling.
+// Source of truth for role colors is now staff-roles (Phase B),
+// but ACTIVE_SHIFTS sample data only carries role ids, so this
+// local map keeps rendering honest for the built-in roles.
+const ROLE_CHIP_COLORS = {
+    server:    '#38bdf8', // sky
+    bartender: '#34d399', // emerald
+    cook:      '#f472b6', // pink
+    manager:   '#f97316', // orange
+    host:      '#facc15', // amber
+    busser:    '#a78bfa', // violet
+};
+function roleChipColor(roleId) {
+    return ROLE_CHIP_COLORS[roleId] || T.textMuted;
+}
 
 const TABS = [
     { id: 'clock',      label: 'Clock Records'    },
@@ -138,7 +162,6 @@ function renderPlaceholder(body, label) {
     body.appendChild(card.card);
 }
 
-function renderClockTab(body)     { renderPlaceholder(body, 'Clock Records'); }
 function renderPayrollTab(body)   { renderPlaceholder(body, 'Payroll Periods'); }
 function renderTemplatesTab(body) { renderPlaceholder(body, 'Shift Templates'); }
 
@@ -577,6 +600,109 @@ function _labeledGroup(label, group) {
     return wrap;
 }
 
+/* ==========================================
+   TAB: CLOCK RECORDS
+   Ported from sections/time-attendance.js. Split into two
+   sub-views via a pill toggle (mockup's .sub-toggle):
+     - Live Dashboard — who's on the clock right now
+     - Week Grid      — weekly timecards for the whole team
+   Shift drill-down + SHIFT_TIME_ADJUSTED edit land in chunks 3–4.
+   ========================================== */
+
+function fmtTime12(time24) {
+    if (!time24) return '—';
+    const [h, m] = time24.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+function fmtTimeISO(isoStr) {
+    if (!isoStr) return '—';
+    const d = new Date(isoStr);
+    return fmtTime12(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+}
+function fmtHrs(val) { return (val ?? 0).toFixed(2) + 'h'; }
+function fmtMoney(val) { return '$' + (val ?? 0).toFixed(2); }
+
+// Sub-toggle pill group (mockup .sub-toggle).
+function buildClockSubToggle(activeSub, onSelect) {
+    const toggle = document.createElement('div');
+    toggle.style.cssText = `
+        display: flex; gap: ${T.sp.xs}px;
+        padding: ${T.sp.xs}px;
+        background: ${T.well};
+        border-radius: 999px;
+        width: fit-content;
+        margin-bottom: ${T.sp.md + 2}px;
+    `;
+    [
+        { id: 'live', label: 'Live Dashboard' },
+        { id: 'week', label: 'Week Grid'      },
+    ].forEach(opt => {
+        const on = opt.id === activeSub;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = opt.label;
+        btn.style.cssText = `
+            background: ${on ? T.card : 'transparent'};
+            border: none; cursor: pointer;
+            padding: 6px 16px;
+            border-radius: 999px;
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.sm}px;
+            letter-spacing: 1.5px;
+            font-weight: 700;
+            color: ${on ? T.green : T.textMuted};
+            text-transform: uppercase;
+        `;
+        btn.addEventListener('click', () => { if (opt.id !== activeSub) onSelect(opt.id); });
+        toggle.appendChild(btn);
+    });
+    return toggle;
+}
+
+function startClockRefresh(el) {
+    stopClockRefresh();
+    _clockRefreshTimer = setInterval(() => {
+        if (!document.body.contains(el)) { stopClockRefresh(); return; }
+        const now = new Date();
+        el.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }, 30_000);
+}
+function stopClockRefresh() {
+    if (_clockRefreshTimer) {
+        clearInterval(_clockRefreshTimer);
+        _clockRefreshTimer = null;
+    }
+}
+
+function renderClockTab(body) {
+    stopClockRefresh();
+    body.innerHTML = '';
+
+    const toggle = buildClockSubToggle(_clockSubView, (sub) => {
+        _clockSubView = sub;
+        renderClockTab(body);
+    });
+    body.appendChild(toggle);
+
+    const viewWrap = document.createElement('div');
+    body.appendChild(viewWrap);
+
+    if (_clockSubView === 'live') {
+        renderLiveDashboard(viewWrap);
+    } else {
+        renderWeekGrid(viewWrap);
+    }
+}
+
+function renderLiveDashboard(wrap) {
+    wrap.textContent = ''; // filled in chunk 2
+}
+function renderWeekGrid(wrap) {
+    wrap.textContent = ''; // filled in chunk 3
+}
+
 const TAB_RENDERERS = {
     clock:     renderClockTab,
     payroll:   renderPayrollTab,
@@ -591,6 +717,10 @@ const TAB_RENDERERS = {
    running in the background when the user is on another tab.
 ------------------------------------------ */
 function activateTab(tabId, stripRef) {
+    // Tab-leave hooks: stop any timers that shouldn't keep running
+    // in the background when the user is on a different tab.
+    if (_activeTabId === 'clock' && tabId !== 'clock') stopClockRefresh();
+
     _activeTabId = tabId;
     Object.entries(_tabBodies).forEach(([id, el]) => {
         el.style.display = (id === tabId) ? 'block' : 'none';
@@ -636,8 +766,10 @@ export function buildPayrollAttendanceScene(container) {
 }
 
 export function cleanupPayrollAttendance(container) {
+    stopClockRefresh();
     if (container) container.innerHTML = '';
     _container = null;
     _activeTabId = 'clock';
     _tabBodies = {};
+    _clockSubView = 'live';
 }
