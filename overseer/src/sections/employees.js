@@ -22,15 +22,6 @@ import {
     getRoleLabel, getStatusInfo, fmtDate,
     generatePIN, generateEmployeeId,
 } from '../data/sample-employees.js';
-import {
-    buildTimeAttendanceScene, cleanupTimeAttendance,
-} from './time-attendance.js';
-import {
-    buildPayrollTipsScene, cleanupPayrollTips,
-} from './payroll-tips.js';
-import {
-    buildShiftConfigScene, cleanupShiftConfig,
-} from './shift-config.js';
 
 /* ------------------------------------------
    COLOR PALETTE
@@ -884,6 +875,11 @@ function buildPlaceholder(container, title, subtitle, items) {
 export function registerEmployeeSections(sceneManager) {
 
     // ── 1. Employee Management (FULL BUILD) ──
+    // Note: time-attendance / payroll-tips / shift-config are
+    // registered directly in app.js via SceneManager.register.
+    // They used to be registered here too, but that duplicated
+    // app.js's direct registrations (which always won because
+    // they ran last). Removed as part of Step 15 cleanup.
     sceneManager.register('employee-management', {
         type: 'detail',
         title: 'Employee Management',
@@ -895,45 +891,6 @@ export function registerEmployeeSections(sceneManager) {
         onExit(container) {
             container.innerHTML = '';
             resetState();
-        },
-    });
-
-    // ── 2. Time & Attendance (FULL BUILD) ──
-    sceneManager.register('time-attendance', {
-        type: 'detail',
-        title: 'Time & Attendance',
-        parent: 'employees-subs',
-        onEnter(container) {
-            buildTimeAttendanceScene(container);
-        },
-        onExit(container) {
-            cleanupTimeAttendance(container);
-        },
-    });
-
-    // ── 3. Payroll & Tips (FULL BUILD) ──
-    sceneManager.register('payroll-tips', {
-        type: 'detail',
-        title: 'Payroll & Tips',
-        parent: 'employees-subs',
-        onEnter(container) {
-            buildPayrollTipsScene(container);
-        },
-        onExit(container) {
-            cleanupPayrollTips(container);
-        },
-    });
-
-    // ── 4. Shift Configuration (FULL BUILD) ──
-    sceneManager.register('shift-config', {
-        type: 'detail',
-        title: 'Shift Configuration',
-        parent: 'employees-subs',
-        onEnter(container) {
-            buildShiftConfigScene(container);
-        },
-        onExit(container) {
-            cleanupShiftConfig(container);
         },
     });
 }
