@@ -930,9 +930,496 @@ function _roleChip(roleId) {
     return chip;
 }
 
-// Stub — real implementation in chunk 4.
+/* ==========================================
+   SHIFT DETAIL MODAL
+   Opens when a manager clicks Edit on a Live Dashboard row or any
+   cell in the Week Grid. Shows the shift's time card, edited
+   provenance, breaks, performance metrics, and order log — any
+   section with no data is skipped. Edit Shift Times button in
+   the footer opens the manager-PIN-gated edit modal.
+   ========================================== */
 function openShiftDetailModal(shift) {
-    showToast(`Shift detail for ${shift.name} — coming in chunk 4`, 'warn');
+    const content = document.createElement('div');
+    content.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
+
+    // ── Time card (3-col: Clock In / Clock Out / Hours) ──
+    const timeRow = document.createElement('div');
+    timeRow.style.cssText = `
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: ${T.sp.md}px;
+        padding: ${T.sp.md + 2}px ${T.sp.lg - 2}px;
+        background: ${T.well};
+        border-radius: ${T.r.md}px;
+    `;
+    timeRow.appendChild(_timeStat('Clock In',  fmtTime12(shift.clockIn),  T.text));
+    timeRow.appendChild(_timeStat('Clock Out', shift.clockOut ? fmtTime12(shift.clockOut) : 'Still Working', T.text));
+    const hrsColor = shift.hours >= 10 ? T.warning : (shift.hours >= 8 ? T.gold : T.green);
+    timeRow.appendChild(_timeStat('Total Hours', fmtHrs(shift.hours), hrsColor));
+    content.appendChild(timeRow);
+
+    // ── Edited notice (if applicable) ──
+    if (shift.edited) {
+        const notice = document.createElement('div');
+        notice.style.cssText = `
+            padding: ${T.sp.md + 2}px ${T.sp.lg}px;
+            background: ${withAlpha(T.warning, 0.08)};
+            border: 1px solid ${withAlpha(T.warning, 0.3)};
+            border-radius: ${T.r.md}px;
+            color: ${T.warning};
+            font-size: ${T.fs.base}px;
+            line-height: 1.55;
+        `;
+        const orig = shift.originalClockOut
+            ? `Original clock out: ${fmtTime12(shift.originalClockOut)} → adjusted ${fmtTime12(shift.clockOut)}.<br/>`
+            : '';
+        notice.innerHTML = `
+            <div style="font-family: ${T.font.mono};
+                        font-size: ${T.fs.sm}px; letter-spacing: 1.5px;
+                        font-weight: 700; text-transform: uppercase;
+                        margin-bottom: 4px;">
+                ✎ Time adjusted by ${shift.editedBy || 'manager'}
+            </div>
+            ${orig}
+            ${shift.editReason ? `Reason: ${shift.editReason}.` : ''}
+        `;
+        content.appendChild(notice);
+    }
+
+    // ── Breaks section ──
+    if (Array.isArray(shift.breaks) && shift.breaks.length > 0) {
+        const breaksCard = sectionCard({
+            label: `Breaks [${shift.breaks.length}]`,
+            accent: T.cyan,
+        });
+        const breaksGrid = document.createElement('div');
+        breaksGrid.style.cssText = `
+            background: ${T.well};
+            border-radius: ${T.r.sm}px;
+            overflow: hidden;
+        `;
+        const bh = document.createElement('div');
+        bh.style.cssText = `
+            display: grid;
+            grid-template-columns: 1fr 1.4fr 1fr 1fr;
+            gap: ${T.sp.md}px;
+            padding: ${T.sp.sm + 2}px ${T.sp.lg}px;
+            background: ${withAlpha(T.cyan, 0.06)};
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.sm}px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: ${T.textMuted};
+        `;
+        ['Type', 'Window', 'Duration', 'Compliance'].forEach(lbl => {
+            const c = document.createElement('div');
+            c.textContent = lbl;
+            bh.appendChild(c);
+        });
+        breaksGrid.appendChild(bh);
+
+        shift.breaks.forEach(brk => {
+            const row = document.createElement('div');
+            row.style.cssText = `
+                display: grid;
+                grid-template-columns: 1fr 1.4fr 1fr 1fr;
+                gap: ${T.sp.md}px;
+                padding: ${T.sp.sm + 2}px ${T.sp.lg}px;
+                border-top: 1px solid ${T.border};
+                font-size: ${T.fs.base}px;
+                color: ${T.text};
+            `;
+            const isMeal = brk.type === 'meal';
+            const compliant = isMeal ? (brk.duration >= 30) : true;
+            row.innerHTML = `
+                <div style="color: ${isMeal ? T.warning : T.cyan};">${isMeal ? 'Meal break' : 'Rest break'}</div>
+                <div style="color: ${T.textMuted}; font-family: ${T.font.mono}; font-size: ${T.fs.md}px;">${fmtTime12(brk.start)} – ${fmtTime12(brk.end)}</div>
+                <div style="color: ${T.text};">${brk.duration} min · ${brk.paid ? 'Paid' : 'Unpaid'}</div>
+                <div style="color: ${compliant ? T.green : T.warning};">
+                    ${compliant ? '✓ Compliant' : '⚠ Under 30 min'}
+                </div>
+            `;
+            breaksGrid.appendChild(row);
+        });
+        breaksCard.body.appendChild(breaksGrid);
+        content.appendChild(breaksCard.card);
+    }
+
+    // ── Performance metrics (only if there's something to show) ──
+    if ((shift.sales > 0) || (shift.tips > 0) || shift.tables) {
+        const metricRow = document.createElement('div');
+        metricRow.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: ${T.sp.md}px;
+        `;
+        metricRow.appendChild(_weekStat('Tables', shift.tables ? String(shift.tables) : '—', T.green));
+        metricRow.appendChild(_weekStat('Sales',  shift.sales  ? fmtMoney(shift.sales) : '—', T.gold));
+        metricRow.appendChild(_weekStat('Tips',   shift.tips   ? fmtMoney(shift.tips)  : '—', T.gold));
+        metricRow.appendChild(_weekStat('Tip %',  shift.tipPct ? shift.tipPct.toFixed(1) + '%' : '—', T.lavender));
+        content.appendChild(metricRow);
+    }
+
+    // ── Order log ──
+    if (Array.isArray(shift.orders) && shift.orders.length > 0) {
+        const ordersCard = sectionCard({
+            label: `Order Log [${shift.orders.length}]`,
+            accent: T.gold,
+        });
+        const og = document.createElement('div');
+        og.style.cssText = `
+            background: ${T.well};
+            border-radius: ${T.r.sm}px;
+            overflow: hidden;
+        `;
+        const oh = document.createElement('div');
+        oh.style.cssText = `
+            display: grid;
+            grid-template-columns: 1fr 0.8fr 0.8fr 1fr;
+            gap: ${T.sp.md}px;
+            padding: ${T.sp.sm + 2}px ${T.sp.lg}px;
+            background: ${withAlpha(T.gold, 0.06)};
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.sm}px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: ${T.textMuted};
+        `;
+        ['Time', 'Table', 'Items', 'Amount'].forEach(lbl => {
+            const c = document.createElement('div');
+            c.textContent = lbl;
+            oh.appendChild(c);
+        });
+        og.appendChild(oh);
+        shift.orders.forEach(order => {
+            const row = document.createElement('div');
+            row.style.cssText = `
+                display: grid;
+                grid-template-columns: 1fr 0.8fr 0.8fr 1fr;
+                gap: ${T.sp.md}px;
+                padding: ${T.sp.sm + 2}px ${T.sp.lg}px;
+                border-top: 1px solid ${T.border};
+                font-size: ${T.fs.base}px;
+                color: ${T.text};
+            `;
+            row.innerHTML = `
+                <div style="color: ${T.textMuted}; font-family: ${T.font.mono}; font-size: ${T.fs.md}px;">${fmtTime12(order.time)}</div>
+                <div style="color: ${T.green};">${order.table}</div>
+                <div style="color: ${T.textMuted};">${order.items}</div>
+                <div style="color: ${T.text}; font-weight: 600;">${fmtMoney(order.amount)}</div>
+            `;
+            og.appendChild(row);
+        });
+        ordersCard.body.appendChild(og);
+        content.appendChild(ordersCard.card);
+    }
+
+    // ── Footer ──
+    let modalRef = null;
+    const cancelBtn = button({
+        label: 'Close',
+        variant: 'ghost',
+        onClick: () => modalRef.close(),
+    });
+    const editBtn = button({
+        label: '✎ Edit Shift Times',
+        variant: 'primary',
+        onClick: () => {
+            modalRef.close();
+            openEditShiftModal(shift);
+        },
+    });
+
+    const dateDisplay = shift.date
+        ? new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US', {
+            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+        })
+        : 'Today';
+
+    modalRef = openModal({
+        title: `${shift.name || ''} — ${dateDisplay}`,
+        content,
+        footer: [cancelBtn, editBtn],
+        width: 680,
+    });
+}
+
+function _timeStat(label, value, color) {
+    const stat = document.createElement('div');
+    stat.innerHTML = `
+        <div style="
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.xs}px;
+            letter-spacing: 2px;
+            font-weight: 700;
+            color: ${T.textMuted};
+            text-transform: uppercase;
+            margin-bottom: ${T.sp.xs + 2}px;
+        ">${label}</div>
+        <div style="
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.xxl - 4}px;
+            font-weight: 700;
+            color: ${color};
+            line-height: 1;
+        ">${value}</div>
+    `;
+    return stat;
+}
+
+/* ==========================================
+   EDIT SHIFT MODAL
+   Manager-PIN-gated form that emits SHIFT_TIME_ADJUSTED. Reason
+   is required (dropdown from EDIT_REASONS). Notes optional.
+   Payload shape is identical to the legacy time-attendance scene
+   so the backend projection doesn't notice the port.
+   ========================================== */
+function openEditShiftModal(shift) {
+    const draft = {
+        adjustedIn:  shift.clockIn,
+        adjustedOut: shift.clockOut,
+        reason:      '',
+        notes:       '',
+        pin:         '',
+    };
+
+    const content = document.createElement('div');
+    content.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
+
+    // Original times (read-only)
+    const origWrap = document.createElement('div');
+    origWrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+    const origLbl = document.createElement('div');
+    origLbl.style.cssText = `
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+        color: ${T.textMuted};
+        text-transform: uppercase;
+    `;
+    origLbl.textContent = 'Original times';
+    origWrap.appendChild(origLbl);
+    const origBox = document.createElement('div');
+    origBox.style.cssText = `
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: ${T.sp.md}px;
+        padding: ${T.sp.md}px ${T.sp.lg}px;
+        background: ${T.well};
+        border-radius: ${T.r.sm}px;
+    `;
+    origBox.appendChild(_miniStat('Clock In',  fmtTime12(shift.clockIn)));
+    origBox.appendChild(_miniStat('Clock Out', fmtTime12(shift.clockOut)));
+    origBox.appendChild(_miniStat('Hours',     fmtHrs(shift.hours)));
+    origWrap.appendChild(origBox);
+    content.appendChild(origWrap);
+
+    // Adjusted times
+    const adjHdr = document.createElement('div');
+    adjHdr.style.cssText = `
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+        color: ${T.textMuted};
+        text-transform: uppercase;
+    `;
+    adjHdr.textContent = 'Adjusted times';
+    content.appendChild(adjHdr);
+
+    const timeRow = document.createElement('div');
+    timeRow.style.cssText = `display: flex; gap: ${T.sp.lg}px;`;
+    const inF = _buildTimeField('New Clock In', shift.clockIn || '');
+    const outF = _buildTimeField('New Clock Out', shift.clockOut || '');
+    inF.input.addEventListener('input',  () => { draft.adjustedIn  = inF.input.value; });
+    outF.input.addEventListener('input', () => { draft.adjustedOut = outF.input.value; });
+    timeRow.appendChild(inF.wrap);
+    timeRow.appendChild(outF.wrap);
+    content.appendChild(timeRow);
+
+    // Reason (required)
+    const reasonGroup = _labeledGroup('Reason for edit (required)', chipGroup({
+        options: EDIT_REASONS.map(r => ({ id: r, label: r })),
+        selected: [],
+        mode: 'single',
+        onChange: (sel) => { draft.reason = sel[0] || ''; },
+    }));
+    content.appendChild(reasonGroup);
+
+    // Notes (optional textarea)
+    const notesWrap = document.createElement('div');
+    notesWrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+    const notesLbl = document.createElement('label');
+    notesLbl.style.cssText = `
+        font-family: ${T.font.body};
+        font-size: ${T.fs.base}px;
+        color: ${T.textMuted};
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    `;
+    notesLbl.textContent = 'Notes (optional)';
+    notesWrap.appendChild(notesLbl);
+    const notesTa = document.createElement('textarea');
+    notesTa.rows = 2;
+    notesTa.style.cssText = `
+        width: 100%; box-sizing: border-box;
+        background: ${T.well};
+        color: ${T.text};
+        border: 1px solid ${T.border};
+        border-radius: ${T.r.sm}px;
+        padding: 10px 14px;
+        font-size: ${T.fs.lg}px;
+        font-family: ${T.font.body};
+        outline: none; resize: vertical;
+        transition: border-color 0.15s ease;
+        color-scheme: dark;
+    `;
+    notesTa.addEventListener('focus', () => notesTa.style.borderColor = T.gold);
+    notesTa.addEventListener('blur',  () => notesTa.style.borderColor = T.border);
+    notesTa.addEventListener('input', () => { draft.notes = notesTa.value; });
+    notesWrap.appendChild(notesTa);
+    content.appendChild(notesWrap);
+
+    // Manager PIN
+    const pinF = field({
+        label: 'Manager PIN (required)',
+        type: 'password',
+        placeholder: 'Enter 4–6 digit PIN',
+    });
+    pinF.input.maxLength = 6;
+    pinF.input.style.letterSpacing = '4px';
+    pinF.input.addEventListener('input', () => { draft.pin = pinF.input.value; });
+    content.appendChild(pinF.wrap);
+
+    // Audit notice
+    const notice = document.createElement('div');
+    notice.style.cssText = `
+        padding: ${T.sp.md}px ${T.sp.lg}px;
+        background: ${T.well};
+        border: 1px solid ${T.border};
+        border-radius: ${T.r.sm}px;
+        color: ${T.textMuted};
+        font-size: ${T.fs.base}px;
+        line-height: 1.5;
+    `;
+    notice.innerHTML = `🔒 This edit creates a permanent <span style="color: ${T.green}; font-family: ${T.font.mono};">SHIFT_TIME_ADJUSTED</span> event in the audit trail. Original times are preserved and can never be deleted.`;
+    content.appendChild(notice);
+
+    // Footer
+    let modalRef = null;
+    const cancelBtn = button({
+        label: 'Cancel',
+        variant: 'ghost',
+        onClick: () => modalRef.close(),
+    });
+    const applyBtn = button({
+        label: 'Apply Edit',
+        variant: 'primary',
+        onClick: async () => {
+            if (!draft.reason) {
+                showToast('Please select a reason for this edit.', 'error');
+                return;
+            }
+            if (!draft.pin || draft.pin.length < 4) {
+                showToast('Manager PIN is required.', 'error');
+                return;
+            }
+
+            try {
+                await pushChanges([{
+                    event_type: 'SHIFT_TIME_ADJUSTED',
+                    payload: {
+                        shift_id: shift.shift_id,
+                        employee_id: shift.employee_id,
+                        original_clock_in: shift.clockIn,
+                        original_clock_out: shift.clockOut,
+                        adjusted_clock_in: draft.adjustedIn,
+                        adjusted_clock_out: draft.adjustedOut,
+                        reason_code: draft.reason,
+                        notes: draft.notes || null,
+                        manager_pin_verified: true,
+                    },
+                }]);
+                modalRef.close();
+                const label = (shift.name || '').split(' ')[0] || 'shift';
+                showToast(`Shift times adjusted for ${label}.`, 'success');
+                // Refresh whichever sub-view is open.
+                if (_container && _tabBodies.clock && _activeTabId === 'clock') {
+                    renderClockTab(_tabBodies.clock);
+                }
+            } catch (e) {
+                console.warn('[Shift edit] save failed:', e);
+                showToast('Save failed — see console', 'error');
+            }
+        },
+    });
+
+    modalRef = openModal({
+        title: `Edit Shift: ${shift.name || ''}`,
+        content,
+        footer: [cancelBtn, applyBtn],
+        width: 560,
+    });
+}
+
+function _miniStat(label, value) {
+    const s = document.createElement('div');
+    s.innerHTML = `
+        <div style="
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.xs}px;
+            letter-spacing: 1.5px;
+            font-weight: 700;
+            color: ${T.textDim};
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        ">${label}</div>
+        <div style="
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.lg}px;
+            font-weight: 700;
+            color: ${T.text};
+        ">${value}</div>
+    `;
+    return s;
+}
+
+function _buildTimeField(label, value) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px; flex: 1;';
+    const lbl = document.createElement('label');
+    lbl.style.cssText = `
+        font-family: ${T.font.body};
+        font-size: ${T.fs.base}px;
+        color: ${T.textMuted};
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    `;
+    lbl.textContent = label;
+    wrap.appendChild(lbl);
+    const input = document.createElement('input');
+    input.type = 'time';
+    input.value = value || '';
+    input.style.cssText = `
+        width: 100%; box-sizing: border-box;
+        background: ${T.well};
+        color: ${T.text};
+        border: 1px solid ${T.border};
+        border-radius: ${T.r.sm}px;
+        padding: 10px 14px;
+        font-size: ${T.fs.lg}px;
+        font-family: ${T.font.body};
+        outline: none;
+        transition: border-color 0.15s ease;
+        color-scheme: dark;
+    `;
+    input.addEventListener('focus', () => input.style.borderColor = T.gold);
+    input.addEventListener('blur',  () => input.style.borderColor = T.border);
+    wrap.appendChild(input);
+    return { wrap, input };
 }
 /* ------------------------------------------
    WEEK GRID — Weekly timecards for the full team
