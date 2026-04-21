@@ -21,30 +21,15 @@
    - withAlpha        : hex + alpha → rgba()
    ============================================ */
 
-// ─── Nostalgia palette ─────────────────────────────────────────────
-export const C = {
-  bg:         '#383c42',
-  card:       '#2e3236',
-  well:       '#22252a',
-  gold:       '#f5a623',
-  cyan:       '#22d3ee',
-  green:      '#86efac',
-  greenUp:    '#4ade80',
-  lavender:   '#b48efa',
-  verm:       '#e8472a',
-  warning:    '#fbbf24',
-  text:       '#e8eaed',
-  textMuted:  'rgba(232,234,237,0.55)',
-  textDim:    'rgba(232,234,237,0.4)',
-  border:     'rgba(232,234,237,0.08)',
-};
+// ─── Nostalgia tokens ──────────────────────────────────────────────
+// Tokens now live in ui/tokens.js. `C` is kept as a re-export so
+// existing consumers (sectionCard, button, openModal, ...) keep
+// working without edits.
+import { T, withAlpha as _withAlpha } from './tokens.js';
 
-export function withAlpha(hex, alpha) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+export { T };
+export const C = T;
+export const withAlpha = _withAlpha;
 
 // ─── Keyframes (injected once) ─────────────────────────────────────
 function ensureKeyframes() {
