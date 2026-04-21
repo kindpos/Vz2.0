@@ -14,11 +14,16 @@ Run:
 
 ```bash
 cd backend
-python -m pytest tests/ --cov=app --cov=bombard \
+python -m pytest tests/ --cov=app \
   --cov-report=term-missing --no-cov-on-fail -q
 ```
 
 Result: **63% overall (6,416 of 10,137 stmts covered)**.
+
+> **Update (follow-up pass, see below):** `bombard/*` is now excluded via
+> `backend/.coveragerc`; the command above drops `--cov=bombard` to match.
+> New baseline is **73% (6,388 of 8,719 stmts)** — see the follow-up
+> section at the bottom of this file.
 
 Headline numbers:
 
@@ -213,3 +218,45 @@ existence in `test_demo_seeder.py`).
 - `3679bc6` — `asyncio_mode = auto` in `pytest.ini`
 - `eb702cf` — 2 test setup fixes + 5 `.dict()` → `model_dump()`
 - `73e4389` — gitignore `.coverage` / `htmlcov/`
+
+---
+
+## Follow-up pass — 2026-04-21 (dead-code tidy)
+
+Audit branch: `claude/analyze-coverage-audit-l3IVd`.
+
+### What changed
+
+Deleted the 8 verified-dead files (🗑1–🗑8) after independent grep across
+`backend/`, `terminal/`, `overseer/`, `kindnostic/`, Dockerfile, scripts,
+and string-literal searches for dynamic dispatch:
+
+- `app/core/adapters/test_payment_system.py`
+- `app/printing/test_print.py`
+- `app/printing/templates/char_test_template.py`
+- `app/printing/templates/driver_ticket.py`
+- `app/printing/templates/driver_receipt.py`
+- `app/printing/templates/delivery_kitchen.py`
+- `app/printing/logo_utils.py`
+- `app/models/printer_config.py`
+
+Also pruned the matching re-exports from
+`app/printing/templates/__init__.py`. `DeliveryReceiptTemplate` (separate
+file) remains live.
+
+🗑9 (`bombard/*`) excluded from coverage via a new
+`backend/.coveragerc` with `omit = bombard/*`. The module is kept as a
+standalone simulation dev tool.
+
+### New baseline
+
+```
+992 passed, 3 skipped, 0 warnings, 0 failed
+```
+
+Coverage: **73% (6,388 of 8,719 stmts)** — up from 63%, matching the
+audit's ~74% projection. Test baseline unchanged.
+
+Commits:
+- `97ea7fa` — delete verified-dead code (8 files, ~422 stmts)
+- (next) — add `.coveragerc` omit for bombard, update audit command
