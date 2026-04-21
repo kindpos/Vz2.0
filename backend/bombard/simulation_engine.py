@@ -33,6 +33,11 @@ from app.core.events import (
     day_closed,
 )
 from app.core.projections import project_order
+from app.core.money import money_round
+from app.core.financial_invariants import (
+    check_day_close,
+    gate as invariant_gate,
+)
 from app.config import settings
 
 from .mock_menu import (
@@ -723,36 +728,75 @@ class SimulationEngine:
         from app.core.projections import project_orders
         all_orders = project_orders(all_events)
 
-        total_sales = 0.0
-        total_tips_from_events = 0.0
-        cash_total = 0.0
-        card_total = 0.0
+        _ZERO = Decimal("0.00")
+        total_sales = _ZERO
+        cash_total = _ZERO
+        card_sales = _ZERO
+        card_tips = _ZERO
         order_ids = []
         payment_count = 0
 
+        # Last-write-wins tip map per payment_id
+        tip_map: dict[str, Decimal] = {}
+        for e in all_events:
+            if e.event_type == EventType.TIP_ADJUSTED:
+                tip_map[e.payload.get("payment_id", "")] = Decimal(
+                    str(e.payload.get("tip_amount", "0.00"))
+                )
+
         for order in all_orders.values():
             if order.status in ("closed", "paid"):
-                total_sales += order.total
+                total_sales += Decimal(str(order.total))
                 order_ids.append(order.order_id)
                 for p in order.payments:
                     if p.status == "confirmed":
                         payment_count += 1
                         if p.method == "cash":
-                            cash_total += p.amount
+                            cash_total += Decimal(str(p.amount))
                         else:
-                            card_total += p.amount
+                            card_sales += Decimal(str(p.amount))
+                            card_tips += Decimal(
+                                str(tip_map.get(p.payment_id, p.tip_amount))
+                            )
 
-        for e in all_events:
-            if e.event_type == EventType.TIP_ADJUSTED:
-                total_tips_from_events += e.payload.get("tip_amount", 0.0)
+        # Cash tips are declared at clock-out, not per-payment, so during-day
+        # aggregates carry cash_tips = 0 (matching production's rule).
+        cash_tips = _ZERO
+        total_tips = card_tips + cash_tips
 
-        # Emit BATCH_SUBMITTED
+        total_sales_f = money_round(total_sales)
+        cash_total_f = money_round(cash_total)
+        card_sales_f = money_round(card_sales)
+        card_tips_f = money_round(card_tips)
+        cash_tips_f = money_round(cash_tips)
+        total_tips_f = money_round(total_tips)
+        card_settlement_f = money_round(card_sales + card_tips)
+
+        # Gate BEFORE emitting any events
+        invariant_gate(
+            check_day_close(
+                gross_sales=total_sales_f,
+                void_total=_ZERO,
+                discount_total=_ZERO,
+                refund_total=_ZERO,
+                net_sales=total_sales_f,
+                tax_collected=_ZERO,
+                cash_total=cash_total_f,
+                card_total=card_sales_f,
+                total_tips=total_tips_f,
+                card_tips=card_tips_f,
+                cash_tips=cash_tips_f,
+            ),
+            context="bombard.run_phase5_close_day",
+        )
+
+        # Emit BATCH_SUBMITTED (card_total is settlement = card_sales + card_tips)
         evt = batch_submitted(
             terminal_id=TERMINAL_ID,
             order_count=len(order_ids),
-            total_amount=total_sales,
-            cash_total=cash_total,
-            card_total=card_total,
+            total_amount=total_sales_f,
+            cash_total=cash_total_f,
+            card_total=card_settlement_f,
             order_ids=order_ids,
         )
         await self._append(evt)
@@ -762,10 +806,10 @@ class SimulationEngine:
             terminal_id=TERMINAL_ID,
             date="2026-03-29",
             total_orders=len(all_orders),
-            total_sales=total_sales,
-            total_tips=total_tips_from_events,
-            cash_total=cash_total,
-            card_total=card_total,
+            total_sales=total_sales_f,
+            total_tips=total_tips_f,
+            cash_total=cash_total_f,
+            card_total=card_settlement_f,
             order_ids=order_ids,
             payment_count=payment_count,
             opened_at=all_events[0].timestamp.isoformat() if all_events else None,

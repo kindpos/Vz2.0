@@ -246,5 +246,5 @@ async def patch_tipout(
     return {
         "success": True,
         "server_id": server_id,
-        "tipout": request.amount,
+        "tipout": money_round(request.amount),
     }
