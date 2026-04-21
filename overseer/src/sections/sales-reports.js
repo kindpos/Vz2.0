@@ -20,7 +20,7 @@
    ============================================ */
 
 import { T }                from '../ui/tokens.js';
-import { buildStatCard }    from '../ui/charts.js';
+import { buildStatCard, buildLineCard, buildCOBGauge } from '../ui/charts.js';
 import { fmt, fmtPct, fmtInt } from '../ui/money.js';
 
 // ─── Module state ────────────────────────────────────────────────────
@@ -40,12 +40,20 @@ function todayLabel() {
 }
 
 // ─── Fetch ───────────────────────────────────────────────────────────
-async function fetchSummary(signal) {
-  const res = await fetch(`/api/v1/reports/sales-summary?date=${today()}`, { signal });
-  if (!res.ok) {
-    throw new Error(`sales-summary ${res.status}`);
-  }
+async function fetchJson(url, signal) {
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`${url} ${res.status}`);
   return res.json();
+}
+
+function fetchSummary(signal) {
+  return fetchJson(`/api/v1/reports/sales-summary?date=${today()}`, signal);
+}
+function fetchHourlyCompare(signal) {
+  return fetchJson(`/api/v1/reports/hourly-compare?date=${today()}`, signal);
+}
+function fetchLabor(signal) {
+  return fetchJson(`/api/v1/reports/labor-summary?date=${today()}`, signal);
 }
 
 // ─── Layout ──────────────────────────────────────────────────────────
@@ -168,12 +176,30 @@ function buildLayout(container) {
       .sales-regions {
         min-height: 400px;
       }
-      .sales-hero-row {
+      .sales-row {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
         gap: 16px;
         margin-bottom: 24px;
       }
+      .sales-row-hero       { grid-template-columns: repeat(4, 1fr); }
+      .sales-row-trend-cob  { grid-template-columns: 2fr 1fr; }
+
+      .sales-region-loading, .sales-region-empty, .sales-region-error {
+        padding: 28px 20px;
+        text-align: center;
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 2px;
+        color: ${T.textMuted};
+        text-transform: uppercase;
+        background: ${T.card};
+        border-radius: ${T.r.md}px;
+        min-height: 118px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .sales-region-error { color: ${T.verm}; }
       .sales-state {
         padding: 60px 20px;
         text-align: center;
@@ -216,31 +242,49 @@ function buildLayout(container) {
       </div>
 
       <div class="sales-regions" id="sales-regions">
-        <div class="sales-state">Loading…</div>
+        <div class="sales-row sales-row-hero" id="region-hero">
+          <div class="sales-region-loading">Loading…</div>
+          <div class="sales-region-loading">Loading…</div>
+          <div class="sales-region-loading">Loading…</div>
+          <div class="sales-region-loading">Loading…</div>
+        </div>
+        <div class="sales-row sales-row-trend-cob" id="region-trend-cob">
+          <div class="sales-region-loading">Loading…</div>
+          <div class="sales-region-loading">Loading…</div>
+        </div>
       </div>
     </div>
   `;
 }
 
-// ─── Render ──────────────────────────────────────────────────────────
-function regionsEl(container) {
-  return container.querySelector('#sales-regions');
+// ─── Render helpers ─────────────────────────────────────────────────
+function regionEl(container, id) {
+  return container.querySelector(`#${id}`);
 }
 
+function renderRegionError(row, err, opts = {}) {
+  const { cells = 1 } = opts;
+  row.innerHTML = '';
+  for (let i = 0; i < cells; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'sales-region-error';
+    cell.textContent = err.message ? `Error · ${err.message}` : 'Error';
+    row.appendChild(cell);
+  }
+}
+
+// ─── Region renderers ───────────────────────────────────────────────
 function renderHero(container, data) {
-  const regions = regionsEl(container);
-  if (!regions) return;
-  regions.innerHTML = '';
+  const row = regionEl(container, 'region-hero');
+  if (!row) return;
+  row.innerHTML = '';
 
   const hourlyNet = (data.hourly_sales || []).map(h => Number(h.net) || 0);
   const tipPctFrac = (Number(data.net_sales) > 0)
     ? Number(data.tips_collected) / Number(data.net_sales)
     : 0;
 
-  const heroRow = document.createElement('div');
-  heroRow.className = 'sales-hero-row';
-
-  heroRow.appendChild(buildStatCard({
+  row.appendChild(buildStatCard({
     label: 'Net Sales',
     accent: T.gold,
     value: fmt(Number(data.net_sales) || 0),
@@ -249,7 +293,7 @@ function renderHero(container, data) {
     spark: { values: hourlyNet, color: T.gold },
   }));
 
-  heroRow.appendChild(buildStatCard({
+  row.appendChild(buildStatCard({
     label: 'Covers',
     accent: T.cyan,
     value: fmtInt(data.total_guests || 0),
@@ -258,7 +302,7 @@ function renderHero(container, data) {
     spark: { values: (data.hourly_sales || []).map(h => Number(h.checks) || 0), color: T.cyan },
   }));
 
-  heroRow.appendChild(buildStatCard({
+  row.appendChild(buildStatCard({
     label: 'Avg Check',
     accent: T.gold,
     value: fmt(Number(data.check_avg) || 0),
@@ -273,7 +317,7 @@ function renderHero(container, data) {
     },
   }));
 
-  heroRow.appendChild(buildStatCard({
+  row.appendChild(buildStatCard({
     label: 'Tip %',
     accent: T.mint,
     value: fmtPct(tipPctFrac).replace('%', ''),
@@ -285,19 +329,48 @@ function renderHero(container, data) {
       color: T.mint,
     },
   }));
-
-  regions.appendChild(heroRow);
 }
 
-function renderError(container, err) {
-  const regions = regionsEl(container);
-  if (!regions) return;
-  regions.innerHTML = `
-    <div class="sales-state sales-state-error">
-      Could not load sales data.<br/>
-      <span style="opacity: 0.6; font-size: 11px; letter-spacing: 1px; text-transform: none;">${err.message || err}</span>
-    </div>
-  `;
+function renderTrendCob(container, { hourly, labor }) {
+  const row = regionEl(container, 'region-trend-cob');
+  if (!row) return;
+  row.innerHTML = '';
+
+  // Trend line card
+  if (hourly) {
+    const xLabels = (hourly.today || []).map(h => h.hour);
+    const todayVals = (hourly.today || []).map(h => Number(h.net_sales) || 0);
+    const lastWeekVals = (hourly.last_week || []).map(h => Number(h.net_sales) || 0);
+    row.appendChild(buildLineCard({
+      title: 'Hourly Trend',
+      subtitle: 'Today vs same weekday last week',
+      accent: T.mint,
+      xLabels,
+      series: [
+        { name: 'Today',     values: todayVals,    color: T.cyan,     markers: true,  dashed: false },
+        { name: 'Last week', values: lastWeekVals, color: T.lavender, markers: false, dashed: true  },
+      ],
+    }));
+  } else {
+    const cell = document.createElement('div');
+    cell.className = 'sales-region-empty';
+    cell.textContent = 'Trend data unavailable';
+    row.appendChild(cell);
+  }
+
+  // COB gauge card
+  if (labor) {
+    row.appendChild(buildCOBGauge({
+      pct:   Number(labor.cob_percent) || 0,
+      labor: Number(labor.total_labor) || 0,
+      hours: Number(labor.total_hours) || 0,
+    }));
+  } else {
+    const cell = document.createElement('div');
+    cell.className = 'sales-region-empty';
+    cell.textContent = 'Labor data unavailable';
+    row.appendChild(cell);
+  }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────
@@ -306,14 +379,30 @@ export function buildSalesReportsScene(container) {
   buildLayout(container);
 
   _abortController = new AbortController();
-  fetchSummary(_abortController.signal)
-    .then(data => {
-      if (_currentContainer === container) renderHero(container, data);
-    })
+  const signal = _abortController.signal;
+  const still = () => _currentContainer === container;
+
+  // Hero row — sales-summary
+  fetchSummary(signal)
+    .then(data => { if (still()) renderHero(container, data); })
     .catch(err => {
       if (err.name === 'AbortError') return;
-      console.error('[sales-reports] Fetch error:', err);
-      if (_currentContainer === container) renderError(container, err);
+      console.error('[sales-reports] sales-summary error:', err);
+      if (still()) renderRegionError(regionEl(container, 'region-hero'), err, { cells: 4 });
+    });
+
+  // Trend + COB row — hourly-compare + labor-summary, rendered together
+  // once both settle (either success or failure). Either source being
+  // unavailable shows the individual card's "unavailable" placeholder.
+  Promise.allSettled([fetchHourlyCompare(signal), fetchLabor(signal)])
+    .then(([hourlyRes, laborRes]) => {
+      if (!still()) return;
+      if (signal.aborted) return;
+      const hourly = hourlyRes.status === 'fulfilled' ? hourlyRes.value : null;
+      const labor  = laborRes.status  === 'fulfilled' ? laborRes.value  : null;
+      if (hourlyRes.status === 'rejected') console.error('[sales-reports] hourly-compare error:', hourlyRes.reason);
+      if (laborRes.status === 'rejected')  console.error('[sales-reports] labor-summary error:', laborRes.reason);
+      renderTrendCob(container, { hourly, labor });
     });
 }
 
