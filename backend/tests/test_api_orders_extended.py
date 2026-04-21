@@ -94,9 +94,10 @@ async def create_and_pay_order(client, table="T-1"):
 # ─── Tests ──────────────────────────────────────────────────────────────────
 
 async def test_list_active_orders(client):
-    """GET /api/v1/orders/active returns open orders."""
-    await create_order(client, "A-1")
-    await create_order(client, "A-2")
+    """GET /api/v1/orders/active returns open orders with items."""
+    for table in ("A-1", "A-2"):
+        oid = await create_order(client, table)
+        await _add_item(client, oid)
 
     resp = await client.get("/api/v1/orders/active")
     assert resp.status_code == 200
@@ -105,8 +106,9 @@ async def test_list_active_orders(client):
 
 
 async def test_list_open_orders(client):
-    """GET /api/v1/orders/open returns open orders."""
-    await create_order(client, "B-1")
+    """GET /api/v1/orders/open returns open orders with items."""
+    oid = await create_order(client, "B-1")
+    await _add_item(client, oid)
 
     resp = await client.get("/api/v1/orders/open")
     assert resp.status_code == 200

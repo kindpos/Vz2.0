@@ -197,7 +197,7 @@ class DejavooSPInAdapter(BasePaymentDevice):
         return {
             "adapter": "DejavooSPInAdapter",
             "protocol": "SPIn HTTP GET (LAN)",
-            "config": self._config.dict() if self._config else None
+            "config": self._config.model_dump() if self._config else None
         }
 
     async def get_capabilities(self) -> List[PaymentType]:

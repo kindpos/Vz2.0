@@ -480,7 +480,7 @@ async def save_device(device: DeviceRecord):
               device.name, device.port, device.register_id, device.tpn, device.auth_key,
               device.categories, now))
         await db.commit()
-    return {**device.dict(), 'mac': device.mac.upper(), 'saved_at': now}
+    return {**device.model_dump(), 'mac': device.mac.upper(), 'saved_at': now}
 
 
 @router.delete("/devices/{mac}")

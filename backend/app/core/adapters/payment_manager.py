@@ -70,7 +70,7 @@ class PaymentManager:
         device = self._devices[device_id]
 
         # 5.2 Event Emission - Initiated
-        event = self._create_payment_event(EventType.PAYMENT_INITIATED, request.dict())
+        event = self._create_payment_event(EventType.PAYMENT_INITIATED, request.model_dump())
         await self._ledger.append(event)
 
         # 5.4 Timeout Enforcement (90s)
@@ -129,8 +129,8 @@ class PaymentManager:
 
         event_type = status_map.get(result.status, EventType.PAYMENT_ERROR)
 
-        payload = request.dict()
-        payload.update(result.dict())
+        payload = request.model_dump()
+        payload.update(result.model_dump())
         if extra:
             payload.update(extra)
         
