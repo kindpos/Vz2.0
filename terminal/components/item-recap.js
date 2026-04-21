@@ -307,6 +307,57 @@ function _ensureStyles() {
   document.head.appendChild(style);
 }
 
+// ── Pizza halves grid ──
+// halves = { first: [mod...], second: [mod...] }
+// Each entry accepts { name, prefix, upcharge }.
+function _buildHalves(halves) {
+  var grid = document.createElement('div');
+  grid.className = 'ir-halves';
+
+  var pairs = [
+    { label: '1ST HALF', list: halves.first  || [] },
+    { label: '2ND HALF', list: halves.second || [] },
+  ];
+
+  for (var p = 0; p < pairs.length; p++) {
+    var half = document.createElement('div');
+    half.className = 'ir-half';
+
+    var hdr = document.createElement('div');
+    hdr.className = 'ir-half-hdr';
+    hdr.textContent = pairs[p].label;
+    half.appendChild(hdr);
+
+    var list = pairs[p].list;
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var row = document.createElement('div');
+      row.className = 'ir-half-row';
+
+      var badge = _buildBadge(item.prefix);
+      if (badge) row.appendChild(badge);
+
+      var name = document.createElement('span');
+      name.className = 'ir-half-name';
+      name.textContent = item.name || '';
+      row.appendChild(name);
+
+      if (item.upcharge && item.upcharge > 0) {
+        var up = document.createElement('span');
+        up.className = 'ir-ups';
+        up.textContent = '+' + _fmt(item.upcharge);
+        row.appendChild(up);
+      }
+
+      half.appendChild(row);
+    }
+
+    grid.appendChild(half);
+  }
+
+  return grid;
+}
+
 // ── Prefix badge ──
 // Maps prefix codes to class + display copy. Unknown / null
 // prefixes return null so the caller can skip appending.
@@ -430,7 +481,10 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
   card.appendChild(row);
 
   var mods = Array.isArray(item.mods) ? item.mods : [];
-  if (mods.length > 0) {
+  var halves = item.halves;
+  var hasHalves = halves && ((halves.first && halves.first.length) ||
+                             (halves.second && halves.second.length));
+  if (mods.length > 0 || hasHalves) {
     var well = document.createElement('div');
     well.className = 'ir-mods';
     for (var i = 0; i < mods.length; i++) {
@@ -440,6 +494,7 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
         well.appendChild(_buildMicroModRow(mmods[mi]));
       }
     }
+    if (hasHalves) well.appendChild(_buildHalves(halves));
     card.appendChild(well);
   }
 
