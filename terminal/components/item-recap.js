@@ -307,10 +307,26 @@ function _ensureStyles() {
   document.head.appendChild(style);
 }
 
-// ── Prefix badge (chunk 10 fills in class map + copy) ──
+// ── Prefix badge ──
+// Maps prefix codes to class + display copy. Unknown / null
+// prefixes return null so the caller can skip appending.
+var _BADGE_MAP = {
+  'NO':      { cls: 'ir-bno',  copy: 'NO' },
+  'ADD':     { cls: 'ir-badd', copy: 'ADD' },
+  'SUB':     { cls: 'ir-bsub', copy: 'SUB' },
+  'EXTRA':   { cls: 'ir-bext', copy: 'EXTRA' },
+  'ON SIDE': { cls: 'ir-bsub', copy: 'ON SIDE' },
+  'LITE':    { cls: 'ir-blit', copy: 'LITE' },
+};
+
 function _buildBadge(prefix) {
-  // Placeholder — real implementation lands in Chunk 10.
-  return null;
+  if (!prefix) return null;
+  var spec = _BADGE_MAP[prefix];
+  if (!spec) return null;
+  var b = document.createElement('span');
+  b.className = 'ir-b ' + spec.cls;
+  b.textContent = spec.copy;
+  return b;
 }
 
 // ── L2 microMOD row ──
