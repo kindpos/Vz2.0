@@ -35,7 +35,8 @@ import { buildNumpad } from '../numpad.js';
 import { showToast } from '../components.js';
 import { setSceneName, setHeaderBack } from '../app.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
-import { computeTotals } from '../pricing.js';
+import { computeTotals, getTaxRate } from '../pricing.js';
+import { buildItemRecap } from '../components/item-recap.js';
 import './column-editor.js';
 
 var _refreshInFlight = false;
@@ -73,6 +74,134 @@ function checkTotals(seats, paidSeats) {
     }
   }
   return computeTotals(subtotal);
+}
+
+// ═══════════════════════════════════════════════════
+//  RECAP ADAPTER
+//  Translates the terminal's real order shape into the
+//  spec-style shape buildItemRecap() expects. Keeps the
+//  component purely visual — prefix parsing, half bucketing,
+//  and category-color resolution live here.
+// ═══════════════════════════════════════════════════
+
+var _PREFIX_RX = /^(NO|ADD|SUB|EXTRA|ON SIDE|LITE)\s+/;
+
+function _parsePrefix(name) {
+  if (!name) return { prefix: null, clean: '' };
+  var m = name.match(_PREFIX_RX);
+  if (!m) return { prefix: null, clean: name };
+  return { prefix: m[1], clean: name.slice(m[0].length) };
+}
+
+function _adaptMod(raw) {
+  var pp = _parsePrefix(raw.name || '');
+  return {
+    prefix:    pp.prefix,
+    name:      pp.clean,
+    mandatory: pp.prefix === null,
+    upcharge:  raw.charged ? (raw.price || 0) : 0,
+    microMods: (raw.children || []).map(_adaptMod),
+  };
+}
+
+function _adaptHalfItem(raw) {
+  var pp = _parsePrefix(raw.name || '');
+  return {
+    prefix:   pp.prefix,
+    name:     pp.clean,
+    upcharge: raw.charged ? (raw.price || 0) : 0,
+  };
+}
+
+function _adaptItem(it) {
+  var mods = [];
+  var first  = [];
+  var second = [];
+  var rawMods = it.mods || [];
+  for (var i = 0; i < rawMods.length; i++) {
+    var raw = rawMods[i];
+    if (raw.prefix === 'Left')       first.push(_adaptHalfItem(raw));
+    else if (raw.prefix === 'Right') second.push(_adaptHalfItem(raw));
+    else                             mods.push(_adaptMod(raw));
+  }
+  var halves = (first.length || second.length)
+    ? { first: first, second: second }
+    : null;
+
+  return {
+    name:          it.name,
+    qty:           it.qty || 1,
+    price:         it.effectivePrice != null ? it.effectivePrice : (it.price || 0),
+    categoryColor: T.catColor(it.category),
+    sent:          it.sent_at ? true : (it.sent === false ? false : true),
+    mods:          mods,
+    halves:        halves,
+  };
+}
+
+function _sumItemUpcharges(adaptedItem) {
+  var uc = 0;
+  var mods = adaptedItem.mods || [];
+  for (var i = 0; i < mods.length; i++) {
+    uc += mods[i].upcharge || 0;
+    var mms = mods[i].microMods || [];
+    for (var j = 0; j < mms.length; j++) uc += mms[j].upcharge || 0;
+  }
+  if (adaptedItem.halves) {
+    var sides = ['first', 'second'];
+    for (var s = 0; s < sides.length; s++) {
+      var lst = adaptedItem.halves[sides[s]] || [];
+      for (var k = 0; k < lst.length; k++) uc += lst[k].upcharge || 0;
+    }
+  }
+  return uc;
+}
+
+function _adaptOrderForRecap(state) {
+  var order  = state.order || {};
+  var params = state._mountParams || {};
+
+  var adaptedSeats = [];
+  var totalUpcharges = 0;
+  for (var s = 0; s < state.seats.length; s++) {
+    if (state.paidSeats && state.paidSeats[state.seats[s].id]) continue;
+    var seat = state.seats[s];
+    var adaptedItems = [];
+    for (var i = 0; i < seat.items.length; i++) {
+      var ai = _adaptItem(seat.items[i]);
+      adaptedItems.push(ai);
+      totalUpcharges += (ai.qty || 1) * _sumItemUpcharges(ai);
+    }
+    adaptedSeats.push({
+      seatNumber: seat.number,
+      subtotal:   seatTotal(seat),
+      items:      adaptedItems,
+    });
+  }
+
+  var totals = checkTotals(state.seats, state.paidSeats);
+  var paid = 0;
+  if (Array.isArray(order.payments)) {
+    for (var p = 0; p < order.payments.length; p++) {
+      paid += order.payments[p].amount || 0;
+    }
+  }
+
+  return {
+    tableNum: null,
+    checkId:  state.checkNumber || null,
+    server:   params.employeeName || null,
+    seats:    adaptedSeats,
+    totals: {
+      subtotal:  totals.subtotal,
+      upcharges: Math.round(totalUpcharges * 100) / 100,
+      tax:       totals.tax,
+      paid:      Math.round(paid * 100) / 100,
+      total:     totals.cardTotal,
+      cash:      totals.cashPrice,
+      taxRate:   getTaxRate(),
+    },
+  };
 }
 
 function activeSeatCount(seats, paidSeats) {
@@ -966,11 +1095,23 @@ function renderModeC(state, container) {
   });
   container.appendChild(wrap);
 
-  // LEFT — OrderSummary as a floating panel (managed by order-summary.js).
-  // We just reserve the left column; OrderSummary positions itself.
-  var osSlot = document.createElement('div');
-  osSlot.style.cssText = 'min-height:0;';
-  wrap.appendChild(osSlot);
+  // LEFT — new item-recap component replaces OrderSummary.
+  var recapSlot = document.createElement('div');
+  Object.assign(recapSlot.style, {
+    minHeight:    '0',
+    display:      'flex',
+    flexDirection:'column',
+    overflow:     'hidden',
+  });
+  var recap = buildItemRecap(_adaptOrderForRecap(state), {
+    onRemoveItem: function(seatIdx, itemIdx) {
+      _voidItems(state, [{ seatIdx: seatIdx, itemIdx: itemIdx }]);
+    },
+  });
+  recap.style.flex = '1';
+  recap.style.minHeight = '0';
+  recapSlot.appendChild(recap);
+  wrap.appendChild(recapSlot);
 
   // RIGHT — compact seat grid card
   var grid = document.createElement('div');
@@ -1029,9 +1170,6 @@ function renderModeC(state, container) {
   cg.appendChild(buildAddTile(state, { compact: true }));
   grid.appendChild(cg);
   wrap.appendChild(grid);
-
-  // Fire OrderSummary
-  renderOrderSummary(state);
 }
 
 // ═══════════════════════════════════════════════════
