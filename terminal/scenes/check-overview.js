@@ -1095,11 +1095,23 @@ function renderModeC(state, container) {
   });
   container.appendChild(wrap);
 
-  // LEFT — OrderSummary as a floating panel (managed by order-summary.js).
-  // We just reserve the left column; OrderSummary positions itself.
-  var osSlot = document.createElement('div');
-  osSlot.style.cssText = 'min-height:0;';
-  wrap.appendChild(osSlot);
+  // LEFT — new item-recap component replaces OrderSummary.
+  var recapSlot = document.createElement('div');
+  Object.assign(recapSlot.style, {
+    minHeight:    '0',
+    display:      'flex',
+    flexDirection:'column',
+    overflow:     'hidden',
+  });
+  var recap = buildItemRecap(_adaptOrderForRecap(state), {
+    onRemoveItem: function(seatIdx, itemIdx) {
+      _voidItems(state, [{ seatIdx: seatIdx, itemIdx: itemIdx }]);
+    },
+  });
+  recap.style.flex = '1';
+  recap.style.minHeight = '0';
+  recapSlot.appendChild(recap);
+  wrap.appendChild(recapSlot);
 
   // RIGHT — compact seat grid card
   var grid = document.createElement('div');
@@ -1158,9 +1170,6 @@ function renderModeC(state, container) {
   cg.appendChild(buildAddTile(state, { compact: true }));
   grid.appendChild(cg);
   wrap.appendChild(grid);
-
-  // Fire OrderSummary
-  renderOrderSummary(state);
 }
 
 // ═══════════════════════════════════════════════════
