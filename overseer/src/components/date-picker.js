@@ -1,62 +1,119 @@
 /* ============================================
    KINDpos Overseer — Date Picker Component
-   Single date + date range selector.
-   Themed with CSS custom properties.
+   Single date + date range selector, Nostalgia styling.
+
+   Public API (unchanged from the Vz1.x version):
+     buildDatePicker({ value, onChange })
+     buildDateRangePicker({ start, end, onChange })
+
+   Both return a DOM element you can append anywhere — colors,
+   radii, and type scale route through ui/tokens.js so the
+   look stays consistent with the rest of the port.
    ============================================ */
+
+import { T, withAlpha } from '../ui/tokens.js';
 
 let _stylesInjected = false;
 function injectDatePickerStyles() {
     if (_stylesInjected) return;
     _stylesInjected = true;
     const style = document.createElement('style');
+    style.id = 'kp-date-picker-styles';
     style.textContent = `
         .kp-date-input {
-            background: var(--color-bg-dark) !important;
-            color: var(--color-mint) !important;
-            border: 1px solid rgba(var(--color-mint-rgb), 0.25) !important;
-            border-radius: 4px;
-            font-family: var(--font-body);
-            font-size: 18px;
-            padding: 5px 10px;
+            background: ${T.well} !important;
+            color: ${T.text} !important;
+            border: 1px solid ${T.border} !important;
+            border-radius: ${T.r.sm}px;
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.base}px;
+            letter-spacing: 0.5px;
+            padding: 8px 12px;
             cursor: pointer;
             outline: none;
             color-scheme: dark;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .kp-date-input:focus,
+        .kp-date-input:hover {
+            border-color: ${T.gold} !important;
         }
         .kp-date-input:focus {
-            border-color: var(--color-mint) !important;
-            box-shadow: 0 0 0 2px rgba(var(--color-mint-rgb), 0.15);
+            box-shadow: 0 0 0 2px ${withAlpha(T.gold, 0.18)};
         }
+        /* Native calendar-icon glyph — tint neutral-light so it
+           reads well on T.well regardless of accent. */
         .kp-date-input::-webkit-calendar-picker-indicator {
-            filter: invert(0.8) sepia(1) hue-rotate(90deg);
+            filter: invert(0.65);
             cursor: pointer;
+            opacity: 0.85;
         }
+
         .kp-date-btn {
-            background: none; border: none;
-            color: var(--color-mint);
-            font-size: 18px; cursor: pointer;
-            padding: 4px 8px; border-radius: 4px;
-            transition: background 0.15s ease;
+            background: transparent;
+            border: none;
+            color: ${T.textMuted};
+            font-size: ${T.fs.lg}px;
+            cursor: pointer;
+            padding: 4px 10px;
+            border-radius: ${T.r.sm}px;
+            transition: background 0.15s ease, color 0.15s ease;
         }
-        .kp-date-btn:hover { background: rgba(var(--color-mint-rgb), 0.12); }
-        .kp-date-btn:disabled { opacity: 0.3; cursor: default; }
-        .kp-date-btn:disabled:hover { background: none; }
+        .kp-date-btn:hover {
+            background: ${withAlpha(T.text, 0.06)};
+            color: ${T.text};
+        }
+        .kp-date-btn:disabled { opacity: 0.25; cursor: default; }
+        .kp-date-btn:disabled:hover { background: transparent; color: ${T.textMuted}; }
+
         .kp-preset-btn {
-            background: rgba(var(--color-mint-rgb), 0.08);
-            border: 1px solid rgba(var(--color-mint-rgb), 0.15);
-            border-radius: 4px; color: var(--color-mint);
-            font-family: var(--font-body); font-size: 16px;
-            padding: 3px 10px; cursor: pointer;
-            transition: all 0.15s ease;
+            background: transparent;
+            border: 1px solid ${T.border};
+            border-radius: ${T.r.pill}px;
+            color: ${T.textMuted};
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.sm}px;
+            letter-spacing: 1px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 5px 12px;
+            cursor: pointer;
+            transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
         }
         .kp-preset-btn:hover {
-            background: rgba(var(--color-mint-rgb), 0.2);
-            border-color: rgba(var(--color-mint-rgb), 0.4);
+            border-color: ${T.gold};
+            color: ${T.gold};
+            background: ${withAlpha(T.gold, 0.08)};
         }
+
         .kp-date-wrapper {
-            display: inline-flex; align-items: center; gap: 8px;
-            background: rgba(var(--color-mint-rgb), 0.04);
-            border: 1px solid rgba(var(--color-mint-rgb), 0.15);
-            border-radius: 6px; padding: 6px 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: ${T.sp.sm}px;
+            background: ${T.card};
+            border: 1px solid ${T.border};
+            border-radius: ${T.r.pill}px;
+            padding: 6px 12px;
+        }
+
+        .kp-date-label {
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.base}px;
+            letter-spacing: 0.5px;
+            color: ${T.gold};
+            min-width: 160px;
+            text-align: center;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: ${T.r.sm}px;
+            transition: background 0.15s ease;
+        }
+        .kp-date-label:hover { background: ${withAlpha(T.gold, 0.08)}; }
+
+        .kp-date-sep {
+            color: ${T.textDim};
+            font-size: ${T.fs.lg}px;
+            padding: 0 6px;
         }
     `;
     document.head.appendChild(style);
@@ -86,18 +143,16 @@ export function buildDatePicker({ value, onChange }) {
     wrapper.className = 'kp-date-wrapper';
 
     const prevBtn = document.createElement('button');
-    prevBtn.textContent = '\u25C0';
+    prevBtn.type = 'button';
+    prevBtn.textContent = '◀';
     prevBtn.className = 'kp-date-btn';
 
     const label = document.createElement('span');
-    label.style.cssText = `
-        font-family: var(--font-body); font-size: 20px;
-        color: var(--color-gold); min-width: 160px; text-align: center;
-        cursor: pointer;
-    `;
+    label.className = 'kp-date-label';
 
     const nextBtn = document.createElement('button');
-    nextBtn.textContent = '\u25B6';
+    nextBtn.type = 'button';
+    nextBtn.textContent = '▶';
     nextBtn.className = 'kp-date-btn';
 
     function update(newDate, fireChange = true) {
@@ -162,8 +217,8 @@ export function buildDateRangePicker({ start, end, onChange }) {
     });
 
     const sep = document.createElement('span');
-    sep.textContent = '\u2192';
-    sep.style.cssText = 'color: rgba(var(--color-mint-rgb), 0.4); font-size: 20px; padding: 0 4px;';
+    sep.textContent = '→';
+    sep.className = 'kp-date-sep';
 
     const endInput = makeInput(currentEnd, fmt(new Date()), (v) => {
         currentEnd = v;
@@ -175,10 +230,11 @@ export function buildDateRangePicker({ start, end, onChange }) {
     });
 
     const presets = document.createElement('div');
-    presets.style.cssText = 'display: flex; gap: 4px; margin-left: 8px;';
+    presets.style.cssText = `display: flex; gap: 6px; margin-left: 6px;`;
 
     [{ label: '7d', days: 7 }, { label: '14d', days: 14 }, { label: '30d', days: 30 }].forEach(p => {
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.textContent = p.label;
         btn.className = 'kp-preset-btn';
         btn.addEventListener('click', () => {

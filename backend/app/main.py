@@ -14,7 +14,8 @@ import sys
 from app.api.routes.printing import print_queue
 from app.printing.print_dispatcher import PrintDispatcher
 from app.config import settings
-from app.api.dependencies import init_ledger, close_ledger, set_printer_manager, get_ephemeral_log, set_print_dispatcher, get_ledger
+from app.api.dependencies import init_ledger, close_ledger, set_printer_manager, get_ephemeral_log, set_print_dispatcher, get_ledger, set_diagnostic_collector, get_diagnostic_collector
+from app.services.diagnostic_collector import DiagnosticCollector
 from app.services.demo_seeder import seed_demo_data_if_empty
 from app.core.adapters.printer_manager import PrinterManager
 from app.core.adapters.mock_thermal import MockThermalPrinter
@@ -31,6 +32,7 @@ from app.api.routes import reporting
 from app.api.routes import server_shift
 from app.api.routes import auth
 from app.api.routes import sync
+from app.api.routes import entomology
 from app.api.routes.printing import print_queue
 
 
@@ -88,6 +90,17 @@ async def lifespan(app: FastAPI):
     ledger = await init_ledger()
     print("Event Ledger initialized")
 
+    # Entomology diagnostic collector (shares diagnostic_boot.db with KINDnostic)
+    diagnostic_db_path = settings.database_path.replace(
+        "event_ledger.db", "diagnostic_boot.db"
+    )
+    diagnostic_collector = DiagnosticCollector(
+        db_path=diagnostic_db_path, terminal_id=settings.terminal_id
+    )
+    await diagnostic_collector.connect()
+    set_diagnostic_collector(diagnostic_collector)
+    print(f"DiagnosticCollector initialized at {diagnostic_db_path}")
+
     if settings.store_mode == "demo":
         await seed_demo_data_if_empty(ledger)
     else:
@@ -109,6 +122,10 @@ async def lifespan(app: FastAPI):
 
     await _dispatcher.stop()
     await print_queue.close()
+    collector = get_diagnostic_collector()
+    if collector is not None:
+        await collector.close()
+        set_diagnostic_collector(None)
     await close_ledger()
     print("Shutdown complete")
 
@@ -142,6 +159,7 @@ app.include_router(reporting.router, prefix="/api/v1")
 app.include_router(server_shift.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(sync.router, prefix="/api/v1")
+app.include_router(entomology.router, prefix="/api/v1")
 
 
 # Serve frontend
@@ -178,6 +196,17 @@ if os.path.exists(overseer_path):
     app.mount('/overseer', StaticFiles(directory=overseer_path, html=True), name='overseer')
 else:
     print(f'WARNING: Overseer not found at: {overseer_path}')
+
+@app.get("/entomology")
+async def entomology_redirect():
+    return RedirectResponse(url="/entomology/")
+
+entomology_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'entomology')
+if os.path.exists(entomology_path):
+    print(f'Serving Entomology from: {entomology_path}')
+    app.mount('/entomology', StaticFiles(directory=entomology_path, html=True), name='entomology')
+else:
+    print(f'WARNING: Entomology not found at: {entomology_path}')
 
 if os.path.exists(frontend_path):
     print(f'Serving frontend from: {frontend_path}')
