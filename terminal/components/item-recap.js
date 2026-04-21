@@ -343,6 +343,26 @@ function _buildSeatGroup(seat) {
   items.className = 'ir-seat-items';
   group.appendChild(items);
 
+  // Single tap = toggle collapse. Double tap (<300ms) = toggle
+  // selection on every descendant item/mod/mmod as a group.
+  var lastTap = 0;
+  header.addEventListener('click', function() {
+    var now = Date.now();
+    if (now - lastTap < 300) {
+      var all = group.querySelectorAll('.ir-item-row, .ir-mod, .ir-mmod');
+      var allSelected = all.length > 0;
+      for (var i = 0; i < all.length; i++) {
+        if (!all[i].classList.contains('sel')) { allSelected = false; break; }
+      }
+      for (var j = 0; j < all.length; j++) {
+        all[j].classList.toggle('sel', !allSelected);
+      }
+    } else {
+      group.classList.toggle('collapsed');
+    }
+    lastTap = now;
+  });
+
   return group;
 }
 
