@@ -230,6 +230,7 @@ export function buildStatCard(opts) {
     valueSuffix = '',
     sub         = '',
     spark,
+    delta,           // optional: { text, direction, color, note }
   } = opts;
 
   const card = document.createElement('div');
@@ -239,7 +240,7 @@ export function buildStatCard(opts) {
     background: ${T.card};
     border-radius: ${T.r.md}px;
     padding: 16px 18px;
-    min-height: 118px;
+    min-height: 138px;
     box-sizing: border-box;
     overflow: hidden;
   `;
@@ -326,6 +327,40 @@ export function buildStatCard(opts) {
       letter-spacing: 0.5px;
     `;
     card.appendChild(subEl);
+  }
+
+  // Delta row (vs prior period)
+  if (delta && delta.text) {
+    const deltaEl = document.createElement('div');
+    deltaEl.style.cssText = `
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-top: 6px;
+      font-family: ${T.font.mono};
+      font-size: ${T.fs.sm}px;
+      letter-spacing: 0.5px;
+    `;
+    const arrowChar = delta.direction === 'down' ? '▼'
+                    : delta.direction === 'flat' ? '▬'
+                    : '▲';
+    const arrow = document.createElement('span');
+    arrow.textContent = arrowChar;
+    arrow.style.cssText = `color: ${delta.color || T.textDim}; font-size: 10px;`;
+    deltaEl.appendChild(arrow);
+
+    const txt = document.createElement('span');
+    txt.textContent = delta.text;
+    txt.style.cssText = `color: ${delta.color || T.textDim}; font-weight: 700;`;
+    deltaEl.appendChild(txt);
+
+    if (delta.note) {
+      const note = document.createElement('span');
+      note.textContent = delta.note;
+      note.style.cssText = `color: ${T.textDim};`;
+      deltaEl.appendChild(note);
+    }
+    card.appendChild(deltaEl);
   }
 
   return card;

@@ -30,7 +30,7 @@ import {
   buildHistogram,
   buildMiniTable,
 } from '../ui/charts.js';
-import { fmt, fmtPct, fmtInt } from '../ui/money.js';
+import { fmt, fmtPct, fmtInt, fmtPP } from '../ui/money.js';
 
 // ─── Module state ────────────────────────────────────────────────────
 let _currentContainer = null;
@@ -39,6 +39,12 @@ let _abortController  = null;
 // ─── Utilities ───────────────────────────────────────────────────────
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function daysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
 }
 
 function todayLabel() {
@@ -67,6 +73,9 @@ async function fetchJson(url, signal) {
 
 function fetchSummary(signal) {
   return fetchJson(`/api/v1/reports/sales-summary?date=${today()}`, signal);
+}
+function fetchLastWeekSummary(signal) {
+  return fetchJson(`/api/v1/reports/sales-summary?date=${daysAgo(7)}`, signal);
 }
 function fetchHourlyCompare(signal) {
   return fetchJson(`/api/v1/reports/hourly-compare?date=${today()}`, signal);
@@ -307,8 +316,49 @@ function renderRegionError(row, err, opts = {}) {
   }
 }
 
+// ─── Delta helpers ──────────────────────────────────────────────────
+// Compute week-over-week delta for a positive-better metric (net, covers,
+// avg check, tip%). Returns null if the prior-period value is missing or
+// zero (can't compute a fraction). Otherwise returns a shape consumable
+// by buildStatCard's `delta` prop: { text, direction, color, note }.
+function pctDelta(curr, prev, opts = {}) {
+  const { fmtFn = fmtPct, note = 'vs last week' } = opts;
+  if (prev == null || !Number.isFinite(Number(prev)) || Number(prev) === 0) return null;
+  const c = Number(curr) || 0;
+  const p = Number(prev);
+  const frac = (c - p) / p;
+  const direction = frac > 0.0005 ? 'up' : frac < -0.0005 ? 'down' : 'flat';
+  const color = direction === 'up'   ? T.greenUp
+              : direction === 'down' ? T.warning
+              : T.textDim;
+  return {
+    text: fmtFn(frac, { signed: true }),
+    direction,
+    color,
+    note,
+  };
+}
+
+// Percentage-point delta (for metrics where the value is already a
+// percentage, like tip %). 18.4% → 18.1% is -0.3pp, NOT -1.6%.
+function ppDelta(currFrac, prevFrac, opts = {}) {
+  const { note = 'vs last week' } = opts;
+  if (prevFrac == null || !Number.isFinite(Number(prevFrac))) return null;
+  const diff = Number(currFrac) - Number(prevFrac);
+  const direction = diff > 0.0001 ? 'up' : diff < -0.0001 ? 'down' : 'flat';
+  const color = direction === 'up'   ? T.greenUp
+              : direction === 'down' ? T.warning
+              : T.textDim;
+  return {
+    text: fmtPP(diff, { signed: true }),
+    direction,
+    color,
+    note,
+  };
+}
+
 // ─── Region renderers ───────────────────────────────────────────────
-function renderHero(container, data) {
+function renderHero(container, data, lastWeek) {
   const row = regionEl(container, 'region-hero');
   if (!row) return;
   row.innerHTML = '';
@@ -317,6 +367,9 @@ function renderHero(container, data) {
   const tipPctFrac = (Number(data.net_sales) > 0)
     ? Number(data.tips_collected) / Number(data.net_sales)
     : 0;
+  const lwTipPctFrac = (lastWeek && Number(lastWeek.net_sales) > 0)
+    ? Number(lastWeek.tips_collected) / Number(lastWeek.net_sales)
+    : null;
 
   row.appendChild(buildStatCard({
     label: 'Net Sales',
@@ -325,6 +378,7 @@ function renderHero(container, data) {
     valueColor: T.gold,
     sub: `${fmtInt(data.total_checks || 0)} checks · ${fmtInt(data.total_guests || 0)} guests`,
     spark: { values: hourlyNet, color: T.gold },
+    delta: lastWeek ? pctDelta(data.net_sales, lastWeek.net_sales) : null,
   }));
 
   row.appendChild(buildStatCard({
@@ -334,6 +388,7 @@ function renderHero(container, data) {
     valueColor: T.cyan,
     sub: `${fmtInt(data.total_checks || 0)} checks`,
     spark: { values: (data.hourly_sales || []).map(h => Number(h.checks) || 0), color: T.cyan },
+    delta: lastWeek ? pctDelta(data.total_guests, lastWeek.total_guests) : null,
   }));
 
   row.appendChild(buildStatCard({
@@ -349,6 +404,7 @@ function renderHero(container, data) {
       }),
       color: T.gold,
     },
+    delta: lastWeek ? pctDelta(data.check_avg, lastWeek.check_avg) : null,
   }));
 
   row.appendChild(buildStatCard({
@@ -362,6 +418,7 @@ function renderHero(container, data) {
       values: (data.hourly_sales || []).map(h => Number(h.net) || 0),
       color: T.mint,
     },
+    delta: (lwTipPctFrac != null) ? ppDelta(tipPctFrac, lwTipPctFrac) : null,
   }));
 }
 
@@ -622,14 +679,29 @@ export function buildSalesReportsScene(container) {
   const signal = _abortController.signal;
   const still = () => _currentContainer === container;
 
-  // Hero + composition + tender/heatmap rows — all driven by sales-summary
-  fetchSummary(signal)
+  // Hero + composition + tender/heatmap + bottom rows — driven by
+  // sales-summary (today) + sales-summary (today-7d, for WoW deltas).
+  // The two fetches run in parallel. Hero waits for both so the delta
+  // row renders atomically. Other regions only need today's data, so
+  // they render as soon as the primary fetch lands.
+  const todayPromise    = fetchSummary(signal);
+  const lastWeekPromise = fetchLastWeekSummary(signal).catch(err => {
+    if (err.name === 'AbortError') throw err;
+    console.warn('[sales-reports] last-week summary unavailable:', err);
+    return null; // hero will simply render without deltas
+  });
+
+  todayPromise
     .then(data => {
       if (!still()) return;
-      renderHero(container, data);
       renderComposition(container, data);
       renderTenderHeatmap(container, data);
       renderBottomRow(container, data);
+      // Hero waits on both; kick it off once last-week settles.
+      lastWeekPromise.then(lw => {
+        if (!still()) return;
+        renderHero(container, data, lw);
+      });
     })
     .catch(err => {
       if (err.name === 'AbortError') return;
