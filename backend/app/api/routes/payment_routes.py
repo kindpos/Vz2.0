@@ -27,6 +27,8 @@ from ...core.money import money_round
 from ...core.financial_invariants import check_batch_settlement
 from ...core.events import cash_refund_due
 from ...config import settings
+from ...models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
+from .auth import _record_diag
 from typing import Optional as Opt
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -255,6 +257,19 @@ async def process_sale(
         and e.payload.get("transaction_id")
     }
     if _initiated - _resolved:
+        # FIN-002 — the guard caught a real double-tap race. Record so we can
+        # tell "frontend sometimes retries" apart from "backend hung".
+        await _record_diag(
+            category=DiagnosticCategory.FIN,
+            severity=DiagnosticSeverity.WARNING,
+            source="payment_routes.initiate_sale",
+            event_code="FIN-002",
+            message="In-flight double-charge guard blocked a concurrent sale",
+            context={
+                "order_id": request.order_id,
+                "pending_transaction_ids": sorted(list(_initiated - _resolved))[:5],
+            },
+        )
         raise HTTPException(status_code=409, detail="A payment is already in progress for this order")
 
     # Defense in depth: clamp the sale amount at the order's current
@@ -274,6 +289,22 @@ async def process_sale(
                 "Payment amount $%.2f exceeded balance_due $%.2f on %s — "
                 "clamping sale to balance_due and routing $%.2f to tip.",
                 req_amount, balance, request.order_id, _overage_as_tip,
+            )
+            # FIN-005 — a client sent more than we said was owed. Usually stale
+            # tax rate on the terminal; occasionally a retry pasting the wrong
+            # amount. Record before clamping so the deltas are auditable.
+            await _record_diag(
+                category=DiagnosticCategory.FIN,
+                severity=DiagnosticSeverity.WARNING,
+                source="payment_routes.initiate_sale",
+                event_code="FIN-005",
+                message="Payment amount exceeded balance_due — overage routed to tip",
+                context={
+                    "order_id": request.order_id,
+                    "requested_amount": str(req_amount),
+                    "balance_due": str(balance),
+                    "overage_as_tip": str(_overage_as_tip),
+                },
             )
             request = request.model_copy(update={"amount": Decimal(str(balance))})
 
@@ -741,6 +772,25 @@ async def batch_settle(ledger: EventLedger = Depends(get_ledger)):
             "Batch settlement drift: ledger_card_sales=%s ledger_card_tips=%s "
             "processor_settlement=%s diff=%s",
             card_sales_f, card_tips_f, settlement_f, settlement_diff,
+        )
+        # FIN-004 — ledger and processor disagree on the batch total. Logged at
+        # WARNING because this is accepted (HTTP 200 with invariant_ok=false),
+        # but the bug report should always surface it for manual reconciliation.
+        await _record_diag(
+            category=DiagnosticCategory.FIN,
+            severity=DiagnosticSeverity.ERROR,
+            source="payment_routes.batch_settle",
+            event_code="FIN-004",
+            message="Batch settlement drift — ledger total ≠ processor total",
+            context={
+                "batch_id": str(result.batch_id),
+                "ledger_card_sales": str(card_sales_f),
+                "ledger_card_tips": str(card_tips_f),
+                "processor_settlement": str(settlement_f),
+                "diff": str(settlement_diff),
+                "invariant_name": inv_result.name,
+                "invariant_message": inv_result.message,
+            },
         )
 
     return {

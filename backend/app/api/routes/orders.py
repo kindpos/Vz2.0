@@ -67,6 +67,8 @@ from app.core.financial_invariants import (
     gate as invariant_gate,
     max_abs_diff,
 )
+from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
+from app.api.routes.auth import _record_diag
 
 _ZERO = Decimal('0')
 
@@ -1745,6 +1747,30 @@ async def close_day(
         context="close_day",
     )
     recon_diff = max_abs_diff(_close_results)
+
+    # FIN-003 — close_day invariants drifted. In prod `gate()` is logs-only
+    # so the close still proceeds; record so the bug report captures which
+    # invariant(s) blew and by how much.
+    _close_failures = [r for r in _close_results if not r.ok]
+    if _close_failures:
+        await _record_diag(
+            category=DiagnosticCategory.FIN,
+            severity=DiagnosticSeverity.ERROR,
+            source="orders.close_day",
+            event_code="FIN-003",
+            message="Day-close invariant check failed",
+            context={
+                "recon_diff": str(recon_diff),
+                "failed_invariants": [
+                    {"name": r.name, "diff": str(r.diff), "message": r.message}
+                    for r in _close_failures[:8]
+                ],
+                "total_orders": total_orders,
+                "total_sales": str(total_sales_f),
+                "cash_total": str(cash_total_f),
+                "card_total": str(card_sales_f),
+            },
+        )
 
     # Gate passed — safe to emit BATCH_SUBMITTED (settlement record)
     submit_evt = batch_submitted(

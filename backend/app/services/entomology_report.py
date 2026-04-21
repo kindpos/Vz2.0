@@ -41,6 +41,9 @@ _CATEGORY_SHEETS: list[DiagnosticCategory] = [
     DiagnosticCategory.SYSTEM,
     DiagnosticCategory.PERIPHERAL,
     DiagnosticCategory.RECOVERY,
+    DiagnosticCategory.SEC,
+    DiagnosticCategory.FIN,
+    DiagnosticCategory.UI,
 ]
 
 _ISSUE_HEADERS = [

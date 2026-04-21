@@ -5,6 +5,42 @@
 
 ---
 
+## Red Flag Patterns (quick reference card)
+
+- `fetch(...).then(r => r.json())` with no `.ok` check → silent failure
+- `p.tip_amount == null` style checks on fields that are always initialized
+- Hardcoded `"terminal_01"` / `"T-001"` where `settings.terminal_id` should be used
+- `height: 90px` fixed heights on log/scroll areas that overflow
+- Missing `idempotency_key` on events that operators might trigger twice
+- `try { ... } catch {}` that swallows errors without logging
+- Static `order_id` in print queue enqueues — can dedup-swallow if first job is stuck
+- `==` on secrets (PIN, token) — use `secrets.compare_digest` for timing safety
+- Stub endpoints returning `{success: true}` without persisting — prefer HTTP 501
+- `SceneManager.on(...)` without `.off(...)` in cleanup → listener leak across mount/unmount
+- Sequential `Promise.all([...]).then(...)` writing `state.*` after possible unmount — guard with `if (!state.el) return`
+
+## Entomology Event Codes (call this to monitor)
+
+Call `app.api.routes.auth._record_diag(...)` from any route handler when you want the bug report to capture a critical event. Best-effort: no-op if collector isn't initialized, never raises.
+
+| Prefix | Category | What it captures |
+|--------|----------|------------------|
+| `SEC-*` | `DiagnosticCategory.SEC` | Auth rate-limit hits, path-traversal attempts, unauthenticated replay invocations |
+| `FIN-*` | `DiagnosticCategory.FIN` | 2dp rounding rejects, double-charge guard trips, batch drift, overpayment clamps, close-day invariant failures |
+| `UI-*` | `DiagnosticCategory.UI` | Scene lifecycle bugs — interrupts stacking, post-unmount callbacks, double-submit locks |
+
+Full registry in `backend/app/models/diagnostic_event.py`. All three new categories get their own sheet in the Excel bug report (`services/entomology_report.py`).
+
+Current call sites (as of this probe):
+- `auth.py:verify_pin` — `SEC-001` on 429
+- `printing.py:print_test` — `SEC-002` on path traversal
+- `sync.py:replay_config_events` — `SEC-003` on any invocation (endpoint has no auth)
+- `payment_routes.py:initiate_sale` — `FIN-002` (409 double-charge guard) / `FIN-005` (overpayment clamp)
+- `payment_routes.py:batch_settle` — `FIN-004` (ledger/processor drift)
+- `orders.py:close_day` — `FIN-003` (close-day invariant failure)
+
+---
+
 ## System Architecture (Quick Reference)
 
 | Layer | Tech | Key Facts |
@@ -61,7 +97,9 @@
 | `scenes/check-overview.js` | ✅ Audited + Fixed | Clocked-in fetch error handling |
 | `scenes/server-checkout.js` | ✅ Audited + Fixed | IIFE-scoped `_finalizing` flag prevents double-finalize |
 | `scenes/manager-landing.js` | ✅ Audited + Fixed | Unadjusted tip counter was always 0 (`tip_amount == null` → `!tip_adjusted`); `_wireCloseDayData` now uses `day.unadjusted_tips` from backend |
-| `scenes/close-day.js` | ✅ Audited | **Stub only** — "scene not yet built" placeholder; real EOD flow lives in `close-day-checks-viewer.js` (997 lines, not yet audited) |
+| `scenes/close-day.js` | ✅ Audited | **Stub only** — "scene not yet built" placeholder; real EOD flow lives in `close-day-checks-viewer.js` |
+| `scenes/close-day-checks-viewer.js` | ✅ Audited | **Not yet fixed** — unguarded fetches on lines ~133, 877, 911, 966; inverted tip-adjusted logic on line 171; rebuild-time listener leaks on lines 273, 624; multi-check action buttons (Transfer/Print/Void) lack `_busy` locks; escaped `setTimeout` in `onVoidCheck`. Findings catalogued; fixes deferred to avoid contaminating an instrumentation commit |
+| `terminal/pricing.js` | ✅ Audited | Clean — single source of truth for tax/cash-discount rates, `_roundCents` matches backend `money_round`, fetch has `.ok` guard (line 38) and fallback catch. No findings. |
 | `scenes/login.js` | ✅ Audited + Fixed | HTTP 429 (rate-limit) response now surfaces as "TOO MANY ATTEMPTS" instead of masquerading as "INVALID PIN"; still flags: session token from `/verify-pin` discarded (never attached to subsequent requests), hardcoded "T-001" terminal label |
 | `scenes/server-landing.js` | ✅ Audited + Fixed | Removed dead `pin:` prop passed to `check-overview` (auth never returns PIN; the value was always `undefined`) |
 | `scene-manager.js` | ✅ Audited + Fixed | `interrupt()` now tears down an existing interrupt before stacking a new one — previously `_interruptScene` was overwritten, leaking the prior frame/scrim and skipping its cleanup |
@@ -78,7 +116,10 @@
 
 | Severity | Issue | File | Reason Deferred |
 |----------|-------|------|-----------------|
-| Critical | `/sync/config/events/replay` accepts caller-supplied `event_id` / `user_id` / `user_role` / `terminal_id` — attacker on LAN can forge audit attribution and pre-register `event_id`s to DoS legit future events | `sync.py:72-128` | Needs auth between terminals and Overseer; partial fix would break legit sync |
+| Critical | `/sync/config/events/replay` accepts caller-supplied `event_id` / `user_id` / `user_role` / `terminal_id` — attacker on LAN can forge audit attribution and pre-register `event_id`s to DoS legit future events | `sync.py:72-128` | Needs auth between terminals and Overseer; partial fix would break legit sync. **Instrumented with `SEC-003` so every call hits the bug report.** |
+| Critical | `config.py:/push` accepts arbitrary `event_type` / `payload` from any caller with no auth — twin of the sync.py issue, but on the Overseer's own config write surface. Caller can synthesize `EMPLOYEE_CREATED`, `STORE_CC_PROCESSING_RATE_UPDATED`, `MENU_ITEM_86D`, etc. | `config.py:235-271` | Needs auth system |
+| Critical | `config.py:/menu/86`, `/roles`, `/employees`, `/store/cc-rate` — 15+ config write endpoints unauthenticated; any LAN client can flip tax rate, disable menu items, or create employees | `config.py` | Needs auth system |
+| High | `config.py:/terminal-bundle` returns `generated_at: "2026-03-24T14:30:00Z"` — hardcoded timestamp, never refreshed. A caching client would think the bundle is stale or never-updating | `config.py:357` | One-liner fix; deferred to avoid touching unrelated config plumbing this round |
 | Critical | Auth missing on reporting endpoints (`?server_id=` leaks employee tip/labor data) | `reporting.py` | Needs auth system |
 | Critical | `require_role` / `get_current_session` defined but only used by `entomology.py` — session tokens issued by `/auth/verify-pin` are discarded by frontend; no other route enforces auth | `auth.py`, all other routes | Needs coordinated rollout: frontend must persist token + send `Authorization: Bearer` on every write |
 | High | Day-close race: orders created between `get_open_orders()` and `DAY_CLOSED` emission are orphaned | `orders.py:close_day` | Needs app-level mutex; invasive change |
@@ -155,13 +196,7 @@
 3. Check event emissions: does every mutation emit to the ledger? Are events idempotency-keyed where needed?
 4. For terminal scenes: check `unmount` function clears all timers/listeners; check scene state variables are reset on re-mount
 
-**Red flag patterns found repeatedly:**
-- `fetch(...).then(r => r.json())` with no `.ok` check → silent failure
-- `p.tip_amount == null` style checks on fields that are always initialized
-- Hardcoded `"terminal_01"` where `settings.terminal_id` should be used
-- `height: 90px` fixed heights on log/scroll areas that overflow
-- Missing `idempotency_key` on events that operators might trigger twice
-- `try { ... } catch {}` that swallows errors without logging
+(Red flag patterns moved to top of the document as a quick-reference card.)
 
 ---
 
