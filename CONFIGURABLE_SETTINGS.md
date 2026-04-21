@@ -116,6 +116,27 @@ appear during the port, add them here.
 
 ---
 
+## Shift Templates
+
+### Backend persistence of shift templates
+- **Today:** Session-local only. `_shiftTemplates` in
+  `sections/payroll-attendance.js` is seeded from the static
+  `SHIFT_TEMPLATES` const in `data/sample-shifts.js`; edits
+  emit `shift.template_created/updated/deleted` events via
+  pushChanges but the backend projection doesn't consume them
+  yet, so changes disappear on reload.
+- **Follow-up:** add a ShiftTemplate projection + API route
+  mirroring the employee-role model.
+
+### Default template times
+- **Today:** New templates default to 10:00 start and 16:00
+  end (hardcoded in `openTemplateModal`'s draft).
+- **Proposed setting:** `scheduling.default_template_start`
+  and `scheduling.default_template_end` (time strings).
+- **Scope:** per-location — breakfast-only spots start earlier.
+
+---
+
 ## Tipout Rules
 
 ### Calculation basis options

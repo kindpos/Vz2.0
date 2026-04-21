@@ -34,6 +34,7 @@ import {
 import {
     PAYROLL_SUMMARY, LABOR_BENCHMARKS, loadPayrollData,
 } from '../data/sample-payroll.js';
+import { SHIFT_TEMPLATES } from '../data/sample-shifts.js';
 import { buildDateRangePicker } from '../components/date-picker.js';
 
 /* ------------------------------------------
@@ -54,6 +55,13 @@ const TIPOUT_BASIS_OPTIONS = ['Net Sales', 'Gross Tips', 'Net Tips'];
 // Clock Records tab state.
 let _clockSubView = 'live';   // 'live' | 'week'
 let _clockRefreshTimer = null;
+
+// Shift Templates tab state. Seeded from the static sample data
+// on first open so the user's session-local edits survive tab
+// switches. No backend persistence yet — events are emitted
+// best-effort for the day the backend projection catches up.
+let _shiftTemplates = [];
+let _shiftTemplatesInitialized = false;
 
 // Role identity colors — matches the mockup's .role-chip styling.
 // Source of truth for role colors is now staff-roles (Phase B),
@@ -166,7 +174,305 @@ function renderPlaceholder(body, label) {
     body.appendChild(card.card);
 }
 
-function renderTemplatesTab(body) { renderPlaceholder(body, 'Shift Templates'); }
+/* ==========================================
+   TAB: SHIFT TEMPLATES
+   Matches the mockup's template grid (2+-col of .template-cards).
+   Create / edit / delete live in one small openModal-based form.
+   Session-local state today; events are emitted best-effort for
+   when the backend projection lands.
+   ========================================== */
+
+function _computeTemplateHours(start, end) {
+    if (!start || !end) return 0;
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    let mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (mins < 0) mins += 24 * 60; // overnight template
+    return mins / 60;
+}
+function _fmtTemplateHours(hrs) {
+    const v = hrs || 0;
+    return (v % 1 === 0) ? `${v}h` : `${v.toFixed(1)}h`;
+}
+
+function _ensureTemplatesLoaded() {
+    if (_shiftTemplatesInitialized) return;
+    // Deep-copy so user edits in this scene don't mutate the
+    // imported SHIFT_TEMPLATES constant.
+    _shiftTemplates = (SHIFT_TEMPLATES || []).map(t => ({
+        id:    t.id,
+        label: t.label || t.name || '',
+        role:  t.role || null,
+        start: t.start || '',
+        end:   t.end   || '',
+    }));
+    _shiftTemplatesInitialized = true;
+}
+
+function renderTemplatesTab(body) {
+    _ensureTemplatesLoaded();
+    body.innerHTML = '';
+
+    const card = sectionCard({
+        label: 'Shift Templates',
+        accent: T.green,
+        note: 'Reusable shift patterns. Drop a template onto the schedule to fill a day.',
+    });
+
+    // Toolbar
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = `
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: ${T.sp.md}px;
+    `;
+    const hint = document.createElement('div');
+    hint.style.cssText = `
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 1.5px;
+        color: ${T.textDim};
+        text-transform: uppercase;
+    `;
+    const n = _shiftTemplates.length;
+    hint.textContent = `${n} template${n === 1 ? '' : 's'}`;
+    toolbar.appendChild(hint);
+    toolbar.appendChild(button({
+        label: '+ New Template',
+        variant: 'primary',
+        onClick: () => openTemplateModal(null, body),
+    }));
+    card.body.appendChild(toolbar);
+
+    // Empty state or grid
+    if (_shiftTemplates.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `
+            padding: ${T.sp.xxxl}px;
+            text-align: center;
+            color: ${T.textMuted};
+            font-size: ${T.fs.base}px;
+            background: ${T.well};
+            border-radius: ${T.r.sm}px;
+        `;
+        empty.textContent = 'No templates yet. Click "+ New Template" to create one.';
+        card.body.appendChild(empty);
+    } else {
+        const grid = document.createElement('div');
+        grid.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: ${T.sp.md}px;
+        `;
+        _shiftTemplates.forEach(t => grid.appendChild(buildTemplateCard(t, body)));
+        card.body.appendChild(grid);
+    }
+
+    body.appendChild(card.card);
+}
+
+function buildTemplateCard(template, tabBody) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.style.cssText = `
+        background: ${T.well};
+        border: 1px solid ${T.border};
+        border-radius: ${T.r.sm + 2}px;
+        padding: ${T.sp.md + 2}px ${T.sp.lg - 2}px;
+        cursor: pointer;
+        text-align: left;
+        display: flex; flex-direction: column; gap: ${T.sp.sm - 2}px;
+        transition: transform 0.1s ease, border-color 0.15s ease;
+    `;
+    card.addEventListener('mouseenter', () => {
+        card.style.transform = 'translateY(-1px)';
+        card.style.borderColor = withAlpha(T.text, 0.18);
+    });
+    card.addEventListener('mouseleave', () => {
+        card.style.transform = '';
+        card.style.borderColor = T.border;
+    });
+    card.addEventListener('click', () => openTemplateModal(template, tabBody));
+
+    // Title
+    const title = document.createElement('div');
+    title.style.cssText = `
+        color: ${T.text};
+        font-weight: 600;
+        font-size: ${T.fs.lg}px;
+        margin-bottom: ${T.sp.xs + 2}px;
+    `;
+    title.textContent = template.label || '(unnamed)';
+    card.appendChild(title);
+
+    // Meta row: role chip · time range · hours
+    const meta = document.createElement('div');
+    meta.style.cssText = `
+        display: flex; gap: ${T.sp.md}px; align-items: center;
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 1px;
+        color: ${T.textMuted};
+        flex-wrap: wrap;
+    `;
+    if (template.role) {
+        meta.appendChild(_roleChip(template.role));
+    }
+    const range = document.createElement('span');
+    range.textContent = `${fmtTime12(template.start)} – ${fmtTime12(template.end)}`;
+    meta.appendChild(range);
+    const hrs = document.createElement('span');
+    hrs.style.color = T.textDim;
+    hrs.textContent = _fmtTemplateHours(_computeTemplateHours(template.start, template.end));
+    meta.appendChild(hrs);
+    card.appendChild(meta);
+
+    return card;
+}
+
+function openTemplateModal(template, tabBody) {
+    const isEdit = !!template;
+    const draft = {
+        id:    isEdit ? template.id : ('tpl_' + Math.random().toString(36).slice(2, 10)),
+        label: isEdit ? (template.label || '') : '',
+        role:  isEdit ? (template.role || '') : '',
+        start: isEdit ? (template.start || '10:00') : '10:00',
+        end:   isEdit ? (template.end   || '16:00') : '16:00',
+    };
+
+    const content = document.createElement('div');
+    content.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
+
+    // Name
+    const nameF = field({
+        label: 'Template name',
+        value: draft.label,
+        required: true,
+        placeholder: 'Open Server, Close Bartender, ...',
+    });
+    nameF.input.addEventListener('input', () => { draft.label = nameF.input.value; });
+    content.appendChild(nameF.wrap);
+
+    // Role (optional — templates may be role-agnostic)
+    const roleOptions = (FALLBACK_ROLES || []).map(r => ({ id: r.id, label: r.label }));
+    const roleGroup = _labeledGroup('Role (optional)', chipGroup({
+        options: roleOptions,
+        selected: draft.role ? [draft.role] : [],
+        mode: 'single',
+        onChange: (sel) => { draft.role = sel[0] || ''; },
+    }));
+    content.appendChild(roleGroup);
+
+    // Start + End time row
+    const timeRow = document.createElement('div');
+    timeRow.style.cssText = `display: flex; gap: ${T.sp.lg}px;`;
+    const startF = _buildTimeField('Start time', draft.start);
+    const endF   = _buildTimeField('End time',   draft.end);
+    startF.input.addEventListener('input', () => { draft.start = startF.input.value; });
+    endF.input.addEventListener('input',   () => { draft.end   = endF.input.value; });
+    timeRow.appendChild(startF.wrap);
+    timeRow.appendChild(endF.wrap);
+    content.appendChild(timeRow);
+
+    // Duration preview
+    const duration = document.createElement('div');
+    duration.style.cssText = `
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        color: ${T.textDim};
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    `;
+    const updateDuration = () => {
+        const hrs = _computeTemplateHours(draft.start, draft.end);
+        duration.textContent = `Duration: ${_fmtTemplateHours(hrs)}`;
+    };
+    updateDuration();
+    startF.input.addEventListener('input', updateDuration);
+    endF.input.addEventListener('input',   updateDuration);
+    content.appendChild(duration);
+
+    // Footer
+    const footerEls = [];
+    let modalRef = null;
+
+    if (isEdit) {
+        footerEls.push(button({
+            label: 'Delete',
+            variant: 'danger',
+            onClick: async () => {
+                _shiftTemplates = _shiftTemplates.filter(t => t.id !== template.id);
+                pushChanges([{
+                    event_type: 'shift.template_deleted',
+                    payload: { template_id: template.id },
+                }]).catch(() => {});
+                modalRef.close();
+                showToast('Template deleted', 'success');
+                if (tabBody) renderTemplatesTab(tabBody);
+            },
+        }));
+    }
+
+    footerEls.push(button({
+        label: 'Cancel',
+        variant: 'ghost',
+        onClick: () => modalRef.close(),
+    }));
+
+    footerEls.push(button({
+        label: isEdit ? 'Save Changes' : 'Create Template',
+        variant: 'primary',
+        onClick: async () => {
+            const name = (draft.label || '').trim();
+            if (!name) {
+                showToast('Template name is required.', 'error');
+                return;
+            }
+            if (!draft.start || !draft.end) {
+                showToast('Start and end times are required.', 'error');
+                return;
+            }
+            draft.label = name;
+
+            const next = {
+                id: draft.id,
+                label: draft.label,
+                role:  draft.role || null,
+                start: draft.start,
+                end:   draft.end,
+            };
+
+            if (isEdit) {
+                const idx = _shiftTemplates.findIndex(t => t.id === template.id);
+                if (idx >= 0) _shiftTemplates[idx] = next;
+            } else {
+                _shiftTemplates.push(next);
+            }
+
+            pushChanges([{
+                event_type: isEdit ? 'shift.template_updated' : 'shift.template_created',
+                payload: {
+                    template_id: next.id,
+                    name:  next.label,
+                    role:  next.role,
+                    start: next.start,
+                    end:   next.end,
+                    hours: _computeTemplateHours(next.start, next.end),
+                },
+            }]).catch(() => {});
+
+            modalRef.close();
+            showToast(isEdit ? 'Template updated' : 'Template created', 'success');
+            if (tabBody) renderTemplatesTab(tabBody);
+        },
+    }));
+
+    modalRef = openModal({
+        title: isEdit ? `Edit Template: ${template.label || '(unnamed)'}` : 'New Shift Template',
+        content,
+        footer: footerEls,
+        width: 520,
+    });
+}
 
 /* ==========================================
    TAB: PAYROLL PERIODS
@@ -2083,4 +2389,6 @@ export function cleanupPayrollAttendance(container) {
     _activeTabId = 'clock';
     _tabBodies = {};
     _clockSubView = 'live';
+    _shiftTemplates = [];
+    _shiftTemplatesInitialized = false;
 }
