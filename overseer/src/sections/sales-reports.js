@@ -20,7 +20,14 @@
    ============================================ */
 
 import { T }                from '../ui/tokens.js';
-import { buildStatCard, buildLineCard, buildCOBGauge, buildStackedArea } from '../ui/charts.js';
+import {
+  buildStatCard,
+  buildLineCard,
+  buildCOBGauge,
+  buildStackedArea,
+  buildTenderBar,
+  buildHeatmap,
+} from '../ui/charts.js';
 import { fmt, fmtPct, fmtInt } from '../ui/money.js';
 
 // ─── Module state ────────────────────────────────────────────────────
@@ -37,6 +44,16 @@ function todayLabel() {
   const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   return `${days[d.getDay()]} · ${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+// Format an hour-of-day integer (0..23) as a short ampm label.
+function formatHour(h) {
+  const n = Number(h);
+  if (!Number.isFinite(n)) return String(h || '');
+  if (n === 0)  return '12a';
+  if (n < 12)   return `${n}a`;
+  if (n === 12) return '12p';
+  return `${n - 12}p`;
 }
 
 // ─── Fetch ───────────────────────────────────────────────────────────
@@ -181,9 +198,10 @@ function buildLayout(container) {
         gap: 16px;
         margin-bottom: 24px;
       }
-      .sales-row-hero        { grid-template-columns: repeat(4, 1fr); }
-      .sales-row-trend-cob   { grid-template-columns: 2fr 1fr; }
-      .sales-row-composition { grid-template-columns: 1fr; }
+      .sales-row-hero             { grid-template-columns: repeat(4, 1fr); }
+      .sales-row-trend-cob        { grid-template-columns: 2fr 1fr; }
+      .sales-row-composition      { grid-template-columns: 1fr; }
+      .sales-row-tender-heatmap   { grid-template-columns: 1fr 2fr; }
 
       .sales-region-loading, .sales-region-empty, .sales-region-error {
         padding: 28px 20px;
@@ -254,6 +272,10 @@ function buildLayout(container) {
           <div class="sales-region-loading">Loading…</div>
         </div>
         <div class="sales-row sales-row-composition" id="region-composition">
+          <div class="sales-region-loading">Loading…</div>
+        </div>
+        <div class="sales-row sales-row-tender-heatmap" id="region-tender-heatmap">
+          <div class="sales-region-loading">Loading…</div>
           <div class="sales-region-loading">Loading…</div>
         </div>
       </div>
@@ -367,6 +389,57 @@ function renderComposition(container, data) {
   }));
 }
 
+function renderTenderHeatmap(container, data) {
+  const row = regionEl(container, 'region-tender-heatmap');
+  if (!row) return;
+  row.innerHTML = '';
+
+  // Tender mix — today's cash vs card from sales-summary
+  row.appendChild(buildTenderBar({
+    title: 'Tender Mix',
+    subtitle: 'Today · cash vs card',
+    accent: T.mint,
+    segments: [
+      {
+        label: 'Card',
+        amount: Number(data.card_total) || 0,
+        count:  Number(data.card_count) || 0,
+        color:  T.cyan,
+      },
+      {
+        label: 'Cash',
+        amount: Number(data.cash_total) || 0,
+        count:  Number(data.cash_count) || 0,
+        color:  T.gold,
+      },
+    ],
+  }));
+
+  // Heatmap — 7 days × hours of check counts from peak_hours
+  const ph = data.peak_hours || [];
+  const rowLabels = ph.map(r => r.day);
+  const hourSet = new Set();
+  for (const r of ph) {
+    for (const h of (r.hours || [])) hourSet.add(Number(h.hour));
+  }
+  const hours = Array.from(hourSet).sort((a, b) => a - b);
+  const colLabels = hours.map(formatHour);
+  const matrix = ph.map(r => {
+    const byHour = new Map((r.hours || []).map(h => [Number(h.hour), Number(h.value) || 0]));
+    return hours.map(h => byHour.get(h) || 0);
+  });
+
+  row.appendChild(buildHeatmap({
+    title: 'Peak Hours',
+    subtitle: 'Covers by day × hour · 7-day window',
+    accent: T.mint,
+    rowLabels,
+    colLabels,
+    matrix,
+    formatValue: (n) => `${Math.round(n)} covers`,
+  }));
+}
+
 function renderTrendCob(container, { hourly, labor }) {
   const row = regionEl(container, 'region-trend-cob');
   if (!row) return;
@@ -418,19 +491,21 @@ export function buildSalesReportsScene(container) {
   const signal = _abortController.signal;
   const still = () => _currentContainer === container;
 
-  // Hero row + composition row — both driven by sales-summary
+  // Hero + composition + tender/heatmap rows — all driven by sales-summary
   fetchSummary(signal)
     .then(data => {
       if (!still()) return;
       renderHero(container, data);
       renderComposition(container, data);
+      renderTenderHeatmap(container, data);
     })
     .catch(err => {
       if (err.name === 'AbortError') return;
       console.error('[sales-reports] sales-summary error:', err);
       if (!still()) return;
-      renderRegionError(regionEl(container, 'region-hero'),        err, { cells: 4 });
-      renderRegionError(regionEl(container, 'region-composition'), err, { cells: 1 });
+      renderRegionError(regionEl(container, 'region-hero'),            err, { cells: 4 });
+      renderRegionError(regionEl(container, 'region-composition'),     err, { cells: 1 });
+      renderRegionError(regionEl(container, 'region-tender-heatmap'),  err, { cells: 2 });
     });
 
   // Trend + COB row — hourly-compare + labor-summary, rendered together

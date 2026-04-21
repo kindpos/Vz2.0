@@ -952,3 +952,296 @@ export function buildStackedArea(opts) {
   chartWrap.appendChild(root);
   return card;
 }
+
+// ─── buildTenderBar ─────────────────────────────────────────────────
+// Horizontal proportional split bar for tender composition. N segments
+// fill a single track, each proportional to its `amount`. Labels live
+// beneath the track (one column per segment).
+//
+//   {
+//     title,
+//     subtitle,
+//     accent,               // left-border color
+//     segments: [
+//       { label, amount, count?, color, sub? },
+//       ...
+//     ],
+//     formatAmount,         // (n) => string, default fmt
+//   }
+export function buildTenderBar(opts) {
+  const {
+    title,
+    subtitle,
+    accent       = T.mint,
+    segments     = [],
+    formatAmount = (n) => fmt(n, { dp: 0 }),
+  } = opts;
+
+  const { card, header, body } = buildCardShell({ accent, minHeight: 220 });
+
+  const left = document.createElement('div');
+  left.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+  if (title) left.appendChild(buildEyebrow(title));
+  if (subtitle) left.appendChild(buildMonoLabel(subtitle, {
+    size: T.fs.xs, color: T.textDim, letterSpacing: 1.2,
+  }));
+  header.appendChild(left);
+
+  const total = segments.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  const totalEl = document.createElement('div');
+  totalEl.style.cssText = `
+    font-family: ${T.font.mono};
+    font-size: ${T.fs.base}px;
+    color: ${T.text};
+    font-weight: 700;
+    letter-spacing: 1px;
+  `;
+  totalEl.textContent = formatAmount(total);
+  header.appendChild(totalEl);
+
+  // Proportional bar
+  const bar = document.createElement('div');
+  bar.style.cssText = `
+    display: flex;
+    height: 24px;
+    width: 100%;
+    border-radius: ${T.r.sm}px;
+    overflow: hidden;
+    background: ${T.well};
+    margin-top: 12px;
+  `;
+  for (const s of segments) {
+    const amt = Number(s.amount) || 0;
+    const pct = total > 0 ? (amt / total) * 100 : 0;
+    if (pct <= 0) continue;
+    const seg = document.createElement('div');
+    seg.style.cssText = `
+      width: ${pct.toFixed(3)}%;
+      background: ${s.color};
+      height: 100%;
+    `;
+    bar.appendChild(seg);
+  }
+  body.appendChild(bar);
+
+  // Legend row underneath, one column per segment
+  const grid = document.createElement('div');
+  grid.style.cssText = `
+    display: grid;
+    grid-template-columns: repeat(${Math.max(1, segments.length)}, 1fr);
+    gap: 14px;
+    margin-top: 14px;
+  `;
+  for (const s of segments) {
+    const amt = Number(s.amount) || 0;
+    const pct = total > 0 ? (amt / total) * 100 : 0;
+    const cell = document.createElement('div');
+    cell.style.cssText = 'display: flex; flex-direction: column; gap: 3px; min-width: 0;';
+
+    const labelRow = document.createElement('div');
+    labelRow.style.cssText = `
+      display: flex; align-items: center; gap: 6px;
+      font-family: ${T.font.mono}; font-size: ${T.fs.xs}px;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      color: ${T.textMuted}; font-weight: 700;
+    `;
+    const sw = document.createElement('span');
+    sw.style.cssText = `width: 10px; height: 10px; background: ${s.color}; border-radius: 2px;`;
+    labelRow.appendChild(sw);
+    const lbl = document.createElement('span');
+    lbl.textContent = s.label;
+    labelRow.appendChild(lbl);
+    cell.appendChild(labelRow);
+
+    const amtEl = document.createElement('div');
+    amtEl.style.cssText = `
+      font-family: ${T.font.mono}; font-size: ${T.fs.lg}px;
+      color: ${s.color}; font-weight: 700;
+    `;
+    amtEl.textContent = formatAmount(amt);
+    cell.appendChild(amtEl);
+
+    const subEl = document.createElement('div');
+    subEl.style.cssText = `
+      font-family: ${T.font.mono}; font-size: ${T.fs.xs}px;
+      color: ${T.textDim}; letter-spacing: 1px;
+    `;
+    const countPart = (s.count != null) ? `${s.count} checks · ` : '';
+    subEl.textContent = `${countPart}${pct.toFixed(1)}%`;
+    cell.appendChild(subEl);
+
+    grid.appendChild(cell);
+  }
+  body.appendChild(grid);
+
+  return card;
+}
+
+// ─── buildHeatmap ───────────────────────────────────────────────────
+// 2-D intensity grid. Each cell's alpha is val/max (clamped to a
+// minimum so empty cells are still faintly visible). The max cell
+// gets a gold stroke outline + soft glow. Row/column labels sit
+// along the left and top edges.
+//
+//   {
+//     title,
+//     subtitle,
+//     accent,
+//     rowLabels,        // ["MON","TUE",...]
+//     colLabels,        // ["11a","12p",...]
+//     matrix,           // [[v,v,v,...], ...] rows × cols
+//     formatValue,      // (n) => string, default Math.round
+//     cellColor,        // default T.cyan
+//     glowColor,        // default T.gold
+//     peakGlow,         // default true
+//   }
+export function buildHeatmap(opts) {
+  const {
+    title,
+    subtitle,
+    accent      = T.mint,
+    rowLabels   = [],
+    colLabels   = [],
+    matrix      = [],
+    formatValue = (n) => String(Math.round(n)),
+    cellColor   = T.cyan,
+    glowColor   = T.gold,
+    peakGlow    = true,
+  } = opts;
+
+  const { card, header, body } = buildCardShell({ accent, minHeight: 280 });
+
+  const left = document.createElement('div');
+  left.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+  if (title) left.appendChild(buildEyebrow(title));
+  if (subtitle) left.appendChild(buildMonoLabel(subtitle, {
+    size: T.fs.xs, color: T.textDim, letterSpacing: 1.2,
+  }));
+  header.appendChild(left);
+
+  const rows = matrix.length;
+  const cols = rows > 0 ? matrix[0].length : 0;
+  if (rows === 0 || cols === 0) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No data';
+    empty.style.cssText = `
+      display: flex; align-items: center; justify-content: center;
+      height: 180px;
+      font-family: ${T.font.mono}; font-size: ${T.fs.sm}px;
+      color: ${T.textDim}; letter-spacing: 2px; text-transform: uppercase;
+    `;
+    body.appendChild(empty);
+    return card;
+  }
+
+  // Find max + peak cell
+  let maxV = 0, peakR = 0, peakC = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const v = Number(matrix[r][c]) || 0;
+      if (v > maxV) { maxV = v; peakR = r; peakC = c; }
+    }
+  }
+
+  // Layout: fixed row-label gutter + col-label gutter; cells scale to fit
+  const rowLabelW = 38;
+  const colLabelH = 20;
+  const cellH = 26;
+  const cellGap = 3;
+  const cellW = 54;                             // baseline; will be stretched via viewBox
+  const vbW = rowLabelW + cols * (cellW + cellGap);
+  const vbH = colLabelH + rows * (cellH + cellGap) + 24;
+
+  const root = svg('svg', {
+    viewBox: `0 0 ${vbW} ${vbH}`,
+    preserveAspectRatio: 'xMidYMid meet',
+    xmlns: SVG_NS,
+  });
+  root.style.cssText = `display: block; width: 100%; max-height: 240px;`;
+
+  // Column header labels
+  for (let c = 0; c < cols; c++) {
+    const cx = rowLabelW + c * (cellW + cellGap) + cellW / 2;
+    const lbl = svg('text', {
+      x: cx, y: colLabelH - 6,
+      'text-anchor': 'middle',
+      'font-family': T.font.mono,
+      'font-size': 9,
+      fill: T.textDim,
+      'letter-spacing': 1,
+    });
+    lbl.textContent = colLabels[c] || '';
+    root.appendChild(lbl);
+  }
+
+  // Row labels + cells
+  for (let r = 0; r < rows; r++) {
+    const cy = colLabelH + r * (cellH + cellGap) + cellH / 2;
+    const rowLbl = svg('text', {
+      x: rowLabelW - 8, y: cy + 3,
+      'text-anchor': 'end',
+      'font-family': T.font.mono,
+      'font-size': 9,
+      fill: T.textMuted,
+      'letter-spacing': 1.5,
+      'font-weight': 700,
+    });
+    rowLbl.textContent = (rowLabels[r] || '').toString().toUpperCase().slice(0, 3);
+    root.appendChild(rowLbl);
+
+    for (let c = 0; c < cols; c++) {
+      const v = Number(matrix[r][c]) || 0;
+      const intensity = maxV > 0 ? v / maxV : 0;
+      const alpha = 0.05 + 0.95 * intensity;
+      const x = rowLabelW + c * (cellW + cellGap);
+      const y = colLabelH + r * (cellH + cellGap);
+      root.appendChild(svg('rect', {
+        x, y,
+        width: cellW, height: cellH,
+        fill: withAlpha(cellColor, alpha),
+        rx: 2, ry: 2,
+      }));
+    }
+  }
+
+  // Peak outline + glow
+  if (peakGlow && maxV > 0) {
+    const x = rowLabelW + peakC * (cellW + cellGap);
+    const y = colLabelH + peakR * (cellH + cellGap);
+    // Outer glow rect
+    root.appendChild(svg('rect', {
+      x: x - 2, y: y - 2,
+      width: cellW + 4, height: cellH + 4,
+      fill: 'none',
+      stroke: withAlpha(glowColor, 0.35),
+      'stroke-width': 3,
+      rx: 3, ry: 3,
+    }));
+    // Solid outline
+    root.appendChild(svg('rect', {
+      x, y,
+      width: cellW, height: cellH,
+      fill: 'none',
+      stroke: glowColor,
+      'stroke-width': 1.4,
+      rx: 2, ry: 2,
+    }));
+  }
+
+  // Peak callout below the grid
+  const callout = svg('text', {
+    x: rowLabelW, y: vbH - 6,
+    'font-family': T.font.mono,
+    'font-size': 10,
+    fill: T.textMuted,
+    'letter-spacing': 1.5,
+    'font-weight': 700,
+  });
+  const peakRowName = (rowLabels[peakR] || '').toString().toUpperCase().slice(0, 3);
+  const peakColName = (colLabels[peakC] || '').toString().toUpperCase();
+  callout.textContent = `PEAK · ${peakRowName} ${peakColName} · ${formatValue(maxV)}`;
+  root.appendChild(callout);
+
+  body.appendChild(root);
+  return card;
+}
