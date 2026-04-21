@@ -650,20 +650,20 @@ async def get_labor_summary(
                 d_hours = _calc_hours(eid)
             else:
                 d_events = await _get_events_for_date(ledger, d_str)
+                start_ts = None
+                end_ts = None
                 for e in d_events:
-                    if e.event_type == EventType.USER_LOGGED_IN and e.payload["employee_id"] == eid:
+                    if e.event_type == EventType.USER_LOGGED_IN and e.payload.get("employee_id") == eid:
+                        if start_ts is None:
+                            start_ts = e.timestamp  # first login of the day
                         d_in = e.timestamp.strftime("%H:%M")
-                        start_ts = e.timestamp
-                    elif e.event_type == EventType.USER_LOGGED_OUT and e.payload["employee_id"] == eid:
+                    elif e.event_type == EventType.USER_LOGGED_OUT and e.payload.get("employee_id") == eid:
+                        end_ts = e.timestamp
                         d_out = e.timestamp.strftime("%H:%M")
-                if d_in:
-                    if d_out:
-                        start_ts_obj = datetime.strptime(d_in, "%H:%M")
-                        end_ts_obj = datetime.strptime(d_out, "%H:%M")
-                        delta = (end_ts_obj - start_ts_obj).total_seconds() / 3600.0
+                if start_ts:
+                    if end_ts and end_ts > start_ts:
+                        delta = (end_ts - start_ts).total_seconds() / 3600.0
                         d_hours = Decimal(str(round(delta, 1)))
-                        if d_hours < 0:
-                            d_hours = Decimal("0.0")
                     else:
                         d_hours = Decimal("8.0")
             breakdown.append({
