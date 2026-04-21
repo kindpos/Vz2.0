@@ -135,7 +135,7 @@ var _menuFetched = false;
 
 function fetchMenuFromAPI() {
   return Promise.all([
-    fetch(API + '/menu').then(function(r) { return r.json(); }),
+    fetch(API + '/menu').then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
     fetch(API + '/config/mandatory-assignments').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
     fetch(API + '/config/universal-assignments').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
   ]).then(function(results) {
@@ -406,7 +406,7 @@ defineScene({
     var mainArea = buildMain(body, params);
     body.appendChild(mainArea);
 
-    if (!_menuFetched) fetchMenuFromAPI();
+    if (!_menuFetched) fetchMenuFromAPI().catch(function() { console.error('[KINDpos] Menu fetch failed on mount'); });
 
     if (params.recallOrderId) {
       currentOrderId = params.recallOrderId;
@@ -1102,7 +1102,7 @@ function buildMain(parentEl, params) {
   // Load menu data + favorites, then render grid
   requestAnimationFrame(function() {
     if (!_menuFetched) {
-      fetchMenuFromAPI().then(function() { renderSnakeGrid(); });
+      fetchMenuFromAPI().then(function() { renderSnakeGrid(); }).catch(function() { console.error('[KINDpos] Menu fetch failed'); renderSnakeGrid(); });
     } else {
       renderSnakeGrid();
     }

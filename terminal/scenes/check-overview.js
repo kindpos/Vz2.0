@@ -537,7 +537,7 @@ defineScene({
         container.appendChild(panel);
 
         fetch('/api/v1/servers/clocked-in')
-          .then(function(r) { return r.json(); })
+          .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
           .then(function(data) {
             list.innerHTML = '';
             var staff = (data.staff || []).filter(function(s) { return s.employee_id !== excludeId; });

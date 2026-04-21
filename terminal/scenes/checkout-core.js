@@ -344,7 +344,7 @@ export function buildTipAdjustInline(opts) {
           var url = '/api/v1/payments/zero-unadjusted';
           if (serverId) url += '?server_id=' + encodeURIComponent(serverId);
           fetch(url, { method: 'POST' })
-            .then(function(r) { return r.json(); })
+            .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
             .then(function() {
               _selected = null;
               numpad.clear();
