@@ -11,10 +11,11 @@ import asyncio
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_diagnostic_collector
 from app.api.routes.auth import get_current_session
@@ -217,3 +218,77 @@ async def get_report_xlsx(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# =============================================================================
+# Client-side ingestion (frontend ENTnodes)
+# =============================================================================
+#
+# Scenes run before login and the login token is not persisted by the current
+# frontend, so this endpoint is intentionally unauthenticated — but locked
+# down to UI-* events only so it can't be used to forge SEC/FIN/etc. records.
+# Call from terminal JS like:
+#
+#   fetch('/api/v1/entomology/client-event', {
+#     method: 'POST',
+#     headers: { 'Content-Type': 'application/json' },
+#     body: JSON.stringify({
+#       event_code: 'UI-001',
+#       severity:   'WARNING',
+#       source:     'scene-manager.interrupt',
+#       message:    'Interrupt stacked — prior torn down',
+#       context:    { prior: 'confirm-void', next: 'tip-adjust' },
+#     }),
+#   });
+
+_ALLOWED_CLIENT_SEVERITIES = {"INFO", "WARNING", "ERROR"}
+_MAX_CONTEXT_BYTES = 4096
+
+
+class ClientEventRequest(BaseModel):
+    event_code: str = Field(..., min_length=3, max_length=40)
+    severity: str = Field("WARNING")
+    source: str = Field(..., min_length=1, max_length=120)
+    message: str = Field(..., min_length=1, max_length=500)
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/client-event")
+async def record_client_event(
+    body: ClientEventRequest,
+    collector: Optional[DiagnosticCollector] = Depends(get_diagnostic_collector),
+) -> dict:
+    """Accept a single UI-* diagnostic from the frontend.
+
+    Locked down to UI category so a compromised browser session can't forge
+    SEC/FIN findings. Returns 202 regardless of whether the collector is
+    initialized — the terminal should be fire-and-forget here.
+    """
+    if not body.event_code.startswith("UI-"):
+        raise HTTPException(400, "client-event only accepts UI-* event codes")
+    if body.severity not in _ALLOWED_CLIENT_SEVERITIES:
+        raise HTTPException(400, f"severity must be one of {_ALLOWED_CLIENT_SEVERITIES}")
+    # Cap context size so a runaway client can't flood the SQLite row.
+    try:
+        import json as _json
+        if len(_json.dumps(body.context)) > _MAX_CONTEXT_BYTES:
+            raise HTTPException(413, "context exceeds 4KB")
+    except (TypeError, ValueError):
+        raise HTTPException(400, "context must be JSON-serializable")
+
+    if collector is None:
+        return {"accepted": False, "reason": "collector not initialized"}
+
+    try:
+        await collector.record(
+            category=DiagnosticCategory.UI,
+            severity=DiagnosticSeverity(body.severity),
+            source=body.source,
+            event_code=body.event_code,
+            message=body.message,
+            context=body.context,
+        )
+    except Exception:
+        # Never 5xx the terminal over a diagnostic write — swallow and move on.
+        return {"accepted": False, "reason": "record failed"}
+    return {"accepted": True}

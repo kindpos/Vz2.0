@@ -21,6 +21,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T, onThemeChange } from './tokens.js';
+import { entReport }         from './entomology-client.js';
 
 // ── Scene Registry ────────────────────────────────
 const _scenes = {};
@@ -289,7 +290,16 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
 
   // An interrupt already on screen must be torn down before we stack a new one,
   // otherwise its DOM + cleanup are leaked when _interruptScene is reassigned.
-  if (_interruptScene) resolveInterrupt();
+  if (_interruptScene) {
+    entReport({
+      code: 'UI-001',
+      source: 'scene-manager.interrupt',
+      message: 'Interrupt stacked; prior torn down',
+      ctx: { prior: _interruptScene.name, next: sceneName },
+      level: 'WARNING',
+    });
+    resolveInterrupt();
+  }
 
   var scrim = document.createElement('div');
   scrim.className = 'layer-scrim layer-scrim-interrupt';

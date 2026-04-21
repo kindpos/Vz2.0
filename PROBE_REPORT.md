@@ -38,6 +38,12 @@ Current call sites (as of this probe):
 - `payment_routes.py:initiate_sale` — `FIN-002` (409 double-charge guard) / `FIN-005` (overpayment clamp)
 - `payment_routes.py:batch_settle` — `FIN-004` (ledger/processor drift)
 - `orders.py:close_day` — `FIN-003` (close-day invariant failure)
+- `orders.py:_validate_2dp` — `FIN-001` on any 2dp precision rejection (fire-and-forget from a sync helper)
+- `main.py` catch-all — `SYS-001` (ledger precision/idempotency ValueError) / `SYS-006` (any other unhandled exception) — every 500 gets recorded before the response goes out
+- `scene-manager.js:interruptFn` — `UI-001` when an interrupt is stacked over an existing one
+- `server-checkout.js:onFinalize` — `UI-003` when a double-tap is blocked by the `_finalizing` lock
+
+**Frontend → backend:** `terminal/entomology-client.js` exposes `entReport({ code, source, message, ctx, level })`. Fires against `POST /api/v1/entomology/client-event`, which is the only unauthenticated entomology route. It accepts **UI-\* codes only** — anyone attempting to forge SEC/FIN findings from a browser session gets a 400. Events are queued in-memory when offline and replayed on the `online` window event.
 
 ---
 

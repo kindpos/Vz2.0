@@ -22,6 +22,22 @@ def _validate_2dp(value: float | Decimal, field_name: str) -> None:
     """Raise 400 if a monetary value has more than 2 decimal places."""
     d = Decimal(str(value))
     if d != d.quantize(_TWO_DP):
+        # FIN-001 — 2dp precision gate rejected input. Fire-and-forget record
+        # so the bug report captures "terminal sent us 3+dp money" patterns.
+        try:
+            import asyncio as _asyncio
+            _loop = _asyncio.get_running_loop()
+            _loop.create_task(_record_diag(
+                category=DiagnosticCategory.FIN,
+                severity=DiagnosticSeverity.WARNING,
+                source="orders._validate_2dp",
+                event_code="FIN-001",
+                message="2dp precision gate rejected a monetary value",
+                context={"field": field_name, "value": str(value)},
+            ))
+        except RuntimeError:
+            # Not inside a running loop (unlikely from a route) — skip silently.
+            pass
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"{field_name} must have at most 2 decimal places (got {value})",

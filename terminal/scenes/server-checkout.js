@@ -16,6 +16,7 @@ import { buildHeader } from '../header.js';
 import { OrderSummary } from '../order-summary.js';
 import { buildPillButton } from '../theme-manager.js';
 import { fmt, detailRow, detailDivider } from './checkout-core.js';
+import { entReport } from '../entomology-client.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS (match mockup exactly)
@@ -1428,7 +1429,19 @@ defineScene({
           // Full finalize flow: manager PIN → confirm totals → POST → return
           // to server-landing. On any backend error, stay on scene and surface
           // an actionable message — never give false success to the server.
-          if (_finalizing) return;
+          if (_finalizing) {
+            // UI-003 — second tap while finalize was in flight. Server never
+            // sees the duplicate POST (the lock ate it), but we want the
+            // bug report to show that it happened.
+            entReport({
+              code: 'UI-003',
+              source: 'server-checkout.onFinalize',
+              message: 'Double-submit blocked by scene lock',
+              ctx: { employee: (state.data || {}).employeeName || null },
+              level: 'INFO',
+            });
+            return;
+          }
           _finalizing = true;
           SceneManager.interrupt('co-manager-pin', {
             onConfirm: function(authData) {

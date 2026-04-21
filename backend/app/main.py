@@ -146,6 +146,53 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Entomology: catch-all exception hook
+#
+# Any exception that bubbles out of a route — ledger write failure, integrity
+# error, or bare bug — lands here and gets recorded as SYS-001 (for ValueError
+# from the precision gate / ledger checks) or SYS-006 (everything else) before
+# FastAPI's default handler serves a 500. We never suppress the raise — this
+# is pure observability.
+# ─────────────────────────────────────────────────────────────────────────────
+from starlette.requests import Request as _StarRequest
+from starlette.responses import JSONResponse as _JSONResp
+from app.models.diagnostic_event import (
+    DiagnosticCategory as _DiagCat,
+    DiagnosticSeverity as _DiagSev,
+)
+
+
+@app.exception_handler(Exception)
+async def _entomology_catch_all(request: _StarRequest, exc: Exception):
+    collector = get_diagnostic_collector()
+    if collector is not None:
+        try:
+            is_ledger_err = isinstance(exc, ValueError) and (
+                "precision" in str(exc).lower() or "idempot" in str(exc).lower()
+            )
+            await collector.record(
+                category=_DiagCat.SYSTEM,
+                severity=_DiagSev.ERROR,
+                source=f"http.{request.method}.{request.url.path}",
+                event_code="SYS-001" if is_ledger_err else "SYS-006",
+                message=f"{type(exc).__name__}: {exc}"[:500],
+                context={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "exc_type": type(exc).__name__,
+                },
+            )
+        except Exception:
+            pass  # observability must not mask the real error
+    # FastAPI's built-in handler is what would normally return 500; we mimic it
+    # instead of re-raising so the response is the same shape.
+    return _JSONResp(
+        status_code=500,
+        content={"detail": "Internal Server Error"},
+    )
+
 # Include routers
 app.include_router(orders.router, prefix="/api/v1")
 app.include_router(system.router, prefix="/api/v1")
