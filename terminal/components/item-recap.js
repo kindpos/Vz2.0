@@ -307,6 +307,48 @@ function _ensureStyles() {
   document.head.appendChild(style);
 }
 
+// ── Totals block ──
+// t = { subtotal, upcharges, tax, paid, total, cash, taxRate }
+// taxRate is a fraction (0.07 = 7%). All money fields are dollars.
+function _buildTotals(t) {
+  t = t || {};
+  var wrap = document.createElement('div');
+  wrap.className = 'ir-totals';
+
+  function _row(label, value, labelCls, valueCls) {
+    var tr = document.createElement('div');
+    tr.className = 'ir-tr';
+    var l = document.createElement('span');
+    l.className = labelCls || 'ir-tl';
+    l.textContent = label;
+    var v = document.createElement('span');
+    v.className = valueCls || 'ir-tv';
+    v.textContent = value;
+    tr.appendChild(l);
+    tr.appendChild(v);
+    return tr;
+  }
+  function _sep(cls) {
+    var hr = document.createElement('hr');
+    hr.className = cls;
+    return hr;
+  }
+
+  wrap.appendChild(_row('SUBTOTAL', _fmt(t.subtotal)));
+  wrap.appendChild(_row('UPCHARGES', '+' + _fmt(t.upcharges), 'ir-tl', 'ir-tv ir-tv-gold'));
+  var taxPct = t.taxRate != null ? (Math.round(t.taxRate * 1000) / 10) : null;
+  var taxLbl = taxPct != null ? 'TAX (' + taxPct + '%)' : 'TAX';
+  wrap.appendChild(_row(taxLbl, _fmt(t.tax)));
+  wrap.appendChild(_sep('ir-tsep'));
+  wrap.appendChild(_row('PAID', _fmt(t.paid), 'ir-tl', 'ir-tv ir-tv-paid'));
+  wrap.appendChild(_sep('ir-tsep'));
+  wrap.appendChild(_row('TOTAL', _fmt(t.total), 'ir-tl-strong', 'ir-tv ir-tv-big'));
+  wrap.appendChild(_sep('ir-tsep2'));
+  wrap.appendChild(_row('CASH', _fmt(t.cash), 'ir-tl-strong', 'ir-tv ir-tv-cash'));
+
+  return wrap;
+}
+
 // ── Pizza halves grid ──
 // halves = { first: [mod...], second: [mod...] }
 // Each entry accepts { name, prefix, upcharge }.
@@ -629,6 +671,8 @@ export function buildItemRecap(order, opts) {
     }
     root.appendChild(group);
   }
+
+  if (order.totals) root.appendChild(_buildTotals(order.totals));
 
   return root;
 }
