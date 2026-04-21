@@ -7,7 +7,7 @@ All mutations go through the Event Ledger.
 
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime, timezone
 import logging
@@ -92,16 +92,36 @@ class CreateOrderRequest(BaseModel):
     table: Optional[str] = None
     server_id: Optional[str] = None
     server_name: Optional[str] = None
-    guest_count: int = 1
+    guest_count: int = Field(default=1, ge=1)
     customer_name: Optional[str] = None
-    # Authoritative list of seats the server set up on the check.
-    # When provided, takes precedence over guest_count for seat tracking.
-    seat_numbers: Optional[list[int]] = None
+    # Authoritative list of seats the server set up on the check. Seat
+    # numbers must be positive ints. When provided, takes precedence
+    # over guest_count for seat tracking.
+    seat_numbers: Optional[list[int]] = Field(default=None, min_length=1)
+
+    @field_validator("seat_numbers")
+    @classmethod
+    def _seat_numbers_positive(cls, v):
+        if v is not None and any(n < 1 for n in v):
+            raise ValueError("seat_numbers must all be >= 1")
+        return v
 
 
 class UpdateSeatsRequest(BaseModel):
-    """Request to replace the seat list on an existing order."""
-    seat_numbers: list[int]
+    """Request to replace the seat list on an existing order.
+
+    Empty lists are rejected — a check must always retain at least one
+    seat. Seat numbers must be positive ints. To close a check without
+    seats, void or close it explicitly.
+    """
+    seat_numbers: list[int] = Field(..., min_length=1)
+
+    @field_validator("seat_numbers")
+    @classmethod
+    def _seat_numbers_positive(cls, v):
+        if any(n < 1 for n in v):
+            raise ValueError("seat_numbers must all be >= 1")
+        return v
 
 
 class InlineModifier(BaseModel):

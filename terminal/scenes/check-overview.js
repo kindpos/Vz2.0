@@ -231,6 +231,7 @@ defineScene({
     _summaryItemMap:{},
     _osActive:     false,
     _mountParams:  null,
+    _seatsChain:   null,
   },
 
   render: function(container, params, state) {
@@ -256,6 +257,7 @@ defineScene({
     state._mode         = null;
     state._osActive     = false;
     state._mountParams  = params;   // persistSeats() reads employee info
+    state._seatsChain   = null;     // reset per mount
     state.seats = orderToSeats(null, 1);
 
     var _landing = params.returnLanding || 'server-landing';
@@ -1458,42 +1460,49 @@ function deleteSeat(state, seatId) {
 // in the backend as a first-class list, so they survive scene unmount,
 // logout, and lack-of-items.
 function persistSeats(state) {
-  var nums = state.seats.map(function(s) { return s.number; });
-  if (nums.length === 0) return;
+  // Serialize requests via a per-state promise chain. Rapid taps on "+"
+  // used to race: each call would see orderId=null and POST its own
+  // /orders, creating duplicate C-### checks. The chain guarantees the
+  // first tap completes (POSTing and capturing orderId) before any
+  // follow-up runs as a PUT against that same orderId.
+  state._seatsChain = (state._seatsChain || Promise.resolve()).then(function() {
+    var nums = state.seats.map(function(s) { return s.number; });
+    if (nums.length === 0) return;
 
-  if (state.orderId) {
-    fetch('/api/v1/orders/' + state.orderId + '/seats', {
-      method:  'PUT',
+    if (state.orderId) {
+      return fetch('/api/v1/orders/' + state.orderId + '/seats', {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ seat_numbers: nums }),
+      }).catch(function(err) {
+        console.warn('[KINDpos] Seat update failed:', err);
+      });
+    }
+
+    // First POST — create the order with the seats attached. Caller
+    // params captured at mount time carry the employee identity.
+    var params = state._mountParams || {};
+    return fetch('/api/v1/orders', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ seat_numbers: nums }),
-    }).catch(function(err) {
-      console.warn('[KINDpos] Seat update failed:', err);
-    });
-    return;
-  }
-
-  // First POST — create the order with the seats attached. Caller params
-  // captured at mount time carry the employee identity.
-  var params = state._mountParams || {};
-  fetch('/api/v1/orders', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({
-      server_id:    params.employeeId || null,
-      server_name:  params.employeeName || null,
-      seat_numbers: nums,
-    }),
-  })
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(order) {
-      if (!order) return;
-      state.orderId     = order.order_id || order.id;
-      state.checkNumber = order.check_number || '';
-      if (state.checkNumber) setSceneName(state.checkNumber);
+      body:    JSON.stringify({
+        server_id:    params.employeeId || null,
+        server_name:  params.employeeName || null,
+        seat_numbers: nums,
+      }),
     })
-    .catch(function(err) {
-      console.warn('[KINDpos] Order create-with-seats failed:', err);
-    });
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(order) {
+        if (!order) return;
+        state.orderId     = order.order_id || order.id;
+        state.checkNumber = order.check_number || '';
+        if (state.checkNumber) setSceneName(state.checkNumber);
+      })
+      .catch(function(err) {
+        console.warn('[KINDpos] Order create-with-seats failed:', err);
+      });
+  });
+  return state._seatsChain;
 }
 
 // Tiny × button overlay for empty seats. Tapping removes the seat.

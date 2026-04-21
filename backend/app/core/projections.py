@@ -242,7 +242,15 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
             if order:
                 seats = payload.get("seat_numbers")
                 if seats is not None:
-                    order.seat_numbers = list(seats)
+                    # Union with any seats already referenced by items.
+                    # Prevents SEATS_UPDATED from orphaning items whose
+                    # seat_number isn't in the new list (happens if the
+                    # client sends a stale seat list, or a legacy order
+                    # had implicit seats from ITEM_ADDED only).
+                    item_seats = {
+                        i.seat_number for i in order.items if i.seat_number is not None
+                    }
+                    order.seat_numbers = sorted(set(int(n) for n in seats) | item_seats)
                     order.guest_count = max(1, len(order.seat_numbers))
 
         # --- ITEMS ---

@@ -145,6 +145,81 @@ async def test_seats_persist_without_items(client):
 
 
 @pytest.mark.asyncio
+async def test_seats_rejects_empty_list(client):
+    """PUT /orders/:id/seats with an empty list is rejected so seated
+    checks can't be silently ghosted by a stale client."""
+    resp = await client.post("/api/v1/orders", json={
+        "server_id": "srv-01", "server_name": "Maria", "seat_numbers": [1, 2],
+    })
+    oid = resp.json()["order_id"]
+
+    resp = await client.put(f"/api/v1/orders/{oid}/seats", json={"seat_numbers": []})
+    assert resp.status_code == 422
+
+    # POST with empty list also rejected (consistent validation)
+    resp = await client.post("/api/v1/orders", json={
+        "server_id": "srv-01", "seat_numbers": [],
+    })
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_seats_rejects_non_positive(client):
+    """Seat numbers must be >= 1; 0 and negatives are rejected."""
+    resp = await client.post("/api/v1/orders", json={
+        "server_id": "srv-01", "server_name": "Maria", "seat_numbers": [1],
+    })
+    oid = resp.json()["order_id"]
+
+    resp = await client.put(f"/api/v1/orders/{oid}/seats", json={
+        "seat_numbers": [0, 1, 2],
+    })
+    assert resp.status_code == 422
+
+    resp = await client.put(f"/api/v1/orders/{oid}/seats", json={
+        "seat_numbers": [-3, 1],
+    })
+    assert resp.status_code == 422
+
+    resp = await client.post("/api/v1/orders", json={
+        "server_id": "srv-01", "seat_numbers": [0, 1],
+    })
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_seats_updated_does_not_orphan_items(client):
+    """If a SEATS_UPDATED event arrives with a seat list that would
+    orphan items (seat 2 has an item but client PUTs [1] only), the
+    projection unions the item-referenced seats back in so nothing is
+    lost."""
+    resp = await client.post("/api/v1/orders", json={
+        "server_id": "srv-01", "seat_numbers": [1, 2],
+    })
+    oid = resp.json()["order_id"]
+
+    # Put an item on seat 2
+    resp = await client.post(f"/api/v1/orders/{oid}/items", json={
+        "menu_item_id": "fries-01", "name": "Fries",
+        "price": 5.00, "quantity": 1, "seat_number": 2,
+    })
+    assert resp.status_code == 200
+
+    # PUT a seat list that drops seat 2 — the seat hosting the item.
+    # The route accepts the request (frontend may be stale), but the
+    # projection unions item-referenced seats back in.
+    resp = await client.put(f"/api/v1/orders/{oid}/seats", json={
+        "seat_numbers": [1],
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert sorted(data["seat_numbers"]) == [1, 2]
+    # Item still present and on its original seat
+    assert len(data["items"]) == 1
+    assert data["items"][0]["seat_number"] == 2
+
+
+@pytest.mark.asyncio
 async def test_seated_empty_check_shows_on_landing(client):
     """A check with seats but no items must appear in GET /orders so the
     server can resume it after logging out."""
