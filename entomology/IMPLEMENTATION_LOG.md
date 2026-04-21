@@ -18,6 +18,7 @@ One row per config-surface change, newest at the bottom.
 | 2026-04-21 | `backend/app/api/routes/entomology.py` | (file) | — → created | Three PIN-gated endpoints under `/api/v1/entomology`: `snapshot`, `issues?days=N`, `report.xlsx?days=N`. All `Depends(get_current_session)`. |
 | 2026-04-21 | `backend/app/main.py` | lifespan + routers + static | — | Initialize `DiagnosticCollector` at `settings.database_path.replace('event_ledger.db','diagnostic_boot.db')` in lifespan (tears down on shutdown). Register `entomology.router` under `/api/v1`. Add `/entomology` redirect + `/entomology/` static mount (before the root catch-all). |
 | 2026-04-21 | `backend/app/api/routes/entomology.py` | collector access | direct `get_diagnostic_collector()` call → `Depends(require_collector)` | Proper FastAPI DI so `app.dependency_overrides` works in tests. Endpoints gain a second `Depends(...)` param. |
+| 2026-04-21 | `entomology/index.html` | `<link rel="icon">` | (none) → inline SVG data URI | Browser was auto-requesting `/entomology/favicon.ico` and logging a 404 in the console. Inline data URI eliminates the extra request. |
 
 ---
 
@@ -68,4 +69,7 @@ Added `entomology/index.html` (PIN screen + dashboard), `entomology/styles/main.
 Added `backend/tests/test_entomology_excel_report.py` (5 unit tests on `build_bug_report_workbook`: sheet set, empty-category placeholders, DEVICE-sheet grouping by event_code, Summary counts matrix, Snapshot-sheet layout) and `backend/tests/test_entomology_routes.py` (7 integration tests covering 401 unauth, snapshot shape, severity+window filtering, valid xlsx bytes round-trip, invalid `days` 422). Added `require_collector` FastAPI dep in the router so `app.dependency_overrides[deps.get_diagnostic_collector]` takes effect in tests. Full backend suite: **1004 passed, 3 skipped, 0 failed**.
 
 ### Step 6 — Live smoke (2026-04-21)
-Booted `uvicorn app.main:app --port 8765`. `/health` → 200 JSON. `/entomology/` → 200 (serves index.html from the new static mount). `/api/v1/entomology/{snapshot,issues,report.xlsx}` all → 401 without bearer token — auth gate confirmed. Note: bare `/entomology` (no trailing slash) returns 404 because FastAPI's static mount at `/entomology` shadows the same-path redirect — this is identical pre-existing behavior for `/overseer`, so parity is kept intentionally.
+Booted `uvicorn app.main:app --port 8765`. `/health` → 200 JSON. `/entomology/` → 200 (serves index.html from the new static mount). `/api/v1/entomology/{snapshot,issues,report.xlsx}` all → 401 without bearer token — auth gate confirmed.
+
+### Step 7 — Favicon 404 fix (2026-04-21)
+User reported 404 in browser console on page load. Re-tested with uvicorn: `/entomology` now 307-redirects cleanly to `/entomology/` (earlier 404 was environmental), assets all 200. The remaining 404 was the browser auto-fetching `/entomology/favicon.ico`, which my `index.html` had not declared. Added an inline SVG data URI `<link rel="icon">` — eliminates the extra HTTP request entirely, no new asset file needed.
