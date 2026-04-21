@@ -982,19 +982,17 @@ function _buildTotalsBox(rows) {
 // ═══════════════════════════════════════════════════
 
 function rerenderTopArea(state) {
-  var count = activeSeatCount(state.seats, state.paidSeats);
-  var mode = modeFor(count);
-  state._mode = mode;
+  state._mode = 'C';
 
-  if (state._osActive && mode !== 'C') {
+  if (state._osActive) {
     OrderSummary.hide();
     state._osActive = false;
   }
 
-  // In Mode C, OrderSummary renders its own totals at the bottom of its
-  // panel — hide our bottom-left totals corner to avoid duplication.
+  // The recap has its own totals block — hide the bottom-left
+  // totals corner in every mode to avoid duplication.
   if (state.totalsEl) {
-    state.totalsEl.style.display = (mode === 'C') ? 'none' : 'flex';
+    state.totalsEl.style.display = 'none';
   }
 
   var top = state.topAreaEl;
@@ -1004,9 +1002,7 @@ function rerenderTopArea(state) {
   for (var t = 0; t < state._lpTimers.length; t++) clearTimeout(state._lpTimers[t]);
   state._lpTimers = [];
 
-  if (mode === 'A')      renderModeA(state, top);
-  else if (mode === 'B') renderModeB(state, top);
-  else                   renderModeC(state, top);
+  renderModeC(state, top);
 
   renderTotals(state);
 }
