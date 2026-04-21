@@ -187,20 +187,12 @@ class PrintDispatcher:
 
         except Exception as e:
             logger.warning(f"Job {job_id} attempt {attempt} failed: {e}")
-            await self._queue.reset_for_retry(job_id)
-            # Preserve attempt count after reset
-            try:
-                await self._queue._db.execute(
-                    "UPDATE print_queue SET attempt_count = ? WHERE job_id = ?",
-                    (attempt, job_id)
-                )
-                await self._queue._db.commit()
-            except Exception:
-                pass
             if attempt >= MAX_ATTEMPTS:
                 await self._queue.mark_failed(job_id)
                 logger.error(f"Job {job_id} FAILED after {attempt} attempts: {e}")
                 self._broadcast_failure(job, str(e))
+            else:
+                await self._queue.bump_attempt_for_retry(job_id, attempt)
 
     # ── Render ────────────────────────────────────────────────────────────────
 

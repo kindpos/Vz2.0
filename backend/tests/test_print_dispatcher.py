@@ -77,6 +77,9 @@ class FakeQueue:
     async def reset_for_retry(self, job_id: str):
         self.calls.append(("reset_for_retry", job_id))
 
+    async def bump_attempt_for_retry(self, job_id: str, attempt: int):
+        self.calls.append(("bump_attempt_for_retry", job_id, attempt))
+
     async def get_pending_jobs(self):
         return []
 
@@ -301,10 +304,9 @@ class TestProcessJob:
 
         names = dispatcher._queue.names()
         assert "mark_sent" in names
-        assert "reset_for_retry" in names
+        assert "bump_attempt_for_retry" in names
+        assert "reset_for_retry" not in names
         assert "mark_failed" not in names
-        # The retry path preserves attempt_count via a raw UPDATE + commit
-        assert ("db.commit",) in dispatcher._queue.calls
         # No premature failure broadcast
         assert failures.empty()
 
@@ -358,7 +360,7 @@ class TestProcessJob:
         job = _make_job(template_id="bogus_template", attempt_count=0)
         await dispatcher._process_job(job)
         names = dispatcher._queue.names()
-        assert "reset_for_retry" in names
+        assert "bump_attempt_for_retry" in names
         assert "mark_failed" not in names
 
 

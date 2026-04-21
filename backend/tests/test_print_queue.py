@@ -181,6 +181,19 @@ class TestPrintJobQueue:
         assert len(pending) == 1
         assert pending[0]['status'] == 'queued'
 
+    async def test_bump_attempt_for_retry_preserves_count(self, queue):
+        """bump_attempt_for_retry resets status to 'queued' while keeping
+        the attempt counter so MAX_ATTEMPTS is enforced correctly."""
+        kwargs = _enqueue_kwargs()
+        j1 = await queue.enqueue(**kwargs)
+        await queue.mark_sent(j1, 2)
+        await queue.bump_attempt_for_retry(j1, 2)
+
+        pending = await queue.get_pending_jobs()
+        assert len(pending) == 1
+        assert pending[0]['status'] == 'queued'
+        assert pending[0]['attempt_count'] == 2  # NOT reset to 0
+
     async def test_recover_does_not_touch_recent_sent(self, queue):
         """A 'sent' job with a recent last_attempt_at is NOT recovered — it's
         still in-flight."""

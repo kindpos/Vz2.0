@@ -151,13 +151,26 @@ class PrintJobQueue:
             return [dict(zip([col[0] for col in cursor.description], row)) for row in rows]
 
     async def reset_for_retry(self, job_id: str):
-        """Reset a failed job back to 'queued' for manual retry."""
+        """Reset a failed job back to 'queued' for manual retry (attempt_count → 0)."""
         await self._db.execute("""
-            UPDATE print_queue 
-            SET status = 'queued', 
-                attempt_count = 0 
+            UPDATE print_queue
+            SET status = 'queued',
+                attempt_count = 0
             WHERE job_id = ?
         """, (job_id,))
+        await self._db.commit()
+
+    async def bump_attempt_for_retry(self, job_id: str, attempt: int) -> None:
+        """Reset status to 'queued' while preserving the attempt counter.
+        Used by the dispatcher on transient failure so MAX_ATTEMPTS is
+        enforced correctly. A single UPDATE avoids the reset-then-patch
+        pattern where the patch could be silently dropped."""
+        await self._db.execute("""
+            UPDATE print_queue
+            SET status = 'queued',
+                attempt_count = ?
+            WHERE job_id = ?
+        """, (attempt, job_id))
         await self._db.commit()
 
     async def dismiss_job(self, job_id: str):
