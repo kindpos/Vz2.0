@@ -257,13 +257,11 @@ function buildEnterIpTab(terminals, onClose) {
         saveBtn.textContent = 'Saving…';
         saveBtn.style.opacity = '0.65';
         const body = {
-            ip: probeResult.ip,
-            port: probeResult.port,
-            mac: probeResult.mac,
-            model: probeResult.model,
+            ip:   probeResult.ip,
+            port: probeResult.port || 9100,
+            mac:  probeResult.mac,
             type: selectedType.toLowerCase(),
-            terminalId: termSelect.value || (terminals[0]?.id ?? ''),
-            name: nameInput.value || nameInput.placeholder,
+            name: nameInput.value.trim() || probeResult.model || 'Printer',
         };
         try {
             // TODO: wire to real endpoint — /api/v1/hardware/devices
@@ -535,20 +533,23 @@ function buildScanLanTab(terminals, onClose) {
         saveAllBtn.disabled = true;
         saveAllBtn.textContent = 'Saving…';
         saveAllBtn.style.opacity = '0.65';
-        const body = toSave.map(d => ({
-            ip: d.ip, port: d.port || 9100, mac: d.mac,
-            model: d.model, type: d.assignedType || 'kitchen',
-            terminalId: assignSel.value || (terminals[0]?.id ?? ''),
-            name: d.model,
-        }));
         try {
-            // TODO: wire to real endpoint — /api/v1/hardware/devices
-            const res = await fetch('/api/v1/hardware/devices', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            // TODO: wire to real endpoint — /api/v1/hardware/devices (one POST per device)
+            for (const d of toSave) {
+                const record = {
+                    ip:   d.ip,
+                    port: d.port || 9100,
+                    mac:  d.mac || `UNKNOWN-${d.ip.replace(/\./g, '-')}`,
+                    type: d.assignedType || 'kitchen',
+                    name: d.model || 'Printer',
+                };
+                const res = await fetch('/api/v1/hardware/devices', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(record),
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            }
             window.dispatchEvent(new CustomEvent('kindpos:devicesAdded'));
             onClose();
         } catch {
@@ -575,32 +576,41 @@ function buildScanLanTab(terminals, onClose) {
         refreshDeviceList();
         scanBtn.textContent = 'STOP';
 
-        const subnet = encodeURIComponent(subnetInput.value.trim() || '10.0.0.0/24');
         // TODO: wire to real endpoint — /api/v1/hardware/scan/stream
-        scanSource = new EventSource(`/api/v1/hardware/scan/stream?subnet=${subnet}`);
-        let hostsSeen = 0;
-        const TOTAL_ESTIMATE = 254;
+        // Backend ignores ?subnet= param — uses auto-detected local subnet
+        scanSource = new EventSource('/api/v1/hardware/scan/stream');
+        let totalHosts = 0;
+        let hostsProbed = 0;
 
         scanSource.onmessage = (e) => {
             let data;
             try { data = JSON.parse(e.data); } catch { return; }
 
-            if (data.type === 'progress' || data.type === 'checking') {
-                hostsSeen++;
-                const pct = Math.min((hostsSeen / TOTAL_ESTIMATE) * 100, 99);
+            if (data.type === 'start') {
+                totalHosts = data.total || 0;
+                const subnet = data.subnet || subnetInput.value;
+                logLine(`Scanning ${subnet} — ${totalHosts} host${totalHosts !== 1 ? 's' : ''} to check`, T.textDim);
+            } else if (data.type === 'device') {
+                hostsProbed++;
+                const pct = totalHosts > 0 ? Math.min((hostsProbed / totalHosts) * 100, 99) : 50;
                 progressFill.style.width = pct + '%';
-                logLine(`Checking ${data.ip || '…'}`, T.textDim);
-            } else if (data.type === 'found' || data.found) {
-                logLine(`Found: ${data.ip} — ${data.model || 'device'}`, T.green);
+                const label = data.name || data.type || 'device';
+                logLine(`Found: ${data.ip} — ${label}`, T.green);
                 discovered.push({
-                    ip: data.ip, mac: data.mac || '', model: data.model || 'Unknown',
-                    port: data.port || 9100, assignedType: 'kitchen',
+                    ip: data.ip, mac: data.mac || '', model: data.name || data.saved_name || 'Unknown',
+                    port: data.port || 9100, assignedType: data.saved_type || 'kitchen',
                 });
                 selectedDevices.add(data.mac || data.ip);
                 refreshDeviceList();
-            } else if (data.type === '__DONE__' || data.type === 'done') {
+            } else if (data.type === 'complete') {
                 progressFill.style.width = '100%';
                 logLine(`Scan complete — ${discovered.length} device(s) found`, T.cyan);
+                scanning = false;
+                scanBtn.textContent = 'START SCAN';
+                scanSource.close();
+                scanSource = null;
+            } else if (data.type === 'error') {
+                logLine(`Error: ${data.message || 'scan failed'}`, T.verm);
                 scanning = false;
                 scanBtn.textContent = 'START SCAN';
                 scanSource.close();

@@ -337,8 +337,9 @@ export function buildNetworkSetupScene(container) {
     `;
     scrollWrapper.appendChild(fade);
 
-    // ── Gateway row (sticky at top of grid) ──────────────────────────
-    scrollGrid.appendChild(buildGatewayRow(SEED_TERMINALS));
+    // ── Gateway row placeholder (updates once live count loads) ──────
+    const gatewayEl = buildGatewayRow(SEED_TERMINALS);
+    scrollGrid.appendChild(gatewayEl);
 
     // ── Terminal cards ────────────────────────────────────────────────
     SEED_TERMINALS.forEach((terminal, idx) => {
@@ -351,6 +352,31 @@ export function buildNetworkSetupScene(container) {
 
     // ── Ghost add-terminal card ───────────────────────────────────────
     scrollGrid.appendChild(buildGhostCard());
+
+    // ── Live device count from backend (updates gateway chips) ────────
+    // TODO: replace with GET /api/v1/hardware/terminals when endpoint is live
+    fetch('/api/v1/hardware/devices').then(r => r.ok ? r.json() : []).then(devices => {
+        if (!devices.length) return;
+        const liveTerminals = SEED_TERMINALS.map(t => ({
+            ...t,
+            devices: {
+                printers: devices.filter(d => d.type !== 'card_reader').map(d => ({
+                    label: d.type.toUpperCase(),
+                    type: d.type,
+                    model: d.name,
+                    ip: d.ip,
+                    port: d.port,
+                    variant: d.type === 'kitchen' ? 'impact' : 'thermal',
+                })),
+                readers: devices.filter(d => d.type === 'card_reader').map(d => ({
+                    model: d.name,
+                    status: d.register_id ? `SPIn · ${d.register_id}` : 'Paired',
+                })),
+            },
+        }));
+        const fresh = buildGatewayRow(liveTerminals);
+        gatewayEl.replaceWith(fresh);
+    }).catch(() => {});
 
     // ── Listen for device-added events to refresh ─────────────────────
     _cleanupListener = () => {};
