@@ -661,12 +661,10 @@ function buildClockSubToggle(activeSub, onSelect) {
     return toggle;
 }
 
-function startClockRefresh(el) {
+function startClockRefresh(rerender) {
     stopClockRefresh();
     _clockRefreshTimer = setInterval(() => {
-        if (!document.body.contains(el)) { stopClockRefresh(); return; }
-        const now = new Date();
-        el.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        if (typeof rerender === 'function') rerender();
     }, 30_000);
 }
 function stopClockRefresh() {
@@ -696,8 +694,245 @@ function renderClockTab(body) {
     }
 }
 
+/* ------------------------------------------
+   LIVE DASHBOARD — "Currently Clocked In"
+   Matches the mockup's 5-col table (Employee / Role / Clocked In
+   / Duration / Actions). Duration text is colored by durationColor
+   (green under 8h, warning 8–10h, verm 10h+). ON-BREAK chip and
+   OT-WATCH chip surface on the name cell. Break-compliance alert
+   below the card flags anyone past their 5-hour mark without a
+   meal break (California rule). Re-renders every 30 s so durations
+   stay current.
+------------------------------------------ */
+const LIVE_GRID = '1.6fr 0.8fr 0.8fr 0.8fr 120px';
+
 function renderLiveDashboard(wrap) {
-    wrap.textContent = ''; // filled in chunk 2
+    wrap.innerHTML = '';
+
+    const card = sectionCard({
+        label: 'Currently Clocked In',
+        accent: T.green,
+        note: 'Real-time staff on the floor. Duration colors flag shifts approaching overtime.',
+    });
+
+    // Toolbar: active count + refresh hint
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = `
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: ${T.sp.md}px;
+    `;
+    const hint = document.createElement('div');
+    hint.style.cssText = `
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 1.5px;
+        color: ${T.textDim};
+        text-transform: uppercase;
+    `;
+    const activeCount = ACTIVE_SHIFTS.length;
+    hint.textContent = `${activeCount} on clock · auto-refreshes every 30s`;
+    toolbar.appendChild(hint);
+    card.body.appendChild(toolbar);
+
+    // Table
+    const table = document.createElement('div');
+    table.style.cssText = `
+        background: ${T.well};
+        border-radius: ${T.r.sm}px;
+        overflow: hidden;
+    `;
+
+    const th = document.createElement('div');
+    th.style.cssText = `
+        display: grid;
+        grid-template-columns: ${LIVE_GRID};
+        gap: ${T.sp.md}px;
+        padding: ${T.sp.md}px ${T.sp.lg}px;
+        background: ${withAlpha(T.green, 0.06)};
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: ${T.textMuted};
+    `;
+    ['Employee', 'Role', 'Clocked In', 'Duration'].forEach(label => {
+        const cell = document.createElement('div');
+        cell.textContent = label;
+        th.appendChild(cell);
+    });
+    const actionsHead = document.createElement('div');
+    actionsHead.style.cssText = 'text-align: right;';
+    actionsHead.textContent = 'Actions';
+    th.appendChild(actionsHead);
+    table.appendChild(th);
+
+    if (ACTIVE_SHIFTS.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `
+            padding: ${T.sp.xxxl}px;
+            text-align: center;
+            color: ${T.textMuted};
+            font-size: ${T.fs.base}px;
+        `;
+        empty.textContent = 'Nobody on the clock right now.';
+        table.appendChild(empty);
+    } else {
+        ACTIVE_SHIFTS.forEach(shift => {
+            const dur = calcDuration(shift.clockIn);
+            const durColor = durationColor(dur.totalHrs);
+
+            const tr = document.createElement('div');
+            tr.style.cssText = `
+                display: grid;
+                grid-template-columns: ${LIVE_GRID};
+                gap: ${T.sp.md}px;
+                padding: ${T.sp.md + 2}px ${T.sp.lg}px;
+                border-top: 1px solid ${T.border};
+                align-items: center;
+            `;
+
+            // Employee cell: live-dot + name + optional badges
+            const empCell = document.createElement('div');
+            empCell.style.cssText = `color: ${T.text}; font-size: ${T.fs.lg}px;`;
+            const dot = document.createElement('span');
+            const dotColor = dur.totalHrs >= 8 ? T.warning : T.greenUp;
+            dot.style.cssText = `
+                display: inline-block;
+                width: 8px; height: 8px;
+                border-radius: 50%;
+                background: ${dotColor};
+                box-shadow: 0 0 8px ${dotColor};
+                margin-right: ${T.sp.sm}px;
+                vertical-align: middle;
+            `;
+            empCell.appendChild(dot);
+            empCell.appendChild(document.createTextNode(shift.name));
+            if (shift.onBreak) {
+                empCell.appendChild(_inlineBadge('ON BREAK', T.warning));
+            }
+            if (dur.totalHrs >= 8) {
+                empCell.appendChild(_inlineBadge('OT WATCH', T.verm));
+            }
+            tr.appendChild(empCell);
+
+            // Role chip
+            const roleCell = document.createElement('div');
+            roleCell.appendChild(_roleChip(shift.role));
+            tr.appendChild(roleCell);
+
+            // Clocked in time
+            const inCell = document.createElement('div');
+            inCell.style.cssText = `
+                color: ${T.textMuted};
+                font-family: ${T.font.mono};
+                font-size: ${T.fs.md}px;
+            `;
+            inCell.textContent = fmtTimeISO(shift.clockIn);
+            tr.appendChild(inCell);
+
+            // Duration (colored)
+            const durCell = document.createElement('div');
+            durCell.style.cssText = `
+                color: ${durColor};
+                font-family: ${T.font.mono};
+                font-size: ${T.fs.lg}px;
+                font-weight: 700;
+            `;
+            durCell.textContent = dur.text;
+            tr.appendChild(durCell);
+
+            // Actions (Edit opens the shift-detail modal — filled in chunk 4)
+            const actions = document.createElement('div');
+            actions.style.cssText = `display: flex; gap: ${T.sp.sm}px; justify-content: flex-end;`;
+            actions.appendChild(button({
+                label: 'Edit',
+                variant: 'ghost',
+                onClick: () => openShiftDetailModal(shift),
+            }));
+            tr.appendChild(actions);
+
+            table.appendChild(tr);
+        });
+    }
+    card.body.appendChild(table);
+    wrap.appendChild(card.card);
+
+    // Break-compliance alert: anyone past 5h without a meal break.
+    const fiveHourAlerts = ACTIVE_SHIFTS.filter(s => {
+        const d = calcDuration(s.clockIn);
+        return d.totalHrs >= 5 && s.breaksTaken.length === 0 && !s.onBreak;
+    });
+    if (fiveHourAlerts.length > 0) {
+        const alert = document.createElement('div');
+        alert.style.cssText = `
+            margin-top: ${T.sp.md}px;
+            padding: ${T.sp.md + 2}px ${T.sp.lg}px;
+            background: ${withAlpha(T.warning, 0.08)};
+            border: 1px solid ${withAlpha(T.warning, 0.3)};
+            border-radius: ${T.r.md}px;
+            color: ${T.warning};
+            font-size: ${T.fs.base}px;
+            line-height: 1.5;
+        `;
+        const names = fiveHourAlerts.map(s => s.firstName).join(', ');
+        alert.innerHTML = `
+            <div style="font-weight: 700; margin-bottom: 4px;
+                        font-family: ${T.font.mono};
+                        font-size: ${T.fs.sm}px; letter-spacing: 1.5px;
+                        text-transform: uppercase;">
+                ⚠ Break Compliance Alert
+            </div>
+            <div>${names} — over 5 hours without a meal break. California law requires a 30-minute meal break before the 5th hour.</div>
+        `;
+        wrap.appendChild(alert);
+    }
+
+    // Keep durations fresh.
+    startClockRefresh(() => renderLiveDashboard(wrap));
+}
+
+function _inlineBadge(text, color) {
+    const b = document.createElement('span');
+    b.textContent = text;
+    b.style.cssText = `
+        display: inline-block;
+        margin-left: ${T.sp.sm}px;
+        padding: 2px 8px;
+        border-radius: ${T.r.sm}px;
+        background: ${withAlpha(color, 0.15)};
+        color: ${color};
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.xs}px;
+        letter-spacing: 1px;
+        font-weight: 700;
+        vertical-align: middle;
+    `;
+    return b;
+}
+
+function _roleChip(roleId) {
+    const color = roleChipColor(roleId);
+    const chip = document.createElement('span');
+    chip.textContent = getRoleLabel([roleId]) || roleId;
+    chip.style.cssText = `
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 999px;
+        background: ${withAlpha(color, 0.15)};
+        color: ${color};
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 1px;
+        font-weight: 700;
+        text-transform: uppercase;
+    `;
+    return chip;
+}
+
+// Stub — real implementation in chunk 4.
+function openShiftDetailModal(shift) {
+    showToast(`Shift detail for ${shift.name} — coming in chunk 4`, 'warn');
 }
 function renderWeekGrid(wrap) {
     wrap.textContent = ''; // filled in chunk 3
