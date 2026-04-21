@@ -11,6 +11,7 @@
    ============================================ */
 
 import { pushChanges } from '../services/config-push.js';
+import { T, withAlpha } from '../ui/tokens.js';
 import {
     EMPLOYEES, ROLES, STATUSES,
     getRoleLabel, getStatusInfo, fmtDate,
@@ -27,23 +28,27 @@ import {
 } from './shift-config.js';
 
 /* ------------------------------------------
-   COLOR PALETTE (matches reporting.js)
+   COLOR PALETTE
+   Routed through ui/tokens.js. Kept as a local `C` alias so the
+   existing `C.mint` / `C.yellow` / ... call sites in this file
+   keep reading naturally during the Nostalgia port; later steps
+   rename them to `T.green` / `T.gold` / ... directly.
 ------------------------------------------ */
 const C = {
-    mint:       'var(--color-mint)',
-    mintFaded:  'rgba(var(--color-mint-rgb), 0.4)',
-    mintGhost:  'rgba(var(--color-mint-rgb), 0.15)',
-    mintBorder: 'rgba(var(--color-mint-rgb), 0.25)',
-    mintHover:  'rgba(var(--color-mint-rgb), 0.12)',
-    yellow:     'var(--color-gold)',
-    red:        'var(--color-vermillion)',
-    redFaded:   'rgba(var(--color-vermillion-rgb), 0.3)',
-    dark:       'var(--color-bg)',
-    darkCard:   '#2a2a2a',
-    white:      '#FFFFFF',
-    green:      '#00FF00',
-    orange:     '#FFA500',
-    grey:       '#888888',
+    mint:       T.green,
+    mintFaded:  T.textMuted,
+    mintGhost:  withAlpha(T.green, 0.15),
+    mintBorder: T.border,
+    mintHover:  withAlpha(T.green, 0.08),
+    yellow:     T.gold,
+    red:        T.verm,
+    redFaded:   withAlpha(T.verm, 0.3),
+    dark:       T.bg,
+    darkCard:   T.card,
+    white:      T.text,
+    green:      T.greenUp,
+    orange:     T.warning,
+    grey:       T.textMuted,
     backdrop:   'rgba(0, 0, 0, 0.75)',
 };
 
@@ -141,8 +146,8 @@ function showToast(message, type = 'success') {
 
     const colors = {
         success: { bg: 'rgba(0, 255, 0, 0.15)', border: C.green, text: C.green },
-        error:   { bg: 'rgba(var(--color-vermillion-rgb), 0.15)', border: C.red, text: C.red },
-        info:    { bg: 'rgba(var(--color-mint-rgb), 0.15)', border: C.mint, text: C.mint },
+        error:   { bg: withAlpha(T.verm, 0.15), border: C.red, text: C.red },
+        info:    { bg: withAlpha(T.green, 0.15), border: C.mint, text: C.mint },
     };
     const tc = colors[type] || colors.info;
 
@@ -152,7 +157,7 @@ function showToast(message, type = 'success') {
         position: fixed; top: 24px; right: 24px; z-index: 10000;
         background: ${tc.bg}; border: 1px solid ${tc.border};
         color: ${tc.text}; padding: 14px 24px; border-radius: 8px;
-        font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+        font-family: ${T.font.body};
         font-size: 25px; backdrop-filter: blur(8px);
         animation: toastSlideIn 0.3s ease-out;
         max-width: 400px;
@@ -207,11 +212,11 @@ function buildEmployeeList(container) {
     `;
     header.innerHTML = `
         <div>
-            <div style="font-family: var(--font-display, 'Alien Encounters', monospace);
+            <div style="font-family: ${T.font.heading};
                         font-size: 36px; color: ${C.yellow};">
                 Employee Management
             </div>
-            <div style="font-size: 25px; color: rgba(var(--color-mint-rgb), 0.5); margin-top: 4px;">
+            <div style="font-size: 25px; color: ${withAlpha(T.green, 0.5)}; margin-top: 4px;">
                 ${EMPLOYEES.length} active employee${EMPLOYEES.length !== 1 ? 's' : ''}
             </div>
         </div>
@@ -231,7 +236,7 @@ function buildEmployeeList(container) {
     addBtn.style.cssText = `
         background: ${C.mint}; color: ${C.dark}; border: none;
         padding: 14px 28px; border-radius: 8px; font-size: 25px;
-        font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+        font-family: ${T.font.body};
         font-weight: bold; cursor: pointer; letter-spacing: 0.5px;
         transition: all 0.2s ease;
     `;
@@ -245,13 +250,13 @@ function buildEmployeeList(container) {
     searchBox.style.cssText = 'position: relative;';
     searchBox.innerHTML = `
         <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-                     color: rgba(var(--color-mint-rgb), 0.4); font-size: 22px;">🔍</span>
+                     color: ${withAlpha(T.green, 0.4)}; font-size: 22px;">🔍</span>
         <input type="text" id="emp-search" placeholder="Search by name or role..."
                value="${searchTerm}"
-               style="background: rgba(var(--color-mint-rgb), 0.06); border: 1px solid ${C.mintBorder};
+               style="background: ${withAlpha(T.green, 0.06)}; border: 1px solid ${C.mintBorder};
                       color: ${C.mint}; padding: 14px 16px 14px 38px; border-radius: 8px;
                       font-size: 25px; width: 300px; outline: none;
-                      font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+                      font-family: ${T.font.body};
                       transition: border-color 0.2s ease;" />
     `;
     actionBar.appendChild(searchBox);
@@ -289,14 +294,14 @@ function buildTableSection(wrapper) {
     // ── Active Employees ──
     const activeSection = document.createElement('div');
     activeSection.style.cssText = `
-        background: rgba(var(--color-mint-rgb), 0.04); border: 1px solid ${C.mintBorder};
+        background: ${withAlpha(T.green, 0.04)}; border: 1px solid ${C.mintBorder};
         border-radius: 10px; overflow: hidden; margin-bottom: 20px;
     `;
 
     const activeHeader = document.createElement('div');
     activeHeader.style.cssText = `
         padding: 16px 20px; border-bottom: 1px solid ${C.mintBorder};
-        font-family: var(--font-display, 'Alien Encounters', monospace);
+        font-family: ${T.font.heading};
         font-size: 26px; color: ${C.mint}; letter-spacing: 1px;
     `;
     activeHeader.textContent = `ACTIVE EMPLOYEES [${active.length}]`;
@@ -315,14 +320,14 @@ function buildTableSection(wrapper) {
     // ── Inactive Employees ──
     const inactiveSection = document.createElement('div');
     inactiveSection.style.cssText = `
-        background: rgba(var(--color-mint-rgb), 0.04); border: 1px solid ${C.mintBorder};
+        background: ${withAlpha(T.green, 0.04)}; border: 1px solid ${C.mintBorder};
         border-radius: 10px; overflow: hidden;
     `;
 
     const inactiveHeader = document.createElement('div');
     inactiveHeader.style.cssText = `
         padding: 16px 20px; border-bottom: ${showInactive ? '1px solid ' + C.mintBorder : 'none'};
-        font-family: var(--font-display, 'Alien Encounters', monospace);
+        font-family: ${T.font.heading};
         font-size: 26px; color: ${C.grey}; letter-spacing: 1px;
         cursor: pointer; display: flex; justify-content: space-between;
         align-items: center; transition: background 0.2s ease;
@@ -359,7 +364,7 @@ function buildTable(list, isInactive = false) {
         display: grid;
         grid-template-columns: 2.2fr 1.2fr 0.8fr 1fr 0.6fr 1.4fr;
         padding: 14px 20px; gap: 8px;
-        background: rgba(var(--color-mint-rgb), 0.08);
+        background: ${withAlpha(T.green, 0.08)};
         border-bottom: 1px solid ${C.mintBorder};
         font-size: 20px; color: ${C.mintFaded};
         text-transform: uppercase; letter-spacing: 1px;
@@ -393,12 +398,12 @@ function buildTable(list, isInactive = false) {
     // ── Data Rows ──
     list.forEach((emp, i) => {
         const row = document.createElement('div');
-        const stripeBg = i % 2 === 0 ? 'transparent' : 'rgba(var(--color-mint-rgb), 0.03)';
+        const stripeBg = i % 2 === 0 ? 'transparent' : withAlpha(T.green, 0.03);
         row.style.cssText = `
             display: grid;
             grid-template-columns: 2.2fr 1.2fr 0.8fr 1fr 0.6fr 1.4fr;
             padding: 16px 20px; gap: 8px; align-items: center;
-            border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.08);
+            border-bottom: 1px solid ${withAlpha(T.green, 0.08)};
             background: ${stripeBg}; transition: background 0.15s ease;
             min-width: 700px;
             ${isInactive ? 'opacity: 0.6;' : ''}
@@ -420,8 +425,8 @@ function buildTable(list, isInactive = false) {
             </div>
             <div style="color: ${C.mint}; font-size: 22px;">${getRoleLabel(emp.roles)}</div>
             <div style="color: ${C.grey}; font-size: 22px; letter-spacing: 2px;">••••</div>
-            <div style="color: rgba(var(--color-mint-rgb), 0.6); font-size: 22px;">${fmtDate(emp.hireDate)}</div>
-            <div style="color: rgba(var(--color-mint-rgb), 0.6); font-size: 22px;">$${emp.payRate.toFixed(2)}</div>
+            <div style="color: ${withAlpha(T.green, 0.6)}; font-size: 22px;">${fmtDate(emp.hireDate)}</div>
+            <div style="color: ${withAlpha(T.green, 0.6)}; font-size: 22px;">$${emp.payRate.toFixed(2)}</div>
             <div class="emp-action-cell"></div>
         `;
 
@@ -451,7 +456,7 @@ function createActionBtn(label, color, onClick) {
         background: transparent; color: ${color};
         border: 1px solid ${color}; padding: 6px 16px;
         border-radius: 6px; font-size: 20px; cursor: pointer;
-        font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+        font-family: ${T.font.body};
         transition: all 0.2s ease; white-space: nowrap;
     `;
     btn.addEventListener('mouseenter', () => {
@@ -506,7 +511,7 @@ function showAddEditModal(container, employee) {
     const modalHeader = document.createElement('div');
     modalHeader.style.cssText = `
         padding: 20px 24px; border-bottom: 1px solid ${C.mintBorder};
-        font-family: var(--font-display, 'Alien Encounters', monospace);
+        font-family: ${T.font.heading};
         font-size: 26px; color: ${C.yellow}; letter-spacing: 1px;
     `;
     modalHeader.textContent = title;
@@ -539,19 +544,19 @@ function showAddEditModal(container, employee) {
         chip.style.cssText = `
             display: inline-flex; align-items: center; gap: 6px;
             padding: 8px 14px; border-radius: 6px; cursor: pointer;
-            background: ${checked ? 'rgba(var(--color-mint-rgb), 0.2)' : 'var(--color-bg-dark)'};
-            border: 1px solid ${checked ? 'var(--color-mint)' : 'rgba(var(--color-mint-rgb), 0.15)'};
-            color: var(--color-mint); font-family: var(--font-body); font-size: 20px;
+            background: ${checked ? withAlpha(T.green, 0.2) : T.well};
+            border: 1px solid ${checked ? T.green : withAlpha(T.green, 0.15)};
+            color: ${T.green}; font-family: ${T.font.body}; font-size: 20px;
             transition: all 0.15s ease;
         `;
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.value = r.id;
         cb.checked = checked;
-        cb.style.cssText = 'accent-color: var(--color-mint); width: 18px; height: 18px;';
+        cb.style.cssText = 'accent-color: ${T.green}; width: 18px; height: 18px;';
         cb.addEventListener('change', () => {
-            chip.style.background = cb.checked ? 'rgba(var(--color-mint-rgb), 0.2)' : 'var(--color-bg-dark)';
-            chip.style.borderColor = cb.checked ? 'var(--color-mint)' : 'rgba(var(--color-mint-rgb), 0.15)';
+            chip.style.background = cb.checked ? withAlpha(T.green, 0.2) : T.well;
+            chip.style.borderColor = cb.checked ? T.green : withAlpha(T.green, 0.15);
         });
         chip.appendChild(cb);
         chip.appendChild(document.createTextNode(r.label));
@@ -611,7 +616,7 @@ function showAddEditModal(container, employee) {
     cancelBtn.style.cssText = `
         background: transparent; color: ${C.grey}; border: 1px solid ${C.grey};
         padding: 12px 28px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+        font-family: ${T.font.body};
         transition: all 0.2s ease;
     `;
     cancelBtn.addEventListener('click', () => backdrop.remove());
@@ -621,7 +626,7 @@ function showAddEditModal(container, employee) {
     saveBtn.style.cssText = `
         background: ${C.mint}; color: ${C.dark}; border: none;
         padding: 12px 28px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+        font-family: ${T.font.body};
         font-weight: bold; transition: all 0.2s ease;
     `;
     saveBtn.addEventListener('mouseenter', () => saveBtn.style.background = '#d4ffca');
@@ -775,7 +780,7 @@ function showPINResetModal(container, employee) {
     const header = document.createElement('div');
     header.style.cssText = `
         padding: 20px 24px; border-bottom: 1px solid ${C.mintBorder};
-        font-family: var(--font-display, 'Alien Encounters', monospace);
+        font-family: ${T.font.heading};
         font-size: 26px; color: ${C.yellow}; letter-spacing: 1px;
     `;
     header.textContent = `RESET PIN: ${employee.firstName} ${employee.lastName}`;
@@ -840,7 +845,7 @@ function showPINResetModal(container, employee) {
     cancelBtn.style.cssText = `
         background: transparent; color: ${C.grey}; border: 1px solid ${C.grey};
         padding: 12px 28px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+        font-family: ${T.font.body};
     `;
     cancelBtn.addEventListener('click', () => backdrop.remove());
 
@@ -849,7 +854,7 @@ function showPINResetModal(container, employee) {
     resetBtn.style.cssText = `
         background: ${C.yellow}; color: ${C.dark}; border: none;
         padding: 12px 28px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+        font-family: ${T.font.body};
         font-weight: bold;
     `;
     resetBtn.addEventListener('click', () => {
@@ -929,7 +934,7 @@ function showPINDisplayModal(container, employee, pin, forceChange) {
     const header = document.createElement('div');
     header.style.cssText = `
         padding: 20px 24px; border-bottom: 1px solid ${C.mintBorder};
-        font-family: var(--font-display, 'Alien Encounters', monospace);
+        font-family: ${T.font.heading};
         font-size: 26px; color: ${C.green}; letter-spacing: 1px;
     `;
     header.textContent = 'PIN RESET SUCCESSFUL';
@@ -948,7 +953,7 @@ function showPINDisplayModal(container, employee, pin, forceChange) {
                     margin-bottom: 20px; cursor: pointer;"
              id="pin-display-box"
              title="Click to copy">
-            <span style="font-family: var(--font-display, 'Alien Encounters', monospace);
+            <span style="font-family: ${T.font.heading};
                          font-size: 42px; color: ${C.green}; letter-spacing: 12px;">
                 ${pin}
             </span>
@@ -960,7 +965,7 @@ function showPINDisplayModal(container, employee, pin, forceChange) {
         <div style="color: ${C.grey}; font-size: 20px; margin-bottom: 8px;">
             This will not be shown again.
         </div>
-        ${forceChange ? `<div style="color: rgba(var(--color-mint-rgb), 0.6); font-size: 20px;">
+        ${forceChange ? `<div style="color: ${withAlpha(T.green, 0.6)}; font-size: 20px;">
             Employee must change PIN on next login.
         </div>` : ''}
     `;
@@ -978,7 +983,7 @@ function showPINDisplayModal(container, employee, pin, forceChange) {
     closeBtn.style.cssText = `
         background: ${C.mint}; color: ${C.dark}; border: none;
         padding: 12px 40px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+        font-family: ${T.font.body};
         font-weight: bold;
     `;
     closeBtn.addEventListener('click', async () => {
@@ -1017,10 +1022,10 @@ const fieldLabelStyle = `
 
 const inputStyle = `
     width: 100%; box-sizing: border-box;
-    background: var(--color-bg-dark);
+    background: ${T.well};
     border: 1px solid ${C.mintBorder}; color: ${C.mint};
     padding: 12px 14px; border-radius: 6px; font-size: 25px;
-    font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
+    font-family: ${T.font.body};
     outline: none; transition: border-color 0.2s ease;
     color-scheme: dark;
 `;
@@ -1119,14 +1124,14 @@ function buildPlaceholder(container, title, subtitle, items) {
     wrapper.style.cssText = 'padding: 0 8px; max-width: 900px; margin: 0 auto;';
 
     wrapper.innerHTML = `
-        <div style="font-family: var(--font-display, 'Alien Encounters', monospace);
+        <div style="font-family: ${T.font.heading};
                     font-size: 36px; color: ${C.yellow}; margin-bottom: 8px;">
             ${title}
         </div>
-        <div style="font-size: 25px; color: rgba(var(--color-mint-rgb), 0.5); margin-bottom: 32px;">
+        <div style="font-size: 25px; color: ${withAlpha(T.green, 0.5)}; margin-bottom: 32px;">
             ${subtitle}
         </div>
-        <div style="background: rgba(var(--color-mint-rgb), 0.04); border: 1px solid ${C.mintBorder};
+        <div style="background: ${withAlpha(T.green, 0.04)}; border: 1px solid ${C.mintBorder};
                     border-radius: 10px; padding: 40px; text-align: center;">
             <div style="font-size: 56px; margin-bottom: 16px; opacity: 0.3;">🚧</div>
             <div style="color: ${C.mint}; font-size: 28px; margin-bottom: 12px;">
