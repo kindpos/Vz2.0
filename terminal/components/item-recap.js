@@ -276,9 +276,13 @@ function _ensureStyles() {
     + '}'
 
     // ── Totals ──
+    // Matches the seat-header card treatment: T.card dark bg + 6px
+    // radius. Stands on its own when rendered outside the recap.
     + '.ir-totals{'
-    +   'border-top:1px dashed ' + mintDim + ';'
-    +   'padding-top:10px;margin-top:4px;'
+    +   'background:' + T.card + ';'
+    +   'border-radius:6px;'
+    +   'padding:10px 14px;'
+    +   'margin-top:4px;'
     + '}'
     + '.ir-tr{'
     +   'display:flex;justify-content:space-between;align-items:baseline;'
@@ -672,7 +676,18 @@ export function buildItemRecap(order, opts) {
     root.appendChild(group);
   }
 
-  if (order.totals) root.appendChild(_buildTotals(order.totals));
+  if (order.totals && !opts.hideTotals) {
+    root.appendChild(_buildTotals(order.totals));
+  }
 
   return root;
+}
+
+// ── Standalone totals card ────────────────────────
+// Same node _buildTotals produces, so callers can hoist the
+// totals block out of the recap (e.g. into a bottom bar) while
+// keeping the dark-bg card treatment.
+export function buildItemRecapTotals(totals) {
+  _ensureStyles();
+  return _buildTotals(totals);
 }

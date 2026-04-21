@@ -36,7 +36,7 @@ import { showToast } from '../components.js';
 import { setSceneName, setHeaderBack } from '../app.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
 import { computeTotals, getTaxRate } from '../pricing.js';
-import { buildItemRecap } from '../components/item-recap.js';
+import { buildItemRecap, buildItemRecapTotals } from '../components/item-recap.js';
 import './column-editor.js';
 
 var _refreshInFlight = false;
@@ -931,16 +931,13 @@ defineScene({
 function renderTotals(state) {
   var el = state.totalsEl;
   el.innerHTML = '';
-  var totals = checkTotals(state.seats, state.paidSeats);
-
-  el.appendChild(_buildTotalsBox([
-    { lbl: 'Subtotal:', val: fmt(totals.subtotal), color: T.gold },
-    { lbl: 'Tax:',      val: fmt(totals.tax),      color: T.gold },
-  ]));
-  el.appendChild(_buildTotalsBox([
-    { lbl: 'Card Price:', val: fmt(totals.cardTotal), color: T.elec },
-    { lbl: 'Cash Price:', val: fmt(totals.cashPrice), color: T.gold },
-  ]));
+  var adapted = _adaptOrderForRecap(state);
+  var card = buildItemRecapTotals(adapted.totals);
+  // Totals corner is 360px wide and 136px tall, so drop the margin
+  // the recap-internal variant uses and let the card fill the corner.
+  card.style.marginTop = '0';
+  card.style.flex = '1';
+  el.appendChild(card);
 }
 
 function _buildTotalsBox(rows) {
@@ -989,10 +986,11 @@ function rerenderTopArea(state) {
     state._osActive = false;
   }
 
-  // The recap has its own totals block — hide the bottom-left
-  // totals corner in every mode to avoid duplication.
+  // Totals now render into the bottom-left corner (same row as
+  // the action buttons) via buildItemRecapTotals — keep the corner
+  // visible.
   if (state.totalsEl) {
-    state.totalsEl.style.display = 'none';
+    state.totalsEl.style.display = 'flex';
   }
 
   var top = state.topAreaEl;
@@ -1100,6 +1098,7 @@ function renderModeC(state, container) {
     overflow:     'hidden',
   });
   var recap = buildItemRecap(_adaptOrderForRecap(state), {
+    hideTotals: true,
     onRemoveItem: function(seatIdx, itemIdx) {
       _voidItems(state, [{ seatIdx: seatIdx, itemIdx: itemIdx }]);
     },
@@ -1147,23 +1146,43 @@ function renderModeC(state, container) {
   hdr.appendChild(allBtn);
   grid.appendChild(hdr);
 
+  // Right-column layout adapts to seat count. Up to 4 active seats
+  // (5 tiles including the add tile) share one row as equal-width,
+  // full-height columns — a "split view". Adding a 5th seat flips
+  // to the 3-wide compact grid that wraps naturally.
+  var activeCount = activeSeatCount(state.seats, state.paidSeats);
+  var tileCount = activeCount + 1; // seats + add tile
+  var splitView = tileCount <= 5;
+
   var cg = document.createElement('div');
-  Object.assign(cg.style, {
+  var cgStyle = {
     flex:               '1',
     padding:            '10px',
     display:            'grid',
-    gridTemplateColumns:'repeat(3, 1fr)',
     gap:                '10px',
-    alignContent:       'start',
     overflowY:          'auto',
-  });
+  };
+  if (splitView) {
+    cgStyle.gridTemplateColumns = 'repeat(' + tileCount + ', 1fr)';
+    cgStyle.gridAutoRows        = '1fr';
+    cgStyle.alignContent        = 'stretch';
+  } else {
+    cgStyle.gridTemplateColumns = 'repeat(3, 1fr)';
+    cgStyle.alignContent        = 'start';
+  }
+  Object.assign(cg.style, cgStyle);
   cg.className = 'co-scroll';
 
   for (var i = 0; i < state.seats.length; i++) {
     if (state.paidSeats[state.seats[i].id]) continue;
-    cg.appendChild(buildCompactTile(state, i));
+    var tile = buildCompactTile(state, i);
+    if (splitView) tile.style.minHeight = '0';
+    cg.appendChild(tile);
   }
-  cg.appendChild(buildAddTile(state, { compact: true }));
+  var addTile = buildAddTile(state, { compact: true });
+  if (splitView) addTile.style.minHeight = '0';
+  cg.appendChild(addTile);
+
   grid.appendChild(cg);
   wrap.appendChild(grid);
 }
