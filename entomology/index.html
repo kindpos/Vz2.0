@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KINDpos Entomology</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23f5a623'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='36' font-family='sans-serif'%3E%F0%9F%AA%B2%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles/main.css" />
+</head>
+<body>
+  <!-- PIN screen -->
+  <section id="pin-screen" class="pin-screen">
+    <div class="pin-card">
+      <h1 class="pin-title">Entomology</h1>
+      <p class="pin-sub">Enter your PIN to continue</p>
+      <div id="pin-display" class="pin-display" aria-live="polite"></div>
+      <div id="pin-error" class="pin-error" role="alert"></div>
+      <div class="pin-pad">
+        <button class="pin-key" data-digit="1">1</button>
+        <button class="pin-key" data-digit="2">2</button>
+        <button class="pin-key" data-digit="3">3</button>
+        <button class="pin-key" data-digit="4">4</button>
+        <button class="pin-key" data-digit="5">5</button>
+        <button class="pin-key" data-digit="6">6</button>
+        <button class="pin-key" data-digit="7">7</button>
+        <button class="pin-key" data-digit="8">8</button>
+        <button class="pin-key" data-digit="9">9</button>
+        <button class="pin-key pin-key-util" data-action="clear">Clear</button>
+        <button class="pin-key" data-digit="0">0</button>
+        <button class="pin-key pin-key-util" data-action="submit">Enter</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dashboard -->
+  <main id="dashboard" class="dashboard hidden">
+    <header class="top-bar">
+      <div class="brand">
+        <span class="brand-mark">KIND</span>
+        <span class="brand-sub">Entomology</span>
+      </div>
+      <div class="top-bar-right">
+        <span id="session-name" class="session-name"></span>
+        <button id="btn-logout" class="btn-ghost">Logout</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Current Snapshot</h2>
+        <span id="snapshot-updated" class="muted">—</span>
+      </div>
+      <div id="snapshot-metrics" class="metrics-row"></div>
+      <div id="snapshot-probes" class="probe-grid"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Recent Issues</h2>
+        <div class="controls">
+          <label for="days-select" class="muted">Window:</label>
+          <select id="days-select">
+            <option value="1">1 day</option>
+            <option value="7" selected>7 days</option>
+            <option value="30">30 days</option>
+          </select>
+        </div>
+      </div>
+      <div id="issues-body"></div>
+    </section>
+
+    <footer class="bottom-bar">
+      <button id="btn-download" class="btn-primary">
+        Download Excel Bug Report
+      </button>
+      <span id="download-status" class="muted"></span>
+    </footer>
+  </main>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
