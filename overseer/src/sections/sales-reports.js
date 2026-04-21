@@ -5,18 +5,48 @@
    drill-down chain (sections/reporting.js) under the same
    `sales-reports` nav id.
 
-   Phase 1: static scaffolding only. Header, toolbar, sub-tabs,
-   and an empty regions area. No charts, no data fetching,
-   no interactivity on toolbar or sub-tabs.
+   Current state:
+     - Scene shell (header, toolbar, sub-tabs)
+     - Region 1: hero stat row (Net Sales / Covers / Avg Check / Tip %)
+       fed by GET /api/v1/reports/sales-summary?date=today
+     - Remaining regions (trend, composition, tender, heatmap,
+       histogram, top-items, top-servers) will be added in
+       subsequent phases as their data sources are wired.
 
-   Style reference: sections/home.js (card geometry, left-border
-   accent, mono eyebrow labels).
+   No fabricated numbers — every value on screen comes from the
+   backend response (or a loading/error placeholder).
+
+   Style reference: sections/home.js.
    ============================================ */
 
-import { T } from '../ui/tokens.js';
+import { T }                from '../ui/tokens.js';
+import { buildStatCard }    from '../ui/charts.js';
+import { fmt, fmtPct, fmtInt } from '../ui/money.js';
 
 // ─── Module state ────────────────────────────────────────────────────
 let _currentContainer = null;
+let _abortController  = null;
+
+// ─── Utilities ───────────────────────────────────────────────────────
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function todayLabel() {
+  const d = new Date();
+  const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return `${days[d.getDay()]} · ${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+// ─── Fetch ───────────────────────────────────────────────────────────
+async function fetchSummary(signal) {
+  const res = await fetch(`/api/v1/reports/sales-summary?date=${today()}`, { signal });
+  if (!res.ok) {
+    throw new Error(`sales-summary ${res.status}`);
+  }
+  return res.json();
+}
 
 // ─── Layout ──────────────────────────────────────────────────────────
 function buildLayout(container) {
@@ -134,19 +164,26 @@ function buildLayout(container) {
         border-bottom-color: ${T.mint};
       }
 
-      /* ── Regions placeholder (Phase 1 only) ─────────────────── */
+      /* ── Regions ─────────────────────────────────────────────── */
       .sales-regions {
         min-height: 400px;
       }
-      .sales-placeholder {
+      .sales-hero-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .sales-state {
+        padding: 60px 20px;
+        text-align: center;
         font-family: ${T.font.mono};
         font-size: ${T.fs.base}px;
         letter-spacing: 2px;
-        color: ${T.textDim};
-        padding: 80px 20px;
-        text-align: center;
+        color: ${T.textMuted};
         text-transform: uppercase;
       }
+      .sales-state-error { color: ${T.verm}; }
     </style>
 
     <div class="sales-wrapper">
@@ -154,11 +191,11 @@ function buildLayout(container) {
         <div class="sales-header-left">
           <div class="sales-eyebrow">Reporting</div>
           <div class="sales-title">Sales</div>
-          <div class="sales-subtitle">Weekly revenue, covers, and cost-of-business at a glance</div>
+          <div class="sales-subtitle">Today's revenue, covers, and check averages</div>
         </div>
         <div class="sales-toolbar">
           <div class="sales-chip sales-chip-range" role="button" aria-disabled="true">
-            <span>This week · Apr 13 – Apr 19, 2026</span>
+            <span>${todayLabel()}</span>
             <span class="sales-chip-caret">▾</span>
           </div>
           <div class="sales-chip sales-chip-compare" role="button" aria-disabled="true">
@@ -178,9 +215,87 @@ function buildLayout(container) {
         <div class="sales-subtab">Voids &amp; Comps</div>
       </div>
 
-      <div class="sales-regions">
-        <div class="sales-placeholder">Content regions load here</div>
+      <div class="sales-regions" id="sales-regions">
+        <div class="sales-state">Loading…</div>
       </div>
+    </div>
+  `;
+}
+
+// ─── Render ──────────────────────────────────────────────────────────
+function regionsEl(container) {
+  return container.querySelector('#sales-regions');
+}
+
+function renderHero(container, data) {
+  const regions = regionsEl(container);
+  if (!regions) return;
+  regions.innerHTML = '';
+
+  const hourlyNet = (data.hourly_sales || []).map(h => Number(h.net) || 0);
+  const tipPctFrac = (Number(data.net_sales) > 0)
+    ? Number(data.tips_collected) / Number(data.net_sales)
+    : 0;
+
+  const heroRow = document.createElement('div');
+  heroRow.className = 'sales-hero-row';
+
+  heroRow.appendChild(buildStatCard({
+    label: 'Net Sales',
+    accent: T.gold,
+    value: fmt(Number(data.net_sales) || 0),
+    valueColor: T.gold,
+    sub: `${fmtInt(data.total_checks || 0)} checks · ${fmtInt(data.total_guests || 0)} guests`,
+    spark: { values: hourlyNet, color: T.gold },
+  }));
+
+  heroRow.appendChild(buildStatCard({
+    label: 'Covers',
+    accent: T.cyan,
+    value: fmtInt(data.total_guests || 0),
+    valueColor: T.cyan,
+    sub: `${fmtInt(data.total_checks || 0)} checks`,
+    spark: { values: (data.hourly_sales || []).map(h => Number(h.checks) || 0), color: T.cyan },
+  }));
+
+  heroRow.appendChild(buildStatCard({
+    label: 'Avg Check',
+    accent: T.gold,
+    value: fmt(Number(data.check_avg) || 0),
+    valueColor: T.gold,
+    sub: 'net ÷ checks',
+    spark: {
+      values: (data.hourly_sales || []).map(h => {
+        const c = Number(h.checks) || 0;
+        return c > 0 ? (Number(h.net) || 0) / c : 0;
+      }),
+      color: T.gold,
+    },
+  }));
+
+  heroRow.appendChild(buildStatCard({
+    label: 'Tip %',
+    accent: T.mint,
+    value: fmtPct(tipPctFrac).replace('%', ''),
+    valueColor: T.mint,
+    valueSuffix: '%',
+    sub: `${fmt(Number(data.tips_collected) || 0)} collected`,
+    spark: {
+      values: (data.hourly_sales || []).map(h => Number(h.net) || 0),
+      color: T.mint,
+    },
+  }));
+
+  regions.appendChild(heroRow);
+}
+
+function renderError(container, err) {
+  const regions = regionsEl(container);
+  if (!regions) return;
+  regions.innerHTML = `
+    <div class="sales-state sales-state-error">
+      Could not load sales data.<br/>
+      <span style="opacity: 0.6; font-size: 11px; letter-spacing: 1px; text-transform: none;">${err.message || err}</span>
     </div>
   `;
 }
@@ -189,8 +304,23 @@ function buildLayout(container) {
 export function buildSalesReportsScene(container) {
   _currentContainer = container;
   buildLayout(container);
+
+  _abortController = new AbortController();
+  fetchSummary(_abortController.signal)
+    .then(data => {
+      if (_currentContainer === container) renderHero(container, data);
+    })
+    .catch(err => {
+      if (err.name === 'AbortError') return;
+      console.error('[sales-reports] Fetch error:', err);
+      if (_currentContainer === container) renderError(container, err);
+    });
 }
 
 export function cleanupSalesReports() {
+  if (_abortController) {
+    _abortController.abort();
+    _abortController = null;
+  }
   _currentContainer = null;
 }
