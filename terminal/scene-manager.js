@@ -129,6 +129,19 @@ function openGate(sceneName) {
   var scene = _scenes[sceneName];
   if (!scene) return console.error('SceneManager.openGate: "' + sceneName + '" not registered');
 
+  // Tear down a prior gate before stacking — otherwise the old one's DOM +
+  // cleanup are leaked when _gateScene is reassigned.
+  if (_gateScene) {
+    entReport({
+      code: 'UI-001',
+      source: 'scene-manager.openGate',
+      message: 'Gate stacked; prior torn down',
+      ctx: { prior: _gateScene.name, next: sceneName },
+      level: 'WARNING',
+    });
+    closeGate(_gateScene.name);
+  }
+
   var scrim = document.createElement('div');
   scrim.className = 'layer-scrim layer-scrim-gate';
   scrim.style.cssText = 'position:absolute;inset:0;background:' + T.scrimGate + ';';
@@ -288,6 +301,18 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
   var scene = _scenes[sceneName];
   if (!scene) return console.error('SceneManager.interrupt: "' + sceneName + '" not registered');
 
+  // Two calling styles are in the wild:
+  //   positional:  interrupt('x', params, onConfirm, onCancel)
+  //   object-embed: interrupt('x', { onConfirm, onCancel, ...params })
+  // The object-embed form was silently broken: Object.assign overwrote the
+  // caller's onConfirm with the wrapped one, and wrappedConfirm only looked
+  // at the positional arg (undefined under object-embed). So the user's
+  // callback never fired and the sub-scene's data was discarded. Pull the
+  // user callbacks out of both places and forward any args the sub-scene
+  // passes (e.g. the PIN result from co-manager-pin).
+  var userConfirm = onConfirm || (params && params.onConfirm) || null;
+  var userCancel  = onCancel  || (params && params.onCancel)  || null;
+
   // An interrupt already on screen must be torn down before we stack a new one,
   // otherwise its DOM + cleanup are leaked when _interruptScene is reassigned.
   if (_interruptScene) {
@@ -319,13 +344,43 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
 
   _layerInterrupt.style.pointerEvents = 'auto';
 
+  // Forward arbitrary args so the sub-scene's payload (e.g. PIN data) reaches
+  // the user's callback. Try/catch around the user call so a crashing handler
+  // can't leave the interrupt half-torn-down; the error is reported but the
+  // resolve still ran.
   var wrappedConfirm = function() {
+    var args = Array.prototype.slice.call(arguments);
     resolveInterrupt(sceneName);
-    if (onConfirm) onConfirm();
+    if (userConfirm) {
+      try { userConfirm.apply(null, args); }
+      catch (e) {
+        console.error('interrupt onConfirm threw:', e);
+        entReport({
+          code: 'UI-002',
+          source: 'scene-manager.interrupt.onConfirm',
+          message: 'Interrupt onConfirm raised',
+          ctx: { scene: sceneName, error: String(e && e.message || e).slice(0, 200) },
+          level: 'ERROR',
+        });
+      }
+    }
   };
   var wrappedCancel = function() {
+    var args = Array.prototype.slice.call(arguments);
     resolveInterrupt(sceneName);
-    if (onCancel) onCancel();
+    if (userCancel) {
+      try { userCancel.apply(null, args); }
+      catch (e) {
+        console.error('interrupt onCancel threw:', e);
+        entReport({
+          code: 'UI-002',
+          source: 'scene-manager.interrupt.onCancel',
+          message: 'Interrupt onCancel raised',
+          ctx: { scene: sceneName, error: String(e && e.message || e).slice(0, 200) },
+          level: 'ERROR',
+        });
+      }
+    }
   };
 
   var mountParams = Object.assign({}, params, {
@@ -402,7 +457,18 @@ function _emit(event, data) {
   var handlers = _bus[event].slice();
   for (var i = 0; i < handlers.length; i++) {
     try { handlers[i](data); }
-    catch (e) { console.error('Event handler error [' + event + ']:', e); }
+    catch (e) {
+      console.error('Event handler error [' + event + ']:', e);
+      // UI-002 — a bus handler threw. Usually because it's touching scene
+      // state after the scene unmounted; worth surfacing in the bug report.
+      entReport({
+        code: 'UI-002',
+        source: 'scene-manager._emit',
+        message: 'Bus handler raised on "' + event + '"',
+        ctx: { event: event, error: String(e && e.message || e).slice(0, 200) },
+        level: 'ERROR',
+      });
+    }
   }
 }
 
@@ -420,7 +486,17 @@ function hasInterrupt()          { return _interruptScene !== null; }
 //  TRANSITION HOOKS
 // ═══════════════════════════════════════════════════
 
-function onBeforeTransition(fn) { _transitionHooks.push(fn); }
+function onBeforeTransition(fn) {
+  _transitionHooks.push(fn);
+  // Return a disposer so callers that care about cleanup can unregister.
+  // Pre-existing callers that ignore the return value still work — the hook
+  // just stays until reload. Added because _transitionHooks used to be
+  // append-only and leaked hooks across scene lifetimes.
+  return function removeBeforeTransition() {
+    var idx = _transitionHooks.indexOf(fn);
+    if (idx !== -1) _transitionHooks.splice(idx, 1);
+  };
+}
 
 // ═══════════════════════════════════════════════════
 //  PUBLIC API
@@ -442,6 +518,11 @@ export const SceneManager = {
 
   interrupt:        interruptFn,
   resolveInterrupt,
+  // `closeInterrupt` is the name 20+ call sites use; forward to the same
+  // implementation so both spellings work. Prefer `resolveInterrupt` going
+  // forward — it reflects that the interrupt is resolved (confirm/cancel),
+  // not just closed.
+  closeInterrupt:   resolveInterrupt,
 
   showSummary,
   hideSummary,
