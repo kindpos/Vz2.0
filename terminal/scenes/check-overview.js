@@ -1563,34 +1563,20 @@ function handleResend(state) {
 // ═══════════════════════════════════════════════════
 
 function handleAddItems(state, params) {
-  if (!state.orderId) {
-    // No order yet (NEW CHECK path). Create one first so order-entry has
-    // something to attach items to.
-    fetch('/api/v1/orders', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        server_id:    params.employeeId,
-        server_name:  params.employeeName,
-        guest_count:  Math.max(1, activeSeatCount(state.seats, state.paidSeats)),
-      }),
-    })
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(order) {
-        if (!order) { showToast('Could not create order', { bg: T.verm }); return; }
-        state.orderId = order.order_id || order.id;
-        _gotoOrderEntry(state, params);
-      })
-      .catch(function() { showToast('Could not create order', { bg: T.verm }); });
-  } else {
-    _gotoOrderEntry(state, params);
-  }
+  // Order creation deferred to order-entry's first SAVE/SEND — no POST here.
+  // Passing state.orderId forward lets order-entry recall an existing check
+  // when we're editing; null means a brand-new check will be created lazily.
+  _gotoOrderEntry(state, params);
 }
 
 function _gotoOrderEntry(state, params) {
+  // order-entry reads params.recallOrderId / params.recallCheckNumber to
+  // rehydrate an existing check. If state.orderId is null (brand-new check
+  // path), these are null too — order-entry will POST /orders on first SEND.
   SceneManager.mountWorking('order-entry', {
-    orderId:      state.orderId,
-    returnTo:     'check-overview',
+    recallOrderId:     state.orderId || null,
+    recallCheckNumber: state.checkNumber || null,
+    returnTo:          'check-overview',
     returnParams: {
       checkId:       state.orderId,
       returnLanding: params.returnLanding,

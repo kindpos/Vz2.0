@@ -252,14 +252,10 @@ def _generate_order_events(day_date, order_num, servers_on_duty):
     order_ts = _ts(day_date, hour, minute, second)
 
     server = random.choice(servers_on_duty)
-    order_type = random.choices(
-        ["dine_in", "to_go", "delivery"],
-        weights=[60, 25, 15], k=1
-    )[0]
 
     guest_count = random.choices([1, 2, 3, 4, 5, 6], weights=[15, 35, 25, 15, 7, 3], k=1)[0]
-    table = random.choice(TABLES) if order_type == "dine_in" else None
-    check_number = f"#{order_num}"
+    table = random.choice(TABLES)
+    check_number = f"C-{order_num:03d}"
 
     # 1) ORDER_CREATED
     events.append(_make_event(
@@ -270,7 +266,6 @@ def _generate_order_events(day_date, order_num, servers_on_duty):
             "table": table,
             "server_id": server["employee_id"],
             "server_name": server["display_name"],
-            "order_type": order_type,
             "guest_count": guest_count,
             "customer_name": None,
         },
@@ -300,7 +295,7 @@ def _generate_order_events(day_date, order_num, servers_on_duty):
                 "quantity": 1,
                 "category": menu_item["category"],
                 "notes": None,
-                "seat_number": random.randint(1, guest_count) if order_type == "dine_in" else None,
+                "seat_number": random.randint(1, guest_count),
             },
             item_ts,
             user_id=server["employee_id"],

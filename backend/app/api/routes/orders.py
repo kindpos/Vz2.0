@@ -91,7 +91,6 @@ class CreateOrderRequest(BaseModel):
     table: Optional[str] = None
     server_id: Optional[str] = None
     server_name: Optional[str] = None
-    order_type: str = "dine_in"
     guest_count: int = 1
     customer_name: Optional[str] = None
 
@@ -193,7 +192,6 @@ class OrderResponse(BaseModel):
     server_id: Optional[str]
     server_name: Optional[str]
     customer_name: Optional[str] = None
-    order_type: str
     guest_count: int
     status: str
     items: list[OrderItemResponse]
@@ -217,7 +215,6 @@ class OrderResponse(BaseModel):
             server_id=order.server_id,
             server_name=order.server_name,
             customer_name=order.customer_name,
-            order_type=order.order_type,
             guest_count=order.guest_count,
             status=order.status,
             items=[
@@ -293,21 +290,11 @@ async def create_order(
     """Create a new order."""
     order_id = f"order_{uuid.uuid4().hex[:12]}"
 
-    # Generate sequential check number with order-type prefix
-    ORDER_TYPE_PREFIXES = {
-        "quick_service": "QS",
-        "dine_in": "DI",
-        "to_go": "TG",
-        "bar_tab": "BT",
-        "delivery": "DL",
-        "staff": "ST",
-    }
-    order_type = request.order_type or "dine_in"
-    prefix = ORDER_TYPE_PREFIXES.get(order_type, "OR")
-    type_count = await ledger.count_events_by_type_and_payload(
-        EventType.ORDER_CREATED, "order_type", order_type
-    )
-    check_number = f"{prefix}-{type_count + 1:03d}"
+    # Unified sequential check number: C-001, C-002, ... (ledger-wide counter
+    # over ORDER_CREATED events, so numbers are monotonic and include legacy
+    # events produced before order_type was removed).
+    total_orders = await ledger.count_events_by_type(EventType.ORDER_CREATED)
+    check_number = f"C-{total_orders + 1:03d}"
 
     event = order_created(
         terminal_id=settings.terminal_id,
@@ -315,7 +302,6 @@ async def create_order(
         table=request.table,
         server_id=request.server_id,
         server_name=request.server_name,
-        order_type=request.order_type,
         guest_count=request.guest_count,
         customer_name=request.customer_name,
         check_number=check_number,
@@ -1762,7 +1748,6 @@ async def split_by_seat(
         create_evt = order_created(
             terminal_id=settings.terminal_id,
             order_id=child_id,
-            order_type=order.order_type,
             guest_count=1,
             table=order.table,
             server_id=order.server_id,

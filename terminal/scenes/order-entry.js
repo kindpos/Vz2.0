@@ -3430,7 +3430,6 @@ async function handleSaveOnly() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_type:  'quick_service',
           guest_count: (sceneParams.seatNumbers && sceneParams.seatNumbers.length) || 1,
           customer_name: null,
           server_id:   sceneParams.employeeId || null,
@@ -3512,7 +3511,6 @@ async function handleSend() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          order_type:  'quick_service',
           guest_count: (sceneParams.seatNumbers && sceneParams.seatNumbers.length) || 1,
           customer_name: null,
           server_id:   sceneParams.employeeId || null,

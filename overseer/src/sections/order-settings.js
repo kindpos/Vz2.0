@@ -1,8 +1,8 @@
 /* ============================================
    KINDpos Overseer — Order & Service Settings (Nostalgia)
 
-   Tax rate, cash discount, enabled order types, operating
-   hours per day, auto-gratuity rules.
+   Tax rate, cash discount, operating hours per day,
+   auto-gratuity rules.
    ============================================ */
 
 import { pushChanges } from '../services/config-push.js';
@@ -19,13 +19,6 @@ const DAYS = [
   { id: 'friday',    label: 'Friday'    },
   { id: 'saturday',  label: 'Saturday'  },
   { id: 'sunday',    label: 'Sunday'    },
-];
-
-const ORDER_TYPES = [
-  { id: 'dine_in',    label: 'Dine-In'    },
-  { id: 'takeout',    label: 'Takeout'    },
-  { id: 'delivery',   label: 'Delivery'   },
-  { id: 'drive_thru', label: 'Drive-Thru' },
 ];
 
 async function loadConfig() {
@@ -49,7 +42,7 @@ async function mount(container) {
 
   const { body } = buildScenePage(container, {
     title: 'Order & Service Settings',
-    subtitle: 'Order types, operating hours, tax, and gratuity',
+    subtitle: 'Operating hours, tax, and gratuity',
     onSave: async () => {
       const events = [];
 
@@ -65,13 +58,6 @@ async function mount(container) {
       events.push({
         event_type: 'store.cc_processing_rate_updated',
         payload: { cash_discount_rate: cashDisc },
-      });
-
-      // Order types
-      const selectedTypes = refs.orderTypes.getSelected();
-      events.push({
-        event_type: 'store.order_types_updated',
-        payload: { enabled_types: selectedTypes },
       });
 
       // Operating hours
@@ -96,7 +82,6 @@ async function mount(container) {
           enabled: refs.agEnabled.checked,
           party_size_threshold: parseInt(refs.agParty.value) || 6,
           rate_percent: parseFloat(refs.agRate.value) || 20,
-          applies_to_order_types: selectedTypes.length > 0 ? selectedTypes : ['dine_in'],
         },
       });
 
@@ -130,21 +115,6 @@ async function mount(container) {
   refs.tax = taxField.input;
   refs.cashDisc = cashField.input;
   body.appendChild(tax.card);
-
-  // ── ORDER TYPES ──────────────────────────────────────────────────
-  const types = sectionCard({
-    label: 'Order Types',
-    note: 'Types the terminal will offer when starting a new order.',
-  });
-  const enabledTypes = (config.order_types && config.order_types.enabled_types) || [];
-  const typeGroup = chipGroup({
-    options: ORDER_TYPES,
-    selected: enabledTypes,
-    mode: 'multi',
-  });
-  types.body.appendChild(typeGroup.wrap);
-  refs.orderTypes = typeGroup;
-  body.appendChild(types.card);
 
   // ── OPERATING HOURS ──────────────────────────────────────────────
   const hoursCard = sectionCard({ label: 'Operating Hours' });
@@ -237,12 +207,11 @@ async function mount(container) {
     enabled: false,
     party_size_threshold: 6,
     rate_percent: 20,
-    applies_to_order_types: ['dine_in'],
   };
 
   const agCard = sectionCard({
     label: 'Auto-Gratuity',
-    note: 'Large parties auto-charged a gratuity. Applies to enabled order types above.',
+    note: 'Large parties are auto-charged a gratuity.',
   });
 
   const agEnabledChip = checkboxChip({ label: 'Enable auto-gratuity', checked: ag.enabled });

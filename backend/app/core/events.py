@@ -330,13 +330,15 @@ def order_created(
         table: Optional[str] = None,
         server_id: Optional[str] = None,
         server_name: Optional[str] = None,
-        order_type: str = "dine_in",  # dine_in, takeout, delivery
         guest_count: int = 1,
         customer_name: Optional[str] = None,
         check_number: Optional[str] = None,
         **kwargs
 ) -> Event:
     """Create an ORDER_CREATED event."""
+    # Accept and discard order_type kwarg from legacy callers; field has
+    # been removed from the active schema but tests still pass it.
+    kwargs.pop("order_type", None)
     return create_event(
         event_type=EventType.ORDER_CREATED,
         terminal_id=terminal_id,
@@ -346,7 +348,6 @@ def order_created(
             "table": table,
             "server_id": server_id,
             "server_name": server_name,
-            "order_type": order_type,
             "guest_count": guest_count,
             "customer_name": customer_name,
         },

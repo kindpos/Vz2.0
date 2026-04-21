@@ -133,10 +133,9 @@ def _generate_order_events(day_date, order_num, servers, weighted_items):
     order_ts = _ts(day_date, hour, minute, second)
 
     server = random.choice(servers)
-    order_type = random.choices(["dine_in", "to_go", "delivery"], weights=[60, 25, 15], k=1)[0]
     guest_count = random.choices([1, 2, 3, 4, 5, 6], weights=[15, 35, 25, 15, 7, 3], k=1)[0]
-    table = random.choice(TABLES) if order_type == "dine_in" else None
-    check_number = f"#{order_num}"
+    table = random.choice(TABLES)
+    check_number = f"C-{order_num:03d}"
 
     # ORDER_CREATED
     events.append(_make_event(
@@ -147,7 +146,6 @@ def _generate_order_events(day_date, order_num, servers, weighted_items):
             "table": table,
             "server_id": server["employee_id"],
             "server_name": server["display_name"],
-            "order_type": order_type,
             "guest_count": guest_count,
             "customer_name": None,
         },
@@ -176,7 +174,7 @@ def _generate_order_events(day_date, order_num, servers, weighted_items):
                 "quantity": 1,
                 "category": menu_item.get("category"),
                 "notes": None,
-                "seat_number": random.randint(1, guest_count) if order_type == "dine_in" else None,
+                "seat_number": random.randint(1, guest_count),
             },
             item_ts,
             user_id=server["employee_id"],
@@ -532,19 +530,17 @@ def _generate_order_events_for_hour(day_date, order_num, servers, weighted_items
     order_ts = _ts(day_date, hour, minute, second)
 
     server = random.choice(servers)
-    order_type = random.choices(["dine_in", "to_go", "delivery"], weights=[60, 25, 15], k=1)[0]
     guest_count = random.choices([1, 2, 3, 4, 5, 6], weights=[15, 35, 25, 15, 7, 3], k=1)[0]
-    table = random.choice(TABLES) if order_type == "dine_in" else None
+    table = random.choice(TABLES)
 
     events.append(_make_event(
         EventType.ORDER_CREATED,
         {
             "order_id": order_id,
-            "check_number": f"#{order_num}",
+            "check_number": f"C-{order_num:03d}",
             "table": table,
             "server_id": server["employee_id"],
             "server_name": server["display_name"],
-            "order_type": order_type,
             "guest_count": guest_count,
             "customer_name": None,
         },
@@ -568,7 +564,7 @@ def _generate_order_events_for_hour(day_date, order_num, servers, weighted_items
                 "menu_item_id": menu_item["item_id"], "name": menu_item["name"],
                 "price": float(price), "quantity": 1, "category": menu_item.get("category"),
                 "notes": None,
-                "seat_number": random.randint(1, guest_count) if order_type == "dine_in" else None,
+                "seat_number": random.randint(1, guest_count),
             },
             item_ts, user_id=server["employee_id"], correlation_id=order_id,
         ))
@@ -654,17 +650,16 @@ def _generate_open_order(day_date, order_num, servers, weighted_items, current_h
     order_ts = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
 
     server = random.choice(servers)
-    order_type = random.choices(["dine_in", "to_go"], weights=[80, 20], k=1)[0]
     guest_count = random.choices([1, 2, 3, 4], weights=[10, 40, 30, 20], k=1)[0]
-    table = random.choice(TABLES) if order_type == "dine_in" else None
+    table = random.choice(TABLES)
 
     events.append(_make_event(
         EventType.ORDER_CREATED,
         {
-            "order_id": order_id, "check_number": f"#{order_num}",
+            "order_id": order_id, "check_number": f"C-{order_num:03d}",
             "table": table,
             "server_id": server["employee_id"], "server_name": server["display_name"],
-            "order_type": order_type, "guest_count": guest_count,
+            "guest_count": guest_count,
             "customer_name": None,
         },
         order_ts, user_id=server["employee_id"], correlation_id=order_id,
@@ -683,7 +678,7 @@ def _generate_open_order(day_date, order_num, servers, weighted_items, current_h
                 "menu_item_id": menu_item["item_id"], "name": menu_item["name"],
                 "price": float(menu_item["price"]), "quantity": 1,
                 "category": menu_item.get("category"), "notes": None,
-                "seat_number": random.randint(1, guest_count) if order_type == "dine_in" else None,
+                "seat_number": random.randint(1, guest_count),
             },
             item_ts, user_id=server["employee_id"], correlation_id=order_id,
         ))

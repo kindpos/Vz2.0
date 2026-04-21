@@ -423,14 +423,6 @@ function buildCobSparkline(trend, targetLow, targetHigh) {
 
 function buildAvgTicketCard(sales) {
   const avg = sales.check_avg ?? 0;
-  const byType = sales.avg_by_order_type || [];
-  const typeMap = {};
-  byType.forEach(t => { typeMap[t.order_type] = t.avg_ticket; });
-
-  const dine = typeMap.dine_in ?? 0;
-  const togo = typeMap.to_go ?? 0;
-  const del = typeMap.delivery ?? 0;
-  const biggest = Math.max(dine, togo, del);
 
   // Sparkline: hourly avg ticket = net/checks per hour
   const hourlyAvg = (sales.hourly_sales || []).map(h =>
@@ -446,22 +438,6 @@ function buildAvgTicketCard(sales) {
           <div class="card-sub">${sales.total_checks} total checks</div>
         </div>
         <div class="stat-top-spark">${buildCardSparkline(hourlyAvg, C.lavender)}</div>
-      </div>
-      <div class="card-separator"></div>
-      <div class="card-mini-label">By Order Type</div>
-      <div class="daypart-row">
-        <div>
-          <div class="daypart-label">DINE</div>
-          <div class="daypart-val" style="color: ${dine === biggest && dine > 0 ? C.lavender : C.text};">${fmt$(dine)}</div>
-        </div>
-        <div>
-          <div class="daypart-label">TO-GO</div>
-          <div class="daypart-val" style="color: ${togo === biggest && togo > 0 ? C.lavender : C.text};">${fmt$(togo)}</div>
-        </div>
-        <div>
-          <div class="daypart-label">DELIV</div>
-          <div class="daypart-val" style="color: ${del === biggest && del > 0 ? C.lavender : C.text};">${fmt$(del)}</div>
-        </div>
       </div>
     </div>
   `;

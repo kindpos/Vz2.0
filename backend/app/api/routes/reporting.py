@@ -116,7 +116,6 @@ def _aggregate_orders(orders, tip_map):
     # Home page additions:
     open_total = _ZERO          # sum of subtotals for open orders
     oldest_open_ts = None       # earliest created_at among open orders
-    order_type_totals = {}      # order_type -> {revenue, count}
     server_totals = {}          # server_id -> {name, revenue, checks, tips}
 
     for order in orders:
@@ -162,13 +161,6 @@ def _aggregate_orders(orders, tip_map):
             table_set.add(order.table)
 
         order_net = Decimal(str(order.subtotal)) - Decimal(str(order.discount_total)) - Decimal(str(order.refund_total))
-
-        # Order-type breakdown (for home page avg-ticket-by-type card)
-        otype = getattr(order, "order_type", None) or "dine_in"
-        if otype not in order_type_totals:
-            order_type_totals[otype] = {"revenue": _ZERO, "count": 0}
-        order_type_totals[otype]["revenue"] += order_net
-        order_type_totals[otype]["count"] += 1
 
         # Per-server totals (for home page server leaderboard)
         sid = getattr(order, "server_id", None)
@@ -297,7 +289,6 @@ def _aggregate_orders(orders, tip_map):
         # Home page additions:
         "open_total": open_total,
         "oldest_open_ts": oldest_open_ts,
-        "order_type_totals": order_type_totals,
         "server_totals": server_totals,
     }
 
@@ -464,19 +455,6 @@ async def get_sales_summary(
         delta = datetime.now(timezone.utc) - agg["oldest_open_ts"]
         oldest_open_minutes = int(delta.total_seconds() / 60)
 
-    # Avg ticket by order type (dine_in / to_go / delivery)
-    avg_by_order_type = []
-    for otype, data in (agg.get("order_type_totals") or {}).items():
-        count = data["count"]
-        revenue = data["revenue"]
-        avg = money_round(revenue / count) if count > 0 else Decimal("0.00")
-        avg_by_order_type.append({
-            "order_type": otype,
-            "avg_ticket": avg,
-            "count": count,
-            "revenue": money_round(revenue),
-        })
-
     # Top servers by net sales (top 5)
     top_servers = []
     for server_id_key, data in (agg.get("server_totals") or {}).items():
@@ -518,7 +496,6 @@ async def get_sales_summary(
         "open_checks": agg["open_count"],
         "open_total": money_round(agg.get("open_total", Decimal("0.00"))),
         "oldest_open_minutes": oldest_open_minutes,
-        "avg_by_order_type": avg_by_order_type,
         "top_servers": top_servers,
     }
 

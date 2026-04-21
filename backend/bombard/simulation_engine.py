@@ -270,7 +270,6 @@ class SimulationEngine:
             table=table,
             server_id=server_id,
             server_name=SERVER_NAMES.get(server_id, server_id),
-            order_type="dine_in",
             guest_count=guest_count,
         )
         evt = evt.model_copy(update={"correlation_id": order_id})

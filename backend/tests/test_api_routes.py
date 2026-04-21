@@ -70,7 +70,6 @@ async def test_create_order(client):
         "table": "T-5",
         "server_id": "srv-01",
         "server_name": "Maria",
-        "order_type": "dine_in",
         "guest_count": 2,
     })
     assert resp.status_code == 201
@@ -79,7 +78,7 @@ async def test_create_order(client):
     assert data["table"] == "T-5"
     assert data["server_name"] == "Maria"
     assert data["guest_count"] == 2
-    assert data["order_type"] == "dine_in"
+    assert data["check_number"].startswith("C-")
     # Schema: financial fields present and zero
     assert Decimal(data["subtotal"]) == Decimal("0.00")
     assert Decimal(data["total"]) == Decimal("0.00")

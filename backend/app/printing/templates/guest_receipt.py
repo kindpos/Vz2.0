@@ -20,15 +20,6 @@ from .base_template import BaseTemplate
 from .half_placement_utils import has_half_modifiers, get_half_modifiers
 from app.core.money import money_round
 
-# ── Order type display mapping (full labels for receipt) ──────────────
-ORDER_TYPE_DISPLAY = {
-    'c': 'DINE IN', 'dine_in': 'DINE IN',
-    'qs': 'QUICK SERVICE', 'quick_service': 'QUICK SERVICE',
-    'tg': 'TO GO', 'to_go': 'TO GO', 'togo': 'TO GO', 'takeout': 'TO GO',
-    'dl': 'DELIVERY', 'delivery': 'DELIVERY',
-}
-
-
 class GuestReceiptTemplate(BaseTemplate):
     """
     Guest Receipt — financial document for customers.
@@ -76,13 +67,11 @@ class GuestReceiptTemplate(BaseTemplate):
         commands.append({'type': 'feed', 'lines': 1})
 
         # 4. Order info
-        order_type_raw = (context.get('order_type') or 'dine_in').lower().replace('-', '_')
-        order_type_label = ORDER_TYPE_DISPLAY.get(order_type_raw, order_type_raw.upper())
         check_number = context.get('check_number') or context.get('ticket_number', 'N/A')
 
         commands.append({
             'type': 'text',
-            'content': f"Check: {check_number} | {order_type_label}",
+            'content': f"Check: {check_number}",
             'bold': True,
         })
         if context.get('table'):
@@ -276,15 +265,14 @@ class GuestReceiptTemplate(BaseTemplate):
         commands = []
         cpl = self.chars_per_line
         copy_type = context.get('copy_type', 'customer')
-        order_type = (context.get('order_type') or '').lower().replace('-', '_')
         venue = context.get('venue', {})
 
         LABEL_W = 18
         MONEY_FILL = "$____________"
         sig_fill = '_' * (cpl - LABEL_W)
 
-        # Tip suggestions: customer copy + dine-in or bar_tab only
-        if copy_type == 'customer' and order_type in ('dine_in', 'bar_tab', 'c'):
+        # Tip suggestions: customer copy (all checks are dine-in now)
+        if copy_type == 'customer':
             commands.append({'type': 'divider'})
             commands.append({'type': 'text', 'content': 'TIP SUGGESTIONS:', 'bold': True})
 

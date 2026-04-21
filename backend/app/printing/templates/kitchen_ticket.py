@@ -24,15 +24,6 @@ KITCHEN_CPL = 33
 WIDE_MAX    = KITCHEN_CPL // 2         # 16 — max chars at 2x wide
 BOX_COL_W   = (KITCHEN_CPL - 3) // 2   # 15 — pizza box column width
 
-# ── Order type display mapping ────────────────────────────────────────
-ORDER_TYPE_DISPLAY = {
-    'c': 'C', 'dine_in': 'C',
-    'qs': 'QS', 'quick_service': 'QS',
-    'tg': 'TG', 'to_go': 'TG', 'togo': 'TG', 'takeout': 'TG',
-    'dl': 'DL', 'delivery': 'DL',
-}
-
-
 def flush_sequence() -> bytes:
     """Prepend before INIT to clear stale bytes from previous job."""
     from backend.app.printing.escpos_formatter import CUT_FULL
@@ -120,11 +111,10 @@ class KitchenTicketTemplate(BaseTemplate):
                 'bold': True, 'align': 'center', 'red': supports_red,
             })
 
-        # Line 2 — Order Type Code (LARGE_BOLD = 2x2 + bold)
-        order_type = (ctx.get('order_type') or 'dine_in').lower().replace('-', '_')
-        order_type_code = ORDER_TYPE_DISPLAY.get(order_type, order_type.upper())
+        # Line 2 — Check badge (LARGE_BOLD = 2x2 + bold). Always "C" now
+        # that order types are unified.
         cmds.append({
-            'type': 'text', 'content': order_type_code,
+            'type': 'text', 'content': 'C',
             'bold': True, 'double_width': True, 'double_height': True, 'align': 'center',
         })
 

@@ -69,7 +69,6 @@ class TestProjectOrder:
         assert order.server_name == "Alice"
         assert order.status == "open"
         assert order.guest_count == 2
-        assert order.order_type == "dine_in"
 
     def test_item_added_subtotal(self):
         events = [

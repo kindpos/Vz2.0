@@ -37,16 +37,6 @@ async def _get_ticket_number(ledger: EventLedger, order_id: str) -> str:
         return "C-???"
 
 
-ORDER_TYPE_LABELS = {
-    "dine_in":       "DINE IN",
-    "to_go":         "TO GO",
-    "bar_tab":       "BAR TAB",
-    "delivery":      "DELIVERY",
-    "staff":         "STAFF MEAL",
-    "quick_service": "QUICK SERVICE",
-}
-
-
 class PrintContextBuilder:
     def __init__(self, ledger: EventLedger):
         self.ledger = ledger
@@ -68,7 +58,6 @@ class PrintContextBuilder:
 
         order         = project_order(events)
         ticket_number = await _get_ticket_number(self.ledger, order_id)
-        order_type    = getattr(order, "order_type", "quick_service")
 
         # ── Timestamps ────────────────────────────────────────────────────────
         created_at = getattr(order, "created_at", None)
@@ -114,7 +103,6 @@ class PrintContextBuilder:
             "ticket_number":              ticket_number,
             "copy_type":                  copy_type,
             "is_reprint":                 is_reprint,
-            "order_type":                 order_type,
             "opened_at":                  opened_at,
             "closed_at":                  closed_at,
             "table":                      getattr(order, "table", None),
@@ -156,7 +144,6 @@ class PrintContextBuilder:
 
         order         = project_order(events)
         ticket_number = await _get_ticket_number(self.ledger, order_id)
-        order_type    = getattr(order, "order_type", "quick_service")
         fired_at      = datetime.now(timezone.utc).strftime("%I:%M %p")
 
         # ── Items ─────────────────────────────────────────────────────────────
@@ -199,8 +186,6 @@ class PrintContextBuilder:
             "ticket_type":        "REPRINT" if is_reprint else "ORIGINAL",
             "ticket_index":       1,
             "ticket_total":       1,
-            "order_type":         order_type,
-            "order_type_display": ORDER_TYPE_LABELS.get(order_type, order_type.upper()),
             "table":              getattr(order, "table", None),
             "customer_name":      getattr(order, "customer_name", None),
             "server":             getattr(order, "server_name", None),
