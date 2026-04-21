@@ -12,7 +12,7 @@
 
 import { pushChanges } from '../services/config-push.js';
 import { T, withAlpha } from '../ui/tokens.js';
-import { buildScenePage, sectionCard } from '../ui/forms.js';
+import { buildScenePage, sectionCard, button, field } from '../ui/forms.js';
 import {
     EMPLOYEES, ROLES, STATUSES,
     getRoleLabel, getStatusInfo, fmtDate,
@@ -211,53 +211,29 @@ function buildEmployeeList(container) {
     const actionBar = document.createElement('div');
     actionBar.style.cssText = `
         display: flex; justify-content: space-between; align-items: center;
-        margin-bottom: 20px; gap: 16px; flex-wrap: wrap;
+        margin-bottom: ${T.sp.lg}px; gap: ${T.sp.lg}px; flex-wrap: wrap;
     `;
 
-    // Add button
-    const addBtn = document.createElement('button');
-    addBtn.textContent = '+ Add New Employee';
-    addBtn.style.cssText = `
-        background: ${C.mint}; color: ${C.dark}; border: none;
-        padding: 14px 28px; border-radius: 8px; font-size: 25px;
-        font-family: ${T.font.body};
-        font-weight: bold; cursor: pointer; letter-spacing: 0.5px;
-        transition: all 0.2s ease;
-    `;
-    addBtn.addEventListener('mouseenter', () => addBtn.style.background = '#d4ffca');
-    addBtn.addEventListener('mouseleave', () => addBtn.style.background = C.mint);
-    addBtn.addEventListener('click', () => showAddEditModal(container, null));
+    const addBtn = button({
+        label: '+ Add New Employee',
+        variant: 'primary',
+        onClick: () => showAddEditModal(container, null),
+    });
     actionBar.appendChild(addBtn);
 
-    // Search box
-    const searchBox = document.createElement('div');
-    searchBox.style.cssText = 'position: relative;';
-    searchBox.innerHTML = `
-        <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-                     color: ${withAlpha(T.green, 0.4)}; font-size: 22px;">🔍</span>
-        <input type="text" id="emp-search" placeholder="Search by name or role..."
-               value="${searchTerm}"
-               style="background: ${withAlpha(T.green, 0.06)}; border: 1px solid ${C.mintBorder};
-                      color: ${C.mint}; padding: 14px 16px 14px 38px; border-radius: 8px;
-                      font-size: 25px; width: 300px; outline: none;
-                      font-family: ${T.font.body};
-                      transition: border-color 0.2s ease;" />
-    `;
-    actionBar.appendChild(searchBox);
-    wrapper.appendChild(actionBar);
+    const searchField = field({
+        id: 'emp-search',
+        value: searchTerm,
+        placeholder: 'Search by name or role...',
+    });
+    searchField.wrap.style.flex = '0 0 300px';
+    searchField.input.addEventListener('input', (e) => {
+        searchTerm = e.target.value;
+        refreshTable();
+    });
+    actionBar.appendChild(searchField.wrap);
 
-    // Wire up search
-    setTimeout(() => {
-        const input = container.querySelector('#emp-search');
-        if (input) {
-            input.addEventListener('input', (e) => {
-                searchTerm = e.target.value;
-                refreshTable();
-            });
-            input.addEventListener('focus', () => input.style.borderColor = C.mint);
-            input.addEventListener('blur', () => input.style.borderColor = C.mintBorder);
-        }
-    }, 0);
+    wrapper.appendChild(actionBar);
 
     // ── Table Wrapper (refreshable) ──
     const tableWrap = document.createElement('div');
@@ -434,46 +410,23 @@ function buildTable(list, isInactive = false) {
 
         // Action buttons
         const actionCell = row.querySelector('.emp-action-cell');
-        actionCell.style.cssText = 'display: flex; gap: 8px;';
+        actionCell.style.cssText = `display: flex; gap: ${T.sp.sm}px; justify-content: flex-end;`;
 
-        const editBtn = createActionBtn('Edit', C.mint, () => showAddEditModal(activeContainer, emp));
-        const resetBtn = createActionBtn('Reset', C.yellow, () => showPINResetModal(activeContainer, emp));
-
-        actionCell.appendChild(editBtn);
-        actionCell.appendChild(resetBtn);
+        actionCell.appendChild(button({
+            label: 'Edit',
+            variant: 'ghost',
+            onClick: () => showAddEditModal(activeContainer, emp),
+        }));
+        actionCell.appendChild(button({
+            label: 'Reset PIN',
+            variant: 'ghost',
+            onClick: () => showPINResetModal(activeContainer, emp),
+        }));
 
         table.appendChild(row);
     });
 
     return table;
-}
-
-/* ------------------------------------------
-   ACTION BUTTON HELPER
------------------------------------------- */
-function createActionBtn(label, color, onClick) {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.style.cssText = `
-        background: transparent; color: ${color};
-        border: 1px solid ${color}; padding: 6px 16px;
-        border-radius: 6px; font-size: 20px; cursor: pointer;
-        font-family: ${T.font.body};
-        transition: all 0.2s ease; white-space: nowrap;
-    `;
-    btn.addEventListener('mouseenter', () => {
-        btn.style.background = color;
-        btn.style.color = C.dark;
-    });
-    btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'transparent';
-        btn.style.color = color;
-    });
-    btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        onClick();
-    });
-    return btn;
 }
 
 /* ------------------------------------------
