@@ -362,7 +362,8 @@ function buildScanLanTab(terminals, onClose) {
         border-radius: 6px;
         padding: 10px 12px;
         margin-top: 10px;
-        height: 90px;
+        min-height: 90px;
+        max-height: 180px;
         overflow-y: auto;
         font-family: ui-monospace, monospace;
         font-size: ${T.fs.xs}px;
@@ -419,52 +420,68 @@ function buildScanLanTab(terminals, onClose) {
     discoveredSection.appendChild(deviceList);
     wrap.appendChild(discoveredSection);
 
-    function refreshDeviceList() {
-        deviceList.innerHTML = '';
-        discoveredHeader.textContent = `DISCOVERED DEVICES — ${discovered.length} found`;
-        discovered.forEach(dev => {
-            const row = document.createElement('div');
-            row.style.cssText = `
-                display: flex; align-items: center; gap: 10px;
-                background: ${T.well};
+    function buildDeviceRow(dev) {
+        const isReader = dev.assignedType === 'card_reader';
+        const row = document.createElement('div');
+        row.style.cssText = `
+            display: flex; align-items: center; gap: 10px;
+            background: ${T.well};
+            border-radius: 6px;
+            padding: 8px 12px;
+        `;
+
+        const checkKey = dev.mac || dev.ip;
+        const isChecked = selectedDevices.has(checkKey);
+        const checkbox = document.createElement('div');
+        checkbox.style.cssText = `
+            width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
+            border: 1.5px solid ${isChecked ? T.green : T.border};
+            background: ${isChecked ? withAlpha(T.green, 0.2) : 'transparent'};
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; touch-action: manipulation;
+            font-size: 10px; color: ${T.green};
+        `;
+        checkbox.textContent = isChecked ? '✓' : '';
+        checkbox.addEventListener('click', () => {
+            if (selectedDevices.has(checkKey)) selectedDevices.delete(checkKey);
+            else selectedDevices.add(checkKey);
+            refreshDeviceList();
+        });
+        row.appendChild(checkbox);
+
+        const info = document.createElement('div');
+        info.style.cssText = 'flex: 1; min-width: 0;';
+        const nameEl = document.createElement('div');
+        nameEl.style.cssText = `font-size: ${T.fs.base}px; color: ${T.text}; font-weight: 600;`;
+        nameEl.textContent = dev.model || (isReader ? 'Card Reader' : 'Unknown Device');
+        const detailEl = document.createElement('div');
+        detailEl.style.cssText = `font-family: ui-monospace, monospace; font-size: ${T.fs.xs}px; color: ${T.textMuted};`;
+        detailEl.textContent = `${dev.ip}  ·  ${dev.mac || ''}`;
+        info.appendChild(nameEl);
+        info.appendChild(detailEl);
+        row.appendChild(info);
+
+        if (isReader) {
+            // Static badge — card readers have no sub-type
+            const badge = document.createElement('div');
+            badge.style.cssText = `
+                background: ${withAlpha(T.cyan, 0.12)};
+                border: 1px solid ${withAlpha(T.cyan, 0.3)};
                 border-radius: 6px;
-                padding: 8px 12px;
+                padding: 4px 8px;
+                font-family: var(--font-heading);
+                font-size: ${T.fs.xs}px;
+                color: ${T.cyan};
+                font-weight: 700;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                white-space: nowrap;
             `;
-
-            const checkbox = document.createElement('div');
-            const isChecked = selectedDevices.has(dev.mac);
-            checkbox.style.cssText = `
-                width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
-                border: 1.5px solid ${isChecked ? T.green : T.border};
-                background: ${isChecked ? withAlpha(T.green, 0.2) : 'transparent'};
-                display: flex; align-items: center; justify-content: center;
-                cursor: pointer; touch-action: manipulation;
-                font-size: 10px; color: ${T.green};
-            `;
-            checkbox.textContent = isChecked ? '✓' : '';
-            checkbox.addEventListener('click', () => {
-                if (selectedDevices.has(dev.mac)) selectedDevices.delete(dev.mac);
-                else selectedDevices.add(dev.mac);
-                refreshDeviceList();
-            });
-            row.appendChild(checkbox);
-
-            const info = document.createElement('div');
-            info.style.cssText = 'flex: 1; min-width: 0;';
-            const nameEl = document.createElement('div');
-            nameEl.style.cssText = `font-size: ${T.fs.base}px; color: ${T.text}; font-weight: 600;`;
-            nameEl.textContent = dev.model || 'Unknown Device';
-            const detailEl = document.createElement('div');
-            detailEl.style.cssText = `font-family: ui-monospace, monospace; font-size: ${T.fs.xs}px; color: ${T.textMuted};`;
-            detailEl.textContent = `${dev.ip}  ·  ${dev.mac || ''}`;
-            info.appendChild(nameEl);
-            info.appendChild(detailEl);
-            row.appendChild(info);
-
-            // Type dropdown
-            const typeWrap = document.createElement('div');
+            badge.textContent = 'CARD READER';
+            row.appendChild(badge);
+        } else {
+            // Type dropdown for printers
             const typeSel = document.createElement('select');
-            typeSel.value = dev.assignedType || 'kitchen';
             typeSel.style.cssText = `
                 background: ${withAlpha(T.gold, 0.12)};
                 border: 1px solid ${withAlpha(T.gold, 0.3)};
@@ -488,11 +505,56 @@ function buildScanLanTab(terminals, onClose) {
             });
             typeSel.value = dev.assignedType || 'kitchen';
             typeSel.addEventListener('change', () => { dev.assignedType = typeSel.value; });
-            typeWrap.appendChild(typeSel);
-            row.appendChild(typeWrap);
+            row.appendChild(typeSel);
+        }
 
-            deviceList.appendChild(row);
-        });
+        return row;
+    }
+
+    function refreshDeviceList() {
+        deviceList.innerHTML = '';
+        discoveredHeader.textContent = `DISCOVERED DEVICES — ${discovered.length} found`;
+
+        const printers = discovered.filter(d => d.assignedType !== 'card_reader');
+        const readers  = discovered.filter(d => d.assignedType === 'card_reader');
+
+        if (printers.length > 0) {
+            const lbl = document.createElement('div');
+            lbl.style.cssText = `
+                font-family: ui-monospace, monospace;
+                font-size: ${T.fs.xs}px;
+                font-weight: 700;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+                color: ${T.gold};
+                margin-bottom: 4px;
+                margin-top: 2px;
+            `;
+            lbl.textContent = 'PRINT DEVICES';
+            deviceList.appendChild(lbl);
+            printers.forEach(dev => deviceList.appendChild(buildDeviceRow(dev)));
+        }
+
+        if (printers.length > 0 && readers.length > 0) {
+            deviceList.appendChild(divider());
+        }
+
+        if (readers.length > 0) {
+            const lbl = document.createElement('div');
+            lbl.style.cssText = `
+                font-family: ui-monospace, monospace;
+                font-size: ${T.fs.xs}px;
+                font-weight: 700;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+                color: ${T.cyan};
+                margin-bottom: 4px;
+                margin-top: 2px;
+            `;
+            lbl.textContent = 'PAYMENT';
+            deviceList.appendChild(lbl);
+            readers.forEach(dev => deviceList.appendChild(buildDeviceRow(dev)));
+        }
     }
 
     // Assign all to terminal (hidden when 1 terminal)
