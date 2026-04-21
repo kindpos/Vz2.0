@@ -225,7 +225,7 @@ class OrderResponse(BaseModel):
                     item_id=item.item_id,
                     menu_item_id=item.menu_item_id,
                     name=item.name,
-                    price=item.price,
+                    price=money_round(item.price),
                     quantity=item.quantity,
                     category=item.category,
                     notes=item.notes,
@@ -240,10 +240,10 @@ class OrderResponse(BaseModel):
             payments=[
                 PaymentResponse(
                     payment_id=p.payment_id,
-                    amount=p.amount,
+                    amount=money_round(p.amount),
                     method=p.method,
                     status=p.status,
-                    tip_amount=p.tip_amount,
+                    tip_amount=money_round(p.tip_amount),
                     transaction_id=p.transaction_id,
                     seat_numbers=p.seat_numbers or [],
                 )

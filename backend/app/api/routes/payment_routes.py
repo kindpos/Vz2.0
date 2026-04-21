@@ -437,7 +437,7 @@ async def process_cash_payment(
         "payment_id": payment_id,
         "order_id": request.order_id,
         "amount": sale_amount,
-        "tip": request.tip,
+        "tip": money_round(request.tip),
     }
 
 
