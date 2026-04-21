@@ -23,7 +23,8 @@
 import { T, withAlpha } from '../ui/tokens.js';
 import {
     buildScenePage, sectionCard, button, field,
-    numberField, chipGroup, openModal, showToast,
+    numberField, chipGroup, checkboxChip, openModal, showToast,
+    buildChipTray,
 } from '../ui/forms.js';
 import { pushChanges } from '../services/config-push.js';
 import { ROLES as FALLBACK_ROLES, loadEmployeeData, getRoleLabel } from '../data/sample-employees.js';
@@ -63,6 +64,12 @@ let _clockRefreshTimer = null;
 let _shiftTemplates = [];
 let _shiftTemplatesInitialized = false;
 
+// Tip Pools tab state. Session-local until the backend projection
+// lands (same pattern as Shift Templates). Events are emitted
+// best-effort via pushChanges so the frontend keeps working even
+// when the backend silently drops them.
+let _tipPools = [];
+
 // Role identity colors — matches the mockup's .role-chip styling.
 // Source of truth for role colors is now staff-roles (Phase B),
 // but ACTIVE_SHIFTS sample data only carries role ids, so this
@@ -84,6 +91,7 @@ const TABS = [
     { id: 'payroll',    label: 'Payroll Periods'  },
     { id: 'tipout',     label: 'Tipout Rules'     },
     { id: 'templates',  label: 'Shift Templates'  },
+    { id: 'pools',      label: 'Tip Pools'        },
 ];
 
 /* ------------------------------------------
@@ -663,6 +671,12 @@ async function renderPayrollTab(body) {
 }
 
 function buildPayrollTable(employees) {
+    // Pool Share column only appears when at least one active pool exists.
+    const hasActivePools = _tipPools.some(p => p.active !== false);
+    const grid = hasActivePools
+        ? `${PAYROLL_GRID} 0.8fr`
+        : PAYROLL_GRID;
+
     const table = document.createElement('div');
     table.style.cssText = `
         background: ${T.well};
@@ -674,7 +688,7 @@ function buildPayrollTable(employees) {
     const th = document.createElement('div');
     th.style.cssText = `
         display: grid;
-        grid-template-columns: ${PAYROLL_GRID};
+        grid-template-columns: ${grid};
         gap: ${T.sp.md}px;
         padding: ${T.sp.md}px ${T.sp.lg}px;
         background: ${withAlpha(T.gold, 0.06)};
@@ -694,6 +708,13 @@ function buildPayrollTable(employees) {
     grossHead.textContent = 'Gross';
     grossHead.style.textAlign = 'right';
     th.appendChild(grossHead);
+    if (hasActivePools) {
+        const poolHead = document.createElement('div');
+        poolHead.textContent = 'Pool Share';
+        poolHead.style.textAlign = 'right';
+        poolHead.style.color = T.cyan;
+        th.appendChild(poolHead);
+    }
     table.appendChild(th);
 
     if (employees.length === 0) {
@@ -713,7 +734,7 @@ function buildPayrollTable(employees) {
         const tr = document.createElement('div');
         tr.style.cssText = `
             display: grid;
-            grid-template-columns: ${PAYROLL_GRID};
+            grid-template-columns: ${grid};
             gap: ${T.sp.md}px;
             padding: ${T.sp.md + 2}px ${T.sp.lg}px;
             border-top: 1px solid ${T.border};
@@ -761,6 +782,20 @@ function buildPayrollTable(employees) {
         `;
         gross.textContent = fmtMoneyComma(emp.grossPay);
         tr.appendChild(gross);
+
+        // Pool Share — pending backend split calc; shows dashes until
+        // the backend projection lands and returns emp.poolShare.
+        if (hasActivePools) {
+            const poolShare = document.createElement('div');
+            poolShare.style.cssText = `
+                font-family: ${T.font.mono};
+                font-size: ${T.fs.base}px;
+                color: ${emp.poolShare != null ? T.cyan : T.textDim};
+                text-align: right;
+            `;
+            poolShare.textContent = emp.poolShare != null ? fmtMoneyComma(emp.poolShare) : '—';
+            tr.appendChild(poolShare);
+        }
 
         table.appendChild(tr);
     });
@@ -1224,6 +1259,473 @@ function _labeledGroup(label, group) {
     wrap.appendChild(lbl);
     wrap.appendChild(group.wrap);
     return wrap;
+}
+
+/* ==========================================
+   TAB: TIP POOLS
+   New 5th tab. Groups roles into shared tip pools and splits tips
+   among pool members by hours worked or evenly.
+
+   Data is session-local (same pattern as Shift Templates) — events
+   are emitted best-effort. Backend projection + GET endpoint are a
+   separate follow-up commit.
+
+   Roles come from the shared _tipoutRoles cache populated by
+   loadTipoutData(), which is also called by renderTipoutTab. If the
+   user lands on Pools before visiting Tipout Rules we lazy-load roles
+   here first.
+   ========================================== */
+
+const DOW_OPTIONS = [
+    { id: 'mon', label: 'Mon' },
+    { id: 'tue', label: 'Tue' },
+    { id: 'wed', label: 'Wed' },
+    { id: 'thu', label: 'Thu' },
+    { id: 'fri', label: 'Fri' },
+    { id: 'sat', label: 'Sat' },
+    { id: 'sun', label: 'Sun' },
+];
+
+function _newPoolId() {
+    return 'pool_' + Math.random().toString(36).slice(2, 10);
+}
+
+// Formats a pool's optional schedule into a compact display string,
+// e.g. "5:00 PM–2:00 AM · Mon, Tue, Wed, Thu, Fri".
+function _fmtPoolSchedule(schedule) {
+    if (!schedule || (!schedule.start && !schedule.end)) return null;
+    const parts = [];
+    const s = schedule.start ? fmtTime12(schedule.start) : '';
+    const e = schedule.end   ? fmtTime12(schedule.end)   : '';
+    if (s && e) parts.push(`${s}–${e}`);
+    else if (s) parts.push(`from ${s}`);
+    else        parts.push(`until ${e}`);
+    if (Array.isArray(schedule.days) && schedule.days.length > 0 && schedule.days.length < 7) {
+        parts.push(schedule.days.map(d => d[0].toUpperCase() + d.slice(1)).join(', '));
+    }
+    return parts.join(' · ') || null;
+}
+
+/* ------------------------------------------
+   CHUNK 1 — renderPoolsTab entry + card scaffold
+------------------------------------------ */
+async function renderPoolsTab(body) {
+    body.innerHTML = '';
+
+    const loading = document.createElement('div');
+    loading.style.cssText = `
+        color: ${T.textMuted};
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.md}px;
+        padding: ${T.sp.xxl}px 0;
+        text-align: center;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+    `;
+    loading.textContent = 'Loading tip pools...';
+    body.appendChild(loading);
+
+    // Reuse the roles cache populated by Tipout Rules. If the user
+    // opened this tab first, load roles now so the modal has options.
+    if (_tipoutRoles.length === 0) {
+        try { await loadTipoutData(); } catch (e) {}
+    }
+
+    body.innerHTML = '';
+    const card = sectionCard({
+        label: 'Tip Pools',
+        accent: T.cyan,
+        note: 'Group roles into shared tip pools. Tips are split among members by hours worked or evenly.',
+    });
+
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = `
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: ${T.sp.md}px;
+    `;
+    const hint = document.createElement('div');
+    hint.style.cssText = `
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 1.5px;
+        color: ${T.textDim};
+        text-transform: uppercase;
+    `;
+    const n = _tipPools.length;
+    hint.textContent = `${n} pool${n === 1 ? '' : 's'}`;
+    toolbar.appendChild(hint);
+    toolbar.appendChild(button({
+        label: '+ New Pool',
+        variant: 'primary',
+        onClick: () => openPoolModal(null, body),
+    }));
+    card.body.appendChild(toolbar);
+
+    card.body.appendChild(buildPoolsGrid(body));
+    body.appendChild(card.card);
+}
+
+/* ------------------------------------------
+   CHUNK 3 — card grid + individual pool cards
+------------------------------------------ */
+function buildPoolsGrid(tabBody) {
+    if (_tipPools.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `
+            padding: ${T.sp.xxxl}px;
+            text-align: center;
+            color: ${T.textMuted};
+            font-size: ${T.fs.base}px;
+            background: ${T.well};
+            border-radius: ${T.r.sm}px;
+        `;
+        empty.textContent = 'No tip pools yet. Click "+ New Pool" to create one.';
+        return empty;
+    }
+
+    const grid = document.createElement('div');
+    grid.style.cssText = `
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: ${T.sp.md}px;
+    `;
+    _tipPools.forEach(p => grid.appendChild(buildPoolCard(p, tabBody)));
+    return grid;
+}
+
+function buildPoolCard(pool, tabBody) {
+    const isActive = pool.active !== false;
+    const accentColor = isActive ? T.cyan : T.textDim;
+
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.style.cssText = `
+        background: ${T.card};
+        border: 1px solid ${T.border};
+        border-left: 4px solid ${accentColor};
+        border-radius: ${T.r.md}px;
+        padding: ${T.sp.lg}px ${T.sp.lg + 2}px;
+        cursor: pointer;
+        text-align: left;
+        display: flex; flex-direction: column; gap: ${T.sp.sm}px;
+        transition: transform 0.1s ease, border-color 0.15s ease;
+    `;
+    card.addEventListener('mouseenter', () => {
+        card.style.transform = 'translateY(-1px)';
+        card.style.borderTopColor    = withAlpha(T.text, 0.18);
+        card.style.borderRightColor  = withAlpha(T.text, 0.18);
+        card.style.borderBottomColor = withAlpha(T.text, 0.18);
+    });
+    card.addEventListener('mouseleave', () => {
+        card.style.transform = '';
+        card.style.borderTopColor    = T.border;
+        card.style.borderRightColor  = T.border;
+        card.style.borderBottomColor = T.border;
+    });
+    card.addEventListener('click', () => openPoolModal(pool, tabBody));
+
+    // Header: pool name + active/inactive badge
+    const head = document.createElement('div');
+    head.style.cssText = `
+        display: flex; justify-content: space-between; align-items: center;
+        gap: ${T.sp.sm}px;
+    `;
+    const name = document.createElement('div');
+    name.style.cssText = `
+        color: ${isActive ? T.cyan : T.textMuted};
+        font-family: ${T.font.heading};
+        font-size: ${T.fs.xl - 2}px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+    `;
+    name.textContent = pool.name || '(unnamed)';
+    head.appendChild(name);
+
+    const badge = document.createElement('div');
+    badge.style.cssText = `
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.xs}px;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: ${isActive ? T.green : T.textDim};
+        background: ${isActive ? withAlpha(T.green, 0.1) : T.well};
+        padding: 2px 8px;
+        border-radius: 999px;
+        white-space: nowrap;
+    `;
+    badge.textContent = isActive ? 'ACTIVE' : 'INACTIVE';
+    head.appendChild(badge);
+    card.appendChild(head);
+
+    // Role chips
+    if (Array.isArray(pool.role_ids) && pool.role_ids.length > 0) {
+        const chips = document.createElement('div');
+        chips.style.cssText = `display: flex; flex-wrap: wrap; gap: ${T.sp.xs}px;`;
+        pool.role_ids.forEach(rid => chips.appendChild(_roleChip(rid)));
+        card.appendChild(chips);
+    }
+
+    // Split-method pill + optional schedule line
+    const meta = document.createElement('div');
+    meta.style.cssText = `
+        display: flex; gap: ${T.sp.sm}px; align-items: center;
+        flex-wrap: wrap;
+        margin-top: ${T.sp.xs}px;
+    `;
+
+    const splitPill = document.createElement('span');
+    splitPill.style.cssText = `
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.xs}px;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: ${T.gold};
+        background: ${withAlpha(T.gold, 0.1)};
+        padding: 2px 8px;
+        border-radius: 999px;
+    `;
+    splitPill.textContent = (pool.split_method || 'hours').toUpperCase();
+    meta.appendChild(splitPill);
+
+    const sched = _fmtPoolSchedule(pool.schedule);
+    if (sched) {
+        const schedSpan = document.createElement('span');
+        schedSpan.style.cssText = `
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.xs}px;
+            color: ${T.textDim};
+            letter-spacing: 0.8px;
+        `;
+        schedSpan.textContent = sched;
+        meta.appendChild(schedSpan);
+    }
+    card.appendChild(meta);
+
+    return card;
+}
+
+/* ------------------------------------------
+   CHUNK 2 — edit modal (name · roles · split · active)
+   CHUNK 4 — schedule window (time fields + day-of-week)
+------------------------------------------ */
+function openPoolModal(pool, tabBody) {
+    const isEdit = !!pool;
+    const hasSched = isEdit && !!(pool.schedule && (pool.schedule.start || pool.schedule.end || (Array.isArray(pool.schedule.days) && pool.schedule.days.length > 0)));
+    const draft = {
+        pool_id:      isEdit ? pool.pool_id : _newPoolId(),
+        name:         isEdit ? (pool.name || '') : '',
+        role_ids:     isEdit ? (pool.role_ids || []).slice() : [],
+        split_method: isEdit ? (pool.split_method || 'hours') : 'hours',
+        active:       isEdit ? (pool.active !== false) : true,
+        has_schedule: hasSched,
+        schedule: {
+            start: isEdit && pool.schedule ? (pool.schedule.start || '') : '',
+            end:   isEdit && pool.schedule ? (pool.schedule.end   || '') : '',
+            days:  isEdit && pool.schedule && Array.isArray(pool.schedule.days)
+                       ? pool.schedule.days.slice() : [],
+        },
+    };
+
+    const content = document.createElement('div');
+    content.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
+
+    // Pool name
+    const nameF = field({ label: 'Pool name', value: draft.name, placeholder: 'e.g. Bar Pool' });
+    nameF.input.addEventListener('input', () => { draft.name = nameF.input.value; });
+    content.appendChild(nameF.wrap);
+
+    // Member roles — chip tray backed by the shared roles cache
+    const rolesLbl = document.createElement('div');
+    rolesLbl.style.cssText = `
+        font-family: ${T.font.body};
+        font-size: ${T.fs.base}px;
+        color: ${T.textMuted};
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    `;
+    rolesLbl.textContent = 'Member roles';
+    content.appendChild(rolesLbl);
+
+    const rolesTray = buildChipTray({
+        selected: draft.role_ids,
+        sourceFn: () => _tipoutRoles.map(r => ({ id: r.role_id, name: r.name || r.role_id })),
+        accent: T.cyan,
+        emptyHint: 'No roles — tap + Add',
+        addLabel: '+ Add',
+        pickerTitle: 'Select member roles',
+        onChange: (ids) => { draft.role_ids = ids.slice(); },
+    });
+    content.appendChild(rolesTray.el);
+
+    // Split method (single-select chipGroup)
+    const splitGroup = _labeledGroup('Split method', chipGroup({
+        options: [
+            { id: 'hours', label: 'By Hours' },
+            { id: 'even',  label: 'Even'     },
+        ],
+        selected: [draft.split_method],
+        mode: 'single',
+        onChange: (sel) => { draft.split_method = sel[0] || 'hours'; },
+    }));
+    content.appendChild(splitGroup);
+
+    // Active toggle
+    const activeCb = checkboxChip({
+        label: 'Active',
+        checked: draft.active,
+        onChange: (checked) => { draft.active = checked; },
+    });
+    content.appendChild(activeCb.wrap);
+
+    // Schedule window toggle (Chunk 4)
+    const schedCb = checkboxChip({
+        label: 'Scope to schedule window',
+        checked: draft.has_schedule,
+        onChange: (checked) => {
+            draft.has_schedule = checked;
+            schedFields.style.display = checked ? 'flex' : 'none';
+        },
+    });
+    content.appendChild(schedCb.wrap);
+
+    // Schedule fields: time range + day-of-week
+    const schedFields = document.createElement('div');
+    schedFields.style.cssText = `
+        display: ${draft.has_schedule ? 'flex' : 'none'};
+        flex-direction: column; gap: 12px;
+        padding: ${T.sp.md}px ${T.sp.lg}px;
+        background: ${T.well};
+        border-radius: ${T.r.sm}px;
+        border: 1px solid ${T.border};
+    `;
+
+    const timeRow = document.createElement('div');
+    timeRow.style.cssText = `display: flex; gap: ${T.sp.lg}px;`;
+    const startF = _buildTimeField('Pool start', draft.schedule.start);
+    const endF   = _buildTimeField('Pool end',   draft.schedule.end);
+    startF.input.addEventListener('input', () => { draft.schedule.start = startF.input.value; });
+    endF.input.addEventListener('input',   () => { draft.schedule.end   = endF.input.value;   });
+    timeRow.appendChild(startF.wrap);
+    timeRow.appendChild(endF.wrap);
+    schedFields.appendChild(timeRow);
+
+    const dowGroup = _labeledGroup('Days (leave empty for all)', chipGroup({
+        options: DOW_OPTIONS,
+        selected: draft.schedule.days,
+        mode: 'multi',
+        onChange: (sel) => { draft.schedule.days = sel.slice(); },
+    }));
+    schedFields.appendChild(dowGroup);
+    content.appendChild(schedFields);
+
+    // Footer buttons
+    let modalRef = null;
+    const footerBtns = [];
+
+    footerBtns.push(button({
+        label: 'Cancel',
+        variant: 'ghost',
+        onClick: () => modalRef.close(),
+    }));
+
+    if (isEdit) {
+        footerBtns.push(button({
+            label: 'Delete Pool',
+            variant: 'danger',
+            onClick: () => {
+                modalRef.close();
+                confirmDeletePool(pool, tabBody);
+            },
+        }));
+    }
+
+    footerBtns.push(button({
+        label: isEdit ? 'Save Changes' : 'Create Pool',
+        variant: 'primary',
+        onClick: () => {
+            const trimmedName = (nameF.input.value || '').trim();
+            if (!trimmedName) {
+                showToast('Pool name is required.', 'error');
+                return;
+            }
+            if (draft.role_ids.length === 0) {
+                showToast('Select at least one member role.', 'error');
+                return;
+            }
+            const payload = {
+                pool_id:      draft.pool_id,
+                name:         trimmedName,
+                role_ids:     draft.role_ids.slice(),
+                split_method: draft.split_method,
+                active:       draft.active,
+                schedule:     draft.has_schedule ? {
+                    start: draft.schedule.start,
+                    end:   draft.schedule.end,
+                    days:  draft.schedule.days.slice(),
+                } : null,
+            };
+
+            if (isEdit) {
+                const idx = _tipPools.findIndex(p => p.pool_id === pool.pool_id);
+                if (idx >= 0) _tipPools[idx] = { ...payload };
+            } else {
+                _tipPools.push({ ...payload });
+            }
+
+            pushChanges([{
+                event_type: isEdit ? 'tipout.pool_updated' : 'tipout.pool_created',
+                payload,
+            }]).catch(() => {});
+
+            showToast(isEdit ? 'Pool updated' : 'Pool created', 'success');
+            modalRef.close();
+            renderPoolsTab(tabBody);
+        },
+    }));
+
+    modalRef = openModal({
+        title: isEdit ? 'Edit Tip Pool' : 'New Tip Pool',
+        content,
+        footer: footerBtns,
+        width: 580,
+    });
+}
+
+function confirmDeletePool(pool, tabBody) {
+    const content = document.createElement('div');
+    content.style.cssText = `font-size: ${T.fs.lg}px; color: ${T.text}; line-height: 1.6;`;
+    content.innerHTML = `
+        Delete this tip pool?<br/><br/>
+        <span style="font-family: ${T.font.mono}; color: ${T.textMuted}; font-size: ${T.fs.base}px;">
+            ${pool.name || '(unnamed)'} · ${(pool.split_method || 'hours').toUpperCase()} split
+        </span>
+    `;
+
+    let modalRef = null;
+    modalRef = openModal({
+        title: 'Delete Tip Pool',
+        content,
+        footer: [
+            button({ label: 'Cancel', variant: 'ghost', onClick: () => modalRef.close() }),
+            button({
+                label: 'Delete Pool',
+                variant: 'danger',
+                onClick: () => {
+                    _tipPools = _tipPools.filter(p => p.pool_id !== pool.pool_id);
+                    pushChanges([{
+                        event_type: 'tipout.pool_deleted',
+                        payload: { pool_id: pool.pool_id },
+                    }]).catch(() => {});
+                    showToast('Pool deleted', 'success');
+                    modalRef.close();
+                    renderPoolsTab(tabBody);
+                },
+            }),
+        ],
+        width: 420,
+    });
 }
 
 /* ==========================================
@@ -2325,6 +2827,7 @@ const TAB_RENDERERS = {
     payroll:   renderPayrollTab,
     tipout:    renderTipoutTab,
     templates: renderTemplatesTab,
+    pools:     renderPoolsTab,
 };
 
 /* ------------------------------------------
@@ -2391,4 +2894,5 @@ export function cleanupPayrollAttendance(container) {
     _clockSubView = 'live';
     _shiftTemplates = [];
     _shiftTemplatesInitialized = false;
+    _tipPools = [];
 }
