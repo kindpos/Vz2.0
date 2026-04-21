@@ -596,9 +596,14 @@ function buildScanLanTab(terminals, onClose) {
                 progressFill.style.width = pct + '%';
                 const label = data.name || data.type || 'device';
                 logLine(`Found: ${data.ip} — ${label}`, T.green);
+                // Infer device type: backend overwrites inner 'type' with 'device' in the event,
+                // so use saved_type if present, else infer from port (9100-9102 = printer, rest = card_reader)
+                const port = data.port || 9100;
+                const isReader = data.saved_type === 'card_reader' || (port >= 9000 && port !== 9100 && port !== 9101 && port !== 9102);
+                const inferredType = data.saved_type || (isReader ? 'card_reader' : 'kitchen');
                 discovered.push({
                     ip: data.ip, mac: data.mac || '', model: data.name || data.saved_name || 'Unknown',
-                    port: data.port || 9100, assignedType: data.saved_type || 'kitchen',
+                    port, assignedType: inferredType,
                 });
                 selectedDevices.add(data.mac || data.ip);
                 refreshDeviceList();
