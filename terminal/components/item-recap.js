@@ -478,6 +478,22 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
   price.textContent = _fmt(q * (item.price || 0));
   row.appendChild(price);
 
+  // Red × remove button for unsent items. Tap swallows the event so
+  // the row-collapse handler below doesn't fire. No-ops if the
+  // consumer didn't wire an onRemoveItem callback.
+  if (item.sent === false) {
+    var xbtn = document.createElement('span');
+    xbtn.className = 'ir-xbtn';
+    xbtn.textContent = '×';
+    xbtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (typeof opts.onRemoveItem === 'function') {
+        opts.onRemoveItem(seatIdx, itemIdx);
+      }
+    });
+    row.appendChild(xbtn);
+  }
+
   card.appendChild(row);
 
   var mods = Array.isArray(item.mods) ? item.mods : [];
