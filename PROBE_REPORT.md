@@ -1,0 +1,173 @@
+# KINDpos Vz2.0 — Probe Report
+**Branch:** `claude/kindpos-network-setup-pzz50` (kept in sync with `main`)
+**Last commit:** `e1168d3` — Fix discount precision gate, tip_adjusted tracking, and unadjusted tip counter
+**Purpose:** Hand-off document for continuing the stability audit in a new session.
+
+---
+
+## System Architecture (Quick Reference)
+
+| Layer | Tech | Key Facts |
+|-------|------|-----------|
+| Backend | FastAPI + SQLite (aiosqlite) | Event-sourced ledger; no ORM |
+| Terminal UI | Vanilla ES modules | `defineScene()` pattern; no build step |
+| Admin UI (Overseer) | Vanilla ES modules | Served as `StaticFiles` by FastAPI |
+| Payment | Dejavoo SPIn over LAN HTTP | TCP to `http://{ip}:{port}/spin/cgi.html` |
+| Printing | ESC/POS over raw TCP 9100 | Async print queue with retry |
+| Identity | MAC address as primary key | IPs change, MACs don't |
+| DB files | `event_ledger.db`, `hardware_config.db` | Separate SQLite files |
+
+**Terminal ID default:** `"terminal_01"` (set in `backend/app/config.py`)
+**Token system:** `overseer/src/ui/tokens.js` — `T.fs.*`, `T.cyan`, `T.gold`, `T.green`, `T.verm`, `T.well`, `T.card`, `T.border`, `withAlpha()`
+
+---
+
+## What Has Been Audited and Fixed
+
+### Backend — `backend/app/`
+
+| File | Status | Changes Made |
+|------|--------|-------------|
+| `api/routes/hardware.py` | ✅ Audited + Fixed | MAC regex fix, socket context managers, `terminal_id` from settings |
+| `api/routes/payment_routes.py` | ✅ Audited + Fixed | In-flight double-charge guard (409), zero-unadjusted idempotency key, discount `money_round()` + `_validate_2dp`, `confirm_payment` 2dp guard |
+| `api/routes/orders.py` | ✅ Audited + Fixed | `apply_discount` precision gate, `confirm_payment` 2dp guard, `tip_adjusted` field in `PaymentResponse` |
+| `api/routes/reporting.py` | ✅ Audited + Fixed | Overnight shift hours bug (strptime date stripping), first-login overwrite |
+| `core/adapters/payment_manager.py` | ✅ Audited | Idempotency only checks confirmed/declined (not in-flight — covered at route level) |
+| `core/adapters/payment_validator.py` | ✅ Audited | No overpayment check (routes clamp instead); tip ceiling correct |
+| `core/adapters/dejavoo_spin.py` | ✅ Audited + Fixed | Device timeout 120s → 60s (was > manager's 90s asyncio.wait_for) |
+| `core/adapters/mock_payment.py` | ✅ Audited | Batch close always returns $0 total (dev/test drift); known limitation |
+| `core/event_ledger.py` | ✅ Audited | `append()` returns `None` on idempotency hit — most callers handle this correctly |
+| `core/projections.py` | ✅ Audited + Fixed | `TIP_ADJUSTED` handler now sets `payment.tip_adjusted = True`; added field to `Payment` dataclass |
+| `core/financial_invariants.py` | ✅ Audited | `gate()` logs-only in prod (`strict=False`); vacuous P&L in close_day is intentional |
+| `core/events.py` | ✅ Audited | `payment_confirmed` already `money_round(tax)`; `tip_adjusted` passes `**kwargs` to `create_event` |
+| `printing/print_dispatcher.py` | ✅ Audited + Fixed | Wrong formatter routing, hardcoded port 9100, stale-job recovery on startup, `bump_attempt_for_retry` |
+| `printing/print_queue.py` | ✅ Audited + Fixed | Idempotency on `enqueue()`, `get_pending_jobs` excludes 'sent', `recover_stale_sent_jobs`, `bump_attempt_for_retry` |
+| `printing/escpos_formatter.py` | ✅ Audited + Fixed | Warning on non-ASCII char replacement |
+| `services/print_context_builder.py` | ✅ Audited + Fixed | Clock-in first-login guard |
+| `scanner/printer_detector.py` | ✅ Audited + Fixed | Socket context manager |
+
+### Terminal UI — `terminal/`
+
+| File | Status | Changes Made |
+|------|--------|-------------|
+| `scenes/payment.js` | ✅ Audited + Fixed | Double-submit guard (`confirmProcessing`), client-side `transaction_id` via `crypto.randomUUID()` |
+| `scenes/order-entry.js` | ✅ Audited + Fixed | Unguarded `fetch()` calls hardened |
+| `scenes/checkout-core.js` | ✅ Audited + Fixed | `zero-unadjusted` POST error handling |
+| `scenes/check-overview.js` | ✅ Audited + Fixed | Clocked-in fetch error handling |
+| `scenes/server-checkout.js` | ✅ Audited + Fixed | IIFE-scoped `_finalizing` flag prevents double-finalize |
+| `scenes/manager-landing.js` | ✅ Audited + Fixed | Unadjusted tip counter was always 0 (`tip_amount == null` → `!tip_adjusted`); `_wireCloseDayData` now uses `day.unadjusted_tips` from backend |
+| `scenes/close-day.js` | ✅ Audited | **Stub only** — "scene not yet built" placeholder, no logic to audit |
+
+### Admin UI — `overseer/src/`
+
+| File | Status | Changes Made |
+|------|--------|-------------|
+| `hardware/add-device-overlay.js` | ✅ Audited + Fixed | Scan log min/max-height, PRINT DEVICES / PAYMENT grouping, card reader cyan badge instead of broken KITCHEN dropdown |
+
+---
+
+## Known Issues NOT Fixed (Architectural / Deferred)
+
+| Issue | File | Reason Deferred |
+|-------|------|-----------------|
+| Day-close race: orders created between `get_open_orders()` and `DAY_CLOSED` emission are orphaned | `orders.py:close_day` | Needs app-level mutex; invasive change |
+| close_day invariant check uses synthetic zeros for voids/discounts/refunds | `orders.py` lines 1727-1731 | Intentional — documented in comment; full P&L decomposition needed |
+| Batch settlement drift returns HTTP 200 with `invariant_ok: false` | `payment_routes.py:batch_settle` | Deliberate — blocking on drift would mask the actual settlement result |
+| Refund `approved_by` is a free string, not server-verified | `payment_routes.py:process_refund` | Needs auth system (none exists yet) |
+| Auth missing on reporting endpoints (`?server_id=` leaks employee tip/labor data) | `reporting.py` | Needs auth system |
+| Mock batch close always succeeds with `total_amount = $0.00` | `mock_payment.py` | Test/dev concern; mock should track total |
+| Receipt print is fire-and-forget | `payment.js:queueReceipt` | Print queue retries handle it; toast shown on failure |
+| Per-server unadjusted tip count in manager-landing still approximate | `manager-landing.js:_wireStaffData` | Day-summary `unadjusted_tips` is now used for the gate; per-server breakdown needs server_id in the checks list |
+
+---
+
+## Files NOT YET Audited
+
+### Backend (Priority order)
+
+| File | Lines | Why It Matters |
+|------|-------|----------------|
+| `api/routes/auth.py` | 142 | PIN login, role assignment — any auth bypass here is critical |
+| `api/routes/staff.py` | 158 | Employee management, clock-in/out mutations |
+| `api/routes/server_shift.py` | 252 | Server shift management, clocked-in state |
+| `api/routes/printing.py` | 257 | Print job dispatch endpoints, receipt triggers |
+| `api/routes/sync.py` | 143 | Data sync — potential duplicate event injection |
+| `api/routes/menu.py` | 41 | Menu fetch — probably simple |
+| `api/routes/config.py` | unknown | Store config, tax rate, terminal settings |
+| `services/print_context_builder.py` | 831 | Build context for all print templates — partially audited (clock-in fix done) |
+| `printing/templates/*.py` | multiple | Kitchen ticket, guest receipt, server checkout, sales recap formatters |
+| `core/menu_projection.py` | unknown | Menu state projection |
+| `core/adapters/payment_health.py` | unknown | Device health monitoring |
+| `core/adapters/printer_manager.py` | unknown | Printer device management |
+| `reports/entomology_report.py` | unknown | Diagnostic report |
+
+### Terminal UI (Priority order)
+
+| File | Lines | Why It Matters |
+|------|-------|----------------|
+| `scenes/login.js` | 627 | PIN entry, role gating — auth surface |
+| `scenes/server-landing.js` | 652 | Server's main working view — order creation entry point |
+| `scenes/close-day-checks-viewer.js` | 997 | End-of-day checks review — large, untouched |
+| `scene-manager.js` | 552 | Core scene lifecycle — bugs here affect all scenes |
+| `order-summary.js` | 666 | Persistent order recap sidebar |
+| `components/item-recap.js` | 693 | Item recap component used in check-overview |
+| `pricing.js` | 110 | Price computation helpers |
+| `scenes/column-editor.js` | unknown | Column/table configuration |
+
+### Overseer Admin UI (Priority order)
+
+| File | Why It Matters |
+|------|----------------|
+| `sections/payroll-tips.js` | Tip payout calculations — financial |
+| `sections/labor-reports.js` | Labor cost display — uses reporting API |
+| `sections/employees.js` | Employee CRUD |
+| `sections/reporting.js` | Sales reporting display |
+| `sections/printer-setup/*.js` | Printer config modals |
+| `sections/time-attendance.js` | Clock-in/out display |
+| `services/config-push.js` | Pushes config to terminals |
+
+---
+
+## Priority Probe Targets for Next Session
+
+1. **`auth.py`** — Highest risk. PIN-based login with no rate limiting or lockout is the most likely critical-severity find.
+2. **`server_shift.py` + `staff.py`** — Clock-in/out mutations; any double-clock-in or missing guard could corrupt labor reports.
+3. **`printing.py`** — Receipt dispatch; look for fire-and-forget patterns and missing idempotency.
+4. **`scene-manager.js`** — Core; any lifecycle bug (unmount not called, listener leak, interrupt stack corruption) affects every scene.
+5. **`login.js`** — PIN entry; check for: PIN sent as plaintext, no lockout after N failures, role bypass.
+6. **`server-landing.js`** — Order creation entry point; look for double-order creation, missing error handling on new-order POST.
+7. **`sync.py`** — Check for event injection or replay vulnerabilities.
+8. **`close-day-checks-viewer.js`** — Large, end-of-day flow; likely has UI bugs similar to what we found elsewhere.
+
+---
+
+## Probe Methodology
+
+**For each file:**
+1. Read the full file
+2. Look for: unguarded fetch/await, missing `if (!r.ok)`, silent catch blocks, duplicate-submission vectors, financial math that isn't `money_round()`-wrapped, hardcoded IDs, race conditions between async calls
+3. Check event emissions: does every mutation emit to the ledger? Are events idempotency-keyed where needed?
+4. For terminal scenes: check `unmount` function clears all timers/listeners; check scene state variables are reset on re-mount
+
+**Red flag patterns found repeatedly:**
+- `fetch(...).then(r => r.json())` with no `.ok` check → silent failure
+- `p.tip_amount == null` style checks on fields that are always initialized
+- Hardcoded `"terminal_01"` where `settings.terminal_id` should be used
+- `height: 90px` fixed heights on log/scroll areas that overflow
+- Missing `idempotency_key` on events that operators might trigger twice
+- `try { ... } catch {}` that swallows errors without logging
+
+---
+
+## Commit History (Recent)
+
+```
+e1168d3 Fix discount precision gate, tip_adjusted tracking, and unadjusted tip counter
+3f1d4fd Fix four payment flow vulnerabilities found during probe
+c9a3035 overseer: group scan results by type, expand log area, card reader badge
+a5f223e check-overview: always render Mode C layout so recap shows at every seat count
+...
+```
+
+**Working branch:** `claude/kindpos-network-setup-pzz50` (mirrors `main`)
+**Push command:** `git push origin main && git push --force origin main:claude/kindpos-network-setup-pzz50`
