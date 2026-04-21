@@ -25,7 +25,6 @@ import { loadTimeData }               from './data/sample-timedata.js';
 import { loadPayrollData }            from './data/sample-payroll.js';
 import { loadShiftData }              from './data/sample-shifts.js';
 
-import { registerSalesReports }       from './sections/reporting.js';
 import { registerMenuImport }         from './sections/menu-import.js';
 import { registerEmployeeSections }   from './sections/employees.js';
 import { registerSystemTesting }      from './sections/system-testing.js';
@@ -50,6 +49,7 @@ import { buildTimeAttendanceScene, cleanupTimeAttendance } from './sections/time
 import { buildShiftConfigScene,    cleanupShiftConfig    } from './sections/shift-config.js';
 import { buildTipoutRulesScene,    cleanupTipoutRules    } from './sections/tipout-rules.js';
 import { buildHomeScene,           cleanupHome           } from './sections/home.js';
+import { buildSalesReportsScene,  cleanupSalesReports   } from './sections/sales-reports.js';
 import { buildStaffRolesScene,    cleanupStaffRoles     } from './sections/staff-roles.js';
 import { buildPayrollAttendanceScene, cleanupPayrollAttendance } from './sections/payroll-attendance.js';
 
@@ -300,7 +300,6 @@ function registerAllSections() {
     const adapter = createLegacyAdapter();
 
     // Register-pattern sections (use adapter to bridge old format)
-    registerSalesReports(adapter);
     registerMenuImport(adapter);
     registerEmployeeSections(adapter);
     registerSystemTesting(adapter);
@@ -338,6 +337,11 @@ function registerAllSections() {
         name: 'home',
         mount: (container) => buildHomeScene(container),
         unmount: () => cleanupHome(),
+    });
+    SceneManager.register({
+        name: 'sales-reports',
+        mount: (container) => buildSalesReportsScene(container),
+        unmount: () => cleanupSalesReports(),
     });
     SceneManager.register({
         name: 'staff-roles',

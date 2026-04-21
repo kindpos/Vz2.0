@@ -18,6 +18,7 @@ const palette = {
   well:       '#22252a',
   gold:       '#f5a623',
   cyan:       '#22d3ee',
+  mint:       '#C6FFBB',
   green:      '#86efac',
   greenUp:    '#4ade80',
   lavender:   '#b48efa',
