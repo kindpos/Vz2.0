@@ -141,6 +141,12 @@ function fetchEmployees(signal) {
 function fetchRoles(signal) {
   return fetchJson(`/api/v1/config/roles`, signal);
 }
+// /orders/day-summary returns a per-check list with amounts and statuses,
+// which lets us derive a real check-size distribution client-side without
+// a new backend field. Today only — endpoint has no ?date= parameter.
+function fetchDaySummary(signal) {
+  return fetchJson(`/api/v1/orders/day-summary`, signal);
+}
 
 // Cross-reference employees ↔ roles into a lookup map so the servers
 // table can badge non-server rows (managers) and dim their tip%.
@@ -529,20 +535,47 @@ function renderComposition(container, week) {
   }));
 }
 
-// Parse a backend tip-bucket range like "$0-3" or "$20+" into structured
-// fields so the histogram builder has both the label AND numeric bounds
-// for marker placement.
-function parseTipBucket(b) {
-  const m = /\$(\d+)(?:-(\d+)|\+)/.exec(String(b.range || ''));
-  const count = Number(b.count) || 0;
-  if (!m) return { label: String(b.range || ''), low: 0, high: null, count };
-  const low = Number(m[1]);
-  const openEnded = m[2] == null;
-  const high = openEnded ? null : Number(m[2]);
-  return {
-    label: openEnded ? `$${low}+` : `$${low}`,
-    low, high, count,
-  };
+// ─── Check-size histogram ───────────────────────────────────────────
+// Fixed bucket schema for $0-$100+ in $10 then $20 steps. Matches the
+// presentation conventions for restaurant check-size histograms.
+const CHECK_SIZE_BUCKETS = [
+  { label: '$0',    low: 0,   high: 10  },
+  { label: '$10',   low: 10,  high: 20  },
+  { label: '$20',   low: 20,  high: 30  },
+  { label: '$30',   low: 30,  high: 40  },
+  { label: '$40',   low: 40,  high: 50  },
+  { label: '$50',   low: 50,  high: 60  },
+  { label: '$60',   low: 60,  high: 80  },
+  { label: '$80',   low: 80,  high: 100 },
+  { label: '$100+', low: 100, high: null },
+];
+
+function bucketizeCheckSizes(amounts) {
+  const buckets = CHECK_SIZE_BUCKETS.map(b => ({ ...b, count: 0 }));
+  for (const amt of amounts) {
+    const v = Number(amt);
+    if (!Number.isFinite(v) || v < 0) continue;
+    for (const b of buckets) {
+      if (b.high == null) {
+        if (v >= b.low) { b.count++; break; }
+      } else if (v >= b.low && v < b.high) {
+        b.count++; break;
+      }
+    }
+  }
+  return buckets;
+}
+
+function median(amounts) {
+  const sorted = amounts
+    .map(Number)
+    .filter(x => Number.isFinite(x) && x >= 0)
+    .sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
 }
 
 // Find the fractional bucket index that contains `value` — used to
@@ -561,27 +594,42 @@ function bucketIndexForValue(buckets, value) {
   return buckets.length - 1;
 }
 
-function renderBottomRow(container, data, roleMap) {
+function renderBottomRow(container, data, roleMap, daySummary) {
   const roles = roleMap || new Map();
   const row = regionEl(container, 'region-bottom');
   if (!row) return;
   row.innerHTML = '';
 
-  // ─── Histogram: tip distribution (stand-in for check-size distribution
-  //     which isn't exposed by /sales-summary) ──────────────────────────
-  const rawBuckets = (data.tip_buckets || []).map(parseTipBucket);
-  const avgIdx = bucketIndexForValue(rawBuckets, Number(data.tip_avg) || 0);
-  row.appendChild(buildHistogram({
-    title: 'Tip Distribution',
-    subtitle: 'Tips per check · today',
-    accent: T.mint,
-    buckets: rawBuckets,
-    barColor: T.cyan,
-    markerColor: T.gold,
-    marker: (data.tip_avg != null)
-      ? { atFractionalIndex: avgIdx, label: `AVG ${fmt(Number(data.tip_avg) || 0, { dp: 2 })}` }
-      : null,
-  }));
+  // ─── Histogram: check-size distribution (today) ─────────────────────
+  // Derived client-side from /orders/day-summary checks_list — one entry
+  // per closed check with the check total. If day-summary is unavailable
+  // the histogram shows an "unavailable" placeholder rather than falling
+  // back to a different metric.
+  const closedChecks = (daySummary && Array.isArray(daySummary.checks_list))
+    ? daySummary.checks_list.filter(c => c && c.status === 'closed')
+    : null;
+  if (closedChecks && closedChecks.length) {
+    const amounts = closedChecks.map(c => Number(c.amount) || 0);
+    const buckets = bucketizeCheckSizes(amounts);
+    const med = median(amounts);
+    const medIdx = (med != null) ? bucketIndexForValue(buckets, med) : null;
+    row.appendChild(buildHistogram({
+      title: 'Check Size Distribution',
+      subtitle: `${amounts.length} checks · today`,
+      accent: T.mint,
+      buckets,
+      barColor: T.cyan,
+      markerColor: T.gold,
+      marker: (medIdx != null)
+        ? { atFractionalIndex: medIdx, label: `MED ${fmt(med, { dp: 0 })}` }
+        : null,
+    }));
+  } else {
+    const cell = document.createElement('div');
+    cell.className = 'sales-region-empty';
+    cell.textContent = closedChecks ? 'No closed checks yet' : 'Check-size data unavailable';
+    row.appendChild(cell);
+  }
 
   // ─── Top items table ──────────────────────────────────────────────────
   const items = (data.top_items || []).slice(0, 6);
@@ -794,6 +842,11 @@ export function buildSalesReportsScene(container) {
     console.warn('[sales-reports] labor-summary unavailable:', err);
     return null;
   });
+  const daySummaryPromise = fetchDaySummary(signal).catch(err => {
+    if (err.name === 'AbortError') throw err;
+    console.warn('[sales-reports] day-summary unavailable:', err);
+    return null; // check-size histogram falls back to placeholder
+  });
   const rolesPromise = Promise.allSettled([
     fetchEmployees(signal),
     fetchRoles(signal),
@@ -815,10 +868,12 @@ export function buildSalesReportsScene(container) {
         if (!still()) return;
         renderHero(container, data, lw);
       });
-      // Bottom row (waits on roles for MGR badges)
-      rolesPromise.then(roleMap => {
+      // Bottom row — waits on roles (for MGR badges) AND on day-summary
+      // (for the check-size histogram). Each is independently optional;
+      // missing data degrades to a localized placeholder.
+      Promise.all([rolesPromise, daySummaryPromise]).then(([roleMap, ds]) => {
         if (!still()) return;
-        renderBottomRow(container, data, roleMap);
+        renderBottomRow(container, data, roleMap, ds);
       });
     })
     .catch(err => {
