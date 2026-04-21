@@ -114,6 +114,21 @@ class TipoutRule(BaseModel):
     categories: List[str] = []
 
 
+class TipPoolSchedule(BaseModel):
+    start: Optional[str] = None  # "HH:MM" 24-hour
+    end: Optional[str] = None    # "HH:MM" 24-hour
+    days: List[str] = []         # ['mon', 'tue', ...]; empty = all days
+
+
+class TipPool(BaseModel):
+    pool_id: str
+    name: str
+    role_ids: List[str] = []
+    split_method: str = "hours"  # "hours" | "even"
+    active: bool = True
+    schedule: Optional[TipPoolSchedule] = None
+
+
 # =============================================================================
 # MENU MODELS — schedule windows + special metadata added for Overseer v2.
 # =============================================================================

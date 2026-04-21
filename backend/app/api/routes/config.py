@@ -9,7 +9,7 @@ from app.core.event_ledger import EventLedger
 from app.core.events import EventType, Event, create_event, parse_event_type
 from app.models.config_events import (
     StoreConfigBundle, StoreInfo, CCProcessingRate, PendingChange,
-    Role, Employee, TipoutRule, MenuItem, MenuCategory, ModifierGroup,
+    Role, Employee, TipoutRule, TipPool, MenuItem, MenuCategory, ModifierGroup,
     Section, FloorPlanLayout, Terminal, Printer, RoutingMatrix
 )
 from app.config import settings
@@ -94,6 +94,12 @@ async def get_employees(ledger: EventLedger = Depends(get_ledger)):
 async def get_tipout(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_tipout_rules()
+
+
+@router.get("/tip_pools", response_model=List[TipPool])
+async def get_tip_pools(ledger: EventLedger = Depends(get_ledger)):
+    service = OverseerConfigService(ledger)
+    return await service.get_tip_pools()
 
 
 @router.get("/menu/categories", response_model=List[MenuCategory])

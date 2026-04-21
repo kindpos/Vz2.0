@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from app.api.dependencies import get_ledger
 from app.core.event_ledger import EventLedger
 from app.core.events import user_logged_in, user_logged_out, cash_tips_declared, EventType
@@ -40,6 +40,8 @@ class ClockInRequest(BaseModel):
     employee_id: str
     employee_name: str
     pin: Optional[str] = None
+    role: Optional[str] = None
+    pool_memberships: List[str] = []
 
 
 class ClockOutRequest(BaseModel):
@@ -71,6 +73,8 @@ async def clock_in(request: ClockInRequest, ledger: EventLedger = Depends(get_le
         terminal_id=settings.terminal_id,
         employee_id=request.employee_id,
         employee_name=request.employee_name,
+        role=request.role or "",
+        pool_memberships=request.pool_memberships,
     )
     await ledger.append(event)
     return {

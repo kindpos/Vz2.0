@@ -2,7 +2,7 @@ from typing import List, Dict, Any, Optional, Callable, TypeVar
 from app.core.event_ledger import EventLedger
 from app.core.events import EventType, Event
 from app.models.config_events import (
-    Role, Employee, TipoutRule,
+    Role, Employee, TipoutRule, TipPool,
     MenuItem, MenuCategory, ModifierGroup,
     Section, FloorPlanLayout,
     Terminal, Printer, RoutingMatrix,
@@ -116,6 +116,30 @@ class OverseerConfigService:
             else:
                 rules[rid] = TipoutRule(**payload)
         result = list(rules.values())
+        cache.set(seq, result)
+        return result
+
+    async def get_tip_pools(self) -> List[TipPool]:
+        cache = self._get_cache("tip_pools")
+        seq = await self._max_seq()
+        cached = cache.get(seq)
+        if cached is not None:
+            return cached
+
+        events = await self.ledger.get_events_by_type(EventType.TIPOUT_POOL_CREATED, limit=1000)
+        events += await self.ledger.get_events_by_type(EventType.TIPOUT_POOL_UPDATED, limit=1000)
+        events += await self.ledger.get_events_by_type(EventType.TIPOUT_POOL_DELETED, limit=1000)
+        events.sort(key=lambda x: x.sequence_number or 0)
+
+        pools = {}
+        for e in events:
+            payload = e.payload
+            pid = payload["pool_id"]
+            if e.event_type == EventType.TIPOUT_POOL_DELETED:
+                pools.pop(pid, None)
+            else:
+                pools[pid] = TipPool(**payload)
+        result = list(pools.values())
         cache.set(seq, result)
         return result
 
