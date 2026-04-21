@@ -5,14 +5,16 @@ caught in production.
 Scenario: a frontend sends `amount=$8.40` for an order whose backend
 `balance_due` is $8.00 (typical when the frontend's local TAX_RATE
 is stale vs. backend's `settings.tax_rate`). Without the guard added
-to `process_cash_payment` and `process_sale`, `p.amount` was stored
-as $8.40, while aggregation saw net=$8.00 + tax=$0.00 — tripping the
+to `process_cash_payment`, `p.amount` was stored as $8.40 while
+aggregation saw net=$8.00 + tax=$0.00 — tripping the
 tender_reconciliation invariant.
 
 These tests prove the backend guard clamps the sale at balance_due
-and routes the excess into a TIP_ADJUSTED event, so the tender
-identity (Cash+Card = Net+Tax) keeps holding even when the frontend
-sends an inflated amount.
+so the tender identity (Cash+Card = Net+Tax) keeps holding even when
+the frontend sends an inflated amount. Any overage is treated as
+customer change (not recorded on the payment) because cash tips are
+declared once at clock-out, not per-payment, and only cc tips flow
+through TIP_ADJUSTED.
 """
 
 import os
@@ -88,14 +90,14 @@ async def _seed_eight_dollar_order(ledger, order_id: str = "o_guard_01"):
 
 
 @pytest.mark.asyncio
-async def test_cash_overpayment_clamped_and_tipped(ledger):
-    """Cash $8.40 on an $8.00 order clamps sale to $8.00, banks $0.40 as tip."""
+async def test_cash_overpayment_clamped_no_tip(ledger):
+    """Cash $8.40 on an $8.00 order clamps sale to $8.00; the $0.40
+    overage is customer change and is NOT recorded on the payment."""
     order_id = await _seed_eight_dollar_order(ledger)
 
     req = CashPaymentRequest(
         order_id=order_id,
         amount=Decimal("8.40"),           # inflated by frontend's stale TAX_RATE
-        tip=Decimal("0.00"),
         payment_method="cash",
     )
     result = await process_cash_payment(req, ledger=ledger)
@@ -107,11 +109,15 @@ async def test_cash_overpayment_clamped_and_tipped(ledger):
     assert len(order.payments) == 1
     p = order.payments[0]
     assert p.amount == Decimal("8.00")     # clamped to balance_due
-    assert p.tip_amount == Decimal("0.40") # overage banked as tip
+    assert p.tip_amount == Decimal("0.00") # cash payments never carry a tip
     assert order.is_fully_paid
 
+    # No TIP_ADJUSTED event emitted on a cash payment.
+    tip_events = [e for e in events if e.event_type.name == "TIP_ADJUSTED"]
+    assert tip_events == []
+
     # The whole-day aggregation still balances: 8.00 cash == 8.00 net + 0 tax.
-    agg = _aggregate_orders([order], {p.payment_id: p.tip_amount})
+    agg = _aggregate_orders([order], {})
     tr = check_tender_reconciliation(
         cash_total=agg["cash_total"],
         card_total=agg["card_total"],
@@ -120,25 +126,24 @@ async def test_cash_overpayment_clamped_and_tipped(ledger):
     )
     assert tr.ok, tr.message
 
-    # Tips partition: $0.40 cash tip accounted for.
+    # Tips partition: no cash tips are ever recorded per-payment.
     tp = check_tips_partition(
         total_tips=agg["total_tips"],
         card_tips=agg["card_tips"],
         cash_tips=agg["cash_tips"],
     )
     assert tp.ok, tp.message
-    assert agg["cash_tips"] == Decimal("0.40")
+    assert agg["cash_tips"] == Decimal("0.00")
 
 
 @pytest.mark.asyncio
 async def test_cash_exact_payment_records_no_tip(ledger):
-    """Control: paying exactly the balance_due banks no implicit tip."""
+    """Control: paying exactly the balance_due records no tip."""
     order_id = await _seed_eight_dollar_order(ledger, order_id="o_guard_02")
 
     req = CashPaymentRequest(
         order_id=order_id,
         amount=Decimal("8.00"),
-        tip=Decimal("0.00"),
         payment_method="cash",
     )
     await process_cash_payment(req, ledger=ledger)
@@ -150,26 +155,6 @@ async def test_cash_exact_payment_records_no_tip(ledger):
     assert p.tip_amount == Decimal("0.00")
 
 
-@pytest.mark.asyncio
-async def test_cash_explicit_tip_and_overage_combine(ledger):
-    """Explicit `tip=0.50` plus $0.40 overage = $0.90 total tip on that payment."""
-    order_id = await _seed_eight_dollar_order(ledger, order_id="o_guard_03")
-
-    req = CashPaymentRequest(
-        order_id=order_id,
-        amount=Decimal("8.40"),          # $0.40 overage
-        tip=Decimal("0.50"),             # explicit tip on top
-        payment_method="cash",
-    )
-    await process_cash_payment(req, ledger=ledger)
-
-    events = await ledger.get_events_by_correlation(order_id)
-    order = project_order(events)
-    p = order.payments[0]
-    assert p.amount == Decimal("8.00")
-    assert p.tip_amount == Decimal("0.90")
-
-
 # ── dual-pricing interaction ────────────────────────────────────────────────
 
 class TestDualPricingGuard:
@@ -178,7 +163,8 @@ class TestDualPricingGuard:
     the two mechanisms compose correctly in every corner:
 
     - customer pays exactly the cash price (discount absorbs the gap)
-    - customer pays the card price in cash (over-tendered — overage → tip)
+    - customer pays the card price in cash (no discount triggered)
+    - customer pays above the card price (clamp; overage is customer change)
     - customer pays less than cash price (partial payment, no overpayment)
 
     Backend invariants must hold for the full day aggregation in each.
@@ -219,7 +205,6 @@ class TestDualPricingGuard:
         req = CashPaymentRequest(
             order_id=order_id,
             amount=Decimal("9.60"),
-            tip=Decimal("0.00"),
             payment_method="cash",
         )
         await process_cash_payment(req, ledger=ledger)
@@ -254,7 +239,6 @@ class TestDualPricingGuard:
         req = CashPaymentRequest(
             order_id=order_id,
             amount=Decimal("10.00"),
-            tip=Decimal("0.00"),
             payment_method="cash",
         )
         await process_cash_payment(req, ledger=ledger)
@@ -270,15 +254,15 @@ class TestDualPricingGuard:
     @pytest.mark.asyncio
     async def test_cash_overpaid_above_card_price(self, ledger):
         """Customer hands $11 cash on a $10 order — over even the card
-        price. No dual-pricing discount (naive_discount would be negative),
-        but the clamp routes the $1 overage into tip so the tender identity
-        still holds."""
+        price. No dual-pricing discount (naive_discount would be
+        negative), and the clamp caps the sale at $10. The $1 overage
+        is customer change — it is NOT recorded on the payment or as
+        a tip (cash tips are declared at clock-out)."""
         order_id = await self._seed_ten_dollar_order(ledger, "o_dp_02b")
 
         req = CashPaymentRequest(
             order_id=order_id,
             amount=Decimal("11.00"),
-            tip=Decimal("0.00"),
             payment_method="cash",
         )
         await process_cash_payment(req, ledger=ledger)
@@ -287,11 +271,11 @@ class TestDualPricingGuard:
         order = project_order(events)
         p = order.payments[0]
         assert p.amount == Decimal("10.00")       # clamped to balance_due
-        assert p.tip_amount == Decimal("1.00")    # overage → tip
+        assert p.tip_amount == Decimal("0.00")    # overage is customer change
         assert order.discount_total == Decimal("0.00")
         assert order.is_fully_paid
 
-        agg = _aggregate_orders([order], {p.payment_id: p.tip_amount})
+        agg = _aggregate_orders([order], {})
         tr = check_tender_reconciliation(
             cash_total=agg["cash_total"],
             card_total=agg["card_total"],
@@ -305,6 +289,7 @@ class TestDualPricingGuard:
             cash_tips=agg["cash_tips"],
         )
         assert tp.ok, tp.message
+        assert agg["cash_tips"] == Decimal("0.00")
 
     @pytest.mark.asyncio
     async def test_cash_underpaid_partial(self, ledger):
@@ -316,7 +301,6 @@ class TestDualPricingGuard:
         req = CashPaymentRequest(
             order_id=order_id,
             amount=Decimal("5.00"),
-            tip=Decimal("0.00"),
             payment_method="cash",
         )
         await process_cash_payment(req, ledger=ledger)

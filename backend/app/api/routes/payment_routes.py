@@ -303,7 +303,6 @@ async def process_sale(
 class CashPaymentRequest(BaseModel):
     order_id: str
     amount: Decimal
-    tip: Decimal = Decimal("0.00")
     payment_method: str = "cash"
     seat_numbers: Optional[list[int]] = None
 
@@ -313,9 +312,12 @@ async def process_cash_payment(
     request: CashPaymentRequest,
     ledger: EventLedger = Depends(get_ledger),
 ):
-    """Process a cash payment — immediately confirmed, closes order if fully paid."""
-    if request.tip < 0:
-        raise HTTPException(status_code=400, detail="Tip amount cannot be negative")
+    """Process a cash payment — immediately confirmed, closes order if fully paid.
+
+    No tip is recorded at the payment level. Cash tips are declared once
+    at clock-out via the server-checkout flow; only credit-card tips go
+    through TIP_ADJUSTED.
+    """
     # Get current order state
     events = await ledger.get_events_by_correlation(request.order_id)
     if not events:
@@ -364,20 +366,21 @@ async def process_cash_payment(
 
     payment_id = f"pay_{uuid.uuid4().hex[:8]}"
 
-    # Defense in depth: clamp sale_amount at balance_due and route any
-    # excess into the payment's tip. Cash payments are already clamped
-    # client-side by `Math.min(enteredAmount, remaining)`, but `remaining`
-    # relies on the frontend's own tax math — the tender identity stays
-    # safe even when those disagree.
+    # Defense in depth: clamp sale_amount at balance_due. Cash payments
+    # are already clamped client-side by `Math.min(enteredAmount,
+    # remaining)`, but `remaining` relies on the frontend's own tax math.
+    # The tender identity stays safe because we clamp the sale to the
+    # backend's balance_due — any overage is the customer's change and
+    # is NOT recorded on the payment (cash tips are declared at
+    # clock-out, not per-payment).
     balance = order.balance_due
     req_amount = Decimal(str(request.amount))
-    overage_as_tip = Decimal("0.00")
     if req_amount > balance + Decimal("0.005"):
-        overage_as_tip = money_round(req_amount - balance)
         logging.getLogger("kindpos.payment").warning(
             "Cash amount $%s exceeded balance_due $%s on %s — "
-            "clamping sale to balance_due and routing $%s to tip.",
-            str(req_amount), str(balance), request.order_id, str(overage_as_tip),
+            "clamping sale to balance_due; overage $%s is customer change.",
+            str(req_amount), str(balance), request.order_id,
+            str(money_round(req_amount - balance)),
         )
         sale_amount = money_round(balance)
     else:
@@ -406,18 +409,8 @@ async def process_cash_payment(
     )
     await ledger.append(confirm_evt)
 
-    # Record tip: request.tip plus any overage we rerouted from the
-    # sale leg. Emit a single TIP_ADJUSTED event so the projection's
-    # last-write-wins semantics remain intact.
-    total_tip = money_round(Decimal(str(request.tip or 0)) + overage_as_tip)
-    if total_tip > Decimal("0"):
-        tip_evt = tip_adjusted(
-            terminal_id=settings.terminal_id,
-            order_id=request.order_id,
-            payment_id=payment_id,
-            tip_amount=total_tip,
-        )
-        await ledger.append(tip_evt)
+    # No TIP_ADJUSTED emission on cash: cash tips are declared once at
+    # clock-out, and only credit-card tips get adjusted per-payment.
 
     # Re-project to check if fully paid
     events = await ledger.get_events_by_correlation(request.order_id)
@@ -437,7 +430,6 @@ async def process_cash_payment(
         "payment_id": payment_id,
         "order_id": request.order_id,
         "amount": sale_amount,
-        "tip": money_round(request.tip),
     }
 
 

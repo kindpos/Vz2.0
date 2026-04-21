@@ -337,8 +337,11 @@ async def test_cash_payment_route(client, ledger):
 
 
 @pytest.mark.asyncio
-async def test_cash_payment_with_tip(client, ledger):
-    """Cash payment with tip emits TIP_ADJUSTED event."""
+async def test_cash_payment_never_emits_tip_adjusted(client, ledger):
+    """Cash payments never emit TIP_ADJUSTED: cash tips are declared at
+    clock-out, and only credit-card tips flow through per-payment tip
+    adjustments. Any extra `tip` field in the request body is ignored
+    by the Pydantic model and not echoed in the response."""
     resp = await client.post("/api/v1/orders", json={"table": "T-2"})
     oid = resp.json()["order_id"]
     await client.post(f"/api/v1/orders/{oid}/items", json={
@@ -347,15 +350,14 @@ async def test_cash_payment_with_tip(client, ledger):
     await client.post(f"/api/v1/orders/{oid}/send")
 
     resp = await client.post("/api/v1/payments/cash", json={
-        "order_id": oid, "amount": 10.70, "tip": 3.00,
+        "order_id": oid, "amount": 10.70,
     })
     assert resp.status_code == 200
-    assert float(resp.json()["tip"]) == 3.00
+    assert "tip" not in resp.json()
 
     events = await ledger.get_events_by_correlation(oid)
     tip_evts = [e for e in events if e.event_type == EventType.TIP_ADJUSTED]
-    assert len(tip_evts) == 1
-    assert tip_evts[0].payload["tip_amount"] == 3.00
+    assert tip_evts == []
 
 
 @pytest.mark.asyncio

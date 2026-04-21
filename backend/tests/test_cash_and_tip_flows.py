@@ -90,29 +90,26 @@ async def test_cash_payment_success(ledger):
     assert f"{confirmed[0].payload['amount']:.2f}" == "25.50"
 
 @pytest.mark.asyncio
-async def test_cash_payment_with_tip(ledger):
-    """Verify that including a tip in the cash payment emits a TIP_ADJUSTED event."""
+async def test_cash_payment_never_emits_tip_adjusted(ledger):
+    """Cash payments never emit TIP_ADJUSTED: cash tips are declared at
+    clock-out, and only credit-card tips flow through per-payment tip
+    adjustments. The CashPaymentRequest model no longer accepts a `tip`
+    field, so this test verifies the ledger-level guarantee."""
     terminal_id = "T-01"
     order_id = "order-cash-tip-01"
     amount = Decimal("20.00")
-    tip = Decimal("5.00")
-    
+
     await create_simple_order(ledger, terminal_id, order_id, amount)
-    
-    request = CashPaymentRequest(order_id=order_id, amount=amount, tip=tip)
+
+    request = CashPaymentRequest(order_id=order_id, amount=amount)
     response = await process_cash_payment(request, ledger)
-    
+
     assert response["success"] is True
-    
+
     events = await ledger.get_events_by_correlation(order_id)
-    
-    # Check for tip adjusted event
     tips = [e for e in events if e.event_type == EventType.TIP_ADJUSTED]
-    assert len(tips) == 1
-    assert Decimal(str(tips[0].payload["tip_amount"])) == Decimal("5.00")
-    assert tips[0].payload["payment_id"] == response["payment_id"]
-    
-    # Verify initiated amount is sale only (tip tracked separately via TIP_ADJUSTED)
+    assert tips == []
+
     initiated = [e for e in events if e.event_type == EventType.PAYMENT_INITIATED][0]
     assert Decimal(str(initiated.payload["amount"])) == Decimal("20.00")
 
@@ -245,13 +242,14 @@ async def test_precision_gate_2dp(ledger):
     order_id2 = "order-precision-02"
     await create_simple_order(ledger, terminal_id, order_id2, Decimal("10.33"))
 
-    request = CashPaymentRequest(order_id=order_id2, amount=Decimal("10.33"), tip=Decimal("2.67"))
+    request = CashPaymentRequest(order_id=order_id2, amount=Decimal("10.33"))
     response = await process_cash_payment(request, ledger)
     assert Decimal(str(response["amount"])) == Decimal("10.33")
 
     events = await ledger.get_events_by_correlation(order_id2)
+    # No TIP_ADJUSTED on cash payments (cash tips are declared at clock-out)
     tip_evts = [e for e in events if e.event_type == EventType.TIP_ADJUSTED]
-    assert tip_evts[0].payload["tip_amount"] == 2.67
+    assert tip_evts == []
 
     init_evts = [e for e in events if e.event_type == EventType.PAYMENT_INITIATED]
     assert init_evts[0].payload["amount"] == 10.33
