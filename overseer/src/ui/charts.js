@@ -1507,7 +1507,7 @@ export function buildMiniTable(opts) {
       const rowEl = document.createElement('div');
       rowEl.style.cssText = `
         ${baseRowCss}
-        border-bottom: 1px solid ${withAlpha('#ffffff', 0.04)};
+        border-bottom: 1px solid ${withAlpha(T.text, 0.04)};
       `;
       for (const col of columns) {
         const cellData = col.cell ? col.cell(row) : { text: '' };
