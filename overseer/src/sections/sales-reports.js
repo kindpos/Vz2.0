@@ -54,6 +54,46 @@ function todayLabel() {
   return `${days[d.getDay()]} · ${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
+// "This week · Apr 15 – Apr 21, 2026" — 7-day window ending today.
+function weekRangeLabel() {
+  const end   = new Date();
+  const start = new Date(); start.setDate(end.getDate() - 6);
+  const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const part = (d) => `${m[d.getMonth()]} ${d.getDate()}`;
+  return `This week · ${part(start)} – ${part(end)}, ${end.getFullYear()}`;
+}
+
+// ─── Weekly aggregation helpers ─────────────────────────────────────
+// A week is an array of { date, data, error } in oldest-first order.
+
+// Per-day top-level field (e.g. net_sales, card_total). Zero for days
+// whose fetch failed.
+function weekField(week, field) {
+  return week.map(d => d.data ? (Number(d.data[field]) || 0) : 0);
+}
+
+// Per-day sum of a field inside hourly_sales (food / drink / other).
+function weekHourlyFieldSum(week, field) {
+  return week.map(d => {
+    if (!d.data || !Array.isArray(d.data.hourly_sales)) return 0;
+    return d.data.hourly_sales.reduce((s, h) => s + (Number(h[field]) || 0), 0);
+  });
+}
+
+// Single-letter weekday labels for the X axis ("M T W T F S S" …).
+// Uses the date string the fetch was issued for (not data.date) so
+// gaps in the response don't shift the labels.
+function weekdayLabels(week) {
+  const letters = ['S','M','T','W','T','F','S'];
+  return week.map(d => {
+    const dt = new Date(`${d.date}T00:00:00`);
+    return Number.isFinite(dt.getTime()) ? letters[dt.getDay()] : '';
+  });
+}
+
+// Sum an array (handy for tender totals across the week).
+function sumArr(arr) { return arr.reduce((s, x) => s + (Number(x) || 0), 0); }
+
 // Format an hour-of-day integer (0..23) as a short ampm label.
 function formatHour(h) {
   const n = Number(h);
@@ -77,8 +117,20 @@ function fetchSummary(signal) {
 function fetchLastWeekSummary(signal) {
   return fetchJson(`/api/v1/reports/sales-summary?date=${daysAgo(7)}`, signal);
 }
-function fetchHourlyCompare(signal) {
-  return fetchJson(`/api/v1/reports/hourly-compare?date=${today()}`, signal);
+
+// 7 parallel fetches: today, today-1, ..., today-6.
+// Returns an array of { date, data, error } in oldest-first order.
+// Individual failures do not reject the outer promise.
+function fetchWeek(signal) {
+  const dates = [];
+  for (let i = 6; i >= 0; i--) dates.push(daysAgo(i));
+  return Promise.allSettled(
+    dates.map(d => fetchJson(`/api/v1/reports/sales-summary?date=${d}`, signal))
+  ).then(results => results.map((r, i) => ({
+    date:  dates[i],
+    data:  r.status === 'fulfilled' ? r.value   : null,
+    error: r.status === 'rejected'  ? r.reason  : null,
+  })));
 }
 function fetchLabor(signal) {
   return fetchJson(`/api/v1/reports/labor-summary?date=${today()}`, signal);
@@ -277,11 +329,11 @@ function buildLayout(container) {
         <div class="sales-header-left">
           <div class="sales-eyebrow">Reporting</div>
           <div class="sales-title">Sales</div>
-          <div class="sales-subtitle">Today's revenue, covers, and check averages</div>
+          <div class="sales-subtitle">Weekly revenue, covers, and check averages</div>
         </div>
         <div class="sales-toolbar">
           <div class="sales-chip sales-chip-range" role="button" aria-disabled="true">
-            <span>${todayLabel()}</span>
+            <span>${weekRangeLabel()}</span>
             <span class="sales-chip-caret">▾</span>
           </div>
           <div class="sales-chip sales-chip-compare" role="button" aria-disabled="true">
@@ -451,34 +503,28 @@ function renderHero(container, data, lastWeek) {
   }));
 }
 
-function renderComposition(container, data) {
+function renderComposition(container, week) {
   const row = regionEl(container, 'region-composition');
   if (!row) return;
   row.innerHTML = '';
 
-  const hourly = data.hourly_sales || [];
-  if (!hourly.length) {
+  if (!week || !week.length) {
     const cell = document.createElement('div');
     cell.className = 'sales-region-empty';
-    cell.textContent = 'No hourly data';
+    cell.textContent = 'No weekly data';
     row.appendChild(cell);
     return;
   }
 
-  const xLabels = hourly.map(h => String(h.hour));
-  const food  = hourly.map(h => Number(h.food)  || 0);
-  const drink = hourly.map(h => Number(h.drink) || 0);
-  const other = hourly.map(h => Number(h.other) || 0);
-
   row.appendChild(buildStackedArea({
     title: 'Revenue Composition',
-    subtitle: 'Hourly net by category',
+    subtitle: 'Daily net by category · this week',
     accent: T.mint,
-    xLabels,
+    xLabels: weekdayLabels(week),
     layers: [
-      { name: 'Food',  values: food,  color: T.cyan     },
-      { name: 'Drink', values: drink, color: T.gold     },
-      { name: 'Other', values: other, color: T.lavender },
+      { name: 'Food',  values: weekHourlyFieldSum(week, 'food'),  color: T.cyan     },
+      { name: 'Drink', values: weekHourlyFieldSum(week, 'drink'), color: T.gold     },
+      { name: 'Other', values: weekHourlyFieldSum(week, 'other'), color: T.lavender },
     ],
   }));
 }
@@ -618,75 +664,83 @@ function renderBottomRow(container, data, roleMap) {
   }));
 }
 
-function renderTenderHeatmap(container, data) {
+function renderTenderHeatmap(container, { today, week }) {
   const row = regionEl(container, 'region-tender-heatmap');
   if (!row) return;
   row.innerHTML = '';
 
-  // Tender mix — today's cash vs card from sales-summary
-  row.appendChild(buildTenderBar({
-    title: 'Tender Mix',
-    subtitle: 'Today · cash vs card',
-    accent: T.mint,
-    segments: [
-      {
-        label: 'Card',
-        amount: Number(data.card_total) || 0,
-        count:  Number(data.card_count) || 0,
-        color:  T.cyan,
-      },
-      {
-        label: 'Cash',
-        amount: Number(data.cash_total) || 0,
-        count:  Number(data.cash_count) || 0,
-        color:  T.gold,
-      },
-    ],
-  }));
-
-  // Heatmap — 7 days × hours of check counts from peak_hours
-  const ph = data.peak_hours || [];
-  const rowLabels = ph.map(r => r.day);
-  const hourSet = new Set();
-  for (const r of ph) {
-    for (const h of (r.hours || [])) hourSet.add(Number(h.hour));
+  // Tender mix — this week's total cash vs card (7-day aggregate)
+  if (week && week.length) {
+    const cardTotal = sumArr(weekField(week, 'card_total'));
+    const cashTotal = sumArr(weekField(week, 'cash_total'));
+    const cardCount = sumArr(weekField(week, 'card_count'));
+    const cashCount = sumArr(weekField(week, 'cash_count'));
+    row.appendChild(buildTenderBar({
+      title: 'Tender Mix',
+      subtitle: 'This week · cash vs card',
+      accent: T.mint,
+      segments: [
+        { label: 'Card', amount: cardTotal, count: cardCount, color: T.cyan },
+        { label: 'Cash', amount: cashTotal, count: cashCount, color: T.gold },
+      ],
+    }));
+  } else {
+    const cell = document.createElement('div');
+    cell.className = 'sales-region-empty';
+    cell.textContent = 'Tender data unavailable';
+    row.appendChild(cell);
   }
-  const hours = Array.from(hourSet).sort((a, b) => a - b);
-  const colLabels = hours.map(formatHour);
-  const matrix = ph.map(r => {
-    const byHour = new Map((r.hours || []).map(h => [Number(h.hour), Number(h.value) || 0]));
-    return hours.map(h => byHour.get(h) || 0);
-  });
 
-  row.appendChild(buildHeatmap({
-    title: 'Peak Hours',
-    subtitle: 'Covers by day × hour · 7-day window',
-    accent: T.mint,
-    rowLabels,
-    colLabels,
-    matrix,
-    formatValue: (n) => `${Math.round(n)} covers`,
-  }));
+  // Heatmap — 7 days × hours of check counts from today's peak_hours.
+  // peak_hours is itself a rolling 7-day window from the backend.
+  if (today) {
+    const ph = today.peak_hours || [];
+    const rowLabels = ph.map(r => r.day);
+    const hourSet = new Set();
+    for (const r of ph) {
+      for (const h of (r.hours || [])) hourSet.add(Number(h.hour));
+    }
+    const hours = Array.from(hourSet).sort((a, b) => a - b);
+    const colLabels = hours.map(formatHour);
+    const matrix = ph.map(r => {
+      const byHour = new Map((r.hours || []).map(h => [Number(h.hour), Number(h.value) || 0]));
+      return hours.map(h => byHour.get(h) || 0);
+    });
+
+    row.appendChild(buildHeatmap({
+      title: 'Peak Hours',
+      subtitle: 'Covers by day × hour · 7-day window',
+      accent: T.mint,
+      rowLabels,
+      colLabels,
+      matrix,
+      formatValue: (n) => `${Math.round(n)} covers`,
+    }));
+  } else {
+    const cell = document.createElement('div');
+    cell.className = 'sales-region-empty';
+    cell.textContent = 'Heatmap data unavailable';
+    row.appendChild(cell);
+  }
 }
 
-function renderTrendCob(container, { hourly, labor }) {
+function renderTrendCob(container, { week, labor }) {
   const row = regionEl(container, 'region-trend-cob');
   if (!row) return;
   row.innerHTML = '';
 
-  // Trend line card
-  if (hourly) {
-    const xLabels = (hourly.today || []).map(h => h.hour);
-    const todayVals = (hourly.today || []).map(h => Number(h.net_sales) || 0);
-    const lastWeekVals = (hourly.last_week || []).map(h => Number(h.net_sales) || 0);
+  // Weekly trend line card — daily net sales for this 7-day window.
+  // Peak day (highest net) gets the gold glow via buildLineCard's
+  // default peakGlow logic.
+  if (week && week.length) {
+    const netByDay = weekField(week, 'net_sales');
     row.appendChild(buildLineCard({
-      title: 'Hourly Trend',
-      subtitle: 'Today vs same weekday last week',
+      title: 'Weekly Trend',
+      subtitle: 'Daily net sales · this week',
       accent: T.mint,
-      xLabels,
+      xLabels: weekdayLabels(week),
       series: [
-        { name: 'Today',     values: todayVals,    color: T.cyan,     markers: true,  dashed: false },
-        { name: 'Last week', values: lastWeekVals, color: T.lavender, markers: false, dashed: true  },
+        { name: 'This week', values: netByDay, color: T.cyan, markers: true, dashed: false },
       ],
     }));
   } else {
@@ -722,14 +776,23 @@ export function buildSalesReportsScene(container) {
 
   // All region fetches run in parallel. Each region renders as soon
   // as the data it depends on arrives — no region blocks on another.
-  //   - sales-summary (today)    → composition, tender/heatmap, histogram, top-items
-  //   - sales-summary (today-7d) → hero deltas (waits on today too)
-  //   - employees + roles        → MGR badges on top-servers (waits on today too)
+  //   - sales-summary (today)    → heatmap (peak_hours), bottom row
+  //                                (histogram, top items, top servers)
+  //   - sales-summary × 7 days   → weekly trend, composition, tender mix
+  //   - sales-summary (today-7d) → hero deltas (waits on today)
+  //   - labor-summary (today)    → COB gauge
+  //   - employees + roles        → MGR badge on top-servers
   const todayPromise    = fetchSummary(signal);
+  const weekPromise     = fetchWeek(signal);  // Promise<[{date,data,error},...]>
   const lastWeekPromise = fetchLastWeekSummary(signal).catch(err => {
     if (err.name === 'AbortError') throw err;
     console.warn('[sales-reports] last-week summary unavailable:', err);
-    return null; // hero renders without deltas
+    return null;
+  });
+  const laborPromise = fetchLabor(signal).catch(err => {
+    if (err.name === 'AbortError') throw err;
+    console.warn('[sales-reports] labor-summary unavailable:', err);
+    return null;
   });
   const rolesPromise = Promise.allSettled([
     fetchEmployees(signal),
@@ -743,15 +806,16 @@ export function buildSalesReportsScene(container) {
     return buildRoleMap(employees, roles);
   });
 
+  // Today-only renders: kick off as soon as today lands.
   todayPromise
     .then(data => {
       if (!still()) return;
-      renderComposition(container, data);
-      renderTenderHeatmap(container, data);
+      // Hero (waits on last-week for deltas)
       lastWeekPromise.then(lw => {
         if (!still()) return;
         renderHero(container, data, lw);
       });
+      // Bottom row (waits on roles for MGR badges)
       rolesPromise.then(roleMap => {
         if (!still()) return;
         renderBottomRow(container, data, roleMap);
@@ -761,25 +825,23 @@ export function buildSalesReportsScene(container) {
       if (err.name === 'AbortError') return;
       console.error('[sales-reports] sales-summary error:', err);
       if (!still()) return;
-      renderRegionError(regionEl(container, 'region-hero'),            err, { cells: 4 });
-      renderRegionError(regionEl(container, 'region-composition'),     err, { cells: 1 });
-      renderRegionError(regionEl(container, 'region-tender-heatmap'),  err, { cells: 2 });
-      renderRegionError(regionEl(container, 'region-bottom'),          err, { cells: 3 });
+      renderRegionError(regionEl(container, 'region-hero'),   err, { cells: 4 });
+      renderRegionError(regionEl(container, 'region-bottom'), err, { cells: 3 });
     });
 
-  // Trend + COB row — hourly-compare + labor-summary, rendered together
-  // once both settle (either success or failure). Either source being
-  // unavailable shows the individual card's "unavailable" placeholder.
-  Promise.allSettled([fetchHourlyCompare(signal), fetchLabor(signal)])
-    .then(([hourlyRes, laborRes]) => {
-      if (!still()) return;
-      if (signal.aborted) return;
-      const hourly = hourlyRes.status === 'fulfilled' ? hourlyRes.value : null;
-      const labor  = laborRes.status  === 'fulfilled' ? laborRes.value  : null;
-      if (hourlyRes.status === 'rejected') console.error('[sales-reports] hourly-compare error:', hourlyRes.reason);
-      if (laborRes.status === 'rejected')  console.error('[sales-reports] labor-summary error:', laborRes.reason);
-      renderTrendCob(container, { hourly, labor });
-    });
+  // Weekly + today + labor renders. Heatmap needs today.peak_hours; the
+  // tender bar uses week-aggregated card_total/cash_total; trend uses
+  // weekly daily net; composition uses weekly daily food/drink/other.
+  Promise.all([
+    todayPromise.catch(() => null),
+    weekPromise,
+    laborPromise,
+  ]).then(([today, week, labor]) => {
+    if (!still()) return;
+    renderTrendCob(container, { week, labor });
+    renderComposition(container, week);
+    renderTenderHeatmap(container, { today, week });
+  });
 }
 
 export function cleanupSalesReports() {
