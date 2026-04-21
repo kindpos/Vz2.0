@@ -4,7 +4,7 @@ KINDpos Configuration
 Central configuration management using environment variables.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import os
 
@@ -51,9 +51,7 @@ class Settings(BaseSettings):
     # the API call failing. pytest flips this to True via conftest.
     strict_invariants: bool = False
 
-    class Config:
-        env_file = ".env"
-        env_prefix = "KINDPOS_"
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="KINDPOS_")
 
 
 # Global settings instance

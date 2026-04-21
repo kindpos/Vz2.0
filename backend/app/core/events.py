@@ -9,7 +9,7 @@ for creating properly structured events.
 from enum import Enum
 from datetime import datetime, timezone
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 import uuid
 import hashlib
 import json
@@ -270,8 +270,7 @@ class Event(BaseModel):
     correlation_id: Optional[str] = None  # Links related events
     idempotency_key: Optional[str] = None  # Prevents duplicate writes
 
-    class Config:
-        frozen = True  # Make immutable after creation
+    model_config = ConfigDict(frozen=True)
 
     def compute_checksum(self, previous_checksum: str = "") -> str:
         """

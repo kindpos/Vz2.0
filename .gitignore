@@ -9,6 +9,12 @@ backend/data/test_*.db
 backend/data/test_*.db-shm
 backend/data/test_*.db-wal
 
+# Runtime event ledger — recreated on app/test startup. Previously
+# tracked but every test run mutated the blob, producing no-op diffs.
+backend/data/event_ledger.db
+backend/data/event_ledger.db-shm
+backend/data/event_ledger.db-wal
+
 # Virtualenvs & editor state
 .venv/
 venv/
