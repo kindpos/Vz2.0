@@ -9,6 +9,7 @@ import threading
 import json
 import logging
 import os
+import re
 import socket
 import subprocess
 import urllib.parse
@@ -28,6 +29,8 @@ from ...config import settings
 logger = logging.getLogger("kindpos.hardware")
 
 router = APIRouter(prefix="/hardware", tags=["hardware"])
+
+_MAC_RE = re.compile(r'^([0-9a-fA-F]{1,2}[:\-]){5}[0-9a-fA-F]{1,2}$')
 
 # ΓöÇΓöÇ DB path ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 HARDWARE_DB_PATH = os.path.join(
@@ -174,9 +177,10 @@ def _get_arp_hosts(prefix: str) -> List[dict]:
                 stripped = part.strip('()')
                 if stripped.startswith(prefix + '.') and stripped.count('.') == 3:
                     ip = stripped
-                # Match MAC address (xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx)
-                if len(part) == 17 and (':' in part or '-' in part):
-                    mac = part.replace('-', ':').upper()
+                # Match MAC address — regex handles shortened octets (e.g. 1:2:3:4:5:6)
+                if _MAC_RE.match(part):
+                    octets = part.replace('-', ':').upper().split(':')
+                    mac = ':'.join(o.zfill(2) for o in octets)
             if ip and mac:
                 # Skip broadcast and incomplete entries
                 if mac in ('FF:FF:FF:FF:FF:FF', '00:00:00:00:00:00'):
@@ -197,8 +201,9 @@ def _get_mac(ip: str) -> Optional[str]:
             for line in out.splitlines():
                 if ip in line:
                     for part in line.split():
-                        if len(part) == 17 and (':' in part or '-' in part):
-                            return part.replace('-', ':').upper()
+                        if _MAC_RE.match(part):
+                            octets = part.replace('-', ':').upper().split(':')
+                            return ':'.join(o.zfill(2) for o in octets)
         except Exception:
             continue
     return None
@@ -656,10 +661,9 @@ class TestConnectionRequest(BaseModel):
 async def test_connection(req: TestConnectionRequest):
     """Test raw TCP connectivity to an IP:port."""
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(req.timeout)
-        s.connect((req.ip, req.port))
-        s.close()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(req.timeout)
+            s.connect((req.ip, req.port))
         status = "online"
     except (socket.timeout, ConnectionRefusedError, OSError):
         status = "unreachable"

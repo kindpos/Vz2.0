@@ -17,6 +17,7 @@ from .templates.guest_receipt import GuestReceiptTemplate
 from .templates.kitchen_ticket import KitchenTicketTemplate
 from .templates.clock_hours import ClockHoursTemplate
 from .templates.sales_recap import SalesRecapTemplate
+from .templates.server_checkout import ServerCheckoutTemplate
 
 logger = logging.getLogger("kindpos.printing.dispatcher")
 
@@ -83,12 +84,16 @@ class PrintDispatcher:
             "sales_recap":    SalesRecapTemplate(
                 paper_width=PAPER_WIDTH_80MM, chars_per_line=RECEIPT_CHARS_PER_LINE,
             ),
-            "server_checkout": None,  # loaded lazily if needed
-        }
-        self._templates_kitchen = {
-            "kitchen_ticket": KitchenTicketTemplate(
-                paper_width=PAPER_WIDTH_80MM, chars_per_line=KITCHEN_CHARS_PER_LINE,
+            "server_checkout": ServerCheckoutTemplate(
+                paper_width=PAPER_WIDTH_80MM, chars_per_line=RECEIPT_CHARS_PER_LINE,
             ),
+        }
+        _kitchen_tmpl = KitchenTicketTemplate(
+            paper_width=PAPER_WIDTH_80MM, chars_per_line=KITCHEN_CHARS_PER_LINE,
+        )
+        self._templates_kitchen = {
+            "kitchen_ticket":      _kitchen_tmpl,
+            "kitchen_ticket_void": _kitchen_tmpl,  # same class; void flag set in context
         }
 
     def subscribe_failures(self) -> asyncio.Queue:
@@ -170,11 +175,11 @@ class PrintDispatcher:
 
         try:
             context = json.loads(job["context_json"])
-            raw     = self._render(template_id, context, printer_mac)
-            ip      = await self._resolve_ip(printer_mac)
-            await self._send(ip, raw)
+            ip, port, ptype = await self._resolve_printer(printer_mac)
+            raw     = self._render(template_id, context, ptype)
+            await self._send(ip, port, raw)
             await self._queue.mark_completed(job_id)
-            logger.info(f"Job {job_id} ({template_id}) → {ip} ✓")
+            logger.info(f"Job {job_id} ({template_id}) → {ip}:{port} ✓")
 
         except Exception as e:
             logger.warning(f"Job {job_id} attempt {attempt} failed: {e}")
@@ -195,14 +200,14 @@ class PrintDispatcher:
 
     # ── Render ────────────────────────────────────────────────────────────────
 
-    def _render(self, template_id: str, context: dict, printer_mac: str = "") -> bytes:
-        is_kitchen = (printer_mac == "DEFAULT_KITCHEN")
+    def _render(self, template_id: str, context: dict, printer_type: str = "receipt") -> bytes:
+        is_kitchen = (printer_type == "kitchen")
         templates = self._templates_kitchen if is_kitchen else self._templates_receipt
         formatter = self._formatter_kitchen if is_kitchen else self._formatter_receipt
 
         template = templates.get(template_id)
         if not template:
-            # Fall back to the other set in case template is registered there
+            # Fall back to the other set in case caller mis-classified
             other = self._templates_receipt if is_kitchen else self._templates_kitchen
             template = other.get(template_id)
         if not template:
@@ -210,50 +215,53 @@ class PrintDispatcher:
         commands = template.render(context)
         return formatter.format(commands)
 
-    # ── IP resolution ─────────────────────────────────────────────────────────
+    # ── Printer resolution ────────────────────────────────────────────────────
 
-    async def _resolve_ip(self, printer_mac: str) -> str:
+    async def _resolve_printer(self, printer_mac: str) -> tuple[str, int, str]:
         """
-        Resolve a printer MAC address to its current IP via hardware_config.db.
-        Falls back to FALLBACK_IPS for legacy DEFAULT_KITCHEN / DEFAULT_RECEIPT keys,
-        then to type-based defaults if the DB lookup fails.
+        Resolve a printer MAC to (ip, port, type).
+        Falls back to legacy DEFAULT_* sentinel keys, then type-based defaults.
         """
-        # Legacy fallback keys (used before MAC-as-identity was wired)
+        # Legacy sentinel keys (used before MAC-as-identity was wired)
         if printer_mac in FALLBACK_IPS:
-            return FALLBACK_IPS[printer_mac]
+            ip = FALLBACK_IPS[printer_mac]
+            ptype = "kitchen" if "KITCHEN" in printer_mac else "receipt"
+            return ip, PRINTER_PORT, ptype
 
         try:
             async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
                 async with db.execute(
-                    "SELECT ip, type FROM devices WHERE mac = ? LIMIT 1",
+                    "SELECT ip, port, type FROM devices WHERE mac = ? LIMIT 1",
                     (printer_mac,)
                 ) as cursor:
                     row = await cursor.fetchone()
-                    if row and row[0]:
-                        return row[0]
-                    # IP missing but device exists — try type-based fallback
-                    if row and row[1] and row[1] in _TYPE_FALLBACK_IPS:
-                        logger.warning(f"No IP for {printer_mac}, using {row[1]} type fallback")
-                        return _TYPE_FALLBACK_IPS[row[1]]
+                    if row:
+                        ip, port, ptype = row
+                        if ip:
+                            return ip, (port or PRINTER_PORT), (ptype or "receipt")
+                        # IP missing but record exists — type-based IP fallback
+                        if ptype and ptype in _TYPE_FALLBACK_IPS:
+                            logger.warning(f"No IP for {printer_mac}, using {ptype} type fallback")
+                            return _TYPE_FALLBACK_IPS[ptype], (port or PRINTER_PORT), ptype
         except Exception as e:
             logger.warning(f"hardware_config.db lookup failed for {printer_mac}: {e}")
 
-        # Last resort: infer type from template association
+        # Last resort: infer type from MAC string (unlikely but safe)
         for ttype, ip in _TYPE_FALLBACK_IPS.items():
             if ttype in printer_mac.lower():
                 logger.warning(f"Using type-name fallback for {printer_mac} → {ip}")
-                return ip
+                return ip, PRINTER_PORT, ttype
 
         raise ValueError(f"No IP found for printer MAC: {printer_mac}")
 
     # ── Network send ──────────────────────────────────────────────────────────
 
-    async def _send(self, ip: str, data: bytes) -> None:
+    async def _send(self, ip: str, port: int, data: bytes) -> None:
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self._send_sync, ip, data)
+        await loop.run_in_executor(None, self._send_sync, ip, port, data)
 
-    def _send_sync(self, ip: str, data: bytes) -> None:
+    def _send_sync(self, ip: str, port: int, data: bytes) -> None:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(5)
-            s.connect((ip, PRINTER_PORT))
+            s.connect((ip, port))
             s.sendall(data)

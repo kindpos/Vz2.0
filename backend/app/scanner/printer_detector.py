@@ -608,11 +608,9 @@ class PrinterDiscovery:
     def _check_port(self, ip: str, port: int, timeout: float = 0.5) -> bool:
         """Check if a specific TCP port is open on a host."""
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(timeout)
-            result = sock.connect_ex((ip, port))
-            sock.close()
-            return result == 0
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(timeout)
+                return sock.connect_ex((ip, port)) == 0
         except (socket.error, OSError):
             return False
 
