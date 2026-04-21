@@ -24,6 +24,7 @@ from ...core.events import (
 )
 from ...core.projections import project_order, project_orders
 from ...core.money import money_round
+from ...core.financial_invariants import check_batch_settlement
 from ...core.events import cash_refund_due
 from ...config import settings
 from typing import Optional as Opt
@@ -685,14 +686,57 @@ async def batch_settle(ledger: EventLedger = Depends(get_ledger)):
 
     try:
         result = await device.close_batch()
-        return {
-            "success": result.status.value == "SUCCESS",
-            "using_mock": False,
-            "batch_id": result.batch_id,
-            "transaction_count": result.transaction_count,
-            "total_amount": str(result.total_amount),
-            "status": result.status.value,
-            "error": result.error.message if result.error else None,
-        }
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Batch settle failed: {e}")
+
+    # Reconcile processor-reported settlement against ledger's card activity
+    # for the current business day. check_batch_settlement enforces:
+    #   settlement == card_sales + card_tips
+    # Drift is surfaced in the response (non-raising) so operators see it
+    # immediately; hard 4xx/5xx would obscure the actual settlement result.
+    boundary = await ledger.get_last_day_close_sequence()
+    day_events = await ledger.get_events_since(boundary, limit=50000)
+    day_orders = project_orders(day_events)
+
+    tip_map: Dict[str, Decimal] = {}
+    for e in day_events:
+        if e.event_type == EventType.TIP_ADJUSTED:
+            tip_map[e.payload.get("payment_id", "")] = Decimal(
+                str(e.payload.get("tip_amount", "0.00"))
+            )
+
+    card_sales = Decimal("0.00")
+    card_tips = Decimal("0.00")
+    for order in day_orders.values():
+        if order.status in ("closed", "paid"):
+            for p in order.payments:
+                if p.status == "confirmed" and p.method != "cash":
+                    card_sales += Decimal(str(p.amount))
+                    card_tips += Decimal(str(tip_map.get(p.payment_id, p.tip_amount)))
+
+    card_sales_f = money_round(card_sales)
+    card_tips_f = money_round(card_tips)
+    settlement_f = money_round(result.total_amount)
+
+    inv_result = check_batch_settlement(card_sales_f, card_tips_f, settlement_f)
+    settlement_diff = money_round(settlement_f - (card_sales_f + card_tips_f))
+    if not inv_result.ok:
+        logging.warning(
+            "Batch settlement drift: ledger_card_sales=%s ledger_card_tips=%s "
+            "processor_settlement=%s diff=%s",
+            card_sales_f, card_tips_f, settlement_f, settlement_diff,
+        )
+
+    return {
+        "success": result.status.value == "SUCCESS",
+        "using_mock": False,
+        "batch_id": result.batch_id,
+        "transaction_count": result.transaction_count,
+        "total_amount": str(settlement_f),
+        "ledger_card_sales": str(card_sales_f),
+        "ledger_card_tips": str(card_tips_f),
+        "settlement_diff": str(settlement_diff),
+        "invariant_ok": inv_result.ok,
+        "status": result.status.value,
+        "error": result.error.message if result.error else None,
+    }

@@ -1474,40 +1474,28 @@ async def close_batch(ledger: EventLedger = Depends(get_ledger)):
     # Settlement = card sales + card tips (what the processor will settle)
     batch_settlement = batch_card + batch_card_tips
 
-    # Convert to float for event factories
-    batch_total_f = money_round(float(batch_total))
-    batch_cash_f = money_round(float(batch_cash))
-    batch_card_f = money_round(float(batch_settlement))
+    batch_total_f = money_round(batch_total)
+    batch_cash_f = money_round(batch_cash)
+    batch_card_f = money_round(batch_settlement)
 
-    # Emit BATCH_SUBMITTED with full settlement record
-    submit_evt = batch_submitted(
-        terminal_id=settings.terminal_id,
-        order_count=len(all_order_ids),
-        total_amount=batch_total_f,
-        cash_total=batch_cash_f,
-        card_total=batch_card_f,
-        order_ids=all_order_ids,
-    )
-    await ledger.append(submit_evt)
-
-    # Gate the batch totals against the canonical invariants. close_batch
-    # settles card transactions, so "card_total" for the tender-reconciliation
-    # check is raw card sales (not the card+card-tips settlement figure);
-    # batch_card_f above is the settlement amount used for the processor,
-    # not for the P&L identity.
-    batch_card_sales_f = money_round(float(batch_card))
-    batch_card_tips_f = money_round(float(batch_card_tips))
-    batch_total_tips_f = money_round(float(batch_total_tips))
-    batch_cash_tips_f = money_round(float(batch_total_tips) - float(batch_card_tips))
+    # Gate the batch totals against the canonical invariants BEFORE emitting.
+    # close_batch settles card transactions, so "card_total" for the
+    # tender-reconciliation check is raw card sales (not the card+card-tips
+    # settlement figure); batch_card_f is the settlement amount used for the
+    # processor, not for the P&L identity.
+    batch_card_sales_f = money_round(batch_card)
+    batch_card_tips_f = money_round(batch_card_tips)
+    batch_total_tips_f = money_round(batch_total_tips)
+    batch_cash_tips_f = money_round(batch_total_tips - batch_card_tips)
 
     _batch_results = invariant_gate(
         check_day_close(
             gross_sales=batch_total_f,
-            void_total=0.0,
-            discount_total=0.0,
-            refund_total=0.0,
+            void_total=Decimal("0.00"),
+            discount_total=Decimal("0.00"),
+            refund_total=Decimal("0.00"),
             net_sales=batch_total_f,
-            tax_collected=0.0,
+            tax_collected=Decimal("0.00"),
             cash_total=batch_cash_f,
             card_total=batch_card_sales_f,
             total_tips=batch_total_tips_f,
@@ -1517,6 +1505,17 @@ async def close_batch(ledger: EventLedger = Depends(get_ledger)):
         context="close_batch",
     )
     recon_diff = max_abs_diff(_batch_results)
+
+    # Gate passed — safe to emit BATCH_SUBMITTED with full settlement record
+    submit_evt = batch_submitted(
+        terminal_id=settings.terminal_id,
+        order_count=len(all_order_ids),
+        total_amount=batch_total_f,
+        cash_total=batch_cash_f,
+        card_total=batch_card_f,
+        order_ids=all_order_ids,
+    )
+    await ledger.append(submit_evt)
 
     return {
         "success": True,
@@ -1621,14 +1620,50 @@ async def close_day(
     # settlement total that's inflated by card tips.
     card_settlement = card_total + card_tips_total
 
-    # Convert Decimal accumulators to Decimal for event factories and output
     total_sales_f = money_round(total_sales)
     total_tips_f = money_round(total_tips)
     cash_total_f = money_round(cash_total)
     card_sales_f = money_round(card_total)
     card_total_f = money_round(card_settlement)
+    card_tips_f = money_round(card_tips_total)
+    cash_tips_f = money_round(total_tips - card_tips_total)
 
-    # Emit BATCH_SUBMITTED (settlement record)
+    # Over/Short: Cash Expected = Cash Sales − Card Tips
+    cash_expected = money_round(cash_total_f - card_tips_f)
+
+    over_short = None
+    actual_cash = None
+    if body and body.actual_cash_counted is not None:
+        actual_cash = money_round(body.actual_cash_counted)
+        over_short = money_round(actual_cash - cash_expected)
+
+    # Gate the close-day payload against the canonical invariants BEFORE
+    # emitting any events. We don't have gross/voids/discounts/refunds
+    # separately here (close_day works off order.total = subtotal − discount
+    # + tax), so pass them as zero against a synthetic gross equal to net:
+    # the P&L check is vacuously true while tender and tips checks still bite.
+    _close_results = invariant_gate(
+        check_day_close(
+            gross_sales=total_sales_f,
+            void_total=Decimal("0.00"),
+            discount_total=Decimal("0.00"),
+            refund_total=Decimal("0.00"),
+            net_sales=total_sales_f,
+            tax_collected=Decimal("0.00"),
+            cash_total=cash_total_f,
+            card_total=card_sales_f,
+            total_tips=total_tips_f,
+            card_tips=card_tips_f,
+            cash_tips=cash_tips_f,
+            cash_expected=cash_expected,
+            actual_cash_counted=actual_cash,
+            over_short=over_short,
+        ),
+        context="close_day",
+    )
+    recon_diff = max_abs_diff(_close_results)
+
+    # Gate passed — safe to emit BATCH_SUBMITTED (settlement record)
     submit_evt = batch_submitted(
         terminal_id=settings.terminal_id,
         order_count=total_orders,
@@ -1639,7 +1674,7 @@ async def close_day(
     )
     await ledger.append(submit_evt)
 
-    # Emit DAY_CLOSED — this is the auditable snapshot and day boundary
+    # Emit DAY_CLOSED — auditable snapshot and day boundary
     today = datetime.now().strftime("%Y-%m-%d")
     close_evt = day_closed(
         terminal_id=settings.terminal_id,
@@ -1654,44 +1689,6 @@ async def close_day(
         opened_at=opened_at,
     )
     await ledger.append(close_evt)
-
-    # Over/Short: Cash Expected = Cash Sales − Card Tips
-    cash_sales_only = money_round(cash_total)
-    card_tips_f = money_round(card_tips_total)
-    cash_expected = money_round(cash_sales_only - card_tips_f)
-
-    over_short = None
-    actual_cash = None
-    if body and body.actual_cash_counted is not None:
-        actual_cash = money_round(body.actual_cash_counted)
-        over_short = money_round(actual_cash - cash_expected)
-
-    # Gate the close-day payload against the canonical invariants. We
-    # don't have gross/voids/discounts/refunds separately here (close_day
-    # works off order.total = subtotal − discount + tax), so pass them
-    # as zero against a synthetic gross equal to net + tax: the P&L check
-    # is then vacuously true while the tender and tips checks still bite.
-    cash_tips_f = money_round(total_tips - card_tips_total)
-    _close_results = invariant_gate(
-        check_day_close(
-            gross_sales=total_sales_f,
-            void_total=Decimal("0.00"),
-            discount_total=Decimal("0.00"),
-            refund_total=Decimal("0.00"),
-            net_sales=total_sales_f,
-            tax_collected=Decimal("0.00"),
-            cash_total=cash_total_f,
-            card_total=card_sales_f,
-            total_tips=total_tips_f,
-            card_tips=money_round(card_tips_total),
-            cash_tips=cash_tips_f,
-            cash_expected=cash_expected,
-            actual_cash_counted=actual_cash,
-            over_short=over_short,
-        ),
-        context="close_day",
-    )
-    recon_diff = max_abs_diff(_close_results)
 
     summary = {
         "date": today,

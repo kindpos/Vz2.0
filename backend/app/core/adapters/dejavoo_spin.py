@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import httpx
 
+from ..money import money_round
 from .base_payment import (
     BasePaymentDevice,
     PaymentDeviceConfig,
@@ -88,8 +89,8 @@ class DejavooSPInAdapter(BasePaymentDevice):
     async def initiate_sale(self, request: TransactionRequest) -> TransactionResult:
         xml = self._build_xml("Sale", {
             "PaymentType": "Credit",
-            "Amount": f"{request.amount:.2f}",
-            "Tip": f"{request.tip_amount:.2f}",
+            "Amount": f"{money_round(request.amount):.2f}",
+            "Tip": f"{money_round(request.tip_amount):.2f}",
             "Frequency": "OneTime",
             "RefId": request.transaction_id,
             "ConfirmAmount": "No",
@@ -107,7 +108,7 @@ class DejavooSPInAdapter(BasePaymentDevice):
     async def initiate_refund(self, request: TransactionRequest) -> TransactionResult:
         xml = self._build_xml("Return", {
             "PaymentType": "Credit",
-            "Amount": f"{request.amount:.2f}",
+            "Amount": f"{money_round(request.amount):.2f}",
             "Frequency": "OneTime",
             "RefId": request.transaction_id,
             "ConfirmAmount": "No",
@@ -145,7 +146,7 @@ class DejavooSPInAdapter(BasePaymentDevice):
     async def adjust_tip(self, transaction_id: str, tip_amount: Decimal) -> TransactionResult:
         xml = self._build_xml("TipAdjust", {
             "RefId": transaction_id,
-            "Tip": f"{tip_amount:.2f}",
+            "Tip": f"{money_round(tip_amount):.2f}",
         })
         try:
             root = await self._send(xml)
