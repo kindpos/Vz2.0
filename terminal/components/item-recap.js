@@ -340,6 +340,11 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
   row.appendChild(price);
 
   card.appendChild(row);
+
+  row.addEventListener('click', function() {
+    card.classList.toggle('collapsed');
+  });
+
   return card;
 }
 
