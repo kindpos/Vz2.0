@@ -12,6 +12,7 @@
 
 import { pushChanges } from '../services/config-push.js';
 import { T, withAlpha } from '../ui/tokens.js';
+import { buildScenePage } from '../ui/forms.js';
 import {
     EMPLOYEES, ROLES, STATUSES,
     getRoleLabel, getStatusInfo, fmtDate,
@@ -201,27 +202,10 @@ async function flushEvents() {
 function buildEmployeeList(container) {
     activeContainer = container;
 
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'padding: 0 8px; max-width: 1100px; margin: 0 auto;';
-
-    // ── Date Header ──
-    const header = document.createElement('div');
-    header.style.cssText = `
-        display: flex; justify-content: space-between; align-items: flex-start;
-        margin-bottom: 24px; flex-wrap: wrap; gap: 12px;
-    `;
-    header.innerHTML = `
-        <div>
-            <div style="font-family: ${T.font.heading};
-                        font-size: 36px; color: ${C.yellow};">
-                Employee Management
-            </div>
-            <div style="font-size: 25px; color: ${withAlpha(T.green, 0.5)}; margin-top: 4px;">
-                ${EMPLOYEES.length} active employee${EMPLOYEES.length !== 1 ? 's' : ''}
-            </div>
-        </div>
-    `;
-    wrapper.appendChild(header);
+    const { body: wrapper } = buildScenePage(container, {
+        title: 'Staff List',
+        subtitle: 'Staff administration',
+    });
 
     // ── Action Bar: Add + Search ──
     const actionBar = document.createElement('div');
@@ -280,8 +264,6 @@ function buildEmployeeList(container) {
     tableWrap.id = 'emp-table-wrapper';
     wrapper.appendChild(tableWrap);
     buildTableSection(tableWrap);
-
-    container.appendChild(wrapper);
 }
 
 /* ------------------------------------------

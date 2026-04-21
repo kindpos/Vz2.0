@@ -128,8 +128,11 @@ export function buildScenePage(container, { title, subtitle = null, saveLabel = 
   `;
   header.appendChild(titleCol);
 
-  const saveBar = buildStickySaveBar({ label: saveLabel, onSave });
-  header.appendChild(saveBar.el);
+  // Save bar is only rendered when an onSave handler is provided.
+  // List-style pages (e.g. Staff List) pass no handler and get a
+  // clean header with no floating button.
+  const saveBar = onSave ? buildStickySaveBar({ label: saveLabel, onSave }) : null;
+  if (saveBar) header.appendChild(saveBar.el);
 
   wrapper.appendChild(header);
 
