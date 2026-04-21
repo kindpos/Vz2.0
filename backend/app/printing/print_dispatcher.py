@@ -125,6 +125,10 @@ class PrintDispatcher:
 
     async def start(self) -> None:
         self._running = True
+        # Reset jobs that were mid-send when the process last died so they
+        # don't stay stuck in 'sent' forever. Stale threshold matches the
+        # TCP socket timeout (5s) plus the maximum retry delay (30s).
+        await self._queue.recover_stale_sent_jobs(stale_after_seconds=60)
         self._task    = asyncio.create_task(self._loop())
         logger.info("PrintDispatcher started")
 

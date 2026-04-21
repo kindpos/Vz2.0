@@ -49,22 +49,36 @@ class PrintJobQueue:
             await self._db.close()
             self._db = None
 
-    async def enqueue(self, order_id: str, template_id: str, printer_mac: str, 
-                      ticket_number: str, context: Dict[str, Any], 
+    async def enqueue(self, order_id: str, template_id: str, printer_mac: str,
+                      ticket_number: str, context: Dict[str, Any],
                       copy_type: Optional[str] = None) -> str:
-        """Add a new job to the queue."""
+        """Add a new job to the queue, returning the existing job_id if an
+        identical in-flight job (queued or sent) already exists."""
+        # Idempotency: don't queue the same print twice while it's pending.
+        async with self._db.execute("""
+            SELECT job_id FROM print_queue
+            WHERE order_id = ? AND template_id = ? AND printer_mac = ?
+              AND (copy_type = ? OR (copy_type IS NULL AND ? IS NULL))
+              AND status IN ('queued', 'sent')
+            LIMIT 1
+        """, (order_id, template_id, printer_mac, copy_type, copy_type)) as cur:
+            existing = await cur.fetchone()
+        if existing:
+            logger.info(f"Dedup: job {existing[0]} already pending for {order_id}/{template_id}")
+            return existing[0]
+
         job_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        
+
         await self._db.execute("""
             INSERT INTO print_queue (
-                job_id, order_id, template_id, printer_mac, 
-                copy_type, ticket_number, context_json, status, 
+                job_id, order_id, template_id, printer_mac,
+                copy_type, ticket_number, context_json, status,
                 created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            job_id, order_id, template_id, printer_mac, 
-            copy_type, ticket_number, json.dumps(context), 'queued', 
+            job_id, order_id, template_id, printer_mac,
+            copy_type, ticket_number, json.dumps(context), 'queued',
             now
         ))
         await self._db.commit()
@@ -103,12 +117,30 @@ class PrintJobQueue:
         await self._db.commit()
 
     async def get_pending_jobs(self) -> List[Dict[str, Any]]:
-        """Get all jobs that are 'queued' or 'sent' (but not yet 'completed' or 'failed')."""
+        """Get all 'queued' jobs ready to dispatch.
+        'sent' jobs are excluded — they are in-flight or stale (recovered
+        by recover_stale_sent_jobs on startup)."""
         async with self._db.execute(
-            "SELECT * FROM print_queue WHERE status IN ('queued', 'sent') ORDER BY created_at ASC"
+            "SELECT * FROM print_queue WHERE status = 'queued' ORDER BY created_at ASC"
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(zip([col[0] for col in cursor.description], row)) for row in rows]
+
+    async def recover_stale_sent_jobs(self, stale_after_seconds: int = 30) -> int:
+        """Reset 'sent' jobs older than stale_after_seconds back to 'queued'.
+        Called on dispatcher startup to recover from a mid-send crash."""
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=stale_after_seconds)).isoformat()
+        async with self._db.execute("""
+            UPDATE print_queue
+            SET status = 'queued'
+            WHERE status = 'sent' AND last_attempt_at < ?
+        """, (cutoff,)) as cur:
+            count = cur.rowcount
+        await self._db.commit()
+        if count:
+            logger.warning(f"Recovered {count} stale 'sent' job(s) back to 'queued'")
+        return count
 
     async def get_failed_jobs(self) -> List[Dict[str, Any]]:
         """Get all 'failed' jobs for manual retry or display."""

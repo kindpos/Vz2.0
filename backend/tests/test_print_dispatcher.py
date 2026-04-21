@@ -80,6 +80,10 @@ class FakeQueue:
     async def get_pending_jobs(self):
         return []
 
+    async def recover_stale_sent_jobs(self, stale_after_seconds: int = 60) -> int:
+        self.calls.append(("recover_stale_sent_jobs",))
+        return 0
+
     def names(self) -> List[str]:
         return [c[0] for c in self.calls]
 
