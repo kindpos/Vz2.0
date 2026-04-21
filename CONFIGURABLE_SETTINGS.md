@@ -45,6 +45,31 @@ appear during the port, add them here.
 - **Proposed setting:** `attendance.live_refresh_ms` (number, default 30000).
 - **Scope:** per-terminal. Tablets on spotty wifi may want longer.
 
+### Week start day
+- **Today:** `(d.getDay() + 6) % 7` arithmetic in
+  `renderWeekGrid` treats Monday as day 0. Matches
+  `DAY_LABELS` order in `data/sample-timedata.js`.
+- **Proposed setting:** `attendance.week_start_day` (string,
+  default "monday", accepts "sunday" / "monday" / "saturday").
+- **Scope:** per-location. US shops often run Sun–Sat payroll
+  weeks; back-of-house prefers Mon–Sun.
+
+### "Approaching OT" total-cell threshold
+- **Today:** `35` h hardcoded in the Week Grid total-cell color
+  logic (gold when total > 35 and not already overtime).
+- **Proposed setting:** `attendance.ot_warn_weekly_hours`
+  (number, default 35).
+- **Scope:** per-location.
+
+### Weekly overtime trigger
+- **Today:** `40` h, hardcoded inside `getWeeklyTotals` in
+  `data/sample-timedata.js` (anything above 40 bucket goes to
+  `overtime`).
+- **Proposed setting:** `attendance.ot_weekly_hours` (number,
+  default 40). California also has a daily 8 h rule; that
+  should be a parallel setting when the backend supports it.
+- **Scope:** per-location.
+
 ---
 
 ## Tipout Rules

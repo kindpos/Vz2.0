@@ -934,8 +934,302 @@ function _roleChip(roleId) {
 function openShiftDetailModal(shift) {
     showToast(`Shift detail for ${shift.name} — coming in chunk 4`, 'warn');
 }
+/* ------------------------------------------
+   WEEK GRID — Weekly timecards for the full team
+   Spreadsheet-style Employee × Day grid. Each shift cell shows
+   hours colored by bucket (T.green <8h, T.gold 8–10h, T.warning
+   10h+). Cells are clickable and open the shift-detail modal
+   (chunk 4) so the user can edit shift times. Empty days show an
+   em-dash. OT badge appears on the name cell whenever the week's
+   total crosses 40h.
+------------------------------------------ */
+const WEEK_GRID = '1.8fr repeat(7, 1fr) 1fr';
+
+// Cell-color buckets match the mockup: green below 8h, gold 8–10h,
+// warning 10h+. Listed in CONFIGURABLE_SETTINGS.md for eventual
+// per-location tuning.
+function cellColor(hours) {
+    if (hours >= 10) return T.warning;
+    if (hours >= 8)  return T.gold;
+    return T.green;
+}
+
 function renderWeekGrid(wrap) {
-    wrap.textContent = ''; // filled in chunk 3
+    wrap.innerHTML = '';
+
+    // Week range caption (Mon–Sun of the most recently completed week).
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7) - 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const fmtWeekDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    const card = sectionCard({
+        label: 'Weekly Time Cards',
+        accent: T.green,
+        note: `Week of ${fmtWeekDate(weekStart)} – ${fmtWeekDate(weekEnd)}. Click any cell to open that shift.`,
+    });
+
+    if (WEEKLY_TIMECARDS.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `
+            padding: ${T.sp.xxxl}px;
+            text-align: center;
+            color: ${T.textMuted};
+            font-size: ${T.fs.base}px;
+            background: ${T.well};
+            border-radius: ${T.r.sm}px;
+        `;
+        empty.textContent = 'No timecards for the selected week.';
+        card.body.appendChild(empty);
+        wrap.appendChild(card.card);
+        return;
+    }
+
+    const grid = document.createElement('div');
+    grid.style.cssText = `
+        background: ${T.well};
+        border-radius: ${T.r.sm}px;
+        overflow-x: auto;
+    `;
+
+    // Grid header
+    const gh = document.createElement('div');
+    gh.style.cssText = `
+        display: grid;
+        grid-template-columns: ${WEEK_GRID};
+        gap: ${T.sp.sm}px;
+        padding: ${T.sp.md}px ${T.sp.lg}px;
+        background: ${withAlpha(T.green, 0.06)};
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: ${T.textMuted};
+        min-width: 820px;
+    `;
+    const empHead = document.createElement('div');
+    empHead.textContent = 'Employee';
+    gh.appendChild(empHead);
+    DAY_LABELS.forEach(lbl => {
+        const c = document.createElement('div');
+        c.textContent = lbl;
+        c.style.textAlign = 'center';
+        gh.appendChild(c);
+    });
+    const totalHead = document.createElement('div');
+    totalHead.textContent = 'Total';
+    totalHead.style.textAlign = 'right';
+    gh.appendChild(totalHead);
+    grid.appendChild(gh);
+
+    // Rows
+    WEEKLY_TIMECARDS.forEach(tc => {
+        const totals = getWeeklyTotals(tc);
+
+        const row = document.createElement('div');
+        row.style.cssText = `
+            display: grid;
+            grid-template-columns: ${WEEK_GRID};
+            gap: ${T.sp.sm}px;
+            padding: ${T.sp.md}px ${T.sp.lg}px;
+            border-top: 1px solid ${T.border};
+            align-items: center;
+            min-width: 820px;
+        `;
+
+        // Name cell with OT / EDITED badges
+        const nameCell = document.createElement('div');
+        nameCell.style.cssText = `
+            color: ${T.text};
+            font-size: ${T.fs.base}px;
+            display: flex; align-items: center; flex-wrap: wrap;
+            gap: ${T.sp.xs}px;
+        `;
+        const nameTxt = document.createElement('span');
+        nameTxt.textContent = tc.name;
+        nameCell.appendChild(nameTxt);
+        if (totals.overtime > 0) {
+            nameCell.appendChild(_inlineBadge(`OT +${totals.overtime.toFixed(1)}H`, T.verm));
+        }
+        if (totals.hasEdits) {
+            nameCell.appendChild(_inlineBadge('EDITED', T.warning));
+        }
+        row.appendChild(nameCell);
+
+        // One cell per day
+        for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+            const shift = tc.shifts.find(s => getDayIndex(s.date) === dayIdx);
+            const cell = document.createElement('div');
+            cell.style.cssText = 'text-align: center;';
+
+            if (shift) {
+                const color = cellColor(shift.hours);
+                const cellBtn = document.createElement('button');
+                cellBtn.type = 'button';
+                cellBtn.title = `${fmtTime12(shift.clockIn)} – ${fmtTime12(shift.clockOut)}`;
+                cellBtn.style.cssText = `
+                    background: transparent;
+                    border: 1px solid transparent;
+                    color: ${color};
+                    font-family: ${T.font.mono};
+                    font-size: ${T.fs.base}px;
+                    font-weight: 700;
+                    padding: 6px 8px;
+                    border-radius: ${T.r.sm}px;
+                    cursor: pointer;
+                    transition: background 0.15s ease, border-color 0.15s ease;
+                `;
+                cellBtn.textContent = shift.hours.toFixed(1);
+                if (shift.edited) {
+                    const dot = document.createElement('span');
+                    dot.textContent = ' ✎';
+                    dot.style.cssText = `color: ${T.warning}; font-size: ${T.fs.xs}px; vertical-align: super;`;
+                    cellBtn.appendChild(dot);
+                }
+                cellBtn.addEventListener('mouseenter', () => {
+                    cellBtn.style.background = withAlpha(T.text, 0.05);
+                    cellBtn.style.borderColor = T.border;
+                });
+                cellBtn.addEventListener('mouseleave', () => {
+                    cellBtn.style.background = 'transparent';
+                    cellBtn.style.borderColor = 'transparent';
+                });
+                cellBtn.addEventListener('click', () => {
+                    const detail = SHIFT_DETAILS[shift.shift_id] || _synthesizeShiftDetail(tc, shift);
+                    openShiftDetailModal(detail);
+                });
+                cell.appendChild(cellBtn);
+            } else {
+                const em = document.createElement('span');
+                em.textContent = '—';
+                em.style.cssText = `color: ${T.textDim}; font-size: ${T.fs.md}px;`;
+                cell.appendChild(em);
+            }
+            row.appendChild(cell);
+        }
+
+        // Total cell
+        const totalCell = document.createElement('div');
+        const totalColor = totals.overtime > 0 ? T.verm
+                         : (totals.totalHours > 35 ? T.gold : T.green);
+        totalCell.style.cssText = `
+            text-align: right;
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.lg}px;
+            font-weight: 700;
+            color: ${totalColor};
+        `;
+        totalCell.textContent = fmtHrs(totals.totalHours);
+        row.appendChild(totalCell);
+
+        grid.appendChild(row);
+    });
+
+    card.body.appendChild(grid);
+    wrap.appendChild(card.card);
+
+    // Week totals strip (matches the mockup's KPI row pattern, scaled down)
+    const allTotals = WEEKLY_TIMECARDS.map(getWeeklyTotals);
+    const grandHours = allTotals.reduce((sum, t) => sum + t.totalHours, 0);
+    const grandSales = allTotals.reduce((sum, t) => sum + t.totalSales, 0);
+    const grandTips  = allTotals.reduce((sum, t) => sum + t.totalTips, 0);
+    const otEmps = allTotals.filter(t => t.overtime > 0).length;
+
+    const stats = document.createElement('div');
+    stats.style.cssText = `
+        margin-top: ${T.sp.md}px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: ${T.sp.md}px;
+    `;
+    stats.appendChild(_weekStat('Total Hours', fmtHrs(grandHours), T.green));
+    stats.appendChild(_weekStat('Total Sales', fmtMoney(grandSales), T.gold));
+    stats.appendChild(_weekStat('Total Tips',  fmtMoney(grandTips),  T.gold));
+    stats.appendChild(_weekStat('OT Employees', String(otEmps), otEmps > 0 ? T.verm : T.green));
+    wrap.appendChild(stats);
+
+    // Legend
+    const legend = document.createElement('div');
+    legend.style.cssText = `
+        margin-top: ${T.sp.md}px;
+        padding: ${T.sp.sm + 2}px ${T.sp.lg}px;
+        display: flex; gap: ${T.sp.lg}px; flex-wrap: wrap;
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 1px;
+        color: ${T.textMuted};
+        text-transform: uppercase;
+    `;
+    legend.innerHTML = `
+        <span><span style="color: ${T.green};">■</span> under 8h</span>
+        <span><span style="color: ${T.gold};">■</span> 8–10h</span>
+        <span><span style="color: ${T.warning};">■</span> 10h+</span>
+        <span><span style="color: ${T.warning};">✎</span> edited</span>
+    `;
+    wrap.appendChild(legend);
+}
+
+function _weekStat(label, value, color) {
+    const card = document.createElement('div');
+    card.style.cssText = `
+        background: ${T.card};
+        border-left: 4px solid ${color};
+        border-radius: ${T.r.md}px;
+        padding: ${T.sp.md + 2}px ${T.sp.lg - 2}px;
+    `;
+    card.innerHTML = `
+        <div style="
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.xs}px;
+            letter-spacing: 2px;
+            font-weight: 700;
+            color: ${T.textMuted};
+            text-transform: uppercase;
+            margin-bottom: ${T.sp.xs + 2}px;
+        ">${label}</div>
+        <div style="
+            font-family: ${T.font.heading};
+            font-size: ${T.fs.xxl}px;
+            font-weight: 700;
+            color: ${color};
+            line-height: 1;
+        ">${value}</div>
+    `;
+    return card;
+}
+
+// Week-grid rows reference shift_ids that may not have a matching
+// detail record in SHIFT_DETAILS. For those, synthesize a best-
+// effort detail object from the timecard row so the drill-down
+// modal still opens.
+function _synthesizeShiftDetail(tc, shift) {
+    const parts = (tc.name || '').split(' ');
+    return {
+        shift_id: shift.shift_id,
+        employee_id: tc.employee_id,
+        name: tc.name,
+        firstName: parts[0] || '',
+        lastName: parts.slice(1).join(' '),
+        role: tc.role,
+        date: shift.date,
+        clockIn: shift.clockIn,
+        clockOut: shift.clockOut,
+        hours: shift.hours,
+        edited: !!shift.edited,
+        editedBy: shift.editedBy || null,
+        originalClockOut: shift.originalClockOut || null,
+        editReason: shift.editReason || null,
+        breaks: [],
+        tables: shift.tables || 0,
+        guests: 0,
+        sales: shift.sales || 0,
+        tips: shift.tips || 0,
+        tipPct: shift.sales > 0 ? (shift.tips / shift.sales * 100) : 0,
+        avgCheck: 0,
+        orders: [],
+    };
 }
 
 const TAB_RENDERERS = {
