@@ -1912,7 +1912,7 @@ async def adjust_tip_on_order(
     for e in events:
         if (e.event_type == EventType.TIP_ADJUSTED
                 and e.payload.get("payment_id") == request.payment_id):
-            previous_tip = Decimal(str(e.payload.get("tip_amount", "0.00")))
+            previous_tip = money_round(Decimal(str(e.payload.get("tip_amount", "0.00"))))
 
     tip_amt = money_round(request.tip_amount)
     evt = tip_adjusted(

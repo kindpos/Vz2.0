@@ -478,11 +478,11 @@ async def adjust_tip(
         raise HTTPException(status_code=400, detail="Can only adjust tips on confirmed payments")
 
     # Get previous tip from existing TIP_ADJUSTED events
-    previous_tip = 0.0
+    previous_tip = Decimal("0.00")
     for e in events:
         if (e.event_type == EventType.TIP_ADJUSTED
                 and e.payload.get("payment_id") == request.payment_id):
-            previous_tip = e.payload.get("tip_amount", 0.0)
+            previous_tip = money_round(Decimal(str(e.payload.get("tip_amount", "0.00"))))
 
     tip_amt = money_round(request.tip_amount)
     evt = tip_adjusted(

@@ -41,6 +41,7 @@ from app.core.events import (
     day_closed,
     create_event,
 )
+from app.core.money import money_round
 from app.core.projections import project_order, project_orders
 
 TEST_DB = Path("./data/test_daily_workflow.db")
@@ -282,7 +283,7 @@ async def test_full_daily_workflow(ledger):
     batch_events = await ledger.get_events_by_type(EventType.BATCH_SUBMITTED)
     assert len(batch_events) == 1
     assert batch_events[0].payload["order_count"] == 2
-    assert Decimal(str(batch_events[0].payload["total_amount"])) == round(total_sales, 2)
+    assert Decimal(str(batch_events[0].payload["total_amount"])) == money_round(total_sales)
 
     # ─── 12. CLOCK OUT ───────────────────────────────────────────
     clock_out_evt = user_logged_out(
@@ -315,7 +316,7 @@ async def test_full_daily_workflow(ledger):
     day_payload = day_events[0].payload
     assert day_payload["date"] == "2026-03-27"
     assert day_payload["total_orders"] == 2
-    assert Decimal(str(day_payload["total_sales"])) == round(total_sales, 2)
+    assert Decimal(str(day_payload["total_sales"])) == money_round(total_sales)
     assert Decimal(str(day_payload["total_tips"])) == Decimal("12.40")
     assert len(day_payload["order_ids"]) == 2
     assert day_payload["payment_count"] == 2
