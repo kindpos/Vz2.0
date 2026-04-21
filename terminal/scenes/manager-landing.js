@@ -140,7 +140,7 @@ function _wireStaffData(state, staffResult, orders) {
       var unadj = 0;
       closed.forEach(function(o) {
         (o.payments || []).forEach(function(p) {
-          if (p.method === 'card' && p.status === 'confirmed' && p.tip_amount == null) unadj++;
+          if (p.method === 'card' && p.status === 'confirmed' && !p.tip_adjusted) unadj++;
         });
       });
       return {
@@ -156,11 +156,14 @@ function _wireStaffData(state, staffResult, orders) {
 }
 
 function _wireCloseDayData(state, day) {
-  var servers     = ((state.staffData || {}).servers || []);
-  var pending     = servers.filter(function(s) { return !s.checked_out; }).length;
-  var unadj       = servers.reduce(function(s, srv) { return s + srv.unadj_tips; }, 0);
-  var allOut      = servers.length > 0 && pending === 0;
-  var allAdj      = unadj === 0;
+  var servers = ((state.staffData || {}).servers || []);
+  var pending = servers.filter(function(s) { return !s.checked_out; }).length;
+  var allOut  = servers.length > 0 && pending === 0;
+  // Use the backend-computed count from day-summary — it correctly checks
+  // whether a TIP_ADJUSTED event exists per payment. The per-server
+  // p.tip_amount == null check was always false (API returns 0.0, not null).
+  var unadj  = typeof day.unadjusted_tips === 'number' ? day.unadjusted_tips : 0;
+  var allAdj  = unadj === 0;
   state.closeDayData = {
     all_checked_out:   allOut,
     pending_count:     pending,

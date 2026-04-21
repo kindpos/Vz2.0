@@ -209,6 +209,7 @@ class PaymentResponse(BaseModel):
     method: str
     status: str
     tip_amount: Decimal = Decimal("0.00")
+    tip_adjusted: bool = False
     transaction_id: Optional[str] = None
     seat_numbers: list[int] = []
 
@@ -272,6 +273,7 @@ class OrderResponse(BaseModel):
                     method=p.method,
                     status=p.status,
                     tip_amount=money_round(p.tip_amount),
+                    tip_adjusted=p.tip_adjusted,
                     transaction_id=p.transaction_id,
                     seat_numbers=p.seat_numbers or [],
                 )
@@ -1001,6 +1003,7 @@ async def confirm_payment(
         ledger: EventLedger = Depends(get_ledger),
 ):
     """Confirm a payment."""
+    _validate_2dp(request.amount, "amount")
     order = await get_order_or_404(ledger, order_id)
 
     # Verify payment exists and amount matches initiation
@@ -1385,6 +1388,7 @@ async def apply_discount(
             detail="Cannot apply discount while a payment is pending"
         )
 
+    _validate_2dp(request.amount, "amount")
     event = create_event(
         event_type=EventType.DISCOUNT_APPROVED,
         terminal_id=settings.terminal_id,
@@ -1392,7 +1396,7 @@ async def apply_discount(
         payload={
             "order_id": order_id,
             "discount_type": request.discount_type,
-            "amount": request.amount,
+            "amount": money_round(request.amount),
             "reason": request.reason or f"Manager discount: {request.discount_type}",
             "approved_by": request.approved_by,
             "item_ids": request.item_ids,
