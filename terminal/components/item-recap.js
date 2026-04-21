@@ -307,6 +307,40 @@ function _ensureStyles() {
   document.head.appendChild(style);
 }
 
+// ── Prefix badge (chunk 10 fills in class map + copy) ──
+function _buildBadge(prefix) {
+  // Placeholder — real implementation lands in Chunk 10.
+  return null;
+}
+
+// ── L1 MOD row ──
+function _buildModRow(mod) {
+  var r = document.createElement('div');
+  r.className = 'ir-mod' + (mod.mandatory ? ' mand' : '');
+
+  var arrow = document.createElement('span');
+  arrow.className = 'ir-mod-arrow';
+  arrow.textContent = '↳';
+  r.appendChild(arrow);
+
+  var badge = _buildBadge(mod.prefix);
+  if (badge) r.appendChild(badge);
+
+  var name = document.createElement('span');
+  name.className = 'ir-mname';
+  name.textContent = mod.name || '';
+  r.appendChild(name);
+
+  if (mod.upcharge && mod.upcharge > 0) {
+    var up = document.createElement('span');
+    up.className = 'ir-up';
+    up.textContent = '+' + _fmt(mod.upcharge);
+    r.appendChild(up);
+  }
+
+  return r;
+}
+
 // ── Item card (item row only; mods/halves appended by later chunks) ──
 function _buildItemCard(item, seatIdx, itemIdx, opts) {
   var card = document.createElement('div');
@@ -340,6 +374,16 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
   row.appendChild(price);
 
   card.appendChild(row);
+
+  var mods = Array.isArray(item.mods) ? item.mods : [];
+  if (mods.length > 0) {
+    var well = document.createElement('div');
+    well.className = 'ir-mods';
+    for (var i = 0; i < mods.length; i++) {
+      well.appendChild(_buildModRow(mods[i]));
+    }
+    card.appendChild(well);
+  }
 
   row.addEventListener('click', function() {
     card.classList.toggle('collapsed');
