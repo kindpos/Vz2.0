@@ -618,6 +618,34 @@ async def hardware_status():
     }
 
 
+class ProbeRequest(BaseModel):
+    ip: str
+    port: int = 9100
+
+
+@router.post("/probe")
+async def probe_device(req: ProbeRequest):
+    """Probe a specific IP:port, identify device type, model, and MAC."""
+    ports_to_try = list(dict.fromkeys([req.port] + ALL_SCAN_PORTS))
+    result = await _probe_host(req.ip, None, ports_to_try, DIRECT_TIMEOUT)
+    if not result:
+        return {"found": False}
+
+    protocol_map = {
+        9100: "TM", 9101: "TM", 9102: "TM",
+        9000: "SPIn", 8443: "SPIn", 9443: "SPIn",
+    }
+    return {
+        "found": True,
+        "model": result.get("name", "Unknown Device"),
+        "mac": result.get("mac", ""),
+        "protocol": protocol_map.get(result.get("port"), "Unknown"),
+        "type": result.get("type", ""),
+        "port": result.get("port", req.port),
+        "ip": req.ip,
+    }
+
+
 class TestConnectionRequest(BaseModel):
     ip: str
     port: int

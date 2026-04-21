@@ -34,6 +34,7 @@ import { registerConfigureModifiers } from './sections/configure-modifiers.js';
 import { registerPricingSpecials }    from './sections/pricing-specials.js';
 import { registerPrinterConfig }      from './sections/printer-config.js';
 import { registerPrinterSetup }       from './sections/printer-setup.js';
+import { buildNetworkSetupScene, cleanupNetworkSetup } from './sections/hardware/network-setup.js';
 
 // Build-pattern sections (no register wrapper — wrap manually below)
 import { buildStoreInfoScene,     cleanupStoreInfo     } from './sections/store-info.js';
@@ -108,9 +109,10 @@ const NAV = [
         id: 'hardware',
         label: 'HARDWARE',
         subs: [
-            { id: 'printer-setup',    label: 'Printer Setup'    },
-            { id: 'printer-config',   label: 'Printer Config'   },
-            { id: 'card-readers',     label: 'Card Readers'     },
+            { id: 'network-setup',    label: 'Network Setup'    },
+            // { id: 'printer-setup',    label: 'Printer Setup'    },
+            // { id: 'printer-config',   label: 'Printer Config'   },
+            // { id: 'card-readers',     label: 'Card Readers'     },
             { id: 'receipt-settings', label: 'Receipt Settings'  },
         ]
     },
@@ -356,6 +358,11 @@ function registerAllSections() {
         name: 'order-settings',
         mount: (container) => buildOrderSettingsScene(container),
         unmount: (container) => cleanupOrderSettings(container),
+    });
+    SceneManager.register({
+        name: 'network-setup',
+        mount: (container) => buildNetworkSetupScene(container),
+        unmount: (container) => cleanupNetworkSetup(container),
     });
     SceneManager.register({
         name: 'card-readers',
