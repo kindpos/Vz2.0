@@ -313,6 +313,34 @@ function _buildBadge(prefix) {
   return null;
 }
 
+// ── L2 microMOD row ──
+function _buildMicroModRow(mm) {
+  var r = document.createElement('div');
+  r.className = 'ir-mmod';
+
+  var arrow = document.createElement('span');
+  arrow.className = 'ir-mmod-arrow';
+  arrow.textContent = '↳';
+  r.appendChild(arrow);
+
+  var badge = _buildBadge(mm.prefix);
+  if (badge) r.appendChild(badge);
+
+  var name = document.createElement('span');
+  name.className = 'ir-mmname';
+  name.textContent = mm.name || '';
+  r.appendChild(name);
+
+  if (mm.upcharge && mm.upcharge > 0) {
+    var up = document.createElement('span');
+    up.className = 'ir-ups';
+    up.textContent = '+' + _fmt(mm.upcharge);
+    r.appendChild(up);
+  }
+
+  return r;
+}
+
 // ── L1 MOD row ──
 function _buildModRow(mod) {
   var r = document.createElement('div');
@@ -381,6 +409,10 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
     well.className = 'ir-mods';
     for (var i = 0; i < mods.length; i++) {
       well.appendChild(_buildModRow(mods[i]));
+      var mmods = Array.isArray(mods[i].microMods) ? mods[i].microMods : [];
+      for (var mi = 0; mi < mmods.length; mi++) {
+        well.appendChild(_buildMicroModRow(mmods[mi]));
+      }
     }
     card.appendChild(well);
   }
