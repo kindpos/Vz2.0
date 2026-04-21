@@ -49,6 +49,7 @@ import { buildTimeAttendanceScene, cleanupTimeAttendance } from './sections/time
 import { buildShiftConfigScene,    cleanupShiftConfig    } from './sections/shift-config.js';
 import { buildTipoutRulesScene,    cleanupTipoutRules    } from './sections/tipout-rules.js';
 import { buildHomeScene,           cleanupHome           } from './sections/home.js';
+import { buildStaffRolesScene,    cleanupStaffRoles     } from './sections/staff-roles.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -74,6 +75,7 @@ const NAV = [
         label: 'STAFF',
         subs: [
             { id: 'employee-management', label: 'Staff List'     },
+            { id: 'staff-roles',         label: 'Roles'          },
             { id: 'time-attendance',  label: 'Time & Attendance' },
             { id: 'payroll-tips',     label: 'Payroll & Tips'    },
             { id: 'tipout-rules',     label: 'Tipout Rules'      },
@@ -331,6 +333,11 @@ function registerAllSections() {
         name: 'home',
         mount: (container) => buildHomeScene(container),
         unmount: () => cleanupHome(),
+    });
+    SceneManager.register({
+        name: 'staff-roles',
+        mount: (container) => buildStaffRolesScene(container),
+        unmount: (container) => cleanupStaffRoles(container),
     });
     SceneManager.register({
         name: 'store-info',
