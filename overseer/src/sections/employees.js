@@ -12,7 +12,10 @@
 
 import { pushChanges } from '../services/config-push.js';
 import { T, withAlpha } from '../ui/tokens.js';
-import { buildScenePage, sectionCard, button, field } from '../ui/forms.js';
+import {
+    buildScenePage, sectionCard, button, field,
+    numberField, chipGroup, checkboxChip, row, openModal,
+} from '../ui/forms.js';
 import {
     EMPLOYEES, ROLES, STATUSES,
     getRoleLabel, getStatusInfo, fmtDate,
@@ -430,13 +433,83 @@ function buildTable(list, isInactive = false) {
 }
 
 /* ------------------------------------------
-   ADD / EDIT MODAL
+   Local textarea builder — forms.js doesn't export one yet.
+   Mirrors the field() style from forms.js so glows/spacing match.
 ------------------------------------------ */
-function showAddEditModal(container, employee) {
-    const isEdit = !!employee;
-    const title  = isEdit ? `EDIT EMPLOYEE: ${employee.firstName} ${employee.lastName}` : 'ADD NEW EMPLOYEE';
+function textArea({ label = null, value = '', rows = 3 }) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px; flex: 1;';
 
-    // Default values
+    if (label) {
+        const lbl = document.createElement('label');
+        lbl.style.cssText = `
+            font-family: ${T.font.body};
+            font-size: ${T.fs.base}px;
+            color: ${T.textMuted};
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        `;
+        lbl.textContent = label;
+        wrap.appendChild(lbl);
+    }
+
+    const ta = document.createElement('textarea');
+    ta.rows = rows;
+    ta.value = value;
+    ta.style.cssText = `
+        width: 100%; box-sizing: border-box;
+        background: ${T.well};
+        color: ${T.text};
+        border: 1px solid ${T.border};
+        border-radius: ${T.r.sm}px;
+        padding: 10px 14px;
+        font-size: ${T.fs.lg}px;
+        font-family: ${T.font.body};
+        outline: none;
+        resize: vertical;
+        transition: border-color 0.15s ease;
+        color-scheme: dark;
+    `;
+    ta.addEventListener('focus', () => ta.style.borderColor = T.gold);
+    ta.addEventListener('blur',  () => ta.style.borderColor = T.border);
+    wrap.appendChild(ta);
+    return { wrap, input: ta };
+}
+
+/* ------------------------------------------
+   Labeled chipGroup — forms.js's chipGroup has no header label.
+   We need a "Roles" / "Tipped" / "Status" caption on top to
+   match the other field builders. Returns { wrap, getSelected }.
+------------------------------------------ */
+function labeledChipGroup({ label, options, selected, mode, onChange = null }) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px; flex: 1;';
+
+    const lbl = document.createElement('div');
+    lbl.style.cssText = `
+        font-family: ${T.font.body};
+        font-size: ${T.fs.base}px;
+        color: ${T.textMuted};
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    `;
+    lbl.textContent = label;
+    wrap.appendChild(lbl);
+
+    const group = chipGroup({ options, selected, mode, onChange });
+    wrap.appendChild(group.wrap);
+
+    return { wrap, getSelected: group.getSelected };
+}
+
+/* ==========================================
+   ADD / EDIT MODAL
+   Built on openModal + field/numberField/chipGroup/button.
+   Emits employee.created / employee.updated with identical
+   payload shapes to the pre-port version.
+   ========================================== */
+function showAddEditModal(_container, employee) {
+    const isEdit = !!employee;
     const vals = isEdit ? { ...employee } : {
         firstName: '', lastName: '', roles: ['server'],
         payRate: 15.00, isTipped: true, status: 'active',
@@ -444,250 +517,165 @@ function showAddEditModal(container, employee) {
         termDate: '', termReason: '', notes: '',
     };
 
-    // ── Backdrop ──
-    const backdrop = document.createElement('div');
-    backdrop.style.cssText = `
-        position: fixed; inset: 0; z-index: 5000;
-        background: ${C.backdrop}; display: flex;
-        align-items: center; justify-content: center;
-        animation: modalFadeIn 0.25s ease-out;
-    `;
+    const content = document.createElement('div');
+    content.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
 
-    // ── Modal Card ──
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        background: ${C.dark}; border: 1px solid ${C.mintBorder};
-        border-radius: 12px; padding: 0; width: 720px; max-width: 95vw;
-        max-height: 90vh; overflow-y: auto;
-        animation: modalSlideIn 0.25s ease-out;
-    `;
+    // Name row
+    const firstF = field({ label: 'First Name', value: vals.firstName, required: true });
+    const lastF  = field({ label: 'Last Name',  value: vals.lastName,  required: true });
+    content.appendChild(row(firstF, lastF));
 
-    // ── Header ──
-    const modalHeader = document.createElement('div');
-    modalHeader.style.cssText = `
-        padding: 20px 24px; border-bottom: 1px solid ${C.mintBorder};
-        font-family: ${T.font.heading};
-        font-size: 26px; color: ${C.yellow}; letter-spacing: 1px;
-    `;
-    modalHeader.textContent = title;
-    modal.appendChild(modalHeader);
-
-    // ── Form Body ──
-    const form = document.createElement('div');
-    form.style.cssText = 'padding: 24px;';
-
-    // Name fields (side by side)
-    form.appendChild(buildFieldRow([
-        buildTextField('First Name *', 'emp-first', vals.firstName),
-        buildTextField('Last Name *', 'emp-last', vals.lastName),
-    ]));
-
-    // Role checkboxes (multi-select)
-    const roleWrap = document.createElement('div');
-    roleWrap.style.cssText = 'margin-bottom: 16px;';
-    const roleLabel = document.createElement('div');
-    roleLabel.style.cssText = `${fieldLabelStyle}`;
-    roleLabel.textContent = 'Roles';
-    roleWrap.appendChild(roleLabel);
-    const roleGrid = document.createElement('div');
-    roleGrid.id = 'emp-roles';
-    roleGrid.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
-    const currentRoles = vals.roles || [];
-    ROLES.forEach(r => {
-        const chip = document.createElement('label');
-        const checked = currentRoles.includes(r.id);
-        chip.style.cssText = `
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 8px 14px; border-radius: 6px; cursor: pointer;
-            background: ${checked ? withAlpha(T.green, 0.2) : T.well};
-            border: 1px solid ${checked ? T.green : withAlpha(T.green, 0.15)};
-            color: ${T.green}; font-family: ${T.font.body}; font-size: 20px;
-            transition: all 0.15s ease;
-        `;
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = r.id;
-        cb.checked = checked;
-        cb.style.cssText = 'accent-color: ${T.green}; width: 18px; height: 18px;';
-        cb.addEventListener('change', () => {
-            chip.style.background = cb.checked ? withAlpha(T.green, 0.2) : T.well;
-            chip.style.borderColor = cb.checked ? T.green : withAlpha(T.green, 0.15);
-        });
-        chip.appendChild(cb);
-        chip.appendChild(document.createTextNode(r.label));
-        roleGrid.appendChild(chip);
+    // Roles (multi-select chip group)
+    const rolesGroup = labeledChipGroup({
+        label: 'Roles',
+        options: ROLES.map(r => ({ id: r.id, label: r.label })),
+        selected: vals.roles || [],
+        mode: 'multi',
     });
-    roleWrap.appendChild(roleGrid);
-    form.appendChild(roleWrap);
+    content.appendChild(rolesGroup.wrap);
 
-    // Pay Rate + Tipped (side by side)
-    form.appendChild(buildFieldRow([
-        buildTextField('Pay Rate ($/hr)', 'emp-rate', vals.payRate.toFixed(2), 'number'),
-        buildRadioField('Tipped', 'emp-tipped', vals.isTipped ? 'yes' : 'no', [
-            { value: 'yes', label: 'Yes' },
-            { value: 'no',  label: 'No' },
-        ]),
-    ]));
+    // Pay rate + tipped
+    const rateF = numberField({
+        label: 'Pay Rate',
+        value: vals.payRate,
+        min: 0,
+        step: 0.5,
+        suffix: '$/hr',
+    });
+    const tippedGroup = labeledChipGroup({
+        label: 'Tipped',
+        options: [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }],
+        selected: [vals.isTipped ? 'yes' : 'no'],
+        mode: 'single',
+    });
+    content.appendChild(row(rateF, tippedGroup));
 
-    // PIN (only for new employees)
+    // PIN (only on create)
+    let pinF = null;
     if (!isEdit) {
-        form.appendChild(buildTextField('PIN Code (4–6 digits)', 'emp-pin', '', 'password'));
+        pinF = field({ label: 'PIN Code (4–6 digits)', type: 'password' });
+        pinF.input.maxLength = 6;
+        content.appendChild(pinF.wrap);
     }
 
-    // Status
-    form.appendChild(buildRadioField('Status', 'emp-status', vals.status, [
-        { value: 'active',         label: 'Active' },
-        { value: 'inactive',       label: 'Inactive' },
-        { value: 'do_not_rehire',  label: 'Do Not Rehire' },
-    ]));
-
-    // Hire Date
-    form.appendChild(buildTextField('Hire Date', 'emp-hire', vals.hireDate, 'date'));
-
-    // Conditional: Term Date + Reason (visible when inactive/DNR)
+    // Status — toggles visibility of the term section
     const termSection = document.createElement('div');
-    termSection.id = 'emp-term-section';
-    termSection.style.cssText = vals.status !== 'active'
-        ? 'margin-top: 4px;'
-        : 'display: none; margin-top: 4px;';
-    termSection.appendChild(buildTextField('Termination Date', 'emp-term-date', vals.termDate || '', 'date'));
-    termSection.appendChild(buildTextArea('Reason', 'emp-term-reason', vals.termReason || ''));
-    form.appendChild(termSection);
+    termSection.style.cssText = `display: ${vals.status !== 'active' ? 'flex' : 'none'}; flex-direction: column; gap: 16px;`;
+
+    const statusGroup = labeledChipGroup({
+        label: 'Status',
+        options: [
+            { id: 'active',        label: 'Active' },
+            { id: 'inactive',      label: 'Inactive' },
+            { id: 'do_not_rehire', label: 'Do Not Rehire' },
+        ],
+        selected: [vals.status],
+        mode: 'single',
+        onChange: (selected) => {
+            const isActive = selected[0] === 'active';
+            termSection.style.display = isActive ? 'none' : 'flex';
+        },
+    });
+    content.appendChild(statusGroup.wrap);
+
+    // Hire date
+    const hireF = field({ label: 'Hire Date', type: 'date', value: vals.hireDate });
+    content.appendChild(hireF.wrap);
+
+    // Term date + reason (conditional)
+    const termDateF   = field({ label: 'Termination Date', type: 'date', value: vals.termDate || '' });
+    const termReasonF = textArea({ label: 'Reason', value: vals.termReason || '' });
+    termSection.appendChild(termDateF.wrap);
+    termSection.appendChild(termReasonF.wrap);
+    content.appendChild(termSection);
 
     // Notes
-    form.appendChild(buildTextArea('Notes', 'emp-notes', vals.notes || ''));
+    const notesF = textArea({ label: 'Notes', value: vals.notes || '' });
+    content.appendChild(notesF.wrap);
 
-    modal.appendChild(form);
-
-    // ── Footer Buttons ──
-    const footer = document.createElement('div');
-    footer.style.cssText = `
-        padding: 16px 24px; border-top: 1px solid ${C.mintBorder};
-        display: flex; justify-content: flex-end; gap: 12px;
-    `;
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.cssText = `
-        background: transparent; color: ${C.grey}; border: 1px solid ${C.grey};
-        padding: 12px 28px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: ${T.font.body};
-        transition: all 0.2s ease;
-    `;
-    cancelBtn.addEventListener('click', () => backdrop.remove());
-
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = isEdit ? 'Save Changes' : 'Add Employee';
-    saveBtn.style.cssText = `
-        background: ${C.mint}; color: ${C.dark}; border: none;
-        padding: 12px 28px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: ${T.font.body};
-        font-weight: bold; transition: all 0.2s ease;
-    `;
-    saveBtn.addEventListener('mouseenter', () => saveBtn.style.background = '#d4ffca');
-    saveBtn.addEventListener('mouseleave', () => saveBtn.style.background = C.mint);
-    saveBtn.addEventListener('click', () => handleSave(isEdit, employee, backdrop));
-
-    footer.appendChild(cancelBtn);
-    footer.appendChild(saveBtn);
-    modal.appendChild(footer);
-
-    backdrop.appendChild(modal);
-
-    // Close on backdrop click
-    backdrop.addEventListener('click', (e) => {
-        if (e.target === backdrop) backdrop.remove();
+    // Footer
+    let modalRef = null;
+    const cancelBtn = button({
+        label: 'Cancel',
+        variant: 'ghost',
+        onClick: () => modalRef.close(),
+    });
+    const saveBtn = button({
+        label: isEdit ? 'Save Changes' : 'Add Employee',
+        variant: 'primary',
+        onClick: async () => {
+            await handleSave(isEdit, employee, {
+                firstName: firstF.input.value.trim(),
+                lastName:  lastF.input.value.trim(),
+                roles:     rolesGroup.getSelected(),
+                payRate:   parseFloat(rateF.input.value) || 0,
+                isTipped:  tippedGroup.getSelected()[0] === 'yes',
+                status:    statusGroup.getSelected()[0] || 'active',
+                hireDate:  hireF.input.value,
+                termDate:  termDateF.input.value,
+                termReason: termReasonF.input.value,
+                notes:     notesF.input.value,
+                pin:       pinF ? pinF.input.value : '',
+            }, () => modalRef.close());
+        },
     });
 
-    // Escape key closes modal
-    const escHandler = (e) => {
-        if (e.key === 'Escape') { backdrop.remove(); document.removeEventListener('keydown', escHandler); }
-    };
-    document.addEventListener('keydown', escHandler);
-
-    container.appendChild(backdrop);
-
-    // Wire up status radio to show/hide term fields
-    setTimeout(() => {
-        const statusRadios = backdrop.querySelectorAll('input[name="emp-status"]');
-        statusRadios.forEach(r => {
-            r.addEventListener('change', () => {
-                const section = backdrop.querySelector('#emp-term-section');
-                section.style.display = r.value !== 'active' ? 'block' : 'none';
-            });
-        });
-    }, 0);
+    modalRef = openModal({
+        title: isEdit
+            ? `Edit Employee: ${employee.firstName} ${employee.lastName}`
+            : 'Add New Employee',
+        content,
+        footer: [cancelBtn, saveBtn],
+        width: 640,
+    });
 }
 
 /* ------------------------------------------
    SAVE HANDLER (Add / Edit)
 ------------------------------------------ */
-async function handleSave(isEdit, original, backdrop) {
-    // Read form values
-    const firstName  = (backdrop.querySelector('#emp-first')?.value || '').trim();
-    const lastName   = (backdrop.querySelector('#emp-last')?.value || '').trim();
-    const roles      = [...backdrop.querySelectorAll('#emp-roles input:checked')].map(cb => cb.value);
-    if (roles.length === 0) roles.push('server');
-    const payRate    = parseFloat(backdrop.querySelector('#emp-rate')?.value) || 0;
-    const isTipped   = backdrop.querySelector('input[name="emp-tipped"]:checked')?.value === 'yes';
-    const status     = backdrop.querySelector('input[name="emp-status"]:checked')?.value || 'active';
-    const hireDate   = backdrop.querySelector('#emp-hire')?.value || '';
-    const termDate   = backdrop.querySelector('#emp-term-date')?.value || '';
-    const termReason = backdrop.querySelector('#emp-term-reason')?.value || '';
-    const notes      = backdrop.querySelector('#emp-notes')?.value || '';
+async function handleSave(isEdit, original, values, close) {
+    const {
+        firstName, lastName, roles, payRate, isTipped,
+        status, hireDate, termDate, termReason, notes, pin,
+    } = values;
+    const finalRoles = roles.length ? roles : ['server'];
 
-    // ── Validation ──
     if (!firstName || !lastName) {
         showToast('First and last name are required.', 'error');
         return;
     }
-
-    let newPin = '';
-    if (!isEdit) {
-        newPin = backdrop.querySelector('#emp-pin')?.value || '';
-        if (newPin.length < 4 || newPin.length > 6 || !/^\d+$/.test(newPin)) {
-            showToast('PIN must be 4–6 digits.', 'error');
-            return;
-        }
+    if (!isEdit && (pin.length < 4 || pin.length > 6 || !/^\d+$/.test(pin))) {
+        showToast('PIN must be 4–6 digits.', 'error');
+        return;
     }
 
     if (isEdit) {
-        // ── Update existing ──
         const idx = employees.findIndex(e => e.id === original.id);
         if (idx === -1) return;
 
-        const changedFields = {};
-        if (employees[idx].firstName !== firstName) changedFields.firstName = { old: employees[idx].firstName, new: firstName };
-        if (employees[idx].lastName !== lastName)   changedFields.lastName  = { old: employees[idx].lastName, new: lastName };
-        if (JSON.stringify(employees[idx].roles) !== JSON.stringify(roles)) changedFields.roles = { old: employees[idx].roles, new: roles };
-        if (employees[idx].payRate !== payRate)      changedFields.payRate   = { old: employees[idx].payRate, new: payRate };
-        if (employees[idx].isTipped !== isTipped)    changedFields.isTipped  = { old: employees[idx].isTipped, new: isTipped };
-
-        const oldStatus = employees[idx].status;
-
         Object.assign(employees[idx], {
-            firstName, lastName, roles, payRate, isTipped,
-            status, hireDate, termDate: status !== 'active' ? termDate : null,
-            termReason: status !== 'active' ? termReason : null, notes,
+            firstName, lastName, roles: finalRoles, payRate, isTipped,
+            status, hireDate,
+            termDate:   status !== 'active' ? termDate   : null,
+            termReason: status !== 'active' ? termReason : null,
+            notes,
         });
 
-        // Emit full employee snapshot as update event
         emitEvent('employee.updated', {
             employee_id: original.id,
             first_name: firstName,
             last_name: lastName,
             display_name: `${firstName} ${lastName}`,
-            role_ids: roles,
+            role_ids: finalRoles,
             hourly_rate: payRate,
             active: status === 'active',
         });
 
         showToast(`${firstName} ${lastName} updated successfully`, 'success');
     } else {
-        // ── Create new ──
         const newEmp = {
             id: generateEmployeeId(firstName),
-            firstName, lastName, roles, pinHash: '••••',
+            firstName, lastName, roles: finalRoles, pinHash: '••••',
             payRate, isTipped, hireDate, status,
             termDate: null, termReason: null, notes,
         };
@@ -698,9 +686,9 @@ async function handleSave(isEdit, original, backdrop) {
             first_name: firstName,
             last_name: lastName,
             display_name: `${firstName} ${lastName}`,
-            role_ids: roles,
+            role_ids: finalRoles,
             hourly_rate: payRate,
-            pin: newPin,
+            pin,
             active: status === 'active',
         });
 
@@ -708,367 +696,175 @@ async function handleSave(isEdit, original, backdrop) {
     }
 
     await flushEvents();
-    backdrop.remove();
+    close();
     refreshTable();
 }
 
-/* ------------------------------------------
+/* ==========================================
    PIN RESET MODAL (Step 1: Confirmation)
------------------------------------------- */
+   ========================================== */
 function showPINResetModal(container, employee) {
-    const backdrop = document.createElement('div');
-    backdrop.style.cssText = `
-        position: fixed; inset: 0; z-index: 5000;
-        background: ${C.backdrop}; display: flex;
-        align-items: center; justify-content: center;
-        animation: modalFadeIn 0.25s ease-out;
-    `;
+    const content = document.createElement('div');
+    content.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
 
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        background: ${C.dark}; border: 1px solid ${C.mintBorder};
-        border-radius: 12px; width: 420px; max-width: 95vw;
-        animation: modalSlideIn 0.25s ease-out;
-    `;
+    const prompt = document.createElement('div');
+    prompt.style.cssText = `color: ${T.text}; font-size: ${T.fs.lg}px;`;
+    prompt.textContent = 'Generate new PIN for this employee?';
+    content.appendChild(prompt);
 
-    // Header
-    const header = document.createElement('div');
-    header.style.cssText = `
-        padding: 20px 24px; border-bottom: 1px solid ${C.mintBorder};
-        font-family: ${T.font.heading};
-        font-size: 26px; color: ${C.yellow}; letter-spacing: 1px;
-    `;
-    header.textContent = `RESET PIN: ${employee.firstName} ${employee.lastName}`;
-    modal.appendChild(header);
-
-    // Body
-    const body = document.createElement('div');
-    body.style.cssText = 'padding: 24px;';
-
-    body.innerHTML = `
-        <div style="color: ${C.mint}; font-size: 25px; margin-bottom: 20px;">
-            Generate new PIN for this employee?
-        </div>
-    `;
-
-    // Radio: Random vs Custom
-    body.appendChild(buildRadioField('', 'pin-method', 'random', [
-        { value: 'random', label: 'Generate random 4-digit PIN' },
-        { value: 'custom', label: 'Let me set custom PIN' },
-    ]));
-
-    // Custom PIN input (hidden by default)
+    const customF = field({ type: 'password', placeholder: 'Enter 4–6 digit PIN' });
+    customF.input.maxLength = 6;
     const customWrap = document.createElement('div');
-    customWrap.id = 'pin-custom-wrap';
-    customWrap.style.cssText = 'display: none; margin: 8px 0 16px 0;';
-    customWrap.appendChild(buildTextField('', 'pin-custom', '', 'password'));
-    body.appendChild(customWrap);
+    customWrap.style.cssText = 'display: none;';
+    customWrap.appendChild(customF.wrap);
 
-    // Force change checkbox
-    const forceWrap = document.createElement('div');
-    forceWrap.style.cssText = 'margin: 16px 0;';
-    forceWrap.innerHTML = `
-        <label style="color: ${C.mint}; font-size: 22px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" id="pin-force-change" checked
-                   style="width: 16px; height: 16px; accent-color: ${C.mint};" />
-            Force employee to change PIN on next login
-        </label>
+    const methodGroup = labeledChipGroup({
+        label: 'Method',
+        options: [
+            { id: 'random', label: 'Random 4-digit' },
+            { id: 'custom', label: 'Set custom' },
+        ],
+        selected: ['random'],
+        mode: 'single',
+        onChange: (selected) => {
+            customWrap.style.display = selected[0] === 'custom' ? 'block' : 'none';
+        },
+    });
+    content.appendChild(methodGroup.wrap);
+    content.appendChild(customWrap);
+
+    const forceChip = checkboxChip({
+        label: 'Force employee to change PIN on next login',
+        checked: true,
+    });
+    content.appendChild(forceChip.wrap);
+
+    const warn = document.createElement('div');
+    warn.style.cssText = `
+        color: ${T.warning};
+        font-size: ${T.fs.base}px;
+        padding: 12px 14px;
+        background: ${withAlpha(T.warning, 0.08)};
+        border: 1px solid ${withAlpha(T.warning, 0.2)};
+        border-radius: ${T.r.sm}px;
+        line-height: 1.5;
     `;
-    body.appendChild(forceWrap);
+    warn.textContent = 'New PIN will be displayed once and cannot be recovered. Write it down.';
+    content.appendChild(warn);
 
-    // Warning
-    const warning = document.createElement('div');
-    warning.style.cssText = `
-        color: ${C.orange}; font-size: 20px; margin-top: 16px;
-        padding: 12px; background: rgba(255, 165, 0, 0.08);
-        border: 1px solid rgba(255, 165, 0, 0.2); border-radius: 8px;
-    `;
-    warning.textContent = 'New PIN will be displayed once and cannot be recovered. Write it down.';
-    body.appendChild(warning);
-
-    modal.appendChild(body);
-
-    // Footer
-    const footer = document.createElement('div');
-    footer.style.cssText = `
-        padding: 16px 24px; border-top: 1px solid ${C.mintBorder};
-        display: flex; justify-content: flex-end; gap: 12px;
-    `;
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.cssText = `
-        background: transparent; color: ${C.grey}; border: 1px solid ${C.grey};
-        padding: 12px 28px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: ${T.font.body};
-    `;
-    cancelBtn.addEventListener('click', () => backdrop.remove());
-
-    const resetBtn = document.createElement('button');
-    resetBtn.textContent = 'Reset PIN';
-    resetBtn.style.cssText = `
-        background: ${C.yellow}; color: ${C.dark}; border: none;
-        padding: 12px 28px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: ${T.font.body};
-        font-weight: bold;
-    `;
-    resetBtn.addEventListener('click', () => {
-        const method = backdrop.querySelector('input[name="pin-method"]:checked')?.value;
-        let newPIN;
-
-        if (method === 'custom') {
-            const val = backdrop.querySelector('#pin-custom')?.value || '';
-            if (val.length < 4 || val.length > 6 || !/^\d+$/.test(val)) {
-                showToast('Custom PIN must be 4–6 digits.', 'error');
-                return;
+    let modalRef = null;
+    const cancelBtn = button({
+        label: 'Cancel',
+        variant: 'ghost',
+        onClick: () => modalRef.close(),
+    });
+    const resetBtn = button({
+        label: 'Reset PIN',
+        variant: 'primary',
+        onClick: () => {
+            const method = methodGroup.getSelected()[0];
+            let newPIN;
+            if (method === 'custom') {
+                const val = customF.input.value || '';
+                if (val.length < 4 || val.length > 6 || !/^\d+$/.test(val)) {
+                    showToast('Custom PIN must be 4–6 digits.', 'error');
+                    return;
+                }
+                newPIN = val;
+            } else {
+                newPIN = generatePIN();
             }
-            newPIN = val;
-        } else {
-            newPIN = generatePIN();
-        }
+            const forceChange = forceChip.input.checked;
 
-        const forceChange = backdrop.querySelector('#pin-force-change')?.checked ?? true;
+            emitEvent('employee.updated', {
+                employee_id: employee.id,
+                new_pin_hash: 'SHA256_SIMULATED',
+                force_change_on_login: forceChange,
+                reset_reason: 'Manager-initiated reset',
+            });
 
-        emitEvent('employee.updated', {
-            employee_id: employee.id,
-            new_pin_hash: 'SHA256_SIMULATED',
-            force_change_on_login: forceChange,
-            reset_reason: 'Manager-initiated reset',
-        });
-
-        backdrop.remove();
-        showPINDisplayModal(container, employee, newPIN, forceChange);
+            modalRef.close();
+            showPINDisplayModal(container, employee, newPIN, forceChange);
+        },
     });
 
-    footer.appendChild(cancelBtn);
-    footer.appendChild(resetBtn);
-    modal.appendChild(footer);
-
-    backdrop.appendChild(modal);
-    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
-
-    const escHandler = (e) => {
-        if (e.key === 'Escape') { backdrop.remove(); document.removeEventListener('keydown', escHandler); }
-    };
-    document.addEventListener('keydown', escHandler);
-
-    container.appendChild(backdrop);
-
-    // Wire radio toggle for custom PIN field
-    setTimeout(() => {
-        const radios = backdrop.querySelectorAll('input[name="pin-method"]');
-        radios.forEach(r => {
-            r.addEventListener('change', () => {
-                const wrap = backdrop.querySelector('#pin-custom-wrap');
-                wrap.style.display = r.value === 'custom' ? 'block' : 'none';
-            });
-        });
-    }, 0);
+    modalRef = openModal({
+        title: `Reset PIN: ${employee.firstName} ${employee.lastName}`,
+        content,
+        footer: [cancelBtn, resetBtn],
+        width: 460,
+    });
 }
 
-/* ------------------------------------------
+/* ==========================================
    PIN DISPLAY MODAL (Step 2: One-time show)
------------------------------------------- */
-function showPINDisplayModal(container, employee, pin, forceChange) {
-    const backdrop = document.createElement('div');
-    backdrop.style.cssText = `
-        position: fixed; inset: 0; z-index: 5000;
-        background: ${C.backdrop}; display: flex;
-        align-items: center; justify-content: center;
-        animation: modalFadeIn 0.25s ease-out;
-    `;
+   ========================================== */
+function showPINDisplayModal(_container, employee, pin, forceChange) {
+    const content = document.createElement('div');
+    content.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;';
 
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        background: ${C.dark}; border: 1px solid ${C.green};
-        border-radius: 12px; width: 400px; max-width: 95vw;
-        text-align: center; animation: modalSlideIn 0.25s ease-out;
-    `;
+    const prompt = document.createElement('div');
+    prompt.style.cssText = `color: ${T.text}; font-size: ${T.fs.lg}px;`;
+    prompt.textContent = `New PIN for ${employee.firstName} ${employee.lastName}:`;
+    content.appendChild(prompt);
 
-    // Header
-    const header = document.createElement('div');
-    header.style.cssText = `
-        padding: 20px 24px; border-bottom: 1px solid ${C.mintBorder};
+    const pinBox = document.createElement('button');
+    pinBox.type = 'button';
+    pinBox.title = 'Click to copy';
+    pinBox.style.cssText = `
+        background: ${withAlpha(T.greenUp, 0.1)};
+        border: 2px solid ${T.greenUp};
+        border-radius: ${T.r.md}px;
+        padding: 16px 24px;
+        cursor: pointer;
         font-family: ${T.font.heading};
-        font-size: 26px; color: ${C.green}; letter-spacing: 1px;
+        font-size: ${T.fs.hero}px;
+        color: ${T.greenUp};
+        letter-spacing: 10px;
+        font-weight: 700;
     `;
-    header.textContent = 'PIN RESET SUCCESSFUL';
-    modal.appendChild(header);
-
-    // Body
-    const body = document.createElement('div');
-    body.style.cssText = 'padding: 32px 24px;';
-
-    body.innerHTML = `
-        <div style="color: ${C.mint}; font-size: 25px; margin-bottom: 20px;">
-            New PIN for ${employee.firstName} ${employee.lastName}:
-        </div>
-        <div style="background: rgba(0, 255, 0, 0.08); border: 2px solid ${C.green};
-                    border-radius: 12px; padding: 20px; display: inline-block;
-                    margin-bottom: 20px; cursor: pointer;"
-             id="pin-display-box"
-             title="Click to copy">
-            <span style="font-family: ${T.font.heading};
-                         font-size: 42px; color: ${C.green}; letter-spacing: 12px;">
-                ${pin}
-            </span>
-        </div>
-        <div style="color: ${C.orange}; font-size: 22px; font-weight: bold;
-                    margin-bottom: 8px;">
-            ⚠ WRITE THIS DOWN NOW
-        </div>
-        <div style="color: ${C.grey}; font-size: 20px; margin-bottom: 8px;">
-            This will not be shown again.
-        </div>
-        ${forceChange ? `<div style="color: ${withAlpha(T.green, 0.6)}; font-size: 20px;">
-            Employee must change PIN on next login.
-        </div>` : ''}
-    `;
-    modal.appendChild(body);
-
-    // Footer
-    const footer = document.createElement('div');
-    footer.style.cssText = `
-        padding: 16px 24px; border-top: 1px solid ${C.mintBorder};
-        display: flex; justify-content: center;
-    `;
-
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = `
-        background: ${C.mint}; color: ${C.dark}; border: none;
-        padding: 12px 40px; border-radius: 8px; font-size: 25px; cursor: pointer;
-        font-family: ${T.font.body};
-        font-weight: bold;
-    `;
-    closeBtn.addEventListener('click', async () => {
-        await flushEvents();
-        backdrop.remove();
-        showToast(`PIN reset for ${employee.firstName} ${employee.lastName}`, 'success');
+    pinBox.textContent = pin;
+    pinBox.addEventListener('click', () => {
+        navigator.clipboard?.writeText(pin).then(() => {
+            showToast('PIN copied to clipboard', 'info');
+        }).catch(() => {});
     });
-    footer.appendChild(closeBtn);
-    modal.appendChild(footer);
+    content.appendChild(pinBox);
 
-    backdrop.appendChild(modal);
-    container.appendChild(backdrop);
+    const warn = document.createElement('div');
+    warn.style.cssText = `color: ${T.warning}; font-size: ${T.fs.base}px; font-weight: 700;`;
+    warn.textContent = '⚠ WRITE THIS DOWN NOW';
+    content.appendChild(warn);
 
-    // Click PIN box to copy
-    setTimeout(() => {
-        const box = backdrop.querySelector('#pin-display-box');
-        if (box) {
-            box.addEventListener('click', () => {
-                navigator.clipboard?.writeText(pin).then(() => {
-                    showToast('PIN copied to clipboard', 'info');
-                }).catch(() => {});
-            });
-        }
-    }, 0);
-}
+    const sub = document.createElement('div');
+    sub.style.cssText = `color: ${T.textMuted}; font-size: ${T.fs.md}px;`;
+    sub.textContent = 'This will not be shown again.';
+    content.appendChild(sub);
 
-/* ------------------------------------------
-   FORM FIELD BUILDERS
-   (Match modal styling patterns)
------------------------------------------- */
-const fieldLabelStyle = `
-    font-size: 20px; color: ${C.mintFaded};
-    text-transform: uppercase; letter-spacing: 0.5px;
-    margin-bottom: 6px; display: block;
-`;
-
-const inputStyle = `
-    width: 100%; box-sizing: border-box;
-    background: ${T.well};
-    border: 1px solid ${C.mintBorder}; color: ${C.mint};
-    padding: 12px 14px; border-radius: 6px; font-size: 25px;
-    font-family: ${T.font.body};
-    outline: none; transition: border-color 0.2s ease;
-    color-scheme: dark;
-`;
-
-function buildTextField(label, id, value, type = 'text') {
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'margin-bottom: 16px; flex: 1; min-width: 140px;';
-    wrap.innerHTML = `
-        ${label ? `<label for="${id}" style="${fieldLabelStyle}">${label}</label>` : ''}
-        <input type="${type}" id="${id}" value="${value}" style="${inputStyle}"
-               ${type === 'number' ? 'step="0.50" min="0"' : ''}
-               ${type === 'password' ? 'maxlength="6"' : ''} />
-    `;
-    // Focus glow
-    setTimeout(() => {
-        const inp = wrap.querySelector('input');
-        if (inp) {
-            inp.addEventListener('focus', () => inp.style.borderColor = C.mint);
-            inp.addEventListener('blur', () => inp.style.borderColor = C.mintBorder);
-        }
-    }, 0);
-    return wrap;
-}
-
-function buildTextArea(label, id, value) {
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'margin-bottom: 16px;';
-    wrap.innerHTML = `
-        <label for="${id}" style="${fieldLabelStyle}">${label}</label>
-        <textarea id="${id}" rows="3" style="${inputStyle} resize: vertical;">${value}</textarea>
-    `;
-    setTimeout(() => {
-        const ta = wrap.querySelector('textarea');
-        if (ta) {
-            ta.addEventListener('focus', () => ta.style.borderColor = C.mint);
-            ta.addEventListener('blur', () => ta.style.borderColor = C.mintBorder);
-        }
-    }, 0);
-    return wrap;
-}
-
-function buildSelectField(label, id, value, options) {
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'margin-bottom: 16px;';
-    const optionsHTML = options.map(o =>
-        `<option value="${o.value}" ${o.value === value ? 'selected' : ''}>${o.label}</option>`
-    ).join('');
-    wrap.innerHTML = `
-        <label for="${id}" style="${fieldLabelStyle}">${label}</label>
-        <select id="${id}" style="${inputStyle} cursor: pointer; appearance: auto;">
-            ${optionsHTML}
-        </select>
-    `;
-    return wrap;
-}
-
-function buildRadioField(label, name, value, options) {
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'margin-bottom: 16px;';
-    if (label) {
-        wrap.innerHTML = `<div style="${fieldLabelStyle}">${label}</div>`;
+    if (forceChange) {
+        const force = document.createElement('div');
+        force.style.cssText = `color: ${T.textDim}; font-size: ${T.fs.md}px;`;
+        force.textContent = 'Employee must change PIN on next login.';
+        content.appendChild(force);
     }
-    const radioWrap = document.createElement('div');
-    radioWrap.style.cssText = 'display: flex; gap: 16px; flex-wrap: wrap;';
 
-    options.forEach(opt => {
-        const lbl = document.createElement('label');
-        lbl.style.cssText = `
-            color: ${C.mint}; font-size: 22px; cursor: pointer;
-            display: flex; align-items: center; gap: 6px;
-        `;
-        lbl.innerHTML = `
-            <input type="radio" name="${name}" value="${opt.value}"
-                   ${opt.value === value ? 'checked' : ''}
-                   style="accent-color: ${C.mint}; width: 15px; height: 15px;" />
-            ${opt.label}
-        `;
-        radioWrap.appendChild(lbl);
+    let modalRef = null;
+    const closeBtn = button({
+        label: 'Close',
+        variant: 'primary',
+        onClick: async () => {
+            await flushEvents();
+            modalRef.close();
+            showToast(`PIN reset for ${employee.firstName} ${employee.lastName}`, 'success');
+        },
     });
-    wrap.appendChild(radioWrap);
-    return wrap;
-}
 
-function buildFieldRow(fields) {
-    const row = document.createElement('div');
-    row.style.cssText = 'display: flex; gap: 16px;';
-    fields.forEach(f => row.appendChild(f));
-    return row;
+    modalRef = openModal({
+        title: 'PIN Reset Successful',
+        content,
+        footer: [closeBtn],
+        width: 420,
+    });
 }
 
 /* ------------------------------------------
