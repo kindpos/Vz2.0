@@ -249,7 +249,7 @@ class DejavooSPInAdapter(BasePaymentDevice):
             print(f"  SPIn → {self._config.ip_address}:{self._config.port}")
             print(f"  SPIn XML: {xml_body}")
 
-            request_timeout = timeout or 120.0
+            request_timeout = timeout or 60.0
             async with httpx.AsyncClient(timeout=request_timeout) as client:
                 resp = await client.get(url)
             resp.raise_for_status()

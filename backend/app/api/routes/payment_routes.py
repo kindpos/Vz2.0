@@ -235,6 +235,28 @@ async def process_sale(
         raise HTTPException(status_code=400, detail="Order is already fully paid")
     order_tax = order_proj.tax if order_proj else Decimal("0.00")
 
+    # Guard against concurrent requests: if a PAYMENT_INITIATED event exists
+    # for this order without a matching result event, another sale is in-flight.
+    _result_types = {
+        EventType.PAYMENT_CONFIRMED, EventType.PAYMENT_DECLINED,
+        EventType.PAYMENT_CANCELLED, EventType.PAYMENT_TIMED_OUT,
+        EventType.PAYMENT_ERROR,
+    }
+    _initiated = {
+        e.payload.get("transaction_id")
+        for e in order_events
+        if e.event_type == EventType.PAYMENT_INITIATED
+        and e.payload.get("transaction_id")
+    }
+    _resolved = {
+        e.payload.get("transaction_id")
+        for e in order_events
+        if e.event_type in _result_types
+        and e.payload.get("transaction_id")
+    }
+    if _initiated - _resolved:
+        raise HTTPException(status_code=409, detail="A payment is already in progress for this order")
+
     # Defense in depth: clamp the sale amount at the order's current
     # balance_due. Any excess — typically caused by a frontend that
     # computed its own cardTotal from a stale TAX_RATE and now disagrees
@@ -558,9 +580,11 @@ async def zero_unadjusted_tips(
                 payment_id=p.payment_id,
                 tip_amount=0.0,
                 previous_tip=0.0,
+                idempotency_key=f"zero_tip_{p.payment_id}",
             )
-            await ledger.append(evt)
-            zeroed += 1
+            appended = await ledger.append(evt)
+            if appended:
+                zeroed += 1
 
     return {"success": True, "zeroed_count": zeroed}
 
