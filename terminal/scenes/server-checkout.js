@@ -1422,10 +1422,14 @@ defineScene({
             showToast('Print failed \u2014 check printer connection', { bg: T.verm });
           });
         },
-        onFinalize: function() {
+        onFinalize: (function() {
+          var _finalizing = false;
+          return function() {
           // Full finalize flow: manager PIN → confirm totals → POST → return
           // to server-landing. On any backend error, stay on scene and surface
           // an actionable message — never give false success to the server.
+          if (_finalizing) return;
+          _finalizing = true;
           SceneManager.interrupt('co-manager-pin', {
             onConfirm: function(authData) {
               SceneManager.closeInterrupt('co-manager-pin');
@@ -1464,24 +1468,30 @@ defineScene({
                       } else if (r.status === 404) {
                         // Endpoint not yet implemented on the backend.
                         showToast('Finalize endpoint pending — backend work needed', { bg: T.yellow });
+                        _finalizing = false;
                       } else {
                         showToast('Finalize failed (' + r.status + ') — try again', { bg: T.verm });
+                        _finalizing = false;
                       }
                     }).catch(function() {
                       showToast('Finalize unavailable — ask your manager', { bg: T.verm });
+                      _finalizing = false;
                     });
                   },
                   onCancel: function() {
                     SceneManager.closeInterrupt('co-finalize-confirm');
+                    _finalizing = false;
                   },
                 });
               }, 80);
             },
             onCancel: function() {
               SceneManager.closeInterrupt('co-manager-pin');
+              _finalizing = false;
             },
           });
-        },
+          };
+        }()),
         onAdjustTip: function(chk) {
           // Opens the single-check tip-adjust transactional from checkout-core.
           // On success, that scene calls onDone → we refresh → the card rebuilds
