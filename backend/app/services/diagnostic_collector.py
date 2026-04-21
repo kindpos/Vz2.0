@@ -126,6 +126,36 @@ class DiagnosticCollector:
             ON diagnostic_events(correlation_id)
         """)
 
+        # Kindnostic shares this DB for boot-probe results. Create its
+        # tables too so the schema_version probe passes even when the
+        # backend boots before kindnostic has run.
+        await self._db.execute("""
+            CREATE TABLE IF NOT EXISTS boot_results (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                boot_id     TEXT NOT NULL,
+                timestamp   TEXT NOT NULL,
+                probe_name  TEXT NOT NULL,
+                category    TEXT NOT NULL,
+                status      TEXT NOT NULL,
+                duration_ms INTEGER,
+                message     TEXT,
+                metadata    TEXT
+            )
+        """)
+        await self._db.execute("""
+            CREATE TABLE IF NOT EXISTS boot_summary (
+                boot_id         TEXT PRIMARY KEY,
+                timestamp       TEXT NOT NULL,
+                total_probes    INTEGER,
+                passed          INTEGER,
+                warned          INTEGER,
+                failed          INTEGER,
+                duration_ms     INTEGER,
+                outcome         TEXT NOT NULL,
+                override_by     TEXT
+            )
+        """)
+
         await self._db.commit()
 
     async def close(self) -> None:

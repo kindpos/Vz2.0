@@ -19,6 +19,7 @@ One row per config-surface change, newest at the bottom.
 | 2026-04-21 | `backend/app/main.py` | lifespan + routers + static | — | Initialize `DiagnosticCollector` at `settings.database_path.replace('event_ledger.db','diagnostic_boot.db')` in lifespan (tears down on shutdown). Register `entomology.router` under `/api/v1`. Add `/entomology` redirect + `/entomology/` static mount (before the root catch-all). |
 | 2026-04-21 | `backend/app/api/routes/entomology.py` | collector access | direct `get_diagnostic_collector()` call → `Depends(require_collector)` | Proper FastAPI DI so `app.dependency_overrides` works in tests. Endpoints gain a second `Depends(...)` param. |
 | 2026-04-21 | `entomology/index.html` | `<link rel="icon">` | (none) → inline SVG data URI | Browser was auto-requesting `/entomology/favicon.ico` and logging a 404 in the console. Inline data URI eliminates the extra request. |
+| 2026-04-21 | `backend/app/services/diagnostic_collector.py` | schema | `diagnostic_events` only → also creates `boot_results` + `boot_summary` | User's live dashboard reported `schema_version CRITICAL FAIL — Schema mismatch for: diagnostic_boot`. Kindnostic expects both tables in `diagnostic_boot.db`; when the backend boots first, the file existed with only the runtime `diagnostic_events` table. Collector now creates all three tables so the shared schema matches kindnostic's expectations regardless of boot order. |
 
 ---
 
@@ -73,3 +74,6 @@ Booted `uvicorn app.main:app --port 8765`. `/health` → 200 JSON. `/entomology/
 
 ### Step 7 — Favicon 404 fix (2026-04-21)
 User reported 404 in browser console on page load. Re-tested with uvicorn: `/entomology` now 307-redirects cleanly to `/entomology/` (earlier 404 was environmental), assets all 200. The remaining 404 was the browser auto-fetching `/entomology/favicon.ico`, which my `index.html` had not declared. Added an inline SVG data URI `<link rel="icon">` — eliminates the extra HTTP request entirely, no new asset file needed.
+
+### Step 8 — Shared-schema fix (2026-04-21)
+Live dashboard surfaced `schema_version CRITICAL FAIL — Schema mismatch for: diagnostic_boot`. Root cause: kindnostic's schema probe expects `{boot_results, boot_summary}` in `diagnostic_boot.db`, but when the backend's `DiagnosticCollector` opens that DB first it only creates `diagnostic_events`. Fixed by adding the two kindnostic tables to `DiagnosticCollector.connect()` so the shared schema is complete regardless of which component boots first. Full backend suite still green: **1004 passed, 3 skipped**.
