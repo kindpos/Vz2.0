@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     # the API call failing. pytest flips this to True via conftest.
     strict_invariants: bool = False
 
+    # Auth gate on write/admin routes. When True (production default), the
+    # auth_required dependency raises 401 on missing/expired bearer tokens.
+    # When False, a SEC-005 diagnostic is recorded and the request is
+    # allowed through — useful during the rollout transition and in tests
+    # that still call routes without a valid session. Tests turn this off
+    # via conftest so the 1000+-test suite doesn't need token fixtures.
+    auth_enforced: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="KINDPOS_")
 
 

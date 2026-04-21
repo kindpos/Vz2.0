@@ -8,9 +8,11 @@ import logging
 import time
 import secrets
 from collections import defaultdict
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from app.api.dependencies import get_ledger, get_diagnostic_collector
+from app.config import settings as _settings
 from app.core.event_ledger import EventLedger
 from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 from app.services.overseer_config_service import OverseerConfigService
@@ -126,6 +128,53 @@ def require_role(*allowed_roles: str):
             raise HTTPException(status_code=403, detail="Insufficient role")
         return session
     return Depends(_check)
+
+
+def _extract_session(request: Request) -> Optional[dict]:
+    """Pull a valid session dict off the Authorization header, or None."""
+    _prune_expired_sessions()
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+        sess = _sessions.get(token)
+        if sess and time.monotonic() - sess["created_at"] < TOKEN_TTL_SECONDS:
+            return sess
+    return None
+
+
+async def auth_required(request: Request) -> Optional[dict]:
+    """Soft-by-default auth gate used as a route-level Depends.
+
+    Behavior:
+      - Valid bearer token → return the session dict.
+      - No/expired token + settings.auth_enforced=True → record SEC-005
+        and raise HTTP 401. Production default.
+      - No/expired token + settings.auth_enforced=False → record SEC-005
+        and return None. Transition/test default.
+
+    Direct function-call tests (that skip FastAPI's dependency resolver)
+    bypass this entirely — only TestClient flows hit it.
+    """
+    session = _extract_session(request)
+    if session is not None:
+        return session
+
+    await _record_diag(
+        category=DiagnosticCategory.SEC,
+        severity=DiagnosticSeverity.WARNING,
+        source=f"auth.required.{request.url.path}",
+        event_code="SEC-005",
+        message="Auth required but no valid token",
+        context={
+            "method": request.method,
+            "path": request.url.path,
+            "enforced": bool(getattr(_settings, "auth_enforced", True)),
+        },
+    )
+
+    if getattr(_settings, "auth_enforced", True):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return None
 
 
 # ── Routes ────────────────────────────────────────

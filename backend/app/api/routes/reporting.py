@@ -5,7 +5,7 @@ Endpoints for sales and labor reporting summaries.
 Supports both current-day and historical date queries via the event ledger.
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import Optional
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
@@ -14,6 +14,7 @@ from app.services.store_config_service import StoreConfigService
 from app.services.overseer_config_service import OverseerConfigService
 
 from app.api.dependencies import get_ledger
+from app.api.routes.auth import _extract_session, _record_diag
 from app.core.event_ledger import EventLedger
 from app.core.events import EventType
 from app.core.projections import project_orders
@@ -24,8 +25,63 @@ from app.core.financial_invariants import (
     max_abs_diff,
 )
 from app.config import settings as app_settings
+from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 
 router = APIRouter(prefix="/reports", tags=["reporting"])
+
+
+_MANAGER_ROLES = {"manager", "admin", "owner"}
+
+
+async def _gate_server_scope(
+    request: Request, server_id: Optional[str], source: str,
+) -> None:
+    """Block cross-server reporting reads.
+
+    When a `server_id` query param is present and we can see a session,
+    the requester must either match the server_id or hold a manager role.
+    No session + auth_enforced=True → 401 (via SEC-005 recording). No
+    session + auth_enforced=False → record SEC-005 and allow (transition
+    mode). Same-server or manager → allow silently.
+    """
+    if not server_id:
+        return
+    session = _extract_session(request)
+    if session is None:
+        await _record_diag(
+            category=DiagnosticCategory.SEC,
+            severity=DiagnosticSeverity.WARNING,
+            source=source,
+            event_code="SEC-005",
+            message="Reporting server_id read with no session",
+            context={"path": request.url.path, "server_id": server_id},
+        )
+        if getattr(app_settings, "auth_enforced", True):
+            raise HTTPException(status_code=401, detail="Authentication required")
+        return
+    if session.get("employee_id") == server_id:
+        return
+    if any(r in _MANAGER_ROLES for r in (session.get("roles") or [])):
+        return
+    # Session present but trying to read someone else's data without manager role.
+    await _record_diag(
+        category=DiagnosticCategory.SEC,
+        severity=DiagnosticSeverity.ERROR,
+        source=source,
+        event_code="SEC-006",
+        message="Cross-server reporting access blocked",
+        context={
+            "path": request.url.path,
+            "requested_server_id": server_id,
+            "session_employee_id": session.get("employee_id"),
+            "session_roles": session.get("roles") or [],
+        },
+    )
+    if getattr(app_settings, "auth_enforced", True):
+        raise HTTPException(
+            status_code=403,
+            detail="Not permitted to access another server's data",
+        )
 
 _ZERO = Decimal("0")
 
@@ -341,12 +397,15 @@ async def get_sales_summary(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     server_id: Optional[str] = Query(None, description="Employee ID for server-specific view"),
     ledger: EventLedger = Depends(get_ledger),
+    request: Request = None,
 ):
     """
     Sales summary from real event ledger data.
     Manager view (no server_id) returns house-level stats.
     Server view (with server_id) returns individual stats with tip details.
     """
+    if request is not None:
+        await _gate_server_scope(request, server_id, "reporting.sales_summary")
     all_events = await _get_events_for_date(ledger, date)
     all_orders = project_orders(all_events)
     tip_map = _build_tip_map(all_events)
@@ -539,6 +598,7 @@ async def get_labor_summary(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     server_id: Optional[str] = Query(None, description="Employee ID for server-specific view"),
     ledger: EventLedger = Depends(get_ledger),
+    request: Request = None,
 ):
     """
     Labor summary from real event ledger data.
@@ -546,6 +606,8 @@ async def get_labor_summary(
     Manager view returns house-level labor stats.
     Server view returns individual employee details.
     """
+    if request is not None:
+        await _gate_server_scope(request, server_id, "reporting.labor_summary")
     # Get clock events for the requested date
     day_events = await _get_events_for_date(ledger, date)
 

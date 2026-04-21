@@ -33,17 +33,35 @@ Full registry in `backend/app/models/diagnostic_event.py`. All three new categor
 
 Current call sites (as of this probe):
 - `auth.py:verify_pin` — `SEC-001` on 429
+- `auth.py:auth_required` — `SEC-005` on any missing/expired bearer on a gated route
 - `printing.py:print_test` — `SEC-002` on path traversal
-- `sync.py:replay_config_events` — `SEC-003` on any invocation (endpoint has no auth)
+- `sync.py:replay_config_events` — `SEC-003` on any invocation + now gated by `auth_required`
+- `reporting.py:_gate_server_scope` — `SEC-005` (no session on `?server_id=`), `SEC-006` (cross-server read blocked)
 - `payment_routes.py:initiate_sale` — `FIN-002` (409 double-charge guard) / `FIN-005` (overpayment clamp)
 - `payment_routes.py:batch_settle` — `FIN-004` (ledger/processor drift)
 - `orders.py:close_day` — `FIN-003` (close-day invariant failure)
 - `orders.py:_validate_2dp` — `FIN-001` on any 2dp precision rejection (fire-and-forget from a sync helper)
 - `main.py` catch-all — `SYS-001` (ledger precision/idempotency ValueError) / `SYS-006` (any other unhandled exception) — every 500 gets recorded before the response goes out
-- `scene-manager.js:interruptFn` — `UI-001` when an interrupt is stacked over an existing one
+- `scene-manager.js:interruptFn` / `openGate` / `_emit` — `UI-001` on layer stacking, `UI-002` on bus-handler throws
 - `server-checkout.js:onFinalize` — `UI-003` when a double-tap is blocked by the `_finalizing` lock
 
-**Frontend → backend:** `terminal/entomology-client.js` exposes `entReport({ code, source, message, ctx, level })`. Fires against `POST /api/v1/entomology/client-event`, which is the only unauthenticated entomology route. It accepts **UI-\* codes only** — anyone attempting to forge SEC/FIN findings from a browser session gets a 400. Events are queued in-memory when offline and replayed on the `online` window event.
+**Frontend → backend:**
+- `terminal/entomology-client.js` exposes `entReport({ code, source, message, ctx, level })`. Fires against `POST /api/v1/entomology/client-event`, which accepts **UI-\* codes only** — browser sessions cannot forge SEC/FIN findings. Queues in memory when offline and replays on `online`.
+- `terminal/auth-client.js` exposes `setToken/getToken/clearToken/getSession` over `sessionStorage` and installs a `window.fetch` interceptor on import that auto-attaches `Authorization: Bearer <token>` to every `/api/*` request. One import from `app.js` wires the whole app. Login persists the token; the header logout clears it and POSTs `/auth/logout`.
+
+## Auth enforcement (new this round)
+
+A new `settings.auth_enforced` (default `True`; tests set `KINDPOS_AUTH_ENFORCED=false`) drives a route-level `auth_required` dependency. Gated routes:
+
+| Route | Dep | Behavior under `auth_enforced=True` |
+|-------|-----|-------------------------------------|
+| `POST /sync/config/events/replay` | `auth_required` | 401 if no token; SEC-005 recorded regardless |
+| `POST /config/push` | `auth_required` | same |
+| `POST /config/store/*`, `/config/roles`, `/config/employees`, `/config/menu/86`, `/config/menu/restore` | `auth_required` | same — all config write surface |
+| `GET /reports/sales-summary?server_id=X` | `_gate_server_scope` | 401 if no session when a `server_id` is present; 403 if session's `employee_id` ≠ `server_id` and no manager role |
+| `GET /reports/labor-summary?server_id=X` | `_gate_server_scope` | same |
+
+Under `auth_enforced=False` (tests, rollout-transition) the gates only record diagnostics and let the request through so the 1000+-test suite doesn't need token fixtures.
 
 ---
 
