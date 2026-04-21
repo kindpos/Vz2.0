@@ -27,6 +27,8 @@ import {
   buildStackedArea,
   buildTenderBar,
   buildHeatmap,
+  buildHistogram,
+  buildMiniTable,
 } from '../ui/charts.js';
 import { fmt, fmtPct, fmtInt } from '../ui/money.js';
 
@@ -202,6 +204,7 @@ function buildLayout(container) {
       .sales-row-trend-cob        { grid-template-columns: 2fr 1fr; }
       .sales-row-composition      { grid-template-columns: 1fr; }
       .sales-row-tender-heatmap   { grid-template-columns: 1fr 2fr; }
+      .sales-row-bottom           { grid-template-columns: 1.4fr 1fr 1fr; }
 
       .sales-region-loading, .sales-region-empty, .sales-region-error {
         padding: 28px 20px;
@@ -275,6 +278,11 @@ function buildLayout(container) {
           <div class="sales-region-loading">Loading…</div>
         </div>
         <div class="sales-row sales-row-tender-heatmap" id="region-tender-heatmap">
+          <div class="sales-region-loading">Loading…</div>
+          <div class="sales-region-loading">Loading…</div>
+        </div>
+        <div class="sales-row sales-row-bottom" id="region-bottom">
+          <div class="sales-region-loading">Loading…</div>
           <div class="sales-region-loading">Loading…</div>
           <div class="sales-region-loading">Loading…</div>
         </div>
@@ -389,6 +397,129 @@ function renderComposition(container, data) {
   }));
 }
 
+// Parse a backend tip-bucket range like "$0-3" or "$20+" into structured
+// fields so the histogram builder has both the label AND numeric bounds
+// for marker placement.
+function parseTipBucket(b) {
+  const m = /\$(\d+)(?:-(\d+)|\+)/.exec(String(b.range || ''));
+  const count = Number(b.count) || 0;
+  if (!m) return { label: String(b.range || ''), low: 0, high: null, count };
+  const low = Number(m[1]);
+  const openEnded = m[2] == null;
+  const high = openEnded ? null : Number(m[2]);
+  return {
+    label: openEnded ? `$${low}+` : `$${low}`,
+    low, high, count,
+  };
+}
+
+// Find the fractional bucket index that contains `value` — used to
+// place the median/average marker on the histogram.
+function bucketIndexForValue(buckets, value) {
+  const v = Number(value) || 0;
+  for (let i = 0; i < buckets.length; i++) {
+    const b = buckets[i];
+    if (b.high == null) return i;                  // open-ended trailing bucket
+    if (v < b.high) {
+      const span = b.high - b.low;
+      const frac = span > 0 ? (v - b.low) / span : 0.5;
+      return i + Math.min(Math.max(frac - 0.5, -0.5), 0.5);
+    }
+  }
+  return buckets.length - 1;
+}
+
+function renderBottomRow(container, data) {
+  const row = regionEl(container, 'region-bottom');
+  if (!row) return;
+  row.innerHTML = '';
+
+  // ─── Histogram: tip distribution (stand-in for check-size distribution
+  //     which isn't exposed by /sales-summary) ──────────────────────────
+  const rawBuckets = (data.tip_buckets || []).map(parseTipBucket);
+  const avgIdx = bucketIndexForValue(rawBuckets, Number(data.tip_avg) || 0);
+  row.appendChild(buildHistogram({
+    title: 'Tip Distribution',
+    subtitle: 'Tips per check · today',
+    accent: T.mint,
+    buckets: rawBuckets,
+    barColor: T.cyan,
+    markerColor: T.gold,
+    marker: (data.tip_avg != null)
+      ? { atFractionalIndex: avgIdx, label: `AVG ${fmt(Number(data.tip_avg) || 0, { dp: 2 })}` }
+      : null,
+  }));
+
+  // ─── Top items table ──────────────────────────────────────────────────
+  const items = (data.top_items || []).slice(0, 6);
+  row.appendChild(buildMiniTable({
+    title: 'Top Items',
+    subtitle: 'By revenue · today',
+    accent: T.mint,
+    columns: [
+      {
+        label: 'Item', align: 'left', width: '2fr',
+        cell: (r) => ({ text: r.name || '—' }),
+      },
+      {
+        label: 'Qty', align: 'right', width: '0.7fr',
+        cell: (r) => ({ text: fmtInt(r.count || 0), color: T.textDim }),
+      },
+      {
+        label: 'Revenue', align: 'right', width: '1fr',
+        cell: (r) => ({
+          text: fmt(Number(r.revenue) || 0, { dp: 0 }),
+          color: T.gold,
+          weight: 700,
+        }),
+      },
+    ],
+    rows: items,
+    footer: items.length
+      ? `▸ ${(data.top_items || []).length} items · top ${items.length} shown`
+      : '',
+  }));
+
+  // ─── Top servers table ────────────────────────────────────────────────
+  const servers = (data.top_servers || []).slice(0, 6);
+  const tipColorFor = (pctFrac) => {
+    if (pctFrac == null)         return T.textDim;
+    if (pctFrac >= 0.20)         return T.greenUp;
+    if (pctFrac <  0.17)         return T.warning;
+    return T.text;
+  };
+  row.appendChild(buildMiniTable({
+    title: 'Top Servers',
+    subtitle: 'By revenue · today',
+    accent: T.mint,
+    columns: [
+      {
+        label: 'Server', align: 'left', width: '1.6fr',
+        cell: (r) => ({ text: r.name || '—' }),
+      },
+      {
+        label: 'Tip %', align: 'right', width: '0.8fr',
+        cell: (r) => {
+          const rev = Number(r.revenue) || 0;
+          const tipFrac = rev > 0 ? (Number(r.tips) || 0) / rev : null;
+          return tipFrac == null
+            ? { text: '—', color: T.textDim }
+            : { text: fmtPct(tipFrac), color: tipColorFor(tipFrac), weight: 700 };
+        },
+      },
+      {
+        label: 'Net', align: 'right', width: '1.2fr',
+        cell: (r) => ({
+          text: fmt(Number(r.revenue) || 0, { dp: 0 }),
+          color: T.gold,
+          weight: 700,
+        }),
+      },
+    ],
+    rows: servers,
+  }));
+}
+
 function renderTenderHeatmap(container, data) {
   const row = regionEl(container, 'region-tender-heatmap');
   if (!row) return;
@@ -498,6 +629,7 @@ export function buildSalesReportsScene(container) {
       renderHero(container, data);
       renderComposition(container, data);
       renderTenderHeatmap(container, data);
+      renderBottomRow(container, data);
     })
     .catch(err => {
       if (err.name === 'AbortError') return;
@@ -506,6 +638,7 @@ export function buildSalesReportsScene(container) {
       renderRegionError(regionEl(container, 'region-hero'),            err, { cells: 4 });
       renderRegionError(regionEl(container, 'region-composition'),     err, { cells: 1 });
       renderRegionError(regionEl(container, 'region-tender-heatmap'),  err, { cells: 2 });
+      renderRegionError(regionEl(container, 'region-bottom'),          err, { cells: 3 });
     });
 
   // Trend + COB row — hourly-compare + labor-summary, rendered together

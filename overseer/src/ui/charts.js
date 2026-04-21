@@ -1245,3 +1245,305 @@ export function buildHeatmap(opts) {
   body.appendChild(root);
   return card;
 }
+
+// ─── buildHistogram ─────────────────────────────────────────────────
+// Vertical bar chart of discrete bucket counts. Each bucket is
+// { label, count }. Opacity of each bar scales with its count so the
+// distribution shape reads at a glance; the mode (max-count) bar is
+// drawn at full opacity with a soft glow and a count label above it.
+//
+// Optional marker draws a vertical dashed line at a fractional bucket
+// index (e.g. 2.5 = between bucket 2 and 3), with a small pill label
+// at the top.
+//
+//   {
+//     title, subtitle, accent,
+//     buckets: [{ label, count }, ...],
+//     barColor,       // default T.cyan
+//     markerColor,    // default T.gold
+//     marker,         // optional: { atFractionalIndex, label }
+//     height,         // chart SVG height (default 180)
+//   }
+export function buildHistogram(opts) {
+  const {
+    title,
+    subtitle,
+    accent      = T.mint,
+    buckets     = [],
+    barColor    = T.cyan,
+    markerColor = T.gold,
+    marker,
+    height      = 180,
+  } = opts;
+
+  const { card, header, body } = buildCardShell({ accent, minHeight: 260 });
+
+  const left = document.createElement('div');
+  left.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+  if (title) left.appendChild(buildEyebrow(title));
+  if (subtitle) left.appendChild(buildMonoLabel(subtitle, {
+    size: T.fs.xs, color: T.textDim, letterSpacing: 1.2,
+  }));
+  header.appendChild(left);
+
+  const chartWrap = document.createElement('div');
+  chartWrap.style.cssText = 'flex: 1; min-height: 0;';
+  body.appendChild(chartWrap);
+
+  if (!buckets.length) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No data';
+    empty.style.cssText = `
+      display: flex; align-items: center; justify-content: center;
+      height: ${height}px;
+      font-family: ${T.font.mono}; font-size: ${T.fs.sm}px;
+      color: ${T.textDim}; letter-spacing: 2px; text-transform: uppercase;
+    `;
+    chartWrap.appendChild(empty);
+    return card;
+  }
+
+  const n = buckets.length;
+  const maxCount = Math.max(1, ...buckets.map(b => Number(b.count) || 0));
+  const modeIdx  = buckets.reduce((best, b, i) =>
+    (Number(b.count) || 0) > (Number(buckets[best].count) || 0) ? i : best, 0);
+
+  const padL = 28, padR = 14, padT = 20, padB = 24;
+  const vbW = 460, vbH = height;
+  const plotW = vbW - padL - padR;
+  const plotH = vbH - padT - padB;
+  const barW  = plotW / n;
+  const innerBarW = Math.max(2, barW * 0.72);
+
+  const root = svg('svg', {
+    viewBox: `0 0 ${vbW} ${vbH}`,
+    preserveAspectRatio: 'none',
+    xmlns: SVG_NS,
+  });
+  root.style.cssText = `display: block; width: 100%; height: ${height}px;`;
+
+  // Baseline
+  root.appendChild(svg('line', {
+    x1: padL, y1: padT + plotH, x2: padL + plotW, y2: padT + plotH,
+    stroke: T.well, 'stroke-width': 1,
+  }));
+
+  // Bars
+  for (let i = 0; i < n; i++) {
+    const count = Number(buckets[i].count) || 0;
+    const h = (count / maxCount) * plotH;
+    const x = padL + i * barW + (barW - innerBarW) / 2;
+    const y = padT + plotH - h;
+    const isMode = i === modeIdx;
+    const alpha = isMode ? 1.0 : Math.max(0.3, count / maxCount);
+
+    if (isMode) {
+      // Soft glow behind mode bar
+      root.appendChild(svg('rect', {
+        x: x - 2, y: y - 2,
+        width: innerBarW + 4, height: h + 2,
+        fill: withAlpha(barColor, 0.35),
+      }));
+    }
+    root.appendChild(svg('rect', {
+      x, y, width: innerBarW, height: h,
+      fill: withAlpha(barColor, alpha),
+    }));
+
+    // Count label above mode bar
+    if (isMode && count > 0) {
+      const lbl = svg('text', {
+        x: x + innerBarW / 2, y: y - 4,
+        'text-anchor': 'middle',
+        'font-family': T.font.mono,
+        'font-size': 9,
+        fill: barColor,
+        'font-weight': 700,
+        'letter-spacing': 1,
+      });
+      lbl.textContent = String(count);
+      root.appendChild(lbl);
+    }
+
+    // Bucket label below
+    const xlbl = svg('text', {
+      x: x + innerBarW / 2,
+      y: padT + plotH + 14,
+      'text-anchor': 'middle',
+      'font-family': T.font.mono,
+      'font-size': 9,
+      fill: T.textDim,
+      'letter-spacing': 1,
+    });
+    xlbl.textContent = buckets[i].label || '';
+    root.appendChild(xlbl);
+  }
+
+  // Optional marker (median / average line)
+  if (marker && typeof marker.atFractionalIndex === 'number') {
+    const f = Math.max(0, Math.min(n - 1, marker.atFractionalIndex));
+    const mx = padL + (f + 0.5) * barW;
+    root.appendChild(svg('line', {
+      x1: mx, y1: padT - 6, x2: mx, y2: padT + plotH,
+      stroke: markerColor,
+      'stroke-width': 1.5,
+      'stroke-dasharray': '4,3',
+    }));
+    if (marker.label) {
+      // Pill label at top
+      const pillPad = 4;
+      const labelStr = marker.label;
+      const approxWidth = labelStr.length * 5.4 + pillPad * 2;
+      const pillX = Math.max(padL, Math.min(padL + plotW - approxWidth, mx - approxWidth / 2));
+      root.appendChild(svg('rect', {
+        x: pillX, y: 2,
+        width: approxWidth, height: 14,
+        rx: 3, ry: 3,
+        fill: withAlpha(markerColor, 0.18),
+        stroke: markerColor,
+        'stroke-width': 1,
+      }));
+      const txt = svg('text', {
+        x: pillX + approxWidth / 2, y: 12,
+        'text-anchor': 'middle',
+        'font-family': T.font.mono,
+        'font-size': 9,
+        fill: markerColor,
+        'font-weight': 700,
+        'letter-spacing': 1,
+      });
+      txt.textContent = labelStr;
+      root.appendChild(txt);
+    }
+  }
+
+  chartWrap.appendChild(root);
+  return card;
+}
+
+// ─── buildMiniTable ─────────────────────────────────────────────────
+// Compact columnar table. No sort/paging — just a static list.
+// Each column defines a cell(row) function that returns
+// { text, color?, weight? }, letting the caller control per-cell
+// styling (tip% color-coding, amount color, etc.).
+//
+//   {
+//     title, subtitle, accent,
+//     columns: [
+//       { label, align: 'left'|'right', width: '2fr', cell: (row) => {text, color?, weight?} },
+//       ...
+//     ],
+//     rows: [row, ...],
+//     footer,   // optional bottom-strip string
+//   }
+export function buildMiniTable(opts) {
+  const {
+    title,
+    subtitle,
+    accent   = T.mint,
+    columns  = [],
+    rows     = [],
+    footer,
+  } = opts;
+
+  const { card, header, body } = buildCardShell({ accent, minHeight: 260 });
+
+  const left = document.createElement('div');
+  left.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+  if (title) left.appendChild(buildEyebrow(title));
+  if (subtitle) left.appendChild(buildMonoLabel(subtitle, {
+    size: T.fs.xs, color: T.textDim, letterSpacing: 1.2,
+  }));
+  header.appendChild(left);
+
+  const gridCols = columns.map(c => c.width || '1fr').join(' ');
+  const baseRowCss = `
+    display: grid;
+    grid-template-columns: ${gridCols};
+    gap: 10px;
+    align-items: baseline;
+    padding: 8px 0;
+  `;
+
+  // Header row
+  const headRow = document.createElement('div');
+  headRow.style.cssText = `
+    ${baseRowCss}
+    border-bottom: 1px solid ${T.well};
+    padding-top: 4px;
+  `;
+  for (const col of columns) {
+    const cell = document.createElement('div');
+    cell.textContent = col.label || '';
+    cell.style.cssText = `
+      font-family: ${T.font.mono};
+      font-size: ${T.fs.xs}px;
+      letter-spacing: 1.5px;
+      color: ${T.textDim};
+      font-weight: 700;
+      text-transform: uppercase;
+      text-align: ${col.align || 'left'};
+    `;
+    headRow.appendChild(cell);
+  }
+  body.appendChild(headRow);
+
+  // Data rows
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No data';
+    empty.style.cssText = `
+      padding: 24px 0;
+      text-align: center;
+      font-family: ${T.font.mono};
+      font-size: ${T.fs.sm}px;
+      color: ${T.textDim};
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    `;
+    body.appendChild(empty);
+  } else {
+    for (const row of rows) {
+      const rowEl = document.createElement('div');
+      rowEl.style.cssText = `
+        ${baseRowCss}
+        border-bottom: 1px solid ${withAlpha('#ffffff', 0.04)};
+      `;
+      for (const col of columns) {
+        const cellData = col.cell ? col.cell(row) : { text: '' };
+        const cell = document.createElement('div');
+        cell.textContent = (cellData && cellData.text != null) ? cellData.text : '';
+        cell.style.cssText = `
+          font-family: ${T.font.mono};
+          font-size: ${T.fs.base}px;
+          text-align: ${col.align || 'left'};
+          color: ${(cellData && cellData.color) || T.text};
+          font-weight: ${(cellData && cellData.weight) != null ? cellData.weight : 400};
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        `;
+        rowEl.appendChild(cell);
+      }
+      body.appendChild(rowEl);
+    }
+  }
+
+  if (footer) {
+    const footEl = document.createElement('div');
+    footEl.textContent = footer;
+    footEl.style.cssText = `
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid ${T.well};
+      font-family: ${T.font.mono};
+      font-size: ${T.fs.xs}px;
+      color: ${T.textDim};
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    `;
+    body.appendChild(footEl);
+  }
+
+  return card;
+}
