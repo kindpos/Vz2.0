@@ -360,3 +360,110 @@ class TestBatchSettle:
         assert res["success"] is True
         assert res.get("using_mock") is True
         assert res["batch_id"] == "MOCK"
+
+    # ── Reconciliation (non-mock path) ──────────────────────────────────────
+    #
+    # C3: the non-mock branch queries the ledger for the current business
+    # day's confirmed card sales + TIP_ADJUSTED totals, compares them to
+    # the processor's reported settlement total, and surfaces drift in
+    # the response via `invariant_ok` / `settlement_diff`. Drift must NOT
+    # raise — the operator sees it immediately in the settlement result.
+
+    @staticmethod
+    def _install_non_mock_device(monkeypatch, ledger, *, total_amount):
+        """Register a minimal non-mock payment device whose close_batch()
+        returns a controlled BatchResult, so we can exercise the
+        reconciliation path without any real hardware."""
+        from decimal import Decimal as _D
+        from app.core.adapters.base_payment import (
+            PaymentDeviceConfig,
+            PaymentDeviceType,
+            BatchResult,
+            BatchStatus,
+        )
+        from app.core.adapters.payment_manager import PaymentManager
+
+        class _FakeDevice:
+            def __init__(self, total):
+                self.config = PaymentDeviceConfig(
+                    device_id="fake_term",
+                    name="Fake Terminal",
+                    device_type=PaymentDeviceType.SMART_TERMINAL,
+                    ip_address="10.0.0.1",
+                    mac_address="AA:BB:CC:DD:EE:FF",
+                    protocol="spin",  # <-- NOT "mock"; enters reconciliation
+                    processor_id="fake_proc",
+                )
+                self._total = total
+
+            async def close_batch(self):
+                return BatchResult(
+                    batch_id="BATCH-0001",
+                    transaction_count=1,
+                    total_amount=_D(str(self._total)),
+                    status=BatchStatus.SUCCESS,
+                )
+
+        mgr = PaymentManager(ledger, settings.terminal_id)
+        dev = _FakeDevice(total_amount)
+        mgr.register_device(dev)
+        mgr.map_terminal_to_device(settings.terminal_id, dev.config.device_id)
+        monkeypatch.setattr(pr, "_manager", mgr)
+        monkeypatch.setattr(pr, "_devices_initialized", True)
+
+    @pytest.mark.asyncio
+    async def test_reconciliation_matches_ledger_reports_invariant_ok(
+        self, ledger, monkeypatch,
+    ):
+        """Processor total == ledger card_sales + card_tips → invariant_ok
+        and settlement_diff of $0.00."""
+        from decimal import Decimal as _D
+
+        pid = await _paid_order(ledger, order_id="o_bs_ok", amount=20.00)
+        await ledger.append(tip_adjusted(
+            terminal_id=TERMINAL, order_id="o_bs_ok", payment_id=pid,
+            tip_amount=_D("3.00"),
+        ))
+
+        self._install_non_mock_device(
+            monkeypatch, ledger, total_amount=_D("23.00"),
+        )
+
+        res = await pr.batch_settle(ledger=ledger)
+        assert res["success"] is True
+        assert res["using_mock"] is False
+        assert res["invariant_ok"] is True
+        assert _D(res["settlement_diff"]) == _D("0.00")
+        assert _D(res["ledger_card_sales"]) == _D("20.00")
+        assert _D(res["ledger_card_tips"]) == _D("3.00")
+        assert _D(res["total_amount"]) == _D("23.00")
+
+    @pytest.mark.asyncio
+    async def test_reconciliation_drift_surfaces_invariant_failure(
+        self, ledger, monkeypatch,
+    ):
+        """Processor total != ledger sum surfaces invariant_ok=False and
+        a non-zero settlement_diff without raising. Locks in the C3
+        reconciliation gate added in the main financial audit."""
+        from decimal import Decimal as _D
+
+        pid = await _paid_order(ledger, order_id="o_bs_drift", amount=20.00)
+        await ledger.append(tip_adjusted(
+            terminal_id=TERMINAL, order_id="o_bs_drift", payment_id=pid,
+            tip_amount=_D("3.00"),
+        ))
+
+        # Ledger sees $20 card_sales + $3 card_tips = $23. Processor
+        # insists on $25 → drift of +$2. The route must not raise.
+        self._install_non_mock_device(
+            monkeypatch, ledger, total_amount=_D("25.00"),
+        )
+
+        res = await pr.batch_settle(ledger=ledger)
+        assert res["using_mock"] is False
+        assert res["invariant_ok"] is False
+        assert _D(res["settlement_diff"]) == _D("2.00")
+        # Drift doesn't collapse the request; operators need the raw
+        # numbers to reconcile out-of-band.
+        assert res["batch_id"] == "BATCH-0001"
+        assert res["status"] == "SUCCESS"
