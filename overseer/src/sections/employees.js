@@ -12,7 +12,7 @@
 
 import { pushChanges } from '../services/config-push.js';
 import { T, withAlpha } from '../ui/tokens.js';
-import { buildScenePage } from '../ui/forms.js';
+import { buildScenePage, sectionCard } from '../ui/forms.js';
 import {
     EMPLOYEES, ROLES, STATUSES,
     getRoleLabel, getStatusInfo, fmtDate,
@@ -268,88 +268,105 @@ function buildEmployeeList(container) {
 
 /* ------------------------------------------
    TABLE SECTION (Active + Inactive)
+   Two sectionCards — green accent for active, dim accent for
+   inactive. Inactive card's label row is wired as a click-toggle
+   that collapses the body.
 ------------------------------------------ */
 function buildTableSection(wrapper) {
     const active   = getFiltered('active');
     const inactive = getFiltered('inactive');
 
     // ── Active Employees ──
-    const activeSection = document.createElement('div');
-    activeSection.style.cssText = `
-        background: ${withAlpha(T.green, 0.04)}; border: 1px solid ${C.mintBorder};
-        border-radius: 10px; overflow: hidden; margin-bottom: 20px;
-    `;
-
-    const activeHeader = document.createElement('div');
-    activeHeader.style.cssText = `
-        padding: 16px 20px; border-bottom: 1px solid ${C.mintBorder};
-        font-family: ${T.font.heading};
-        font-size: 26px; color: ${C.mint}; letter-spacing: 1px;
-    `;
-    activeHeader.textContent = `ACTIVE EMPLOYEES [${active.length}]`;
-    activeSection.appendChild(activeHeader);
-
+    const activeCard = sectionCard({
+        label: `Active Employees [${active.length}]`,
+        accent: T.green,
+    });
     if (active.length === 0) {
         const empty = document.createElement('div');
-        empty.style.cssText = `padding: 40px; text-align: center; color: ${C.grey}; font-size: 25px;`;
+        empty.style.cssText = `
+            padding: ${T.sp.xxxl}px;
+            text-align: center;
+            color: ${T.textMuted};
+            font-size: ${T.fs.base}px;
+        `;
         empty.textContent = searchTerm ? 'No matching employees found.' : 'No active employees.';
-        activeSection.appendChild(empty);
+        activeCard.body.appendChild(empty);
     } else {
-        activeSection.appendChild(buildTable(active));
+        activeCard.body.appendChild(buildTable(active));
     }
-    wrapper.appendChild(activeSection);
+    activeCard.card.style.marginBottom = `${T.sp.lg}px`;
+    wrapper.appendChild(activeCard.card);
 
-    // ── Inactive Employees ──
-    const inactiveSection = document.createElement('div');
-    inactiveSection.style.cssText = `
-        background: ${withAlpha(T.green, 0.04)}; border: 1px solid ${C.mintBorder};
-        border-radius: 10px; overflow: hidden;
-    `;
-
-    const inactiveHeader = document.createElement('div');
-    inactiveHeader.style.cssText = `
-        padding: 16px 20px; border-bottom: ${showInactive ? '1px solid ' + C.mintBorder : 'none'};
-        font-family: ${T.font.heading};
-        font-size: 26px; color: ${C.grey}; letter-spacing: 1px;
-        cursor: pointer; display: flex; justify-content: space-between;
-        align-items: center; transition: background 0.2s ease;
-        user-select: none;
-    `;
-    inactiveHeader.innerHTML = `
-        <span>INACTIVE EMPLOYEES [${inactive.length}]</span>
-        <span style="font-size: 20px; color: ${C.grey};">${showInactive ? 'Hide ▲' : 'Show ▼'}</span>
-    `;
-    inactiveHeader.addEventListener('mouseenter', () => inactiveHeader.style.background = C.mintHover);
-    inactiveHeader.addEventListener('mouseleave', () => inactiveHeader.style.background = 'transparent');
-    inactiveHeader.addEventListener('click', () => {
-        showInactive = !showInactive;
-        refreshTable();
+    // ── Inactive Employees (collapsible) ──
+    const inactiveCard = sectionCard({
+        label: `Inactive Employees [${inactive.length}]`,
+        accent: T.textDim,
     });
-    inactiveSection.appendChild(inactiveHeader);
+
+    // Promote sectionCard's label row into a clickable toggle with a chevron.
+    const lbl = inactiveCard.card.firstElementChild;
+    if (lbl) {
+        lbl.style.color = T.textMuted;
+        lbl.style.cursor = 'pointer';
+        lbl.style.display = 'flex';
+        lbl.style.justifyContent = 'space-between';
+        lbl.style.alignItems = 'center';
+        lbl.style.userSelect = 'none';
+        lbl.style.marginBottom = showInactive ? `${T.sp.md}px` : '0';
+        const chev = document.createElement('span');
+        chev.style.cssText = `
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.sm}px;
+            letter-spacing: 1px;
+            color: ${T.textDim};
+        `;
+        chev.textContent = showInactive ? 'HIDE ▲' : 'SHOW ▼';
+        lbl.appendChild(chev);
+        lbl.addEventListener('click', () => {
+            showInactive = !showInactive;
+            refreshTable();
+        });
+    }
 
     if (showInactive && inactive.length > 0) {
-        inactiveSection.appendChild(buildTable(inactive, true));
+        inactiveCard.body.appendChild(buildTable(inactive, true));
+    } else {
+        // Body is empty while collapsed; hide it so the gap doesn't show.
+        inactiveCard.body.style.display = 'none';
     }
-    wrapper.appendChild(inactiveSection);
+    wrapper.appendChild(inactiveCard.card);
 }
 
 /* ------------------------------------------
    TABLE BUILDER
+   Grid columns and sort logic unchanged from Vz1.x; type scale
+   dropped to the mockup's 11/12/13 px (from 20/22/25) and the
+   mint-tinted surface swapped for T.well.
 ------------------------------------------ */
+const GRID_COLUMNS = '2.2fr 1.2fr 0.8fr 1fr 0.6fr 1.4fr';
+
 function buildTable(list, isInactive = false) {
     const table = document.createElement('div');
-    table.style.cssText = 'overflow-x: auto;';
+    table.style.cssText = `
+        background: ${T.well};
+        border-radius: ${T.r.sm}px;
+        overflow: hidden;
+    `;
 
     // ── Header Row ──
     const headerRow = document.createElement('div');
     headerRow.style.cssText = `
         display: grid;
-        grid-template-columns: 2.2fr 1.2fr 0.8fr 1fr 0.6fr 1.4fr;
-        padding: 14px 20px; gap: 8px;
-        background: ${withAlpha(T.green, 0.08)};
-        border-bottom: 1px solid ${C.mintBorder};
-        font-size: 20px; color: ${C.mintFaded};
-        text-transform: uppercase; letter-spacing: 1px;
+        grid-template-columns: ${GRID_COLUMNS};
+        padding: ${T.sp.md}px ${T.sp.lg}px;
+        gap: ${T.sp.md}px;
+        background: ${withAlpha(T.green, 0.06)};
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: ${T.textMuted};
         min-width: 700px;
     `;
 
@@ -365,13 +382,13 @@ function buildTable(list, isInactive = false) {
     columns.forEach(col => {
         const cell = document.createElement('div');
         cell.style.cssText = col.sortable !== false
-            ? 'cursor: pointer; user-select: none; transition: color 0.2s;'
+            ? 'cursor: pointer; user-select: none; transition: color 0.15s ease;'
             : '';
         cell.textContent = col.label + (col.sortable !== false ? sortArrow(col.field) : '');
         if (col.sortable !== false) {
             cell.addEventListener('click', () => toggleSort(col.field));
-            cell.addEventListener('mouseenter', () => cell.style.color = C.mint);
-            cell.addEventListener('mouseleave', () => cell.style.color = C.mintFaded);
+            cell.addEventListener('mouseenter', () => cell.style.color = T.text);
+            cell.addEventListener('mouseleave', () => cell.style.color = T.textMuted);
         }
         headerRow.appendChild(cell);
     });
@@ -380,18 +397,19 @@ function buildTable(list, isInactive = false) {
     // ── Data Rows ──
     list.forEach((emp, i) => {
         const row = document.createElement('div');
-        const stripeBg = i % 2 === 0 ? 'transparent' : withAlpha(T.green, 0.03);
         row.style.cssText = `
             display: grid;
-            grid-template-columns: 2.2fr 1.2fr 0.8fr 1fr 0.6fr 1.4fr;
-            padding: 16px 20px; gap: 8px; align-items: center;
-            border-bottom: 1px solid ${withAlpha(T.green, 0.08)};
-            background: ${stripeBg}; transition: background 0.15s ease;
+            grid-template-columns: ${GRID_COLUMNS};
+            padding: ${T.sp.md}px ${T.sp.lg}px;
+            gap: ${T.sp.md}px;
+            align-items: center;
+            border-top: 1px solid ${T.border};
+            transition: background 0.15s ease;
             min-width: 700px;
             ${isInactive ? 'opacity: 0.6;' : ''}
         `;
-        row.addEventListener('mouseenter', () => row.style.background = C.mintHover);
-        row.addEventListener('mouseleave', () => row.style.background = stripeBg);
+        row.addEventListener('mouseenter', () => row.style.background = withAlpha(T.green, 0.04));
+        row.addEventListener('mouseleave', () => row.style.background = 'transparent');
 
         const statusInfo = getStatusInfo(emp.status);
         const statusDot  = `<span style="display: inline-block; width: 8px; height: 8px;
@@ -399,16 +417,18 @@ function buildTable(list, isInactive = false) {
                               margin-right: 8px; vertical-align: middle;"></span>`;
 
         row.innerHTML = `
-            <div style="color: ${C.white}; font-size: 25px;">
+            <div style="color: ${T.text}; font-size: ${T.fs.lg}px;">
                 ${statusDot}${emp.firstName} ${emp.lastName}
-                ${emp.status === 'do_not_rehire' ? `<span style="font-size: 15px; color: ${C.red};
-                    background: ${C.redFaded}; padding: 2px 6px; border-radius: 4px;
-                    margin-left: 8px; vertical-align: middle;">DNR</span>` : ''}
+                ${emp.status === 'do_not_rehire' ? `<span style="font-family: ${T.font.mono};
+                    font-size: ${T.fs.xs}px; letter-spacing: 1px; color: ${T.verm};
+                    background: ${withAlpha(T.verm, 0.15)}; padding: 2px 6px;
+                    border-radius: ${T.r.sm}px; margin-left: ${T.sp.sm}px;
+                    vertical-align: middle;">DNR</span>` : ''}
             </div>
-            <div style="color: ${C.mint}; font-size: 22px;">${getRoleLabel(emp.roles)}</div>
-            <div style="color: ${C.grey}; font-size: 22px; letter-spacing: 2px;">••••</div>
-            <div style="color: ${withAlpha(T.green, 0.6)}; font-size: 22px;">${fmtDate(emp.hireDate)}</div>
-            <div style="color: ${withAlpha(T.green, 0.6)}; font-size: 22px;">$${emp.payRate.toFixed(2)}</div>
+            <div style="color: ${T.green}; font-size: ${T.fs.base}px;">${getRoleLabel(emp.roles)}</div>
+            <div style="color: ${T.textDim}; font-family: ${T.font.mono}; font-size: ${T.fs.base}px; letter-spacing: 2px;">••••</div>
+            <div style="color: ${T.textMuted}; font-family: ${T.font.mono}; font-size: ${T.fs.md}px;">${fmtDate(emp.hireDate)}</div>
+            <div style="color: ${T.textMuted}; font-family: ${T.font.mono}; font-size: ${T.fs.md}px;">$${emp.payRate.toFixed(2)}</div>
             <div class="emp-action-cell"></div>
         `;
 
