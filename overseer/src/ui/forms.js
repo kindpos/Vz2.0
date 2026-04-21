@@ -540,3 +540,339 @@ export function openModal({ title = null, content = null, footer = null, width =
   document.body.appendChild(overlay);
   return { overlay, body, close };
 }
+
+// ─── Picker modal ─────────────────────────────────────────────────
+// Searchable checklist-style modal. Caller supplies a source
+// function returning [{ id, name, extra?, extraColor? }, ...] and
+// a current selection; the modal shows added/removed diffs while
+// the user toggles rows, then calls onDone(newIds) on Apply.
+//
+// opts: { title, accent, flagIds } — flagIds() returns ids that
+// should render with a warning outline (e.g. tied to something else).
+export function openPickerModal({
+  currentIds = [],
+  sourceFn,
+  title = 'Pick items',
+  accent = null,
+  flagIds = null,
+  onDone = null,
+}) {
+  const all = (typeof sourceFn === 'function') ? (sourceFn() || []) : (sourceFn || []);
+  const selected   = new Set(currentIds);
+  const originally = new Set(currentIds);
+  const accentColor = accent || C.green;
+
+  const content = document.createElement('div');
+  content.style.cssText = 'display: flex; flex-direction: column; gap: 12px;';
+
+  const search = document.createElement('input');
+  search.type = 'text';
+  search.placeholder = 'Search…';
+  search.style.cssText = `
+    width: 100%; box-sizing: border-box;
+    background: ${C.well};
+    border: 1px solid ${C.border};
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: ${C.text};
+    font-family: var(--font-body);
+    font-size: 14px; outline: none;
+  `;
+  search.addEventListener('focus', () => search.style.borderColor = C.gold);
+  search.addEventListener('blur',  () => search.style.borderColor = C.border);
+  content.appendChild(search);
+
+  const delta = document.createElement('div');
+  delta.style.cssText = `
+    padding: 10px 14px;
+    background: ${C.well};
+    border-radius: 6px;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: ${C.textMuted};
+    display: flex; gap: 14px; flex-wrap: wrap;
+  `;
+  content.appendChild(delta);
+
+  const list = document.createElement('div');
+  list.style.cssText = 'max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;';
+  content.appendChild(list);
+
+  function renderDelta() {
+    const added   = [...selected].filter(id => !originally.has(id)).length;
+    const removed = [...originally].filter(id => !selected.has(id)).length;
+    const total   = selected.size;
+    const parts = [];
+    if (added)   parts.push(`<span style="color:${C.greenUp};">+${added} added</span>`);
+    if (removed) parts.push(`<span style="color:${C.verm};">−${removed} removed</span>`);
+    if (!added && !removed) parts.push(`<span style="color:${C.textDim};">no changes</span>`);
+    parts.push(`<span style="color:${C.textDim};">· ${total} total</span>`);
+    delta.innerHTML = parts.join('  ');
+  }
+
+  function renderList() {
+    list.innerHTML = '';
+    const q = search.value.trim().toLowerCase();
+    const filtered = q ? all.filter(a => (a.name || '').toLowerCase().includes(q)) : all;
+    if (filtered.length === 0) {
+      const empty = document.createElement('div');
+      empty.textContent = q ? 'No matches' : 'Nothing available';
+      empty.style.cssText = `
+        font-family: ui-monospace, monospace;
+        font-size: 12px; color: ${C.textDim};
+        text-align: center; padding: 24px 0;
+        letter-spacing: 1.5px; text-transform: uppercase;
+      `;
+      list.appendChild(empty);
+      return;
+    }
+    const flagged = flagIds ? new Set(flagIds() || []) : null;
+    filtered.forEach(rec => {
+      const isSel  = selected.has(rec.id);
+      const wasSel = originally.has(rec.id);
+      const bg = (isSel && !wasSel) ? withAlpha(C.greenUp, 0.08)
+               : (!isSel && wasSel) ? withAlpha(C.verm,    0.08)
+               : C.well;
+      const border = (isSel && !wasSel) ? C.greenUp
+                   : (!isSel && wasSel) ? C.verm
+                   : 'transparent';
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.style.cssText = `
+        display: flex; align-items: center; gap: 12px;
+        padding: 10px 14px;
+        background: ${bg};
+        border: 1px solid ${border};
+        border-left: 3px solid ${isSel ? accentColor : 'transparent'};
+        border-radius: 6px;
+        cursor: pointer; width: 100%; text-align: left;
+        font-family: var(--font-body);
+        transition: background 0.1s ease;
+      `;
+      const box = document.createElement('div');
+      box.style.cssText = `
+        width: 18px; height: 18px;
+        border: 2px solid ${isSel ? C.green : C.textDim};
+        border-radius: 4px;
+        display: flex; align-items: center; justify-content: center;
+        background: ${isSel ? C.green : 'transparent'};
+        flex-shrink: 0;
+      `;
+      if (isSel) {
+        const check = document.createElement('span');
+        check.textContent = '✓';
+        check.style.cssText = `color: ${C.well}; font-size: 13px; font-weight: 900;`;
+        box.appendChild(check);
+      }
+      row.appendChild(box);
+
+      const name = document.createElement('span');
+      name.textContent = rec.name;
+      name.style.cssText = `flex: 1; color: ${C.text}; font-size: 14px; font-weight: 600;`;
+      row.appendChild(name);
+
+      if (rec.extra) {
+        const ex = document.createElement('span');
+        ex.textContent = rec.extra;
+        ex.style.cssText = `color: ${rec.extraColor || C.gold}; font-family: ui-monospace, monospace; font-size: 12px;`;
+        row.appendChild(ex);
+      }
+
+      if (flagged && flagged.has(rec.id)) {
+        const bdg = document.createElement('span');
+        bdg.textContent = '⚑';
+        bdg.style.cssText = `color: ${C.warning}; font-size: 13px;`;
+        row.appendChild(bdg);
+      }
+
+      if (isSel && !wasSel) {
+        const bdg = document.createElement('span');
+        bdg.textContent = '+ NEW';
+        bdg.style.cssText = `font-family: ui-monospace, monospace; font-size: 9px; color: ${C.greenUp}; letter-spacing: 1.5px; font-weight: 700;`;
+        row.appendChild(bdg);
+      } else if (!isSel && wasSel) {
+        const bdg = document.createElement('span');
+        bdg.textContent = '− REMOVE';
+        bdg.style.cssText = `font-family: ui-monospace, monospace; font-size: 9px; color: ${C.verm}; letter-spacing: 1.5px; font-weight: 700;`;
+        row.appendChild(bdg);
+      }
+
+      row.addEventListener('click', () => {
+        if (selected.has(rec.id)) selected.delete(rec.id);
+        else selected.add(rec.id);
+        renderList();
+        renderDelta();
+      });
+      list.appendChild(row);
+    });
+  }
+
+  search.addEventListener('input', renderList);
+  renderList();
+  renderDelta();
+
+  let modalRef = null;
+  const cancelBtn = button({
+    label: 'Cancel',
+    variant: 'ghost',
+    onClick: () => modalRef.close(),
+  });
+  const applyBtn = button({
+    label: 'Apply',
+    variant: 'primary',
+    onClick: () => {
+      if (onDone) onDone(Array.from(selected));
+      modalRef.close();
+    },
+  });
+
+  modalRef = openModal({
+    title,
+    content,
+    footer: [cancelBtn, applyBtn],
+    width: 520,
+  });
+  return modalRef;
+}
+
+// ─── Chip tray ────────────────────────────────────────────────────
+// A compact "selected items" tray with removable chips plus a
+// + ADD button that opens a search picker (openPickerModal). The
+// tray only shows the selected entries; the picker shows the full
+// source list.
+//
+// Usage:
+//   const tray = buildChipTray({
+//     selected: ['server'],
+//     sourceFn: () => ROLES.map(r => ({ id: r.id, name: r.label })),
+//     onChange: (ids) => { ... },
+//   });
+//   container.appendChild(tray.el);
+//
+// Returns { el, getIds, setIds, rerender }.
+export function buildChipTray({
+  selected = [],
+  sourceFn,
+  accent = null,
+  emptyHint = null,
+  addLabel = '+ Add',
+  pickerTitle = 'Pick items',
+  flagIds = null,
+  onChange = null,
+} = {}) {
+  const state = { ids: [...(selected || [])] };
+  const accentColor = accent || C.green;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'display: flex; justify-content: flex-end;';
+  const addBtn = button({
+    label: addLabel,
+    variant: 'ghost',
+    onClick: () => openPickerModal({
+      currentIds: state.ids,
+      sourceFn,
+      title: pickerTitle,
+      accent: accentColor,
+      flagIds,
+      onDone: (newIds) => {
+        state.ids = newIds;
+        render();
+        if (onChange) onChange(state.ids);
+      },
+    }),
+  });
+  addBtn.style.padding = '6px 14px';
+  addBtn.style.fontSize = '10px';
+  header.appendChild(addBtn);
+  wrap.appendChild(header);
+
+  const tray = document.createElement('div');
+  tray.style.cssText = `
+    background: ${C.well};
+    border: 1px dashed ${withAlpha(C.text, 0.12)};
+    border-radius: 6px;
+    padding: 10px;
+    display: flex; flex-wrap: wrap; gap: 6px;
+    min-height: 48px; align-items: center;
+  `;
+  wrap.appendChild(tray);
+
+  function render() {
+    tray.innerHTML = '';
+    if (state.ids.length === 0) {
+      const empty = document.createElement('div');
+      empty.textContent = emptyHint || 'None selected — tap + ADD';
+      empty.style.cssText = `
+        font-family: ui-monospace, monospace;
+        font-size: 11px; color: ${C.textDim};
+        padding: 2px 4px;
+        letter-spacing: 1.5px; text-transform: uppercase;
+        font-weight: 700;
+      `;
+      tray.appendChild(empty);
+      return;
+    }
+    const all = (typeof sourceFn === 'function') ? (sourceFn() || []) : (sourceFn || []);
+    const flagged = flagIds ? new Set(flagIds() || []) : null;
+    state.ids.forEach(id => {
+      const rec = all.find(a => a.id === id);
+      const isFlagged = flagged && flagged.has(id);
+      const borderColor = isFlagged ? C.warning : accentColor;
+      const chip = document.createElement('span');
+      chip.style.cssText = `
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 8px 6px 12px;
+        background: ${C.card};
+        border: 1px solid ${borderColor};
+        border-radius: 999px;
+        font-family: var(--font-body);
+        font-size: 12px; font-weight: 600;
+        color: ${C.text};
+      `;
+      if (rec && rec.extra) {
+        const e = document.createElement('span');
+        e.textContent = rec.extra;
+        e.style.cssText = `
+          color: ${isFlagged ? C.warning : C.gold};
+          font-family: ui-monospace, monospace;
+          font-size: 11px; margin-right: 2px;
+          white-space: nowrap;
+        `;
+        chip.appendChild(e);
+      }
+      const n = document.createElement('span');
+      n.textContent = rec ? rec.name : id;
+      chip.appendChild(n);
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '×';
+      x.style.cssText = `
+        background: transparent; border: none;
+        color: ${C.textMuted}; cursor: pointer;
+        font-size: 15px; line-height: 1; padding: 0 2px;
+      `;
+      x.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        state.ids = state.ids.filter(i => i !== id);
+        render();
+        if (onChange) onChange(state.ids);
+      });
+      chip.appendChild(x);
+      tray.appendChild(chip);
+    });
+  }
+
+  render();
+  return {
+    el: wrap,
+    getIds:   () => state.ids.slice(),
+    setIds:   (ids) => { state.ids = [...(ids || [])]; render(); },
+    rerender: render,
+  };
+}
