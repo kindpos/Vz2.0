@@ -15,7 +15,7 @@ import { T, withAlpha } from '../ui/tokens.js';
 import {
     buildScenePage, sectionCard, button, field,
     numberField, chipGroup, checkboxChip, row, openModal,
-    showToast,
+    showToast, buildChipTray,
 } from '../ui/forms.js';
 import {
     EMPLOYEES, ROLES, STATUSES,
@@ -489,14 +489,29 @@ function showAddEditModal(_container, employee) {
     const lastF  = field({ label: 'Last Name',  value: vals.lastName,  required: true });
     content.appendChild(row(firstF, lastF));
 
-    // Roles (multi-select chip group)
-    const rolesGroup = labeledChipGroup({
-        label: 'Roles',
-        options: ROLES.map(r => ({ id: r.id, label: r.label })),
+    // Roles (chip tray with picker modal — only shows selected
+    // roles as removable chips; tap + ADD to open the picker)
+    const rolesWrap = document.createElement('div');
+    rolesWrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+    const rolesLbl = document.createElement('div');
+    rolesLbl.style.cssText = `
+        font-family: ${T.font.body};
+        font-size: ${T.fs.base}px;
+        color: ${T.textMuted};
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    `;
+    rolesLbl.textContent = 'Roles';
+    rolesWrap.appendChild(rolesLbl);
+    const rolesTray = buildChipTray({
         selected: vals.roles || [],
-        mode: 'multi',
+        sourceFn: () => ROLES.map(r => ({ id: r.id, name: r.label })),
+        pickerTitle: 'Pick roles',
+        emptyHint: 'No roles selected — tap + ADD',
+        accent: T.green,
     });
-    content.appendChild(rolesGroup.wrap);
+    rolesWrap.appendChild(rolesTray.el);
+    content.appendChild(rolesWrap);
 
     // Pay rate + tipped
     const rateF = numberField({
@@ -571,7 +586,7 @@ function showAddEditModal(_container, employee) {
             await handleSave(isEdit, employee, {
                 firstName: firstF.input.value.trim(),
                 lastName:  lastF.input.value.trim(),
-                roles:     rolesGroup.getSelected(),
+                roles:     rolesTray.getIds(),
                 payRate:   parseFloat(rateF.input.value) || 0,
                 isTipped:  tippedGroup.getSelected()[0] === 'yes',
                 status:    statusGroup.getSelected()[0] || 'active',
