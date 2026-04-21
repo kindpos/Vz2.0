@@ -1,4 +1,22 @@
-# Tip Pools — Feature Proposal
+# Tip Pools — Feature Proposal *(archived)*
+
+> **Status: implemented.** Frontend tab landed in commit `0cc0598`
+> ("feat: Tip Pools tab — all 5 chunks") and the backend projection
+> + clock-in opt-in landed in `667ddb8` ("feat: pool opt-in at
+> clock-in"). This file is preserved as a record of the original
+> design intent vs. what shipped — useful for "why did we choose X?"
+> archaeology.
+>
+> Live code lives in:
+>   - `overseer/src/sections/payroll-attendance.js` — Tip Pools tab
+>   - `backend/app/models/config_events.py` — `TipPool` /
+>     `TipPoolSchedule` models
+>   - `backend/app/core/events.py` — `TIPOUT_POOL_*` event types
+>   - `backend/app/services/overseer_config_service.py` —
+>     `get_tip_pools()` projection
+>   - `backend/app/api/routes/config.py` — `GET /api/v1/config/tip_pools`
+>   - `backend/app/api/routes/staff.py` — `ClockInRequest` pool fields
+>   - `terminal/scenes/login.js` — clock-in opt-in prompt
 
 Spec-capture doc for a future session. Describes what's missing,
 where to build it, and which existing patterns to mimic so the
