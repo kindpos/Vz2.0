@@ -307,6 +307,42 @@ function _ensureStyles() {
   document.head.appendChild(style);
 }
 
+// ── Item card (item row only; mods/halves appended by later chunks) ──
+function _buildItemCard(item, seatIdx, itemIdx, opts) {
+  var card = document.createElement('div');
+  card.className = 'ir-card';
+  card.style.setProperty('--cat', item.categoryColor || T.green);
+
+  var row = document.createElement('div');
+  row.className = 'ir-item-row';
+
+  var chev = document.createElement('span');
+  chev.className = 'ir-chev';
+  chev.textContent = '▼';
+  row.appendChild(chev);
+
+  if (item.qty && item.qty > 1) {
+    var qty = document.createElement('span');
+    qty.className = 'ir-qty';
+    qty.textContent = item.qty + '×';
+    row.appendChild(qty);
+  }
+
+  var name = document.createElement('span');
+  name.className = 'ir-iname';
+  name.textContent = item.name || '';
+  row.appendChild(name);
+
+  var price = document.createElement('span');
+  price.className = 'ir-iprice';
+  var q = item.qty || 1;
+  price.textContent = _fmt(q * (item.price || 0));
+  row.appendChild(price);
+
+  card.appendChild(row);
+  return card;
+}
+
 // ── Seat group (header only; items appended by later chunks) ──
 function _buildSeatGroup(seat) {
   var group = document.createElement('div');
@@ -407,7 +443,13 @@ export function buildItemRecap(order, opts) {
 
   var seats = Array.isArray(order.seats) ? order.seats : [];
   for (var i = 0; i < seats.length; i++) {
-    root.appendChild(_buildSeatGroup(seats[i]));
+    var group = _buildSeatGroup(seats[i]);
+    var itemsWrap = group.querySelector('.ir-seat-items');
+    var items = Array.isArray(seats[i].items) ? seats[i].items : [];
+    for (var j = 0; j < items.length; j++) {
+      itemsWrap.appendChild(_buildItemCard(items[j], i, j, opts));
+    }
+    root.appendChild(group);
   }
 
   return root;
