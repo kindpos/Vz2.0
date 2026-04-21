@@ -83,6 +83,35 @@ function fetchHourlyCompare(signal) {
 function fetchLabor(signal) {
   return fetchJson(`/api/v1/reports/labor-summary?date=${today()}`, signal);
 }
+function fetchEmployees(signal) {
+  return fetchJson(`/api/v1/config/employees`, signal);
+}
+function fetchRoles(signal) {
+  return fetchJson(`/api/v1/config/roles`, signal);
+}
+
+// Cross-reference employees ↔ roles into a lookup map so the servers
+// table can badge non-server rows (managers) and dim their tip%.
+//
+//   { [employee_id]: { isManager: bool, roleName: string } }
+//
+// "Manager" is detected via role.permission_level (backend uses
+// "Standard" / "Elevated" / "Manager"). If either feed is missing
+// we return an empty map and the table simply has no badges.
+function buildRoleMap(employees, roles) {
+  const rolesById = new Map();
+  for (const r of (roles || [])) rolesById.set(r.role_id, r);
+  const map = new Map();
+  for (const e of (employees || [])) {
+    const eRoles = (e.role_ids || []).map(id => rolesById.get(id)).filter(Boolean);
+    const isManager = eRoles.some(r =>
+      (r.permission_level || '').toLowerCase() === 'manager'
+    );
+    const roleName = eRoles.map(r => r.name).filter(Boolean).join(', ');
+    map.set(e.employee_id, { isManager, roleName });
+  }
+  return map;
+}
 
 // ─── Layout ──────────────────────────────────────────────────────────
 function buildLayout(container) {
@@ -486,7 +515,8 @@ function bucketIndexForValue(buckets, value) {
   return buckets.length - 1;
 }
 
-function renderBottomRow(container, data) {
+function renderBottomRow(container, data, roleMap) {
+  const roles = roleMap || new Map();
   const row = regionEl(container, 'region-bottom');
   if (!row) return;
   row.innerHTML = '';
@@ -552,11 +582,22 @@ function renderBottomRow(container, data) {
     columns: [
       {
         label: 'Server', align: 'left', width: '1.6fr',
-        cell: (r) => ({ text: r.name || '—' }),
+        cell: (r) => {
+          const role = roles.get(r.server_id);
+          return {
+            text: r.name || '—',
+            badge: (role && role.isManager) ? { text: 'MGR' } : null,
+          };
+        },
       },
       {
         label: 'Tip %', align: 'right', width: '0.8fr',
         cell: (r) => {
+          const role = roles.get(r.server_id);
+          // Managers don't work the floor → tip% isn't meaningful for them
+          if (role && role.isManager) {
+            return { text: '—', color: T.textDim };
+          }
           const rev = Number(r.revenue) || 0;
           const tipFrac = rev > 0 ? (Number(r.tips) || 0) / rev : null;
           return tipFrac == null
@@ -679,16 +720,27 @@ export function buildSalesReportsScene(container) {
   const signal = _abortController.signal;
   const still = () => _currentContainer === container;
 
-  // Hero + composition + tender/heatmap + bottom rows — driven by
-  // sales-summary (today) + sales-summary (today-7d, for WoW deltas).
-  // The two fetches run in parallel. Hero waits for both so the delta
-  // row renders atomically. Other regions only need today's data, so
-  // they render as soon as the primary fetch lands.
+  // All region fetches run in parallel. Each region renders as soon
+  // as the data it depends on arrives — no region blocks on another.
+  //   - sales-summary (today)    → composition, tender/heatmap, histogram, top-items
+  //   - sales-summary (today-7d) → hero deltas (waits on today too)
+  //   - employees + roles        → MGR badges on top-servers (waits on today too)
   const todayPromise    = fetchSummary(signal);
   const lastWeekPromise = fetchLastWeekSummary(signal).catch(err => {
     if (err.name === 'AbortError') throw err;
     console.warn('[sales-reports] last-week summary unavailable:', err);
-    return null; // hero will simply render without deltas
+    return null; // hero renders without deltas
+  });
+  const rolesPromise = Promise.allSettled([
+    fetchEmployees(signal),
+    fetchRoles(signal),
+  ]).then(([empRes, roleRes]) => {
+    if (signal.aborted) return new Map();
+    const employees = empRes.status  === 'fulfilled' ? empRes.value  : [];
+    const roles     = roleRes.status === 'fulfilled' ? roleRes.value : [];
+    if (empRes.status  === 'rejected') console.warn('[sales-reports] /config/employees unavailable:', empRes.reason);
+    if (roleRes.status === 'rejected') console.warn('[sales-reports] /config/roles unavailable:',     roleRes.reason);
+    return buildRoleMap(employees, roles);
   });
 
   todayPromise
@@ -696,11 +748,13 @@ export function buildSalesReportsScene(container) {
       if (!still()) return;
       renderComposition(container, data);
       renderTenderHeatmap(container, data);
-      renderBottomRow(container, data);
-      // Hero waits on both; kick it off once last-week settles.
       lastWeekPromise.then(lw => {
         if (!still()) return;
         renderHero(container, data, lw);
+      });
+      rolesPromise.then(roleMap => {
+        if (!still()) return;
+        renderBottomRow(container, data, roleMap);
       });
     })
     .catch(err => {

@@ -1547,7 +1547,6 @@ export function buildMiniTable(opts) {
       for (const col of columns) {
         const cellData = col.cell ? col.cell(row) : { text: '' };
         const cell = document.createElement('div');
-        cell.textContent = (cellData && cellData.text != null) ? cellData.text : '';
         cell.style.cssText = `
           font-family: ${T.font.mono};
           font-size: ${T.fs.base}px;
@@ -1557,7 +1556,37 @@ export function buildMiniTable(opts) {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          display: flex;
+          align-items: baseline;
+          justify-content: ${col.align === 'right' ? 'flex-end' : 'flex-start'};
+          gap: 6px;
         `;
+        // Text content
+        const textEl = document.createElement('span');
+        textEl.textContent = (cellData && cellData.text != null) ? cellData.text : '';
+        textEl.style.cssText = 'overflow: hidden; text-overflow: ellipsis;';
+        cell.appendChild(textEl);
+        // Optional inline badge (e.g. MGR)
+        if (cellData && cellData.badge && cellData.badge.text) {
+          const badge = document.createElement('span');
+          badge.textContent = cellData.badge.text;
+          const badgeColor = cellData.badge.color || T.textDim;
+          badge.style.cssText = `
+            display: inline-block;
+            padding: 1px 5px;
+            border: 1px solid ${badgeColor};
+            border-radius: 3px;
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.xs}px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: ${badgeColor};
+            font-weight: 700;
+            line-height: 1.3;
+            flex-shrink: 0;
+          `;
+          cell.appendChild(badge);
+        }
         rowEl.appendChild(cell);
       }
       body.appendChild(rowEl);
