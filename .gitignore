@@ -15,6 +15,12 @@ backend/data/event_ledger.db
 backend/data/event_ledger.db-shm
 backend/data/event_ledger.db-wal
 
+# Runtime diagnostic ledger (Entomology) — recreated on boot via
+# DiagnosticCollector; pure runtime state, not source.
+backend/data/diagnostic_boot.db
+backend/data/diagnostic_boot.db-shm
+backend/data/diagnostic_boot.db-wal
+
 # pytest-cov artifacts
 backend/.coverage
 backend/htmlcov/
