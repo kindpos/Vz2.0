@@ -307,10 +307,43 @@ function _ensureStyles() {
   document.head.appendChild(style);
 }
 
+// ── $ formatter (dollars in, "$X.XX" out) ─────────
+function _fmt(n) { return '$' + (Number(n) || 0).toFixed(2); }
+
+// ── Panel header: title + sub + rule ──────────────
+function _buildPanelHeader(order) {
+  var frag = document.createDocumentFragment();
+
+  var title = document.createElement('div');
+  title.className = 'ir-panel-title';
+  title.textContent = 'ORDER RECAP';
+  frag.appendChild(title);
+
+  var parts = [];
+  if (order.tableNum != null) parts.push('TABLE ' + order.tableNum);
+  if (order.checkId)          parts.push('CHECK #' + order.checkId);
+  if (order.server)           parts.push(String(order.server).toUpperCase());
+  if (parts.length) {
+    var sub = document.createElement('div');
+    sub.className = 'ir-panel-sub';
+    sub.textContent = parts.join(' · ');
+    frag.appendChild(sub);
+  }
+
+  var rule = document.createElement('hr');
+  rule.className = 'ir-panel-rule';
+  frag.appendChild(rule);
+
+  return frag;
+}
+
 export function buildItemRecap(order, opts) {
   opts = opts || {};
+  order = order || {};
   _ensureStyles();
+
   var root = document.createElement('div');
   root.className = 'ir-root';
+  root.appendChild(_buildPanelHeader(order));
   return root;
 }
