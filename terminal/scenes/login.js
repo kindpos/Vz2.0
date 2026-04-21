@@ -345,6 +345,80 @@ defineScene({
         roleGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-content:center;flex:1;';
         body.appendChild(roleGrid);
 
+        // Pool memberships chosen by the employee for this shift.
+        var selectedPoolIds = [];
+        // All active pools fetched from the backend.
+        var _allPools = [];
+
+        // Pool section — rendered/updated whenever the selected role changes.
+        var poolSection = document.createElement('div');
+        poolSection.style.cssText = 'flex-shrink:0;display:none;flex-direction:column;gap:6px;';
+        var poolSectionLbl = document.createElement('div');
+        poolSectionLbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;letter-spacing:2px;color:' + T.border + ';text-transform:uppercase;';
+        poolSectionLbl.textContent = 'TIP POOLS — TAP TO JOIN';
+        poolSection.appendChild(poolSectionLbl);
+        var poolChips = document.createElement('div');
+        poolChips.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+        poolSection.appendChild(poolChips);
+
+        // Check if a pool's schedule window covers the current time.
+        function _poolMatchesNow(pool) {
+          if (!pool.schedule || (!pool.schedule.start && !pool.schedule.end)) return true;
+          var now = new Date();
+          var hhmm = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+          var s = pool.schedule.start || '00:00';
+          var e = pool.schedule.end   || '23:59';
+          // Handles overnight windows (e.g. 17:00–02:00).
+          if (s <= e) return hhmm >= s && hhmm <= e;
+          return hhmm >= s || hhmm <= e;
+        }
+
+        function _refreshPoolSection(role) {
+          selectedPoolIds = [];
+          poolChips.innerHTML = '';
+          var matching = _allPools.filter(function(p) {
+            return p.active !== false
+              && Array.isArray(p.role_ids)
+              && p.role_ids.indexOf(role) !== -1
+              && _poolMatchesNow(p);
+          });
+          if (matching.length === 0) {
+            poolSection.style.display = 'none';
+            return;
+          }
+          poolSection.style.display = 'flex';
+          matching.forEach(function(pool) {
+            var joined = false;
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            function _paint() {
+              chip.style.cssText = [
+                'font-family:' + T.fb + ';',
+                'font-size:10px;font-weight:700;letter-spacing:1.5px;',
+                'text-transform:uppercase;',
+                'padding:6px 14px;border-radius:999px;cursor:pointer;',
+                'border:1px solid ' + (joined ? T.elec : T.border) + ';',
+                'background:' + (joined ? hexToRgba(T.elec, 0.15) : 'transparent') + ';',
+                'color:' + (joined ? T.elec : T.border) + ';',
+                'transition:all 0.12s ease;',
+              ].join('');
+            }
+            _paint();
+            chip.textContent = pool.name.toUpperCase() + (joined ? ' ✓' : '');
+            chip.addEventListener('pointerup', function() {
+              joined = !joined;
+              chip.textContent = pool.name.toUpperCase() + (joined ? ' ✓' : '');
+              if (joined) {
+                selectedPoolIds.push(pool.pool_id);
+              } else {
+                selectedPoolIds = selectedPoolIds.filter(function(id) { return id !== pool.pool_id; });
+              }
+              _paint();
+            });
+            poolChips.appendChild(chip);
+          });
+        }
+
         var selectedRole = null;
         var roleBtns = [];
         roles.forEach(function(role) {
@@ -366,6 +440,7 @@ defineScene({
                   rb.setColor(hexToRgba(rb._rc, 0.15), hexToRgba(rb._rc, 0.08), rb._rc);
                 }
               });
+              _refreshPoolSection(r);
               clockInBtn.style.opacity       = '1';
               clockInBtn.style.pointerEvents = 'auto';
             }; })(role, rc, rd),
@@ -387,10 +462,18 @@ defineScene({
         hrsWrap.appendChild(hrsVal); hrsWrap.appendChild(hrsLbl);
         body.appendChild(hrsWrap);
 
+        body.appendChild(poolSection);
+
         // Action buttons
         var clockInBtn = buildPillButton({ label: 'CLOCK IN', color: T.greenWarm, darkBg: T.greenWarmDk, fontSize: T.fsB3 });
         clockInBtn.style.width = '100%'; clockInBtn.style.opacity = '0.35'; clockInBtn.style.pointerEvents = 'none';
         body.appendChild(clockInBtn);
+
+        // Fetch active pools in the background so they're ready when a role is picked.
+        fetch('/api/v1/config/tip_pools')
+          .then(function(r) { return r.ok ? r.json() : []; })
+          .then(function(pools) { _allPools = Array.isArray(pools) ? pools : []; })
+          .catch(function() { _allPools = []; });
 
         var clockOutBtn = buildPillButton({ label: 'CLOCK OUT', color: T.verm, darkBg: T.vermDk, fontSize: T.fsB3 });
         clockOutBtn.style.width = '100%'; clockOutBtn.style.display = 'none';
@@ -426,7 +509,7 @@ defineScene({
           if (!selectedRole) return;
           clockInBtn.style.opacity = '0.35'; clockInBtn.style.pointerEvents = 'none';
           fetch('/api/v1/servers/clock-in', { method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ employee_id: empId, employee_name: empName, role: selectedRole }),
+            body: JSON.stringify({ employee_id: empId, employee_name: empName, role: selectedRole, pool_memberships: selectedPoolIds }),
           }).then(function(r) {
             if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail||'Failed'); });
             return r.json();

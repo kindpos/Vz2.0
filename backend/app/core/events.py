@@ -131,6 +131,9 @@ class EventType(str, Enum):
     TIPOUT_RULE_CREATED = "tipout.rule_created"
     TIPOUT_RULE_UPDATED = "tipout.rule_updated"
     TIPOUT_RULE_DELETED = "tipout.rule_deleted"
+    TIPOUT_POOL_CREATED = "tipout.pool_created"
+    TIPOUT_POOL_UPDATED = "tipout.pool_updated"
+    TIPOUT_POOL_DELETED = "tipout.pool_deleted"
 
     # ── Menu management (LEDGER_OPERATIONAL) ─────────────────────────
     MENU_ITEM_CREATED = "menu.item_created"
@@ -1119,6 +1122,8 @@ def user_logged_in(
         terminal_id: str,
         employee_id: str,
         employee_name: str,
+        role: str = "",
+        pool_memberships: list = None,
         **kwargs
 ) -> Event:
     """Create a USER_LOGGED_IN event (clock in)."""
@@ -1128,6 +1133,8 @@ def user_logged_in(
         payload={
             "employee_id": employee_id,
             "employee_name": employee_name,
+            "role": role,
+            "pool_memberships": pool_memberships or [],
         },
         user_id=employee_id,
         **kwargs
