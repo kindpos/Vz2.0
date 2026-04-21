@@ -21,6 +21,11 @@ import { fmt, fmtPP }    from './money.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+// Monotonic ID generator for SVG <defs> (gradients, filters) so
+// multiple charts on one page don't collide.
+let _svgDefCounter = 0;
+function nextDefId(prefix) { return `${prefix}-${++_svgDefCounter}`; }
+
 function svg(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -710,5 +715,240 @@ export function buildCOBGauge(opts) {
     body.appendChild(strip);
   }
 
+  return card;
+}
+
+// ─── buildStackedArea ───────────────────────────────────────────────
+// Multi-layer stacked area chart. Each layer is filled with a vertical
+// gradient (more opaque at top, softer at bottom) on top of the layer
+// below it. The top edge (cumulative total) is stroked and marked.
+//
+//   {
+//     title,               // "Hourly Composition"
+//     subtitle,
+//     accent,              // left-border color (T.mint)
+//     xLabels,             // ["11:00","12:00",...]
+//     layers: [            // bottom-to-top
+//       { name, values, color },
+//       ...
+//     ],
+//     formatY,
+//     height,              // chart SVG height
+//     topStrokeColor,      // top-edge line color (default: T.cyan)
+//     topMarkers,          // bool, default true
+//     peakGlow,            // bool, default true — glow the top-edge max
+//     glowColor,           // default: T.gold
+//   }
+export function buildStackedArea(opts) {
+  const {
+    title,
+    subtitle,
+    accent         = T.mint,
+    xLabels        = [],
+    layers         = [],
+    formatY        = (n) => fmt(n, { dp: 0, compact: true }),
+    height         = 220,
+    topStrokeColor = T.cyan,
+    topMarkers     = true,
+    peakGlow       = true,
+    glowColor      = T.gold,
+  } = opts;
+
+  const { card, header, body } = buildCardShell({ accent, minHeight: 280 });
+
+  // Header: title + subtitle
+  const left = document.createElement('div');
+  left.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+  if (title) left.appendChild(buildEyebrow(title));
+  if (subtitle) left.appendChild(buildMonoLabel(subtitle, {
+    size: T.fs.xs, color: T.textDim, letterSpacing: 1.2,
+  }));
+  header.appendChild(left);
+
+  // Legend chips (top-right)
+  const legend = document.createElement('div');
+  legend.style.cssText = 'display: flex; gap: 14px; align-items: center; flex-wrap: wrap;';
+  for (const L of layers) {
+    const chip = document.createElement('div');
+    chip.style.cssText = `
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: ${T.font.mono}; font-size: ${T.fs.xs}px;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      color: ${T.textMuted}; font-weight: 700;
+    `;
+    const sw = document.createElement('span');
+    sw.style.cssText = `
+      display: inline-block; width: 10px; height: 10px;
+      background: ${L.color}; border-radius: 2px;
+    `;
+    chip.appendChild(sw);
+    const lbl = document.createElement('span');
+    lbl.textContent = L.name;
+    chip.appendChild(lbl);
+    legend.appendChild(chip);
+  }
+  header.appendChild(legend);
+
+  // Chart body
+  const chartWrap = document.createElement('div');
+  chartWrap.style.cssText = 'flex: 1; min-height: 0;';
+  body.appendChild(chartWrap);
+
+  const n = Math.max(...layers.map(L => (L.values || []).length), 0);
+  if (n === 0 || layers.length === 0) {
+    const empty = document.createElement('div');
+    empty.textContent = 'No data';
+    empty.style.cssText = `
+      display: flex; align-items: center; justify-content: center;
+      height: ${height}px;
+      font-family: ${T.font.mono}; font-size: ${T.fs.sm}px;
+      color: ${T.textDim}; letter-spacing: 2px; text-transform: uppercase;
+    `;
+    chartWrap.appendChild(empty);
+    return card;
+  }
+
+  // Compute cumulative sums per x: cum[k][i] = sum of layers[0..k].values[i]
+  const cum = [];
+  for (let k = 0; k < layers.length; k++) {
+    const prev = k === 0 ? new Array(n).fill(0) : cum[k - 1];
+    const vals = layers[k].values || [];
+    const row = [];
+    for (let i = 0; i < n; i++) {
+      row.push(prev[i] + (Number(vals[i]) || 0));
+    }
+    cum.push(row);
+  }
+  const topTotals = cum[cum.length - 1];
+  const rawMax = Math.max(0.001, ...topTotals);
+  const yMax = niceMax(rawMax);
+
+  const padL = 44, padR = 14, padT = 12, padB = 26;
+  const vbW = 1120, vbH = height;
+  const plotW = vbW - padL - padR;
+  const plotH = vbH - padT - padB;
+  const xAt = (i) => padL + (n === 1 ? plotW / 2 : (plotW * i) / (n - 1));
+  const yAt = (v) => padT + (1 - v / yMax) * plotH;
+
+  const root = svg('svg', {
+    viewBox: `0 0 ${vbW} ${vbH}`,
+    preserveAspectRatio: 'none',
+    xmlns: SVG_NS,
+  });
+  root.style.cssText = `display: block; width: 100%; height: ${height}px;`;
+
+  // Gradient defs — one per layer
+  const defs = svg('defs', {});
+  const gradIds = [];
+  for (let k = 0; k < layers.length; k++) {
+    const id = nextDefId('stacked-grad');
+    gradIds.push(id);
+    const grad = svg('linearGradient', {
+      id, x1: 0, y1: 0, x2: 0, y2: 1,
+    });
+    grad.appendChild(svg('stop', {
+      offset: '0%',
+      'stop-color': layers[k].color,
+      'stop-opacity': 0.55,
+    }));
+    grad.appendChild(svg('stop', {
+      offset: '100%',
+      'stop-color': layers[k].color,
+      'stop-opacity': 0.25,
+    }));
+    defs.appendChild(grad);
+  }
+  root.appendChild(defs);
+
+  // Gridlines + Y tick labels
+  const yTicks = 5;
+  for (let i = 0; i <= yTicks; i++) {
+    const v = (yMax * i) / yTicks;
+    const y = yAt(v);
+    root.appendChild(svg('line', {
+      x1: padL, x2: padL + plotW, y1: y, y2: y,
+      stroke: T.well, 'stroke-width': 1,
+    }));
+    const lbl = svg('text', {
+      x: padL - 6, y: y + 3,
+      'text-anchor': 'end',
+      'font-family': T.font.mono,
+      'font-size': 9,
+      fill: T.textDim,
+      'letter-spacing': 1,
+    });
+    lbl.textContent = formatY(v);
+    root.appendChild(lbl);
+  }
+
+  // Stacked layer polygons (bottom up)
+  for (let k = 0; k < layers.length; k++) {
+    const topRow = cum[k];
+    const bottomRow = k === 0 ? new Array(n).fill(0) : cum[k - 1];
+    const topPts    = topRow.map((v, i)    => `${xAt(i)},${yAt(v)}`);
+    const botPts    = bottomRow.map((v, i) => `${xAt(i)},${yAt(v)}`).reverse();
+    const polyPts = [...topPts, ...botPts].join(' ');
+    root.appendChild(svg('polygon', {
+      points: polyPts,
+      fill: `url(#${gradIds[k]})`,
+      stroke: 'none',
+    }));
+  }
+
+  // Top-edge stroke (cumulative total line)
+  const topEdgePts = topTotals.map((v, i) => `${xAt(i)},${yAt(v)}`).join(' ');
+  root.appendChild(svg('polyline', {
+    points: topEdgePts,
+    fill: 'none',
+    stroke: topStrokeColor,
+    'stroke-width': 2,
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+    'vector-effect': 'non-scaling-stroke',
+  }));
+
+  // Top-edge markers
+  let peakIdx = 0;
+  for (let i = 0; i < topTotals.length; i++) {
+    if (topTotals[i] > topTotals[peakIdx]) peakIdx = i;
+  }
+  if (topMarkers) {
+    for (let i = 0; i < topTotals.length; i++) {
+      const x = xAt(i), y = yAt(topTotals[i]);
+      if (peakGlow && i === peakIdx) continue; // drawn separately with glow
+      root.appendChild(svg('rect', {
+        x: x - 3, y: y - 3, width: 6, height: 6,
+        fill: topStrokeColor,
+      }));
+    }
+  }
+  if (peakGlow && topTotals.length > 0) {
+    const x = xAt(peakIdx), y = yAt(topTotals[peakIdx]);
+    root.appendChild(svg('rect', {
+      x: x - 7, y: y - 7, width: 14, height: 14,
+      fill: withAlpha(glowColor, 0.35),
+    }));
+    root.appendChild(svg('rect', {
+      x: x - 4, y: y - 4, width: 8, height: 8,
+      fill: glowColor,
+    }));
+  }
+
+  // X-axis labels
+  for (let i = 0; i < xLabels.length; i++) {
+    const x = xAt(i);
+    const lbl = svg('text', {
+      x, y: vbH - 8,
+      'text-anchor': 'middle',
+      'font-family': T.font.mono,
+      'font-size': 9,
+      fill: T.textDim,
+      'letter-spacing': 1,
+    });
+    lbl.textContent = xLabels[i];
+    root.appendChild(lbl);
+  }
+
+  chartWrap.appendChild(root);
   return card;
 }

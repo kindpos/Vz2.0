@@ -20,7 +20,7 @@
    ============================================ */
 
 import { T }                from '../ui/tokens.js';
-import { buildStatCard, buildLineCard, buildCOBGauge } from '../ui/charts.js';
+import { buildStatCard, buildLineCard, buildCOBGauge, buildStackedArea } from '../ui/charts.js';
 import { fmt, fmtPct, fmtInt } from '../ui/money.js';
 
 // ─── Module state ────────────────────────────────────────────────────
@@ -181,8 +181,9 @@ function buildLayout(container) {
         gap: 16px;
         margin-bottom: 24px;
       }
-      .sales-row-hero       { grid-template-columns: repeat(4, 1fr); }
-      .sales-row-trend-cob  { grid-template-columns: 2fr 1fr; }
+      .sales-row-hero        { grid-template-columns: repeat(4, 1fr); }
+      .sales-row-trend-cob   { grid-template-columns: 2fr 1fr; }
+      .sales-row-composition { grid-template-columns: 1fr; }
 
       .sales-region-loading, .sales-region-empty, .sales-region-error {
         padding: 28px 20px;
@@ -250,6 +251,9 @@ function buildLayout(container) {
         </div>
         <div class="sales-row sales-row-trend-cob" id="region-trend-cob">
           <div class="sales-region-loading">Loading…</div>
+          <div class="sales-region-loading">Loading…</div>
+        </div>
+        <div class="sales-row sales-row-composition" id="region-composition">
           <div class="sales-region-loading">Loading…</div>
         </div>
       </div>
@@ -331,6 +335,38 @@ function renderHero(container, data) {
   }));
 }
 
+function renderComposition(container, data) {
+  const row = regionEl(container, 'region-composition');
+  if (!row) return;
+  row.innerHTML = '';
+
+  const hourly = data.hourly_sales || [];
+  if (!hourly.length) {
+    const cell = document.createElement('div');
+    cell.className = 'sales-region-empty';
+    cell.textContent = 'No hourly data';
+    row.appendChild(cell);
+    return;
+  }
+
+  const xLabels = hourly.map(h => String(h.hour));
+  const food  = hourly.map(h => Number(h.food)  || 0);
+  const drink = hourly.map(h => Number(h.drink) || 0);
+  const other = hourly.map(h => Number(h.other) || 0);
+
+  row.appendChild(buildStackedArea({
+    title: 'Revenue Composition',
+    subtitle: 'Hourly net by category',
+    accent: T.mint,
+    xLabels,
+    layers: [
+      { name: 'Food',  values: food,  color: T.cyan     },
+      { name: 'Drink', values: drink, color: T.gold     },
+      { name: 'Other', values: other, color: T.lavender },
+    ],
+  }));
+}
+
 function renderTrendCob(container, { hourly, labor }) {
   const row = regionEl(container, 'region-trend-cob');
   if (!row) return;
@@ -382,13 +418,19 @@ export function buildSalesReportsScene(container) {
   const signal = _abortController.signal;
   const still = () => _currentContainer === container;
 
-  // Hero row — sales-summary
+  // Hero row + composition row — both driven by sales-summary
   fetchSummary(signal)
-    .then(data => { if (still()) renderHero(container, data); })
+    .then(data => {
+      if (!still()) return;
+      renderHero(container, data);
+      renderComposition(container, data);
+    })
     .catch(err => {
       if (err.name === 'AbortError') return;
       console.error('[sales-reports] sales-summary error:', err);
-      if (still()) renderRegionError(regionEl(container, 'region-hero'), err, { cells: 4 });
+      if (!still()) return;
+      renderRegionError(regionEl(container, 'region-hero'),        err, { cells: 4 });
+      renderRegionError(regionEl(container, 'region-composition'), err, { cells: 1 });
     });
 
   // Trend + COB row — hourly-compare + labor-summary, rendered together
