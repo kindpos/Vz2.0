@@ -4,16 +4,49 @@ KINDpos Authentication Routes
 PIN verification with rate limiting and session token issuance.
 """
 
+import logging
 import time
 import secrets
 from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from app.api.dependencies import get_ledger
+from app.api.dependencies import get_ledger, get_diagnostic_collector
 from app.core.event_ledger import EventLedger
+from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 from app.services.overseer_config_service import OverseerConfigService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_log = logging.getLogger(__name__)
+
+
+async def _record_diag(
+    category: DiagnosticCategory,
+    severity: DiagnosticSeverity,
+    source: str,
+    event_code: str,
+    message: str,
+    context: dict,
+) -> None:
+    """Best-effort diagnostic emission.
+
+    Swallows failures so instrumentation never breaks the user-facing flow
+    (e.g. when DiagnosticCollector isn't initialized in tests, or DB is
+    mid-restart). Call from anywhere you'd otherwise drop a silent log.
+    """
+    collector = get_diagnostic_collector()
+    if collector is None:
+        return
+    try:
+        await collector.record(
+            category=category,
+            severity=severity,
+            source=source,
+            event_code=event_code,
+            message=message,
+            context=context,
+        )
+    except Exception:  # pragma: no cover — diagnostic must never raise
+        _log.exception("diagnostic record failed [%s]", event_code)
 
 # ── Rate Limiting ─────────────────────────────────
 MAX_ATTEMPTS = 5
@@ -112,13 +145,36 @@ async def verify_pin(
     Rate-limited: max 5 failed attempts per 60-second window per client.
     """
     client_id = request.client.host if request.client else "unknown"
-    _check_rate_limit(client_id)
+    try:
+        _check_rate_limit(client_id)
+    except HTTPException as exc:
+        if exc.status_code == 429:
+            # SEC-001 — hit the rate-limit ceiling. Worth recording because a
+            # burst pattern from one IP is a plausible brute-force signal.
+            await _record_diag(
+                category=DiagnosticCategory.SEC,
+                severity=DiagnosticSeverity.WARNING,
+                source="auth.verify_pin",
+                event_code="SEC-001",
+                message="PIN rate-limit triggered",
+                context={
+                    "client_id": client_id,
+                    "attempts_in_window": len(_attempts.get(client_id, [])),
+                    "window_seconds": WINDOW_SECONDS,
+                },
+            )
+        raise
 
     service = OverseerConfigService(ledger)
     employees = await service.get_employees()
 
+    # Constant-time PIN comparison to avoid a timing side-channel that
+    # could leak digits to a co-located attacker on the LAN.
+    submitted = request_body.pin or ""
     for e in employees:
-        if e.active and e.pin == request_body.pin:
+        if not e.active or not e.pin:
+            continue
+        if secrets.compare_digest(e.pin, submitted):
             token = _create_token(e.employee_id, e.display_name, e.role_ids)
             return {
                 "valid": True,

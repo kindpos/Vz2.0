@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 
 from app.api.routes.server_shift import (
     TipOutRequest,
@@ -383,17 +384,17 @@ class TestCheckoutStatus:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestPatchTipout:
-    """Stub endpoint — echoes the amount back. Pinned so a future
-    real implementation can't silently change the response shape the
-    frontend depends on."""
+    """Endpoint returns 501 Not Implemented until tip-out override events
+    are actually persisted. The previous stub returned a fake success,
+    which let the UI drop writes silently — this is pinned so the stub
+    can't regress back to lying."""
 
     @pytest.mark.asyncio
-    async def test_echo(self, ledger):
-        res = await patch_tipout(
-            TipOutRequest(amount=12.50),
-            server_id="emp_A",
-            ledger=ledger,
-        )
-        assert res["success"] is True
-        assert res["server_id"] == "emp_A"
-        assert res["tipout"] == pytest.approx(12.50)
+    async def test_returns_not_implemented(self, ledger):
+        with pytest.raises(HTTPException) as exc:
+            await patch_tipout(
+                TipOutRequest(amount=12.50),
+                server_id="emp_A",
+                ledger=ledger,
+            )
+        assert exc.value.status_code == 501

@@ -57,6 +57,7 @@ class Payment:
     initiated_at: Optional[datetime] = None
     confirmed_at: Optional[datetime] = None
     tip_amount: Decimal = Decimal("0.00")
+    tip_adjusted: bool = False  # True once a TIP_ADJUSTED event has been applied
     tax_amount: Decimal = Decimal("0.00")  # Tax captured at payment time
     seat_numbers: list[int] = field(default_factory=list)  # Seats covered by this payment
 
@@ -396,6 +397,7 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                 for payment in order.payments:
                     if payment.payment_id == pid:
                         payment.tip_amount = Decimal(str(payload.get("tip_amount", Decimal("0.00"))))
+                        payment.tip_adjusted = True
                         break
 
         elif event.event_type == EventType.PAYMENT_REFUNDED:

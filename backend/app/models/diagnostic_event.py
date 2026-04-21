@@ -22,12 +22,21 @@ from pydantic import BaseModel, Field, field_validator
 # =============================================================================
 
 class DiagnosticCategory(str, Enum):
-    """Classification of diagnostic events by system domain."""
+    """Classification of diagnostic events by system domain.
+
+    DEVICE / NETWORK / SYSTEM / PERIPHERAL / RECOVERY classify infra and
+    hardware posture. UI / FIN / SEC were added so application-level
+    correctness events — scene lifecycle bugs, money invariants, security
+    guards — can be filtered and summarized separately in the bug report.
+    """
     DEVICE = "DEVICE"
     NETWORK = "NETWORK"
     SYSTEM = "SYSTEM"
     PERIPHERAL = "PERIPHERAL"
     RECOVERY = "RECOVERY"
+    UI = "UI"           # frontend scene lifecycle, double-taps, unmount races
+    FIN = "FIN"         # money invariants, rounding, double-charge, drift
+    SEC = "SEC"         # auth gates, rate-limit hits, forgery attempts
 
 
 _SEVERITY_ORDER = {
@@ -223,4 +232,24 @@ EVENT_CODE_REGISTRY: dict[str, str] = {
     "REC-005": "Deferred mode entered (payment system operating offline)",
     "REC-006": "Deferred mode exited (back to live processing)",
     "REC-007": "Manual recovery by operator (device restarted, cable reseated, etc.)",
+
+    # SECURITY (SEC-)
+    "SEC-001": "PIN rate-limit triggered (too many failed attempts from one client)",
+    "SEC-002": "Path-traversal attempt on fixture load (print/test)",
+    "SEC-003": "Config-events replay invoked (no auth on sync endpoint)",
+    "SEC-004": "Forged terminal_id / user_id suspected on replay",
+
+    # FINANCIAL (FIN-)
+    "FIN-001": "2dp precision gate rejected a monetary value",
+    "FIN-002": "In-flight double-charge guard blocked a second sale (409)",
+    "FIN-003": "Day-close invariant check failed (debits ≠ credits)",
+    "FIN-004": "Batch settlement drift (device total ≠ ledger total)",
+    "FIN-005": "Overpayment clamped at route layer",
+    "FIN-006": "Tip adjustment after day close attempted",
+
+    # UI / SCENE LIFECYCLE (UI-)
+    "UI-001": "Interrupt stacked over an existing interrupt (prior torn down)",
+    "UI-002": "Scene async callback fired after unmount (state.el null)",
+    "UI-003": "Double-submit blocked by scene lock",
+    "UI-004": "Unguarded fetch fell through to silent-empty fallback",
 }

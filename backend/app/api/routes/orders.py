@@ -22,6 +22,22 @@ def _validate_2dp(value: float | Decimal, field_name: str) -> None:
     """Raise 400 if a monetary value has more than 2 decimal places."""
     d = Decimal(str(value))
     if d != d.quantize(_TWO_DP):
+        # FIN-001 — 2dp precision gate rejected input. Fire-and-forget record
+        # so the bug report captures "terminal sent us 3+dp money" patterns.
+        try:
+            import asyncio as _asyncio
+            _loop = _asyncio.get_running_loop()
+            _loop.create_task(_record_diag(
+                category=DiagnosticCategory.FIN,
+                severity=DiagnosticSeverity.WARNING,
+                source="orders._validate_2dp",
+                event_code="FIN-001",
+                message="2dp precision gate rejected a monetary value",
+                context={"field": field_name, "value": str(value)},
+            ))
+        except RuntimeError:
+            # Not inside a running loop (unlikely from a route) — skip silently.
+            pass
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"{field_name} must have at most 2 decimal places (got {value})",
@@ -67,6 +83,8 @@ from app.core.financial_invariants import (
     gate as invariant_gate,
     max_abs_diff,
 )
+from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
+from app.api.routes.auth import _record_diag
 
 _ZERO = Decimal('0')
 
@@ -209,6 +227,7 @@ class PaymentResponse(BaseModel):
     method: str
     status: str
     tip_amount: Decimal = Decimal("0.00")
+    tip_adjusted: bool = False
     transaction_id: Optional[str] = None
     seat_numbers: list[int] = []
 
@@ -272,6 +291,7 @@ class OrderResponse(BaseModel):
                     method=p.method,
                     status=p.status,
                     tip_amount=money_round(p.tip_amount),
+                    tip_adjusted=p.tip_adjusted,
                     transaction_id=p.transaction_id,
                     seat_numbers=p.seat_numbers or [],
                 )
@@ -1001,6 +1021,7 @@ async def confirm_payment(
         ledger: EventLedger = Depends(get_ledger),
 ):
     """Confirm a payment."""
+    _validate_2dp(request.amount, "amount")
     order = await get_order_or_404(ledger, order_id)
 
     # Verify payment exists and amount matches initiation
@@ -1385,6 +1406,7 @@ async def apply_discount(
             detail="Cannot apply discount while a payment is pending"
         )
 
+    _validate_2dp(request.amount, "amount")
     event = create_event(
         event_type=EventType.DISCOUNT_APPROVED,
         terminal_id=settings.terminal_id,
@@ -1392,7 +1414,7 @@ async def apply_discount(
         payload={
             "order_id": order_id,
             "discount_type": request.discount_type,
-            "amount": request.amount,
+            "amount": money_round(request.amount),
             "reason": request.reason or f"Manager discount: {request.discount_type}",
             "approved_by": request.approved_by,
             "item_ids": request.item_ids,
@@ -1741,6 +1763,30 @@ async def close_day(
         context="close_day",
     )
     recon_diff = max_abs_diff(_close_results)
+
+    # FIN-003 — close_day invariants drifted. In prod `gate()` is logs-only
+    # so the close still proceeds; record so the bug report captures which
+    # invariant(s) blew and by how much.
+    _close_failures = [r for r in _close_results if not r.ok]
+    if _close_failures:
+        await _record_diag(
+            category=DiagnosticCategory.FIN,
+            severity=DiagnosticSeverity.ERROR,
+            source="orders.close_day",
+            event_code="FIN-003",
+            message="Day-close invariant check failed",
+            context={
+                "recon_diff": str(recon_diff),
+                "failed_invariants": [
+                    {"name": r.name, "diff": str(r.diff), "message": r.message}
+                    for r in _close_failures[:8]
+                ],
+                "total_orders": total_orders,
+                "total_sales": str(total_sales_f),
+                "cash_total": str(cash_total_f),
+                "card_total": str(card_sales_f),
+            },
+        )
 
     # Gate passed — safe to emit BATCH_SUBMITTED (settlement record)
     submit_evt = batch_submitted(

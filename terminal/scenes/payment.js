@@ -992,10 +992,15 @@ async function handleConfirm() {
       var controller = new AbortController();
       var cardTimeout = setTimeout(function() { controller.abort(); }, 95000);
 
+      var transactionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : 'tx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+
       var saleBody = {
-          order_id:    sceneData.orderId,
-          amount:      paymentAmount,
-          terminal_id: 'terminal_01',
+          transaction_id: transactionId,
+          order_id:       sceneData.orderId,
+          amount:         paymentAmount,
+          terminal_id:    'terminal_01',
       };
       if (seatNumbers) saleBody.seat_numbers = seatNumbers;
       var res = await fetch(API + '/payments/sale', {

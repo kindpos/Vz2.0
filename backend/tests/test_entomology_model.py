@@ -23,7 +23,11 @@ from app.models.diagnostic_event import (
 # ─── M-01: DiagnosticCategory has all 5 values ─────────
 
 def test_m01_category_enum_values():
-    expected = {"DEVICE", "NETWORK", "SYSTEM", "PERIPHERAL", "RECOVERY"}
+    # Original infra categories + UI/FIN/SEC added for app-level instrumentation.
+    expected = {
+        "DEVICE", "NETWORK", "SYSTEM", "PERIPHERAL", "RECOVERY",
+        "UI", "FIN", "SEC",
+    }
     assert set(c.value for c in DiagnosticCategory) == expected
 
 

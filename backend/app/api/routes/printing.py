@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import StreamingResponse
@@ -11,8 +12,10 @@ import aiosqlite
 
 from ..dependencies import get_ledger, get_print_dispatcher
 from ...core.event_ledger import EventLedger
+from ...models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 from ...printing.print_queue import PrintJobQueue
 from ...services.print_context_builder import PrintContextBuilder
+from .auth import _record_diag
 from .hardware import HARDWARE_DB_PATH, _ensure_db
 
 router = APIRouter(prefix="/print", tags=["printing"])
@@ -143,8 +146,11 @@ async def print_clock_hours(
         role_name=request.role_name,
         action=request.action,
     )
+    # Suffix with a UTC timestamp so repeated clock in/out events within the
+    # same day don't collide with a still-pending queue entry and get deduped.
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     job_id = await print_queue.enqueue(
-        order_id=f"clock-{employee_id}",
+        order_id=f"clock-{employee_id}-{stamp}",
         template_id="clock_hours",
         printer_mac="DEFAULT_RECEIPT",
         ticket_number="CLK",
@@ -165,8 +171,9 @@ async def print_sales_recap(
     """Print end-of-day sales recap report."""
     builder = PrintContextBuilder(ledger)
     context = await builder.build_sales_recap_context(printed_by=request.printed_by)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     job_id = await print_queue.enqueue(
-        order_id="sales-recap",
+        order_id=f"sales-recap-{stamp}",
         template_id="sales_recap",
         printer_mac="DEFAULT_RECEIPT",
         ticket_number="RPT",
@@ -193,8 +200,9 @@ async def print_server_checkout(
         server_name=request.server_name,
         declared_cash_tips=request.declared_cash_tips,
     )
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     job_id = await print_queue.enqueue(
-        order_id=f"checkout-{server_id}",
+        order_id=f"checkout-{server_id}-{stamp}",
         template_id="server_checkout",
         printer_mac="DEFAULT_RECEIPT",
         ticket_number="CHK",
@@ -206,10 +214,36 @@ async def print_server_checkout(
 @router.post("/test")
 async def print_test(template_name: str = Body(..., embed=True), printer_mac: str = Body(..., embed=True)):
     """Fire a fixture template to a printer (test panel)."""
-    fixture_path = Path(__file__).resolve().parents[2] / "printing" / "fixtures" / f"{template_name}.json"
+    # Reject any separator or traversal sequence — fixture names are bare filenames.
+    if not template_name or "/" in template_name or "\\" in template_name or ".." in template_name:
+        await _record_diag(
+            category=DiagnosticCategory.SEC,
+            severity=DiagnosticSeverity.ERROR,
+            source="printing.print_test",
+            event_code="SEC-002",
+            message="Path-traversal attempt blocked on /print/test",
+            context={"template_name": template_name[:120]},
+        )
+        raise HTTPException(status_code=400, detail="Invalid template name")
+
+    fixtures_dir = (Path(__file__).resolve().parents[2] / "printing" / "fixtures").resolve()
+    fixture_path = (fixtures_dir / f"{template_name}.json").resolve()
+    # Confirm the resolved path is still inside the fixtures directory.
+    try:
+        fixture_path.relative_to(fixtures_dir)
+    except ValueError:
+        await _record_diag(
+            category=DiagnosticCategory.SEC,
+            severity=DiagnosticSeverity.ERROR,
+            source="printing.print_test",
+            event_code="SEC-002",
+            message="Path-traversal attempt blocked on /print/test (resolve escape)",
+            context={"template_name": template_name[:120]},
+        )
+        raise HTTPException(status_code=400, detail="Invalid template name")
     if not fixture_path.exists():
         raise HTTPException(status_code=404, detail=f"Fixture {template_name} not found")
-    
+
     with open(fixture_path, 'r') as f:
         context = json.load(f)
     

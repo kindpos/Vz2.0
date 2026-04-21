@@ -13,10 +13,33 @@ from app.models.diagnostic_event import (
 )
 
 
-# ─── R-01: Registry has 36 codes ───────────────────────
+# ─── R-01: Registry has 50 codes (36 original + 14 domain codes) ────────
+# Original: DEV (6) + NET (8) + SYS (8) + PER (7) + REC (7) = 36
+# Added for domain instrumentation: SEC (4) + FIN (6) + UI (4) = 14
 
 def test_r01_registry_count():
-    assert len(EVENT_CODE_REGISTRY) == 36
+    assert len(EVENT_CODE_REGISTRY) == 50
+
+
+# ─── R-10: SEC- codes present (4 codes) ────────────────
+
+def test_r10_security_codes():
+    sec_codes = [c for c in EVENT_CODE_REGISTRY if c.startswith("SEC-")]
+    assert len(sec_codes) == 4
+
+
+# ─── R-11: FIN- codes present (6 codes) ────────────────
+
+def test_r11_financial_codes():
+    fin_codes = [c for c in EVENT_CODE_REGISTRY if c.startswith("FIN-")]
+    assert len(fin_codes) == 6
+
+
+# ─── R-12: UI- codes present (4 codes) ─────────────────
+
+def test_r12_ui_codes():
+    ui_codes = [c for c in EVENT_CODE_REGISTRY if c.startswith("UI-")]
+    assert len(ui_codes) == 4
 
 
 # ─── R-02: No duplicate codes ──────────────────────────

@@ -13,6 +13,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import get_ledger
+from app.api.routes.auth import _record_diag
 from app.core.event_ledger import EventLedger
 from app.core.events import (
     CONFIG_EVENT_PREFIXES,
@@ -22,6 +23,7 @@ from app.core.events import (
     is_config_event,
     parse_event_type,
 )
+from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
@@ -84,6 +86,26 @@ async def replay_config_events(
     raw_events = payload.get("events") or []
     if not isinstance(raw_events, list):
         raise HTTPException(400, "'events' must be a list")
+
+    # SEC-003 — this endpoint has no auth and accepts caller-supplied
+    # event_id / user_id / terminal_id. Record every invocation so an
+    # unexpected caller shows up in the bug report even if nobody is
+    # actively monitoring it.
+    await _record_diag(
+        category=DiagnosticCategory.SEC,
+        severity=DiagnosticSeverity.INFO,
+        source="sync.replay_config_events",
+        event_code="SEC-003",
+        message="Config events replay invoked",
+        context={
+            "batch_size": len(raw_events),
+            "claimed_terminal_ids": sorted({
+                (r.get("terminal_id") or "OVERSEER")
+                for r in raw_events[:50]
+                if isinstance(r, dict)
+            }),
+        },
+    )
 
     applied = 0
     skipped = 0
