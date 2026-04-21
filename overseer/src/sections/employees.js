@@ -15,6 +15,7 @@ import { T, withAlpha } from '../ui/tokens.js';
 import {
     buildScenePage, sectionCard, button, field,
     numberField, chipGroup, checkboxChip, row, openModal,
+    showToast,
 } from '../ui/forms.js';
 import {
     EMPLOYEES, ROLES, STATUSES,
@@ -136,43 +137,6 @@ function refreshTable() {
         wrapper.innerHTML = '';
         buildTableSection(wrapper);
     }
-}
-
-/* ------------------------------------------
-   TOAST NOTIFICATIONS
------------------------------------------- */
-function showToast(message, type = 'success') {
-    if (!activeContainer) return;
-
-    // Remove existing toast
-    const old = activeContainer.querySelector('.emp-toast');
-    if (old) old.remove();
-
-    const colors = {
-        success: { bg: 'rgba(0, 255, 0, 0.15)', border: C.green, text: C.green },
-        error:   { bg: withAlpha(T.verm, 0.15), border: C.red, text: C.red },
-        info:    { bg: withAlpha(T.green, 0.15), border: C.mint, text: C.mint },
-    };
-    const tc = colors[type] || colors.info;
-
-    const toast = document.createElement('div');
-    toast.className = 'emp-toast';
-    toast.style.cssText = `
-        position: fixed; top: 24px; right: 24px; z-index: 10000;
-        background: ${tc.bg}; border: 1px solid ${tc.border};
-        color: ${tc.text}; padding: 14px 24px; border-radius: 8px;
-        font-family: ${T.font.body};
-        font-size: 25px; backdrop-filter: blur(8px);
-        animation: toastSlideIn 0.3s ease-out;
-        max-width: 400px;
-    `;
-    toast.textContent = message;
-    activeContainer.appendChild(toast);
-
-    setTimeout(() => {
-        toast.style.animation = 'toastSlideOut 0.3s ease-in forwards';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
 }
 
 /* ------------------------------------------
@@ -826,7 +790,7 @@ function showPINDisplayModal(_container, employee, pin, forceChange) {
     pinBox.textContent = pin;
     pinBox.addEventListener('click', () => {
         navigator.clipboard?.writeText(pin).then(() => {
-            showToast('PIN copied to clipboard', 'info');
+            showToast('PIN copied to clipboard', 'success');
         }).catch(() => {});
     });
     content.appendChild(pinBox);
@@ -896,34 +860,6 @@ function buildPlaceholder(container, title, subtitle, items) {
     container.appendChild(wrapper);
 }
 
-/* ------------------------------------------
-   CSS ANIMATIONS (injected once)
------------------------------------------- */
-function injectStyles() {
-    if (document.getElementById('emp-mgmt-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'emp-mgmt-styles';
-    style.textContent = `
-        @keyframes modalFadeIn {
-            from { opacity: 0; }
-            to   { opacity: 1; }
-        }
-        @keyframes modalSlideIn {
-            from { opacity: 0; transform: translateY(-20px) scale(0.98); }
-            to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes toastSlideIn {
-            from { opacity: 0; transform: translateX(40px); }
-            to   { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes toastSlideOut {
-            from { opacity: 1; transform: translateX(0); }
-            to   { opacity: 0; transform: translateX(40px); }
-        }
-    `;
-    document.head.appendChild(style);
-}
-
 /* ==========================================
    SCENE REGISTRATION
    Called from app.js:
@@ -931,7 +867,6 @@ function injectStyles() {
      registerEmployeeSections(sceneManager);
    ========================================== */
 export function registerEmployeeSections(sceneManager) {
-    injectStyles();
 
     // ── 1. Employee Management (FULL BUILD) ──
     sceneManager.register('employee-management', {
