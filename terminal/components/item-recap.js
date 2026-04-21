@@ -354,6 +354,11 @@ function _buildMicroModRow(mm) {
     r.appendChild(up);
   }
 
+  r.addEventListener('click', function(e) {
+    e.stopPropagation();
+    r.classList.toggle('sel');
+  });
+
   return r;
 }
 
@@ -381,6 +386,11 @@ function _buildModRow(mod) {
     up.textContent = '+' + _fmt(mod.upcharge);
     r.appendChild(up);
   }
+
+  r.addEventListener('click', function(e) {
+    e.stopPropagation();
+    r.classList.toggle('sel');
+  });
 
   return r;
 }
