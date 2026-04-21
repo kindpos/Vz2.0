@@ -1,6 +1,6 @@
 # KINDpos Vz2.0 — Probe Report
-**Branch:** `claude/kindpos-network-setup-pzz50` (kept in sync with `main`)
-**Last commit:** `e1168d3` — Fix discount precision gate, tip_adjusted tracking, and unadjusted tip counter
+**Branch:** `claude/analyze-probe-report-rQ4C4` (latest probe session)
+**Last commit:** run `git rev-parse HEAD` to verify — do not trust this SHA after any push.
 **Purpose:** Hand-off document for continuing the stability audit in a new session.
 
 ---
@@ -28,6 +28,11 @@
 
 | File | Status | Changes Made |
 |------|--------|-------------|
+| `api/routes/auth.py` | ✅ Audited + Fixed | Constant-time PIN comparison (`secrets.compare_digest`) — closes timing side-channel on LAN |
+| `api/routes/staff.py` | ✅ Audited | Clock-in/out TOCTOU race flagged; `declare_cash_tips` `correlation_id=server_id` is linking only, not dedup (confirmed against `create_event`) |
+| `api/routes/server_shift.py` | ✅ Audited + Fixed | `/tipout` PATCH now returns 501 (previously lied with `success: true` on an unpersisted stub); dead `tip_map` dropped from `/sales-by-category` |
+| `api/routes/printing.py` | ✅ Audited + Fixed | Path-traversal guard on `/print/test` (`template_name` now rejected if it contains `..`, `/`, `\`, or escapes `fixtures/`); UTC timestamp suffix on `order_id` for clock-hours / sales-recap / server-checkout so a still-pending job doesn't dedup-swallow the next print |
+| `api/routes/sync.py` | ✅ Audited | **Not fixed** — `/sync/config/events/replay` trusts caller-supplied `event_id`, `user_id`, `user_role`, `terminal_id`. Needs auth. Escalated below. |
 | `api/routes/hardware.py` | ✅ Audited + Fixed | MAC regex fix, socket context managers, `terminal_id` from settings |
 | `api/routes/payment_routes.py` | ✅ Audited + Fixed | In-flight double-charge guard (409), zero-unadjusted idempotency key, discount `money_round()` + `_validate_2dp`, `confirm_payment` 2dp guard |
 | `api/routes/orders.py` | ✅ Audited + Fixed | `apply_discount` precision gate, `confirm_payment` 2dp guard, `tip_adjusted` field in `PaymentResponse` |
@@ -56,7 +61,10 @@
 | `scenes/check-overview.js` | ✅ Audited + Fixed | Clocked-in fetch error handling |
 | `scenes/server-checkout.js` | ✅ Audited + Fixed | IIFE-scoped `_finalizing` flag prevents double-finalize |
 | `scenes/manager-landing.js` | ✅ Audited + Fixed | Unadjusted tip counter was always 0 (`tip_amount == null` → `!tip_adjusted`); `_wireCloseDayData` now uses `day.unadjusted_tips` from backend |
-| `scenes/close-day.js` | ✅ Audited | **Stub only** — "scene not yet built" placeholder, no logic to audit |
+| `scenes/close-day.js` | ✅ Audited | **Stub only** — "scene not yet built" placeholder; real EOD flow lives in `close-day-checks-viewer.js` (997 lines, not yet audited) |
+| `scenes/login.js` | ✅ Audited + Fixed | HTTP 429 (rate-limit) response now surfaces as "TOO MANY ATTEMPTS" instead of masquerading as "INVALID PIN"; still flags: session token from `/verify-pin` discarded (never attached to subsequent requests), hardcoded "T-001" terminal label |
+| `scenes/server-landing.js` | ✅ Audited + Fixed | Removed dead `pin:` prop passed to `check-overview` (auth never returns PIN; the value was always `undefined`) |
+| `scene-manager.js` | ✅ Audited + Fixed | `interrupt()` now tears down an existing interrupt before stacking a new one — previously `_interruptScene` was overwritten, leaking the prior frame/scrim and skipping its cleanup |
 
 ### Admin UI — `overseer/src/`
 
@@ -68,16 +76,22 @@
 
 ## Known Issues NOT Fixed (Architectural / Deferred)
 
-| Issue | File | Reason Deferred |
-|-------|------|-----------------|
-| Day-close race: orders created between `get_open_orders()` and `DAY_CLOSED` emission are orphaned | `orders.py:close_day` | Needs app-level mutex; invasive change |
-| close_day invariant check uses synthetic zeros for voids/discounts/refunds | `orders.py` lines 1727-1731 | Intentional — documented in comment; full P&L decomposition needed |
-| Batch settlement drift returns HTTP 200 with `invariant_ok: false` | `payment_routes.py:batch_settle` | Deliberate — blocking on drift would mask the actual settlement result |
-| Refund `approved_by` is a free string, not server-verified | `payment_routes.py:process_refund` | Needs auth system (none exists yet) |
-| Auth missing on reporting endpoints (`?server_id=` leaks employee tip/labor data) | `reporting.py` | Needs auth system |
-| Mock batch close always succeeds with `total_amount = $0.00` | `mock_payment.py` | Test/dev concern; mock should track total |
-| Receipt print is fire-and-forget | `payment.js:queueReceipt` | Print queue retries handle it; toast shown on failure |
-| Per-server unadjusted tip count in manager-landing still approximate | `manager-landing.js:_wireStaffData` | Day-summary `unadjusted_tips` is now used for the gate; per-server breakdown needs server_id in the checks list |
+| Severity | Issue | File | Reason Deferred |
+|----------|-------|------|-----------------|
+| Critical | `/sync/config/events/replay` accepts caller-supplied `event_id` / `user_id` / `user_role` / `terminal_id` — attacker on LAN can forge audit attribution and pre-register `event_id`s to DoS legit future events | `sync.py:72-128` | Needs auth between terminals and Overseer; partial fix would break legit sync |
+| Critical | Auth missing on reporting endpoints (`?server_id=` leaks employee tip/labor data) | `reporting.py` | Needs auth system |
+| Critical | `require_role` / `get_current_session` defined but only used by `entomology.py` — session tokens issued by `/auth/verify-pin` are discarded by frontend; no other route enforces auth | `auth.py`, all other routes | Needs coordinated rollout: frontend must persist token + send `Authorization: Bearer` on every write |
+| High | Day-close race: orders created between `get_open_orders()` and `DAY_CLOSED` emission are orphaned | `orders.py:close_day` | Needs app-level mutex; invasive change |
+| High | Clock-in/out TOCTOU — two concurrent POSTs for same employee both pass the `_clocked_in_ids` check, both append events | `staff.py:67-104` | Needs per-employee lock or idempotency key derived from `(employee_id, day)` |
+| Medium | Refund `approved_by` is a free string, not server-verified | `payment_routes.py:process_refund` | Needs auth system |
+| Medium | close_day invariant check uses synthetic zeros for voids/discounts/refunds | `orders.py` lines 1727-1731 | Intentional — documented in comment; full P&L decomposition needed |
+| Medium | Batch settlement drift returns HTTP 200 with `invariant_ok: false` | `payment_routes.py:batch_settle` | Deliberate — blocking on drift would mask the actual settlement result |
+| Medium | `_transitionHooks` is append-only; no removal API. Scenes that register a hook and unmount leak it | `scene-manager.js:409` | Needs a `removeBeforeTransition(fn)` API + audit of current callers |
+| Medium | Dead `pin:` still propagated through `manager-landing.js` (4 sites) and `check-overview.js` (4 sites) into `order-entry` / `payment`. `state.emp.pin` is always `undefined` since `/verify-pin` does not return PIN | `manager-landing.js`, `check-overview.js` | Pure cleanup; deferred to avoid churn in unrelated scenes |
+| Low | Mock batch close always succeeds with `total_amount = $0.00` | `mock_payment.py` | Test/dev concern; mock should track total |
+| Low | Receipt print is fire-and-forget | `payment.js:queueReceipt` | Print queue retries handle it; toast shown on failure |
+| Low | Per-server unadjusted tip count in manager-landing still approximate | `manager-landing.js:_wireStaffData` | Day-summary `unadjusted_tips` is now used for the gate; per-server breakdown needs server_id in the checks list |
+| Low | Hardcoded `"T-001"` terminal label on login screen | `login.js:608` | Should read from `/hardware/terminal-info` or `settings.terminal_id` |
 
 ---
 
@@ -87,11 +101,6 @@
 
 | File | Lines | Why It Matters |
 |------|-------|----------------|
-| `api/routes/auth.py` | 142 | PIN login, role assignment — any auth bypass here is critical |
-| `api/routes/staff.py` | 158 | Employee management, clock-in/out mutations |
-| `api/routes/server_shift.py` | 252 | Server shift management, clocked-in state |
-| `api/routes/printing.py` | 257 | Print job dispatch endpoints, receipt triggers |
-| `api/routes/sync.py` | 143 | Data sync — potential duplicate event injection |
 | `api/routes/menu.py` | 41 | Menu fetch — probably simple |
 | `api/routes/config.py` | unknown | Store config, tax rate, terminal settings |
 | `services/print_context_builder.py` | 831 | Build context for all print templates — partially audited (clock-in fix done) |
@@ -105,10 +114,7 @@
 
 | File | Lines | Why It Matters |
 |------|-------|----------------|
-| `scenes/login.js` | 627 | PIN entry, role gating — auth surface |
-| `scenes/server-landing.js` | 652 | Server's main working view — order creation entry point |
-| `scenes/close-day-checks-viewer.js` | 997 | End-of-day checks review — large, untouched |
-| `scene-manager.js` | 552 | Core scene lifecycle — bugs here affect all scenes |
+| `scenes/close-day-checks-viewer.js` | 997 | End-of-day checks review — real EOD logic (not `close-day.js`) |
 | `order-summary.js` | 666 | Persistent order recap sidebar |
 | `components/item-recap.js` | 693 | Item recap component used in check-overview |
 | `pricing.js` | 110 | Price computation helpers |

@@ -60,6 +60,11 @@ async function _attemptLogin(pin, onSuccess, onFail) {
       body:    JSON.stringify({ pin: pin }),
     });
     console.log('[login] response status:', res.status);
+    if (res.status === 429) {
+      // Rate-limited — show a distinct message so operators don't retype a valid PIN.
+      onFail('TOO MANY ATTEMPTS');
+      return;
+    }
     if (res.ok) {
       var data = await res.json();
       if (data.valid) {
@@ -226,7 +231,7 @@ defineScene({
           _attemptLogin(
             state.pin.join(''),
             function(data) { state.locked = false; _showTimeclock(data); },
-            function()     { state.locked = false; numpad.setError('INVALID PIN'); }
+            function(msg)  { state.locked = false; numpad.setError(msg || 'INVALID PIN'); }
           );
         } else {
           // No PIN yet — show overlay prompting for PIN entry
@@ -585,9 +590,9 @@ defineScene({
               SceneManager.mountWorking(role === 'manager' ? 'manager-landing' : 'server-landing', { staff: data });
             });
         },
-        function onFail() {
+        function onFail(msg) {
           state.locked = false;
-          numpad.setError('INVALID PIN');
+          numpad.setError(msg || 'INVALID PIN');
         }
       );
     }

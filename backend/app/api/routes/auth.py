@@ -117,8 +117,13 @@ async def verify_pin(
     service = OverseerConfigService(ledger)
     employees = await service.get_employees()
 
+    # Constant-time PIN comparison to avoid a timing side-channel that
+    # could leak digits to a co-located attacker on the LAN.
+    submitted = request_body.pin or ""
     for e in employees:
-        if e.active and e.pin == request_body.pin:
+        if not e.active or not e.pin:
+            continue
+        if secrets.compare_digest(e.pin, submitted):
             token = _create_token(e.employee_id, e.display_name, e.role_ids)
             return {
                 "valid": True,

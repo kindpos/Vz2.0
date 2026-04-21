@@ -287,6 +287,10 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
   var scene = _scenes[sceneName];
   if (!scene) return console.error('SceneManager.interrupt: "' + sceneName + '" not registered');
 
+  // An interrupt already on screen must be torn down before we stack a new one,
+  // otherwise its DOM + cleanup are leaked when _interruptScene is reassigned.
+  if (_interruptScene) resolveInterrupt();
+
   var scrim = document.createElement('div');
   scrim.className = 'layer-scrim layer-scrim-interrupt';
   scrim.style.cssText = 'position:absolute;inset:0;background:' + T.scrimInterrupt + ';';

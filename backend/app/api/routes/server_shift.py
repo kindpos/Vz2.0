@@ -65,12 +65,6 @@ async def sales_by_category(
     all_orders = project_orders(events)
     orders = _get_server_orders(all_orders, server_id)
 
-    # Build tip map
-    tip_map = {}
-    for e in events:
-        if e.event_type == EventType.TIP_ADJUSTED:
-            tip_map[e.payload.get("payment_id")] = e.payload.get("tip_amount", 0.0)
-
     # Aggregate by category
     categories = {}
     for order in orders:
@@ -241,12 +235,13 @@ async def patch_tipout(
     ledger: EventLedger = Depends(get_ledger),
 ):
     """Update the server's tip-out amount for this shift.
-    Requires manager PIN gate on the frontend side."""
-    # For now, this is a stub — tip out is calculated client-side
-    # from the tipout config rules. A proper implementation would
-    # store a shift-level override event.
-    return {
-        "success": True,
-        "server_id": server_id,
-        "tipout": money_round(request.amount),
-    }
+
+    Not implemented: tip-out is currently computed client-side from the
+    tipout config rules and no shift-level override event exists. Return
+    501 rather than a fake success so the UI can distinguish "not stored"
+    from "stored". Replace with a real override event when auth/audit is in.
+    """
+    raise HTTPException(
+        status_code=501,
+        detail="Tip-out override is not yet persisted server-side",
+    )

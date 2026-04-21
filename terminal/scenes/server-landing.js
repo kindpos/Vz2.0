@@ -480,7 +480,6 @@ defineScene({
             returnLanding: 'server-landing',
             employeeId:    state.emp ? state.emp.id   : null,
             employeeName:  state.emp ? state.emp.name : null,
-            pin:           state.emp ? state.emp.pin  : null,
           });
         }));
       }
