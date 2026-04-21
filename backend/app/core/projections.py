@@ -392,8 +392,9 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
 
         elif event.event_type == EventType.TIP_ADJUSTED:
             if order:
+                pid = payload.get("payment_id")
                 for payment in order.payments:
-                    if payment.payment_id == payload["payment_id"]:
+                    if payment.payment_id == pid:
                         payment.tip_amount = Decimal(str(payload.get("tip_amount", Decimal("0.00"))))
                         break
 

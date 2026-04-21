@@ -72,7 +72,10 @@ class ESCPOSFormatter:
         """Encode text to bytes, replacing Unicode characters the printer can't handle."""
         for char, replacement in CHAR_REPLACEMENTS.items():
             text = text.replace(char, replacement)
-        return text.encode('ascii', errors='replace')
+        encoded = text.encode('ascii', errors='replace')
+        if b'?' in encoded and '?' not in text:
+            logger.warning(f"Non-ASCII characters replaced with '?' in: {text!r}")
+        return encoded
 
     def _print_mode_byte(
         self,

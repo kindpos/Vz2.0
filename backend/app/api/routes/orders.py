@@ -708,7 +708,7 @@ async def patch_order(
 
     if request.server_id is not None:
         event = order_transferred(
-            terminal_id="terminal-1",
+            terminal_id=settings.terminal_id,
             order_id=order_id,
             server_id=request.server_id,
             server_name=request.server_name or "",
