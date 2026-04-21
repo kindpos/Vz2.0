@@ -307,6 +307,45 @@ function _ensureStyles() {
   document.head.appendChild(style);
 }
 
+// ── Seat group (header only; items appended by later chunks) ──
+function _buildSeatGroup(seat) {
+  var group = document.createElement('div');
+  group.className = 'ir-seat-group';
+
+  var header = document.createElement('div');
+  header.className = 'ir-seat-header';
+
+  var num = document.createElement('span');
+  num.className = 'ir-seat-num';
+  num.textContent = 'S' + seat.seatNumber;
+  header.appendChild(num);
+
+  var meta = document.createElement('div');
+  meta.className = 'ir-seat-meta';
+  var label = document.createElement('span');
+  label.className = 'ir-seat-label';
+  label.textContent = 'SEAT';
+  meta.appendChild(label);
+  var sub = document.createElement('span');
+  sub.className = 'ir-seat-sub';
+  sub.textContent = _fmt(seat.subtotal);
+  meta.appendChild(sub);
+  header.appendChild(meta);
+
+  var chev = document.createElement('span');
+  chev.className = 'ir-seat-chev';
+  chev.textContent = '▼';
+  header.appendChild(chev);
+
+  group.appendChild(header);
+
+  var items = document.createElement('div');
+  items.className = 'ir-seat-items';
+  group.appendChild(items);
+
+  return group;
+}
+
 // ── $ formatter (dollars in, "$X.XX" out) ─────────
 function _fmt(n) { return '$' + (Number(n) || 0).toFixed(2); }
 
@@ -345,5 +384,11 @@ export function buildItemRecap(order, opts) {
   var root = document.createElement('div');
   root.className = 'ir-root';
   root.appendChild(_buildPanelHeader(order));
+
+  var seats = Array.isArray(order.seats) ? order.seats : [];
+  for (var i = 0; i < seats.length; i++) {
+    root.appendChild(_buildSeatGroup(seats[i]));
+  }
+
   return root;
 }
