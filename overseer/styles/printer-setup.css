@@ -1,0 +1,403 @@
+/* ============================================
+   KINDpos Overseer - Printer Setup Styles
+   Nice. Dependable. Yours.
+   ============================================ */
+
+/* ------------------------------------------
+   SCENE LAYOUT
+------------------------------------------ */
+
+.printer-setup-scene {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    gap: 0;
+    font-family: var(--font-body);
+    color: var(--color-mint);
+}
+
+/* ------------------------------------------
+   SECTION HEADERS
+------------------------------------------ */
+
+.printer-setup-scene .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+}
+
+.printer-setup-scene .section-header h2 {
+    font-family: var(--font-heading);
+    font-size: 15px;
+    color: var(--color-gold);
+    letter-spacing: 2px;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+/* ------------------------------------------
+   TOPOLOGY SECTION
+------------------------------------------ */
+
+.topology-section {
+    flex: 0 0 auto;
+    border-bottom: 1px solid rgba(198, 255, 187, 0.1);
+    position: relative;
+}
+
+.topology-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+#topology-map-container {
+    padding: 0 16px 8px;
+    position: relative;
+}
+
+#topology-svg {
+    display: block;
+    width: 100%;
+    max-height: 380px;
+}
+
+/* ------------------------------------------
+   DEVICE LIST SECTION
+------------------------------------------ */
+
+.device-list-section {
+    flex: 1;
+    min-height: 300px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.device-stats {
+    display: flex;
+    gap: 16px;
+    font-family: var(--font-body);
+    font-size: 13px;
+}
+
+.device-stats .stat {
+    color: #888;
+}
+
+.device-stats .stat strong {
+    color: var(--color-mint);
+}
+
+.device-stats .stat.online strong {
+    color: var(--color-green);
+}
+
+.device-stats .stat.offline strong {
+    color: var(--color-vermillion);
+}
+
+/* ------------------------------------------
+   DEVICE TABLE
+------------------------------------------ */
+
+.device-table-wrapper {
+    overflow-y: auto;
+    flex: 1;
+    padding: 0 16px 16px;
+}
+
+.device-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-body);
+    font-size: 13px;
+}
+
+.device-table thead th {
+    text-align: left;
+    padding: 8px 10px;
+    color: #888;
+    font-size: 11px;
+    font-weight: normal;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(198, 255, 187, 0.15);
+    position: sticky;
+    top: 0;
+    background: var(--color-bg);
+    z-index: 1;
+}
+
+.device-table tbody tr {
+    border-bottom: 1px solid rgba(198, 255, 187, 0.06);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.device-table tbody tr:hover {
+    background-color: rgba(198, 255, 187, 0.04);
+}
+
+.device-table td {
+    padding: 10px 10px;
+    color: var(--color-mint);
+    vertical-align: middle;
+}
+
+.device-table .small {
+    font-size: 11px;
+    color: #888;
+}
+
+.device-table .col-icon {
+    width: 30px;
+    text-align: center;
+    font-size: 16px;
+}
+
+.device-table .col-actions {
+    white-space: nowrap;
+}
+
+/* ------------------------------------------
+   ROLE BADGE
+------------------------------------------ */
+
+.role-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: var(--radius-btn);
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
+/* ------------------------------------------
+   BUTTONS
+------------------------------------------ */
+
+.btn-primary {
+    padding: 8px 16px;
+    background: var(--color-mint);
+    border: none;
+    border-radius: var(--radius-btn);
+    color: var(--color-bg-dark);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    letter-spacing: 0.5px;
+}
+
+.btn-primary:hover {
+    background: #d4ffca;
+    transform: translateY(-1px);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-secondary {
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid var(--color-mint);
+    border-radius: var(--radius-btn);
+    color: var(--color-mint);
+    font-family: var(--font-body);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    letter-spacing: 0.5px;
+}
+
+.btn-secondary:hover {
+    background: rgba(198, 255, 187, 0.08);
+}
+
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-test-all {
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid var(--color-gold);
+    border-radius: var(--radius-btn);
+    color: var(--color-gold);
+    font-family: var(--font-body);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-test-all:hover {
+    background: rgba(252, 190, 64, 0.08);
+}
+
+.btn-test-all:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Small action buttons in table */
+.btn-small {
+    padding: 4px 10px;
+    border-radius: var(--radius-btn);
+    font-family: var(--font-body);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 1px solid;
+    background: transparent;
+    margin-right: 4px;
+}
+
+.btn-small.btn-config {
+    border-color: var(--color-mint);
+    color: var(--color-mint);
+}
+
+.btn-small.btn-config:hover {
+    background: rgba(198, 255, 187, 0.1);
+}
+
+.btn-small.btn-test {
+    border-color: var(--color-gold);
+    color: var(--color-gold);
+}
+
+.btn-small.btn-test:hover {
+    background: rgba(252, 190, 64, 0.1);
+}
+
+.btn-small.btn-test.testing {
+    border-color: var(--color-gold);
+    color: var(--color-gold);
+    opacity: 0.7;
+}
+
+.btn-small.btn-test.success {
+    border-color: var(--color-green);
+    color: var(--color-green);
+    background: rgba(57, 181, 74, 0.1);
+}
+
+.btn-small.btn-test.error {
+    border-color: var(--color-vermillion);
+    color: var(--color-vermillion);
+    background: rgba(255, 68, 68, 0.1);
+}
+
+.btn-small:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ------------------------------------------
+   EMPTY STATES
+------------------------------------------ */
+
+.device-table-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.device-table-empty .empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.4;
+}
+
+.device-table-empty .empty-title {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    color: var(--color-gold);
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.device-table-empty .empty-subtitle {
+    font-family: var(--font-body);
+    font-size: 13px;
+    color: #666;
+    line-height: 1.6;
+}
+
+/* ------------------------------------------
+   SCAN PROGRESS
+------------------------------------------ */
+
+.scan-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    color: var(--color-gold);
+}
+
+.scan-progress .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(252, 190, 64, 0.3);
+    border-top-color: var(--color-gold);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ------------------------------------------
+   SCROLLBAR STYLING
+------------------------------------------ */
+
+.device-table-wrapper::-webkit-scrollbar {
+    width: 6px;
+}
+
+.device-table-wrapper::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.device-table-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(198, 255, 187, 0.15);
+}
+
+.device-table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(198, 255, 187, 0.25);
+}
+
+/* ------------------------------------------
+   RESPONSIVE
+------------------------------------------ */
+
+@media (max-width: 1024px) {
+    .printer-setup-scene .section-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .device-table .col-connection,
+    .device-table .col-last-test {
+        display: none;
+    }
+}

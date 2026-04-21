@@ -1,0 +1,46 @@
+============================================================
+PATCH 3a: backend/app/core/events.py
+Adds MENU_ITEMS_REORDERED and MENU_CATEGORIES_REORDERED enum members.
+
+Without this, the push endpoint's parse_event_type() raises ValueError
+on any reorder event, and the whole save batch fails (FastAPI returns
+500, no events land in the ledger).
+============================================================
+
+FIND this block in events.py (around line ~125-140):
+
+    # ── Menu management (LEDGER_OPERATIONAL) ─────────────────
+    MENU_ITEM_CREATED = "menu.item_created"
+    MENU_ITEM_UPDATED = "menu.item_updated"
+    MENU_ITEM_DELETED = "menu.item_deleted"
+    MENU_CATEGORY_CREATED = "menu.category_created"
+    MENU_CATEGORY_UPDATED = "menu.category_updated"
+    MENU_CATEGORY_DELETED = "menu.category_deleted"
+    MENU_ITEM_86D = "menu.item_86d"
+    MENU_ITEM_RESTORED = "menu.item_restored"
+    MODIFIER_GROUP_CREATED = "modifier.group_created"
+    MODIFIER_GROUP_UPDATED = "modifier.group_updated"
+    MODIFIER_GROUP_DELETED = "modifier.group_deleted"
+
+REPLACE with:
+
+    # ── Menu management (LEDGER_OPERATIONAL) ─────────────────
+    MENU_ITEM_CREATED = "menu.item_created"
+    MENU_ITEM_UPDATED = "menu.item_updated"
+    MENU_ITEM_DELETED = "menu.item_deleted"
+    MENU_CATEGORY_CREATED = "menu.category_created"
+    MENU_CATEGORY_UPDATED = "menu.category_updated"
+    MENU_CATEGORY_DELETED = "menu.category_deleted"
+    MENU_ITEM_86D = "menu.item_86d"
+    MENU_ITEM_RESTORED = "menu.item_restored"
+    MENU_ITEMS_REORDERED = "menu.items_reordered"
+    MENU_CATEGORIES_REORDERED = "menu.categories_reordered"
+    MODIFIER_GROUP_CREATED = "modifier.group_created"
+    MODIFIER_GROUP_UPDATED = "modifier.group_updated"
+    MODIFIER_GROUP_DELETED = "modifier.group_deleted"
+
+(just inserted the two new members between MENU_ITEM_RESTORED and
+MODIFIER_GROUP_CREATED — no other changes to the file.)
+
+No corresponding legacy alias needed — these event types are brand-new
+and only ever emit with dot-notation values.

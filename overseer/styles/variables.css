@@ -1,0 +1,81 @@
+/* ============================================
+   KINDpos Overseer — Design Tokens
+   Source of truth: frontend/js/tokens.js
+   Nice. Dependable. Yours.
+   ============================================ */
+
+/* --- Font Faces --- */
+@font-face {
+    font-family: 'Chakra Petch';
+    src: url('../assets/fonts/ChakraPetch-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'B612 Mono';
+    src: url('../assets/fonts/B612Mono-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-display: swap;
+}
+
+/* --- Root Variables --- */
+:root {
+    /* Semantic Colors */
+    --color-gold:        #fcbe40;   /* money / revenue / price — never use for anything else */
+    --color-mint:        #C6FFBB;   /* chassis / headers / structural UI */
+    --color-vermillion:  #ff4422;   /* critical / destructive */
+    --color-green:       #39b54a;   /* positive / confirm */
+    --color-sage:        #6bc987;   /* axis labels / supporting text */
+
+    /* RGB components — use with rgba(var(--color-mint-rgb), 0.5) */
+    --color-gold-rgb:        252, 190, 64;
+    --color-mint-rgb:        198, 255, 187;
+    --color-vermillion-rgb:  255, 68, 34;
+    --color-bg-rgb:          51, 51, 51;
+    --color-bg-dark-rgb:     26, 26, 26;
+
+    /* UI Structure */
+    --color-bg:          #333333;   /* scene background */
+    --color-bg-dark:     #1a1a1a;   /* chart wells / inset panels */
+    --color-bevel-light: #5a5a5a;   /* bevel top-left highlight */
+    --color-bevel-dark:  #151515;   /* bevel bottom-right shadow */
+    --color-warm-gray:   #3a3632;   /* dark button base */
+
+    /* Typography */
+    --font-heading: 'Chakra Petch', 'Impact', sans-serif;
+    --font-body:    'B612 Mono', 'Courier New', monospace;
+    --font-display: 'Chakra Petch', 'Impact', sans-serif;
+    --font-mono:    'B612 Mono', 'Courier New', monospace;
+
+    /* Font Sizes */
+    --text-title:    30px;
+    --text-subtitle: 17px;
+    --text-body:     12px;
+    --text-label:    11px;
+    --text-badge:    10px;
+    --text-stamp:     8px;
+
+    /* Layout */
+    --viewport-width:  1280px;
+    --viewport-height: 800px;
+    --header-height:    48px;
+    --nav-width:       260px;
+
+    /* Bevel */
+    --bevel-width: 7px;
+
+    /* Border radius — permitted on buttons and cards only */
+    --radius-btn:  5px;
+    --radius-card: 5px;
+
+    /* Z-Index Layers — matches scene-manager.js */
+    --z-working:       10;
+    --z-transactional: 20;
+    --z-interrupt:     30;
+    --z-gate:         100;
+
+    /* Transitions */
+    --transition-fast:   0.15s ease;
+    --transition-normal: 0.25s ease;
+    --transition-slow:   0.4s ease-out;
+}

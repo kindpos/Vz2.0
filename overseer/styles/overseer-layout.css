@@ -1,0 +1,332 @@
+/* ============================================
+   KINDpos Overseer — Page Layout (Vz2.0 Nostalgia shell)
+   Header removed. Nav-centric layout with footer block.
+
+   This file styles the SHELL only — nav + layout scaffolding.
+   Section-level styling lives in overseer-details.css and inline
+   in each section file.
+
+   Existing sections still use var(--color-mint/gold/vermillion) from
+   variables.css. The shell uses the Nostalgia palette directly — the
+   two coexist until individual sections are reskinned.
+   ============================================ */
+
+/* ─── Nostalgia palette (shell-only) ──────────────────────────────
+   Not in variables.css on purpose. These are for the shell; existing
+   sections still use the Vz1.x tokens and will be migrated one by one. */
+
+/* --- Reset & Base --- */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #383c42;                   /* Nostalgia bg */
+    font-family: var(--font-body);
+    color: #e8eaed;                              /* Nostalgia text */
+}
+
+/* --- App Container --- */
+#app {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* --- Body (sidebar + content) --- */
+#overseer-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ─── SIDEBAR NAV ──────────────────────────────────────────────── */
+#overseer-nav {
+    width: var(--nav-width);                     /* 260px from variables */
+    min-width: var(--nav-width);
+    background: #2a2d32;                         /* Nostalgia nav bg */
+    border-right: 1px solid #1a1d20;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    z-index: var(--z-working);
+}
+
+#nav-sections {
+    flex: 1;
+    padding: 20px 0 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ─── HOME (pinned top, gold accent) ──────────────────────────── */
+.nav-section.nav-home {
+    margin-bottom: 0;
+    border-bottom: 1px solid #1a1d20;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+}
+.nav-home-btn {
+    font-family: var(--font-heading);
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: #f5a623;                              /* Nostalgia gold */
+    padding: 16px 24px;
+    cursor: pointer;
+    user-select: none;
+    border-left: 4px solid transparent;
+    transition: background var(--transition-fast);
+    opacity: 0.75;
+}
+.nav-home-btn:hover {
+    opacity: 1;
+    background: rgba(245, 166, 35, 0.06);
+}
+.nav-home-btn.active {
+    opacity: 1;
+    border-left-color: #f5a623;
+    background: #33373d;                         /* slightly raised */
+}
+
+/* ─── CATEGORY GROUPS ─────────────────────────────────────────── */
+.nav-section {
+    display: flex;
+    flex-direction: column;
+}
+.nav-section-header {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    letter-spacing: 3px;
+    color: #86efac;                              /* Nostalgia mint */
+    padding: 14px 24px;
+    cursor: pointer;
+    user-select: none;
+    border-left: 4px solid transparent;
+    transition: background var(--transition-fast), opacity var(--transition-fast);
+    opacity: 0.85;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.nav-section-header::after {
+    content: '+';
+    color: #86efac;
+    opacity: 0.4;
+    font-size: 18px;
+    font-weight: 400;
+    margin-left: 12px;
+    transition: transform var(--transition-fast);
+}
+.nav-section-header:hover {
+    opacity: 1;
+    background: rgba(134, 239, 172, 0.04);
+}
+.nav-section-header.active,
+.nav-section-header.open-header {
+    opacity: 1;
+}
+
+/* Expanded indicator — flip + into − when group is open */
+.nav-section:has(.nav-section-subs.open) .nav-section-header::after {
+    content: '−';
+    opacity: 0.6;
+}
+
+/* ─── SUB-ITEMS ───────────────────────────────────────────────── */
+.nav-section-subs {
+    display: none;
+    flex-direction: column;
+    padding: 4px 0 8px;
+}
+.nav-section-subs.open {
+    display: flex;
+}
+.nav-sub-item {
+    font-family: var(--font-body);
+    font-size: 15px;
+    color: #e8eaed;
+    opacity: 0.65;
+    padding: 10px 24px 10px 44px;
+    cursor: pointer;
+    user-select: none;
+    border-left: 4px solid transparent;
+    transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+.nav-sub-item:hover {
+    opacity: 0.95;
+    background: rgba(232, 234, 237, 0.03);
+}
+.nav-sub-item.active {
+    opacity: 1;
+    color: #f5a623;                              /* Nostalgia gold for active */
+    border-left-color: #f5a623;
+    background: rgba(245, 166, 35, 0.06);
+}
+
+/* ─── NAV FOOTER BLOCK ────────────────────────────────────────── */
+#nav-footer {
+    flex-shrink: 0;
+    border-top: 1px solid #1a1d20;
+    padding: 16px 20px 18px;
+    font-family: var(--font-body);
+}
+
+/* Status row: ONLINE dot + SYNC time */
+.nav-footer-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    font-size: 11px;
+    letter-spacing: 2px;
+}
+.nav-footer-online-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ade80;                         /* green = online */
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+}
+.nav-footer-online-dot.offline {
+    background: #e8472a;                         /* verm = offline */
+    box-shadow: 0 0 6px rgba(232, 71, 42, 0.5);
+}
+.nav-footer-label {
+    color: #e8eaed;
+    opacity: 0.6;
+    font-weight: 700;
+}
+.nav-footer-sync {
+    margin-left: auto;
+    color: #e8eaed;
+    opacity: 0.4;
+    font-size: 10px;
+}
+
+/* Counters row */
+.nav-footer-counters {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #1a1d20;
+}
+.nav-footer-counter {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.nav-footer-counter-label {
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: #e8eaed;
+    opacity: 0.4;
+    font-weight: 700;
+}
+.nav-footer-counter-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #e8eaed;
+    opacity: 0.85;
+    letter-spacing: 0.5px;
+}
+
+/* Brand row: KINDpos OVERSEER + avatar */
+.nav-footer-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.nav-footer-brand {
+    font-family: var(--font-heading);
+    font-size: 17px;
+    color: #e8eaed;
+    letter-spacing: 2px;
+}
+.nav-footer-product {
+    font-family: var(--font-heading);
+    font-size: 9px;
+    color: #f5a623;
+    letter-spacing: 3px;
+    opacity: 0.85;
+}
+.nav-footer-avatar {
+    margin-left: auto;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #22252a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-heading);
+    font-size: 12px;
+    color: #f5a623;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+.nav-footer-avatar:hover {
+    background: #2e3236;
+}
+
+/* User / sign out row */
+.nav-footer-user {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #e8eaed;
+    opacity: 0.35;
+    cursor: pointer;
+    transition: opacity var(--transition-fast);
+}
+.nav-footer-user:hover {
+    opacity: 0.7;
+}
+
+/* ─── WORKING LAYER ───────────────────────────────────────────── */
+#working-layer {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: #383c42;
+    position: relative;
+    z-index: var(--z-working);
+}
+
+/* ─── MODAL / INTERRUPT / GATE LAYERS ─────────────────────────── */
+#transactional-layer {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-transactional);
+    background: rgba(26, 29, 32, 0.6);
+}
+#interrupt-layer {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-interrupt);
+    background: rgba(26, 29, 32, 0.85);
+}
+#gate-layer {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-gate);
+    background: #383c42;
+}
+
+/* ─── LEGACY HEADER RULES (removed — kept as reference)─────────
+   #overseer-header, .header-wordmark, .header-product,
+   .header-badges, .header-badge, .header-version — all removed.
+   The old header markup no longer exists in index.html.
+   ─────────────────────────────────────────────────────────────── */

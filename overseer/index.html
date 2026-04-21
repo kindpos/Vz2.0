@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KINDpos Overseer</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+    <!-- Stylesheets (order matters: variables first — fonts defined in variables.css) -->
+    <link rel="stylesheet" href="styles/variables.css">
+    <link rel="stylesheet" href="styles/overseer-layout.css">
+    <link rel="stylesheet" href="styles/overseer-details.css">
+    <link rel="stylesheet" href="styles/printer-setup.css">
+</head>
+<body>
+    <div id="app">
+
+        <!-- Main Layout: nav left, content right -->
+        <div id="overseer-body">
+
+            <!-- Sidebar Navigation — now includes footer block at bottom -->
+            <nav id="overseer-nav">
+                <div id="nav-sections"></div>
+
+                <!-- Footer block — brand, status, counters, user. All dynamic content
+                     is populated by app.js via refreshBadges() and setVersionStamp(). -->
+                <div id="nav-footer">
+                    <div class="nav-footer-status">
+                        <span class="nav-footer-online-dot" id="nav-online-dot"></span>
+                        <span class="nav-footer-label">ONLINE</span>
+                        <span class="nav-footer-sync" id="nav-footer-sync">SYNC --:--</span>
+                    </div>
+
+                    <div class="nav-footer-counters">
+                        <div class="nav-footer-counter">
+                            <span class="nav-footer-counter-label">EMPLOYEES</span>
+                            <span class="nav-footer-counter-value" id="nav-footer-employees">--</span>
+                        </div>
+                        <div class="nav-footer-counter">
+                            <span class="nav-footer-counter-label">ITEMS</span>
+                            <span class="nav-footer-counter-value" id="nav-footer-items">--</span>
+                        </div>
+                        <div class="nav-footer-counter">
+                            <span class="nav-footer-counter-label">TERMINALS</span>
+                            <span class="nav-footer-counter-value" id="nav-footer-terminals">--</span>
+                        </div>
+                    </div>
+
+                    <div class="nav-footer-brand-row">
+                        <span class="nav-footer-brand">KINDpos</span>
+                        <span class="nav-footer-product">OVERSEER</span>
+                        <div class="nav-footer-avatar" id="nav-footer-avatar" title="Signed in">--</div>
+                    </div>
+
+                    <div class="nav-footer-user" id="nav-footer-user">&middot; sign out</div>
+                </div>
+            </nav>
+
+            <!-- Working Layer — section content mounts here -->
+            <main id="working-layer"></main>
+
+            <!-- Transactional Layer — modals mount here -->
+            <div id="transactional-layer" style="display:none;"></div>
+
+            <!-- Interrupt Layer — blocking dialogs mount here -->
+            <div id="interrupt-layer" style="display:none;"></div>
+
+            <!-- Gate Layer — reserved for future license/login -->
+            <div id="gate-layer" style="display:none;"></div>
+
+        </div>
+
+    </div>
+
+    <!-- Libraries (offline-first: local copies) -->
+    <script src="assets/js/chart.min.js"></script>
+    <script src="assets/js/xlsx.mini.min.js"></script>
+
+    <!-- Boot -->
+    <script type="module" src="src/app.js"></script>
+</body>
+</html>

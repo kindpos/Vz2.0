@@ -1,0 +1,16 @@
+# Python bytecode for the version of Python actually running (the repo
+# historically tracks .cpython-312.pyc files; 311 artifacts are build
+# artifacts that should stay local).
+*.cpython-311*.pyc
+*.cpython-313*.pyc
+
+# Test-run scratch databases created by conftest fixtures.
+backend/data/test_*.db
+backend/data/test_*.db-shm
+backend/data/test_*.db-wal
+
+# Virtualenvs & editor state
+.venv/
+venv/
+.vscode/
+.idea/

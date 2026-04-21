@@ -1,0 +1,252 @@
+/* ============================================
+   KINDpos Overseer - Detail Screen Styles
+   Mint green cards, content layouts, section-specific styling
+   ============================================ */
+/* =============================================================
+   SYSTEM TESTING SCENE
+   KINDpos Overseer - Hardware Section
+
+   Color reference:
+     Mint green:  #C6FFBB (passed, prompts, borders)
+     Red:         #FF6B6B (failed, errors)
+     Yellow:      #FFE66D (skipped, warnings)
+     Gray:        #888888 (headers, dividers)
+     Dark gray:   #666666 (meta info)
+     Terminal bg: #0a0a0a
+     Container:   #1a1a1a
+   ============================================================= */
+
+/* ─── STATS ROW ──────────────────────────────────────── */
+
+.test-stats-row {
+    display: flex;
+    gap: 16px;
+    margin: 24px 0;
+}
+
+.stat-card {
+    flex: 1;
+    background: rgba(198, 255, 187, 0.08);
+    border: 1px solid rgba(198, 255, 187, 0.2);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    text-align: center;
+}
+
+.stat-label {
+    font-family: var(--font-body);
+    font-size: 12px;
+    color: rgba(198, 255, 187, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.stat-value {
+    font-family: var(--font-heading);
+    font-size: 28px;
+    color: var(--color-mint);
+    font-weight: bold;
+}
+
+/* ─── CONTROL BUTTONS ────────────────────────────────── */
+
+.test-controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.primary-btn {
+    background: var(--color-mint);
+    color: var(--color-bg-dark);
+    border: none;
+    padding: 14px 28px;
+    font-family: var(--font-heading);
+    font-size: 16px;
+    border-radius: var(--radius-btn);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.primary-btn:hover {
+    background: #d4ffca;
+    transform: translateY(-1px);
+}
+
+.primary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.secondary-btn {
+    background: transparent;
+    color: var(--color-mint);
+    border: 1px solid var(--color-mint);
+    padding: 14px 28px;
+    font-family: var(--font-heading);
+    font-size: 16px;
+    border-radius: var(--radius-btn);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.secondary-btn:hover {
+    background: rgba(198, 255, 187, 0.1);
+}
+
+/* ─── TERMINAL CONTAINER ─────────────────────────────── */
+
+.terminal-container {
+    background: #1a1a1a;
+    border: 2px solid var(--color-mint);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+
+.terminal-bar {
+    background: rgba(198, 255, 187, 0.15);
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(198, 255, 187, 0.3);
+}
+
+.terminal-title {
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--color-mint);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.terminal-stop {
+    background: #FF6B6B;
+    color: var(--color-bg-dark);
+    border: none;
+    padding: 6px 12px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    border-radius: var(--radius-btn);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.terminal-stop:hover {
+    background: #ff5252;
+}
+
+/* ─── TERMINAL OUTPUT AREA ───────────────────────────── */
+
+.terminal-output {
+    font-family: var(--font-body);
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 16px;
+    height: 600px;
+    overflow-y: auto;
+    background: #0a0a0a;
+}
+
+.terminal-prompt {
+    color: var(--color-mint);
+    margin-bottom: 8px;
+}
+
+.terminal-line {
+    margin: 2px 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* ─── LINE COLOR CODING ──────────────────────────────── */
+
+.terminal-passed    { color: #C6FFBB; }
+.terminal-failed    { color: #FF6B6B; }
+.terminal-skipped   { color: #FFE66D; }
+.terminal-line-header { color: #888888; }
+.terminal-meta      { color: #666666; }
+.terminal-normal    { color: var(--color-mint); }
+
+.terminal-summary {
+    color: var(--color-mint);
+    font-weight: bold;
+}
+
+/* ─── CUSTOM SCROLLBAR ───────────────────────────────── */
+
+.terminal-output::-webkit-scrollbar {
+    width: 8px;
+}
+
+.terminal-output::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+
+.terminal-output::-webkit-scrollbar-thumb {
+    background: rgba(198, 255, 187, 0.3);
+}
+
+.terminal-output::-webkit-scrollbar-thumb:hover {
+    background: rgba(198, 255, 187, 0.5);
+}
+
+/* ─── TEST SUMMARY PANEL ─────────────────────────────── */
+
+.test-summary {
+    background: rgba(198, 255, 187, 0.08);
+    border: 1px solid rgba(198, 255, 187, 0.2);
+    border-radius: var(--radius-card);
+    padding: 20px;
+}
+
+.summary-title {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    color: var(--color-mint);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.summary-stats {
+    display: flex;
+    gap: 24px;
+    font-family: var(--font-body);
+    font-size: 15px;
+}
+
+.summary-passed  { color: #C6FFBB; }
+.summary-failed  { color: #FF6B6B; }
+.summary-skipped { color: #FFE66D; }
+.summary-duration { color: var(--color-mint); }
+
+/* ─── FULLSCREEN TERMINAL OVERLAY ────────────────────── */
+
+.terminal-fullscreen {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    display: flex;
+    flex-direction: column;
+}
+
+.terminal-fullscreen .terminal-bar {
+    border-radius: 0;
+    flex-shrink: 0;
+}
+
+.terminal-fullscreen .terminal-output {
+    height: auto !important;
+    flex: 1;
+    border-radius: 0;
+}
