@@ -72,6 +72,50 @@ appear during the port, add them here.
 
 ---
 
+## Payroll Periods
+
+### Labor cost benchmarks
+- **Today:** `LABOR_BENCHMARKS` in `data/sample-payroll.js`:
+  `targetLaborPct: 30`, `warningLaborPct: 35`,
+  `criticalLaborPct: 40`. Drives the Labor % KPI accent and
+  sub-text in the Payroll Periods tab.
+- **Proposed setting group:** `payroll.labor_benchmarks`
+  - `target_pct` (number, default 30)
+  - `warning_pct` (number, default 35)
+  - `critical_pct` (number, default 40)
+- **Scope:** per-location. Casual dining, fine dining, and
+  bars all run different healthy labor ranges.
+
+### Overtime premium multiplier
+- **Today:** `1.5` hardcoded in `LABOR_BENCHMARKS.overtimeRate`
+  in `data/sample-payroll.js`. Federal default is time-and-a-
+  half; California has 2× for >12 h shifts.
+- **Proposed setting:** `payroll.ot_premium` (number, default 1.5)
+  with a parallel `payroll.double_time_after_hours` for the CA
+  rule.
+- **Scope:** per-location.
+
+### Default payroll period length
+- **Today:** 7 days back, derived from `weekAgoStr()` in
+  `data/sample-payroll.js`. The Payroll Periods tab opens with
+  this initial range.
+- **Proposed setting:** `payroll.default_period_days` (number,
+  default 14 — most shops run bi-weekly).
+- **Scope:** per-location, mirrors PAY_SCHEDULE.frequency.
+
+### Export formats available
+- **Today:** Two hardcoded buttons (`Export CSV` /
+  `Export ADP`) in `renderPayrollTab`. The legacy scene also
+  knew about `pdf` and `json` via `EXPORT_FORMATS` in
+  `data/sample-payroll.js`.
+- **Proposed setting:** `payroll.export_formats` (array of
+  format ids the operator wants surfaced as buttons). Operators
+  using Gusto / Paychex / Square Payroll need their own format
+  presets here.
+- **Scope:** per-location.
+
+---
+
 ## Tipout Rules
 
 ### Calculation basis options

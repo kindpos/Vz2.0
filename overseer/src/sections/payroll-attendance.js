@@ -31,6 +31,10 @@ import {
     ACTIVE_SHIFTS, WEEKLY_TIMECARDS, SHIFT_DETAILS, EDIT_REASONS,
     DAY_LABELS, getDayIndex, calcDuration, durationColor, getWeeklyTotals,
 } from '../data/sample-timedata.js';
+import {
+    PAYROLL_SUMMARY, LABOR_BENCHMARKS, loadPayrollData,
+} from '../data/sample-payroll.js';
+import { buildDateRangePicker } from '../components/date-picker.js';
 
 /* ------------------------------------------
    MODULE STATE
@@ -162,8 +166,324 @@ function renderPlaceholder(body, label) {
     body.appendChild(card.card);
 }
 
-function renderPayrollTab(body)   { renderPlaceholder(body, 'Payroll Periods'); }
 function renderTemplatesTab(body) { renderPlaceholder(body, 'Shift Templates'); }
+
+/* ==========================================
+   TAB: PAYROLL PERIODS
+   Ported from sections/payroll-tips.js. The legacy labor-cost
+   hero panel is replaced by the mockup's 4-KPI row (Total Hours
+   / Overtime / Total Labor / Labor %). Employee breakdown table
+   keeps the same data contract. Export is two direct buttons
+   per the mockup (CSV + ADP) instead of the legacy format-picker
+   modal — emits PAYROLL_EXPORTED with the same payload shape.
+   ========================================== */
+
+const PAYROLL_GRID = '1.6fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr';
+
+function fmtMoneyComma(val) {
+    const v = Number(val ?? 0);
+    return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtDateRange(start, end) {
+    if (!start || !end) return '—';
+    const s = new Date(start + 'T12:00:00');
+    const e = new Date(end + 'T12:00:00');
+    const opts = { month: 'short', day: 'numeric' };
+    return `${s.toLocaleDateString('en-US', opts)} – ${e.toLocaleDateString('en-US', opts)}, ${e.getFullYear()}`;
+}
+
+// Color the Labor % KPI by where the value lands relative to
+// LABOR_BENCHMARKS. Same buckets the legacy scene used.
+function laborAccent(pct) {
+    const v = pct ?? 0;
+    if (v <= LABOR_BENCHMARKS.targetLaborPct)   return T.green;
+    if (v <= LABOR_BENCHMARKS.warningLaborPct)  return T.gold;
+    if (v <= LABOR_BENCHMARKS.criticalLaborPct) return T.warning;
+    return T.verm;
+}
+function laborSubText(pct) {
+    const v = pct ?? 0;
+    const t = LABOR_BENCHMARKS.targetLaborPct;
+    const w = LABOR_BENCHMARKS.warningLaborPct;
+    const c = LABOR_BENCHMARKS.criticalLaborPct;
+    if (v <= t) return `On target · ≤${t}%`;
+    if (v <= w) return `Above ${t}% target`;
+    if (v <= c) return `Above ${w}% warning`;
+    return `Above ${c}% critical`;
+}
+
+// Generic KPI card per mockup .kpi style. Used here and (via
+// the _weekStat thin wrapper) in the Week Grid summary strip.
+function buildKpiCard({ label, value, sub = null, accent = T.gold }) {
+    const card = document.createElement('div');
+    card.style.cssText = `
+        background: ${T.card};
+        border-left: 4px solid ${accent};
+        border-radius: ${T.r.md}px;
+        padding: ${T.sp.lg}px ${T.sp.lg + 2}px;
+    `;
+    card.innerHTML = `
+        <div style="
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.xs}px;
+            letter-spacing: 2px;
+            font-weight: 700;
+            color: ${T.textMuted};
+            text-transform: uppercase;
+            margin-bottom: ${T.sp.sm}px;
+        ">${label}</div>
+        <div style="
+            font-family: ${T.font.heading};
+            font-size: ${T.fs.xxl}px;
+            font-weight: 700;
+            color: ${accent};
+            line-height: 1;
+        ">${value}</div>
+        ${sub ? `<div style="
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.sm}px;
+            color: ${T.textDim};
+            margin-top: ${T.sp.xs}px;
+            letter-spacing: 0.5px;
+        ">${sub}</div>` : ''}
+    `;
+    return card;
+}
+
+async function renderPayrollTab(body) {
+    body.innerHTML = '';
+
+    // Loading state
+    const loading = document.createElement('div');
+    loading.style.cssText = `
+        color: ${T.textMuted};
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.md}px;
+        padding: ${T.sp.xxl}px 0;
+        text-align: center;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+    `;
+    loading.textContent = 'Loading payroll period...';
+    body.appendChild(loading);
+
+    try {
+        await loadPayrollData(PAYROLL_SUMMARY.period.start, PAYROLL_SUMMARY.period.end);
+    } catch (e) {
+        console.warn('[Payroll Periods] load failed:', e);
+    }
+
+    body.innerHTML = '';
+
+    const summary = PAYROLL_SUMMARY.laborSummary || {};
+    const employees = PAYROLL_SUMMARY.employees || [];
+    const otCount = employees.filter(e => (e.overtimeHours || 0) > 0).length;
+
+    // ── Toolbar: date range picker + export buttons ──
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = `
+        display: flex; justify-content: space-between; align-items: center;
+        gap: ${T.sp.md}px; flex-wrap: wrap;
+        margin-bottom: ${T.sp.lg}px;
+    `;
+    const picker = buildDateRangePicker({
+        start: PAYROLL_SUMMARY.period.start,
+        end: PAYROLL_SUMMARY.period.end,
+        onChange: async ({ start, end }) => {
+            PAYROLL_SUMMARY.period.start = start;
+            PAYROLL_SUMMARY.period.end = end;
+            renderPayrollTab(body);
+        },
+    });
+    toolbar.appendChild(picker);
+    const exportRow = document.createElement('div');
+    exportRow.style.cssText = `display: flex; gap: ${T.sp.sm}px;`;
+    exportRow.appendChild(button({
+        label: 'Export CSV',
+        variant: 'secondary',
+        onClick: () => exportPayroll('csv'),
+    }));
+    exportRow.appendChild(button({
+        label: 'Export ADP',
+        variant: 'primary',
+        onClick: () => exportPayroll('adp'),
+    }));
+    toolbar.appendChild(exportRow);
+    body.appendChild(toolbar);
+
+    // ── KPI row (4 cards per mockup) ──
+    const kpis = document.createElement('div');
+    kpis.style.cssText = `
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: ${T.sp.md}px;
+        margin-bottom: ${T.sp.lg}px;
+    `;
+    kpis.appendChild(buildKpiCard({
+        label: 'Total Hours',
+        value: fmtHrs(summary.totalHours),
+        sub: `Across ${employees.length} employee${employees.length === 1 ? '' : 's'}`,
+        accent: T.green,
+    }));
+    kpis.appendChild(buildKpiCard({
+        label: 'Overtime',
+        value: fmtHrs(summary.overtimeHours),
+        sub: `${otCount} employee${otCount === 1 ? '' : 's'} > 40h`,
+        accent: (summary.overtimeHours || 0) > 0 ? T.warning : T.green,
+    }));
+    kpis.appendChild(buildKpiCard({
+        label: 'Total Labor',
+        value: fmtMoneyComma(summary.totalLabor),
+        sub: 'Wages + OT premium',
+        accent: T.gold,
+    }));
+    kpis.appendChild(buildKpiCard({
+        label: 'Labor %',
+        value: `${(summary.laborPct || 0).toFixed(1)}%`,
+        sub: laborSubText(summary.laborPct),
+        accent: laborAccent(summary.laborPct),
+    }));
+    body.appendChild(kpis);
+
+    // ── Employee breakdown ──
+    const card = sectionCard({
+        label: 'Employee Breakdown',
+        accent: T.gold,
+        note: `Hours, overtime premium, and gross pay for ${fmtDateRange(PAYROLL_SUMMARY.period.start, PAYROLL_SUMMARY.period.end)}.`,
+    });
+    card.body.appendChild(buildPayrollTable(employees));
+    body.appendChild(card.card);
+}
+
+function buildPayrollTable(employees) {
+    const table = document.createElement('div');
+    table.style.cssText = `
+        background: ${T.well};
+        border-radius: ${T.r.sm}px;
+        overflow: hidden;
+    `;
+
+    // Header
+    const th = document.createElement('div');
+    th.style.cssText = `
+        display: grid;
+        grid-template-columns: ${PAYROLL_GRID};
+        gap: ${T.sp.md}px;
+        padding: ${T.sp.md}px ${T.sp.lg}px;
+        background: ${withAlpha(T.gold, 0.06)};
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: ${T.textMuted};
+    `;
+    ['Employee', 'Role', 'Regular', 'OT', 'Rate'].forEach(label => {
+        const c = document.createElement('div');
+        c.textContent = label;
+        th.appendChild(c);
+    });
+    const grossHead = document.createElement('div');
+    grossHead.textContent = 'Gross';
+    grossHead.style.textAlign = 'right';
+    th.appendChild(grossHead);
+    table.appendChild(th);
+
+    if (employees.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `
+            padding: ${T.sp.xxxl}px;
+            text-align: center;
+            color: ${T.textMuted};
+            font-size: ${T.fs.base}px;
+        `;
+        empty.textContent = 'No employee data for this period.';
+        table.appendChild(empty);
+        return table;
+    }
+
+    employees.forEach(emp => {
+        const tr = document.createElement('div');
+        tr.style.cssText = `
+            display: grid;
+            grid-template-columns: ${PAYROLL_GRID};
+            gap: ${T.sp.md}px;
+            padding: ${T.sp.md + 2}px ${T.sp.lg}px;
+            border-top: 1px solid ${T.border};
+            align-items: center;
+        `;
+
+        // Employee name
+        const name = document.createElement('div');
+        name.style.cssText = `color: ${T.text}; font-size: ${T.fs.base}px;`;
+        name.textContent = emp.name || '—';
+        tr.appendChild(name);
+
+        // Role chip
+        const role = document.createElement('div');
+        role.appendChild(_roleChip(emp.role));
+        tr.appendChild(role);
+
+        // Regular hours
+        const reg = document.createElement('div');
+        reg.style.cssText = `font-family: ${T.font.mono}; font-size: ${T.fs.base}px; color: ${T.text};`;
+        reg.textContent = fmtHrs(emp.regularHours);
+        tr.appendChild(reg);
+
+        // OT hours (em-dash if zero, warning color if non-zero)
+        const ot = document.createElement('div');
+        const otVal = emp.overtimeHours || 0;
+        ot.style.cssText = `font-family: ${T.font.mono}; font-size: ${T.fs.base}px; color: ${otVal > 0 ? T.warning : T.textDim};`;
+        ot.textContent = otVal > 0 ? fmtHrs(otVal) : '—';
+        tr.appendChild(ot);
+
+        // Hourly rate
+        const rate = document.createElement('div');
+        rate.style.cssText = `font-family: ${T.font.mono}; font-size: ${T.fs.base}px; color: ${T.textMuted};`;
+        rate.textContent = (emp.hourlyRate || 0) > 0 ? fmtMoneyComma(emp.hourlyRate) : '—';
+        tr.appendChild(rate);
+
+        // Gross pay (right-aligned, gold, bold)
+        const gross = document.createElement('div');
+        gross.style.cssText = `
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.base}px;
+            color: ${T.gold};
+            font-weight: 700;
+            text-align: right;
+        `;
+        gross.textContent = fmtMoneyComma(emp.grossPay);
+        tr.appendChild(gross);
+
+        table.appendChild(tr);
+    });
+
+    return table;
+}
+
+async function exportPayroll(formatId) {
+    const summary = PAYROLL_SUMMARY.laborSummary || {};
+    const employees = PAYROLL_SUMMARY.employees || [];
+    try {
+        await pushChanges([{
+            event_type: 'PAYROLL_EXPORTED',
+            payload: {
+                format: formatId,
+                period_start: PAYROLL_SUMMARY.period.start,
+                period_end:   PAYROLL_SUMMARY.period.end,
+                employee_count: employees.length,
+                total_hours: summary.totalHours,
+                total_labor: summary.totalLabor,
+            },
+        }]);
+        const label = formatId === 'adp' ? 'ADP' : formatId.toUpperCase();
+        showToast(`Payroll exported (${label})`, 'success');
+    } catch (e) {
+        console.warn('[Payroll Periods] export failed:', e);
+        showToast('Export failed — see console', 'error');
+    }
+}
 
 /* ==========================================
    TAB: TIPOUT RULES
@@ -1659,32 +1979,7 @@ function renderWeekGrid(wrap) {
 }
 
 function _weekStat(label, value, color) {
-    const card = document.createElement('div');
-    card.style.cssText = `
-        background: ${T.card};
-        border-left: 4px solid ${color};
-        border-radius: ${T.r.md}px;
-        padding: ${T.sp.md + 2}px ${T.sp.lg - 2}px;
-    `;
-    card.innerHTML = `
-        <div style="
-            font-family: ${T.font.mono};
-            font-size: ${T.fs.xs}px;
-            letter-spacing: 2px;
-            font-weight: 700;
-            color: ${T.textMuted};
-            text-transform: uppercase;
-            margin-bottom: ${T.sp.xs + 2}px;
-        ">${label}</div>
-        <div style="
-            font-family: ${T.font.heading};
-            font-size: ${T.fs.xxl}px;
-            font-weight: 700;
-            color: ${color};
-            line-height: 1;
-        ">${value}</div>
-    `;
-    return card;
+    return buildKpiCard({ label, value, accent: color });
 }
 
 // Week-grid rows reference shift_ids that may not have a matching
