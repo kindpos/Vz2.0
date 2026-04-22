@@ -222,8 +222,8 @@ const openCategories = new Set();
 async function refreshIssues(opts) {
   opts = opts || {};
   const days = parseInt($("#days-select").value, 10);
-  const sevSelect = $("#severity-select");
-  const minSeverity = (sevSelect && sevSelect.value) || "WARNING";
+  const activeTab = document.querySelector("#severity-tabs .sev-tab.active");
+  const minSeverity = (activeTab && activeTab.dataset.sev) || "WARNING";
   const host = $("#issues-body");
   // Only flash "Loading…" on a first / explicit load. Auto-polling swaps
   // the rendered DOM in place so the panel doesn't blink every 15s.
@@ -384,8 +384,32 @@ function boot() {
   $("#btn-download").addEventListener("click", downloadReport);
   $("#btn-logout").addEventListener("click", logout);
   $("#days-select").addEventListener("change", () => refreshIssues({ initial: true }));
-  const sevSelect = $("#severity-select");
-  if (sevSelect) sevSelect.addEventListener("change", () => refreshIssues({ initial: true }));
+  // Severity tabs — single-select; swap `.active` on click and trigger an
+  // instant (spinner-showing) refresh. Keyboard: arrow keys move focus
+  // and select, Home / End jump to the ends.
+  const tabs = Array.from($$(".sev-tab"));
+  function activateTab(t) {
+    tabs.forEach(b => {
+      const on = b === t;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    refreshIssues({ initial: true });
+  }
+  tabs.forEach((t, idx) => {
+    t.addEventListener("click", () => activateTab(t));
+    t.addEventListener("keydown", (e) => {
+      let next = idx;
+      if (e.key === "ArrowRight") next = (idx + 1) % tabs.length;
+      else if (e.key === "ArrowLeft") next = (idx - 1 + tabs.length) % tabs.length;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = tabs.length - 1;
+      else return;
+      e.preventDefault();
+      tabs[next].focus();
+      activateTab(tabs[next]);
+    });
+  });
   const refreshBtn = $("#btn-refresh-issues");
   if (refreshBtn) refreshBtn.addEventListener("click", () => refreshIssues({ initial: true }));
 

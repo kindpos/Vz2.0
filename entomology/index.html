@@ -59,13 +59,6 @@
         <h2>Recent Issues</h2>
         <div class="controls">
           <span id="issues-updated" class="muted">—</span>
-          <label for="severity-select" class="muted">Severity:</label>
-          <select id="severity-select">
-            <option value="INFO">All (INFO+)</option>
-            <option value="WARNING" selected>Warnings+</option>
-            <option value="ERROR">Errors+</option>
-            <option value="CRITICAL">Critical only</option>
-          </select>
           <label for="days-select" class="muted">Window:</label>
           <select id="days-select">
             <option value="1">1 day</option>
@@ -74,6 +67,12 @@
           </select>
           <button id="btn-refresh-issues" class="btn-ghost">Refresh</button>
         </div>
+      </div>
+      <div class="sev-tabs" id="severity-tabs" role="tablist" aria-label="Severity filter">
+        <button class="sev-tab" data-sev="INFO"     role="tab">All</button>
+        <button class="sev-tab active" data-sev="WARNING" role="tab" aria-selected="true">Warnings+</button>
+        <button class="sev-tab" data-sev="ERROR"    role="tab">Errors+</button>
+        <button class="sev-tab" data-sev="CRITICAL" role="tab">Critical</button>
       </div>
       <div id="issues-body"></div>
     </section>

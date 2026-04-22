@@ -243,12 +243,19 @@ vi.mock('../components.js', () => ({
 
 The entomology event codes the frontend can trigger via `entReport`:
 
-| Code | Meaning | Where it fires |
-|------|---------|----------------|
-| `UI-001` | Interrupt / gate stacked | `scene-manager.js` `interruptFn`, `openGate` |
-| `UI-002` | Bus handler threw / scene callback after unmount | `scene-manager.js` `_emit` |
-| `UI-003` | Double-submit blocked by scene lock | `server-checkout.js` `onFinalize` |
-| `UI-004` | (unused; reserved for unguarded fetch fallback detection) | — |
+| Code | Level | Meaning | Where it fires |
+|------|-------|---------|----------------|
+| `UI-001` | WARNING | Interrupt / gate stacked; prior torn down | `scene-manager.js` `interruptFn`, `openGate` |
+| `UI-002` | ERROR | Bus handler / scene callback threw; other handlers still ran | `scene-manager.js` `_emit`, `interruptFn` (onConfirm/onCancel) |
+| `UI-003` | INFO | Double-submit blocked by scene lock | `server-checkout.js` `onFinalize` |
+| `UI-004` | — | **Reserved** (was: unguarded fetch fallback detection) | — |
+| `UI-005` | WARNING | ADD ITEMS refused — `state.order` still null after refresh await | `check-overview.js` `_gotoOrderEntry` |
+| `UI-006` | WARNING | Recall path lost `seatNumbers`; falling back to `[1]` | `order-entry.js` `assignSeatsIfNeeded` |
+| `UI-007` | INFO | Dead-end tap (button bailed on preconditions) — PRINT/RESEND/PAY/VOID/DISC, delete-paid-seat | `check-overview.js` ×8 |
+| `UI-008` | INFO | Seat-assign picker CONFIRM trace (which items → which seats) | `order-entry.js` `assignSeatsIfNeeded` |
+| `UI-009` | WARNING/ERROR | `persistSeats` backend error (POST/PUT failure, malformed response, missing `order_id`) | `check-overview.js` `persistSeats` |
+| `UI-010` | INFO | Seat-assign picker opened (pairs with UI-008 confirm) | `order-entry.js` `assignSeatsIfNeeded` |
+| `UI-011` | ERROR | Uncaught `window.error` or `unhandledrejection` (global bridge) | `entomology-client.js` |
 
 If your test is asserting "this path should record an `entReport`", mock it and spy:
 ```js
