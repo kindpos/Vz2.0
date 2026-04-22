@@ -139,23 +139,24 @@ var INCLUDED_BY_ITEM = {};
 
 // ── Overseer-authored modifier wiring (source of truth when present) ──
 var MODIFIER_GROUPS = [];          // raw groups (non-hidden) keyed by group_id
-var MANDATORY_ASSIGNMENTS = [];    // [{ assignment_id, label, target_type, target_id, modifier_ids, select_mode }]
-var UNIVERSAL_ASSIGNMENTS = [];    // [{ assignment_id, category_id, group_ids }]
 var MODIFIER_MASTER = {};          // modifier_id → { name, price }
 var ITEM_TO_CATEGORY = {};         // item_id → category_id
 
 // ── Fetch menu from API and transform to HexNav format ──
+// The legacy MandatoryAssignment / UniversalAssignment model was retired.
+// Its behavior (min/max selections, owner_item_id, category_id) now lives
+// on each ModifierGroup, and the per-item / per-category wiring is baked
+// into `item.mandatory_group_ids` and `category.universal_group_ids` in
+// the /menu response. Those two fields are what _refreshModPanel and
+// buildKindModPanel actually consume (see line ~2453). The previous
+// /config/*-assignments endpoints were removed from the backend; the
+// frontend was still calling them and logging 404s on every menu load.
 var _menuFetched = false;
 
 function fetchMenuFromAPI() {
-  return Promise.all([
-    fetch(API + '/menu').then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
-    fetch(API + '/config/mandatory-assignments').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
-    fetch(API + '/config/universal-assignments').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
-  ]).then(function(results) {
-    var menu = results[0];
-    MANDATORY_ASSIGNMENTS = results[1] || [];
-    UNIVERSAL_ASSIGNMENTS = results[2] || [];
+  return fetch(API + '/menu')
+    .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function(menu) {
     if (!menu.categories || !menu.items) return;
 
     // Build items_by_category keyed by category_id (lowercase)
