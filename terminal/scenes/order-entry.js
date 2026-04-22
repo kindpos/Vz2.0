@@ -1201,7 +1201,19 @@ function assignSeatsIfNeeded(callback) {
     return;
   }
 
-  // 2+ seats and no single pre-selection → open the per-item seat picker
+  // 2+ seats and no single pre-selection → open the per-item seat picker.
+  // When check-overview handed off a selection of 2+ seats, narrow the
+  // picker to just those seats so the user assigns items only across
+  // the set they highlighted. Otherwise show every unpaid seat on the
+  // check (the original behavior).
+  var pickerSeats = seats;
+  if (selSeats && selSeats.length > 1) {
+    var selSet = {};
+    for (var s = 0; s < selSeats.length; s++) selSet[selSeats[s]] = true;
+    var filtered = seats.filter(function(n) { return selSet[n]; });
+    if (filtered.length > 0) pickerSeats = filtered;
+  }
+
   var itemsForAssign = unsent.map(function(inst) {
     return { id: inst.id, name: inst.name, mods: inst.mods };
   });
@@ -1215,8 +1227,9 @@ function assignSeatsIfNeeded(callback) {
     ctx: {
       recallOrderId: sceneParams.recallOrderId || null,
       itemCount: unsent.length,
-      seatCount: seats.length,
-      seatNumbers: seats,
+      seatCount: pickerSeats.length,
+      seatNumbers: pickerSeats,
+      filtered: pickerSeats.length !== seats.length,
     },
   });
 
@@ -1228,7 +1241,7 @@ function assignSeatsIfNeeded(callback) {
   // default (matches the "items only land on seat 1" user report).
   SceneManager.interrupt('seat-assign', {
     items: itemsForAssign,
-    seatNumbers: seats,
+    seatNumbers: pickerSeats,
     onConfirm: function(assignments) {
       // Apply assignments: { itemId: [seatNumber, ...] }
       // Items assigned to multiple seats get duplicated (one per extra seat)
