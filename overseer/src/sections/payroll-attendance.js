@@ -88,6 +88,7 @@ function roleChipColor(roleId) {
 
 const TABS = [
     { id: 'clock',      label: 'Clock Records'    },
+    { id: 'timeclock',  label: 'Timeclock'        },
     { id: 'payroll',    label: 'Payroll Periods'  },
     { id: 'tipout',     label: 'Tipout Rules'     },
     { id: 'templates',  label: 'Shift Templates'  },
@@ -2822,8 +2823,500 @@ function _synthesizeShiftDetail(tc, shift) {
     };
 }
 
+/* ==========================================
+   TAB: TIMECLOCK — multi-employee admin time editor
+
+   Admin picks one or more employees + a date range, sees per-day
+   clock entries, and can adjust any row via an openModal form.
+   Each save emits a `timecard.adjusted` event through pushChanges;
+   the backend overlays those events onto labor-summary (see
+   reporting.py _apply_timecard_adjustments) so edits flow through
+   hours, gross_pay, OT alerts, and COB trend.
+   ========================================== */
+
+// Module state — sticky across tab switches so picker choices survive.
+let _tcSelectedIds = [];
+let _tcRange = {
+    start: (() => { const d = new Date(); d.setDate(d.getDate() - 6); return d.toISOString().slice(0, 10); })(),
+    end:   (new Date()).toISOString().slice(0, 10),
+};
+let _tcEmployeesCache = null;
+
+async function _loadTimeclockEmployees() {
+    if (_tcEmployeesCache) return _tcEmployeesCache;
+    try {
+        const res = await fetch('/api/v1/config/employees');
+        if (!res.ok) { _tcEmployeesCache = []; return []; }
+        const data = await res.json();
+        _tcEmployeesCache = (data || []).map(e => {
+            const id = e.employee_id || e.id;
+            const first = e.first_name || e.firstName || '';
+            const last  = e.last_name  || e.lastName  || '';
+            const joined = `${first} ${last}`.trim();
+            return {
+                id,
+                name: joined || e.name || e.display_name || id,
+            };
+        }).filter(e => e.id);
+        return _tcEmployeesCache;
+    } catch {
+        _tcEmployeesCache = [];
+        return [];
+    }
+}
+
+function _enumerateDates(startStr, endStr) {
+    const out = [];
+    const s = new Date(`${startStr}T00:00:00`);
+    const e = new Date(`${endStr}T00:00:00`);
+    if (!Number.isFinite(s.getTime()) || !Number.isFinite(e.getTime()) || s > e) return out;
+    const cur = new Date(s);
+    for (let i = 0; i < 90 && cur <= e; i++) {  // safety cap
+        out.push(cur.toISOString().slice(0, 10));
+        cur.setDate(cur.getDate() + 1);
+    }
+    return out;
+}
+
+async function _fetchTimeclockRows(selectedIds, startStr, endStr) {
+    const dates = _enumerateDates(startStr, endStr);
+    if (!dates.length || !selectedIds.length) return [];
+    const selectedSet = new Set(selectedIds);
+    const nameById = new Map(
+        (_tcEmployeesCache || []).map(e => [e.id, e.name])
+    );
+    const summaries = await Promise.allSettled(
+        dates.map(d => fetch(`/api/v1/reports/labor-summary?date=${d}`).then(r => r.ok ? r.json() : null))
+    );
+    const rows = [];
+    summaries.forEach((res, i) => {
+        const d = dates[i];
+        const data = res.status === 'fulfilled' ? res.value : null;
+        const seen = new Set();
+        if (data) {
+            (data.employees || []).forEach(emp => {
+                const eid = emp.id || emp.employee_id;
+                if (!selectedSet.has(eid)) return;
+                seen.add(eid);
+                rows.push({
+                    date: d,
+                    employee_id: eid,
+                    name: emp.name || emp.display_name || nameById.get(eid) || eid,
+                    clock_in: emp.clock_in || null,
+                    clock_out: emp.clock_out || null,
+                    hours: Number(emp.hours) || 0,
+                });
+            });
+        }
+        // Surface days the employee did NOT clock in so the admin can
+        // still add a corrected entry (e.g. "forgot to clock in").
+        selectedSet.forEach(eid => {
+            if (seen.has(eid)) return;
+            rows.push({
+                date: d,
+                employee_id: eid,
+                name: nameById.get(eid) || eid,
+                clock_in: null,
+                clock_out: null,
+                hours: 0,
+                noEvents: true,
+            });
+        });
+    });
+    rows.sort((a, b) => {
+        const ncmp = (a.name || '').localeCompare(b.name || '');
+        if (ncmp !== 0) return ncmp;
+        return (a.date || '').localeCompare(b.date || '');
+    });
+    return rows;
+}
+
+function _tcFmtDayLabel(dStr) {
+    const dt = new Date(`${dStr}T00:00:00`);
+    if (!Number.isFinite(dt.getTime())) return dStr;
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+    return `${days[dt.getDay()]} ${mm}/${dd}`;
+}
+
+function renderTimeclockTab(body) {
+    body.innerHTML = '';
+
+    // ── Toolbar: employee tray + date range picker ──
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = `
+        display: flex; flex-wrap: wrap; gap: ${T.sp.lg}px;
+        margin-bottom: ${T.sp.lg}px; align-items: flex-start;
+    `;
+
+    // Column label factory
+    const mkLabel = (txt) => {
+        const l = document.createElement('div');
+        l.style.cssText = `
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.xs}px;
+            letter-spacing: 2px;
+            color: ${T.textDim};
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-bottom: ${T.sp.xs}px;
+        `;
+        l.textContent = txt;
+        return l;
+    };
+
+    // Employees tray
+    const empCol = document.createElement('div');
+    empCol.style.cssText = `flex: 2; min-width: 280px;`;
+    empCol.appendChild(mkLabel('Employees'));
+    const empTray = buildChipTray({
+        selected: _tcSelectedIds,
+        sourceFn: () => _tcEmployeesCache || [],
+        accent: T.green,
+        pickerTitle: 'Pick employees',
+        addLabel: '+ Add',
+        emptyHint: 'None selected — tap + ADD',
+        onChange: (ids) => {
+            _tcSelectedIds = ids;
+            refresh();
+        },
+    });
+    empCol.appendChild(empTray.el);
+    toolbar.appendChild(empCol);
+
+    // Date range
+    const dateCol = document.createElement('div');
+    dateCol.style.cssText = `flex: 1; min-width: 280px;`;
+    dateCol.appendChild(mkLabel('Date Range'));
+    const rangePicker = buildDateRangePicker({
+        start: _tcRange.start,
+        end: _tcRange.end,
+        onChange: ({ start, end }) => {
+            _tcRange = { start, end };
+            refresh();
+        },
+    });
+    dateCol.appendChild(rangePicker);
+    toolbar.appendChild(dateCol);
+
+    body.appendChild(toolbar);
+
+    // ── Entries card ──
+    const entriesCard = sectionCard({
+        label: 'Timecard Entries',
+        accent: T.cyan,
+        note: 'Edits emit a timecard.adjusted event and flow through labor, payroll, and COB in real time.',
+    });
+    const listWrap = document.createElement('div');
+    entriesCard.body.appendChild(listWrap);
+    body.appendChild(entriesCard.card);
+
+    async function refresh() {
+        listWrap.innerHTML = '';
+        const loading = document.createElement('div');
+        loading.style.cssText = `
+            padding: ${T.sp.xl}px; text-align: center;
+            color: ${T.textMuted};
+            font-family: ${T.font.mono};
+            letter-spacing: 2px; text-transform: uppercase;
+            font-size: ${T.fs.sm}px;
+        `;
+        loading.textContent = 'Loading…';
+        listWrap.appendChild(loading);
+
+        await _loadTimeclockEmployees();
+
+        if (!_tcSelectedIds.length) {
+            listWrap.innerHTML = '';
+            const msg = document.createElement('div');
+            msg.style.cssText = `
+                padding: ${T.sp.xxxl}px; text-align: center;
+                color: ${T.textMuted};
+                font-family: ${T.font.body};
+                font-size: ${T.fs.base}px;
+            `;
+            msg.textContent = 'Pick one or more employees above to see their timecard entries.';
+            listWrap.appendChild(msg);
+            return;
+        }
+
+        const rows = await _fetchTimeclockRows(_tcSelectedIds, _tcRange.start, _tcRange.end);
+        listWrap.innerHTML = '';
+        listWrap.appendChild(_buildTimeclockTable(rows, refresh));
+    }
+
+    _loadTimeclockEmployees().then(refresh);
+}
+
+const TC_GRID = '1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr';
+
+function _buildTimeclockTable(rows, onRefresh) {
+    const table = document.createElement('div');
+    table.style.cssText = `
+        background: ${T.well};
+        border-radius: ${T.r.sm}px;
+        overflow: hidden;
+    `;
+
+    // Header
+    const th = document.createElement('div');
+    th.style.cssText = `
+        display: grid;
+        grid-template-columns: ${TC_GRID};
+        gap: ${T.sp.md}px;
+        padding: ${T.sp.md}px ${T.sp.lg}px;
+        background: ${withAlpha(T.cyan, 0.06)};
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: ${T.textMuted};
+    `;
+    [
+        { l: 'Employee' },
+        { l: 'Date' },
+        { l: 'In', align: 'right' },
+        { l: 'Out', align: 'right' },
+        { l: 'Hours', align: 'right' },
+        { l: '', align: 'right' },
+    ].forEach(c => {
+        const cell = document.createElement('div');
+        cell.textContent = c.l;
+        if (c.align === 'right') cell.style.textAlign = 'right';
+        th.appendChild(cell);
+    });
+    table.appendChild(th);
+
+    if (rows.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `
+            padding: ${T.sp.xxxl}px;
+            text-align: center;
+            color: ${T.textMuted};
+            font-size: ${T.fs.base}px;
+        `;
+        empty.textContent = 'No clock events in the selected range.';
+        table.appendChild(empty);
+        return table;
+    }
+
+    rows.forEach(r => {
+        const tr = document.createElement('div');
+        tr.style.cssText = `
+            display: grid;
+            grid-template-columns: ${TC_GRID};
+            gap: ${T.sp.md}px;
+            padding: ${T.sp.md + 2}px ${T.sp.lg}px;
+            border-top: 1px solid ${T.border};
+            align-items: center;
+        `;
+
+        // Employee
+        const name = document.createElement('div');
+        name.style.cssText = `color: ${T.text}; font-size: ${T.fs.base}px; font-family: ${T.font.body};`;
+        name.textContent = r.name;
+        tr.appendChild(name);
+
+        // Date
+        const date = document.createElement('div');
+        date.style.cssText = `font-family: ${T.font.mono}; font-size: ${T.fs.sm}px; color: ${T.textMuted};`;
+        date.textContent = _tcFmtDayLabel(r.date);
+        tr.appendChild(date);
+
+        // In
+        const inCell = document.createElement('div');
+        inCell.style.cssText = `
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.base}px;
+            color: ${r.clock_in ? T.text : T.textDim};
+            text-align: right;
+        `;
+        inCell.textContent = r.clock_in || '—';
+        tr.appendChild(inCell);
+
+        // Out
+        const outCell = document.createElement('div');
+        const stillOn = !!(r.clock_in && !r.clock_out);
+        outCell.style.cssText = `
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.base}px;
+            color: ${stillOn ? T.greenUp : (r.clock_out ? T.text : T.textDim)};
+            font-weight: ${stillOn ? 700 : 400};
+            text-align: right;
+        `;
+        outCell.textContent = stillOn ? 'on' : (r.clock_out || '—');
+        tr.appendChild(outCell);
+
+        // Hours
+        const hours = document.createElement('div');
+        hours.style.cssText = `
+            font-family: ${T.font.mono};
+            font-size: ${T.fs.base}px;
+            color: ${r.hours > 0 ? T.text : T.textDim};
+            text-align: right;
+        `;
+        hours.textContent = r.hours > 0 ? `${r.hours.toFixed(2)}h` : '—';
+        tr.appendChild(hours);
+
+        // Action
+        const act = document.createElement('div');
+        act.style.cssText = `display: flex; justify-content: flex-end;`;
+        act.appendChild(button({
+            label: 'Edit',
+            variant: 'ghost',
+            onClick: () => openTimecardEditModal(r, onRefresh),
+        }));
+        tr.appendChild(act);
+
+        table.appendChild(tr);
+    });
+
+    return table;
+}
+
+function openTimecardEditModal(row, onSaved) {
+    const draft = {
+        clock_in:  row.clock_in  || '',
+        clock_out: row.clock_out || '',
+        reason:    'Manager correction',
+    };
+
+    const content = document.createElement('div');
+    content.style.cssText = `display: flex; flex-direction: column; gap: ${T.sp.md}px;`;
+
+    // Header: employee + date
+    const header = document.createElement('div');
+    header.style.cssText = `
+        font-family: ${T.font.mono};
+        font-size: ${T.fs.sm}px;
+        letter-spacing: 1.5px;
+        color: ${T.textDim};
+        text-transform: uppercase;
+    `;
+    header.innerHTML = `<span style="color:${T.text};font-weight:700;">${row.name}</span> · ${_tcFmtDayLabel(row.date)}`;
+    content.appendChild(header);
+
+    // Clock In / Clock Out (HH:MM time inputs)
+    const inOutRow = document.createElement('div');
+    inOutRow.style.cssText = `display: flex; gap: ${T.sp.md}px;`;
+
+    const mkTimeField = (label, initial, onChange) => {
+        const col = document.createElement('div');
+        col.style.cssText = `flex: 1; display: flex; flex-direction: column; gap: 6px;`;
+        const lbl = document.createElement('label');
+        lbl.style.cssText = `
+            font-family: ${T.font.body};
+            font-size: ${T.fs.base}px;
+            color: ${T.textMuted};
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        `;
+        lbl.textContent = label;
+        col.appendChild(lbl);
+
+        const input = document.createElement('input');
+        input.type = 'time';
+        input.value = initial || '';
+        input.style.cssText = `
+            width: 100%;
+            box-sizing: border-box;
+            background: ${T.well};
+            color: ${T.text};
+            border: 1px solid ${T.border};
+            border-radius: ${T.r.sm}px;
+            padding: 10px 14px;
+            font-size: ${T.fs.lg}px;
+            font-family: ${T.font.mono};
+            outline: none;
+            color-scheme: dark;
+            transition: border-color 0.15s ease;
+        `;
+        input.addEventListener('focus', () => input.style.borderColor = T.gold);
+        input.addEventListener('blur',  () => input.style.borderColor = T.border);
+        input.addEventListener('input', (e) => onChange(e.target.value));
+        col.appendChild(input);
+        return col;
+    };
+
+    inOutRow.appendChild(mkTimeField('Clock In',  draft.clock_in,  v => draft.clock_in = v));
+    inOutRow.appendChild(mkTimeField('Clock Out', draft.clock_out, v => draft.clock_out = v));
+    content.appendChild(inOutRow);
+
+    // Reason chips
+    const reasonCol = document.createElement('div');
+    reasonCol.style.cssText = `display: flex; flex-direction: column; gap: 6px;`;
+    const reasonLbl = document.createElement('label');
+    reasonLbl.style.cssText = `
+        font-family: ${T.font.body};
+        font-size: ${T.fs.base}px;
+        color: ${T.textMuted};
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    `;
+    reasonLbl.textContent = 'Reason';
+    reasonCol.appendChild(reasonLbl);
+    const reasonChips = chipGroup({
+        options: EDIT_REASONS.map(r => ({ id: r, label: r })),
+        selected: [draft.reason],
+        mode: 'single',
+        onChange: (sel) => { draft.reason = sel[0] || 'Manager correction'; },
+    });
+    reasonCol.appendChild(reasonChips.wrap);
+    content.appendChild(reasonCol);
+
+    // Footer buttons
+    let modalRef = null;
+    const cancelBtn = button({
+        label: 'Cancel',
+        variant: 'ghost',
+        onClick: () => modalRef.close(),
+    });
+    const saveBtn = button({
+        label: 'Save Adjustment',
+        variant: 'primary',
+        onClick: async () => {
+            saveBtn.disabled = true;
+            saveBtn.style.opacity = '0.6';
+            saveBtn.textContent = 'Saving...';
+            try {
+                const result = await pushChanges([{
+                    event_type: 'timecard.adjusted',
+                    payload: {
+                        employee_id:   row.employee_id,
+                        employee_name: row.name,
+                        date:          row.date,
+                        clock_in:      draft.clock_in  || null,
+                        clock_out:     draft.clock_out || null,
+                        reason:        draft.reason,
+                    },
+                }]);
+                if (!result.ok) throw new Error('push failed');
+                showToast('Timecard adjusted');
+                modalRef.close();
+                if (onSaved) onSaved();
+            } catch (e) {
+                console.warn('[Timeclock] save failed:', e);
+                showToast('Failed to save', 'error');
+                saveBtn.disabled = false;
+                saveBtn.style.opacity = '1';
+                saveBtn.textContent = 'Save Adjustment';
+            }
+        },
+    });
+
+    modalRef = openModal({
+        title: 'Adjust Timecard',
+        content,
+        footer: [cancelBtn, saveBtn],
+        width: 520,
+    });
+}
+
 const TAB_RENDERERS = {
     clock:     renderClockTab,
+    timeclock: renderTimeclockTab,
     payroll:   renderPayrollTab,
     tipout:    renderTipoutTab,
     templates: renderTemplatesTab,
