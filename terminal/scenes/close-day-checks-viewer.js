@@ -168,7 +168,15 @@ function fetchChecksState() {
         method:        method,
         amount:        (sum.amount != null) ? sum.amount : (raw.total_amount || raw.total || 0),
         tip:           tip,
-        adjusted:      (sum.adjusted != null) ? sum.adjusted : (tip != null),
+        // `adjusted` means "the tip on this check is final". Previously
+        // fell back to `tip != null`, but `raw.tip_amount` is NEVER null
+        // from the backend — it's 0 for un-adjusted card payments — so
+        // that fallback marked every check as adjusted. Now: trust the
+        // summary when present; otherwise cash is always baked-in, card
+        // is only considered adjusted when a non-zero tip is recorded.
+        adjusted:      (sum.adjusted != null)
+                         ? sum.adjusted
+                         : (method === 'cash' || (tip != null && tip > 0)),
         server_id:     raw.server_id   || sum.server_id   || '',
         server_name:   raw.server_name || sum.server_name || '',
         guests:        raw.guest_count || raw.seat_count || raw.covers || sum.guests || sum.guest_count || 0,
@@ -779,6 +787,17 @@ defineScene({
   render: function(container, params, state) {
     params = params || {};
     state.startTime = state.startTime || Date.now();
+    // Live scene element — cleared in the cleanup so async callbacks can
+    // bail out with `if (!state.el) return` and we don't write to a
+    // detached DOM after the user navigates away.
+    state.el = container;
+    // Track the one legitimate setTimeout (the 80ms defer before the
+    // second interrupt) so it can be cancelled on unmount.
+    state._voidDeferTimer = null;
+    // Lock held while a multi-check Transfer / Print / Void batch is
+    // in flight. Stops a double-tap on the action button from enqueueing
+    // a second Promise.all while the first is still resolving.
+    state._busy = false;
 
     setSceneName('Open Checks');
     setHeaderBack({
@@ -799,9 +818,11 @@ defineScene({
 
     function refreshData() {
       fetchChecksState().then(function(newData) {
+        if (!state.el) return;
         state.data = newData;
         rebuild();
       }).catch(function(err) {
+        if (!state.el) return;
         console.error('[close-day-checks-viewer] fetch failed:', err);
         showToast('Checks data unavailable', { bg: T.verm });
       });
@@ -861,11 +882,13 @@ defineScene({
       },
 
       onTransferChecks: function(checks) {
+        if (state._busy) return;
         SceneManager.interrupt('co-transfer-picker', {
           checks: checks,
           currentEmpId: params.managerId,
           onConfirm: function(destServer) {
             SceneManager.closeInterrupt('co-transfer-picker');
+            state._busy = true;
             var transfers = checks.map(function(chk) {
               return fetch('/api/v1/orders/' + chk.checkId + '/transfer', {
                 method:  'POST',
@@ -878,6 +901,8 @@ defineScene({
                 .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
             });
             Promise.all(transfers).then(function(results) {
+              state._busy = false;
+              if (!state.el) return;
               var ok     = results.filter(function(r) { return  r.ok; });
               var failed = results.filter(function(r) { return !r.ok; });
               if (ok.length > 0 && failed.length === 0) {
@@ -900,6 +925,8 @@ defineScene({
       },
 
       onPrintCheck: function(checks) {
+        if (state._busy) return;
+        state._busy = true;
         var label = checks.length > 1 ? checks.length + ' checks' : checkNumDisplay(checks[0]);
         showToast('Printing ' + label + '\u2026', { bg: T.greenWarm });
 
@@ -913,6 +940,8 @@ defineScene({
         });
 
         Promise.all(prints).then(function(results) {
+          state._busy = false;
+          if (!state.el) return;
           var ok     = results.filter(function(r) { return  r.ok; });
           var failed = results.filter(function(r) { return !r.ok; });
           if (ok.length > 0 && failed.length === 0) {
@@ -946,15 +975,23 @@ defineScene({
       },
 
       onVoidCheck: function(checks) {
+        if (state._busy) return;
         // Destructive: manager PIN → reason-required confirm → POST per check.
         SceneManager.interrupt('co-manager-pin', {
           onConfirm: function() {
             SceneManager.closeInterrupt('co-manager-pin');
-            setTimeout(function() {
+            // The 80ms defer lets the PIN interrupt unmount before the
+            // next one mounts. Tracked on state so cleanup can cancel it
+            // — otherwise a back-nav during the window mounts the void-
+            // confirm interrupt on an already-unmounted scene.
+            state._voidDeferTimer = setTimeout(function() {
+              state._voidDeferTimer = null;
+              if (!state.el) return;
               SceneManager.interrupt('co-void-confirm', {
                 checks: checks,
                 onConfirm: function(reason) {
                   SceneManager.closeInterrupt('co-void-confirm');
+                  state._busy = true;
                   var voids = checks.map(function(chk) {
                     return fetch('/api/v1/orders/' + chk.checkId + '/void', {
                       method:  'POST',
@@ -967,6 +1004,8 @@ defineScene({
                       .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
                   });
                   Promise.all(voids).then(function(results) {
+                    state._busy = false;
+                    if (!state.el) return;
                     var ok     = results.filter(function(r) { return  r.ok; });
                     var failed = results.filter(function(r) { return !r.ok; });
                     if (ok.length > 0 && failed.length === 0) {
@@ -994,5 +1033,16 @@ defineScene({
     };
 
     refreshData();
+
+    // Return the scene cleanup — clears the pending void-defer timer
+    // and nulls state.el so any still-in-flight Promise.all callbacks
+    // can bail out instead of writing to a detached DOM.
+    return function cleanup() {
+      if (state._voidDeferTimer != null) {
+        clearTimeout(state._voidDeferTimer);
+        state._voidDeferTimer = null;
+      }
+      state.el = null;
+    };
   },
 });

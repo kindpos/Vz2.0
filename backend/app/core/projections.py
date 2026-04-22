@@ -210,7 +210,11 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                 order.closed_at = event.timestamp
 
         elif event.event_type == EventType.ORDER_REOPENED:
-            if order:
+            # Only reopen from closed/paid. A voided order must stay voided;
+            # a stray REOPENED event (replay, out-of-order, or a UI bug) would
+            # otherwise silently undo the void and make refunds look like
+            # collectible receivables.
+            if order and order.status in ("closed", "paid"):
                 order.status = "open"
                 order.closed_at = None
 

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
+from datetime import datetime, timezone
 from app.api.dependencies import get_ledger
 from app.core.event_ledger import EventLedger
 from app.core.events import user_logged_in, user_logged_out, cash_tips_declared, EventType
@@ -69,12 +70,20 @@ async def clock_in(request: ClockInRequest, ledger: EventLedger = Depends(get_le
     """Record a staff clock-in event."""
     if request.employee_id in await _clocked_in_ids(ledger):
         raise HTTPException(status_code=400, detail="Already clocked in")
+    # TOCTOU guard: the `_clocked_in_ids` check above and the append below
+    # are not transactional, so two concurrent POSTs for the same employee
+    # could both pass the check and double-append. Key by
+    # (employee_id, UTC minute) so the ledger's idempotency gate blocks
+    # burst submissions. Minute granularity is pragmatic — nobody
+    # legitimately clocks in twice in 60 seconds.
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
     event = user_logged_in(
         terminal_id=settings.terminal_id,
         employee_id=request.employee_id,
         employee_name=request.employee_name,
         role=request.role or "",
         pool_memberships=request.pool_memberships,
+        idempotency_key=f"clock_in:{request.employee_id}:{stamp}",
     )
     await ledger.append(event)
     return {
@@ -90,10 +99,12 @@ async def clock_out(request: ClockOutRequest, ledger: EventLedger = Depends(get_
     """Record a staff clock-out event."""
     if request.employee_id not in await _clocked_in_ids(ledger):
         raise HTTPException(status_code=400, detail="Not clocked in")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
     event = user_logged_out(
         terminal_id=settings.terminal_id,
         employee_id=request.employee_id,
         employee_name=request.employee_name,
+        idempotency_key=f"clock_out:{request.employee_id}:{stamp}",
     )
     await ledger.append(event)
     return {

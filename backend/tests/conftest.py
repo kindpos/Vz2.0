@@ -20,6 +20,10 @@ os.environ.setdefault('KINDPOS_CASH_DISCOUNT_RATE', '0.04')
 # the moment it happens, rather than silently logging and moving on
 # like the production default.
 os.environ.setdefault('KINDPOS_STRICT_INVARIANTS', 'true')
+# Tests call route handlers directly or via TestClient without a PIN flow —
+# flip auth_required to soft mode so SEC-005 diagnostics still fire but the
+# request is allowed through. Production leaves auth_enforced=True.
+os.environ.setdefault('KINDPOS_AUTH_ENFORCED', 'false')
 import pytest
 import pytest_asyncio
 from pathlib import Path

@@ -13,7 +13,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import get_ledger
-from app.api.routes.auth import _record_diag
+from app.api.routes.auth import _record_diag, auth_required
 from app.core.event_ledger import EventLedger
 from app.core.events import (
     CONFIG_EVENT_PREFIXES,
@@ -71,7 +71,7 @@ async def get_config_events(
     }
 
 
-@router.post("/config/events/replay")
+@router.post("/config/events/replay", dependencies=[Depends(auth_required)])
 async def replay_config_events(
     payload: dict[str, Any],
     ledger: EventLedger = Depends(get_ledger),

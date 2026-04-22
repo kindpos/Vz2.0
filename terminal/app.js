@@ -5,6 +5,12 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
+// Import auth-client FIRST — its module side-effect installs the fetch
+// interceptor that attaches the session bearer token to every /api/* call.
+// Any scene that runs fetches during its own import (unlikely, but cheap
+// insurance) therefore sees the interceptor already in place.
+import './auth-client.js';
+
 import { SceneManager } from './scene-manager.js';
 import { T, applyStoreTheme } from './tokens.js';
 

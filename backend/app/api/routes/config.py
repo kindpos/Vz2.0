@@ -15,6 +15,7 @@ from app.models.config_events import (
 from app.config import settings
 from app.services.store_config_service import StoreConfigService
 from app.services.overseer_config_service import OverseerConfigService
+from app.api.routes.auth import auth_required
 
 # Allow-list of mime types we'll accept for the store logo. Keep this tight —
 # rendering anything else risks XSS via SVG or unbounded payloads.
@@ -144,7 +145,7 @@ async def get_routing(ledger: EventLedger = Depends(get_ledger)):
     return await service.get_routing_matrix()
 
 
-@router.post("/store/logo")
+@router.post("/store/logo", dependencies=[Depends(auth_required)])
 async def upload_store_logo(
         req: LogoUploadRequest,
         background_tasks: BackgroundTasks,
@@ -206,7 +207,7 @@ async def get_store_logo(ledger: EventLedger = Depends(get_ledger)):
     return Response(content=data, media_type=mime_type)
 
 
-@router.post("/store/info")
+@router.post("/store/info", dependencies=[Depends(auth_required)])
 async def update_store_info(info: StoreInfo, background_tasks: BackgroundTasks,
                             ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
@@ -219,7 +220,7 @@ async def update_store_info(info: StoreInfo, background_tasks: BackgroundTasks,
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/store/cc-rate")
+@router.post("/store/cc-rate", dependencies=[Depends(auth_required)])
 async def update_cc_rate(rate: CCProcessingRate, background_tasks: BackgroundTasks,
                          ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
@@ -232,7 +233,7 @@ async def update_cc_rate(rate: CCProcessingRate, background_tasks: BackgroundTas
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/push")
+@router.post("/push", dependencies=[Depends(auth_required)])
 async def push_changes(changes: List[PendingChange], background_tasks: BackgroundTasks,
                        ledger: EventLedger = Depends(get_ledger)):
     events = []
@@ -271,7 +272,7 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
     }
 
 
-@router.post("/menu/86")
+@router.post("/menu/86", dependencies=[Depends(auth_required)])
 async def item_86(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.MENU_ITEM_86D,
@@ -283,7 +284,7 @@ async def item_86(item_id: str, background_tasks: BackgroundTasks, ledger: Event
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/menu/restore")
+@router.post("/menu/restore", dependencies=[Depends(auth_required)])
 async def item_restore(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.MENU_ITEM_RESTORED,
@@ -295,7 +296,7 @@ async def item_restore(item_id: str, background_tasks: BackgroundTasks, ledger: 
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/roles")
+@router.post("/roles", dependencies=[Depends(auth_required)])
 async def create_role(role: Role, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.EMPLOYEE_ROLE_CREATED,
@@ -307,7 +308,7 @@ async def create_role(role: Role, background_tasks: BackgroundTasks, ledger: Eve
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.put("/roles/{role_id}")
+@router.put("/roles/{role_id}", dependencies=[Depends(auth_required)])
 async def update_role(role_id: str, role: Role, background_tasks: BackgroundTasks,
                       ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
@@ -320,7 +321,7 @@ async def update_role(role_id: str, role: Role, background_tasks: BackgroundTask
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.delete("/roles/{role_id}")
+@router.delete("/roles/{role_id}", dependencies=[Depends(auth_required)])
 async def delete_role(role_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.EMPLOYEE_ROLE_DELETED,
@@ -332,7 +333,7 @@ async def delete_role(role_id: str, background_tasks: BackgroundTasks, ledger: E
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/employees")
+@router.post("/employees", dependencies=[Depends(auth_required)])
 async def create_employee(employee: Employee, background_tasks: BackgroundTasks,
                           ledger: EventLedger = Depends(get_ledger)):
     # In a real system, we'd use employee.created event,

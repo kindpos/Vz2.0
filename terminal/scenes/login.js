@@ -24,6 +24,7 @@ function darkenHex(hex, pct) {
 }
 import { buildNumpad } from '../numpad.js';
 import { showToast }   from '../components.js';
+import { setToken, clearToken } from '../auth-client.js';
 
 // ── Constants ─────────────────────────────────────
 const PIN_LENGTH = 4;
@@ -68,6 +69,11 @@ async function _attemptLogin(pin, onSuccess, onFail) {
     if (res.ok) {
       var data = await res.json();
       if (data.valid) {
+        // Persist the bearer token so auth-client can attach it to every
+        // subsequent /api/* request. Without this the server-side auth
+        // gates never see a valid session and (under KINDPOS_AUTH_ENFORCED
+        // = true) would start returning 401.
+        setToken(data);
         onSuccess(data);
       } else {
         onFail();
