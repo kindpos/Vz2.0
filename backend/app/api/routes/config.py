@@ -293,10 +293,20 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
     events = []
     sections = set()
     for change in changes:
+        payload = dict(change.payload or {})
+        # PIN-at-rest on the batch path. /config/employees (POST) already
+        # hashes via ensure_hashed_pin; without the same treatment here
+        # any employee.* event with a `pin` field (notably the PIN-reset
+        # flow) would land in the ledger as plaintext and future verify
+        # attempts would compare plaintext-to-plaintext — a pre-hashing
+        # regression. `ensure_hashed_pin` is idempotent, so it's safe to
+        # call on a value that might already be hashed.
+        if change.event_type.startswith("employee.") and payload.get("pin"):
+            payload["pin"] = ensure_hashed_pin(payload["pin"])
         event = create_event(
             event_type=parse_event_type(change.event_type),
             terminal_id="OVERSEER",
-            payload=change.payload
+            payload=payload,
         )
         events.append(event)
 
