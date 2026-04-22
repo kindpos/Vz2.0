@@ -5,6 +5,7 @@ import urllib.parse
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from decimal import Decimal
+from xml.sax.saxutils import escape as _xml_escape
 
 import httpx
 
@@ -36,11 +37,33 @@ class DejavooSPInAdapter(BasePaymentDevice):
 
     The XML includes RegisterId, AuthKey, and TPN inside the body.
     Response is XML wrapped in <xmp> tags.
+
+    Concurrency model
+    -----------------
+    The physical device can only run one transaction at a time, so all
+    transaction-starting methods (initiate_sale, initiate_refund,
+    initiate_void, adjust_tip, close_batch) serialize on `_tx_lock`.
+    `cancel_transaction` is deliberately NOT gated by that lock — it
+    must be callable while a sale is in flight so the manager's
+    timeout-cancel path can break a stuck device loose. `check_status`
+    is also lock-free (observation, not mutation).
+
+    Status lifecycle
+    ----------------
+    Previously every transaction finally-block forced _status back to
+    IDLE, which masked stuck-device conditions (card still in the
+    reader, printer hung). Now the status is only transitioned on
+    observed outcomes:
+      start → AWAITING_CARD / PROCESSING
+      clean return → IDLE
+      exception → unchanged (leave for check_status to reconcile)
     """
 
     def __init__(self):
         self._status = PaymentDeviceStatus.OFFLINE
         self._config: Optional[PaymentDeviceConfig] = None
+        # Serializes transaction starts. One physical reader, one lock.
+        self._tx_lock = asyncio.Lock()
 
     @property
     def status(self) -> PaymentDeviceStatus:
@@ -86,6 +109,22 @@ class DejavooSPInAdapter(BasePaymentDevice):
 
         return self._status
 
+    def _busy_result(self, transaction_id: str) -> TransactionResult:
+        """Return a standard BUSY ERROR result used by every sacred-state
+        gate. A caller that tries to start a new transaction while the
+        device is AWAITING_CARD / PROCESSING should see a clean ERROR —
+        not silently race the device."""
+        return TransactionResult(
+            transaction_id=transaction_id,
+            status=TransactionStatus.ERROR,
+            error=PaymentError(
+                category=PaymentErrorCategory.DEVICE,
+                error_code="DEVICE_BUSY",
+                message=f"Device is {self._status.value}; cancel the prior transaction first",
+                source="DejavooSPInAdapter",
+            ),
+        )
+
     async def initiate_sale(self, request: TransactionRequest) -> TransactionResult:
         xml = self._build_xml("Sale", {
             "PaymentType": "Credit",
@@ -98,12 +137,20 @@ class DejavooSPInAdapter(BasePaymentDevice):
             "SigCapture": "No",
         })
 
-        self._status = PaymentDeviceStatus.AWAITING_CARD
-        try:
-            root = await self._send(xml)
-            return self._parse_response(root, request.transaction_id)
-        finally:
+        async with self._tx_lock:
+            if self.in_sacred_state:
+                return self._busy_result(request.transaction_id)
+            self._status = PaymentDeviceStatus.AWAITING_CARD
+            try:
+                root = await self._send(xml)
+                result = self._parse_response(root, request.transaction_id)
+            except Exception:
+                # Don't force IDLE here — the device may still physically
+                # hold the card. Bubble up; check_status reconciles next.
+                raise
+            # Clean return: transaction resolved, device is idle again.
             self._status = PaymentDeviceStatus.IDLE
+            return result
 
     async def initiate_refund(self, request: TransactionRequest) -> TransactionResult:
         xml = self._build_xml("Return", {
@@ -115,32 +162,48 @@ class DejavooSPInAdapter(BasePaymentDevice):
             "PrintReceipt": "No",
             "SigCapture": "No",
         })
-        try:
-            root = await self._send(xml)
-            return self._parse_response(root, request.transaction_id)
-        finally:
+        async with self._tx_lock:
+            if self.in_sacred_state:
+                return self._busy_result(request.transaction_id)
+            self._status = PaymentDeviceStatus.PROCESSING
+            try:
+                root = await self._send(xml)
+                result = self._parse_response(root, request.transaction_id)
+            except Exception:
+                raise
             self._status = PaymentDeviceStatus.IDLE
+            return result
 
     async def initiate_void(self, request: TransactionRequest) -> TransactionResult:
         xml = self._build_xml("Void", {
             "RefId": request.transaction_id,
             "PrintReceipt": "No",
         })
-        try:
-            root = await self._send(xml)
-            return self._parse_response(root, request.transaction_id)
-        finally:
+        async with self._tx_lock:
+            if self.in_sacred_state:
+                return self._busy_result(request.transaction_id)
+            self._status = PaymentDeviceStatus.PROCESSING
+            try:
+                root = await self._send(xml)
+                result = self._parse_response(root, request.transaction_id)
+            except Exception:
+                raise
             self._status = PaymentDeviceStatus.IDLE
+            return result
 
     async def cancel_transaction(self) -> bool:
+        """Break the device out of a stuck transaction. Deliberately
+        NOT gated by _tx_lock — this must be callable WHILE a sale is
+        in flight so the manager's timeout-cancel path works. Status
+        left alone; the next check_status will reconcile."""
         xml = self._build_xml("Cancel")
         try:
             root = await self._send(xml, timeout=10.0)
             if root is not None:
                 msg = root.findtext("Message") or root.findtext("RespMSG") or ""
                 return "Cancel" in msg
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("SPIn cancel_transaction raised: %s", e)
         return False
 
     async def adjust_tip(self, transaction_id: str, tip_amount: Decimal) -> TransactionResult:
@@ -148,50 +211,74 @@ class DejavooSPInAdapter(BasePaymentDevice):
             "RefId": transaction_id,
             "Tip": f"{money_round(tip_amount):.2f}",
         })
-        try:
-            root = await self._send(xml)
-            return self._parse_response(root, transaction_id)
-        except Exception as e:
-            logger.error(f"Tip adjust failed: {e}")
-            return TransactionResult(
-                transaction_id=transaction_id,
-                status=TransactionStatus.ERROR,
-                error=PaymentError(
-                    category=PaymentErrorCategory.DEVICE,
-                    error_code="TIP_ADJ_ERR",
-                    message=str(e),
-                    source="DejavooSPInAdapter",
-                ),
-            )
+        async with self._tx_lock:
+            if self.in_sacred_state:
+                return self._busy_result(transaction_id)
+            try:
+                root = await self._send(xml)
+                return self._parse_response(root, transaction_id)
+            except Exception as e:
+                logger.error("Tip adjust failed: %s", e)
+                return TransactionResult(
+                    transaction_id=transaction_id,
+                    status=TransactionStatus.ERROR,
+                    error=PaymentError(
+                        category=PaymentErrorCategory.DEVICE,
+                        error_code="TIP_ADJ_ERR",
+                        message=str(e),
+                        source="DejavooSPInAdapter",
+                    ),
+                )
 
     async def close_batch(self) -> BatchResult:
         xml = self._build_xml("BatchClose")
-        try:
-            root = await self._send(xml)
-            if root is not None:
-                resp_msg = root.findtext("RespMSG") or ""
-                success = "Approved" in resp_msg
-                return BatchResult(
-                    batch_id=root.findtext("BatchID") or "UNKNOWN",
-                    transaction_count=int(root.findtext("BatchCount") or "0"),
-                    total_amount=Decimal(root.findtext("BatchAmount") or "0.00"),
-                    status=BatchStatus.SUCCESS if success else BatchStatus.FAILED,
-                    timestamp=datetime.now()
+        # Batch close must not race a live sale (device cannot settle
+        # with a pending authorization). Same lock as the starts.
+        async with self._tx_lock:
+            try:
+                root = await self._send(xml)
+                if root is not None:
+                    resp_msg = root.findtext("RespMSG") or ""
+                    success = "Approved" in resp_msg
+                    # Harden the numeric parses: the device has been seen to
+                    # emit `""` or a non-numeric marker in exceptional cases
+                    # (post-outage, firmware quirks). Without these guards
+                    # the int/Decimal coercion raises into the bare except
+                    # below and we return FAILED with no reason — silent
+                    # settlement drift.
+                    try:
+                        batch_count = int(root.findtext("BatchCount") or "0")
+                    except (TypeError, ValueError):
+                        logger.warning("SPIn close_batch: non-numeric BatchCount=%r", root.findtext("BatchCount"))
+                        batch_count = 0
+                    try:
+                        batch_amount = Decimal(root.findtext("BatchAmount") or "0.00")
+                    except Exception:
+                        logger.warning("SPIn close_batch: non-decimal BatchAmount=%r", root.findtext("BatchAmount"))
+                        batch_amount = Decimal("0.00")
+                    return BatchResult(
+                        batch_id=root.findtext("BatchID") or "UNKNOWN",
+                        transaction_count=batch_count,
+                        total_amount=batch_amount,
+                        status=BatchStatus.SUCCESS if success else BatchStatus.FAILED,
+                        timestamp=datetime.now()
+                    )
+            except Exception as e:
+                # The bare `pass` here used to make every close_batch
+                # failure invisible. Log so the bug report picks it up.
+                logger.exception("SPIn close_batch raised: %s", e)
+            return BatchResult(
+                batch_id="ERROR",
+                transaction_count=0,
+                total_amount=Decimal("0.00"),
+                status=BatchStatus.FAILED,
+                error=PaymentError(
+                    category=PaymentErrorCategory.SYSTEM,
+                    error_code="BATCH_ERR",
+                    message="Batch close failed",
+                    source="DejavooSPInAdapter"
                 )
-        except Exception as e:
-            pass
-        return BatchResult(
-            batch_id="ERROR",
-            transaction_count=0,
-            total_amount=Decimal("0.00"),
-            status=BatchStatus.FAILED,
-            error=PaymentError(
-                category=PaymentErrorCategory.SYSTEM,
-                error_code="BATCH_ERR",
-                message="Batch close failed",
-                source="DejavooSPInAdapter"
             )
-        )
 
     async def get_device_info(self) -> Dict[str, Any]:
         return {
@@ -206,27 +293,33 @@ class DejavooSPInAdapter(BasePaymentDevice):
     # ── Protocol layer ────────────────────────────────────────────────────────
 
     def _build_xml(self, trans_type: str, params: Dict[str, str] = None) -> str:
-        """Build DVSPIn XML with TransType and auth fields."""
+        """Build DVSPIn XML with TransType and auth fields.
+
+        Every value is XML-escaped before being inserted. Without this,
+        a RefId / transaction_id containing `&`, `<`, `>`, or a quote
+        produces malformed XML that the device rejects — or worse,
+        that breaks parsing asymmetrically.
+        """
         parts = ["<request>"]
 
         # Transaction params first (matches working first_transaction.py order)
         if params:
             for k, v in params.items():
-                parts.append(f"<{k}>{v}</{k}>")
+                parts.append(f"<{k}>{_xml_escape(str(v))}</{k}>")
 
         # TransType (not <function>)
-        parts.append(f"<TransType>{trans_type}</TransType>")
+        parts.append(f"<TransType>{_xml_escape(trans_type)}</TransType>")
 
         # Auth fields
         if self._config:
             if self._config.register_id:
-                parts.append(f"<RegisterId>{self._config.register_id}</RegisterId>")
+                parts.append(f"<RegisterId>{_xml_escape(str(self._config.register_id))}</RegisterId>")
             tpn = getattr(self._config, 'tpn', None) or ''
             if tpn:
-                parts.append(f"<TPN>{tpn}</TPN>")
+                parts.append(f"<TPN>{_xml_escape(str(tpn))}</TPN>")
             auth_key = getattr(self._config, 'auth_key', None) or ''
             if auth_key:
-                parts.append(f"<AuthKey>{auth_key}</AuthKey>")
+                parts.append(f"<AuthKey>{_xml_escape(str(auth_key))}</AuthKey>")
 
         parts.append("</request>")
         return "".join(parts)
@@ -245,9 +338,7 @@ class DejavooSPInAdapter(BasePaymentDevice):
         url = f"http://{self._config.ip_address}:{self._config.port}/spin/cgi.html?TerminalTransaction={encoded}"
 
         try:
-            logger.debug(f"SPIn → GET {self._config.ip_address}:{self._config.port} : {xml_body}")
-            print(f"  SPIn → {self._config.ip_address}:{self._config.port}")
-            print(f"  SPIn XML: {xml_body}")
+            logger.debug("SPIn → GET %s:%s : %s", self._config.ip_address, self._config.port, xml_body)
 
             request_timeout = timeout or 60.0
             async with httpx.AsyncClient(timeout=request_timeout) as client:
@@ -260,8 +351,7 @@ class DejavooSPInAdapter(BasePaymentDevice):
             except Exception:
                 body = resp.content.decode('utf-8', errors='replace').strip()
 
-            logger.debug(f"SPIn ← {body}")
-            print(f"  SPIn ← {resp.status_code} ({len(body)} bytes)")
+            logger.debug("SPIn ← %s (%d bytes) %s", resp.status_code, len(body), body)
 
             # Strip <xmp>...</xmp> wrapper if present
             if "<xmp>" in body:
@@ -271,18 +361,17 @@ class DejavooSPInAdapter(BasePaymentDevice):
 
             body = body.strip()
             if not body:
-                print(f"  SPIn ← empty body after stripping xmp")
+                logger.info("SPIn ← empty body after stripping xmp")
                 return None
 
             # URL-decode any encoded chars in the response
             body = urllib.parse.unquote(body)
-            print(f"  SPIn resp:  {body}")
+            logger.debug("SPIn resp parsed: %s", body)
 
             return ET.fromstring(body)
 
         except Exception as e:
-            logger.error(f"SPIn request failed: {type(e).__name__}: {e}")
-            print(f"  SPIn request failed: {type(e).__name__}: {e}")
+            logger.error("SPIn request failed: %s: %s", type(e).__name__, e)
             return None
 
     def _parse_response(self, root: Optional[ET.Element], expected_inv: str) -> TransactionResult:

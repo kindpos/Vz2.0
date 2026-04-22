@@ -13,7 +13,7 @@ export let PAY_SCHEDULE = { frequency: 'bi-weekly', nextPayDate: '' };
 export let PAYROLL_SUMMARY = {
     period: { start: weekAgoStr(), end: todayStr() },
     totalSales: 0,
-    laborSummary: { totalHours: 0, regularHours: 0, overtimeHours: 0, totalLabor: 0, laborPct: 0 },
+    laborSummary: { totalHours: 0, regularHours: 0, overtimeHours: 0, totalLabor: 0, totalWages: 0, totalTips: 0, laborPct: 0 },
     employees: [],
 };
 
@@ -57,6 +57,14 @@ export async function loadPayrollData(startDate, endDate) {
         const totalHours = employees.reduce((s, e) => s + e.hoursWorked, 0);
         const totalLabor = employees.reduce((s, e) => s + e.grossPay, 0);
         const overtimeHours = employees.reduce((s, e) => s + e.overtimeHours, 0);
+        // totalWages and totalTips are consumed by payroll-tips.js summary
+        // cards + the export modal. Previously they were never populated
+        // here, so the UI showed $0.00 for wages and tips and the export
+        // shipped `undefined` (serialized to null server-side). Sum them
+        // from the per-employee rows the UI already displays so the two
+        // numbers match.
+        const totalWages = employees.reduce((s, e) => s + e.grossPay, 0);
+        const totalTips  = employees.reduce((s, e) => s + e.tips, 0);
 
         PAYROLL_SUMMARY = {
             period: { start: startDate || weekAgoStr(), end: endDate || todayStr() },
@@ -66,6 +74,8 @@ export async function loadPayrollData(startDate, endDate) {
                 regularHours: Math.round((totalHours - overtimeHours) * 100) / 100,
                 overtimeHours: Math.round(overtimeHours * 100) / 100,
                 totalLabor: Math.round(totalLabor * 100) / 100,
+                totalWages: Math.round(totalWages * 100) / 100,
+                totalTips:  Math.round(totalTips  * 100) / 100,
                 laborPct: totalSales > 0 ? Math.round((totalLabor / totalSales) * 10000) / 100 : 0,
             },
             employees,

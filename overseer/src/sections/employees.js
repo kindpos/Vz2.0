@@ -746,9 +746,17 @@ function showPINResetModal(container, employee) {
             }
             const forceChange = forceChip.input.checked;
 
+            // Send the REAL new PIN so the backend can persist it. The
+            // previous code sent `new_pin_hash: 'SHA256_SIMULATED'` — a
+            // literal string placeholder that /config/push happily wrote
+            // to the ledger. The employee would then try to log in with
+            // the PIN they'd been handed and fail, because the stored
+            // hash still matched the OLD PIN. `/config/push` now runs
+            // plaintext PINs through ensure_hashed_pin, same as POST
+            // /config/employees does on create.
             emitEvent('employee.updated', {
                 employee_id: employee.id,
-                new_pin_hash: 'SHA256_SIMULATED',
+                pin: newPIN,
                 force_change_on_login: forceChange,
                 reset_reason: 'Manager-initiated reset',
             });

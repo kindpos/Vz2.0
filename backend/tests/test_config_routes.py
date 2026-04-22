@@ -275,3 +275,88 @@ class TestEmployeeRoute:
         # Decimal round-trips via repr — compare via Decimal equality so
         # "15.5" and "15.50" are treated the same.
         assert _D(str(payload["hourly_rate"])) == _D("15.5")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PIN hashing on the batch push path (manager PIN-reset flow)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestPushChangesPinHashing:
+    """The PIN-reset modal in overseer/sections/employees.js sends
+    `employee.updated` with a plaintext `pin` via /config/push. Before
+    the fix, that value landed in the ledger as plaintext and verify
+    attempts compared plaintext-to-plaintext, silently breaking the
+    hashed-at-rest invariant. These tests pin the hashing contract."""
+
+    @pytest.mark.asyncio
+    async def test_employee_updated_pin_is_hashed(self, ledger, bg):
+        from app.core.pin_hash import verify_pin_hash, is_hashed
+
+        await cfg.push_changes(
+            changes=[
+                PendingChange(
+                    event_type="employee.updated",
+                    payload={"employee_id": "e1", "pin": "9999"},
+                ),
+            ],
+            background_tasks=bg, ledger=ledger,
+        )
+        events = await ledger.get_events_by_type(EventType.EMPLOYEE_UPDATED)
+        assert len(events) == 1
+        payload = events[0].payload
+        assert is_hashed(payload["pin"]), "PIN on /push must be hashed before ledger append"
+        assert verify_pin_hash("9999", payload["pin"])
+
+    @pytest.mark.asyncio
+    async def test_already_hashed_pin_is_not_rehashed(self, ledger, bg):
+        """`ensure_hashed_pin` is idempotent — an already-hashed input
+        round-trips. Covers the case where a caller pre-hashes."""
+        from app.core.pin_hash import hash_pin, verify_pin_hash
+
+        pre = hash_pin("4321")
+        await cfg.push_changes(
+            changes=[
+                PendingChange(
+                    event_type="employee.updated",
+                    payload={"employee_id": "e2", "pin": pre},
+                ),
+            ],
+            background_tasks=bg, ledger=ledger,
+        )
+        events = await ledger.get_events_by_type(EventType.EMPLOYEE_UPDATED)
+        # Whatever landed must still verify the original plaintext.
+        assert verify_pin_hash("4321", events[0].payload["pin"])
+
+    @pytest.mark.asyncio
+    async def test_employee_updated_without_pin_is_untouched(self, ledger, bg):
+        """A partial update that omits `pin` must not invent one. The
+        projection merge then preserves the existing hash."""
+        res = await cfg.push_changes(
+            changes=[
+                PendingChange(
+                    event_type="employee.updated",
+                    payload={"employee_id": "e3", "hourly_rate": "16.00"},
+                ),
+            ],
+            background_tasks=bg, ledger=ledger,
+        )
+        events = await ledger.get_events_by_type(EventType.EMPLOYEE_UPDATED)
+        assert "pin" not in (events[0].payload or {})
+        assert res["events_written"] == 1
+
+    @pytest.mark.asyncio
+    async def test_non_employee_events_pass_through_unchanged(self, ledger, bg):
+        """The hash hook is scoped to employee.* events; a store/menu/
+        tipout event with a stray `pin` field (shouldn't happen, but
+        defense in depth) is not our concern and stays as-is."""
+        await cfg.push_changes(
+            changes=[
+                PendingChange(
+                    event_type="store.info_updated",
+                    payload={"restaurant_name": "X", "pin": "1234"},
+                ),
+            ],
+            background_tasks=bg, ledger=ledger,
+        )
+        events = await ledger.get_events_by_type(EventType.STORE_INFO_UPDATED)
+        assert events[0].payload.get("pin") == "1234"

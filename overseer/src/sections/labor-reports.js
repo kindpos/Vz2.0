@@ -109,8 +109,14 @@ async function render(container) {
 
         data.employees.forEach(e => {
             const hours = e.hours || 0;
+            const weeklyHours = e.weekly_hours || 0;
             const rate = e.hourly_rate || 0;
-            const overtime = Math.max(0, hours - 40);
+            // Federal overtime: weekly hours > 40, not the daily `hours`.
+            // The KPI card was already fixed in a prior round (line 77
+            // here) but the per-employee row was still using the daily
+            // value — so the Overtime column showed "—" for everyone
+            // except the rare employee who pulled a 40-hour shift.
+            const overtime = Math.max(0, weeklyHours - 40);
             const gross = e.gross_pay || (hours * rate);
             const row = document.createElement('div');
             row.style.cssText = 'display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(var(--color-mint-rgb),0.08);font-size:20px;';

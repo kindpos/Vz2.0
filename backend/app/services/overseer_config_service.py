@@ -89,6 +89,19 @@ class OverseerConfigService:
             eid = payload["employee_id"]
             if e.event_type == EventType.EMPLOYEE_DELETED:
                 emps.pop(eid, None)
+            elif e.event_type == EventType.EMPLOYEE_UPDATED and eid in emps:
+                # Partial-update preservation: EMPLOYEE_UPDATED events
+                # from the UI rarely carry the `pin` (or `hourly_rate`,
+                # `active`) — they just patch the fields the user edited.
+                # Previously `Employee(**payload)` used the model
+                # defaults for any omitted field, which replaced the
+                # existing hashed PIN with "" and locked the employee
+                # out the next day. Now we merge the new payload over
+                # the current record so only explicitly-supplied fields
+                # overwrite.
+                existing = emps[eid].model_dump()
+                merged = {**existing, **payload}
+                emps[eid] = Employee(**merged)
             else:
                 emps[eid] = Employee(**payload)
         result = list(emps.values())

@@ -249,6 +249,7 @@ EVENT_CODE_REGISTRY: dict[str, str] = {
     "FIN-005": "Overpayment clamped at route layer",
     "FIN-006": "Tip adjustment after day close attempted",
     "FIN-007": "Mutation blocked while day-close was in progress",
+    "FIN-008": "Orphaned PAYMENT_INITIATED swept at startup (crash recovery)",
 
     # UI / SCENE LIFECYCLE (UI-)
     "UI-001": "Interrupt stacked over an existing interrupt (prior torn down)",

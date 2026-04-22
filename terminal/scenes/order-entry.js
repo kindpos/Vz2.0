@@ -1953,7 +1953,14 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     optMods.forEach(function(m) {
       var halfSide = m.placement === '1st' ? 'Left' : m.placement === '2nd' ? 'Right' : null;
       var charged = (m.prefix === 'ADD' || m.prefix === 'EXTRA') && m.price > 0;
-      previewMods.push({ name: m.prefix + ' ' + m.label, price: charged ? m.price : 0, charged: charged, prefix: halfSide });
+      // `activePrefix` starts as null (line 1312) and stays null until
+      // the server taps ADD/NO/EXTRA/etc. A modifier picked before any
+      // prefix is chosen previously rendered as "null Pepperoni" on
+      // both the preview and (via commitModifierPanelItem) the kitchen
+      // ticket. Treat null prefix as "no prefix marker" — just the
+      // label, same as unadorned additions.
+      var displayName = m.prefix ? (m.prefix + ' ' + m.label) : m.label;
+      previewMods.push({ name: displayName, price: charged ? m.price : 0, charged: charged, prefix: halfSide });
     });
 
     callbacks.onUpdate({ itemLabel: item.label, basePrice: itemPx, mods: previewMods });
@@ -2278,8 +2285,13 @@ function commitModifierPanelItem(originalItem, activeItem, modConfig) {
   activeItem.optionalModifiers.forEach(function(m) {
     var charged = m.prefix !== 'NO' && m.price > 0;
     var halfSide = m.placement === '1st' ? 'Left' : m.placement === '2nd' ? 'Right' : null;
+    // `m.prefix` is null if the modifier was picked before the server
+    // tapped ADD/NO/EXTRA. Treat null as "unprefixed" rather than
+    // concatenating literal "null ". Previously shipped "null Pepperoni"
+    // to the kitchen ticket and the charged name.
+    var displayName = m.prefix ? (m.prefix + ' ' + m.label) : m.label;
     var parentMod = {
-      name: m.prefix + ' ' + m.label,
+      name: displayName,
       price: m.prefix === 'NO' ? 0 : m.price,
       charged: charged,
       prefix: halfSide,

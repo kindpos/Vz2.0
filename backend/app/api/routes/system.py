@@ -18,9 +18,10 @@ import subprocess
 import threading
 from pathlib import Path
 from datetime import datetime
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from app.api.routes.auth import require_manager
 from app.config import settings
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -118,10 +119,15 @@ def _run_pytest_in_thread(queue, loop):
     asyncio.run_coroutine_threadsafe(queue.put(f"__DONE__:{exit_code}"), loop)
 
 
-@router.post("/run-tests")
+@router.post("/run-tests", dependencies=[Depends(require_manager)])
 async def run_tests():
     """
     Execute the full pytest suite and stream output via Server-Sent Events.
+
+    Manager-gated: spawns a subprocess and streams pytest output to the
+    caller. Without this gate anyone on the LAN could trigger a test run
+    (CPU burn + information leak via assertion messages). Under
+    `KINDPOS_AUTH_ENFORCED=true` only manager/admin/owner roles pass.
 
     Full endpoint path: POST /api/v1/system/run-tests
 
