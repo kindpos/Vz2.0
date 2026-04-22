@@ -54,13 +54,42 @@ function sectionOptions(sections) {
 }
 
 /* ------------------------------------------
+   ID ASSIGNMENT
+   Terminal IDs are auto-generated in "T-NN" form so staff can't
+   collide on handles like "front register"; the human-readable
+   label lives in the Name field. Gaps are NOT backfilled — always
+   take max + 1 so retired IDs stay retired in the ledger history.
+------------------------------------------ */
+const TERMINAL_ID_PREFIX = 'T-';
+
+function nextTerminalId(existing) {
+  let max = 0;
+  for (const t of (existing || [])) {
+    const id = t && t.terminal_id;
+    if (typeof id !== 'string') continue;
+    const m = /^T-(\d+)$/i.exec(id);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return `${TERMINAL_ID_PREFIX}${String(max + 1).padStart(2, '0')}`;
+}
+
+/* ------------------------------------------
    ADD / EDIT MODAL
 ------------------------------------------ */
-function openTerminalModal(terminal, sections, onSaved) {
+function openTerminalModal(terminal, sections, existingTerminals, onSaved) {
   const isEdit = !!terminal;
 
+  // IDs are assigned by us (T-01, T-02, …) so the admin only picks
+  // the name. On add we pre-compute the next slot; on edit we keep
+  // whatever id is already on the record.
+  const assignedId = isEdit
+    ? (terminal.terminal_id || '')
+    : nextTerminalId(existingTerminals);
+
   const draft = {
-    terminal_id:        terminal?.terminal_id       || '',
+    terminal_id:        assignedId,
     name:               terminal?.name              || '',
     role:               terminal?.role              || 'register',
     default_section_id: terminal?.default_section_id || null,
@@ -70,21 +99,48 @@ function openTerminalModal(terminal, sections, onSaved) {
   const content = document.createElement('div');
   content.style.cssText = `display: flex; flex-direction: column; gap: ${T.sp.lg}px;`;
 
-  // Terminal ID
-  const idF = field({
-    label: 'Terminal ID',
-    id: 'ts-id',
-    value: draft.terminal_id,
-    placeholder: 'terminal_01',
-    required: true,
-  });
-  if (isEdit) {
-    idF.input.disabled = true;
-    idF.input.style.opacity = '0.6';
-    idF.input.style.cursor = 'not-allowed';
-  }
-  idF.input.addEventListener('input', e => { draft.terminal_id = e.target.value; });
-  content.appendChild(idF.wrap);
+  // Terminal ID — read-only info line. We own the numbering.
+  const idBlock = document.createElement('div');
+  idBlock.style.cssText = `display: flex; flex-direction: column; gap: 6px;`;
+  const idLbl = document.createElement('div');
+  idLbl.style.cssText = `
+    font-family: ${T.font.body};
+    font-size: ${T.fs.base}px;
+    color: ${T.textMuted};
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  `;
+  idLbl.textContent = 'Terminal ID';
+  idBlock.appendChild(idLbl);
+  const idValue = document.createElement('div');
+  idValue.style.cssText = `
+    padding: 10px 14px;
+    background: ${T.well};
+    color: ${T.text};
+    border: 1px solid ${T.border};
+    border-radius: ${T.r.sm}px;
+    font-family: ${T.font.mono};
+    font-size: ${T.fs.lg}px;
+    letter-spacing: 1px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: ${T.sp.md}px;
+  `;
+  const idValueText = document.createElement('span');
+  idValueText.textContent = assignedId;
+  idBlock.style.minHeight = '0';
+  idValue.appendChild(idValueText);
+  const idNote = document.createElement('span');
+  idNote.textContent = isEdit ? 'ASSIGNED' : 'AUTO-ASSIGNED';
+  idNote.style.cssText = `
+    font-family: ${T.font.mono};
+    font-size: ${T.fs.xs}px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: ${T.textDim};
+  `;
+  idValue.appendChild(idNote);
+  idBlock.appendChild(idValue);
+  content.appendChild(idBlock);
 
   // Name
   const nameF = field({
@@ -92,6 +148,7 @@ function openTerminalModal(terminal, sections, onSaved) {
     id: 'ts-name',
     value: draft.name,
     placeholder: 'Front Register',
+    required: true,
   });
   nameF.input.addEventListener('input', e => { draft.name = e.target.value; });
   content.appendChild(nameF.wrap);
@@ -158,8 +215,9 @@ function openTerminalModal(terminal, sections, onSaved) {
     variant: 'primary',
     onClick: async () => {
       const terminalId = (draft.terminal_id || '').trim();
-      if (!terminalId) {
-        showToast('Terminal ID is required', 'error');
+      const name = (draft.name || '').trim();
+      if (!name) {
+        showToast('Name is required', 'error');
         return;
       }
       saveBtn.disabled = true;
@@ -168,7 +226,7 @@ function openTerminalModal(terminal, sections, onSaved) {
 
       const payload = {
         terminal_id: terminalId,
-        name: (draft.name || '').trim() || terminalId,
+        name,
         role: draft.role,
         default_section_id: draft.default_section_id,
         training_mode: draft.training_mode,
@@ -279,7 +337,7 @@ function buildTerminalRow(terminal, sections, onRefresh) {
   const editBtn = button({
     label: 'Edit',
     variant: 'ghost',
-    onClick: () => openTerminalModal(terminal, sections, onRefresh),
+    onClick: () => openTerminalModal(terminal, sections, [], onRefresh),
   });
   row.appendChild(editBtn);
 
@@ -306,7 +364,7 @@ async function render(container) {
   actionBar.appendChild(button({
     label: '+ Add Terminal',
     variant: 'primary',
-    onClick: () => openTerminalModal(null, sections, () => render(container)),
+    onClick: () => openTerminalModal(null, sections, terminals, () => render(container)),
   }));
   body.appendChild(actionBar);
 
