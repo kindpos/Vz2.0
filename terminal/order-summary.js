@@ -93,7 +93,7 @@ function _build() {
   _headerTitle.textContent = 'ORDER RECAP';
 
   var checkWrap = document.createElement('div');
-  checkWrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;cursor:pointer;min-width:0;';
+  checkWrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;cursor:pointer;min-width:0;touch-action:manipulation;';
   _checkIdEl = document.createElement('div');
   _checkIdEl.style.cssText = [
     'font-family:' + T.fb + ';',
@@ -281,7 +281,7 @@ function _renderItems(items) {
         'color:' + T.green + ';',
         'letter-spacing:0.14em;',
         'border-bottom:2px solid ' + T.green + ';',
-        'cursor:pointer;user-select:none;',
+        'cursor:pointer;user-select:none;touch-action:manipulation;',
       ].join('');
       var hdrLabel = document.createElement('span');
       hdrLabel.textContent = item.seatId;
@@ -315,7 +315,7 @@ function _renderItems(items) {
       'color:' + (isSel ? T.well : T.text) + ';',
       isSel ? 'background:' + T.gold + ';border-radius:6px;' : '',
       'border-bottom:1px solid ' + hexToRgba(T.border, 0.4) + ';',
-      isCollapsible ? 'cursor:pointer;user-select:none;' : '',
+      isCollapsible ? 'cursor:pointer;user-select:none;touch-action:manipulation;' : '',
     ].join('');
     var name = document.createElement('span');
     name.textContent = (item.sent ? '\u2713 ' : '') + item.name;

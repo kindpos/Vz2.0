@@ -208,6 +208,12 @@ function unmountWorking(sceneName) {
 
 function _unmountWorkingInternal() {
   if (!_workingScene) return;
+  // Tear down layers above working first; their cleanup (intervals, listeners,
+  // DOM) is owned by the working scene's lifetime. Without this, switching
+  // working scenes while a transactional or interrupt is open orphans them
+  // in their layer with live timers and unreachable DOM.
+  if (_interruptScene) resolveInterrupt();
+  if (_transactionalStack.length > 0) closeAllTransactional();
   var scene = _scenes[_workingScene.name];
   if (scene && scene.unmount) scene.unmount();
   if (typeof _workingScene.cleanup === 'function') _workingScene.cleanup();

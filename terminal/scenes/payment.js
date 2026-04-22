@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../tokens.js';
-import { chamfer, applySunkenStyle, buildStyledButton, hexToRgba } from '../sm2-shim.js';
+import { chamfer, applySunkenStyle, buildStyledButton, hexToRgba, fetchWithTimeout } from '../sm2-shim.js';
 import { buildButton, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { setSceneName, setHeaderBack } from '../app.js';
@@ -975,11 +975,11 @@ async function handleConfirm() {
           payment_method: 'cash',
       };
       if (seatNumbers) cashBody.seat_numbers = seatNumbers;
-      var res = await fetch(API + '/payments/cash', {
+      var res = await fetchWithTimeout(API + '/payments/cash', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cashBody),
-      });
+      }, 20000);
       if (!res.ok) {
         var err = await res.json().catch(function() { return {}; });
         confirmProcessing = false;

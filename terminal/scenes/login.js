@@ -25,6 +25,7 @@ function darkenHex(hex, pct) {
 import { buildNumpad } from '../numpad.js';
 import { showToast }   from '../components.js';
 import { setToken, clearToken } from '../auth-client.js';
+import { fetchWithTimeout }     from '../sm2-shim.js';
 
 // ── Constants ─────────────────────────────────────
 const PIN_LENGTH = 4;
@@ -303,9 +304,14 @@ defineScene({
         });
       });
 
+      var _overlayClosed = false;
       function _closeOverlay() {
+        if (_overlayClosed) return;
+        _overlayClosed = true;
         overlay.style.transform = 'translateX(-100%)';
-        setTimeout(function() { overlay.remove(); }, 260);
+        setTimeout(function() {
+          if (overlay.parentNode) overlay.remove();
+        }, 260);
       }
 
       function _buildContent(empData) {
@@ -481,9 +487,12 @@ defineScene({
         body.appendChild(clockInBtn);
 
         // Fetch active pools in the background so they're ready when a role is picked.
-        fetch('/api/v1/config/tip_pools')
+        fetchWithTimeout('/api/v1/config/tip_pools', {}, 10000)
           .then(function(r) { return r.ok ? r.json() : []; })
-          .then(function(pools) { _allPools = Array.isArray(pools) ? pools : []; })
+          .then(function(pools) {
+            if (_overlayClosed) return;
+            _allPools = Array.isArray(pools) ? pools : [];
+          })
           .catch(function() { _allPools = []; });
 
         var clockOutBtn = buildPillButton({ label: 'CLOCK OUT', color: T.verm, darkBg: T.vermDk, fontSize: T.fsB3 });
@@ -496,32 +505,41 @@ defineScene({
         body.appendChild(cancelBtn);
 
         // Clocked-in check
-        fetch('/api/v1/servers/clocked-in').then(function(r) { return r.json(); }).then(function(d) {
-          var match = (d.staff || []).find(function(s) { return s.employee_id === empId; });
-          if (match) {
-            sub.textContent = 'You are currently clocked in';
-            greet.style.color = T.green;
-            roleGrid.style.display = 'none';
-            clockInBtn.style.display = 'none';
-            clockOutBtn.style.display = '';
-          }
-        }).catch(function() {});
+        fetchWithTimeout('/api/v1/servers/clocked-in', {}, 10000)
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (_overlayClosed) return;
+            var match = (d.staff || []).find(function(s) { return s.employee_id === empId; });
+            if (match) {
+              sub.textContent = 'You are currently clocked in';
+              greet.style.color = T.green;
+              roleGrid.style.display = 'none';
+              clockInBtn.style.display = 'none';
+              clockOutBtn.style.display = '';
+            }
+          }).catch(function() {});
 
         // Hours fetch
         var today = new Date();
         var ds = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
-        fetch('/api/v1/reports/labor-summary?date=' + ds + '&server_id=' + encodeURIComponent(empId))
+        fetchWithTimeout('/api/v1/reports/labor-summary?date=' + ds + '&server_id=' + encodeURIComponent(empId), {}, 10000)
           .then(function(r){return r.json();})
-          .then(function(d){ hrsVal.textContent = (d.weekly_hours||d.total_hours||0).toFixed(2)+'h'; })
-          .catch(function(){ hrsVal.textContent = '0.00h'; });
+          .then(function(d){
+            if (_overlayClosed) return;
+            hrsVal.textContent = (d.weekly_hours||d.total_hours||0).toFixed(2)+'h';
+          })
+          .catch(function(){
+            if (_overlayClosed) return;
+            hrsVal.textContent = '0.00h';
+          });
 
         // Clock In action
         clockInBtn.addEventListener('pointerup', function() {
           if (!selectedRole) return;
           clockInBtn.style.opacity = '0.35'; clockInBtn.style.pointerEvents = 'none';
-          fetch('/api/v1/servers/clock-in', { method:'POST', headers:{'Content-Type':'application/json'},
+          fetchWithTimeout('/api/v1/servers/clock-in', { method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({ employee_id: empId, employee_name: empName, role: selectedRole, pool_memberships: selectedPoolIds }),
-          }).then(function(r) {
+          }, 15000).then(function(r) {
             if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail||'Failed'); });
             return r.json();
           }).then(function() {
@@ -539,9 +557,9 @@ defineScene({
         // Clock Out action
         clockOutBtn.addEventListener('pointerup', function() {
           clockOutBtn.style.opacity = '0.35'; clockOutBtn.style.pointerEvents = 'none';
-          fetch('/api/v1/servers/clock-out', { method:'POST', headers:{'Content-Type':'application/json'},
+          fetchWithTimeout('/api/v1/servers/clock-out', { method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({ employee_id: empId, employee_name: empName }),
-          }).then(function(r) {
+          }, 15000).then(function(r) {
             if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail||'Failed'); });
             return r.json();
           }).then(function() {

@@ -37,6 +37,7 @@ import { setSceneName, setHeaderBack } from '../app.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
 import { computeTotals, getTaxRate } from '../pricing.js';
 import { buildItemRecap, buildItemRecapTotals } from '../components/item-recap.js';
+import { fetchWithTimeout } from '../sm2-shim.js';
 import './column-editor.js';
 
 var _refreshInFlight = false;
@@ -744,11 +745,11 @@ defineScene({
 
         var numpad = buildNumpad({
           onSubmit: function(pin) {
-            fetch('/api/v1/auth/verify-pin', {
+            fetchWithTimeout('/api/v1/auth/verify-pin', {
               method:  'POST',
               headers: { 'Content-Type': 'application/json' },
               body:    JSON.stringify({ pin: pin }),
-            }).then(function(r) { return r.json(); }).then(function(data) {
+            }, 10000).then(function(r) { return r.json(); }).then(function(data) {
               if (data.valid && (data.roles || []).indexOf('manager') !== -1) {
                 params.onConfirm(data.employee_id || pin);
               } else if (data.valid) {
@@ -2015,7 +2016,7 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     return;
   }
 
-  fetch('/api/v1/orders/' + state.orderId + '/discount', {
+  fetchWithTimeout('/api/v1/orders/' + state.orderId + '/discount', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({
@@ -2025,7 +2026,7 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
       approved_by:   approvedBy || null,
       item_ids:      itemIds.length ? itemIds : null,
     }),
-  }).then(function(r) {
+  }, 15000).then(function(r) {
     if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'HTTP ' + r.status); });
     return r.json();
   }).then(function() {

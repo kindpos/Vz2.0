@@ -163,6 +163,25 @@ export function applyCardBevel(el, _width) {
   if (!el.style.boxShadow)    el.style.boxShadow    = '0 4px 16px rgba(0,0,0,0.28)';
 }
 
+// ═══════════════════════════════════════════════════
+//  fetchWithTimeout — fetch with an abort-on-timeout guard.
+//  Without this, a stalled backend leaves spinners spinning until the
+//  browser default network timeout (~120s). Aborts produce a normal
+//  rejection that callers' .catch / try-catch can recover from.
+//
+//  Usage: fetchWithTimeout('/api/...', { method: 'POST', body }, 15000)
+//  Default timeout: 15 seconds.
+// ═══════════════════════════════════════════════════
+
+export function fetchWithTimeout(url, opts, ms) {
+  opts = opts || {};
+  if (ms == null) ms = 15000;
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, ms);
+  var merged = Object.assign({}, opts, { signal: opts.signal || controller.signal });
+  return fetch(url, merged).finally(function() { clearTimeout(timer); });
+}
+
 // Re-export theme-manager primitives for convenience — lets SM2 files
 // get everything they need from this single shim import.
 export { hexToRgba, darkenHex };

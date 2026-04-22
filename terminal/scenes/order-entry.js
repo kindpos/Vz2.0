@@ -54,6 +54,7 @@ import { showHalfPlacementOverlay } from '../half-placement-overlay.js';
 import { showPizzaBuilderOverlay } from '../pizza-builder-overlay.js';
 import { PREFIXES as UNI_PREFIXES, getModHexData, hasPizzaCategory, PIZZA_PLACEMENTS, MOD_COLORS } from '../menu-data/universal-modifiers.js';
 import { computeTotals } from '../pricing.js';
+import { fetchWithTimeout } from '../sm2-shim.js';
 
 // Local bevel colors kept for any call sites that still reference them.
 var _bevelL = T.green;
@@ -904,6 +905,10 @@ function _bindItemTile(tile, item, menuCat) {
   });
 
   tile.addEventListener('pointerleave', function() {
+    clearTimeout(longPressTimer);
+  });
+
+  tile.addEventListener('pointercancel', function() {
     clearTimeout(longPressTimer);
   });
 }
@@ -2999,6 +3004,9 @@ function _renderTicketGroup(list, displayTicket) {
       gc.addEventListener('pointerleave', function() {
         clearTimeout(_qtyHoldTimer);
       });
+      gc.addEventListener('pointercancel', function() {
+        clearTimeout(_qtyHoldTimer);
+      });
 
       list.appendChild(gc);
 
@@ -3456,7 +3464,7 @@ async function handleSaveOnly() {
     // Step 1 — create order if needed
     if (!currentOrderId) {
       if (!createOrderIdemKey) createOrderIdemKey = _idemKey();
-      var createRes = await fetch(API + '/orders', {
+      var createRes = await fetchWithTimeout(API + '/orders', {
         method: 'POST',
         headers: {
           'Content-Type':    'application/json',
@@ -3469,7 +3477,7 @@ async function handleSaveOnly() {
           server_id:     sceneParams.employeeId || null,
           server_name:   sceneParams.employeeName || null,
         }),
-      });
+      }, 15000);
       if (!createRes.ok) throw new Error('Order create failed: ' + createRes.status);
       var created = await createRes.json();
       if (!created || !created.order_id) throw new Error('Invalid order response — missing order_id');
@@ -3481,11 +3489,11 @@ async function handleSaveOnly() {
     var itemPromises = [];
     for (var ui = 0; ui < unsentInstances.length; ui++) {
       var inst = unsentInstances[ui];
-      itemPromises.push({ inst: inst, promise: fetch(API + '/orders/' + currentOrderId + '/items', {
+      itemPromises.push({ inst: inst, promise: fetchWithTimeout(API + '/orders/' + currentOrderId + '/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': inst.idemKey || _idemKey() },
         body: JSON.stringify(_buildItemPayload(inst)),
-      })});
+      }, 15000)});
     }
     var results = await Promise.allSettled(itemPromises.map(function(p) { return p.promise; }));
     var anyFailed = false;
@@ -3519,8 +3527,8 @@ async function handleSend() {
   if (unsentInstances.length === 0 && currentOrderId) {
     isSending = true;
     try {
-      await fetch(API + '/orders/' + currentOrderId + '/send', { method: 'POST' });
-      fetch(API + '/print/ticket/' + currentOrderId, { method: 'POST' })
+      await fetchWithTimeout(API + '/orders/' + currentOrderId + '/send', { method: 'POST' }, 15000);
+      fetchWithTimeout(API + '/print/ticket/' + currentOrderId, { method: 'POST' }, 15000)
         .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); })
         .catch(function(err) {
           console.warn('[KINDpos] Kitchen print failed:', err);
@@ -3543,7 +3551,7 @@ async function handleSend() {
     // Step 1 — create order on first send, reuse on subsequent sends
     if (!currentOrderId) {
       if (!createOrderIdemKey) createOrderIdemKey = _idemKey();
-      var createRes = await fetch(API + '/orders', {
+      var createRes = await fetchWithTimeout(API + '/orders', {
         method: 'POST',
         headers: {
           'Content-Type':    'application/json',
@@ -3556,7 +3564,7 @@ async function handleSend() {
           server_id:     sceneParams.employeeId || null,
           server_name:   sceneParams.employeeName || null,
         }),
-      });
+      }, 15000);
       if (!createRes.ok) throw new Error('Order create failed: ' + createRes.status);
       var created = await createRes.json();
       if (!created || !created.order_id) throw new Error('Invalid order response — missing order_id');
@@ -3569,11 +3577,11 @@ async function handleSend() {
     var itemPromises = [];
     for (var ui = 0; ui < unsentInstances.length; ui++) {
       var inst = unsentInstances[ui];
-      itemPromises.push({ inst: inst, promise: fetch(API + '/orders/' + currentOrderId + '/items', {
+      itemPromises.push({ inst: inst, promise: fetchWithTimeout(API + '/orders/' + currentOrderId + '/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': inst.idemKey || _idemKey() },
         body: JSON.stringify(_buildItemPayload(inst)),
-      })});
+      }, 15000)});
     }
     var results = await Promise.allSettled(itemPromises.map(function(p) { return p.promise; }));
     var anyFailed = false;
@@ -3595,7 +3603,7 @@ async function handleSend() {
     // r.ok: fetch resolves for 4xx/5xx too, so without this guard a 500
     // here would let us fall through to line 3586 and mark every item
     // `sent` even though kitchen never got them — UI and ledger diverge.
-    var sendRes = await fetch(API + '/orders/' + currentOrderId + '/send', { method: 'POST' });
+    var sendRes = await fetchWithTimeout(API + '/orders/' + currentOrderId + '/send', { method: 'POST' }, 15000);
     if (!sendRes.ok) {
       renderTicket();
       throw new Error('Send to kitchen failed: HTTP ' + sendRes.status);
@@ -3605,7 +3613,7 @@ async function handleSend() {
     ticket.forEach(function(inst) { inst.sent = true; });
 
     // Fire kitchen print — non-blocking, dispatcher handles retry
-    fetch(API + '/print/ticket/' + currentOrderId, { method: 'POST' })
+    fetchWithTimeout(API + '/print/ticket/' + currentOrderId, { method: 'POST' }, 15000)
       .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); })
       .catch(function(err) {
         console.warn('[KINDpos] Kitchen print failed:', err);
