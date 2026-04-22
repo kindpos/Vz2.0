@@ -1964,10 +1964,10 @@ function handleDiscount(state) {
   }
 
   SceneManager.interrupt('disc-pin', {
-    onConfirm: function() {
+    onConfirm: function(approvedBy) {
       SceneManager.interrupt('disc-select', {
         onConfirm: function(opt) {
-          _applyDiscount(state, opt.pct, itemRefs, seatIds);
+          _applyDiscount(state, opt.pct, itemRefs, seatIds, approvedBy);
         },
         onCancel: function() {},
       });
@@ -1976,7 +1976,7 @@ function handleDiscount(state) {
   });
 }
 
-function _applyDiscount(state, pct, itemRefs, seatIds) {
+function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
   // Expand seat selections into item refs
   if (itemRefs.length === 0 && seatIds.length > 0) {
     for (var s = 0; s < seatIds.length; s++) {
@@ -1988,6 +1988,12 @@ function _applyDiscount(state, pct, itemRefs, seatIds) {
     }
   }
 
+  // Compute the actual dollar amount discounted AND collect the
+  // server-side item_ids so the backend can attribute the DISCOUNT
+  // event to the right rows. Previously this was in-memory only with
+  // a TODO — discount survived re-render but not refresh/re-login.
+  var amount = 0;
+  var itemIds = [];
   for (var i = 0; i < itemRefs.length; i++) {
     var r = itemRefs[i];
     var it = state.seats[r.seatIdx].items[r.itemIdx];
@@ -1996,16 +2002,44 @@ function _applyDiscount(state, pct, itemRefs, seatIds) {
     if (Array.isArray(it.mods)) {
       for (var m = 0; m < it.mods.length; m++) modSum += (it.mods[m].price || 0);
     }
-    var effective = base + modSum;
-    it.effectivePrice = effective * (1 - pct / 100);
+    var effective = (base + modSum) * (it.qty || 1);
+    amount += effective * (pct / 100);
+    if (it.item_id) itemIds.push(it.item_id);
+  }
+  // Match backend `_validate_2dp` — 2dp precision or the event is
+  // rejected. `Number(x.toFixed(2))` also dodges float drift from the
+  // pct / 100 division above.
+  amount = Number(amount.toFixed(2));
+  if (amount <= 0 || !state.orderId) {
+    showToast('Discount has no selected items', { bg: T.gold });
+    return;
   }
 
-  state.selectedItems = {};
-  state.selected = {};
-  rerenderTopArea(state);
-  showToast(pct + '% discount applied', { bg: T.greenWarm });
-
-  // TODO: persist to backend (needs discount endpoint)
+  fetch('/api/v1/orders/' + state.orderId + '/discount', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      discount_type: pct + '%',
+      amount:        amount,
+      reason:        'Manager ' + pct + '% discount',
+      approved_by:   approvedBy || null,
+      item_ids:      itemIds.length ? itemIds : null,
+    }),
+  }).then(function(r) {
+    if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'HTTP ' + r.status); });
+    return r.json();
+  }).then(function() {
+    state.selectedItems = {};
+    state.selected = {};
+    // Let the scene refresh from backend truth so other panels (totals,
+    // balance_due, payment scene) see the new discount. `order:updated`
+    // is the same bus event the server-landing refresh listens on.
+    SceneManager.emit('order:updated', { orderId: state.orderId });
+    if (typeof refreshOrder === 'function') refreshOrder(state, {});
+    showToast(pct + '% discount applied', { bg: T.greenWarm });
+  }).catch(function(err) {
+    showToast('Discount failed: ' + (err && err.message ? err.message : 'unknown'), { bg: T.verm });
+  });
 }
 
 // ═══════════════════════════════════════════════════
