@@ -1062,23 +1062,28 @@ function rerenderTopArea(state) {
 // ═══════════════════════════════════════════════════
 
 function renderModeA(state, container) {
-  var count = activeSeatCount(state.seats, state.paidSeats);
-  var cellCount = count + 1; // seats + add tile
-  var grid = document.createElement('div');
-  Object.assign(grid.style, {
-    flex:               '1',
-    minHeight:          '0',
-    display:            'grid',
-    gridTemplateColumns:'repeat(' + cellCount + ', 1fr)',
-    gap:                '12px',
+  // Flex row instead of a uniform grid so the add-tile can stay a slim
+  // 54 px rail while the seat tiles share the remaining width evenly.
+  var row = document.createElement('div');
+  Object.assign(row.style, {
+    flex:         '1',
+    minHeight:    '0',
+    display:      'flex',
+    gap:          '10px',
+    alignItems:   'stretch',
   });
-  container.appendChild(grid);
+  container.appendChild(row);
 
   for (var i = 0; i < state.seats.length; i++) {
     if (state.paidSeats[state.seats[i].id]) continue;
-    grid.appendChild(buildSeatCard(state, i, { compact: false }));
+    var card = buildSeatCard(state, i, { compact: false });
+    card.style.flex = '1';
+    card.style.minWidth = '0';
+    row.appendChild(card);
   }
-  grid.appendChild(buildAddTile(state, { compact: false }));
+
+  var addTile = buildAddTile(state, { narrow: true });
+  row.appendChild(addTile);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1594,7 +1599,7 @@ function buildAddTile(state, opts) {
   var tile = document.createElement('div');
   Object.assign(tile.style, {
     background:     'transparent',
-    border:         '2px dashed ' + hexToRgba(T.green, 0.5),
+    border:         '1px dashed ' + T.border,
     borderRadius:   T.chamferCard + 'px',
     display:        'flex',
     alignItems:     'center',
@@ -1602,13 +1607,18 @@ function buildAddTile(state, opts) {
     cursor:         'pointer',
     minHeight:      opts.compact ? '72px' : '0',
     pointerEvents:  'auto',
+    flexShrink:     '0',
   });
+  if (opts.narrow) {
+    tile.style.width = '54px';
+  }
   var plus = document.createElement('div');
   Object.assign(plus.style, {
     fontFamily: T.fh,
     fontWeight: T.fwBold,
-    fontSize:   opts.compact ? '32px' : '56px',
-    color:      hexToRgba(T.green, 0.6),
+    fontSize:   opts.narrow ? '28px' : (opts.compact ? '32px' : '56px'),
+    color:      T.green,
+    lineHeight: '1',
   });
   plus.textContent = '+';
   tile.appendChild(plus);
