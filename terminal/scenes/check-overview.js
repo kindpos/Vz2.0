@@ -1348,6 +1348,9 @@ function _commitManageSplit(state) {
       // Drop the original item_id so the backend sees a fresh line
       // rather than colliding with the removed parent on next save.
       copy.item_id        = null;
+      // Mark the item as a split share so the recap rows make the
+      // fractional cost obvious next to the item name.
+      copy.name = (copy.name || '') + ' (1/' + recipients.length + ')';
       state.seats[tIdx].items.push(copy);
     }
   }
