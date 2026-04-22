@@ -675,8 +675,26 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
 
   if (opts.defaultItemCollapsed) card.classList.add('collapsed');
 
-  row.addEventListener('click', function() {
+  // Chevron alone toggles collapse so the row itself can own a
+  // selection tap. stopPropagation keeps the row handler from firing
+  // on the same event.
+  chev.addEventListener('click', function(e) {
+    e.stopPropagation();
     card.classList.toggle('collapsed');
+  });
+
+  // Row tap — toggles the visual .sel class and notifies the consumer
+  // so it can mirror selection in its own state (state.selectedItems
+  // in the check-overview scene). When no callback is supplied we
+  // fall back to the historical "tap row = collapse" behavior so the
+  // component stays useful for read-only contexts.
+  row.addEventListener('click', function() {
+    if (typeof opts.onItemTap === 'function') {
+      row.classList.toggle('sel');
+      opts.onItemTap(seatIdx, itemIdx);
+    } else {
+      card.classList.toggle('collapsed');
+    }
   });
 
   return card;

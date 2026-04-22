@@ -1580,6 +1580,9 @@ function renderModeB(state, container) {
       if (seatIdx < 0 || seatIdx >= state.seats.length) return;
       toggleSeat(state, state.seats[seatIdx].id);
     },
+    onItemTap: function(seatIdx, itemIdx) {
+      toggleItem(state, seatIdx, itemIdx);
+    },
     onRemoveItem: function(seatIdx, itemIdx) {
       _voidItems(state, [{ seatIdx: seatIdx, itemIdx: itemIdx }]);
     },
@@ -1780,6 +1783,12 @@ function buildSeatCard(state, seatIdx, opts) {
       hideSeatHeader:       true,
       hideTotals:           true,
       defaultItemCollapsed: true,
+      // Tile embeds only show one seat, so the adapted order has that
+      // seat at seats[0]. Item-recap emits seatIdx=0 in its callbacks;
+      // route back to the real seat index on the scene's state.
+      onItemTap: function(_seatIdx0, itemIdx0) {
+        toggleItem(state, seatIdx, itemIdx0);
+      },
       onRemoveItem: function(_seatIdx0, itemIdx0) {
         _voidItems(state, [{ seatIdx: seatIdx, itemIdx: itemIdx0 }]);
       },
