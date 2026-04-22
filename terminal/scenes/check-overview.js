@@ -920,6 +920,90 @@ function _buildTotalsBox(rows) {
 }
 
 // ═══════════════════════════════════════════════════
+//  SEATS CONTAINER — Nostalgia card shell
+//  T.card body, 10 px radius, drop shadow, 4 px T.green left accent
+//  bar, and a 24 px T.green top strip with SEATS / ALL labels.
+//  Wraps whatever mode (A / B / C) renders into its body slot.
+// ═══════════════════════════════════════════════════
+
+function _allSeatsSelected(state) {
+  var anyUnpaid = false;
+  for (var i = 0; i < state.seats.length; i++) {
+    var s = state.seats[i];
+    if (state.paidSeats[s.id]) continue;
+    anyUnpaid = true;
+    if (!state.selected[s.id]) return false;
+  }
+  return anyUnpaid;
+}
+
+function buildSeatsContainer(state) {
+  var root = document.createElement('div');
+  Object.assign(root.style, {
+    flex:         '1',
+    minHeight:    '0',
+    display:      'flex',
+    flexDirection:'column',
+    background:   T.card,
+    borderLeft:   T.accentBarW + ' solid ' + T.green,
+    borderRadius: T.chamferCard + 'px',
+    overflow:     'hidden',
+    boxShadow:    '0 4px 16px rgba(0,0,0,0.28)',
+  });
+
+  var header = document.createElement('div');
+  Object.assign(header.style, {
+    flexShrink:             '0',
+    height:                 '24px',
+    background:             T.green,
+    borderTopRightRadius:   (T.chamferCard - 4) + 'px',
+    display:                'flex',
+    alignItems:             'center',
+    justifyContent:         'space-between',
+    padding:                '0 14px',
+    fontFamily:             T.fh,
+    fontWeight:             T.fwBold,
+    fontSize:               '11px',
+    letterSpacing:          '0.14em',
+    color:                  T.well,
+    userSelect:             'none',
+  });
+
+  var lbl = document.createElement('span');
+  lbl.textContent = 'SEATS';
+  header.appendChild(lbl);
+
+  var all = document.createElement('span');
+  all.textContent = 'ALL';
+  all.style.cursor = 'pointer';
+  all.style.padding = '0 4px';
+  all.addEventListener('click', function() {
+    if (_allSeatsSelected(state)) {
+      state.selected = {};
+    } else {
+      state.selected = selectAllUnpaid(state.seats, state.paidSeats);
+    }
+    rerenderTopArea(state);
+  });
+  header.appendChild(all);
+
+  root.appendChild(header);
+
+  var body = document.createElement('div');
+  Object.assign(body.style, {
+    flex:         '1',
+    minHeight:    '0',
+    display:      'flex',
+    flexDirection:'column',
+    padding:      '12px',
+    boxSizing:    'border-box',
+  });
+  root.appendChild(body);
+
+  return { root: root, body: body };
+}
+
+// ═══════════════════════════════════════════════════
 //  TOP-AREA DISPATCHER
 // ═══════════════════════════════════════════════════
 
@@ -944,9 +1028,12 @@ function rerenderTopArea(state) {
   for (var t = 0; t < state._lpTimers.length; t++) clearTimeout(state._lpTimers[t]);
   state._lpTimers = [];
 
-  if (state._mode === 'A')      renderModeA(state, top);
-  else if (state._mode === 'B') renderModeB(state, top);
-  else                          renderModeC(state, top);
+  var shell = buildSeatsContainer(state);
+  top.appendChild(shell.root);
+
+  if (state._mode === 'A')      renderModeA(state, shell.body);
+  else if (state._mode === 'B') renderModeB(state, shell.body);
+  else                          renderModeC(state, shell.body);
 
   renderTotals(state);
 }
