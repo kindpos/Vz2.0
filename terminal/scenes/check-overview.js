@@ -1224,62 +1224,117 @@ function renderModeC(state, container) {
 //  SEAT CARD (used in Mode A and B for first 4 + the shortened 5th)
 // ═══════════════════════════════════════════════════
 
+// Per-seat accent color. First four seats use the canonical blueprint
+// palette; beyond that we rotate through T.srvPalette so large parties
+// still get distinct accents.
+function seatAccent(seatIdx) {
+  var first4 = [T.green, T.elec, T.gold, T.verm];
+  if (seatIdx < first4.length) return first4[seatIdx];
+  var pal = T.srvPalette || [];
+  if (!pal.length) return T.green;
+  return pal[seatIdx % pal.length];
+}
+
 function buildSeatCard(state, seatIdx, opts) {
   opts = opts || {};
   var seat = state.seats[seatIdx];
   var selected = !!state.selected[seat.id];
+  var accent = seatAccent(seatIdx);
   var canDelete = seat.items.length === 0
     && activeSeatCount(state.seats, state.paidSeats) > 1;
+
+  // Inverted selection: the whole tile flips to the seat accent color
+  // and every text node reads as T.well. When unselected the tile is
+  // the dark T.well surface with per-role colors (names = T.text,
+  // prices = T.gold, mods = dim, labels = T.green).
+  var tileBg     = selected ? accent : T.well;
+  var labelCol   = selected ? T.well : T.green;      // big S-num
+  var subLblCol  = selected ? T.well : T.mutedText;  // "SEAT" / "SUBTOTAL"
+  var subValCol  = selected ? T.well : T.gold;       // subtotal value
+  var headerBg   = selected ? 'rgba(0,0,0,0.15)' : T.card;
+  var footerBg   = selected ? 'rgba(0,0,0,0.15)' : T.card;
+  var divColor   = selected ? 'rgba(0,0,0,0.20)' : T.border;
 
   var card = document.createElement('div');
   Object.assign(card.style, {
     position:     'relative',
-    background:   T.card,
-    borderLeft:   T.accentBarW + ' solid ' + (selected ? T.gold : T.green),
+    background:   tileBg,
+    borderLeft:   T.accentBarW + ' solid ' + hexToRgba(accent, selected ? 0.4 : 1.0),
     borderRadius: T.chamferCard + 'px',
-    boxShadow:    selected
-      ? '0 0 0 2px ' + T.gold + ', 0 4px 16px rgba(0,0,0,0.4)'
-      : '0 4px 16px rgba(0,0,0,0.28)',
+    boxShadow:    '0 4px 16px rgba(0,0,0,0.35)',
     display:      'flex',
     flexDirection:'column',
     overflow:     'hidden',
     minHeight:    '0',
+    transition:   'background 0.12s ease',
   });
 
-  // (X button appended at the end so it's DOM-above the header)
-
-  // Header (tap = toggle seat, long-press = seat menu)
+  // ── Header: big S-num | stacked (SEAT label + gold subtotal) ──
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    background:    selected ? T.gold : T.green,
-    height:        '32px',
+    flexShrink:    '0',
+    height:        '36px',
+    background:    headerBg,
     display:       'flex',
     alignItems:    'center',
-    justifyContent:'flex-start',
     gap:           '10px',
     padding:       '0 12px',
-    fontFamily:    T.fh,
-    fontWeight:    T.fwBold,
-    color:         T.well,
-    letterSpacing: '0.18em',
-    fontSize:      T.fsB3,
     cursor:        'pointer',
     userSelect:    'none',
     pointerEvents: 'auto',
     touchAction:   'manipulation',
   });
-  var hL = document.createElement('span');
-  hL.textContent = seat.id;
-  hdr.appendChild(hL);
-  var hR = document.createElement('span');
-  hR.style.cssText = 'color:' + T.well + ';opacity:0.85;font-size:' + T.fsB3 + ';letter-spacing:0.05em;';
-  hR.textContent = fmt(seatTotal(seat));
-  hdr.appendChild(hR);
+
+  var sNum = document.createElement('span');
+  Object.assign(sNum.style, {
+    fontFamily: T.fh,
+    fontWeight: T.fwBold,
+    fontSize:   '24px',
+    lineHeight: '1',
+    color:      labelCol,
+    minWidth:   '32px',
+  });
+  sNum.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
+  hdr.appendChild(sNum);
+
+  var meta = document.createElement('div');
+  Object.assign(meta.style, {
+    display:       'flex',
+    flexDirection: 'column',
+    gap:           '1px',
+    flex:          '1',
+    minWidth:      '0',
+  });
+
+  var metaLbl = document.createElement('span');
+  Object.assign(metaLbl.style, {
+    fontFamily:    T.fb,
+    fontSize:      '8px',
+    fontWeight:    T.fwBold,
+    letterSpacing: '0.16em',
+    color:         subLblCol,
+  });
+  metaLbl.textContent = 'SEAT';
+  meta.appendChild(metaLbl);
+
+  var metaVal = document.createElement('span');
+  Object.assign(metaVal.style, {
+    fontFamily: T.fb,
+    fontSize:   '11px',
+    fontWeight: T.fwBold,
+    color:      subValCol,
+  });
+  metaVal.textContent = fmt(seatTotal(seat));
+  meta.appendChild(metaVal);
+
+  hdr.appendChild(meta);
   card.appendChild(hdr);
 
   _wireHeaderTaps(state, seat.id, hdr);
 
-  // Item list
+  // ── Body (items) ──
+  // Step 4 swaps this for a buildItemRecap embed. Keep the existing
+  // buildItemRow pathway here so real data still renders in Step 3.
   var itemsEl = document.createElement('div');
   itemsEl.className = 'co-scroll';
   Object.assign(itemsEl.style, {
@@ -1297,12 +1352,12 @@ function buildSeatCard(state, seatIdx, opts) {
     Object.assign(empty.style, {
       fontFamily: T.fb,
       fontSize:   T.fsB3,
-      color:      hexToRgba(T.text, 0.45),
+      color:      selected ? hexToRgba(T.well, 0.6) : hexToRgba(T.text, 0.45),
       textAlign:  'center',
       padding:    '16px 0',
       fontStyle:  'italic',
     });
-    empty.textContent = 'No items';
+    empty.textContent = 'empty seat';
     itemsEl.appendChild(empty);
   } else {
     for (var j = 0; j < seat.items.length; j++) {
@@ -1311,6 +1366,43 @@ function buildSeatCard(state, seatIdx, opts) {
   }
 
   card.appendChild(itemsEl);
+
+  // ── Footer: SUBTOTAL row ──
+  var ftr = document.createElement('div');
+  Object.assign(ftr.style, {
+    flexShrink:    '0',
+    height:        '28px',
+    background:    footerBg,
+    borderTop:     '0.75px solid ' + divColor,
+    display:       'flex',
+    alignItems:    'center',
+    justifyContent:'space-between',
+    padding:       '0 12px',
+  });
+
+  var ftrL = document.createElement('span');
+  Object.assign(ftrL.style, {
+    fontFamily:    T.fb,
+    fontSize:      '9px',
+    fontWeight:    T.fwBold,
+    letterSpacing: '0.14em',
+    color:         subLblCol,
+  });
+  ftrL.textContent = 'SUBTOTAL';
+  ftr.appendChild(ftrL);
+
+  var ftrR = document.createElement('span');
+  Object.assign(ftrR.style, {
+    fontFamily: T.fb,
+    fontSize:   '13px',
+    fontWeight: T.fwBold,
+    color:      subValCol,
+  });
+  ftrR.textContent = fmt(seatTotal(seat));
+  ftr.appendChild(ftrR);
+
+  card.appendChild(ftr);
+
   if (canDelete) card.appendChild(_buildDeleteSeatX(state, seat.id));
   state.seatEls[seat.id] = { wrap: card, hdr: hdr, itemsEl: itemsEl };
   return card;
