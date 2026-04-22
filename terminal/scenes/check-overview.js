@@ -998,14 +998,15 @@ function renderTotals(state) {
 //  steps and dispatch from this same slot.
 // ═══════════════════════════════════════════════════
 
-function _makeSecondaryPill(label, textColor) {
+function _makeSecondaryPill(label, textColor, opts) {
+  opts = opts || {};
   var btn = document.createElement('button');
   Object.assign(btn.style, {
     height:        '36px',
     padding:       '0 18px',
     border:        'none',
     borderRadius:  T.pillRadius,
-    background:    T.card,
+    background:    opts.bg || T.card,
     color:         textColor,
     fontFamily:    T.fb,
     fontSize:      T.fsB3,
@@ -1096,31 +1097,77 @@ function renderActionBar(state) {
   zone.innerHTML = '';
 
   var params = state._params || state._mountParams || {};
+  var anySel = Object.keys(state.selected || {}).length > 0;
 
-  // ── Secondary pills ──
-  var printBtn = _makeSecondaryPill('PRINT', T.green);
-  printBtn.addEventListener('click', function() { handlePrint(state); });
-  zone.appendChild(printBtn);
+  if (!anySel) {
+    // ── STATE 1: nothing selected ──
+    var printBtn = _makeSecondaryPill('PRINT', T.green);
+    printBtn.addEventListener('click', function() { handlePrint(state); });
+    zone.appendChild(printBtn);
 
-  var voidBtn = _makeSecondaryPill('VOID', T.verm);
-  // Short tap is a no-op by design. The warning toast nudges users
-  // who expect a single tap to fire.
-  voidBtn.addEventListener('click', function() {
-    showToast('Hold VOID to confirm', { bg: T.gold });
-  });
-  _wireLongPress(voidBtn, function() { handleVoid(state); });
-  zone.appendChild(voidBtn);
+    var voidBtn = _makeSecondaryPill('VOID', T.verm);
+    voidBtn.addEventListener('click', function() {
+      showToast('Hold VOID to confirm', { bg: T.gold });
+    });
+    _wireLongPress(voidBtn, function() { handleVoid(state); });
+    zone.appendChild(voidBtn);
+
+    zone.appendChild(_dashedDivider());
+
+    var payBtn = _makePrimaryPill('PAY', T.gold, { minWidth: '150px' });
+    payBtn.addEventListener('click', function() { handlePay(state, params); });
+    zone.appendChild(payBtn);
+
+    var addBtn = _makePrimaryPill('ADD ITEMS', T.green, { minWidth: '158px' });
+    addBtn.addEventListener('click', function() { handleAddItems(state, params); });
+    zone.appendChild(addBtn);
+    return;
+  }
+
+  // ── STATE 2: one or more seats selected ──
+  // Secondary: PRINT SEATS + MANAGE. MANAGE fills T.elec to flag that
+  // it opens a distinct mode (MOVE / SPLIT / MERGE / TRANSFER tools).
+  var selLabel = _selectedSeatShortLabel(state);
+
+  var printSeatsBtn = _makeSecondaryPill('PRINT SEATS', T.green);
+  printSeatsBtn.addEventListener('click', function() { handlePrint(state); });
+  zone.appendChild(printSeatsBtn);
+
+  var manageBtn = _makeSecondaryPill('MANAGE', T.well, { bg: T.elec });
+  manageBtn.addEventListener('click', function() { enterManageMode(state); });
+  zone.appendChild(manageBtn);
 
   zone.appendChild(_dashedDivider());
 
-  // ── Primary pills ──
-  var payBtn = _makePrimaryPill('PAY', T.gold, { minWidth: '150px' });
-  payBtn.addEventListener('click', function() { handlePay(state, params); });
-  zone.appendChild(payBtn);
+  // Primary: PAY SEATS shows selected-seat sub-label so cashier knows
+  // exactly which totals are about to settle. ADD ITEMS continues to
+  // open order-entry; Step 9 adds a seatFilter so the assign modal
+  // inside order-entry pre-filters to the selected seats.
+  var paySeatsBtn = _makePrimaryPill('PAY SEATS', T.gold, {
+    minWidth: '170px',
+    sub:      selLabel,
+  });
+  paySeatsBtn.addEventListener('click', function() { handlePay(state, params); });
+  zone.appendChild(paySeatsBtn);
 
-  var addBtn = _makePrimaryPill('ADD ITEMS', T.green, { minWidth: '158px' });
-  addBtn.addEventListener('click', function() { handleAddItems(state, params); });
-  zone.appendChild(addBtn);
+  var addItemsBtn = _makePrimaryPill('ADD ITEMS', T.green, { minWidth: '158px' });
+  addItemsBtn.addEventListener('click', function() { handleAddItems(state, params); });
+  zone.appendChild(addItemsBtn);
+}
+
+// ═══════════════════════════════════════════════════
+//  MANAGE MODE — stub
+//  Full toolbar + tool mechanics land in Steps 10-12.
+// ═══════════════════════════════════════════════════
+
+function enterManageMode(state) {
+  // Placeholder so the MANAGE pill is wired up end-to-end. Step 10
+  // builds the toolbar + banner and puts state._manageMode on the
+  // scene. For now, surface a toast so a cashier tapping MANAGE gets
+  // clear feedback rather than a silent dead-end.
+  showToast('MANAGE mode coming soon', { bg: T.elec });
+  // Avoid unused-var lints while the stub has no body.
+  void state;
 }
 
 function _buildTotalsBox(rows) {
