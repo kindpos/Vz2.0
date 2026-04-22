@@ -339,6 +339,15 @@ defineScene({
     _osActive:     false,
     _mountParams:  null,
     _seatsChain:   null,
+    // MANAGE mode session state. _manageMode flips the action bar
+    // and seats-container into the MANAGE toolbar + banner layout.
+    // _manageSnapshot holds a deep copy of seats / paid / selection
+    // state captured on enter so RESET can revert the whole session.
+    // _manageLog is a stack of reverse patches UNDO pops one at a time.
+    _manageMode:     false,
+    _manageTool:     'move',
+    _manageSnapshot: null,
+    _manageLog:      [],
   },
 
   render: function(container, params, state) {
@@ -1096,6 +1105,15 @@ function renderActionBar(state) {
   if (!zone) return;
   zone.innerHTML = '';
 
+  // MANAGE mode owns the bottom-right zone while active — the tool
+  // pills and utility row replace PAY / ADD ITEMS until the cashier
+  // taps DONE (which calls exitManageMode → rerender → falls back
+  // to State 1 or 2 here).
+  if (state._manageMode) {
+    renderManageToolbar(state);
+    return;
+  }
+
   var params = state._params || state._mountParams || {};
   var anySel = Object.keys(state.selected || {}).length > 0;
 
@@ -1156,18 +1174,158 @@ function renderActionBar(state) {
 }
 
 // ═══════════════════════════════════════════════════
-//  MANAGE MODE — stub
-//  Full toolbar + tool mechanics land in Steps 10-12.
+//  MANAGE MODE — session state + toolbar
+//  enter / exit handle the snapshot bookkeeping; the toolbar itself
+//  is emitted by renderActionBar when state._manageMode is true.
+//  Tool mechanics (MOVE / SPLIT / MERGE / TRANSFER + UNDO / RESET)
+//  are wired in Steps 11-12.
 // ═══════════════════════════════════════════════════
 
+var MANAGE_TOOLS = [
+  { id: 'move',     label: 'MOVE' },
+  { id: 'split',    label: 'SPLIT' },
+  { id: 'merge',    label: 'MERGE' },
+  { id: 'transfer', label: 'TRANSFER' },
+];
+
+function _cloneSeats(seats) {
+  // Deep clone via JSON round-trip — seats / items / mods contain only
+  // plain data (no Dates, functions, or DOM refs) so this is safe and
+  // keeps the snapshot independent of ongoing mutations.
+  return JSON.parse(JSON.stringify(seats || []));
+}
+
 function enterManageMode(state) {
-  // Placeholder so the MANAGE pill is wired up end-to-end. Step 10
-  // builds the toolbar + banner and puts state._manageMode on the
-  // scene. For now, surface a toast so a cashier tapping MANAGE gets
-  // clear feedback rather than a silent dead-end.
-  showToast('MANAGE mode coming soon', { bg: T.elec });
-  // Avoid unused-var lints while the stub has no body.
-  void state;
+  if (!state.orderId) {
+    showToast('Save items before managing', { bg: T.gold });
+    return;
+  }
+  state._manageMode = true;
+  state._manageTool = 'move';
+  state._manageLog  = [];
+  state._manageSnapshot = {
+    seats:         _cloneSeats(state.seats),
+    paidSeats:     Object.assign({}, state.paidSeats),
+    selected:      Object.assign({}, state.selected),
+    selectedItems: Object.assign({}, state.selectedItems),
+  };
+  rerenderTopArea(state);
+}
+
+function exitManageMode(state) {
+  state._manageMode = false;
+  state._manageTool = 'move';
+  state._manageLog  = [];
+  state._manageSnapshot = null;
+  rerenderTopArea(state);
+}
+
+function _resetManageSession(state) {
+  if (!state._manageSnapshot) return;
+  state.seats         = _cloneSeats(state._manageSnapshot.seats);
+  state.paidSeats     = Object.assign({}, state._manageSnapshot.paidSeats);
+  state.selected      = Object.assign({}, state._manageSnapshot.selected);
+  state.selectedItems = Object.assign({}, state._manageSnapshot.selectedItems);
+  state._manageLog    = [];
+  rerenderTopArea(state);
+  showToast('MANAGE session reset', { bg: T.verm });
+}
+
+function _makeToolPill(label, active) {
+  var btn = document.createElement('button');
+  Object.assign(btn.style, {
+    height:        '36px',
+    padding:       '0 16px',
+    border:        'none',
+    borderRadius:  T.pillRadius,
+    background:    active ? T.elec : T.card,
+    color:         active ? T.well : T.elec,
+    fontFamily:    T.fb,
+    fontSize:      T.fsB3,
+    fontWeight:    T.fwBold,
+    letterSpacing: '0.14em',
+    cursor:        'pointer',
+    boxShadow:     '0 2px 0 rgba(0,0,0,0.35)',
+    pointerEvents: 'auto',
+  });
+  btn.textContent = label;
+  return btn;
+}
+
+function _makeUtilPill(label, textColor, opts) {
+  opts = opts || {};
+  var btn = document.createElement('button');
+  Object.assign(btn.style, {
+    height:        '36px',
+    padding:       '0 14px',
+    border:        'none',
+    borderRadius:  T.pillRadius,
+    background:    opts.bg || T.card,
+    color:         textColor,
+    fontFamily:    T.fb,
+    fontSize:      T.fsB3,
+    fontWeight:    T.fwBold,
+    letterSpacing: '0.14em',
+    cursor:        'pointer',
+    boxShadow:     '0 2px 0 rgba(0,0,0,0.35)',
+    pointerEvents: 'auto',
+  });
+  btn.textContent = label;
+  return btn;
+}
+
+function renderManageToolbar(state) {
+  var zone = state.actionGridEl;
+  if (!zone) return;
+  zone.innerHTML = '';
+
+  // ── Left: tool pills ──
+  for (var i = 0; i < MANAGE_TOOLS.length; i++) {
+    var tool = MANAGE_TOOLS[i];
+    var active = state._manageTool === tool.id;
+    var pill = _makeToolPill(tool.label, active);
+    (function(toolId) {
+      pill.addEventListener('click', function() {
+        state._manageTool = toolId;
+        renderManageToolbar(state);
+        // Re-render the banner so its "[TOOL] ACTIVE" segment updates.
+        // rerenderTopArea rebuilds the whole seats container — cheaper
+        // to just redraw the banner, but rerenderTopArea is what
+        // every other tap does and keeps MANAGE state coherent.
+        rerenderTopArea(state);
+      });
+    })(tool.id);
+    zone.appendChild(pill);
+  }
+
+  zone.appendChild(_dashedDivider());
+
+  // ── Right: utility pills — UNDO, RESET, DONE ──
+  var undoBtn = _makeUtilPill('UNDO', T.text);
+  undoBtn.addEventListener('click', function() {
+    if (!state._manageLog || state._manageLog.length === 0) {
+      showToast('Nothing to undo', { bg: T.gold });
+      return;
+    }
+    // Step 12 wires the actual inverse-patch replay. For now, surface
+    // the no-op path so the pill reads as responsive.
+    showToast('Undo arriving in Step 12', { bg: T.elec });
+  });
+  zone.appendChild(undoBtn);
+
+  var resetBtn = _makeUtilPill('RESET', T.verm);
+  // Short tap is a no-op by design — RESET wipes the entire MANAGE
+  // session and we don't want an accidental tap to erase the cashier's
+  // in-progress reorg.
+  resetBtn.addEventListener('click', function() {
+    showToast('Hold RESET to revert session', { bg: T.gold });
+  });
+  _wireLongPress(resetBtn, function() { _resetManageSession(state); });
+  zone.appendChild(resetBtn);
+
+  var doneBtn = _makeUtilPill('DONE', T.well, { bg: T.greenWarm });
+  doneBtn.addEventListener('click', function() { exitManageMode(state); });
+  zone.appendChild(doneBtn);
 }
 
 function _buildTotalsBox(rows) {
@@ -1273,6 +1431,33 @@ function buildSeatsContainer(state) {
   header.appendChild(all);
 
   root.appendChild(header);
+
+  // MANAGE-mode banner. Shown only while state._manageMode is true so
+  // the cashier always knows they're in the tool-dispatching surface
+  // rather than the normal overview. The label's "[TOOL] ACTIVE"
+  // segment updates with state._manageTool.
+  if (state._manageMode) {
+    var banner = document.createElement('div');
+    Object.assign(banner.style, {
+      flexShrink:    '0',
+      height:        '26px',
+      background:    hexToRgba(T.elec, 0.14),
+      borderBottom:  '1px solid ' + hexToRgba(T.elec, 0.45),
+      color:         T.elec,
+      fontFamily:    T.fb,
+      fontSize:      '10px',
+      fontWeight:    T.fwBold,
+      letterSpacing: '0.18em',
+      display:       'flex',
+      alignItems:    'center',
+      justifyContent:'center',
+      padding:       '0 14px',
+      userSelect:    'none',
+    });
+    banner.textContent = '▶ MANAGE MODE · '
+      + String(state._manageTool || 'move').toUpperCase() + ' ACTIVE';
+    root.appendChild(banner);
+  }
 
   var body = document.createElement('div');
   Object.assign(body.style, {
