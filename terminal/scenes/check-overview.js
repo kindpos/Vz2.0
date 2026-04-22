@@ -1276,70 +1276,88 @@ function _makeUtilPill(label, textColor, opts) {
   return btn;
 }
 
-// MANAGE SPLIT opens column-editor with only the SPLIT operation
-// enabled so the cashier drops into the same interactive scene the
-// long-press "Edit seats" flow uses, but scoped to split work only.
-// The pre-split seats are captured into state._manageLog so Step 12's
-// UNDO can restore the full seat layout in one shot.
-function _openManageSplit(state) {
-  // Require a selection — column-editor can't pre-seed what to split,
-  // so without a prior selection the cashier has no anchor for the op.
-  // Prompt them to pick items first rather than landing them in an
-  // empty editor.
+// ── MANAGE SPLIT ──
+// The split flow is a pick-then-pick-then-commit pattern:
+//   1. Cashier pre-selects items with item taps (state.selectedItems).
+//   2. Taps the SPLIT pill → the tool becomes active and state.selected
+//      is seeded with the source seats as recipients-by-default.
+//   3. Taps seat tiles to toggle recipient inclusion (tile inverts as
+//      usual; state.selected is the recipient set while split is live).
+//   4. Taps SPLIT again → commits. Each selected item is removed from
+//      its source and a copy is appended to every recipient with
+//      price / N, so the cost divides evenly across the tapped seats.
+// A snapshot of the pre-split seats is pushed onto state._manageLog so
+// Step 12's UNDO can restore the whole layout in one shot.
+
+function _enterManageSplit(state) {
   if (Object.keys(state.selectedItems || {}).length === 0) {
     showToast('Select items to split first', { bg: T.gold });
     return;
   }
+  state._manageTool = 'split';
+  // Seed recipients with the source seats of the selected items so the
+  // original seat is included by default per spec. Cashier can tap it
+  // off if they want the item to move off entirely.
+  state.selected = {};
+  var refs = getSelectedItemRefs(state);
+  for (var r = 0; r < refs.length; r++) {
+    var seat = state.seats[refs[r].seatIdx];
+    if (seat) state.selected[seat.id] = true;
+  }
+  rerenderTopArea(state);
+  showToast('Tap seat tiles to pick recipients, then tap SPLIT again',
+            { bg: T.elec, duration: 2500 });
+}
 
-  var columns = [];
-  for (var i = 0; i < state.seats.length; i++) {
-    if (state.paidSeats[state.seats[i].id]) continue;
-    columns.push({
-      id:    state.seats[i].id,
-      label: state.seats[i].id,
-      items: state.seats[i].items.map(function(it) {
-        return {
-          name:         it.name,
-          qty:          it.qty,
-          price:        it.price,
-          item_id:      it.item_id,
-          menu_item_id: it.menu_item_id,
-          category:     it.category,
-          mods:         it.mods,
-          notes:        it.notes,
-        };
-      }),
-    });
+function _commitManageSplit(state) {
+  var recipients = [];
+  for (var sid in state.selected) {
+    if (!state.paidSeats[sid]) recipients.push(sid);
+  }
+  if (recipients.length === 0) {
+    showToast('Tap seat tiles to add recipients', { bg: T.gold });
+    return;
+  }
+  var itemRefs = getSelectedItemRefs(state);
+  if (itemRefs.length === 0) {
+    showToast('Nothing selected to split', { bg: T.gold });
+    return;
   }
 
-  var preSplit = _cloneSeats(state.seats);
+  var preSeats = _cloneSeats(state.seats);
 
-  SceneManager.openTransactional('column-editor', {
-    columns:    columns,
-    operations: ['SPLIT'],
-    orderId:    state.orderId,
-    onSave: function(newColumns) {
-      var newSeats = [];
-      for (var c = 0; c < newColumns.length; c++) {
-        newSeats.push({
-          id:     'S-' + String(c + 1).padStart(3, '0'),
-          number: c + 1,
-          items:  newColumns[c].items,
-        });
-      }
-      var paid = [];
-      for (var p = 0; p < state.seats.length; p++) {
-        if (state.paidSeats[state.seats[p].id]) paid.push(state.seats[p]);
-      }
-      state.seats = paid.concat(newSeats);
-      state.selectedItems = {};
-      state.selected      = {};
-
-      state._manageLog.push({ kind: 'split-edit', preSeats: preSplit });
-      rerenderTopArea(state);
-      showToast('Split applied', { bg: T.greenWarm });
-    },
+  // Descending sort so splices don't shift later refs.
+  itemRefs.sort(function(a, b) {
+    if (a.seatIdx !== b.seatIdx) return b.seatIdx - a.seatIdx;
+    return b.itemIdx - a.itemIdx;
   });
+
+  for (var r = 0; r < itemRefs.length; r++) {
+    var ref = itemRefs[r];
+    var src = state.seats[ref.seatIdx].items.splice(ref.itemIdx, 1)[0];
+    var orig = (src.effectivePrice != null ? src.effectivePrice : src.price) || 0;
+    var piece = orig / recipients.length;
+    for (var k = 0; k < recipients.length; k++) {
+      var tIdx = _seatIdxById(state, recipients[k]);
+      if (tIdx < 0) continue;
+      var copy = Object.assign({}, src);
+      // seatSubtotal prefers effectivePrice when present; set both so
+      // later pricing passes stay consistent.
+      copy.price          = piece;
+      copy.effectivePrice = piece;
+      // Drop the original item_id so the backend sees a fresh line
+      // rather than colliding with the removed parent on next save.
+      copy.item_id        = null;
+      state.seats[tIdx].items.push(copy);
+    }
+  }
+
+  state._manageLog.push({ kind: 'split', preSeats: preSeats });
+  state.selected      = {};
+  state.selectedItems = {};
+  state._manageTool   = 'move';
+  rerenderTopArea(state);
+  showToast('Split across ' + recipients.length + ' seat(s)', { bg: T.greenWarm });
 }
 
 function renderManageToolbar(state) {
@@ -1360,7 +1378,9 @@ function renderManageToolbar(state) {
     (function(toolId) {
       pill.addEventListener('click', function() {
         if (toolId === 'split') {
-          _openManageSplit(state);
+          // Tap while split is already live = commit; otherwise enter.
+          if (state._manageTool === 'split') _commitManageSplit(state);
+          else                               _enterManageSplit(state);
           return;
         }
         state._manageTool = toolId;
@@ -2122,16 +2142,29 @@ function _wireHeaderTaps(state, seatId, el) {
       reopenSeat(state, seatId);
       return;
     }
-    // MANAGE + MOVE: if items are selected, the tap is the MOVE
-    // destination, not a selection toggle. If no items are selected
-    // yet, fall through so the cashier can use the seat-header tap
-    // to select every item in that seat.
-    if (state._manageMode
-        && state._manageTool === 'move'
-        && Object.keys(state.selectedItems || {}).length > 0) {
-      var refs = getSelectedItemRefs(state);
-      _moveItemsToSeat(state, refs, seatId);
-      return;
+    // MANAGE mode routing — tool decides how a seat-tile tap is
+    // interpreted:
+    //   MOVE: tap = move the current item selection onto this seat
+    //         (falls through to toggleSeat when no items are selected
+    //         so the cashier can still use the header to pick
+    //         everything on a seat).
+    //   SPLIT: tap toggles this seat in/out of the recipient set.
+    //          state.selected is the recipient set while split is
+    //          live; selectedItems stays intact so the commit has
+    //          something to split. toggleSeat's mirror is bypassed.
+    if (state._manageMode) {
+      if (state._manageTool === 'split') {
+        if (state.selected[seatId]) delete state.selected[seatId];
+        else                         state.selected[seatId] = true;
+        rerenderTopArea(state);
+        return;
+      }
+      if (state._manageTool === 'move'
+          && Object.keys(state.selectedItems || {}).length > 0) {
+        var refs = getSelectedItemRefs(state);
+        _moveItemsToSeat(state, refs, seatId);
+        return;
+      }
     }
     toggleSeat(state, seatId);
   });
