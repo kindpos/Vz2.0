@@ -2955,8 +2955,15 @@ function _renderTicketGroup(list, displayTicket) {
 
     if (!hasCharged && !anySelected && !hasMods) {
       // ── Collapsed group card ──────────────────────
+      // Number-coerce defensively — a recall path used to land here with
+      // Decimal-as-string prices from the backend, and `sum + "12.50"`
+      // produced a string that then crashed on .toFixed() below.
       var groupPrice = instances.reduce(function(sum, i) {
-        return sum + i.unitPrice + i.mods.reduce(function(ms, m) { return ms + m.price; }, 0);
+        var u = Number(i.unitPrice) || 0;
+        var modsSum = i.mods.reduce(function(ms, m) {
+          return ms + (Number(m.price) || 0);
+        }, 0);
+        return sum + u + modsSum;
       }, 0);
 
       var gc = document.createElement('div');
@@ -3751,23 +3758,30 @@ function recallFromBackend(orderId) {
       currentCheckNumber = order.check_number || null;
       if (currentCheckNumber) setSceneName(currentCheckNumber);
 
-      // Convert backend items to frontend ticket format
+      // Convert backend items to frontend ticket format.
+      // Backend Decimals serialize as JSON strings ("12.50"), so every
+      // price field arriving here is a string. Coerce to Number at the
+      // boundary — downstream code (renderTicket, sending, totals) all
+      // assume numeric prices and `.toFixed()` them.
       ticket = (order.items || []).map(function(item) {
         ticketSeq += 1;
         // Prefer server-computed effective_price (post-mods/discounts);
         // base `price` is 0 for combos/pizzas where value lives in mods.
-        var unit = (typeof item.effective_price === 'number')
-          ? item.effective_price
-          : (item.price || 0);
+        var rawUnit = item.effective_price != null ? item.effective_price : item.price;
+        var unit = Number(rawUnit);
+        if (!Number.isFinite(unit)) unit = 0;
         return {
           id:        ticketSeq,
           idemKey:   _idemKey(),
           name:      item.name,
           unitPrice: unit,
           mods:      (item.modifiers || []).map(function(m) {
+            var rawPrice = m.modifier_price != null ? m.modifier_price : m.price;
+            var p = Number(rawPrice);
+            if (!Number.isFinite(p)) p = 0;
             return {
               name:       m.name,
-              price:      m.modifier_price != null ? m.modifier_price : (m.price || 0),
+              price:      p,
               charged:    m.charged != null ? m.charged : true,
               prefix:     m.prefix || null,
               half_price: m.half_price != null ? m.half_price : null,

@@ -329,7 +329,12 @@ function _buildGateRow(met, label) {
 }
 
 // ── Server checkout tile ──────────────────────────
-function _buildServerRow(srv, onClick) {
+// `state` is the scene state object; _buildServerRow used to read it from
+// the closure, but it's a module-level function so the reference was
+// undefined at call time — every renderServerList call threw
+// "ReferenceError: state is not defined" and the list stayed empty.
+// Thread state in explicitly so the color map is reachable.
+function _buildServerRow(state, srv, onClick) {
   var isDone = srv.checked_out;
   var hasIssue = !isDone && (srv.open_tables > 0 || srv.unadj_tips > 0);
   var srvColor = state.serverColorMap[srv.id] || T.green;
@@ -1031,7 +1036,7 @@ defineScene({
         return 0;
       });
       sorted.forEach(function(srv) {
-        r.serverList.appendChild(_buildServerRow(srv, function(s) {
+        r.serverList.appendChild(_buildServerRow(state, srv, function(s) {
           SceneManager.mountWorking('server-checkout', { staff: s, fromManager: true });
         }));
       });
