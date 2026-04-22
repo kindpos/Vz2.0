@@ -560,6 +560,17 @@ function showExportModal() {
         display: flex; justify-content: flex-end; gap: 12px;
     `;
 
+    // Close helper + Escape handler declared together so every dismiss
+    // path (Cancel, Export, backdrop click, Escape) removes the
+    // keydown listener. Previously Escape was the only path that
+    // unbound the handler; every other dismiss leaked a handler onto
+    // document for the rest of the session.
+    const escHandler = (e) => { if (e.key === 'Escape') dismiss(); };
+    const dismiss = () => {
+        backdrop.remove();
+        document.removeEventListener('keydown', escHandler);
+    };
+
     const cancelBtn = document.createElement('button');
     cancelBtn.textContent = 'Cancel';
     cancelBtn.style.cssText = `
@@ -567,7 +578,7 @@ function showExportModal() {
         padding: 12px 28px; border-radius: 8px; font-size: 25px; cursor: pointer;
         font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
     `;
-    cancelBtn.addEventListener('click', () => backdrop.remove());
+    cancelBtn.addEventListener('click', dismiss);
 
     const exportBtn = document.createElement('button');
     exportBtn.textContent = '⬇ Export';
@@ -593,7 +604,7 @@ function showExportModal() {
             total_tips: PAYROLL_SUMMARY.laborSummary.totalTips,
         });
 
-        backdrop.remove();
+        dismiss();
         showToast(`Payroll exported to ${selectedFormat.label} (${selectedFormat.ext})`, 'success');
     });
 
@@ -602,11 +613,7 @@ function showExportModal() {
     modal.appendChild(footer);
 
     backdrop.appendChild(modal);
-    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
-
-    const escHandler = (e) => {
-        if (e.key === 'Escape') { backdrop.remove(); document.removeEventListener('keydown', escHandler); }
-    };
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
     document.addEventListener('keydown', escHandler);
 
     currentContainer.appendChild(backdrop);
