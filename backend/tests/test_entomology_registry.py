@@ -13,12 +13,16 @@ from app.models.diagnostic_event import (
 )
 
 
-# ─── R-01: Registry has 54 codes (36 original + 18 domain codes) ────────
+# ─── R-01: Registry has 61 codes (36 original + 25 domain codes) ────────
 # Original: DEV (6) + NET (8) + SYS (8) + PER (7) + REC (7) = 36
-# Added for domain instrumentation: SEC (6) + FIN (8) + UI (4) = 18
+# Domain instrumentation: SEC (6) + FIN (8) + UI (11) = 25
+# UI grew from 4 to 11 as the frontend added UI-005 (check-overview refused
+# nav), UI-006 (recall lost seats), UI-007 (dead-end tap), UI-008/UI-010
+# (seat-picker confirm/open trace), UI-009 (persistSeats errors), and
+# UI-011 (global uncaught-error bridge).
 
 def test_r01_registry_count():
-    assert len(EVENT_CODE_REGISTRY) == 54
+    assert len(EVENT_CODE_REGISTRY) == 61
 
 
 # ─── R-10: SEC- codes present (6 codes) ────────────────
@@ -35,11 +39,11 @@ def test_r11_financial_codes():
     assert len(fin_codes) == 8
 
 
-# ─── R-12: UI- codes present (4 codes) ─────────────────
+# ─── R-12: UI- codes present (11 codes) ────────────────
 
 def test_r12_ui_codes():
     ui_codes = [c for c in EVENT_CODE_REGISTRY if c.startswith("UI-")]
-    assert len(ui_codes) == 4
+    assert len(ui_codes) == 11
 
 
 # ─── R-02: No duplicate codes ──────────────────────────
