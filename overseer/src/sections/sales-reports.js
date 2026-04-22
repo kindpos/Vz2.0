@@ -23,7 +23,6 @@ import { T }                from '../ui/tokens.js';
 import {
   buildStatCard,
   buildLineCard,
-  buildCOBGauge,
   buildStackedArea,
   buildTenderBar,
   buildHeatmap,
@@ -131,9 +130,6 @@ function fetchWeek(signal) {
     data:  r.status === 'fulfilled' ? r.value   : null,
     error: r.status === 'rejected'  ? r.reason  : null,
   })));
-}
-function fetchLabor(signal) {
-  return fetchJson(`/api/v1/reports/labor-summary?date=${today()}`, signal);
 }
 function fetchEmployees(signal) {
   return fetchJson(`/api/v1/config/employees`, signal);
@@ -297,7 +293,7 @@ function buildLayout(container) {
         margin-bottom: 24px;
       }
       .sales-row-hero             { grid-template-columns: repeat(4, 1fr); }
-      .sales-row-trend-cob        { grid-template-columns: 2fr 1fr; }
+      .sales-row-trend            { grid-template-columns: 1fr; }
       .sales-row-composition      { grid-template-columns: 1fr; }
       .sales-row-tender-heatmap   { grid-template-columns: 1fr 2fr; }
       .sales-row-bottom           { grid-template-columns: 1.4fr 1fr 1fr; }
@@ -366,8 +362,7 @@ function buildLayout(container) {
           <div class="sales-region-loading">Loading…</div>
           <div class="sales-region-loading">Loading…</div>
         </div>
-        <div class="sales-row sales-row-trend-cob" id="region-trend-cob">
-          <div class="sales-region-loading">Loading…</div>
+        <div class="sales-row sales-row-trend" id="region-trend">
           <div class="sales-region-loading">Loading…</div>
         </div>
         <div class="sales-row sales-row-composition" id="region-composition">
@@ -772,8 +767,8 @@ function renderTenderHeatmap(container, { today, week }) {
   }
 }
 
-function renderTrendCob(container, { week, labor }) {
-  const row = regionEl(container, 'region-trend-cob');
+function renderTrend(container, { week }) {
+  const row = regionEl(container, 'region-trend');
   if (!row) return;
   row.innerHTML = '';
 
@@ -797,20 +792,6 @@ function renderTrendCob(container, { week, labor }) {
     cell.textContent = 'Trend data unavailable';
     row.appendChild(cell);
   }
-
-  // COB gauge card
-  if (labor) {
-    row.appendChild(buildCOBGauge({
-      pct:   Number(labor.cob_percent) || 0,
-      labor: Number(labor.total_labor) || 0,
-      hours: Number(labor.total_hours) || 0,
-    }));
-  } else {
-    const cell = document.createElement('div');
-    cell.className = 'sales-region-empty';
-    cell.textContent = 'Labor data unavailable';
-    row.appendChild(cell);
-  }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────
@@ -828,18 +809,12 @@ export function buildSalesReportsScene(container) {
   //                                (histogram, top items, top servers)
   //   - sales-summary × 7 days   → weekly trend, composition, tender mix
   //   - sales-summary (today-7d) → hero deltas (waits on today)
-  //   - labor-summary (today)    → COB gauge
   //   - employees + roles        → MGR badge on top-servers
   const todayPromise    = fetchSummary(signal);
   const weekPromise     = fetchWeek(signal);  // Promise<[{date,data,error},...]>
   const lastWeekPromise = fetchLastWeekSummary(signal).catch(err => {
     if (err.name === 'AbortError') throw err;
     console.warn('[sales-reports] last-week summary unavailable:', err);
-    return null;
-  });
-  const laborPromise = fetchLabor(signal).catch(err => {
-    if (err.name === 'AbortError') throw err;
-    console.warn('[sales-reports] labor-summary unavailable:', err);
     return null;
   });
   const daySummaryPromise = fetchDaySummary(signal).catch(err => {
@@ -884,16 +859,15 @@ export function buildSalesReportsScene(container) {
       renderRegionError(regionEl(container, 'region-bottom'), err, { cells: 3 });
     });
 
-  // Weekly + today + labor renders. Heatmap needs today.peak_hours; the
-  // tender bar uses week-aggregated card_total/cash_total; trend uses
-  // weekly daily net; composition uses weekly daily food/drink/other.
+  // Weekly + today renders. Heatmap needs today.peak_hours; the tender
+  // bar uses week-aggregated card_total/cash_total; trend uses weekly
+  // daily net; composition uses weekly daily food/drink/other.
   Promise.all([
     todayPromise.catch(() => null),
     weekPromise,
-    laborPromise,
-  ]).then(([today, week, labor]) => {
+  ]).then(([today, week]) => {
     if (!still()) return;
-    renderTrendCob(container, { week, labor });
+    renderTrend(container, { week });
     renderComposition(container, week);
     renderTenderHeatmap(container, { today, week });
   });
