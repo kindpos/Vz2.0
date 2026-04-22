@@ -222,12 +222,14 @@ const openCategories = new Set();
 async function refreshIssues(opts) {
   opts = opts || {};
   const days = parseInt($("#days-select").value, 10);
+  const sevSelect = $("#severity-select");
+  const minSeverity = (sevSelect && sevSelect.value) || "WARNING";
   const host = $("#issues-body");
   // Only flash "Loading…" on a first / explicit load. Auto-polling swaps
   // the rendered DOM in place so the panel doesn't blink every 15s.
   if (opts.initial) host.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const res = await authedFetch(`/api/v1/entomology/issues?days=${days}`);
+    const res = await authedFetch(`/api/v1/entomology/issues?days=${days}&min_severity=${minSeverity}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     renderIssues(data);
@@ -382,6 +384,8 @@ function boot() {
   $("#btn-download").addEventListener("click", downloadReport);
   $("#btn-logout").addEventListener("click", logout);
   $("#days-select").addEventListener("change", () => refreshIssues({ initial: true }));
+  const sevSelect = $("#severity-select");
+  if (sevSelect) sevSelect.addEventListener("change", () => refreshIssues({ initial: true }));
   const refreshBtn = $("#btn-refresh-issues");
   if (refreshBtn) refreshBtn.addEventListener("click", () => refreshIssues({ initial: true }));
 

@@ -59,6 +59,13 @@
         <h2>Recent Issues</h2>
         <div class="controls">
           <span id="issues-updated" class="muted">—</span>
+          <label for="severity-select" class="muted">Severity:</label>
+          <select id="severity-select">
+            <option value="INFO">All (INFO+)</option>
+            <option value="WARNING" selected>Warnings+</option>
+            <option value="ERROR">Errors+</option>
+            <option value="CRITICAL">Critical only</option>
+          </select>
           <label for="days-select" class="muted">Window:</label>
           <select id="days-select">
             <option value="1">1 day</option>
