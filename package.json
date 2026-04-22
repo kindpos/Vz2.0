@@ -1,0 +1,16 @@
+{
+  "name": "kindpos-frontend-tests",
+  "private": true,
+  "type": "module",
+  "description": "Vitest + jsdom harness for KINDpos terminal and overseer JS. See FRONTEND_TESTS.md.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "devDependencies": {
+    "@vitest/ui": "^2.1.8",
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.8"
+  }
+}

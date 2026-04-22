@@ -30,3 +30,7 @@ backend/htmlcov/
 venv/
 .vscode/
 .idea/
+
+# Vitest / node
+node_modules/
+coverage/
