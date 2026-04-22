@@ -28,6 +28,50 @@ function _drain() {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('online', _drain);
+
+  // Global exception + unhandled-rejection → entReport. Uncaught errors
+  // would previously surface only in the browser console; now they land
+  // in entomology under UI-011 so they're visible on the dashboard + in
+  // the Excel bug report. Dedupe key: source + message, capped at 20
+  // distinct per page load so a loop of the same error can't flood the
+  // backend.
+  var _seenErrors = new Set();
+  var _MAX_SEEN = 20;
+
+  function _reportError(label, source, message, stack) {
+    if (_seenErrors.size >= _MAX_SEEN) return;
+    var key = source + '|' + message;
+    if (_seenErrors.has(key)) return;
+    _seenErrors.add(key);
+    try {
+      entReport({
+        code: 'UI-011',
+        source: source,
+        message: message,
+        ctx: stack ? { label: label, stack: String(stack).slice(0, 800) } : { label: label },
+        level: 'ERROR',
+      });
+    } catch (_) { /* entReport itself swallows; don't recurse */ }
+  }
+
+  window.addEventListener('error', function(ev) {
+    try {
+      var file = ev.filename ? String(ev.filename).split('/').pop() : 'window';
+      var src = file + (ev.lineno ? ':' + ev.lineno : '');
+      var msg = String(ev.message || 'uncaught error').slice(0, 500);
+      var stack = (ev.error && ev.error.stack) || null;
+      _reportError('error', src, msg, stack);
+    } catch (_) { /* never throw from the error handler */ }
+  });
+
+  window.addEventListener('unhandledrejection', function(ev) {
+    try {
+      var reason = ev.reason;
+      var msg = String(reason && reason.message ? reason.message : reason || 'unhandled rejection').slice(0, 500);
+      var stack = (reason && reason.stack) || null;
+      _reportError('unhandledrejection', 'promise', msg, stack);
+    } catch (_) { /* never throw from the error handler */ }
+  });
 }
 
 /**

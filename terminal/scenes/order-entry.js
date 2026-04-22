@@ -478,27 +478,83 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
+        // Nostalgia-themed modal panel — matches co-item-menu's shape.
+        // Replaces the SM2-era clip-path:polygon chamfer with the theme's
+        // rounded card look.
         var panel = document.createElement('div');
         panel.style.cssText = [
           'display:flex;flex-direction:column;gap:10px;',
-          'background:' + T.well + ';',
-          'border:4px solid ' + T.green + ';clip-path:polygon(5px 0%,calc(100% - 5px) 0%,100% 5px,100% calc(100% - 5px),calc(100% - 5px) 100%,5px 100%,0% calc(100% - 5px),0% 5px);',
+          'background:' + T.card + ';',
+          'border:3px solid ' + T.green + ';',
+          'border-radius:' + T.chamferCard + 'px;',
+          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
           'padding:20px 24px;min-width:500px;max-width:620px;',
           'max-height:520px;overflow:hidden;',
         ].join('');
 
         // Title
         var title = document.createElement('div');
-        title.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB3 + ';color:' + T.green + ';letter-spacing:2px;text-align:center;margin-bottom:4px;text-transform:uppercase;';
-        title.textContent = '// ASSIGN SEATS //';
+        title.style.cssText = [
+          'font-family:' + T.fh + ';',
+          'font-size:' + T.fsB2 + ';',
+          'font-weight:' + T.fwBold + ';',
+          'color:' + T.green + ';',
+          'letter-spacing:0.2em;',
+          'text-transform:uppercase;',
+          'text-align:center;margin-bottom:8px;',
+        ].join('');
+        title.textContent = 'ASSIGN SEATS';
         panel.appendChild(title);
 
         // Scrollable item list
         var list = document.createElement('div');
         list.className = 'co-scroll';
-        list.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;max-height:380px;';
+        list.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;max-height:380px;';
 
-        var seatBtnRefs = {}; // { itemId: [ { wrap, inner, seatNum } ] }
+        var seatBtnRefs = {}; // { itemId: [ { btn, paint, seatNum } ] }
+
+        // Nostalgia pill-styled seat tile. Compact size, drop-shadow like
+        // the main bottom-bar buttons, toggles between T.card (unselected)
+        // and T.green (selected).
+        function makeSeatTile(sn) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = 'S' + sn;
+          btn.style.cssText = [
+            'border:none;',
+            'border-radius:' + T.pillRadius + ';',
+            'width:64px;height:48px;',
+            'font-family:' + T.fh + ';',
+            'font-size:' + T.fsB3 + ';',
+            'font-weight:' + T.fwBold + ';',
+            'letter-spacing:0.1em;',
+            'text-transform:uppercase;',
+            'cursor:pointer;',
+            'user-select:none;',
+            'touch-action:manipulation;',
+            'outline:none;',
+            'transition:' + T.transitionFast + ';',
+            'flex-shrink:0;',
+          ].join('');
+          function paint(selected) {
+            var bg = selected ? T.green : T.card;
+            var sh = selected ? T.greenDk : T.well;
+            var tc = selected ? T.well : T.text;
+            btn.style.background = bg;
+            btn.style.color = tc;
+            btn.style.boxShadow = '0 4px 0 ' + sh;
+          }
+          paint(false);
+          // Press feedback without overriding the selected-state palette.
+          btn.addEventListener('pointerdown', function() {
+            btn.style.transform = 'translateY(1px)';
+          });
+          var rel = function() { btn.style.transform = ''; };
+          btn.addEventListener('pointerup', rel);
+          btn.addEventListener('pointerleave', rel);
+          btn.addEventListener('pointercancel', rel);
+          return { btn: btn, paint: paint };
+        }
 
         for (var i = 0; i < items.length; i++) {
           (function(item) {
@@ -519,58 +575,29 @@ defineScene({
             label.textContent = displayName;
             row.appendChild(label);
 
-            // Seat tile buttons — styled to match check-overview
             var btnGroup = document.createElement('div');
-            btnGroup.style.cssText = 'display:flex;gap:6px;';
+            btnGroup.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
             assignments[item.id] = [];
             seatBtnRefs[item.id] = [];
 
             for (var si = 0; si < seatNumbers.length; si++) {
               (function(sn) {
-                var btn = buildStyledButton({ variant: 'dark' });
-                var wrap = btn.wrap;
-                var inner = btn.inner;
-
-                wrap.style.clipPath = chamfer(6);
-                wrap.style.width = '64px';
-                wrap.style.height = '52px';
-                wrap.style.minWidth = '0';
-
-                inner.innerHTML = '';
-                inner.style.flexDirection = 'column';
-                inner.style.gap = '0';
-                inner.style.padding = '4px 6px';
-                inner.style.fontFamily = T.fh;
-                inner.style.lineHeight = '1.2';
-
-                var idEl = document.createElement('div');
-                idEl.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB3 + ';letter-spacing:2px;text-transform:uppercase;';
-                idEl.textContent = 'S' + sn;
-                inner.appendChild(idEl);
-
-                seatBtnRefs[item.id].push({ wrap: wrap, inner: inner, seatNum: sn });
-
-                wrap.addEventListener('pointerup', function(e) {
+                var tile = makeSeatTile(sn);
+                seatBtnRefs[item.id].push({ btn: tile.btn, paint: tile.paint, seatNum: sn });
+                tile.btn.addEventListener('pointerup', function(e) {
                   e.stopPropagation();
                   var arr = assignments[item.id];
                   var idx = arr.indexOf(sn);
-                  if (idx >= 0) {
-                    arr.splice(idx, 1);
-                  } else {
-                    arr.push(sn);
-                  }
-                  // Update visuals for this item's seat buttons
+                  if (idx >= 0) arr.splice(idx, 1);
+                  else          arr.push(sn);
                   var refs = seatBtnRefs[item.id];
                   var sel = assignments[item.id];
                   for (var ri = 0; ri < refs.length; ri++) {
-                    var isOn = sel.indexOf(refs[ri].seatNum) >= 0;
-                    refs[ri].wrap.style.background = isOn ? T.green : refs[ri].wrap._embV.bg;
-                    refs[ri].wrap.style.boxShadow = isOn ? refs[ri].wrap._embV.shadowActive : refs[ri].wrap._embV.shadow;
-                    refs[ri].inner.style.color = isOn ? T.well : refs[ri].wrap._embV.label;
+                    refs[ri].paint(sel.indexOf(refs[ri].seatNum) >= 0);
                   }
                   updateConfirmState();
                 });
-                btnGroup.appendChild(wrap);
+                btnGroup.appendChild(tile.btn);
               })(seatNumbers[si]);
             }
             row.appendChild(btnGroup);
@@ -579,16 +606,13 @@ defineScene({
         }
         panel.appendChild(list);
 
-        // Helper: refresh visual state for all seat buttons
+        // Helper: refresh visuals after SELECT ALL.
         function refreshAllBtnVisuals() {
           for (var ii = 0; ii < items.length; ii++) {
             var refs = seatBtnRefs[items[ii].id];
             var sel = assignments[items[ii].id];
             for (var ri = 0; ri < refs.length; ri++) {
-              var isOn = sel.indexOf(refs[ri].seatNum) >= 0;
-              refs[ri].wrap.style.background = isOn ? T.green : refs[ri].wrap._embV.bg;
-              refs[ri].wrap.style.boxShadow = isOn ? refs[ri].wrap._embV.shadowActive : refs[ri].wrap._embV.shadow;
-              refs[ri].inner.style.color = isOn ? T.well : refs[ri].wrap._embV.label;
+              refs[ri].paint(sel.indexOf(refs[ri].seatNum) >= 0);
             }
           }
         }
