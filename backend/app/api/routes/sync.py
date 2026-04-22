@@ -88,10 +88,10 @@ async def replay_config_events(
     if not isinstance(raw_events, list):
         raise HTTPException(400, "'events' must be a list")
 
-    # SEC-003 — this endpoint has no auth and accepts caller-supplied
-    # event_id / user_id / terminal_id. Record every invocation so an
-    # unexpected caller shows up in the bug report even if nobody is
-    # actively monitoring it.
+    # SEC-003 — this endpoint is auth-gated (auth_required above) but still
+    # accepts caller-supplied event_id / user_id / terminal_id. Record every
+    # invocation so an unexpected caller shows up in the bug report even if
+    # nobody is actively monitoring it.
     claimed_terminal_ids = sorted({
         (r.get("terminal_id") or "OVERSEER")
         for r in raw_events[:50]

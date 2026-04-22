@@ -16,9 +16,9 @@ Print/hardware paths remain the largest unmitigated risk area.
 
 | Suite | Files | Tests | Passing | Skipped | Failing |
 |---|---:|---:|---:|---:|---:|
-| Backend (pytest) | 75 | 1,177 | 1,174 | 3 | **0** |
+| Backend (pytest) | 75 | 1,191 | 1,188 | 3 | **0** |
 | Frontend (vitest) | 24 | 198 | 198 | 0 | **0** |
-| **Total** | **99** | **1,375** | **1,372** | **3** | **0** |
+| **Total** | **99** | **1,389** | **1,386** | **3** | **0** |
 
 > `pytest-cov` is not installed; the 73% coverage figure is from the April 21
 > audit (`COVERAGE_AUDIT.md`). Financial core modules measured individually
@@ -41,6 +41,7 @@ Print/hardware paths remain the largest unmitigated risk area.
 | `app/core/financial_invariants.py` | 85% |
 | `app/core/adapters/payment_validator.py` | 100% |
 | `app/api/routes/system.py` | 29% → high now | 57 new tests this session; bugs B1/B2/B3 fixed |
+| `app/api/routes/sync.py` | unknown → high now | 14 new tests this session; SEC-003/004 diagnostics, precision/non-precision ValueError paths, auth gate |
 
 ### 🟡 Medium Risk (50–84%)
 
@@ -58,7 +59,6 @@ Print/hardware paths remain the largest unmitigated risk area.
 
 | Module | Coverage | Notes |
 |---|---:|---|
-| `app/api/routes/sync.py` | unknown | Not audited |
 | `app/printing/templates/driver_ticket.py` | 12% | |
 | `app/printing/templates/char_test_template.py` | 4% | |
 | `app/services/demo_seeder.py` | 11% | Low stakes |
@@ -125,6 +125,25 @@ Coverage added, by area:
 | `POST /system/run-tests` (mocked thread) | 7 | Happy, mixed, narrative-not-counted, `__ERROR__`, `__DONE__` variants |
 | `require_manager` gate | 5 | Soft + strict-no-token + strict-non-manager + strict-manager + admin/owner |
 | Integration (real subprocess) | 3 | All-pass, with-failure, no-tests-dir |
+
+### Session 4 — LAN sync routes probe (`app/api/routes/sync.py`)
+
+The existing `test_sync_routes.py` covered the happy paths for the three
+endpoints (11 tests) but left five real branches cold. Filled the gaps
+with 14 new tests — no bugs found (the probe cleared the file).
+
+| Surface added | Tests | Why it matters |
+|---|---:|---|
+| SEC-003 diagnostic emission | 2 | Verifies the forensic snapshot (batch size + claimed `terminal_id` list) records on every replay. Without this test a silent diag regression would hide LAN tampering. |
+| SEC-004 self-claim warning | 3 | Batch that claims to originate from this terminal → WARNING diag. Covers on + off paths and the unconfigured-terminal short-circuit. |
+| Precision ValueError → skipped | 2 | A monetary payload with 3dp (e.g. `price: 10.123`) trips the ledger's precision gate. Replay must count it as `skipped` without aborting the rest of the batch. |
+| Non-precision ValueError → re-raise | 1 | Checksum mismatch (or any other non-"precision" ValueError) must propagate, not silently count as skipped. |
+| Pagination over operational-heavy ledger | 2 | A batch that's all operational events must still advance the cursor and terminate. Regression lock for the sync-stall scenario. |
+| HTTP-level auth gate on `/replay` | 4 | Soft / strict-no-token / strict-with-token / health-and-get-are-public. |
+
+Small cleanup: the SEC-003 comment at `sync.py:91` claimed the endpoint
+"has no auth" — stale since `Depends(auth_required)` is now applied at the
+route level. Comment updated.
 
 ---
 

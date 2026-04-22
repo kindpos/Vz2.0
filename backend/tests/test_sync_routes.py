@@ -324,3 +324,342 @@ class TestReplayConfigEvents:
                 payload={"events": "not-a-list"}, ledger=ledger,
             )
         assert exc.value.status_code == 400
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GAP FILLERS — branches the original test pass missed
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# The earlier suite covered the happy paths but left five branches cold:
+#   - SEC-003 diagnostic emission on every replay
+#   - SEC-004 self-claim warning (events claim to originate from this terminal)
+#   - Precision ValueError → counted as skipped
+#   - Non-precision ValueError → re-raised unchanged
+#   - get_config_events pagination when the current batch is all operational
+#     events (forces a second loop pass)
+# Each is a real bug surface: a silent diag regression would hide LAN
+# tampering, a swallowed non-precision error would corrupt the ledger counter.
+
+
+class TestReplayDiagnostics:
+    """Verify the SEC-003/SEC-004 diagnostic emissions in sync.py:100-137."""
+
+    def _wire_event(self, *, event_type: str, terminal_id: str = "OVERSEER",
+                    event_id: str = None, payload: dict = None):
+        return {
+            "event_id": event_id or f"evt_{event_type.replace('.', '_')}",
+            "sequence_number": 1,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "terminal_id": terminal_id,
+            "event_type": event_type,
+            "payload": payload or {},
+            "user_id": None,
+            "user_role": None,
+            "correlation_id": None,
+        }
+
+    @pytest.fixture
+    def captured_diags(self, monkeypatch):
+        """Replace sync_mod._record_diag with a stub that captures calls.
+        Returns the list so tests can assert on it."""
+        calls: list[dict] = []
+
+        async def _stub(**kwargs):
+            calls.append(kwargs)
+
+        monkeypatch.setattr(sync_mod, "_record_diag", _stub)
+        return calls
+
+    @pytest.mark.asyncio
+    async def test_sec003_fires_on_every_replay(self, ledger, captured_diags):
+        """Every replay records SEC-003 with batch_size + claimed_terminal_ids —
+        even an empty batch."""
+        await sync_mod.replay_config_events(
+            payload={"events": []}, ledger=ledger,
+        )
+        assert len(captured_diags) == 1
+        d = captured_diags[0]
+        assert d["event_code"] == "SEC-003"
+        assert d["context"]["batch_size"] == 0
+        assert d["context"]["claimed_terminal_ids"] == []
+
+    @pytest.mark.asyncio
+    async def test_sec003_captures_claimed_terminal_ids(self, ledger, captured_diags):
+        """The diag snapshot includes a sorted, deduped list of claimed
+        terminal_ids — the forensic trail if a forged batch shows up."""
+        await sync_mod.replay_config_events(
+            payload={"events": [
+                self._wire_event(event_type="employee.created", terminal_id="T-02",
+                                 payload={"employee_id": "e1", "display_name": "A"}),
+                self._wire_event(event_type="employee.created", terminal_id="T-03",
+                                 event_id="evt_b",
+                                 payload={"employee_id": "e2", "display_name": "B"}),
+                self._wire_event(event_type="employee.created", terminal_id="T-02",
+                                 event_id="evt_c",
+                                 payload={"employee_id": "e3", "display_name": "C"}),
+            ]},
+            ledger=ledger,
+        )
+        sec003 = [d for d in captured_diags if d["event_code"] == "SEC-003"]
+        assert len(sec003) == 1
+        assert sec003[0]["context"]["claimed_terminal_ids"] == ["T-02", "T-03"]
+        assert sec003[0]["context"]["batch_size"] == 3
+
+    @pytest.mark.asyncio
+    async def test_sec004_fires_on_self_claim(self, ledger, captured_diags, monkeypatch):
+        """When any event in the batch claims to come from this terminal
+        (settings.terminal_id), SEC-004 WARNING is recorded."""
+        monkeypatch.setattr(sync_mod.settings, "terminal_id", "T-THIS")
+
+        await sync_mod.replay_config_events(
+            payload={"events": [
+                self._wire_event(event_type="employee.created", terminal_id="T-THIS",
+                                 payload={"employee_id": "e1", "display_name": "A"}),
+                self._wire_event(event_type="employee.created", terminal_id="OVERSEER",
+                                 event_id="evt_other",
+                                 payload={"employee_id": "e2", "display_name": "B"}),
+            ]},
+            ledger=ledger,
+        )
+        sec004 = [d for d in captured_diags if d["event_code"] == "SEC-004"]
+        assert len(sec004) == 1
+        ctx = sec004[0]["context"]
+        assert ctx["local_terminal_id"] == "T-THIS"
+        assert ctx["self_claim_count"] == 1
+        assert ctx["batch_size"] == 2
+
+    @pytest.mark.asyncio
+    async def test_sec004_silent_when_no_self_claims(self, ledger, captured_diags, monkeypatch):
+        """Clean batch (no claims from this terminal) → no SEC-004 noise."""
+        monkeypatch.setattr(sync_mod.settings, "terminal_id", "T-THIS")
+
+        await sync_mod.replay_config_events(
+            payload={"events": [
+                self._wire_event(event_type="employee.created", terminal_id="OVERSEER",
+                                 payload={"employee_id": "e1", "display_name": "A"}),
+            ]},
+            ledger=ledger,
+        )
+        assert not any(d["event_code"] == "SEC-004" for d in captured_diags)
+
+    @pytest.mark.asyncio
+    async def test_sec004_silent_when_settings_terminal_id_unset(
+        self, ledger, captured_diags, monkeypatch
+    ):
+        """If `settings.terminal_id` is falsy (unconfigured), the check
+        short-circuits so a fresh / unconfigured box doesn't spam SEC-004."""
+        monkeypatch.setattr(sync_mod.settings, "terminal_id", "")
+
+        await sync_mod.replay_config_events(
+            payload={"events": [
+                self._wire_event(event_type="employee.created", terminal_id="",
+                                 payload={"employee_id": "e1", "display_name": "A"}),
+            ]},
+            ledger=ledger,
+        )
+        assert not any(d["event_code"] == "SEC-004" for d in captured_diags)
+
+
+class TestReplayValueErrorHandling:
+    """Cover the try/except ValueError branch in sync.py:171-177."""
+
+    def _wire(self, *, event_type, event_id, payload, terminal_id="OVERSEER"):
+        return {
+            "event_id": event_id,
+            "sequence_number": 1,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "terminal_id": terminal_id,
+            "event_type": event_type,
+            "payload": payload,
+            "user_id": None,
+            "user_role": None,
+            "correlation_id": None,
+        }
+
+    @pytest.mark.asyncio
+    async def test_precision_error_counted_as_skipped(self, ledger):
+        """A monetary payload with 3dp triggers the ledger's precision gate
+        (ValueError("Precision gate: ...")). The replay endpoint catches
+        that specific error and counts the row as skipped, not applied."""
+        res = await sync_mod.replay_config_events(
+            payload={"events": [
+                self._wire(event_type="menu.item_created",
+                           event_id="evt_bad_price",
+                           payload={"item_id": "i1", "name": "X", "price": 10.123}),
+            ]},
+            ledger=ledger,
+        )
+        assert res == {"applied": 0, "skipped": 1}
+        # Nothing landed in the ledger
+        from app.core.events import EventType as _ET
+        stored = await ledger.get_events_by_type(_ET.MENU_ITEM_CREATED)
+        assert stored == []
+
+    @pytest.mark.asyncio
+    async def test_precision_error_doesnt_abort_remainder_of_batch(self, ledger):
+        """One bad row in the middle of a batch: the good rows before/after
+        still apply. Sync is a streaming replay — one drift should not
+        poison the whole pull."""
+        res = await sync_mod.replay_config_events(
+            payload={"events": [
+                self._wire(event_type="employee.created",
+                           event_id="evt_good_a",
+                           payload={"employee_id": "eA", "display_name": "A"}),
+                self._wire(event_type="menu.item_created",
+                           event_id="evt_bad",
+                           payload={"item_id": "i1", "name": "X", "price": 10.123}),
+                self._wire(event_type="employee.created",
+                           event_id="evt_good_b",
+                           payload={"employee_id": "eB", "display_name": "B"}),
+            ]},
+            ledger=ledger,
+        )
+        assert res == {"applied": 2, "skipped": 1}
+
+    @pytest.mark.asyncio
+    async def test_non_precision_valueerror_propagates(self, ledger, monkeypatch):
+        """Non-precision ValueError (e.g. ledger corruption) must *not* be
+        silently eaten — it's a real failure and should bubble up so the
+        caller sees a 500 rather than a falsely-successful {applied:0, skipped:1}."""
+        async def _exploding_append(event):
+            raise ValueError("Checksum mismatch at sequence 42")
+
+        monkeypatch.setattr(ledger, "append", _exploding_append)
+
+        with pytest.raises(ValueError, match="Checksum mismatch"):
+            await sync_mod.replay_config_events(
+                payload={"events": [{
+                    "event_id": "evt1",
+                    "event_type": "employee.created",
+                    "terminal_id": "OVERSEER",
+                    "payload": {"employee_id": "eA", "display_name": "A"},
+                    "sequence_number": 1,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "user_id": None, "user_role": None, "correlation_id": None,
+                }]},
+                ledger=ledger,
+            )
+
+
+class TestGetConfigEventsPagination:
+    """The over-fetch loop in get_config_events must advance past a batch
+    that's entirely operational events (nothing left after filtering) —
+    otherwise a noisy ledger stalls the sync cursor."""
+
+    @pytest.mark.asyncio
+    async def test_loop_skips_batch_of_only_op_events(self, ledger):
+        """Seed N operational events followed by 1 config event. The sync
+        call must return the config event without spinning forever on the
+        operational-heavy batch."""
+        # 5 operational events
+        for i in range(5):
+            await _seed_op_event(
+                ledger, event_type=EventType.ORDER_CREATED,
+                payload={"order_id": f"o{i}"},
+            )
+        # then 1 config
+        await _seed_config_event(
+            ledger, event_type=EventType.EMPLOYEE_CREATED,
+            payload={"employee_id": "e1", "display_name": "A"},
+        )
+
+        res = await sync_mod.get_config_events(since=0, limit=10, ledger=ledger)
+        assert res["count"] == 1
+        assert res["events"][0]["event_type"] == "employee.created"
+
+    @pytest.mark.asyncio
+    async def test_latest_sequence_echoes_since_when_no_config_events(self, ledger):
+        """Operational-only ledger: `events=[]`, so `latest_sequence` echoes
+        the caller's `since`. A polling client's cursor stays put instead
+        of sliding past operational events it's not tracking."""
+        for i in range(3):
+            await _seed_op_event(
+                ledger, event_type=EventType.ORDER_CREATED,
+                payload={"order_id": f"o{i}"},
+            )
+        res = await sync_mod.get_config_events(since=0, limit=10, ledger=ledger)
+        assert res["events"] == []
+        assert res["latest_sequence"] == 0
+
+        res2 = await sync_mod.get_config_events(since=42, limit=10, ledger=ledger)
+        assert res2["latest_sequence"] == 42
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Replay auth gate — HTTP-level via AsyncClient
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# `auth_required` is a FastAPI Depends() that runs BEFORE the handler, so
+# the direct-call tests above bypass it entirely. These tests go through
+# the full ASGI stack to lock the soft/strict gate behaviour on the only
+# endpoint in sync.py that's gated.
+
+
+class TestReplayAuthGate:
+
+    @pytest_asyncio.fixture
+    async def client(self, ledger):
+        from httpx import AsyncClient, ASGITransport
+        from app.main import app
+        from app.api import dependencies as deps
+
+        async def _override_ledger():
+            return ledger
+        app.dependency_overrides[deps.get_ledger] = _override_ledger
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+        app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_soft_mode_no_token_allows(self, client):
+        """Test default (auth_enforced=False): missing bearer is a soft
+        SEC-005, request proceeds."""
+        from app.config import settings as _s
+        # conftest has auth_enforced=False already, but assert explicitly
+        # so a future conftest change doesn't silently flip this.
+        assert _s.auth_enforced is False
+        resp = await client.post("/api/v1/sync/config/events/replay", json={"events": []})
+        assert resp.status_code == 200
+        assert resp.json() == {"applied": 0, "skipped": 0}
+
+    @pytest.mark.asyncio
+    async def test_strict_mode_no_token_401(self, client, monkeypatch):
+        """Production mode: missing bearer → 401 before handler runs."""
+        from app.config import settings as _s
+        monkeypatch.setattr(_s, "auth_enforced", True)
+        resp = await client.post("/api/v1/sync/config/events/replay", json={"events": []})
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_strict_mode_valid_bearer_passes(self, client, monkeypatch):
+        """Production mode + valid bearer: any role (auth_required doesn't
+        gate by role, unlike require_manager) → handler runs."""
+        from app.api.routes import auth as auth_mod
+        from app.config import settings as _s
+        monkeypatch.setattr(_s, "auth_enforced", True)
+        auth_mod._sessions.clear()
+        token = auth_mod._create_token("emp_server", "Cassie", ["server"])
+
+        resp = await client.post(
+            "/api/v1/sync/config/events/replay",
+            json={"events": []},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"applied": 0, "skipped": 0}
+
+    @pytest.mark.asyncio
+    async def test_health_and_get_events_need_no_auth(self, client, monkeypatch):
+        """Only /replay is gated; /health and /config/events are public
+        (terminals call them before they have a session)."""
+        from app.config import settings as _s
+        monkeypatch.setattr(_s, "auth_enforced", True)
+
+        health = await client.get("/api/v1/sync/health")
+        assert health.status_code == 200
+        assert health.json() == {"status": "ok", "role": "overseer"}
+
+        events = await client.get("/api/v1/sync/config/events")
+        assert events.status_code == 200
