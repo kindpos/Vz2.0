@@ -2815,8 +2815,61 @@ function handleSeatAction(state, optId, seatId) {
   }
 }
 
+// ── Move primitive ──
+// Shared in-memory move used by both the long-press "Move to seat…"
+// picker (_pickMoveTarget) and the MANAGE MOVE tool. refs is the
+// [{seatIdx, itemIdx}] list the selection helpers produce; targetSeatId
+// is the destination seat. opts.skipLog skips the MANAGE UNDO entry
+// when the helper is driving a caller that already owns its own log
+// (reserved for future use). Returns the count actually moved.
+function _moveItemsToSeat(state, refs, targetSeatId, opts) {
+  opts = opts || {};
+  var targetIdx = _seatIdxById(state, targetSeatId);
+  if (targetIdx < 0) return 0;
+
+  // Move in descending order so earlier splice calls don't shift the
+  // indices of later ones (matches the pre-extraction behavior).
+  refs.sort(function(a, b) {
+    if (a.seatIdx !== b.seatIdx) return b.seatIdx - a.seatIdx;
+    return b.itemIdx - a.itemIdx;
+  });
+
+  var patches = [];
+  for (var r = 0; r < refs.length; r++) {
+    var rr = refs[r];
+    if (rr.seatIdx === targetIdx) continue;  // skip no-op moves
+    var fromSeat = state.seats[rr.seatIdx];
+    var it = fromSeat.items.splice(rr.itemIdx, 1)[0];
+    state.seats[targetIdx].items.push(it);
+    patches.push({
+      fromSeatId: fromSeat.id,
+      fromItemIdx: rr.itemIdx,
+      item: it,
+    });
+  }
+
+  if (patches.length === 0) {
+    showToast('Already on ' + targetSeatId, { bg: T.gold });
+    return 0;
+  }
+
+  if (state._manageMode && !opts.skipLog) {
+    state._manageLog.push({
+      kind:         'move',
+      targetSeatId: targetSeatId,
+      patches:      patches,
+    });
+  }
+
+  state.selectedItems = {};
+  state.selected      = {};
+  rerenderTopArea(state);
+  showToast('Moved ' + patches.length + ' item(s)', { bg: T.greenWarm });
+  return patches.length;
+}
+
 function _pickMoveTarget(state, refs) {
-  // Build seat list excluding paid + source seat (if all refs share one)
+  // Build seat list excluding paid seats.
   var options = [];
   for (var i = 0; i < state.seats.length; i++) {
     if (state.paidSeats[state.seats[i].id]) continue;
@@ -2828,27 +2881,14 @@ function _pickMoveTarget(state, refs) {
     title:   'Move to Seat',
     options: options,
     onConfirm: function(optId) {
-      var targetIdx;
+      var targetId;
       if (optId === '__new__') {
         addSeat(state);
-        targetIdx = state.seats.length - 1;
+        targetId = state.seats[state.seats.length - 1].id;
       } else {
-        targetIdx = _seatIdxById(state, optId);
+        targetId = optId;
       }
-      if (targetIdx < 0) return;
-      // Move in descending order
-      refs.sort(function(a, b) {
-        if (a.seatIdx !== b.seatIdx) return b.seatIdx - a.seatIdx;
-        return b.itemIdx - a.itemIdx;
-      });
-      for (var r = 0; r < refs.length; r++) {
-        var rr = refs[r];
-        var it = state.seats[rr.seatIdx].items.splice(rr.itemIdx, 1)[0];
-        state.seats[targetIdx].items.push(it);
-      }
-      state.selectedItems = {};
-      rerenderTopArea(state);
-      showToast('Moved ' + refs.length + ' item(s)', { bg: T.greenWarm });
+      _moveItemsToSeat(state, refs, targetId);
     },
     onCancel: function() {},
   });
