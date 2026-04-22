@@ -924,16 +924,15 @@ function _buildTotalsBox(rows) {
 // ═══════════════════════════════════════════════════
 
 function rerenderTopArea(state) {
-  state._mode = 'C';
+  state._mode = layoutModeFor(activeSeatCount(state.seats, state.paidSeats));
 
   if (state._osActive) {
     OrderSummary.hide();
     state._osActive = false;
   }
 
-  // Totals now render into the bottom-left corner (same row as
-  // the action buttons) via buildItemRecapTotals — keep the corner
-  // visible.
+  // Totals render into the bottom-left corner (same row as the action
+  // buttons) via buildItemRecapTotals — keep the corner visible.
   if (state.totalsEl) {
     state.totalsEl.style.display = 'flex';
   }
@@ -945,7 +944,9 @@ function rerenderTopArea(state) {
   for (var t = 0; t < state._lpTimers.length; t++) clearTimeout(state._lpTimers[t]);
   state._lpTimers = [];
 
-  renderModeC(state, top);
+  if (state._mode === 'A')      renderModeA(state, top);
+  else if (state._mode === 'B') renderModeB(state, top);
+  else                          renderModeC(state, top);
 
   renderTotals(state);
 }
