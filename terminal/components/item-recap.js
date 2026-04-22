@@ -144,7 +144,7 @@ function _ensureStyles() {
     + '}'
     + '.ir-iprice{'
     +   'font-size:12px;font-weight:700;color:' + T.gold + ';'
-    +   'flex-shrink:0;transition:color 0.12s;'
+    +   'flex-shrink:0;margin-left:12px;transition:color 0.12s;'
     + '}'
     + '.ir-qty{'
     +   'background:' + T.elec + ';color:' + T.well + ';'
@@ -303,6 +303,57 @@ function _ensureStyles() {
     +   'border:none;border-top:1px solid ' + mintDim5 + ';'
     +   'margin:6px 0 4px;'
     + '}'
+
+    // ── Upcharge strip (visible only when item card is collapsed) ──
+    // Lists mods / microMods that carry an upcharge so the diner sees
+    // where the price is coming from without expanding the card.
+    + '.ir-upcharge-strip{'
+    +   'display:none;flex-direction:column;gap:2px;'
+    +   'padding:2px 10px 6px 26px;'
+    + '}'
+    + '.ir-card.collapsed .ir-upcharge-strip{display:flex;}'
+    + '.ir-upcharge-row{'
+    +   'display:flex;align-items:center;gap:5px;'
+    +   'font-size:10px;color:' + textDim55 + ';'
+    + '}'
+    + '.ir-upcharge-row .ir-mod-arrow{font-size:9px;}'
+    + '.ir-upcharge-row .ir-uc-name{'
+    +   'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+    + '}'
+    + '.ir-upcharge-row .ir-up{margin-left:10px;}'
+
+    // ── Tile-level inversion cascade ──
+    // When a parent element carries .ir-inverted, every text node
+    // inside the recap reads as T.well and card backgrounds fall
+    // transparent so the parent tile's accent fill shows through.
+    // Colored prefix badges (NO / ADD / EXTRA …) intentionally keep
+    // their semantic colors — they remain readable.
+    + '.ir-inverted{--ir-inv-text:' + T.well + ';}'
+    + '.ir-inverted .ir-seat-num,'
+    +   '.ir-inverted .ir-seat-label,'
+    +   '.ir-inverted .ir-seat-sub,'
+    +   '.ir-inverted .ir-iname,'
+    +   '.ir-inverted .ir-iprice,'
+    +   '.ir-inverted .ir-mname,'
+    +   '.ir-inverted .ir-mmname,'
+    +   '.ir-inverted .ir-up,'
+    +   '.ir-inverted .ir-ups,'
+    +   '.ir-inverted .ir-half-hdr,'
+    +   '.ir-inverted .ir-half-name,'
+    +   '.ir-inverted .ir-uc-name,'
+    +   '.ir-inverted .ir-chev,'
+    +   '.ir-inverted .ir-seat-chev,'
+    +   '.ir-inverted .ir-mod-arrow,'
+    +   '.ir-inverted .ir-mmod-arrow{color:var(--ir-inv-text);}'
+    + '.ir-inverted .ir-seat-header{background:rgba(0,0,0,0.15);'
+    +   'border-bottom-color:rgba(0,0,0,0.25);}'
+    + '.ir-inverted .ir-card{background:rgba(0,0,0,0.10);'
+    +   'border-color:rgba(0,0,0,0.30);border-top-color:rgba(0,0,0,0.45);}'
+    + '.ir-inverted .ir-mods{background:rgba(0,0,0,0.10);'
+    +   'border-top-color:rgba(0,0,0,0.25);}'
+    + '.ir-inverted .ir-halves{border-color:rgba(0,0,0,0.25);}'
+    + '.ir-inverted .ir-half + .ir-half{border-left-color:rgba(0,0,0,0.25);}'
+    + '.ir-inverted .ir-qty{background:var(--ir-inv-text);color:var(--ir-inv-bg,' + T.green + ');}'
   ;
 
   var style = document.createElement('style');
@@ -492,6 +543,59 @@ function _buildModRow(mod) {
   return r;
 }
 
+// ── Collect upcharge-bearing mods/microMods for the compact strip ──
+// Returns a flat list of { prefix, name, upcharge } so the collapsed
+// card can show just the price contributors.
+function _collectUpchargeRows(mods) {
+  var out = [];
+  if (!Array.isArray(mods)) return out;
+  for (var i = 0; i < mods.length; i++) {
+    var m = mods[i];
+    if (m && m.upcharge && m.upcharge > 0) {
+      out.push({ prefix: m.prefix, name: m.name || '', upcharge: m.upcharge });
+    }
+    var mm = Array.isArray(m && m.microMods) ? m.microMods : [];
+    for (var j = 0; j < mm.length; j++) {
+      var x = mm[j];
+      if (x && x.upcharge && x.upcharge > 0) {
+        out.push({ prefix: x.prefix, name: x.name || '', upcharge: x.upcharge });
+      }
+    }
+  }
+  return out;
+}
+
+function _buildUpchargeStrip(rows) {
+  var strip = document.createElement('div');
+  strip.className = 'ir-upcharge-strip';
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var r = document.createElement('div');
+    r.className = 'ir-upcharge-row';
+
+    var arrow = document.createElement('span');
+    arrow.className = 'ir-mod-arrow';
+    arrow.textContent = '↳';
+    r.appendChild(arrow);
+
+    var badge = _buildBadge(row.prefix);
+    if (badge) r.appendChild(badge);
+
+    var name = document.createElement('span');
+    name.className = 'ir-uc-name';
+    name.textContent = row.name;
+    r.appendChild(name);
+
+    var up = document.createElement('span');
+    up.className = 'ir-up';
+    up.textContent = '+' + _fmt(row.upcharge);
+    r.appendChild(up);
+
+    strip.appendChild(r);
+  }
+  return strip;
+}
+
 // ── Item card (item row only; mods/halves appended by later chunks) ──
 function _buildItemCard(item, seatIdx, itemIdx, opts) {
   var card = document.createElement('div');
@@ -546,6 +650,15 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
   var halves = item.halves;
   var hasHalves = halves && ((halves.first && halves.first.length) ||
                              (halves.second && halves.second.length));
+
+  // Compact upcharge strip — only price-affecting mods. Visible only
+  // when the card is collapsed so diners still see where the price
+  // comes from without expanding.
+  var upRows = _collectUpchargeRows(mods);
+  if (upRows.length > 0) {
+    card.appendChild(_buildUpchargeStrip(upRows));
+  }
+
   if (mods.length > 0 || hasHalves) {
     var well = document.createElement('div');
     well.className = 'ir-mods';
@@ -560,6 +673,8 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
     card.appendChild(well);
   }
 
+  if (opts.defaultItemCollapsed) card.classList.add('collapsed');
+
   row.addEventListener('click', function() {
     card.classList.toggle('collapsed');
   });
@@ -568,7 +683,8 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
 }
 
 // ── Seat group (header only; items appended by later chunks) ──
-function _buildSeatGroup(seat) {
+function _buildSeatGroup(seat, seatIdx, opts) {
+  opts = opts || {};
   var group = document.createElement('div');
   group.className = 'ir-seat-group';
 
@@ -603,24 +719,30 @@ function _buildSeatGroup(seat) {
   items.className = 'ir-seat-items';
   group.appendChild(items);
 
-  // Single tap = toggle collapse. Double tap (<300ms) = toggle
-  // selection on every descendant item/mod/mmod as a group.
-  var lastTap = 0;
+  // Chevron = toggle collapse (stops propagation so the select-all
+  // handler below doesn't also fire on the same tap).
+  chev.addEventListener('click', function(e) {
+    e.stopPropagation();
+    group.classList.toggle('collapsed');
+  });
+
+  // Header tap (anywhere but the chevron) = select every item / mod /
+  // microMod in the group. If a consumer supplied onSeatHeaderTap,
+  // call it too so the outer scene can mirror the selection in its
+  // own state (e.g. state.selected / state.selectedItems). Mirror the
+  // "toggle if all already selected" behavior so a second tap clears.
   header.addEventListener('click', function() {
-    var now = Date.now();
-    if (now - lastTap < 300) {
-      var all = group.querySelectorAll('.ir-item-row, .ir-mod, .ir-mmod');
-      var allSelected = all.length > 0;
-      for (var i = 0; i < all.length; i++) {
-        if (!all[i].classList.contains('sel')) { allSelected = false; break; }
-      }
-      for (var j = 0; j < all.length; j++) {
-        all[j].classList.toggle('sel', !allSelected);
-      }
-    } else {
-      group.classList.toggle('collapsed');
+    var all = group.querySelectorAll('.ir-item-row, .ir-mod, .ir-mmod');
+    var allSelected = all.length > 0;
+    for (var i = 0; i < all.length; i++) {
+      if (!all[i].classList.contains('sel')) { allSelected = false; break; }
     }
-    lastTap = now;
+    for (var j = 0; j < all.length; j++) {
+      all[j].classList.toggle('sel', !allSelected);
+    }
+    if (typeof opts.onSeatHeaderTap === 'function') {
+      opts.onSeatHeaderTap(seatIdx, !allSelected);
+    }
   });
 
   return group;
@@ -663,11 +785,13 @@ export function buildItemRecap(order, opts) {
 
   var root = document.createElement('div');
   root.className = 'ir-root';
-  root.appendChild(_buildPanelHeader(order));
+  if (!opts.hideHeader) {
+    root.appendChild(_buildPanelHeader(order));
+  }
 
   var seats = Array.isArray(order.seats) ? order.seats : [];
   for (var i = 0; i < seats.length; i++) {
-    var group = _buildSeatGroup(seats[i]);
+    var group = _buildSeatGroup(seats[i], i, opts);
     var itemsWrap = group.querySelector('.ir-seat-items');
     var items = Array.isArray(seats[i].items) ? seats[i].items : [];
     for (var j = 0; j < items.length; j++) {
