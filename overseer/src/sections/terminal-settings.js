@@ -1,226 +1,349 @@
 /* ============================================
-   KINDpos Overseer — Terminal Settings
-   Register and configure POS terminals.
+   KINDpos Overseer — Terminal Settings (Nostalgia)
+
+   Register and configure POS terminals: role, default
+   floor-plan section, and training mode.
    ============================================ */
 
 import { pushChanges } from '../services/config-push.js';
+import {
+  T, C, withAlpha,
+  buildScenePage, sectionCard, field, checkboxChip, chipGroup,
+  button, openModal, showToast,
+} from '../ui/forms.js';
 
 const ROLES = [
-    { id: 'register',  label: 'Register'   },
-    { id: 'kitchen',   label: 'Kitchen'    },
-    { id: 'bar',       label: 'Bar'        },
-    { id: 'manager',   label: 'Manager'    },
-    { id: 'expo',      label: 'Expo'       },
+  { id: 'register', label: 'Register' },
+  { id: 'kitchen',  label: 'Kitchen'  },
+  { id: 'bar',      label: 'Bar'      },
+  { id: 'manager',  label: 'Manager'  },
+  { id: 'expo',     label: 'Expo'     },
 ];
 
-let currentContainer = null;
+const NO_SECTION = '__none__';
 
-function showToast(msg, type = 'success') {
-    const toast = document.createElement('div');
-    const color = type === 'error' ? 'var(--color-vermillion)' : 'var(--color-green)';
-    toast.style.cssText = `position:fixed;top:24px;right:24px;z-index:10000;background:rgba(0,0,0,0.85);border:1px solid ${color};color:${color};padding:14px 24px;border-radius:8px;font-family:var(--font-body);font-size:22px;`;
-    toast.textContent = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-}
+let _container = null;
 
+/* ------------------------------------------
+   DATA FETCH
+------------------------------------------ */
 async function fetchTerminals() {
-    try {
-        const res = await fetch('/api/v1/config/terminals');
-        if (!res.ok) return [];
-        return await res.json();
-    } catch { return []; }
+  try {
+    const res = await fetch('/api/v1/config/terminals');
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
 }
 
 async function fetchFloorSections() {
-    try {
-        const res = await fetch('/api/v1/config/floorplan/sections');
-        if (!res.ok) return [];
-        return await res.json();
-    } catch { return []; }
+  try {
+    const res = await fetch('/api/v1/config/floorplan/sections');
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
 }
 
-function input(label, id, value, placeholder = '', type = 'text') {
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'margin-bottom: 14px;';
-    const lbl = document.createElement('label');
-    lbl.textContent = label;
-    lbl.style.cssText = 'display:block;font-family:var(--font-body);font-size:16px;color:var(--color-mint);margin-bottom:4px;';
-    wrap.appendChild(lbl);
-    const inp = document.createElement('input');
-    inp.type = type;
-    inp.id = id;
-    inp.value = value || '';
-    if (placeholder) inp.placeholder = placeholder;
-    inp.className = 'kp-date-input';
-    inp.style.cssText += 'width:100%;font-size:20px;';
-    wrap.appendChild(inp);
-    return { wrap, input: inp };
+function sectionOptions(sections) {
+  return [
+    { id: NO_SECTION, label: '(none)' },
+    ...sections.map(s => ({
+      id: s.id || s.section_id,
+      label: s.name || s.label,
+    })),
+  ];
 }
 
-function select(label, id, value, options) {
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'margin-bottom: 14px;';
-    const lbl = document.createElement('label');
-    lbl.textContent = label;
-    lbl.style.cssText = 'display:block;font-family:var(--font-body);font-size:16px;color:var(--color-mint);margin-bottom:4px;';
-    wrap.appendChild(lbl);
-    const sel = document.createElement('select');
-    sel.id = id;
-    sel.className = 'kp-date-input';
-    sel.style.cssText += 'width:100%;font-size:20px;cursor:pointer;';
-    options.forEach(opt => {
-        const o = document.createElement('option');
-        o.value = opt.id; o.textContent = opt.label;
-        o.style.background = 'var(--color-bg-dark)';
-        if (opt.id === value) o.selected = true;
-        sel.appendChild(o);
-    });
-    wrap.appendChild(sel);
-    return { wrap, input: sel };
-}
+/* ------------------------------------------
+   ADD / EDIT MODAL
+------------------------------------------ */
+function openTerminalModal(terminal, sections, onSaved) {
+  const isEdit = !!terminal;
 
-function openTerminalModal(terminal, sections, onSave) {
-    const isEdit = !!terminal;
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:5000;display:flex;align-items:center;justify-content:center;';
-    const modal = document.createElement('div');
-    modal.style.cssText = 'background:var(--color-bg);border:2px solid var(--color-gold);border-radius:12px;width:500px;max-height:85vh;overflow-y:auto;padding:24px;';
-    modal.innerHTML = `<div style="font-family:var(--font-heading);font-size:28px;color:var(--color-gold);margin-bottom:16px;">${isEdit ? 'Edit' : 'Add'} Terminal</div>`;
+  const draft = {
+    terminal_id:        terminal?.terminal_id       || '',
+    name:               terminal?.name              || '',
+    role:               terminal?.role              || 'register',
+    default_section_id: terminal?.default_section_id || null,
+    training_mode:      !!terminal?.training_mode,
+  };
 
-    const idF = input('Terminal ID *', 'ts-id', terminal?.terminal_id || '', 'terminal_01');
-    if (isEdit) { idF.input.disabled = true; idF.input.style.opacity = '0.6'; }
-    const nameF = input('Name', 'ts-name', terminal?.name || '', 'Front Register');
-    const roleF = select('Role', 'ts-role', terminal?.role || 'register', ROLES);
+  const content = document.createElement('div');
+  content.style.cssText = `display: flex; flex-direction: column; gap: ${T.sp.lg}px;`;
 
-    const sectionOpts = [{ id: '', label: '(none)' }, ...sections.map(s => ({ id: s.id || s.section_id, label: s.name || s.label }))];
-    const sectionF = select('Default Section', 'ts-section', terminal?.default_section_id || '', sectionOpts);
+  // Terminal ID
+  const idF = field({
+    label: 'Terminal ID',
+    id: 'ts-id',
+    value: draft.terminal_id,
+    placeholder: 'terminal_01',
+    required: true,
+  });
+  if (isEdit) {
+    idF.input.disabled = true;
+    idF.input.style.opacity = '0.6';
+    idF.input.style.cursor = 'not-allowed';
+  }
+  idF.input.addEventListener('input', e => { draft.terminal_id = e.target.value; });
+  content.appendChild(idF.wrap);
 
-    const trainingWrap = document.createElement('label');
-    trainingWrap.style.cssText = 'display:inline-flex;align-items:center;gap:10px;padding:10px 16px;border-radius:6px;cursor:pointer;background:var(--color-bg-dark);border:1px solid rgba(var(--color-mint-rgb),0.15);color:var(--color-mint);font-family:var(--font-body);font-size:20px;margin-bottom:14px;';
-    const trainingCb = document.createElement('input');
-    trainingCb.type = 'checkbox';
-    trainingCb.checked = terminal?.training_mode || false;
-    trainingCb.style.cssText = 'accent-color:var(--color-mint);width:18px;height:18px;';
-    trainingWrap.appendChild(trainingCb);
-    trainingWrap.appendChild(document.createTextNode('Training Mode'));
+  // Name
+  const nameF = field({
+    label: 'Name',
+    id: 'ts-name',
+    value: draft.name,
+    placeholder: 'Front Register',
+  });
+  nameF.input.addEventListener('input', e => { draft.name = e.target.value; });
+  content.appendChild(nameF.wrap);
 
-    modal.appendChild(idF.wrap);
-    modal.appendChild(nameF.wrap);
-    modal.appendChild(roleF.wrap);
-    modal.appendChild(sectionF.wrap);
-    modal.appendChild(trainingWrap);
+  // Role (single-select chip group)
+  const roleWrap = document.createElement('div');
+  roleWrap.style.cssText = `display: flex; flex-direction: column; gap: 6px;`;
+  const roleLbl = document.createElement('label');
+  roleLbl.style.cssText = `
+    font-family: ${T.font.body};
+    font-size: ${T.fs.base}px;
+    color: ${T.textMuted};
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  `;
+  roleLbl.textContent = 'Role';
+  roleWrap.appendChild(roleLbl);
+  const roleChips = chipGroup({
+    options: ROLES,
+    selected: [draft.role],
+    mode: 'single',
+    onChange: (sel) => { draft.role = sel[0] || 'register'; },
+  });
+  roleWrap.appendChild(roleChips.wrap);
+  content.appendChild(roleWrap);
 
-    const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:12px;margin-top:20px;';
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.style.cssText = 'padding:12px 24px;background:transparent;border:1px solid #888;border-radius:8px;color:#888;font-family:var(--font-body);font-size:20px;cursor:pointer;';
-    cancelBtn.addEventListener('click', () => overlay.remove());
-    btnRow.appendChild(cancelBtn);
+  // Default Section (single-select chip group — (none) + each section)
+  const secWrap = document.createElement('div');
+  secWrap.style.cssText = `display: flex; flex-direction: column; gap: 6px;`;
+  const secLbl = document.createElement('label');
+  secLbl.style.cssText = roleLbl.style.cssText;
+  secLbl.textContent = 'Default Section';
+  secWrap.appendChild(secLbl);
+  const secOpts = sectionOptions(sections);
+  const secChips = chipGroup({
+    options: secOpts,
+    selected: [draft.default_section_id || NO_SECTION],
+    mode: 'single',
+    onChange: (sel) => {
+      const v = sel[0] || NO_SECTION;
+      draft.default_section_id = v === NO_SECTION ? null : v;
+    },
+  });
+  secWrap.appendChild(secChips.wrap);
+  content.appendChild(secWrap);
 
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.textContent = isEdit ? 'Save' : 'Add Terminal';
-    saveBtn.style.cssText = 'padding:12px 24px;background:var(--color-mint);border:none;border-radius:8px;color:var(--color-bg);font-family:var(--font-body);font-size:20px;font-weight:bold;cursor:pointer;';
-    saveBtn.addEventListener('click', async () => {
-        const terminalId = idF.input.value.trim();
-        if (!terminalId) { showToast('Terminal ID is required', 'error'); return; }
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Saving...';
+  // Training mode
+  const trainingChip = checkboxChip({
+    label: 'Training Mode',
+    checked: draft.training_mode,
+    onChange: (on) => { draft.training_mode = on; },
+  });
+  content.appendChild(trainingChip.wrap);
 
-        const payload = {
-            terminal_id: terminalId,
-            name: nameF.input.value.trim() || terminalId,
-            role: roleF.input.value,
-            default_section_id: sectionF.input.value || null,
-            training_mode: trainingCb.checked,
-        };
+  // Footer buttons
+  let modalRef = null;
+  const cancelBtn = button({
+    label: 'Cancel',
+    variant: 'ghost',
+    onClick: () => modalRef.close(),
+  });
+  const saveBtn = button({
+    label: isEdit ? 'Save' : 'Add Terminal',
+    variant: 'primary',
+    onClick: async () => {
+      const terminalId = (draft.terminal_id || '').trim();
+      if (!terminalId) {
+        showToast('Terminal ID is required', 'error');
+        return;
+      }
+      saveBtn.disabled = true;
+      saveBtn.style.opacity = '0.6';
+      saveBtn.textContent = 'Saving...';
+
+      const payload = {
+        terminal_id: terminalId,
+        name: (draft.name || '').trim() || terminalId,
+        role: draft.role,
+        default_section_id: draft.default_section_id,
+        training_mode: draft.training_mode,
+      };
+
+      try {
         const result = await pushChanges([{
-            event_type: isEdit ? 'terminal.updated' : 'terminal.registered',
-            payload,
+          event_type: isEdit ? 'terminal.updated' : 'terminal.registered',
+          payload,
         }]);
-        if (result.ok) {
-            overlay.remove();
-            showToast(`Terminal ${isEdit ? 'updated' : 'added'}`);
-            onSave();
-        } else {
-            saveBtn.disabled = false;
-            saveBtn.textContent = isEdit ? 'Save' : 'Add Terminal';
-            showToast('Failed to save', 'error');
-        }
-    });
-    btnRow.appendChild(saveBtn);
-    modal.appendChild(btnRow);
-    overlay.appendChild(modal);
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    document.body.appendChild(overlay);
+        if (!result.ok) throw new Error('push failed');
+        showToast(`Terminal ${isEdit ? 'updated' : 'added'}`);
+        modalRef.close();
+        onSaved();
+      } catch (e) {
+        console.warn('[Terminal Settings] save failed:', e);
+        showToast('Failed to save', 'error');
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.textContent = isEdit ? 'Save' : 'Add Terminal';
+      }
+    },
+  });
+
+  modalRef = openModal({
+    title: isEdit ? `Edit Terminal: ${terminal.name || terminal.terminal_id}` : 'Add Terminal',
+    content,
+    footer: [cancelBtn, saveBtn],
+    width: 520,
+  });
 }
 
-async function render(container) {
-    container.innerHTML = '';
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'max-width:900px;margin:0 auto;padding:30px 24px 60px;';
+/* ------------------------------------------
+   TERMINAL ROW
+------------------------------------------ */
+function buildTerminalRow(terminal, sections, onRefresh) {
+  const roleLabel = (ROLES.find(r => r.id === terminal.role) || {}).label || terminal.role;
+  const section = terminal.default_section_id
+    ? sections.find(s => (s.id || s.section_id) === terminal.default_section_id)
+    : null;
+  const sectionLabel = section ? (section.name || section.label) : null;
 
-    const header = document.createElement('div');
-    header.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap;gap:12px;';
-    header.innerHTML = `
-        <div>
-            <div style="font-family:var(--font-heading);font-size:44px;color:var(--color-gold);">\u{1F5A5}\u{FE0F} Terminal Settings</div>
-            <div style="font-size:18px;color:rgba(var(--color-mint-rgb),0.5);margin-top:4px;">Register POS terminals and assign roles</div>
-        </div>
+  const row = document.createElement('div');
+  row.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: ${T.sp.lg}px;
+    padding: ${T.sp.md}px ${T.sp.lg}px;
+    background: ${T.well};
+    border-radius: ${T.r.sm}px;
+    border-left: 3px solid ${terminal.training_mode ? T.warning : T.green};
+    flex-wrap: wrap;
+  `;
+
+  const info = document.createElement('div');
+  info.style.cssText = 'flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px;';
+
+  const nameLine = document.createElement('div');
+  nameLine.style.cssText = `
+    display: flex; align-items: center; gap: ${T.sp.sm}px;
+    font-family: ${T.font.heading};
+    font-size: ${T.fs.xl}px;
+    color: ${T.text};
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  `;
+  const nameText = document.createElement('span');
+  nameText.textContent = terminal.name || terminal.terminal_id;
+  nameLine.appendChild(nameText);
+  if (terminal.training_mode) {
+    const badge = document.createElement('span');
+    badge.textContent = 'TRAINING';
+    badge.style.cssText = `
+      font-family: ${T.font.mono};
+      font-size: ${T.fs.xs}px;
+      letter-spacing: 1.5px;
+      color: ${T.warning};
+      background: ${withAlpha(T.warning, 0.15)};
+      padding: 2px 8px;
+      border-radius: ${T.r.sm}px;
+      font-weight: 700;
     `;
-    const [terminals, sections] = await Promise.all([fetchTerminals(), fetchFloorSections()]);
+    nameLine.appendChild(badge);
+  }
+  info.appendChild(nameLine);
 
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.textContent = '+ Add Terminal';
-    addBtn.style.cssText = 'background:var(--color-mint);color:var(--color-bg);border:none;border-radius:8px;padding:12px 24px;font-family:var(--font-body);font-size:20px;font-weight:bold;cursor:pointer;';
-    addBtn.addEventListener('click', () => openTerminalModal(null, sections, () => render(container)));
-    header.appendChild(addBtn);
-    wrapper.appendChild(header);
+  const meta = document.createElement('div');
+  meta.style.cssText = `
+    display: flex; flex-wrap: wrap; gap: ${T.sp.md}px;
+    font-family: ${T.font.mono};
+    font-size: ${T.fs.base}px;
+    color: ${T.textMuted};
+  `;
+  const metaParts = [
+    { key: 'ID',      val: terminal.terminal_id, color: T.text },
+    { key: 'Role',    val: roleLabel,            color: T.green },
+  ];
+  if (sectionLabel) metaParts.push({ key: 'Section', val: sectionLabel, color: T.cyan });
+  metaParts.forEach(part => {
+    const span = document.createElement('span');
+    span.innerHTML = `<span style="color:${T.textDim};letter-spacing:1.5px;text-transform:uppercase;font-size:${T.fs.xs}px;">${part.key}</span> <span style="color:${part.color};font-weight:600;">${part.val}</span>`;
+    meta.appendChild(span);
+  });
+  info.appendChild(meta);
 
-    if (terminals.length === 0) {
-        const empty = document.createElement('div');
-        empty.style.cssText = 'padding:60px 20px;text-align:center;color:rgba(var(--color-mint-rgb),0.4);font-size:22px;';
-        empty.textContent = 'No terminals registered. Click + Add Terminal to begin.';
-        wrapper.appendChild(empty);
-    } else {
-        terminals.forEach(t => {
-            const card = document.createElement('div');
-            card.style.cssText = 'background:rgba(var(--color-mint-rgb),0.06);border:1px solid rgba(var(--color-mint-rgb),0.2);border-radius:8px;padding:18px 22px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;';
-            const roleLabel = (ROLES.find(r => r.id === t.role) || {}).label || t.role;
-            const sectionLabel = t.default_section_id ? (sections.find(s => (s.id || s.section_id) === t.default_section_id) || {}).name : null;
-            card.innerHTML = `
-                <div style="flex:1;min-width:200px;">
-                    <div style="font-family:var(--font-heading);color:var(--color-gold);font-size:26px;margin-bottom:4px;">${t.name || t.terminal_id} ${t.training_mode ? '<span style="font-size:16px;color:var(--color-gold);background:rgba(var(--color-gold-rgb),0.2);padding:2px 8px;border-radius:4px;margin-left:8px;">TRAINING</span>' : ''}</div>
-                    <div style="font-family:var(--font-mono,monospace);font-size:18px;color:rgba(var(--color-mint-rgb),0.7);">
-                        <span style="color:rgba(var(--color-mint-rgb),0.4);">ID:</span> ${t.terminal_id}
-                        &nbsp;<span style="color:rgba(var(--color-mint-rgb),0.4);">Role:</span> ${roleLabel}
-                        ${sectionLabel ? `&nbsp;<span style="color:rgba(var(--color-mint-rgb),0.4);">Section:</span> ${sectionLabel}` : ''}
-                    </div>
-                </div>
-            `;
-            const editBtn = document.createElement('button');
-            editBtn.type = 'button';
-            editBtn.textContent = 'Edit';
-            editBtn.style.cssText = 'padding:8px 16px;background:rgba(var(--color-mint-rgb),0.1);border:1px solid rgba(var(--color-mint-rgb),0.25);border-radius:6px;color:var(--color-mint);font-family:var(--font-body);font-size:18px;cursor:pointer;';
-            editBtn.addEventListener('click', () => openTerminalModal(t, sections, () => render(container)));
-            card.appendChild(editBtn);
-            wrapper.appendChild(card);
-        });
-    }
+  row.appendChild(info);
 
-    container.appendChild(wrapper);
+  const editBtn = button({
+    label: 'Edit',
+    variant: 'ghost',
+    onClick: () => openTerminalModal(terminal, sections, onRefresh),
+  });
+  row.appendChild(editBtn);
+
+  return row;
 }
 
+/* ------------------------------------------
+   MAIN RENDER
+------------------------------------------ */
+async function render(container) {
+  const [terminals, sections] = await Promise.all([fetchTerminals(), fetchFloorSections()]);
+
+  const { body } = buildScenePage(container, {
+    title: 'Terminal Settings',
+    subtitle: 'Register POS terminals and assign roles',
+  });
+
+  // Action bar — Add button
+  const actionBar = document.createElement('div');
+  actionBar.style.cssText = `
+    display: flex; justify-content: flex-end;
+    margin-bottom: ${T.sp.sm}px;
+  `;
+  actionBar.appendChild(button({
+    label: '+ Add Terminal',
+    variant: 'primary',
+    onClick: () => openTerminalModal(null, sections, () => render(container)),
+  }));
+  body.appendChild(actionBar);
+
+  // Terminal list
+  const listCard = sectionCard({
+    label: `Registered Terminals [${terminals.length}]`,
+    accent: T.green,
+  });
+
+  if (terminals.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = `
+      padding: ${T.sp.xxxl}px;
+      text-align: center;
+      color: ${T.textMuted};
+      font-family: ${T.font.body};
+      font-size: ${T.fs.base}px;
+    `;
+    empty.textContent = 'No terminals registered. Click + Add Terminal to begin.';
+    listCard.body.appendChild(empty);
+  } else {
+    terminals.forEach(t => {
+      listCard.body.appendChild(buildTerminalRow(t, sections, () => render(container)));
+    });
+  }
+  body.appendChild(listCard.card);
+}
+
+/* ------------------------------------------
+   SCENE API
+------------------------------------------ */
 export function buildTerminalSettingsScene(container) {
-    currentContainer = container;
-    render(container).catch(e => console.error('[TerminalSettings] Mount error:', e));
+  _container = container;
+  render(container).catch(e => console.error('[Terminal Settings] Mount error:', e));
 }
 
 export function cleanupTerminalSettings(container) {
-    if (container) container.innerHTML = '';
-    currentContainer = null;
+  if (container) container.innerHTML = '';
+  _container = null;
 }
