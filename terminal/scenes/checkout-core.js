@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../tokens.js';
-import { chamfer, buildStyledButton, applySunkenStyle, hexToRgba } from '../sm2-shim.js';
+import { chamfer, buildStyledButton, applySunkenStyle, hexToRgba, fetchWithTimeout } from '../sm2-shim.js';
 import { buildButton, buildGap, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { setSceneName, setHeaderBack } from '../app.js';
@@ -399,7 +399,7 @@ export function buildTipAdjustInline(opts) {
       if (!_selected) return;
       var tipAmount = parseInt(digits || '0', 10) / 100;
       var adjusting = _selected; // capture ref — we null _selected optimistically
-      fetch('/api/v1/payments/tip-adjust', {
+      fetchWithTimeout('/api/v1/payments/tip-adjust', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -407,7 +407,7 @@ export function buildTipAdjustInline(opts) {
           payment_id: adjusting.payment_id,
           tip_amount: tipAmount,
         }),
-      }).then(function(r) {
+      }, 15000).then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         showToast('Tip adjusted', { bg: T.goGreen });
         adjusting.tip_amount = tipAmount;
@@ -425,6 +425,11 @@ export function buildTipAdjustInline(opts) {
           }
         });
       }).catch(function() {
+        // Reset selection so the operator doesn't silently re-submit the same
+        // stale check on the next ENT tap — they must re-pick from the list.
+        _selected = null;
+        numpad.clear();
+        onAdjusted();
         showToast('Tip adjust failed', { bg: T.verm });
       });
     },

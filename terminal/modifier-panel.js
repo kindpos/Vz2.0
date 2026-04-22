@@ -796,6 +796,7 @@ export function ModifierPanel(container, opts) {
         'background:' + T.bgDark + ';',
         'padding:10px 4px;display:flex;align-items:center;justify-content:center;',
         'min-height:48px;cursor:pointer;user-select:none;box-sizing:border-box;',
+        'pointer-events:auto;touch-action:manipulation;',
         'font-family:' + T.fh + ';font-size:13px;font-weight:bold;',
         'color:' + T.textPrimary + ';text-align:center;',
       ].join('');
@@ -823,6 +824,9 @@ export function ModifierPanel(container, opts) {
           if (!_didHold) applyOptionalMod(entry.groupKey, opt, mandKey);
         });
         card.addEventListener('pointerleave', function() {
+          clearTimeout(_holdTimer);
+        });
+        card.addEventListener('pointercancel', function() {
           clearTimeout(_holdTimer);
         });
       } else {

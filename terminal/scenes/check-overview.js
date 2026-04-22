@@ -37,6 +37,7 @@ import { setSceneName, setHeaderBack } from '../app.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
 import { computeTotals, getTaxRate } from '../pricing.js';
 import { buildItemRecap, buildItemRecapTotals } from '../components/item-recap.js';
+import { fetchWithTimeout } from '../sm2-shim.js';
 import './column-editor.js';
 
 var _refreshInFlight = false;
@@ -744,11 +745,11 @@ defineScene({
 
         var numpad = buildNumpad({
           onSubmit: function(pin) {
-            fetch('/api/v1/auth/verify-pin', {
+            fetchWithTimeout('/api/v1/auth/verify-pin', {
               method:  'POST',
               headers: { 'Content-Type': 'application/json' },
               body:    JSON.stringify({ pin: pin }),
-            }).then(function(r) { return r.json(); }).then(function(data) {
+            }, 10000).then(function(r) { return r.json(); }).then(function(data) {
               if (data.valid && (data.roles || []).indexOf('manager') !== -1) {
                 params.onConfirm(data.employee_id || pin);
               } else if (data.valid) {

@@ -192,9 +192,15 @@ export function buildPillButton(opts) {
       btn.style.transform = btn.style.transform.replace('translateY(1px)', '').trim();
     }
   };
-  btn.addEventListener('pointerup',    _rel);
-  btn.addEventListener('pointerleave', _rel);
-  if (o.onClick) btn.addEventListener('pointerup', o.onClick);
+  btn.addEventListener('pointerup',     _rel);
+  btn.addEventListener('pointerleave',  _rel);
+  btn.addEventListener('pointercancel', _rel);
+  if (o.onClick) {
+    btn.addEventListener('pointerup', function(e) {
+      if (btn._disabled) return;
+      o.onClick(e);
+    });
+  }
 
   btn.setColor = function(newColor, newDark, newText) {
     color  = newColor;
@@ -282,8 +288,9 @@ export function buildFloatButton(opts) {
       btn.style.transform = btn.style.transform.replace('translateY(1px)', '').trim();
     }
   };
-  btn.addEventListener('pointerup',    _rel);
-  btn.addEventListener('pointerleave', _rel);
+  btn.addEventListener('pointerup',     _rel);
+  btn.addEventListener('pointerleave',  _rel);
+  btn.addEventListener('pointercancel', _rel);
   if (o.onClick) btn.addEventListener('pointerup', o.onClick);
 
   // Color swap — for cycling OPEN → CLOSED → VOID
@@ -353,6 +360,8 @@ export function buildNumKey(opts) {
   btn.style.outline       = 'none';
   btn.style.userSelect    = 'none';
   btn.style.boxSizing     = 'border-box';
+  btn.style.pointerEvents = 'auto';
+  btn.style.touchAction   = 'manipulation';
   if (o.label) btn.textContent = o.label;
 
   btn.addEventListener('pointerdown', function() {
@@ -370,8 +379,9 @@ export function buildNumKey(opts) {
       btn.style.transform = btn.style.transform.replace('translateY(3px)', '').trim();
     }
   };
-  btn.addEventListener('pointerup',    _rel);
-  btn.addEventListener('pointerleave', _rel);
+  btn.addEventListener('pointerup',     _rel);
+  btn.addEventListener('pointerleave',  _rel);
+  btn.addEventListener('pointercancel', _rel);
   if (o.onClick) btn.addEventListener('pointerup', o.onClick);
 
   return btn;

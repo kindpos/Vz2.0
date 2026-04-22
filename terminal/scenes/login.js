@@ -25,6 +25,7 @@ function darkenHex(hex, pct) {
 import { buildNumpad } from '../numpad.js';
 import { showToast }   from '../components.js';
 import { setToken, clearToken } from '../auth-client.js';
+import { fetchWithTimeout }     from '../sm2-shim.js';
 
 // ── Constants ─────────────────────────────────────
 const PIN_LENGTH = 4;
@@ -303,9 +304,14 @@ defineScene({
         });
       });
 
+      var _overlayClosed = false;
       function _closeOverlay() {
+        if (_overlayClosed) return;
+        _overlayClosed = true;
         overlay.style.transform = 'translateX(-100%)';
-        setTimeout(function() { overlay.remove(); }, 260);
+        setTimeout(function() {
+          if (overlay.parentNode) overlay.remove();
+        }, 260);
       }
 
       function _buildContent(empData) {
@@ -519,9 +525,9 @@ defineScene({
         clockInBtn.addEventListener('pointerup', function() {
           if (!selectedRole) return;
           clockInBtn.style.opacity = '0.35'; clockInBtn.style.pointerEvents = 'none';
-          fetch('/api/v1/servers/clock-in', { method:'POST', headers:{'Content-Type':'application/json'},
+          fetchWithTimeout('/api/v1/servers/clock-in', { method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({ employee_id: empId, employee_name: empName, role: selectedRole, pool_memberships: selectedPoolIds }),
-          }).then(function(r) {
+          }, 15000).then(function(r) {
             if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail||'Failed'); });
             return r.json();
           }).then(function() {
@@ -539,9 +545,9 @@ defineScene({
         // Clock Out action
         clockOutBtn.addEventListener('pointerup', function() {
           clockOutBtn.style.opacity = '0.35'; clockOutBtn.style.pointerEvents = 'none';
-          fetch('/api/v1/servers/clock-out', { method:'POST', headers:{'Content-Type':'application/json'},
+          fetchWithTimeout('/api/v1/servers/clock-out', { method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({ employee_id: empId, employee_name: empName }),
-          }).then(function(r) {
+          }, 15000).then(function(r) {
             if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail||'Failed'); });
             return r.json();
           }).then(function() {
