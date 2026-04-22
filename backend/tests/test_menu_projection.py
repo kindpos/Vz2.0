@@ -175,3 +175,42 @@ class TestMenuProjection:
         assert state.categories[0]['name'] == 'Appetizers'
         assert state.categories[1]['name'] == 'Entrees'
         assert state.categories[2]['name'] == 'Desserts'
+
+
+class TestMenuProjection86 :
+    """`core/menu_projection` must reflect the 86 / restore lifecycle so
+    the terminal's `/api/v1/menu` fetch can grey out items the Overseer
+    has stocked-out tonight. Prior to this, MENU_ITEM_86D was silently
+    dropped here — the orders route would still reject (409) but the UI
+    had no way to know ahead of time."""
+
+    def test_86_flag_carries_through(self):
+        events = [
+            _evt(EventType.MENU_ITEM_CREATED, {
+                'item_id': 'i1', 'name': 'Wings', 'price': 12.00, 'category': 'APPS',
+            }),
+            _evt(EventType.MENU_ITEM_86D, {'item_id': 'i1'}),
+        ]
+        state = project_menu(events)
+        assert len(state.items) == 1
+        assert state.items[0]['is_86ed'] is True
+
+    def test_restore_clears_86(self):
+        events = [
+            _evt(EventType.MENU_ITEM_CREATED, {
+                'item_id': 'i2', 'name': 'Soda', 'price': 3.00, 'category': 'DRINKS',
+            }),
+            _evt(EventType.MENU_ITEM_86D, {'item_id': 'i2'}),
+            _evt(EventType.MENU_ITEM_RESTORED, {'item_id': 'i2'}),
+        ]
+        state = project_menu(events)
+        assert state.items[0]['is_86ed'] is False
+
+    def test_86_on_unknown_item_is_noop(self):
+        # 86'ing an item that doesn't exist in the projection must not
+        # synthesize a phantom MenuItem.
+        events = [
+            _evt(EventType.MENU_ITEM_86D, {'item_id': 'ghost'}),
+        ]
+        state = project_menu(events)
+        assert state.items == []

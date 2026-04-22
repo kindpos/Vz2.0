@@ -117,6 +117,21 @@ def project_menu(events: List[Event]) -> MenuState:
             if item_id in items_map:
                 del items_map[item_id]
 
+        elif event.event_type == EventType.MENU_ITEM_86D:
+            # Temporary "out of stock tonight" flag. Previously dropped by
+            # this projection, so /api/v1/menu kept showing 86'd items as
+            # available — the UI let servers tap them and only then the
+            # server rejected with 409. Carry the flag through so the
+            # terminal can grey the tile out.
+            iid = payload.get('item_id')
+            if iid in items_map:
+                items_map[iid]['is_86ed'] = True
+
+        elif event.event_type == EventType.MENU_ITEM_RESTORED:
+            iid = payload.get('item_id')
+            if iid in items_map:
+                items_map[iid]['is_86ed'] = False
+
         elif event.event_type == EventType.MODIFIER_GROUP_CREATED:
             group_id = payload.get('group_id')
             modifier_groups_map[group_id] = payload

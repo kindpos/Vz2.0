@@ -60,7 +60,26 @@ class PaymentHealthMonitor:
                     interval = 30.0
 
                 old_status = status
-                new_status = await device.check_status()
+                # Bound check_status so a wedged device can't freeze the
+                # monitor loop — without the wrapper a single hung device
+                # starves every other device's status updates. 5s is
+                # generous for a LAN round-trip; on timeout we treat it as
+                # OFFLINE so the state-change path still fires.
+                try:
+                    new_status = await asyncio.wait_for(device.check_status(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "check_status timed out for device %s — marking OFFLINE",
+                        device.config.device_id if device.config else "unknown",
+                    )
+                    new_status = PaymentDeviceStatus.OFFLINE
+                except Exception as exc:
+                    logger.error(
+                        "check_status raised for device %s: %s — marking OFFLINE",
+                        device.config.device_id if device.config else "unknown",
+                        exc,
+                    )
+                    new_status = PaymentDeviceStatus.OFFLINE
 
                 if old_status != new_status:
                     await self._handle_status_change(device, old_status, new_status)

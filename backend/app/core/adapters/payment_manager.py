@@ -78,7 +78,22 @@ class PaymentManager:
             result = await asyncio.wait_for(device.initiate_sale(request), timeout=90.0)
         except asyncio.TimeoutError:
             logger.warning(f"Payment {request.transaction_id} timed out. Attempting cancel.")
-            await device.cancel_transaction()
+            # Check the cancel outcome so a device stuck in AWAITING_CARD
+            # is visible. The cancel itself also needs a timeout — a hung
+            # device will hang this too.
+            try:
+                cancel_ok = await asyncio.wait_for(device.cancel_transaction(), timeout=10.0)
+            except Exception as cancel_exc:
+                cancel_ok = False
+                logger.error(
+                    "Cancel after timeout failed for %s: %s",
+                    request.transaction_id, cancel_exc,
+                )
+            if not cancel_ok:
+                logger.error(
+                    "Device may still be holding %s — manual recovery may be needed",
+                    request.transaction_id,
+                )
             result = TransactionResult(
                 transaction_id=request.transaction_id,
                 status=TransactionStatus.TIMEOUT,
@@ -103,20 +118,66 @@ class PaymentManager:
         return result
 
     async def _check_idempotency(self, transaction_id: str) -> Optional[TransactionResult]:
-        """Check if transaction already exists in ledger."""
-        # Query ledger for payment.confirmed (PAYMENT_CONFIRMED)
+        """Check if transaction already exists in ledger.
+
+        Looks at CONFIRMED / DECLINED for completed results that we can
+        replay, AND at INITIATED for in-flight work. Previously we only
+        checked the completed states — which left a window between
+        PAYMENT_INITIATED (emitted at the start of the manager flow) and
+        the result event where a retry could push a second sale onto the
+        device. Returning a synthetic TIMEOUT for that in-flight case
+        tells the route "it's already going; don't fire another one."
+        """
+        # Completed (confirmed) — replay the recorded result.
         events = await self._ledger.get_events_by_type(EventType.PAYMENT_CONFIRMED)
         for e in events:
              if e.payload.get("transaction_id") == transaction_id:
                  return TransactionResult(**e.payload)
-        
-        # Also check failures (PAYMENT_DECLINED mapped to payment.failed)
+
+        # Completed (declined) — same replay path.
         events = await self._ledger.get_events_by_type(EventType.PAYMENT_DECLINED)
         for e in events:
              if e.payload.get("transaction_id") == transaction_id:
                  return TransactionResult(**e.payload)
-                 
+
+        # In-flight — there's an INITIATED with no terminal result yet.
+        initiated = await self._ledger.get_events_by_type(EventType.PAYMENT_INITIATED)
+        for e in initiated:
+            if e.payload.get("transaction_id") != transaction_id:
+                continue
+            # Only block if this INITIATED has no matching resolution.
+            if not await self._has_terminal_result(transaction_id):
+                logger.warning(
+                    "Idempotency: PAYMENT_INITIATED for %s has no result yet — refusing retry",
+                    transaction_id,
+                )
+                return TransactionResult(
+                    transaction_id=transaction_id,
+                    status=TransactionStatus.ERROR,
+                    error=PaymentError(
+                        category=PaymentErrorCategory.SYSTEM,
+                        error_code="IN_FLIGHT",
+                        message="Payment is still in flight on the device",
+                        source="PaymentManager",
+                    ),
+                )
+
         return None
+
+    async def _has_terminal_result(self, transaction_id: str) -> bool:
+        """True if any PAYMENT_* result event exists for this txn_id."""
+        for et in (
+            EventType.PAYMENT_CONFIRMED,
+            EventType.PAYMENT_DECLINED,
+            EventType.PAYMENT_CANCELLED,
+            EventType.PAYMENT_TIMED_OUT,
+            EventType.PAYMENT_ERROR,
+        ):
+            events = await self._ledger.get_events_by_type(et)
+            for e in events:
+                if e.payload.get("transaction_id") == transaction_id:
+                    return True
+        return False
 
     async def _emit_result_event(self, request: TransactionRequest, result: TransactionResult, extra: dict = None):
         status_map = {
