@@ -281,8 +281,7 @@ def _aggregate_orders(orders, tip_map):
                 continue
             tip = Decimal(str(tip_map.get(p.payment_id, p.tip_amount)))
             total_tips += tip
-            if tip > 0:
-                tip_amounts.append(tip)
+            tip_amounts.append(tip)
             # Attribute tip to server
             if sid and sid in server_totals:
                 server_totals[sid]["tips"] += tip

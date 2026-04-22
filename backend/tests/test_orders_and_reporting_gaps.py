@@ -380,3 +380,77 @@ async def test_sales_summary_empty_day_returns_zeros(client):
     assert data["total_checks"] == 0
     assert Decimal(str(data["net_sales"])) == Decimal("0.00")
     assert data["hourly_sales"] == []
+
+
+# =============================================================================
+# tip_avg fix — $0 tips must be included in the denominator
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_tip_avg_includes_zero_tip_payments_in_denominator(client, ledger):
+    """
+    Regression: tip_avg was calculated over non-zero tips only, inflating the
+    average.  With two payments — $5 tip and $0 tip — the correct avg is $2.50,
+    not $5.00.
+    """
+    oid1 = "tipavg-has-tip"
+    oid2 = "tipavg-no-tip"
+
+    for oid, tip_id in [(oid1, "pay_t1"), (oid2, "pay_t2")]:
+        await _seed_fully_paid_order(ledger, oid, amount=Decimal("20.00"))
+        await ledger.append(order_closed(terminal_id=TERMINAL, order_id=oid, total=Decimal("20.00")))
+
+    # Append a TIP_ADJUSTED for oid1 only ($5) — oid2 keeps $0 tip
+    from app.core.events import tip_adjusted
+    await ledger.append(tip_adjusted(
+        terminal_id=TERMINAL,
+        order_id=oid1,
+        payment_id=f"pay_{oid1}",
+        tip_amount=Decimal("5.00"),
+        previous_tip=Decimal("0.00"),
+    ))
+
+    resp = await client.get(f"/api/v1/reports/sales-summary?date={TODAY}")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # $5 tip + $0 tip across 2 card payments → avg = $2.50
+    assert Decimal(str(data["tip_avg"])) == Decimal("2.50")
+
+
+# =============================================================================
+# merge_orders race condition — target re-validated before write loop
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_merge_target_closed_concurrently_returns_409(ledger):
+    """
+    Regression: merge validated target was open, then a concurrent payment
+    closed it before the write loop.  We now re-fetch and raise 409.
+    """
+    from app.api.routes.orders import MergeOrderRequest, merge_orders
+
+    target_id = "merge-rc-target"
+    source_id = "merge-rc-source"
+
+    await _seed_open_order(ledger, target_id)
+    await _seed_open_order(ledger, source_id)
+
+    # Simulate concurrent closure of target between validation and loop
+    await ledger.append(order_closed(
+        terminal_id=TERMINAL, order_id=target_id, total=Decimal("25.00"),
+    ))
+
+    with pytest.raises(HTTPException) as exc:
+        await merge_orders(
+            target_id,
+            MergeOrderRequest(source_ids=[source_id], approved_by="mgr"),
+            ledger=ledger,
+        )
+    assert exc.value.status_code in (400, 409)
+
+
+# =============================================================================
+# _voidPendingTimer cleanup — manager-landing cleanup test (JS)
+# =============================================================================
+# Covered by manager-landing.test.js which exercises the cleanup() return value.

@@ -67,15 +67,15 @@ function fetchAllData(state) {
   var sid = encodeURIComponent((state.emp || {}).id || '');
   return Promise.all([
     fetch('/api/v1/orders/day-summary?server_id=' + sid)
-      .then(function(r) { return r.json(); }).catch(function() { return {}; }),
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return {}; }),
     fetch('/api/v1/orders?server_id=' + sid)
-      .then(function(r) { return r.json(); }).catch(function() { return []; }),
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return []; }),
     fetch('/api/v1/server/shift/table-stats?server_id=' + sid)
-      .then(function(r) { return r.json(); }).catch(function() { return {}; }),
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return {}; }),
     fetch('/api/v1/server/shift/checkout-status?server_id=' + sid)
-      .then(function(r) { return r.json(); }).catch(function() { return { openChecks: 0, unadjustedTips: 0 }; }),
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return { openChecks: 0, unadjustedTips: 0 }; }),
     fetch('/api/v1/config/tipout')
-      .then(function(r) { return r.json(); }).catch(function() { return []; }),
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return []; }),
   ]).then(function(results) {
     var _rawSales = results[0] || {};
     // Attach sparkData from dayparts for sparkline rendering.
