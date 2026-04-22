@@ -10,6 +10,7 @@ from typing import Optional
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+from types import SimpleNamespace
 from app.services.store_config_service import StoreConfigService
 from app.services.overseer_config_service import OverseerConfigService
 
@@ -608,12 +609,77 @@ async def get_labor_summary(
     """
     if request is not None:
         await _gate_server_scope(request, server_id, "reporting.labor_summary")
-    # Get clock events for the requested date
+
+    # ── Timecard adjustments index ──────────────────────────────────────
+    # Admin corrections live as TIMECARD_ADJUSTED events. They can be
+    # written on any day (e.g. an admin fixing yesterday's timecard
+    # today), so we fetch them by type and index by (target_date, eid).
+    # Last-write-wins per (date, eid) via sequence-number ordering.
+    #
+    # Payload shape:
+    #   { employee_id, employee_name?, date: "YYYY-MM-DD",
+    #     clock_in?: "HH:MM", clock_out?: "HH:MM", reason? }
+    # A missing clock_in/clock_out means "clear that side"; both missing
+    # effectively deletes the clock record for that (date, eid).
+    adj_events_all = await ledger.get_events_by_type(EventType.TIMECARD_ADJUSTED)
+    adj_map: dict[tuple[str, str], dict] = {}
+    for e in sorted(adj_events_all, key=lambda x: x.sequence_number or 0):
+        d = (e.payload or {}).get("date")
+        eid = (e.payload or {}).get("employee_id")
+        if not d or not eid:
+            continue
+        adj_map[(d, eid)] = {
+            "clock_in":  e.payload.get("clock_in"),
+            "clock_out": e.payload.get("clock_out"),
+            "name":      e.payload.get("employee_name"),
+        }
+
+    def _parse_hhmm(d_str: str, hhmm: str):
+        try:
+            dt = datetime.strptime(f"{d_str}T{hhmm}", "%Y-%m-%dT%H:%M")
+            return dt.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return None
+
+    def _apply_timecard_adjustments(d_str, ins, outs, names):
+        """Mutate ins/outs/names to reflect TIMECARD_ADJUSTED for d_str."""
+        for (target_date, eid), adj in adj_map.items():
+            if target_date != d_str:
+                continue
+            if adj.get("name"):
+                names.setdefault(eid, adj["name"])
+            ci = adj.get("clock_in")
+            co = adj.get("clock_out")
+            # clock_in
+            if ci:
+                ts = _parse_hhmm(d_str, ci)
+                if ts is not None:
+                    ins[eid] = SimpleNamespace(
+                        timestamp=ts,
+                        event_type=EventType.USER_LOGGED_IN,
+                        payload={"employee_id": eid, "employee_name": names.get(eid, "")},
+                        sequence_number=None,
+                    )
+            else:
+                ins.pop(eid, None)
+            # clock_out
+            if co:
+                ts = _parse_hhmm(d_str, co)
+                if ts is not None:
+                    outs[eid] = SimpleNamespace(
+                        timestamp=ts,
+                        event_type=EventType.USER_LOGGED_OUT,
+                        payload={"employee_id": eid, "employee_name": names.get(eid, "")},
+                        sequence_number=None,
+                    )
+            else:
+                outs.pop(eid, None)
+
+    # ── Raw clock events for the requested date ─────────────────────────
     day_events = await _get_events_for_date(ledger, date)
 
-    # Filter login/logout events for this day
-    clock_ins = {}   # eid -> login event
-    clock_outs = {}  # eid -> logout event
+    clock_ins = {}   # eid -> login event (possibly synthetic after adj)
+    clock_outs = {}  # eid -> logout event (possibly synthetic after adj)
     emp_names = {}   # eid -> name
 
     for e in sorted(day_events, key=lambda x: x.sequence_number or 0):
@@ -625,6 +691,9 @@ async def get_labor_summary(
             eid = e.payload["employee_id"]
             clock_outs[eid] = e
             emp_names[eid] = e.payload.get("employee_name", emp_names.get(eid, "Unknown"))
+
+    # Overlay admin adjustments for the requested date.
+    _apply_timecard_adjustments(date, clock_ins, clock_outs, emp_names)
 
     # Also get order data for tip calculations
     all_orders = project_orders(day_events)
@@ -667,6 +736,24 @@ async def get_labor_summary(
         return True
 
     # ── Weekly hours: sum hours from past 7 days ──────────────────────────
+    async def _clocks_for_date(d_str):
+        """Build (ins, outs, names) for d_str, with admin adjustments applied."""
+        if d_str == date:
+            return clock_ins, clock_outs, emp_names
+        d_events = await _get_events_for_date(ledger, d_str)
+        ins, outs, names = {}, {}, {}
+        for e in sorted(d_events, key=lambda x: x.sequence_number or 0):
+            if e.event_type == EventType.USER_LOGGED_IN:
+                eid = e.payload["employee_id"]
+                ins[eid] = e
+                names[eid] = e.payload.get("employee_name", names.get(eid, "Unknown"))
+            elif e.event_type == EventType.USER_LOGGED_OUT:
+                eid = e.payload["employee_id"]
+                outs[eid] = e
+                names[eid] = e.payload.get("employee_name", names.get(eid, "Unknown"))
+        _apply_timecard_adjustments(d_str, ins, outs, names)
+        return ins, outs, names
+
     async def _get_weekly_hours(eid):
         """Sum hours for an employee over the past 7 days."""
         total = Decimal("0.0")
@@ -677,14 +764,9 @@ async def get_labor_summary(
             if d_str == date:
                 total += _calc_hours(eid)
                 continue
-            d_events = await _get_events_for_date(ledger, d_str)
-            d_login = None
-            d_logout = None
-            for e in d_events:
-                if e.event_type == EventType.USER_LOGGED_IN and e.payload["employee_id"] == eid:
-                    d_login = e
-                elif e.event_type == EventType.USER_LOGGED_OUT and e.payload["employee_id"] == eid:
-                    d_logout = e
+            ins, outs, _names = await _clocks_for_date(d_str)
+            d_login = ins.get(eid)
+            d_logout = outs.get(eid)
             if d_login:
                 start = d_login.timestamp
                 end = d_logout.timestamp if (d_logout and d_logout.timestamp > start) else start + timedelta(hours=8)
@@ -711,20 +793,14 @@ async def get_labor_summary(
                 d_out = _format_time(logout_ev) if (logout_ev and login_ev and logout_ev.timestamp > login_ev.timestamp) else None
                 d_hours = _calc_hours(eid)
             else:
-                d_events = await _get_events_for_date(ledger, d_str)
-                start_ts = None
-                end_ts = None
-                for e in d_events:
-                    if e.event_type == EventType.USER_LOGGED_IN and e.payload.get("employee_id") == eid:
-                        if start_ts is None:
-                            start_ts = e.timestamp  # first login of the day
-                        d_in = e.timestamp.strftime("%H:%M")
-                    elif e.event_type == EventType.USER_LOGGED_OUT and e.payload.get("employee_id") == eid:
-                        end_ts = e.timestamp
-                        d_out = e.timestamp.strftime("%H:%M")
-                if start_ts:
-                    if end_ts and end_ts > start_ts:
-                        delta = (end_ts - start_ts).total_seconds() / 3600.0
+                ins, outs, _names = await _clocks_for_date(d_str)
+                login_ev = ins.get(eid)
+                logout_ev = outs.get(eid)
+                if login_ev:
+                    d_in = login_ev.timestamp.strftime("%H:%M")
+                    if logout_ev and logout_ev.timestamp > login_ev.timestamp:
+                        d_out = logout_ev.timestamp.strftime("%H:%M")
+                        delta = (logout_ev.timestamp - login_ev.timestamp).total_seconds() / 3600.0
                         d_hours = Decimal(str(round(delta, 1)))
                     else:
                         d_hours = Decimal("8.0")
@@ -852,15 +928,10 @@ async def get_labor_summary(
             d_agg = _aggregate_orders(list(d_orders.values()), d_tip_map)
             d_sales = d_agg["net_sales"]
 
-            # Get labor cost per employee using their configured rate
+            # Get labor cost per employee using their configured rate,
+            # after admin timecard adjustments are overlaid.
             d_labor_cost = Decimal("0.00")
-            d_logins = {}
-            d_logouts = {}
-            for e in d_events:
-                if e.event_type == EventType.USER_LOGGED_IN:
-                    d_logins[e.payload["employee_id"]] = e
-                elif e.event_type == EventType.USER_LOGGED_OUT:
-                    d_logouts[e.payload["employee_id"]] = e
+            d_logins, d_logouts, _d_names = await _clocks_for_date(d_str)
             for eid, login_ev in d_logins.items():
                 logout_ev = d_logouts.get(eid)
                 start = login_ev.timestamp

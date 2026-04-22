@@ -140,6 +140,7 @@ function buildLayout(container) {
       }
       .labor-row-hero    { grid-template-columns: repeat(4, 1fr); }
       .labor-row-cob     { grid-template-columns: 1fr 2fr; }
+      .labor-row-tips    { grid-template-columns: repeat(4, 1fr); }
       .labor-row-split   { grid-template-columns: 3fr 2fr; }
       .labor-row-single  { grid-template-columns: 1fr; }
 
@@ -196,6 +197,12 @@ function buildLayout(container) {
           <div class="labor-region-loading">Loading…</div>
         </div>
         <div class="labor-row labor-row-cob" id="region-cob">
+          <div class="labor-region-loading">Loading…</div>
+          <div class="labor-region-loading">Loading…</div>
+        </div>
+        <div class="labor-row labor-row-tips" id="region-tips">
+          <div class="labor-region-loading">Loading…</div>
+          <div class="labor-region-loading">Loading…</div>
           <div class="labor-region-loading">Loading…</div>
           <div class="labor-region-loading">Loading…</div>
         </div>
@@ -368,6 +375,58 @@ function renderCob(container, data) {
   }
 }
 
+// ─── Region: tips summary ───────────────────────────────────────────
+// Pulls directly from labor-summary fields so tipout% and tip_pool
+// stay consistent with the backend's tipout math (see reporting.py
+// get_labor_summary — tip_pool = total_tips − tipout_deducted).
+function renderTips(container, data) {
+  const row = regionEl(container, 'region-tips');
+  if (!row) return;
+  row.innerHTML = '';
+
+  const employees = data.employees || [];
+  const totalTips = employees.reduce((s, e) => s + (Number(e.tips) || 0), 0);
+  const cardTips  = Number(data.card_tips_total) || 0;
+  const cashTips  = Math.max(0, totalTips - cardTips);
+  const tipout    = Number(data.tipout_deducted) || 0;
+  const tipoutPct = Number(data.tipout_percent) || 0;
+  const tipPool   = Number(data.tip_pool) || 0;
+  const netSales  = Number(data.net_sales) || 0;
+  const tipRateFrac = netSales > 0 ? totalTips / netSales : 0;
+
+  row.appendChild(buildStatCard({
+    label: 'Total Tips',
+    accent: T.mint,
+    value: fmt(totalTips, { dp: 0 }),
+    valueColor: T.mint,
+    sub: netSales > 0 ? `${fmtPct(tipRateFrac)} of net sales` : 'No sales yet',
+  }));
+
+  row.appendChild(buildStatCard({
+    label: 'Card Tips',
+    accent: T.cyan,
+    value: fmt(cardTips, { dp: 0 }),
+    valueColor: T.cyan,
+    sub: `${fmt(cashTips, { dp: 0 })} cash declared`,
+  }));
+
+  row.appendChild(buildStatCard({
+    label: 'Tipout',
+    accent: T.lavender,
+    value: fmt(tipout, { dp: 0 }),
+    valueColor: T.lavender,
+    sub: `${tipoutPct.toFixed(1)}% of tips`,
+  }));
+
+  row.appendChild(buildStatCard({
+    label: 'Tip Pool',
+    accent: T.gold,
+    value: fmt(tipPool, { dp: 0 }),
+    valueColor: T.gold,
+    sub: 'Distributable after tipout',
+  }));
+}
+
 // ─── Region: employee breakdown + OT watch ──────────────────────────
 function renderBreakdown(container, data, roleMap) {
   const row = regionEl(container, 'region-breakdown');
@@ -442,6 +501,25 @@ function renderBreakdown(container, data, roleMap) {
           return { text: fmt(g), color: T.gold, weight: 700 };
         },
       },
+      {
+        label: 'Tips', align: 'right', width: '0.9fr',
+        cell: (e) => {
+          const empId = e.id || e.employee_id;
+          const role = roles.get(empId);
+          const tips = Number(e.tips) || 0;
+          // Managers don't work the floor → any tips attributed to them
+          // usually reflect an order they transferred through. Dim the
+          // value so floor-server tips read cleanly by contrast.
+          if (role && role.isManager) {
+            return tips > 0
+              ? { text: fmt(tips, { dp: 0 }), color: T.textDim }
+              : { text: '—', color: T.textDim };
+          }
+          return tips > 0
+            ? { text: fmt(tips, { dp: 0 }), color: T.mint, weight: 700 }
+            : { text: '—', color: T.textDim };
+        },
+      },
     ],
     rows: employees,
   }));
@@ -497,6 +575,8 @@ async function renderAll(container) {
   if (hero) hero.innerHTML = '<div class="labor-region-loading">Loading…</div>'.repeat(4);
   const cob = regionEl(container, 'region-cob');
   if (cob) cob.innerHTML = '<div class="labor-region-loading">Loading…</div>'.repeat(2);
+  const tips = regionEl(container, 'region-tips');
+  if (tips) tips.innerHTML = '<div class="labor-region-loading">Loading…</div>'.repeat(4);
   const breakdown = regionEl(container, 'region-breakdown');
   if (breakdown) breakdown.innerHTML = '<div class="labor-region-loading">Loading…</div>'.repeat(2);
 
@@ -515,6 +595,7 @@ async function renderAll(container) {
   if (!data) {
     renderRegionEmpty(hero, 'No labor data for this date', 4);
     renderRegionEmpty(cob, 'No labor data for this date', 2);
+    renderRegionEmpty(tips, 'No labor data for this date', 4);
     renderRegionEmpty(breakdown, 'No labor data for this date', 2);
     return;
   }
@@ -522,6 +603,7 @@ async function renderAll(container) {
   const roleMap = buildRoleMap(employees, roles);
   renderHero(container, data);
   renderCob(container, data);
+  renderTips(container, data);
   renderBreakdown(container, data, roleMap);
 }
 

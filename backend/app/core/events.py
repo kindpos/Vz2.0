@@ -172,6 +172,12 @@ class EventType(str, Enum):
     USER_LOGGED_IN = "user.logged_in"
     USER_LOGGED_OUT = "user.logged_out"
 
+    # ── Timecard (LEDGER_OPERATIONAL) ─────────────────────────────────
+    # Admin-initiated clock-in/out correction. Applied over the raw
+    # USER_LOGGED_IN/OUT events when computing labor summaries so the
+    # ledger keeps both the original event and the correction history.
+    TIMECARD_ADJUSTED = "timecard.adjusted"
+
 
 # Legacy UPPERCASE values from existing ledger data → canonical EventType
 _LEGACY_ALIASES: dict[str, EventType] = {

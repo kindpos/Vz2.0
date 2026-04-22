@@ -314,7 +314,9 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
         etype = change.event_type
         if etype.startswith("store."):
             sections.add("store")
-        elif etype.startswith("employee.") or etype.startswith("tipout."):
+        elif (etype.startswith("employee.")
+              or etype.startswith("tipout.")
+              or etype.startswith("timecard.")):
             sections.add("employees")
         elif etype.startswith("menu.") or etype.startswith("category."):
             sections.add("menu")
