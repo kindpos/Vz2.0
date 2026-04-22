@@ -1,22 +1,32 @@
 // ═══════════════════════════════════════════════════
-//  KINDpos Terminal — check-overview  (Vz2.0, adaptive)
-//  Working layer: full check management with 3 layout modes.
+//  KINDpos Terminal — check-overview  (Vz2.0)
+//  Working layer for full check management. Nostalgia seats-container
+//  wraps two layout modes:
 //
-//    Mode A  1-4 seats   full-width seat cards
-//    Mode B  5 seats     4 full cards + 5th column (shortened card + compact ＋)
-//    Mode C  6+ seats    OrderSummary (items-only) + compact seat grid
+//    Mode A  1-4 active seats   full-width seat tiles + slim +SEAT rail
+//    Mode B  5+ active seats    order recap + fixed-height scrolling
+//                               compact-tile card on the right
 //
-//  Persistent across modes:
-//    - Green header (check name tappable to edit)
-//    - Bottom-left: totals corner (Subtotal/Tax + Card/Cash)
-//    - Bottom-right: 2×3 action grid (PRINT DISC ADD / PAY VOID RESEND)
+//  Both tiles share an inverted selection visual: selected tiles fill
+//  with a per-seat accent (first four [green, elec, gold, verm], then
+//  T.srvPalette) and every text node flips to T.well via item-recap's
+//  .ir-inverted cascade. Tapping a seat header auto-selects every
+//  item on that seat via toggleSeat's selectedItems mirror.
 //
-//  Interactions:
-//    - Tap seat header  → toggle seat selection
-//    - Tap item row     → toggle item selection
-//    - Long-press item  → per-item menu
-//    - Long-press on selection → bulk menu
-//    - Long-press seat header → seat menu (void, merge, split, transfer…)
+//  Bottom bar (96 px, rebuilt on every rerender):
+//    Left:  210 px TotalsBar — CHECK TOTAL in State 1, "S1 + S3 TOTAL"
+//           (sum of selected seats) in State 2.
+//    Right: State 1 → PRINT + VOID (long-press 550 ms) | divider |
+//                      PAY + ADD ITEMS.
+//           State 2 → PRINT SEATS + MANAGE (T.elec) | divider |
+//                      PAY SEATS (w/ seat-name sub-label) + ADD ITEMS.
+//           MANAGE  → MOVE / SPLIT / MERGE tool pills | divider |
+//                      UNDO + RESET (long-press) + DONE.
+//
+//  DISC is behind the existing disc-pin interrupt — reachable via
+//  long-press item / bulk / seat menus only; no DISC on the primary
+//  bar. TRANSFER keeps its long-press seat-menu entry; it's not on
+//  the MANAGE toolbar (selection-aware transfer deferred).
 //
 //  SceneManager.mountWorking('check-overview', {
 //    checkId, returnLanding, employeeId, employeeName, pin
@@ -1626,40 +1636,6 @@ function renderManageToolbar(state) {
   zone.appendChild(doneBtn);
 }
 
-function _buildTotalsBox(rows) {
-  var box = document.createElement('div');
-  Object.assign(box.style, {
-    background:   T.well,
-    borderLeft:   T.accentBarW + ' solid ' + T.green,
-    borderRadius: '8px',
-    padding:      '8px 12px',
-    fontSize:     T.fsB3,
-    fontFamily:   T.fb,
-    display:      'flex',
-    flexDirection:'column',
-    gap:          '3px',
-  });
-  for (var i = 0; i < rows.length; i++) {
-    var r = document.createElement('div');
-    Object.assign(r.style, {
-      display:        'flex',
-      justifyContent: 'space-between',
-      alignItems:     'baseline',
-      gap:            '8px',
-    });
-    var l = document.createElement('span');
-    l.style.cssText = 'color:' + T.text + ';opacity:0.85;';
-    l.textContent = rows[i].lbl;
-    r.appendChild(l);
-    var v = document.createElement('span');
-    v.style.cssText = 'color:' + rows[i].color + ';font-weight:' + T.fwBold + ';';
-    v.textContent = rows[i].val;
-    r.appendChild(v);
-    box.appendChild(r);
-  }
-  return box;
-}
-
 // ═══════════════════════════════════════════════════
 //  SEATS CONTAINER — Nostalgia card shell
 //  T.card body, 10 px radius, drop shadow, 4 px T.green left accent
@@ -2155,83 +2131,8 @@ function buildSeatCard(state, seatIdx, opts) {
   return card;
 }
 
-function buildItemRow(state, seatIdx, itemIdx) {
-  var item = state.seats[seatIdx].items[itemIdx];
-  var key = seatIdx + ':' + itemIdx;
-  var isSel = !!state.selectedItems[key];
-
-  var row = document.createElement('div');
-  Object.assign(row.style, {
-    display:            'grid',
-    gridTemplateColumns:'1fr 32px 58px',
-    alignItems:         'center',
-    padding:            '4px 6px',
-    fontFamily:         T.fb,
-    fontSize:           T.fsB3,
-    color:              isSel ? T.well : T.text,
-    background:         isSel ? T.gold : 'transparent',
-    borderBottom:       '1px solid ' + hexToRgba(T.border, 0.3),
-    borderRadius:       '4px',
-    cursor:             'pointer',
-    userSelect:         'none',
-    pointerEvents:      'auto',
-    touchAction:        'manipulation',
-  });
-
-  var name = document.createElement('span');
-  name.textContent = item.name;
-  name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-  row.appendChild(name);
-
-  var qty = document.createElement('span');
-  qty.textContent = item.qty;
-  qty.style.cssText = 'text-align:right;color:' + (isSel ? T.well : T.text) + ';';
-  row.appendChild(qty);
-
-  var px = document.createElement('span');
-  px.textContent = fmt(item.qty * (item.effectivePrice || item.price));
-  px.style.cssText = 'text-align:right;color:' + (isSel ? T.well : T.gold) + ';font-weight:' + T.fwBold + ';';
-  row.appendChild(px);
-
-  _wireItemTaps(state, seatIdx, itemIdx, row);
-
-  // Render modifiers below the row
-  var wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;';
-  wrap.appendChild(row);
-  if (Array.isArray(item.mods) && item.mods.length) {
-    for (var mi = 0; mi < item.mods.length; mi++) {
-      wrap.appendChild(_modRow(item.mods[mi]));
-    }
-  }
-  return wrap;
-}
-
-function _modRow(mod) {
-  var isSecondary = mod.prefix === 'NO' || mod.prefix === 'ON SIDE';
-  var r = document.createElement('div');
-  Object.assign(r.style, {
-    display:            'grid',
-    gridTemplateColumns:'1fr 58px',
-    padding:            '0 0 1px ' + (isSecondary ? '28px' : '20px'),
-    fontFamily:         T.fb,
-    fontSize:           T.fsB4,
-    color:              isSecondary ? T.verm : T.green,
-    fontStyle:          isSecondary ? 'italic' : 'normal',
-  });
-  var nm = document.createElement('span');
-  var pre = mod.prefix && mod.prefix !== 'ADD' ? mod.prefix + ' ' : '';
-  nm.textContent = pre + (mod.name || '');
-  r.appendChild(nm);
-  var p = document.createElement('span');
-  p.style.cssText = 'text-align:right;color:' + T.gold + ';';
-  if (mod.price && mod.price > 0) p.textContent = '+' + fmt(mod.price);
-  r.appendChild(p);
-  return r;
-}
-
 // ═══════════════════════════════════════════════════
-//  COMPACT SEAT TILE (Mode C)
+//  COMPACT SEAT TILE (Mode B)
 // ═══════════════════════════════════════════════════
 
 function buildCompactTile(state, seatIdx) {
