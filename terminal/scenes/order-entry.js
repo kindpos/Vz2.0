@@ -56,6 +56,7 @@ import { PREFIXES as UNI_PREFIXES, getModHexData, hasPizzaCategory, PIZZA_PLACEM
 import { computeTotals } from '../pricing.js';
 import { fetchWithTimeout } from '../sm2-shim.js';
 import { formatModifierLabel } from '../modifier-label.js';
+import { buildCheckOverviewParams } from './transitions.js';
 
 // Local bevel colors kept for any call sites that still reference them.
 var _bevelL = T.green;
@@ -77,6 +78,16 @@ var API = '/api/v1';
 var currentOrderId = null;
 var _header = null;
 var isSending = false;   // guard against concurrent handleSend calls
+
+// Flip the in-flight flag AND re-render the bottom bar so the SAVE/SEND
+// buttons dim + swap their labels while the POST chain runs. Without this,
+// a user who taps SEND gets no visual feedback, taps again, and sees every
+// subsequent tap silently swallowed by the isSending guard.
+function setSending(v) {
+  isSending = v;
+  try { if (typeof rebuildBottomBar === 'function') rebuildBottomBar(); }
+  catch (e) { /* rebuildBottomBar can throw if the scene is mid-teardown */ }
+}
 
 function _idemKey() {
   return 'ik_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
@@ -1249,22 +1260,31 @@ function rebuildBottomBar() {
   // Switch bottomBar to flex centered layout
   _bottomBar.style.cssText = 'display:flex;gap:12px;justify-content:center;align-items:center;flex-shrink:0;margin-top:6px;padding:0 4px;';
 
-  var saveColor = hasUnsent ? T.greenWarm : T.mutedText;
-  var sendColor = hasUnsent ? T.gold      : T.mutedText;
+  // While a POST chain is in flight both buttons go inert + relabel so the
+  // operator sees the tap registered. Without this, the isSending guard
+  // swallows taps silently and users re-tap repeatedly.
+  var saveLabel = isSending ? 'SAVING…' : 'SAVE';
+  var sendLabel = isSending ? 'SENDING…' : 'SEND';
+  var buttonsActive = hasUnsent && !isSending;
+  var saveColor = buttonsActive ? T.greenWarm : T.mutedText;
+  var sendColor = buttonsActive ? T.gold      : T.mutedText;
 
-  var finalizeBtn = buildPillButton({ label: 'SAVE', color: saveColor, textColor: T.well });
+  var finalizeBtn = buildPillButton({ label: saveLabel, color: saveColor, textColor: T.well });
   finalizeBtn.style.flex        = '1';
   finalizeBtn.style.height      = '58px';
   finalizeBtn.style.fontSize    = '22px';
   finalizeBtn.style.touchAction = 'manipulation';
+  finalizeBtn.style.pointerEvents = isSending ? 'none' : 'auto';
+  finalizeBtn.style.opacity       = isSending ? '0.55' : '1';
   finalizeBtn.addEventListener('pointerenter', function() {
-    if (hasUnsent) finalizeBtn.style.filter = 'brightness(1.15)';
+    if (buttonsActive) finalizeBtn.style.filter = 'brightness(1.15)';
   });
   finalizeBtn.addEventListener('pointerleave', function() {
     finalizeBtn.style.filter = '';
   });
   finalizeBtn.addEventListener('pointerup', function() {
     finalizeBtn.style.filter = '';
+    if (isSending) return;
     if (!hasUnsent) { handleClose(); return; }
     assignSeatsIfNeeded(async function() {
       try { await handleSaveOnly(); } catch (e) { return; }
@@ -1272,19 +1292,22 @@ function rebuildBottomBar() {
     });
   });
 
-  var sendBtn = buildPillButton({ label: 'SEND', color: sendColor, textColor: T.well });
+  var sendBtn = buildPillButton({ label: sendLabel, color: sendColor, textColor: T.well });
   sendBtn.style.flex        = '1';
   sendBtn.style.height      = '58px';
   sendBtn.style.fontSize    = '22px';
   sendBtn.style.touchAction = 'manipulation';
+  sendBtn.style.pointerEvents = isSending ? 'none' : 'auto';
+  sendBtn.style.opacity       = isSending ? '0.55' : '1';
   sendBtn.addEventListener('pointerenter', function() {
-    if (hasUnsent) sendBtn.style.filter = 'brightness(1.15)';
+    if (buttonsActive) sendBtn.style.filter = 'brightness(1.15)';
   });
   sendBtn.addEventListener('pointerleave', function() {
     sendBtn.style.filter = '';
   });
   sendBtn.addEventListener('pointerup', function() {
     sendBtn.style.filter = '';
+    if (isSending) return;
     if (!hasUnsent) { handleClose(); return; }
     assignSeatsIfNeeded(async function() {
       try { await handleSend(); } catch (e) { return; }
@@ -3459,7 +3482,7 @@ async function handleSaveOnly() {
   var unsentInstances = ticket.filter(function(inst) { return !inst.sent; });
   if (unsentInstances.length === 0) return;
 
-  isSending = true;
+  setSending(true);
 
   try {
     // Step 1 — create order if needed
@@ -3514,7 +3537,7 @@ async function handleSaveOnly() {
     showToast('Save failed', { bg: T.verm });
     throw err;
   } finally {
-    isSending = false;
+    setSending(false);
   }
 }
 
@@ -3526,7 +3549,7 @@ async function handleSend() {
 
   // All items already sent — resend to kitchen only
   if (unsentInstances.length === 0 && currentOrderId) {
-    isSending = true;
+    setSending(true);
     try {
       await fetchWithTimeout(API + '/orders/' + currentOrderId + '/send', { method: 'POST' }, 15000);
       fetchWithTimeout(API + '/print/ticket/' + currentOrderId, { method: 'POST' }, 15000)
@@ -3540,12 +3563,12 @@ async function handleSend() {
       console.warn('[KINDpos] Resend failed:', err);
       showToast('Resend failed', { bg: T.verm, duration: 2000 });
     } finally {
-      isSending = false;
+      setSending(false);
     }
     return;
   }
 
-  isSending = true;
+  setSending(true);
   var totals = computeTicketTotals();
 
   try {
@@ -3625,7 +3648,7 @@ async function handleSend() {
     console.warn('[KINDpos] Send failed:', err);
     throw err;
   } finally {
-    isSending = false;
+    setSending(false);
   }
 
   // Update UI — SEND becomes RESEND, ticket shows sent state
@@ -3675,18 +3698,17 @@ async function handleClose() {
     }
   }
   OrderSummary.hide();
-  SceneManager.mountWorking('check-overview', {
-    checkId: currentOrderId || sceneParams.recallOrderId,
-    pin: sceneParams.pin,
-    employeeId: sceneParams.employeeId,
-    employeeName: sceneParams.employeeName,
-    returnLanding: sceneParams.returnLanding,
-  });
+  // Param shape lives in scenes/transitions.js so the order-entry and
+  // check-overview sides of the handoff share one source of truth.
+  SceneManager.mountWorking('check-overview', buildCheckOverviewParams(currentOrderId, sceneParams));
 }
 
 // ── RECALL FROM BACKEND (open saved check) ──────
 function recallFromBackend(orderId) {
-  fetch(API + '/orders/' + orderId)
+  // 15s abort guard matches handleSend/handleSaveOnly. Without it, a
+  // hung backend on scene entry leaves the ticket list blank forever
+  // with no error surfaced.
+  fetchWithTimeout(API + '/orders/' + orderId, {}, 15000)
     .then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();

@@ -39,6 +39,18 @@ import { computeTotals, getTaxRate } from '../pricing.js';
 import { buildItemRecap, buildItemRecapTotals } from '../components/item-recap.js';
 import { fetchWithTimeout } from '../sm2-shim.js';
 import { computeDiscountAmount, extractItemIds, buildDiscountBody } from '../discount.js';
+import { buildOrderEntryParams } from './transitions.js';
+import {
+  seatSubtotal,
+  checkSubtotal,
+  activeSeatCount as activeSeatCountHelper,
+  layoutModeFor,
+  orderToSeats as orderToSeatsHelper,
+  toggleSeatSelection,
+  toggleItemSelection,
+  selectAllUnpaid,
+  collectSelectedItemRefs,
+} from './seats.js';
 import './column-editor.js';
 
 var _refreshInFlight = false;
@@ -58,24 +70,14 @@ var _refreshInFlight = false;
 
 function fmt(n) { return '$' + (n || 0).toFixed(2); }
 
+// seatTotal / checkTotals now wrap the pure helpers from ./seats.js so the
+// rendering paths and transition paths share one math implementation.
 function seatTotal(seat) {
-  var t = 0;
-  for (var i = 0; i < seat.items.length; i++) {
-    t += seat.items[i].qty * (seat.items[i].effectivePrice || seat.items[i].price);
-  }
-  return t;
+  return seatSubtotal(seat);
 }
 
 function checkTotals(seats, paidSeats) {
-  var subtotal = 0;
-  for (var i = 0; i < seats.length; i++) {
-    if (paidSeats && paidSeats[seats[i].id]) continue;
-    for (var j = 0; j < seats[i].items.length; j++) {
-      var it = seats[i].items[j];
-      subtotal += it.qty * (it.effectivePrice || it.price);
-    }
-  }
-  return computeTotals(subtotal);
+  return computeTotals(checkSubtotal(seats, paidSeats));
 }
 
 // ═══════════════════════════════════════════════════
@@ -206,79 +208,19 @@ function _adaptOrderForRecap(state) {
   };
 }
 
+// activeSeatCount / modeFor / orderToSeats now forward to ./seats.js so
+// the layout math has a single unit-testable implementation.
 function activeSeatCount(seats, paidSeats) {
-  var n = 0;
-  for (var i = 0; i < seats.length; i++) {
-    if (!paidSeats || !paidSeats[seats[i].id]) n++;
-  }
-  return n;
+  return activeSeatCountHelper(seats, paidSeats);
 }
 
 // A = 1-4 active seats · B = 5 · C = 6+
 function modeFor(count) {
-  if (count <= 4) return 'A';
-  if (count === 5) return 'B';
-  return 'C';
+  return layoutModeFor(count);
 }
 
 function orderToSeats(order, minSeats) {
-  minSeats = minSeats || 1;
-  var bySeat = {};
-  var allIds = [];
-
-  // 1. Seed from order.seat_numbers (authoritative) — preserves seats
-  //    that have no items yet.
-  if (order && Array.isArray(order.seat_numbers)) {
-    for (var s = 0; s < order.seat_numbers.length; s++) {
-      var num = order.seat_numbers[s];
-      var sid = 'S-' + String(num).padStart(3, '0');
-      if (!bySeat[sid]) {
-        bySeat[sid] = { id: sid, number: num, items: [] };
-        allIds.push(sid);
-      }
-    }
-  }
-
-  // 2. Attach items to their seats (and create any seat missing from
-  //    seat_numbers — legacy replay compatibility).
-  if (order && Array.isArray(order.items)) {
-    for (var i = 0; i < order.items.length; i++) {
-      var it = order.items[i];
-      var sn = it.seat_number || 1;
-      var seatId = 'S-' + String(sn).padStart(3, '0');
-      if (!bySeat[seatId]) {
-        bySeat[seatId] = { id: seatId, number: sn, items: [] };
-        allIds.push(seatId);
-      }
-      bySeat[seatId].items.push({
-        item_id:        it.item_id,
-        menu_item_id:   it.menu_item_id,
-        name:           it.name,
-        qty:            it.qty || 1,
-        price:          it.price || 0,
-        effectivePrice: it.effective_price != null ? it.effective_price : null,
-        mods:           it.mods || [],
-        notes:          it.notes || '',
-        category:       it.category,
-      });
-    }
-  }
-
-  var maxNum = 0;
-  for (var k = 0; k < allIds.length; k++) {
-    if (bySeat[allIds[k]].number > maxNum) maxNum = bySeat[allIds[k]].number;
-  }
-  while (allIds.length < minSeats || maxNum < minSeats) {
-    maxNum++;
-    var newId = 'S-' + String(maxNum).padStart(3, '0');
-    if (!bySeat[newId]) {
-      bySeat[newId] = { id: newId, number: maxNum, items: [] };
-      allIds.push(newId);
-    }
-  }
-
-  allIds.sort(function(a, b) { return bySeat[a].number - bySeat[b].number; });
-  return allIds.map(function(id) { return bySeat[id]; });
+  return orderToSeatsHelper(order, minSeats);
 }
 
 function collectSummary(seats, selected, paidSeats) {
@@ -1533,25 +1475,20 @@ function _wireItemTaps(state, seatIdx, itemIdx, el) {
 //  SELECTION OPERATIONS
 // ═══════════════════════════════════════════════════
 
+// Selection toggles forward to pure helpers in ./seats.js that return a
+// fresh selection map; the scene owns the re-render trigger.
 function toggleSeat(state, seatId) {
-  if (state.paidSeats[seatId]) return;
-  if (state.selected[seatId]) delete state.selected[seatId];
-  else                        state.selected[seatId] = true;
+  state.selected = toggleSeatSelection(state.selected, state.paidSeats, seatId);
   rerenderTopArea(state);
 }
 
 function toggleItem(state, seatIdx, itemIdx) {
-  var key = seatIdx + ':' + itemIdx;
-  if (state.selectedItems[key]) delete state.selectedItems[key];
-  else                          state.selectedItems[key] = true;
+  state.selectedItems = toggleItemSelection(state.selectedItems, seatIdx, itemIdx);
   rerenderTopArea(state);
 }
 
 function forceSelectAll(state) {
-  for (var i = 0; i < state.seats.length; i++) {
-    if (state.paidSeats[state.seats[i].id]) continue;
-    state.selected[state.seats[i].id] = true;
-  }
+  state.selected = selectAllUnpaid(state.seats, state.paidSeats);
   rerenderTopArea(state);
 }
 
@@ -1562,13 +1499,7 @@ function clearAllSelection(state) {
 }
 
 function getSelectedItemRefs(state) {
-  var out = [];
-  var keys = Object.keys(state.selectedItems);
-  for (var i = 0; i < keys.length; i++) {
-    var p = keys[i].split(':');
-    out.push({ seatIdx: +p[0], itemIdx: +p[1] });
-  }
-  return out;
+  return collectSelectedItemRefs(state.selectedItems);
 }
 
 function getSelectedSeatIds(state) {
@@ -1781,28 +1712,11 @@ function handleAddItems(state, params) {
 }
 
 function _gotoOrderEntry(state, params) {
-  // order-entry reads params.recallOrderId / params.recallCheckNumber to
-  // rehydrate an existing check. If state.orderId is null (brand-new check
-  // path), these are null too — order-entry will POST /orders on first SEND.
-  SceneManager.mountWorking('order-entry', {
-    recallOrderId:     state.orderId || null,
-    recallCheckNumber: state.checkNumber || null,
-    returnTo:          'check-overview',
-    returnParams: {
-      checkId:       state.orderId,
-      returnLanding: params.returnLanding,
-      employeeId:    params.employeeId,
-      employeeName:  params.employeeName,
-      pin:           params.pin,
-    },
-    employeeId:   params.employeeId,
-    employeeName: params.employeeName,
-    pin:          params.pin,
-    seatNumbers:  state.seats.map(function(s) { return s.number; }),
-    selectedSeatNumbers: state.seats
-      .filter(function(s) { return !!state.selected[s.id]; })
-      .map(function(s) { return s.number; }),
-  });
+  // Param shape lives in scenes/transitions.js so the check-overview
+  // and order-entry sides of the handoff share one source of truth.
+  // A brand-new check threads recallOrderId=null and order-entry POSTs
+  // /orders lazily on first SEND.
+  SceneManager.mountWorking('order-entry', buildOrderEntryParams(state, params));
 }
 
 // ═══════════════════════════════════════════════════
@@ -2374,7 +2288,9 @@ function openNameEditor(state) {
 
 function reopenSeat(state, seatId) {
   if (!state.orderId) return;
-  fetch('/api/v1/orders/' + state.orderId, { cache: 'no-store' })
+  // 15s abort guard so a hung backend doesn't leave the reopen flow
+  // waiting indefinitely.
+  fetchWithTimeout('/api/v1/orders/' + state.orderId, { cache: 'no-store' }, 15000)
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(order) {
       if (order) state.order = order;
@@ -2418,7 +2334,11 @@ function refreshOrder(state, params) {
   if (_refreshInFlight) return;
   _refreshInFlight = true;
 
-  fetch('/api/v1/orders/' + state.orderId, { cache: 'no-store' })
+  // 15s abort guard — matches order-entry's send/recall fetches so a hung
+  // backend doesn't leave the refresh indicator silently pending. The
+  // existing catch already clears _refreshInFlight on rejection, so an
+  // AbortError takes the same path as any other network failure.
+  fetchWithTimeout('/api/v1/orders/' + state.orderId, { cache: 'no-store' }, 15000)
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(order) {
       _refreshInFlight = false;
