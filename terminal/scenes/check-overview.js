@@ -1309,6 +1309,99 @@ function _enterManageMerge(state) {
             { bg: T.elec, duration: 2500 });
 }
 
+// Fire-and-observe wrapper around POST /orders/{id}/split-by-seat.
+// Parent + child order IDs come back in data.child_orders; we refresh
+// the current order (whose items drop from the parent) and toast the
+// new check numbers. The endpoint lives at
+// backend/app/api/routes/orders.py:1921.
+function _callSplitBySeat(state, seatNumbers) {
+  if (!state.orderId) {
+    showToast('Save items first', { bg: T.gold });
+    return;
+  }
+  if (!seatNumbers || seatNumbers.length === 0) {
+    showToast('Nothing to split off', { bg: T.gold });
+    return;
+  }
+  showToast('Splitting into new check…', { bg: T.elec });
+  fetchWithTimeout(
+    '/api/v1/orders/' + state.orderId + '/split-by-seat',
+    {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ seats: seatNumbers }),
+    },
+    15000
+  )
+    .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, body: j }; }); })
+    .then(function(res) {
+      if (!res.ok || !res.body || res.body.success === false) {
+        var msg = (res.body && res.body.detail) || 'Split failed';
+        showToast(msg, { bg: T.verm });
+        return;
+      }
+      var kids = (res.body.child_orders || []).map(function(c) { return c.order_id; });
+      showToast('New check: ' + kids.join(', '), { bg: T.greenWarm });
+      refreshOrder(state, state._mountParams || {});
+    })
+    .catch(function() { showToast('Split failed', { bg: T.verm }); });
+}
+
+// +CHECK target: split the current selection off into a new sibling
+// check. Two paths:
+//   - Whole seats selected (state.selected populated): call
+//     split-by-seat directly with those seat numbers.
+//   - Arbitrary items (selectedItems only): create a fresh seat via
+//     addSeat, move the selection onto it, then call split-by-seat
+//     on just that new seat. preSeats is snapshotted for UNDO.
+function _mergeToNewCheck(state) {
+  var seatIds = Object.keys(state.selected || {}).filter(function(id) {
+    return !state.paidSeats[id];
+  });
+  var itemCount = Object.keys(state.selectedItems || {}).length;
+
+  if (seatIds.length === 0 && itemCount === 0) {
+    showToast('Select items or seats to split off', { bg: T.gold });
+    return;
+  }
+  if (!state.orderId) {
+    showToast('Save items first', { bg: T.gold });
+    return;
+  }
+
+  // Seat-aligned fast path. toggleSeat mirrors seat selection onto
+  // item selection, so a "whole seat" selection shows up here as
+  // state.selected populated with matching items already included.
+  if (seatIds.length > 0) {
+    var nums = [];
+    for (var i = 0; i < seatIds.length; i++) {
+      var idx = _seatIdxById(state, seatIds[i]);
+      if (idx >= 0) nums.push(state.seats[idx].number);
+    }
+    state._manageLog.push({ kind: 'merge-new-check-seats', seatNumbers: nums });
+    _callSplitBySeat(state, nums);
+    return;
+  }
+
+  // Arbitrary items — two-step: make a temp seat, move items there,
+  // split off just that seat. The preSeats snapshot captures the
+  // layout before addSeat so UNDO can reverse both the move and the
+  // new-seat creation on the client side (the new child check still
+  // exists on the backend and would need a separate undo).
+  var preSeats = _cloneSeats(state.seats);
+  var refs = getSelectedItemRefs(state);
+  addSeat(state);
+  var newSeat = state.seats[state.seats.length - 1];
+  if (!newSeat) return;
+  _moveItemsToSeat(state, refs, newSeat.id, { skipLog: true });
+  state._manageLog.push({
+    kind:     'merge-new-check-items',
+    preSeats: preSeats,
+    newSeatNumber: newSeat.number,
+  });
+  _callSplitBySeat(state, [newSeat.number]);
+}
+
 function _mergeToNewSeat(state) {
   var refs = getSelectedItemRefs(state);
   if (refs.length === 0) {
@@ -1675,6 +1768,13 @@ function renderModeA(state, container) {
 
   var addTile = buildAddTile(state, { narrow: true });
   row.appendChild(addTile);
+
+  // MANAGE + MERGE exposes a +CHECK destination alongside the +SEAT
+  // add-tile so the cashier can split the current selection off onto
+  // a brand-new sibling check.
+  if (state._manageMode && state._manageTool === 'merge') {
+    row.appendChild(buildCheckTile(state, { narrow: true }));
+  }
 }
 
 // ═══════════════════════════════════════════════════
@@ -1764,6 +1864,9 @@ function renderModeB(state, container) {
     cg.appendChild(buildCompactTile(state, i));
   }
   cg.appendChild(buildAddTile(state, { compact: true }));
+  if (state._manageMode && state._manageTool === 'merge') {
+    cg.appendChild(buildCheckTile(state, { compact: true }));
+  }
 
   gridCard.appendChild(cg);
   wrap.appendChild(gridCard);
@@ -2168,6 +2271,66 @@ function buildAddTile(state, opts) {
       return;
     }
     addSeat(state);
+  });
+  tile.addEventListener('pointerleave', function() {
+    tile.style.background = 'transparent';
+  });
+  return tile;
+}
+
+// ── +CHECK tile ──
+// Rendered alongside the +SEAT add-tile during MANAGE + MERGE mode.
+// Tapping it splits the current selection off into a new sibling
+// check via _mergeToNewCheck. Shares the dashed-outline empty-slot
+// look with buildAddTile but tints the glyph and border T.elec to
+// flag that it leaves the current check.
+function buildCheckTile(state, opts) {
+  opts = opts || {};
+  var tile = document.createElement('div');
+  Object.assign(tile.style, {
+    background:     'transparent',
+    border:         '1px dashed ' + T.elec,
+    borderRadius:   T.chamferCard + 'px',
+    display:        'flex',
+    flexDirection:  'column',
+    alignItems:     'center',
+    justifyContent: 'center',
+    gap:            '2px',
+    cursor:         'pointer',
+    minHeight:      opts.compact ? '72px' : '0',
+    pointerEvents:  'auto',
+    flexShrink:     '0',
+  });
+  if (opts.narrow) tile.style.width = '54px';
+
+  var plus = document.createElement('div');
+  Object.assign(plus.style, {
+    fontFamily: T.fh,
+    fontWeight: T.fwBold,
+    fontSize:   opts.narrow ? '22px' : (opts.compact ? '26px' : '40px'),
+    color:      T.elec,
+    lineHeight: '1',
+  });
+  plus.textContent = '+';
+  tile.appendChild(plus);
+
+  var lbl = document.createElement('span');
+  Object.assign(lbl.style, {
+    fontFamily:    T.fb,
+    fontSize:      opts.narrow ? '7px' : '9px',
+    fontWeight:    T.fwBold,
+    letterSpacing: '0.14em',
+    color:         T.elec,
+  });
+  lbl.textContent = 'CHECK';
+  tile.appendChild(lbl);
+
+  tile.addEventListener('pointerdown', function() {
+    tile.style.background = hexToRgba(T.elec, 0.08);
+  });
+  tile.addEventListener('pointerup', function() {
+    tile.style.background = 'transparent';
+    _mergeToNewCheck(state);
   });
   tile.addEventListener('pointerleave', function() {
     tile.style.background = 'transparent';
