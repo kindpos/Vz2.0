@@ -171,15 +171,34 @@ class DejavooSPInAdapter(BasePaymentDevice):
             if root is not None:
                 resp_msg = root.findtext("RespMSG") or ""
                 success = "Approved" in resp_msg
+                # Harden the numeric parses: the device has been seen to
+                # emit `""` or a non-numeric marker in exceptional cases
+                # (post-outage, firmware quirks). Without these guards the
+                # `int()` / `Decimal()` raise into the caller's silent
+                # `except: pass` below and we return a FAILED BatchResult
+                # with no reason — settlement drift with no diagnostic.
+                try:
+                    batch_count = int(root.findtext("BatchCount") or "0")
+                except (TypeError, ValueError):
+                    logger.warning("SPIn close_batch: non-numeric BatchCount=%r", root.findtext("BatchCount"))
+                    batch_count = 0
+                try:
+                    batch_amount = Decimal(root.findtext("BatchAmount") or "0.00")
+                except Exception:
+                    logger.warning("SPIn close_batch: non-decimal BatchAmount=%r", root.findtext("BatchAmount"))
+                    batch_amount = Decimal("0.00")
                 return BatchResult(
                     batch_id=root.findtext("BatchID") or "UNKNOWN",
-                    transaction_count=int(root.findtext("BatchCount") or "0"),
-                    total_amount=Decimal(root.findtext("BatchAmount") or "0.00"),
+                    transaction_count=batch_count,
+                    total_amount=batch_amount,
                     status=BatchStatus.SUCCESS if success else BatchStatus.FAILED,
                     timestamp=datetime.now()
                 )
         except Exception as e:
-            pass
+            # The bare `pass` here used to make every close_batch failure
+            # invisible — reconciliation drift with no log anywhere. Log
+            # the type + message so the bug report catches it.
+            logger.exception("SPIn close_batch raised: %s", e)
         return BatchResult(
             batch_id="ERROR",
             transaction_count=0,

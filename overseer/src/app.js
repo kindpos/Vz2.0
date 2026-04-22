@@ -3,6 +3,12 @@
    Nice. Dependable. Yours.
    ============================================ */
 
+// Import auth-client FIRST — its module side-effect installs the fetch
+// interceptor that attaches the session bearer token (and prompts for
+// a manager PIN on 401/403). Needed before any other module fires a
+// fetch during its own import cycle.
+import './services/auth-client.js';
+
 import { SceneManager }              from './components/scene-manager.js';
 import { T }                          from './components/tokens.js';
 import {
