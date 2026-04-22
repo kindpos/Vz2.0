@@ -557,8 +557,21 @@ defineScene({
           } else if (activeScene === 'check-overview') {
             SceneManager.emit('payment:complete');
           } else {
+            // NEW ORDER path (quick-service flow). Start a fresh check,
+            // but thread the employee context so order-entry can POST
+            // /orders with the right server_id / server_name instead of
+            // nulls. `{}` here used to lose identity + returnLanding,
+            // which meant the BACK button from order-entry fell through
+            // to a default landing rather than the employee's own.
             OrderSummary.hide();
-            SceneManager.mountWorking('order-entry', {});
+            SceneManager.mountWorking('order-entry', {
+              employeeId:   sceneData.employeeId,
+              employeeName: sceneData.employeeName,
+              pin:          sceneData.pin,
+              returnLanding: sceneData.returnLanding
+                || (sceneData.returnParams && sceneData.returnParams.returnLanding)
+                || null,
+            });
           }
         }
       },
@@ -1057,7 +1070,9 @@ async function handleConfirm() {
 }
 
 function queueReceipt(copyType) {
-  fetch(API + '/print/receipt/' + sceneData.orderId + '?copy_type=' + copyType, { method: 'POST' })
+  // 15s abort guard — a hung printer endpoint used to leave this promise
+  // dangling forever with no error surfaced to the operator.
+  fetchWithTimeout(API + '/print/receipt/' + sceneData.orderId + '?copy_type=' + copyType, { method: 'POST' }, 15000)
     .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); })
     .catch(function(err) {
       console.warn('[KINDpos] Receipt print failed (' + copyType + '):', err);

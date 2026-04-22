@@ -252,8 +252,15 @@ EVENT_CODE_REGISTRY: dict[str, str] = {
     "FIN-008": "Orphaned PAYMENT_INITIATED swept at startup (crash recovery)",
 
     # UI / SCENE LIFECYCLE (UI-)
-    "UI-001": "Interrupt stacked over an existing interrupt (prior torn down)",
-    "UI-002": "Scene async callback fired after unmount (state.el null)",
+    "UI-001": "Interrupt / gate stacked over an existing one (prior torn down)",
+    "UI-002": "Scene callback / bus handler threw; other handlers still fired",
     "UI-003": "Double-submit blocked by scene lock",
-    "UI-004": "Unguarded fetch fell through to silent-empty fallback",
+    "UI-004": "(reserved — was: unguarded fetch fell through to silent-empty fallback)",
+    "UI-005": "check-overview refused ADD ITEMS: state.order null after refresh await",
+    "UI-006": "order-entry recall path lost seatNumbers; fell back to [1]",
+    "UI-007": "Dead-end tap on a button that short-circuited (precondition not met)",
+    "UI-008": "Seat-assign picker confirm (items → seats trace)",
+    "UI-009": "check-overview persistSeats: POST/PUT failure or malformed response",
+    "UI-010": "Seat-assign picker opened (pairs with UI-008 confirm)",
+    "UI-011": "Uncaught window.error or unhandledrejection (global bridge)",
 }

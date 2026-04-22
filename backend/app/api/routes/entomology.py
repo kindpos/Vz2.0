@@ -144,17 +144,28 @@ def _serialize_event(ev) -> dict:
 @router.get("/issues")
 async def get_issues(
     days: int = Query(7, ge=1, le=90),
+    min_severity: str = Query("WARNING"),
     session: dict = Depends(get_current_session),
     collector: DiagnosticCollector = Depends(require_collector),
 ) -> dict:
     """
-    Diagnostic events at severity >= WARNING in the last `days` days,
+    Diagnostic events at severity >= `min_severity` in the last `days` days,
     grouped as { category: { event_code: [events...] } }.
+
+    `min_severity` accepts INFO | WARNING | ERROR | CRITICAL (case-insensitive).
+    Defaults to WARNING so pre-filter clients see the same result as before.
+    Invalid values fall back to WARNING rather than 400ing — keeps the
+    dashboard resilient to typos and future enum additions.
     """
+    try:
+        sev_floor = DiagnosticSeverity(min_severity.upper())
+    except (ValueError, AttributeError):
+        sev_floor = DiagnosticSeverity.WARNING
+
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
     events = await collector.get_events_by_severity_min(
-        DiagnosticSeverity.WARNING, since=since
+        sev_floor, since=since
     )
 
     grouped: dict[str, dict[str, list[dict]]] = {}

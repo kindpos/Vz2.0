@@ -243,17 +243,56 @@ vi.mock('../components.js', () => ({
 
 The entomology event codes the frontend can trigger via `entReport`:
 
-| Code | Meaning | Where it fires |
-|------|---------|----------------|
-| `UI-001` | Interrupt / gate stacked | `scene-manager.js` `interruptFn`, `openGate` |
-| `UI-002` | Bus handler threw / scene callback after unmount | `scene-manager.js` `_emit` |
-| `UI-003` | Double-submit blocked by scene lock | `server-checkout.js` `onFinalize` |
-| `UI-004` | (unused; reserved for unguarded fetch fallback detection) | — |
+| Code | Level | Meaning | Where it fires |
+|------|-------|---------|----------------|
+| `UI-001` | WARNING | Interrupt / gate stacked; prior torn down | `scene-manager.js` `interruptFn`, `openGate` |
+| `UI-002` | ERROR | Bus handler / scene callback threw; other handlers still ran | `scene-manager.js` `_emit`, `interruptFn` (onConfirm/onCancel) |
+| `UI-003` | INFO | Double-submit blocked by scene lock | `server-checkout.js` `onFinalize` |
+| `UI-004` | — | **Reserved** (was: unguarded fetch fallback detection) | — |
+| `UI-005` | WARNING | ADD ITEMS refused — `state.order` still null after refresh await | `check-overview.js` `_gotoOrderEntry` |
+| `UI-006` | WARNING | Recall path lost `seatNumbers`; falling back to `[1]` | `order-entry.js` `assignSeatsIfNeeded` |
+| `UI-007` | INFO | Dead-end tap (button bailed on preconditions) — PRINT/RESEND/PAY/VOID/DISC, delete-paid-seat | `check-overview.js` ×8 |
+| `UI-008` | INFO | Seat-assign picker CONFIRM trace (which items → which seats) | `order-entry.js` `assignSeatsIfNeeded` |
+| `UI-009` | WARNING/ERROR | `persistSeats` backend error (POST/PUT failure, malformed response, missing `order_id`) | `check-overview.js` `persistSeats` |
+| `UI-010` | INFO | Seat-assign picker opened (pairs with UI-008 confirm) | `order-entry.js` `assignSeatsIfNeeded` |
+| `UI-011` | ERROR | Uncaught `window.error` or `unhandledrejection` (global bridge) | `entomology-client.js` |
 
 If your test is asserting "this path should record an `entReport`", mock it and spy:
 ```js
 vi.mock('../entomology-client.js', () => ({ entReport: vi.fn() }));
 ```
+
+### Backend event codes (for context)
+
+The backend emits the remaining 50 codes in the registry via
+`DiagnosticCollector.record(...)`. Full canonical list lives in
+`backend/app/models/diagnostic_event.py:189` (`EVENT_CODE_REGISTRY`).
+
+Codes with an actual emit site today (i.e. not just reserved):
+
+| Code | Level | Category | Where it fires |
+|------|-------|----------|----------------|
+| `DEV-001` | ERROR | DEVICE | `diagnostic_collector.py` (sample entry on seed) |
+| `FIN-001` | WARNING | FIN | `orders.py` — 2dp precision gate rejected a monetary value |
+| `FIN-002` | WARNING | FIN | `payment_routes.py` — in-flight double-charge guard blocked a concurrent sale |
+| `FIN-003` | ERROR | FIN | `orders.py` — day-close invariant check failed |
+| `FIN-004` | ERROR | FIN | `payment_routes.py` — batch settlement drift (ledger vs processor) |
+| `FIN-005` | WARNING | FIN | `payment_routes.py` — overpayment clamped at route layer |
+| `FIN-007` | WARNING | FIN | `orders.py` — new-order creation blocked (day close in progress) |
+| `FIN-008` | WARNING | FIN | `startup_sweep.py` — orphaned PAYMENT_INITIATED resolved at startup |
+| `SEC-001` | WARNING | SEC | `auth.py` — PIN rate-limit triggered |
+| `SEC-002` | ERROR | SEC | `printing.py` ×2 — path-traversal attempt blocked on `/print/test` |
+| `SEC-003` | INFO | SEC | `sync.py` — config events replay invoked |
+| `SEC-005` | WARNING | SEC | `auth.py` ×2 + `reporting.py` — auth / manager required but no valid token |
+| `SEC-006` | ERROR | SEC | `auth.py` + `reporting.py` — manager role missing / cross-server access blocked |
+| `SYS-001` | ERROR | SYSTEM | `main.py` HTTP catch-all — ledger precision/idempotency `ValueError` |
+| `SYS-006` | ERROR | SYSTEM | `main.py` HTTP catch-all — any other unhandled exception |
+| `SYS-HEARTBEAT` | INFO | SYSTEM | `diagnostic_collector.py` — periodic ambient health snapshot |
+
+**Declared but never emitted** (reserved for future hooks; the registry
+keeps them so the codes are stable when hooks land):
+`DEV-002..006`, `NET-001..008`, `PER-001..007`, `REC-001..007`,
+`SYS-002..005`, `SYS-007`, `SEC-004`, `FIN-006`.
 
 ---
 

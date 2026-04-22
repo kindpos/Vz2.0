@@ -329,7 +329,12 @@ function _buildGateRow(met, label) {
 }
 
 // ── Server checkout tile ──────────────────────────
-function _buildServerRow(srv, onClick) {
+// `state` is the scene state object; _buildServerRow used to read it from
+// the closure, but it's a module-level function so the reference was
+// undefined at call time — every renderServerList call threw
+// "ReferenceError: state is not defined" and the list stayed empty.
+// Thread state in explicitly so the color map is reachable.
+function _buildServerRow(state, srv, onClick) {
   var isDone = srv.checked_out;
   var hasIssue = !isDone && (srv.open_tables > 0 || srv.unadj_tips > 0);
   var srvColor = state.serverColorMap[srv.id] || T.green;
@@ -664,9 +669,19 @@ defineScene({
           showToast('Manager approval required', { bg: T.verm, duration: 2000 });
           return;
         }
-        var confirmMsg = ids.length === 1
-          ? 'Void check ' + (ids[0]) + '?'
-          : 'Void ' + ids.length + ' checks?';
+        // Display the human-facing check_number (C-001), not the raw
+        // order_id UUID. `checkNum()` falls back to a derived short id
+        // if the order hasn't yet received its check_number from the
+        // ledger.
+        var orderById = {};
+        (st.allOrders || []).forEach(function(o) { orderById[o.order_id] = o; });
+        var confirmMsg;
+        if (ids.length === 1) {
+          var o0 = orderById[ids[0]];
+          confirmMsg = 'Void check ' + (o0 ? checkNum(o0) : ids[0]) + '?';
+        } else {
+          confirmMsg = 'Void ' + ids.length + ' checks?';
+        }
         showToast(confirmMsg + ' — tap again to confirm', { bg: T.verm, duration: 3000 });
         if (!st._voidPending) {
           st._voidPending = true;
@@ -1031,7 +1046,7 @@ defineScene({
         return 0;
       });
       sorted.forEach(function(srv) {
-        r.serverList.appendChild(_buildServerRow(srv, function(s) {
+        r.serverList.appendChild(_buildServerRow(state, srv, function(s) {
           SceneManager.mountWorking('server-checkout', { staff: s, fromManager: true });
         }));
       });

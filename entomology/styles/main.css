@@ -284,6 +284,36 @@ html, body {
 .sev-ERROR    { background: #6a3718; color: #fbb99a; }
 .sev-CRITICAL { background: var(--verm); color: #2d2a28; }
 
+/* ── Severity tabs (above the issues list) ────────── */
+.sev-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+.sev-tab {
+  appearance: none;
+  background: transparent;
+  color: var(--text-muted);
+  border: 0;
+  border-radius: 7px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 80ms ease, color 80ms ease;
+}
+.sev-tab:hover:not(.active) { background: var(--bg-raised); color: var(--text); }
+.sev-tab.active {
+  background: var(--green);
+  color: var(--bg);
+}
+.sev-tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
 .empty {
   padding: 16px;
   text-align: center;

@@ -55,6 +55,7 @@ import { showPizzaBuilderOverlay } from '../pizza-builder-overlay.js';
 import { PREFIXES as UNI_PREFIXES, getModHexData, hasPizzaCategory, PIZZA_PLACEMENTS, MOD_COLORS } from '../menu-data/universal-modifiers.js';
 import { computeTotals } from '../pricing.js';
 import { fetchWithTimeout } from '../sm2-shim.js';
+import { entReport } from '../entomology-client.js';
 import { formatModifierLabel } from '../modifier-label.js';
 import { buildCheckOverviewParams } from './transitions.js';
 
@@ -138,23 +139,24 @@ var INCLUDED_BY_ITEM = {};
 
 // ── Overseer-authored modifier wiring (source of truth when present) ──
 var MODIFIER_GROUPS = [];          // raw groups (non-hidden) keyed by group_id
-var MANDATORY_ASSIGNMENTS = [];    // [{ assignment_id, label, target_type, target_id, modifier_ids, select_mode }]
-var UNIVERSAL_ASSIGNMENTS = [];    // [{ assignment_id, category_id, group_ids }]
 var MODIFIER_MASTER = {};          // modifier_id → { name, price }
 var ITEM_TO_CATEGORY = {};         // item_id → category_id
 
 // ── Fetch menu from API and transform to HexNav format ──
+// The legacy MandatoryAssignment / UniversalAssignment model was retired.
+// Its behavior (min/max selections, owner_item_id, category_id) now lives
+// on each ModifierGroup, and the per-item / per-category wiring is baked
+// into `item.mandatory_group_ids` and `category.universal_group_ids` in
+// the /menu response. Those two fields are what _refreshModPanel and
+// buildKindModPanel actually consume (see line ~2453). The previous
+// /config/*-assignments endpoints were removed from the backend; the
+// frontend was still calling them and logging 404s on every menu load.
 var _menuFetched = false;
 
 function fetchMenuFromAPI() {
-  return Promise.all([
-    fetch(API + '/menu').then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }),
-    fetch(API + '/config/mandatory-assignments').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
-    fetch(API + '/config/universal-assignments').then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
-  ]).then(function(results) {
-    var menu = results[0];
-    MANDATORY_ASSIGNMENTS = results[1] || [];
-    UNIVERSAL_ASSIGNMENTS = results[2] || [];
+  return fetch(API + '/menu')
+    .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function(menu) {
     if (!menu.categories || !menu.items) return;
 
     // Build items_by_category keyed by category_id (lowercase)
@@ -476,27 +478,83 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
+        // Nostalgia-themed modal panel — matches co-item-menu's shape.
+        // Replaces the SM2-era clip-path:polygon chamfer with the theme's
+        // rounded card look.
         var panel = document.createElement('div');
         panel.style.cssText = [
           'display:flex;flex-direction:column;gap:10px;',
-          'background:' + T.well + ';',
-          'border:4px solid ' + T.green + ';clip-path:polygon(5px 0%,calc(100% - 5px) 0%,100% 5px,100% calc(100% - 5px),calc(100% - 5px) 100%,5px 100%,0% calc(100% - 5px),0% 5px);',
+          'background:' + T.card + ';',
+          'border:3px solid ' + T.green + ';',
+          'border-radius:' + T.chamferCard + 'px;',
+          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
           'padding:20px 24px;min-width:500px;max-width:620px;',
           'max-height:520px;overflow:hidden;',
         ].join('');
 
         // Title
         var title = document.createElement('div');
-        title.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB3 + ';color:' + T.green + ';letter-spacing:2px;text-align:center;margin-bottom:4px;text-transform:uppercase;';
-        title.textContent = '// ASSIGN SEATS //';
+        title.style.cssText = [
+          'font-family:' + T.fh + ';',
+          'font-size:' + T.fsB2 + ';',
+          'font-weight:' + T.fwBold + ';',
+          'color:' + T.green + ';',
+          'letter-spacing:0.2em;',
+          'text-transform:uppercase;',
+          'text-align:center;margin-bottom:8px;',
+        ].join('');
+        title.textContent = 'ASSIGN SEATS';
         panel.appendChild(title);
 
         // Scrollable item list
         var list = document.createElement('div');
         list.className = 'co-scroll';
-        list.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;max-height:380px;';
+        list.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;max-height:380px;';
 
-        var seatBtnRefs = {}; // { itemId: [ { wrap, inner, seatNum } ] }
+        var seatBtnRefs = {}; // { itemId: [ { btn, paint, seatNum } ] }
+
+        // Nostalgia pill-styled seat tile. Compact size, drop-shadow like
+        // the main bottom-bar buttons, toggles between T.card (unselected)
+        // and T.green (selected).
+        function makeSeatTile(sn) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = 'S' + sn;
+          btn.style.cssText = [
+            'border:none;',
+            'border-radius:' + T.pillRadius + ';',
+            'width:64px;height:48px;',
+            'font-family:' + T.fh + ';',
+            'font-size:' + T.fsB3 + ';',
+            'font-weight:' + T.fwBold + ';',
+            'letter-spacing:0.1em;',
+            'text-transform:uppercase;',
+            'cursor:pointer;',
+            'user-select:none;',
+            'touch-action:manipulation;',
+            'outline:none;',
+            'transition:' + T.transitionFast + ';',
+            'flex-shrink:0;',
+          ].join('');
+          function paint(selected) {
+            var bg = selected ? T.green : T.card;
+            var sh = selected ? T.greenDk : T.well;
+            var tc = selected ? T.well : T.text;
+            btn.style.background = bg;
+            btn.style.color = tc;
+            btn.style.boxShadow = '0 4px 0 ' + sh;
+          }
+          paint(false);
+          // Press feedback without overriding the selected-state palette.
+          btn.addEventListener('pointerdown', function() {
+            btn.style.transform = 'translateY(1px)';
+          });
+          var rel = function() { btn.style.transform = ''; };
+          btn.addEventListener('pointerup', rel);
+          btn.addEventListener('pointerleave', rel);
+          btn.addEventListener('pointercancel', rel);
+          return { btn: btn, paint: paint };
+        }
 
         for (var i = 0; i < items.length; i++) {
           (function(item) {
@@ -517,58 +575,29 @@ defineScene({
             label.textContent = displayName;
             row.appendChild(label);
 
-            // Seat tile buttons — styled to match check-overview
             var btnGroup = document.createElement('div');
-            btnGroup.style.cssText = 'display:flex;gap:6px;';
+            btnGroup.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
             assignments[item.id] = [];
             seatBtnRefs[item.id] = [];
 
             for (var si = 0; si < seatNumbers.length; si++) {
               (function(sn) {
-                var btn = buildStyledButton({ variant: 'dark' });
-                var wrap = btn.wrap;
-                var inner = btn.inner;
-
-                wrap.style.clipPath = chamfer(6);
-                wrap.style.width = '64px';
-                wrap.style.height = '52px';
-                wrap.style.minWidth = '0';
-
-                inner.innerHTML = '';
-                inner.style.flexDirection = 'column';
-                inner.style.gap = '0';
-                inner.style.padding = '4px 6px';
-                inner.style.fontFamily = T.fh;
-                inner.style.lineHeight = '1.2';
-
-                var idEl = document.createElement('div');
-                idEl.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB3 + ';letter-spacing:2px;text-transform:uppercase;';
-                idEl.textContent = 'S' + sn;
-                inner.appendChild(idEl);
-
-                seatBtnRefs[item.id].push({ wrap: wrap, inner: inner, seatNum: sn });
-
-                wrap.addEventListener('pointerup', function(e) {
+                var tile = makeSeatTile(sn);
+                seatBtnRefs[item.id].push({ btn: tile.btn, paint: tile.paint, seatNum: sn });
+                tile.btn.addEventListener('pointerup', function(e) {
                   e.stopPropagation();
                   var arr = assignments[item.id];
                   var idx = arr.indexOf(sn);
-                  if (idx >= 0) {
-                    arr.splice(idx, 1);
-                  } else {
-                    arr.push(sn);
-                  }
-                  // Update visuals for this item's seat buttons
+                  if (idx >= 0) arr.splice(idx, 1);
+                  else          arr.push(sn);
                   var refs = seatBtnRefs[item.id];
                   var sel = assignments[item.id];
                   for (var ri = 0; ri < refs.length; ri++) {
-                    var isOn = sel.indexOf(refs[ri].seatNum) >= 0;
-                    refs[ri].wrap.style.background = isOn ? T.green : refs[ri].wrap._embV.bg;
-                    refs[ri].wrap.style.boxShadow = isOn ? refs[ri].wrap._embV.shadowActive : refs[ri].wrap._embV.shadow;
-                    refs[ri].inner.style.color = isOn ? T.well : refs[ri].wrap._embV.label;
+                    refs[ri].paint(sel.indexOf(refs[ri].seatNum) >= 0);
                   }
                   updateConfirmState();
                 });
-                btnGroup.appendChild(wrap);
+                btnGroup.appendChild(tile.btn);
               })(seatNumbers[si]);
             }
             row.appendChild(btnGroup);
@@ -577,16 +606,13 @@ defineScene({
         }
         panel.appendChild(list);
 
-        // Helper: refresh visual state for all seat buttons
+        // Helper: refresh visuals after SELECT ALL.
         function refreshAllBtnVisuals() {
           for (var ii = 0; ii < items.length; ii++) {
             var refs = seatBtnRefs[items[ii].id];
             var sel = assignments[items[ii].id];
             for (var ri = 0; ri < refs.length; ri++) {
-              var isOn = sel.indexOf(refs[ri].seatNum) >= 0;
-              refs[ri].wrap.style.background = isOn ? T.green : refs[ri].wrap._embV.bg;
-              refs[ri].wrap.style.boxShadow = isOn ? refs[ri].wrap._embV.shadowActive : refs[ri].wrap._embV.shadow;
-              refs[ri].inner.style.color = isOn ? T.well : refs[ri].wrap._embV.label;
+              refs[ri].paint(sel.indexOf(refs[ri].seatNum) >= 0);
             }
           }
         }
@@ -1136,17 +1162,38 @@ function assignSeatsIfNeeded(callback) {
   var unsent = ticket.filter(function(i) { return !i.sent; });
   if (unsent.length === 0) { callback(); return; }
 
-  var seats = (sceneParams.seatNumbers && sceneParams.seatNumbers.length > 0)
-    ? sceneParams.seatNumbers : [1];
+  // Fallback to [1] when sceneParams.seatNumbers is missing. For brand-
+  // new checks (recallOrderId null — NEW CHECK, NEW ORDER from payment)
+  // this is expected and quiet. For an EXISTING check with a recallOrderId
+  // it means the transition lost the seat layout (stale state or broken
+  // thread-through) and is about to collapse items onto seat 1 — pin it
+  // to entomology so the hole shows up in diagnostics.
+  var rawSeats = sceneParams.seatNumbers;
+  var seats = (rawSeats && rawSeats.length > 0) ? rawSeats : [1];
+  if ((!rawSeats || rawSeats.length === 0) && sceneParams.recallOrderId) {
+    entReport({
+      code: 'UI-006',
+      source: 'order-entry.assignSeatsIfNeeded',
+      message: 'recall path lost seatNumbers; falling back to [1]',
+      ctx: {
+        recallOrderId: sceneParams.recallOrderId,
+        unsentCount: unsent.length,
+      },
+      level: 'WARNING',
+    });
+  }
 
-  // 1 seat → auto-assign all pending items
+  // 1 seat → auto-assign all pending items to it. Overwrites any
+  // prior per-item assignments because there's only one target.
   if (seats.length === 1) {
     for (var i = 0; i < unsent.length; i++) unsent[i].seat_number = seats[0];
     callback();
     return;
   }
 
-  // If exactly one seat is selected in check-overview, auto-assign to it
+  // If exactly one seat is selected in check-overview, auto-assign to it.
+  // (The earlier "retry safety" filter collapsed the next branch onto
+  // seat 1 because new items carry _activeSeat=1 at add time; removed.)
   var selSeats = sceneParams.selectedSeatNumbers;
   if (selSeats && selSeats.length === 1) {
     for (var i = 0; i < unsent.length; i++) unsent[i].seat_number = selSeats[0];
@@ -1154,20 +1201,45 @@ function assignSeatsIfNeeded(callback) {
     return;
   }
 
-  // 2+ seats → open seat assignment interrupt
+  // 2+ seats and no single pre-selection → open the per-item seat picker
   var itemsForAssign = unsent.map(function(inst) {
     return { id: inst.id, name: inst.name, mods: inst.mods };
   });
 
+  // Trace: which items came in, how many seats, whether any are pre-assigned.
+  // Pairs with UI-008 (confirm) so the end-to-end picker flow is visible.
+  entReport({
+    code: 'UI-010', level: 'INFO',
+    source: 'order-entry.assignSeatsIfNeeded',
+    message: 'seat-picker opened',
+    ctx: {
+      recallOrderId: sceneParams.recallOrderId || null,
+      itemCount: unsent.length,
+      seatCount: seats.length,
+      seatNumbers: seats,
+    },
+  });
+
+  // IMPORTANT: the interrupt's render reads items + seatNumbers from the
+  // TOP LEVEL of the params object (matching every other interrupt in
+  // this file). The earlier shape nested them under `params:` which made
+  // the render see an empty items list — no cards showed, CONFIRM did
+  // nothing, and items silently retained their add-time seat_number=1
+  // default (matches the "items only land on seat 1" user report).
   SceneManager.interrupt('seat-assign', {
-    params: { items: itemsForAssign, seatNumbers: seats },
+    items: itemsForAssign,
+    seatNumbers: seats,
     onConfirm: function(assignments) {
       // Apply assignments: { itemId: [seatNumber, ...] }
       // Items assigned to multiple seats get duplicated (one per extra seat)
       var dupes = [];
+      // Build a compact trace: {itemName: [seat, seat, ...]} so entomology
+      // shows which items went where without PII (no item_ids).
+      var trace = {};
       for (var j = 0; j < unsent.length; j++) {
         var seatList = assignments[unsent[j].id];
         if (!seatList || seatList.length === 0) continue;
+        trace[unsent[j].name] = (trace[unsent[j].name] || []).concat(seatList);
         // First seat goes on the original item
         unsent[j].seat_number = seatList[0];
         // Additional seats → duplicate the item
@@ -1183,9 +1255,30 @@ function assignSeatsIfNeeded(callback) {
       }
       // Add duplicated items to the ticket
       for (var d = 0; d < dupes.length; d++) ticket.push(dupes[d]);
+      // Trace: records operator seat-assignment choices so we can later
+      // correlate "items landed on the wrong seat" reports with what the
+      // user actually confirmed in the picker.
+      entReport({
+        code: 'UI-008', level: 'INFO',
+        source: 'order-entry.assignSeatsIfNeeded',
+        message: 'seat-assign confirm',
+        ctx: {
+          recallOrderId: sceneParams.recallOrderId || null,
+          itemCount: unsent.length,
+          cloneCount: dupes.length,
+          seatNumbers: seats,
+          assignments: trace,
+        },
+      });
       callback();
     },
-    onCancel: function() { /* do nothing — stay on order scene */ },
+    onCancel: function() {
+      // Without this toast the CANCEL tap looks identical to the SEND tap
+      // (nothing visibly changes); users re-tapped SEND thinking it was
+      // swallowed. Make the cancellation visible AND note that items are
+      // still in the order.
+      showToast('Seat assignment cancelled — items still in order', { bg: T.gold, duration: 2200 });
+    },
   });
 }
 
@@ -2923,8 +3016,15 @@ function _renderTicketGroup(list, displayTicket) {
 
     if (!hasCharged && !anySelected && !hasMods) {
       // ── Collapsed group card ──────────────────────
+      // Number-coerce defensively — a recall path used to land here with
+      // Decimal-as-string prices from the backend, and `sum + "12.50"`
+      // produced a string that then crashed on .toFixed() below.
       var groupPrice = instances.reduce(function(sum, i) {
-        return sum + i.unitPrice + i.mods.reduce(function(ms, m) { return ms + m.price; }, 0);
+        var u = Number(i.unitPrice) || 0;
+        var modsSum = i.mods.reduce(function(ms, m) {
+          return ms + (Number(m.price) || 0);
+        }, 0);
+        return sum + u + modsSum;
       }, 0);
 
       var gc = document.createElement('div');
@@ -3719,23 +3819,30 @@ function recallFromBackend(orderId) {
       currentCheckNumber = order.check_number || null;
       if (currentCheckNumber) setSceneName(currentCheckNumber);
 
-      // Convert backend items to frontend ticket format
+      // Convert backend items to frontend ticket format.
+      // Backend Decimals serialize as JSON strings ("12.50"), so every
+      // price field arriving here is a string. Coerce to Number at the
+      // boundary — downstream code (renderTicket, sending, totals) all
+      // assume numeric prices and `.toFixed()` them.
       ticket = (order.items || []).map(function(item) {
         ticketSeq += 1;
         // Prefer server-computed effective_price (post-mods/discounts);
         // base `price` is 0 for combos/pizzas where value lives in mods.
-        var unit = (typeof item.effective_price === 'number')
-          ? item.effective_price
-          : (item.price || 0);
+        var rawUnit = item.effective_price != null ? item.effective_price : item.price;
+        var unit = Number(rawUnit);
+        if (!Number.isFinite(unit)) unit = 0;
         return {
           id:        ticketSeq,
           idemKey:   _idemKey(),
           name:      item.name,
           unitPrice: unit,
           mods:      (item.modifiers || []).map(function(m) {
+            var rawPrice = m.modifier_price != null ? m.modifier_price : m.price;
+            var p = Number(rawPrice);
+            if (!Number.isFinite(p)) p = 0;
             return {
               name:       m.name,
-              price:      m.modifier_price != null ? m.modifier_price : (m.price || 0),
+              price:      p,
               charged:    m.charged != null ? m.charged : true,
               prefix:     m.prefix || null,
               half_price: m.half_price != null ? m.half_price : null,

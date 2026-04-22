@@ -193,3 +193,48 @@ async def test_issues_rejects_invalid_days(authed_client):
     assert resp.status_code == 422
     resp = await authed_client.get("/api/v1/entomology/issues?days=9999")
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_issues_respects_min_severity(authed_client, collector):
+    """`min_severity=INFO` must return events the WARNING+ default filters out.
+    The entomology dashboard ships an "All (INFO+)" option so operators can
+    see dead-end-tap traces (UI-007) and other INFO-level diagnostics."""
+    # INFO event — dropped by the default WARNING+ filter, kept at INFO+
+    await collector.record(
+        category=DiagnosticCategory.UI,
+        severity=DiagnosticSeverity.INFO,
+        source="check-overview.handlePay",
+        event_code="UI-007",
+        message="dead-end tap",
+        context={},
+    )
+    # WARNING event — always kept
+    await collector.record(
+        category=DiagnosticCategory.UI,
+        severity=DiagnosticSeverity.WARNING,
+        source="scene-manager.interrupt",
+        event_code="UI-001",
+        message="interrupt stacked",
+        context={},
+    )
+
+    # Default — INFO event is dropped
+    r1 = await authed_client.get("/api/v1/entomology/issues?days=1")
+    assert r1.status_code == 200
+    assert r1.json()["total"] == 1  # only UI-001
+
+    # min_severity=INFO — both events kept
+    r2 = await authed_client.get("/api/v1/entomology/issues?days=1&min_severity=INFO")
+    assert r2.status_code == 200
+    assert r2.json()["total"] == 2
+
+    # Case-insensitive
+    r3 = await authed_client.get("/api/v1/entomology/issues?days=1&min_severity=info")
+    assert r3.status_code == 200
+    assert r3.json()["total"] == 2
+
+    # Invalid value falls back to WARNING (no 400)
+    r4 = await authed_client.get("/api/v1/entomology/issues?days=1&min_severity=bogus")
+    assert r4.status_code == 200
+    assert r4.json()["total"] == 1

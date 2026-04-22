@@ -5,13 +5,29 @@ const TOKEN_KEY = "entomology.token";
 const NAME_KEY = "entomology.name";
 const MAX_PIN_LENGTH = 6;
 const SNAPSHOT_REFRESH_MS = 15000;
-const CATEGORIES = ["DEVICE", "NETWORK", "SYSTEM", "PERIPHERAL", "RECOVERY"];
+const ISSUES_REFRESH_MS = 15000;
+// Must match the DiagnosticCategory enum the backend emits. Earlier versions
+// shipped only the 5 runtime categories; UI / SEC / FIN events were landing
+// in the API payload but the dashboard silently dropped them because they
+// weren't in this list. The Excel report always included them; only the
+// live view was blind. Order here = render order on the dashboard.
+const CATEGORIES = [
+  "UI",         // Frontend scene / interaction diagnostics (UI-001 … UI-006)
+  "SEC",        // Auth / manager-gate / rate-limit events
+  "FIN",        // Monetary precision + day-close guards
+  "DEVICE",
+  "NETWORK",
+  "SYSTEM",
+  "PERIPHERAL",
+  "RECOVERY",
+];
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 let pinBuffer = "";
 let snapshotTimer = null;
+let issuesTimer = null;
 
 // ── Token helpers ────────────────────────────────────
 function getToken() { return sessionStorage.getItem(TOKEN_KEY); }
@@ -44,6 +60,7 @@ function showPinScreen() {
   pinBuffer = "";
   renderPinDisplay();
   if (snapshotTimer) { clearInterval(snapshotTimer); snapshotTimer = null; }
+  if (issuesTimer)   { clearInterval(issuesTimer);   issuesTimer   = null; }
 }
 
 function renderPinDisplay() {
@@ -131,8 +148,13 @@ function showDashboard() {
   const name = sessionStorage.getItem(NAME_KEY);
   $("#session-name").textContent = name ? `Signed in as ${name}` : "";
   refreshSnapshot();
-  refreshIssues();
+  refreshIssues({ initial: true });
+  // Both panels poll — snapshot for live metrics, issues so newly-reported
+  // UI-* / SEC / FIN events show up without a page reload. Original build
+  // polled only the snapshot; any event fired after dashboard load was
+  // invisible until the operator changed the days dropdown.
   snapshotTimer = setInterval(refreshSnapshot, SNAPSHOT_REFRESH_MS);
+  issuesTimer   = setInterval(() => refreshIssues(), ISSUES_REFRESH_MS);
 }
 
 async function refreshSnapshot() {
@@ -193,18 +215,29 @@ function renderProbes(probes) {
   }
 }
 
-async function refreshIssues() {
+// Categories the operator has manually expanded; preserved across auto-refresh
+// renders so a 15s tick doesn't collapse what they're reading.
+const openCategories = new Set();
+
+async function refreshIssues(opts) {
+  opts = opts || {};
   const days = parseInt($("#days-select").value, 10);
+  const activeTab = document.querySelector("#severity-tabs .sev-tab.active");
+  const minSeverity = (activeTab && activeTab.dataset.sev) || "WARNING";
   const host = $("#issues-body");
-  host.innerHTML = '<div class="empty">Loading…</div>';
+  // Only flash "Loading…" on a first / explicit load. Auto-polling swaps
+  // the rendered DOM in place so the panel doesn't blink every 15s.
+  if (opts.initial) host.innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const res = await authedFetch(`/api/v1/entomology/issues?days=${days}`);
+    const res = await authedFetch(`/api/v1/entomology/issues?days=${days}&min_severity=${minSeverity}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     renderIssues(data);
+    const stamp = $("#issues-updated");
+    if (stamp) stamp.textContent = `Updated ${formatTime(new Date())}`;
   } catch (err) {
     if (err.message === "session_expired") return;
-    host.innerHTML = '<div class="empty">Failed to load issues.</div>';
+    if (opts.initial) host.innerHTML = '<div class="empty">Failed to load issues.</div>';
   }
 }
 
@@ -228,6 +261,8 @@ function renderIssues(data) {
 
     const block = document.createElement("div");
     block.className = "category-block";
+    // Preserve expand state across polling renders.
+    if (openCategories.has(cat)) block.classList.add("open");
 
     const head = document.createElement("div");
     head.className = "category-head";
@@ -235,7 +270,11 @@ function renderIssues(data) {
       <span class="category-name">${cat}</span>
       <span class="category-count">${catCount}</span>
     `;
-    head.addEventListener("click", () => block.classList.toggle("open"));
+    head.addEventListener("click", () => {
+      block.classList.toggle("open");
+      if (block.classList.contains("open")) openCategories.add(cat);
+      else openCategories.delete(cat);
+    });
     block.appendChild(head);
 
     const list = document.createElement("div");
@@ -344,7 +383,35 @@ function boot() {
   wirePinPad();
   $("#btn-download").addEventListener("click", downloadReport);
   $("#btn-logout").addEventListener("click", logout);
-  $("#days-select").addEventListener("change", refreshIssues);
+  $("#days-select").addEventListener("change", () => refreshIssues({ initial: true }));
+  // Severity tabs — single-select; swap `.active` on click and trigger an
+  // instant (spinner-showing) refresh. Keyboard: arrow keys move focus
+  // and select, Home / End jump to the ends.
+  const tabs = Array.from($$(".sev-tab"));
+  function activateTab(t) {
+    tabs.forEach(b => {
+      const on = b === t;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    refreshIssues({ initial: true });
+  }
+  tabs.forEach((t, idx) => {
+    t.addEventListener("click", () => activateTab(t));
+    t.addEventListener("keydown", (e) => {
+      let next = idx;
+      if (e.key === "ArrowRight") next = (idx + 1) % tabs.length;
+      else if (e.key === "ArrowLeft") next = (idx - 1 + tabs.length) % tabs.length;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = tabs.length - 1;
+      else return;
+      e.preventDefault();
+      tabs[next].focus();
+      activateTab(tabs[next]);
+    });
+  });
+  const refreshBtn = $("#btn-refresh-issues");
+  if (refreshBtn) refreshBtn.addEventListener("click", () => refreshIssues({ initial: true }));
 
   if (getToken()) {
     showDashboard();
