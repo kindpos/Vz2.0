@@ -118,9 +118,11 @@ describe('overseer/src/services/auth-client', () => {
 
   // ── 429 on PIN verify ────────────────────────────────────────────
 
-  it('on 429 from verify-pin, prompt resolves false and no token is stored (no retry of the original)', async () => {
-    // Original 401 → verify-pin returns 429. The source's `if (!res.ok) return false`
-    // fires first, so alert text at line 77 is never reached. Pin actual behavior.
+  it('on 429 from verify-pin, window.alert fires with the "wait 60 seconds" copy', async () => {
+    // Original 401 → PIN prompt fires → verify-pin returns 429. The rate-limit
+    // status triggers a distinct alert so the operator doesn't retype a valid
+    // PIN thinking they typo'd. Earlier the `if (!res.ok) return false` check
+    // shadowed this alert; the fix hoists the 429 branch above that guard.
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ detail: 'auth' }, 401))
       .mockResolvedValueOnce(jsonResponse({ valid: false }, 429));
@@ -132,6 +134,9 @@ describe('overseer/src/services/auth-client', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);   // Original + verify, no retry.
     expect(getToken()).toBeNull();                 // No setToken fired.
     expect(res.status).toBe(401);                  // Caller sees original failure.
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy.mock.calls[0][0]).toMatch(/Too many PIN attempts/i);
+    expect(alertSpy.mock.calls[0][0]).toMatch(/60 seconds/);
   });
 
   // ── Concurrent-401 dedupe via _pinPromptInFlight ────────────────

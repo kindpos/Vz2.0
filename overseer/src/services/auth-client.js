@@ -70,14 +70,18 @@ export async function promptManagerPin(reason) {
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ pin }),
             });
-            if (!res.ok) return false;
-            const data = await res.json();
-            if (!data.valid) {
-                if (res.status === 429) {
-                    window.alert('Too many PIN attempts. Wait 60 seconds and try again.');
-                }
+            // Rate-limit needs its own branch: the backend sends 429 with a
+            // `{valid:false}` body, but `res.ok` is false for 429 so the prior
+            // code returned early and the alert below was unreachable. Check
+            // the status first so the operator actually sees the "wait 60s"
+            // message instead of a generic PIN-reject toast.
+            if (res.status === 429) {
+                window.alert('Too many PIN attempts. Wait 60 seconds and try again.');
                 return false;
             }
+            if (!res.ok) return false;
+            const data = await res.json();
+            if (!data.valid) return false;
             setToken(data);
             return true;
         } finally {
