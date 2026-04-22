@@ -302,6 +302,20 @@ var DISCOUNT_OPTIONS = [
 defineScene({
   name: 'check-overview',
 
+  // __handlers is a test seam: the scene's action dispatchers are
+  // attached here so integration tests can drive discount / pay /
+  // print / void / add-items / resend flows without needing to
+  // simulate pointer events on the live DOM. Production code never
+  // reaches in here.
+  __handlers: {
+    get handleDiscount() { return handleDiscount; },
+    get handlePay()      { return handlePay; },
+    get handlePrint()    { return handlePrint; },
+    get handleVoid()     { return handleVoid; },
+    get handleAddItems() { return handleAddItems; },
+    get handleResend()   { return handleResend; },
+  },
+
   state: {
     listeners:     [],
     orderId:       null,
@@ -414,42 +428,43 @@ defineScene({
 
     var bottomRow = document.createElement('div');
     Object.assign(bottomRow.style, {
-      height:     '136px',
+      height:     '96px',
       flexShrink: '0',
       display:    'flex',
       gap:        '12px',
+      alignItems: 'center',
     });
     body.appendChild(bottomRow);
 
+    // Left: TotalsBar (single-row summary) — filled by renderTotals.
     var totalsCorner = document.createElement('div');
     Object.assign(totalsCorner.style, {
-      width:         '360px',
+      width:         '220px',
       flexShrink:    '0',
       display:       'flex',
-      flexDirection: 'column',
-      gap:           '8px',
+      alignItems:    'stretch',
     });
     bottomRow.appendChild(totalsCorner);
     state.totalsEl = totalsCorner;
 
-    var actionGrid = document.createElement('div');
-    Object.assign(actionGrid.style, {
-      flex:               '1',
-      display:            'grid',
-      gridTemplateColumns:'repeat(3, minmax(160px, 200px))',
-      gridTemplateRows:   '1fr 1fr',
-      gap:                '10px',
-      justifyContent:     'end',
-      alignContent:       'center',
+    // Right: action zone — filled by renderActionBar. Hosts both the
+    // secondary pills (PRINT, VOID) and the primary pills (PAY, ADD
+    // ITEMS) with a dashed divider between them.
+    var actionZone = document.createElement('div');
+    Object.assign(actionZone.style, {
+      flex:           '1',
+      display:        'flex',
+      alignItems:     'center',
+      justifyContent: 'flex-end',
+      gap:            '10px',
     });
-    bottomRow.appendChild(actionGrid);
-    state.actionGridEl = actionGrid;
-
-    // ── Wire action buttons ──
-    _wireActions(state, params, actionGrid);
+    bottomRow.appendChild(actionZone);
+    state.actionGridEl = actionZone;
 
     // ── Initial paint ──
+    state._params = params;
     renderTotals(state);
+    renderActionBar(state);
     rerenderTopArea(state);
 
     // ── Fetch order ──
@@ -889,19 +904,223 @@ defineScene({
 });
 
 // ═══════════════════════════════════════════════════
-//  TOTALS CORNER (universal across modes)
+//  TOTALS BAR (bottom-left, universal across modes)
+//  Single-row pill: LABEL on top (mutedText), big gold VALUE below.
+//  Label and value shift with selection state: no seats → "CHECK
+//  TOTAL" + full check total; seats selected → "S1 + S3 TOTAL" +
+//  sum of selected seats.
 // ═══════════════════════════════════════════════════
+
+function _selectedSeatSubtotal(state) {
+  var sum = 0;
+  for (var i = 0; i < state.seats.length; i++) {
+    var s = state.seats[i];
+    if (state.selected[s.id] && !state.paidSeats[s.id]) {
+      sum += seatSubtotal(s);
+    }
+  }
+  return sum;
+}
+
+function _selectedSeatShortLabel(state) {
+  var parts = [];
+  for (var i = 0; i < state.seats.length; i++) {
+    var s = state.seats[i];
+    if (state.selected[s.id]) {
+      parts.push('S' + (s.number != null ? s.number : (i + 1)));
+    }
+  }
+  return parts.join(' + ');
+}
 
 function renderTotals(state) {
   var el = state.totalsEl;
   el.innerHTML = '';
-  var adapted = _adaptOrderForRecap(state);
-  var card = buildItemRecapTotals(adapted.totals);
-  // Totals corner is 360px wide and 136px tall, so drop the margin
-  // the recap-internal variant uses and let the card fill the corner.
-  card.style.marginTop = '0';
-  card.style.flex = '1';
-  el.appendChild(card);
+
+  var anySel = Object.keys(state.selected || {}).length > 0;
+  var label, value;
+  if (anySel) {
+    label = _selectedSeatShortLabel(state) + ' TOTAL';
+    value = _selectedSeatSubtotal(state);
+  } else {
+    label = 'CHECK TOTAL';
+    value = computeTotals(checkSubtotal(state.seats, state.paidSeats)).cardTotal;
+  }
+
+  var bar = document.createElement('div');
+  Object.assign(bar.style, {
+    flex:         '1',
+    display:      'flex',
+    flexDirection:'column',
+    justifyContent:'center',
+    gap:          '2px',
+    padding:      '8px 14px',
+    background:   T.well,
+    border:       '1px solid ' + T.border,
+    borderRadius: '8px',
+  });
+
+  var lbl = document.createElement('span');
+  Object.assign(lbl.style, {
+    fontFamily:    T.fb,
+    fontSize:      '10px',
+    fontWeight:    T.fwBold,
+    letterSpacing: '0.12em',
+    color:         T.mutedText,
+    whiteSpace:    'nowrap',
+    overflow:      'hidden',
+    textOverflow:  'ellipsis',
+  });
+  lbl.textContent = label;
+  bar.appendChild(lbl);
+
+  var val = document.createElement('span');
+  Object.assign(val.style, {
+    fontFamily: T.fb,
+    fontSize:   '22px',
+    fontWeight: T.fwBold,
+    color:      T.gold,
+    lineHeight: '1.1',
+  });
+  val.textContent = fmt(value);
+  bar.appendChild(val);
+
+  el.appendChild(bar);
+}
+
+// ═══════════════════════════════════════════════════
+//  ACTION BAR (bottom-right pills)
+//  State 1 (no seats selected): PRINT + VOID secondaries on the left,
+//  dashed divider, PAY (gold) + ADD ITEMS (green) primaries on the
+//  right. VOID requires a ~550 ms long-press to fire; short taps are
+//  ignored so the cashier can't void the check on an accidental tap.
+//  State 2 (seats selected) and MANAGE mode toolbars come in later
+//  steps and dispatch from this same slot.
+// ═══════════════════════════════════════════════════
+
+function _makeSecondaryPill(label, textColor) {
+  var btn = document.createElement('button');
+  Object.assign(btn.style, {
+    height:        '36px',
+    padding:       '0 18px',
+    border:        'none',
+    borderRadius:  T.pillRadius,
+    background:    T.card,
+    color:         textColor,
+    fontFamily:    T.fb,
+    fontSize:      T.fsB3,
+    fontWeight:    T.fwBold,
+    letterSpacing: '0.12em',
+    cursor:        'pointer',
+    boxShadow:     '0 2px 0 rgba(0,0,0,0.35)',
+    pointerEvents: 'auto',
+  });
+  btn.textContent = label;
+  return btn;
+}
+
+function _makePrimaryPill(label, bg, opts) {
+  opts = opts || {};
+  var btn = document.createElement('button');
+  Object.assign(btn.style, {
+    height:        '48px',
+    padding:       '0 24px',
+    minWidth:      opts.minWidth || '120px',
+    border:        'none',
+    borderRadius:  T.pillRadius,
+    background:    bg,
+    color:         T.well,
+    fontFamily:    T.fb,
+    fontSize:      T.fsB2,
+    fontWeight:    T.fwBold,
+    letterSpacing: '0.10em',
+    cursor:        'pointer',
+    boxShadow:     '0 3px 0 rgba(0,0,0,0.4)',
+    display:       'flex',
+    flexDirection: 'column',
+    alignItems:    'center',
+    justifyContent:'center',
+    gap:           '1px',
+    pointerEvents: 'auto',
+  });
+  var main = document.createElement('span');
+  main.textContent = label;
+  btn.appendChild(main);
+  if (opts.sub) {
+    var sub = document.createElement('span');
+    Object.assign(sub.style, {
+      fontSize:      '9px',
+      fontWeight:    T.fwBold,
+      letterSpacing: '0.10em',
+      opacity:       '0.78',
+    });
+    sub.textContent = opts.sub;
+    btn.appendChild(sub);
+  }
+  return btn;
+}
+
+function _wireLongPress(el, onFire, holdMs) {
+  var timer = null;
+  var fired = false;
+  var ms = holdMs || 550;
+  el.addEventListener('pointerdown', function() {
+    fired = false;
+    timer = setTimeout(function() { fired = true; onFire(); }, ms);
+  });
+  el.addEventListener('pointerup', function() {
+    if (timer) { clearTimeout(timer); timer = null; }
+  });
+  el.addEventListener('pointerleave', function() {
+    if (timer) { clearTimeout(timer); timer = null; }
+  });
+  el.addEventListener('pointercancel', function() {
+    if (timer) { clearTimeout(timer); timer = null; }
+  });
+}
+
+function _dashedDivider() {
+  var d = document.createElement('div');
+  Object.assign(d.style, {
+    width:      '0',
+    height:     '56px',
+    borderLeft: '1px dashed ' + T.border,
+    margin:     '0 4px',
+  });
+  return d;
+}
+
+function renderActionBar(state) {
+  var zone = state.actionGridEl;
+  if (!zone) return;
+  zone.innerHTML = '';
+
+  var params = state._params || state._mountParams || {};
+
+  // ── Secondary pills ──
+  var printBtn = _makeSecondaryPill('PRINT', T.green);
+  printBtn.addEventListener('click', function() { handlePrint(state); });
+  zone.appendChild(printBtn);
+
+  var voidBtn = _makeSecondaryPill('VOID', T.verm);
+  // Short tap is a no-op by design. The warning toast nudges users
+  // who expect a single tap to fire.
+  voidBtn.addEventListener('click', function() {
+    showToast('Hold VOID to confirm', { bg: T.gold });
+  });
+  _wireLongPress(voidBtn, function() { handleVoid(state); });
+  zone.appendChild(voidBtn);
+
+  zone.appendChild(_dashedDivider());
+
+  // ── Primary pills ──
+  var payBtn = _makePrimaryPill('PAY', T.gold, { minWidth: '150px' });
+  payBtn.addEventListener('click', function() { handlePay(state, params); });
+  zone.appendChild(payBtn);
+
+  var addBtn = _makePrimaryPill('ADD ITEMS', T.green, { minWidth: '158px' });
+  addBtn.addEventListener('click', function() { handleAddItems(state, params); });
+  zone.appendChild(addBtn);
 }
 
 function _buildTotalsBox(rows) {
@@ -1054,6 +1273,7 @@ function rerenderTopArea(state) {
   else                     renderModeB(state, shell.body);
 
   renderTotals(state);
+  renderActionBar(state);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1885,34 +2105,6 @@ function _buildDeleteSeatX(state, seatId) {
     deleteSeat(state, seatId);
   });
   return x;
-}
-
-// ═══════════════════════════════════════════════════
-//  ACTION BUTTONS (bottom-right grid)
-// ═══════════════════════════════════════════════════
-
-function _wireActions(state, params, grid) {
-  var btns = [
-    { label: 'PRINT',     color: T.green,     dark: T.greenDk,     onClick: function() { handlePrint(state);     } },
-    { label: 'DISC',      color: T.gold,      dark: T.goldDk,      onClick: function() { handleDiscount(state);  } },
-    { label: 'ADD ITEMS', color: T.green,     dark: T.greenDk,     onClick: function() { handleAddItems(state, params); } },
-    { label: 'PAY',       color: T.gold,      dark: T.goldDk,      onClick: function() { handlePay(state, params); } },
-    { label: 'VOID',      color: T.verm,      dark: T.vermDk,      onClick: function() { handleVoid(state);      } },
-    { label: 'RESEND',    color: T.greenWarm, dark: T.greenWarmDk, onClick: function() { handleResend(state);    } },
-  ];
-  for (var i = 0; i < btns.length; i++) {
-    var b = btns[i];
-    var pill = buildPillButton({
-      label:    b.label,
-      color:    b.color,
-      darkBg:   b.dark,
-      fontSize: T.fsB2,
-      onClick:  b.onClick,
-    });
-    if (b.label === 'VOID') pill.style.color = '#fff';
-    pill.style.pointerEvents = 'auto';
-    grid.appendChild(pill);
-  }
 }
 
 // ═══════════════════════════════════════════════════

@@ -2,7 +2,9 @@
 //
 // The scene mounts in jsdom. We drive it through its public surface:
 //   1. Render the scene with items pre-selected in state.
-//   2. Click the DISC action button (built by _wireActions).
+//   2. Call handleDiscount via sceneDef.__handlers (DISC has no primary
+//      action-bar button anymore — the redesign routes it through the
+//      long-press item / seat menus — so tests drive the handler direct).
 //   3. Inspect the interrupt chain: disc-pin → disc-select → _applyDiscount.
 //
 // Tests also pin the UI-007 dead-end guard (no selection → toast, no interrupt).
@@ -37,14 +39,10 @@ vi.mock('../scene-manager.js', () => ({
   defineScene: (def) => { registeredScenes.push(def); return def; },
 }));
 
-// Track buildPillButton onClick callbacks by label so we can trigger them
-// without needing to dispatch PointerEvents.
-const pillHandlers = {};
 vi.mock('../theme-manager.js', () => ({
-  buildPillButton: ({ label, onClick } = {}) => {
+  buildPillButton: ({ label } = {}) => {
     const el = document.createElement('button');
     el.textContent = label || '';
-    if (label && onClick) pillHandlers[label] = onClick;
     return el;
   },
   hexToRgba:  (c) => c,
@@ -160,7 +158,6 @@ describe('terminal/scenes/check-overview — discount flow', () => {
     vi.resetModules();
     registeredScenes.length = 0;
     interruptCalls.length = 0;
-    Object.keys(pillHandlers).forEach((k) => delete pillHandlers[k]);
     SceneManagerMock.interrupt.mockClear();
 
     const components = await import('../components.js');
@@ -189,10 +186,10 @@ describe('terminal/scenes/check-overview — discount flow', () => {
   // ── UI-007 dead-end guard ───────────────────────────────────────
 
   it('DISC with nothing selected fires UI-007, shows toast, and opens no interrupt', async () => {
-    renderScene(); // selectedItems={} by default → reset by render too
-    // Trigger DISC
-    expect(pillHandlers['DISC']).toBeDefined();
-    pillHandlers['DISC']();
+    const { state } = renderScene(); // selectedItems={} by default → reset by render too
+
+    expect(sceneDef.__handlers.handleDiscount).toBeDefined();
+    sceneDef.__handlers.handleDiscount(state);
 
     expect(SceneManagerMock.interrupt).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(
@@ -215,7 +212,7 @@ describe('terminal/scenes/check-overview — discount flow', () => {
     state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
     state.selectedItems = { '0:0': true };
 
-    pillHandlers['DISC']();
+    sceneDef.__handlers.handleDiscount(state);
 
     expect(SceneManagerMock.interrupt).toHaveBeenCalledWith('disc-pin', expect.objectContaining({
       onConfirm: expect.any(Function),
@@ -230,7 +227,7 @@ describe('terminal/scenes/check-overview — discount flow', () => {
     state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
     state.selectedItems = { '0:0': true };
 
-    pillHandlers['DISC']();
+    sceneDef.__handlers.handleDiscount(state);
 
     const discPinCall = interruptCalls.find((c) => c.name === 'disc-pin');
     expect(discPinCall).toBeDefined();
@@ -250,7 +247,7 @@ describe('terminal/scenes/check-overview — discount flow', () => {
     state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
     state.selectedItems = { '0:0': true };
 
-    pillHandlers['DISC']();
+    sceneDef.__handlers.handleDiscount(state);
 
     const discPinCall = interruptCalls.find((c) => c.name === 'disc-pin');
     discPinCall.params.onConfirm('emp-mgr-42');
@@ -274,7 +271,7 @@ describe('terminal/scenes/check-overview — discount flow', () => {
     state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
     state.selectedItems = { '0:0': true };
 
-    pillHandlers['DISC']();
+    sceneDef.__handlers.handleDiscount(state);
 
     const discPinCall = interruptCalls.find((c) => c.name === 'disc-pin');
     discPinCall.params.onCancel();
