@@ -1181,11 +1181,13 @@ function renderActionBar(state) {
 //  are wired in Steps 11-12.
 // ═══════════════════════════════════════════════════
 
+// TRANSFER is deliberately not on the MANAGE toolbar — the existing
+// long-press seat menu keeps routing through _openTransfer for
+// whole-check transfers, and selection-aware transfer is scoped out.
 var MANAGE_TOOLS = [
-  { id: 'move',     label: 'MOVE' },
-  { id: 'split',    label: 'SPLIT' },
-  { id: 'merge',    label: 'MERGE' },
-  { id: 'transfer', label: 'TRANSFER' },
+  { id: 'move',  label: 'MOVE' },
+  { id: 'split', label: 'SPLIT' },
+  { id: 'merge', label: 'MERGE' },
 ];
 
 function _cloneSeats(seats) {
