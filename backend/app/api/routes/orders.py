@@ -5,6 +5,7 @@ Endpoints for order management.
 All mutations go through the Event Ledger.
 """
 
+import asyncio
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
@@ -12,6 +13,16 @@ from typing import Optional
 from datetime import datetime, timezone
 import logging
 import uuid
+
+# Module-level mutex that serializes close_day vs. new-order creation.
+# Previously there was a window — between `get_open_orders()` and the
+# DAY_CLOSED emission — where a client could POST a new order whose
+# events landed in the closed day but were never included in the
+# snapshot. Holding this lock for the entire close operation closes that
+# window: create_order returns 409 (FIN-007) while the close is in
+# flight. Single-process only; multi-worker deployments need a DB-level
+# fence, but the current deployment is a single FastAPI process.
+_day_close_lock = asyncio.Lock()
 
 _logger = logging.getLogger("kindpos.orders")
 
@@ -347,6 +358,25 @@ async def create_order(
     retries a POST that the server actually accepted (e.g. after a
     network timeout).
     """
+    # Day-close fence: if the close routine is currently snapshotting the
+    # day, refuse new orders so they can't slip in as orphans between
+    # get_open_orders() and the DAY_CLOSED boundary. The client should
+    # retry in a few seconds. FIN-007 logs the collision for the bug
+    # report — if this trips often, the close window is too long.
+    if _day_close_lock.locked():
+        await _record_diag(
+            category=DiagnosticCategory.FIN,
+            severity=DiagnosticSeverity.WARNING,
+            source="orders.create_order",
+            event_code="FIN-007",
+            message="New-order creation blocked — day close in progress",
+            context={"table": request.table, "server_id": request.server_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Day close in progress — try again in a moment",
+        )
+
     idem_key = http_request.headers.get("idempotency-key") if http_request else None
 
     if idem_key:
@@ -1678,6 +1708,14 @@ async def close_day(
 
     Optionally accepts `actual_cash_counted` to compute Over/Short.
     """
+    async with _day_close_lock:
+        return await _do_close_day(body, ledger)
+
+
+async def _do_close_day(body, ledger):
+    """Close-day body, executed under `_day_close_lock`. Any
+    new-order POST during this window returns 409 (FIN-007), closing
+    the long-standing orphan race."""
     # Close any remaining open orders
     open_ids = await get_open_orders(ledger)
     closed_count = 0

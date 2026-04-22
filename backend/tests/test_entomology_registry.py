@@ -13,26 +13,26 @@ from app.models.diagnostic_event import (
 )
 
 
-# ─── R-01: Registry has 50 codes (36 original + 14 domain codes) ────────
+# ─── R-01: Registry has 53 codes (36 original + 17 domain codes) ────────
 # Original: DEV (6) + NET (8) + SYS (8) + PER (7) + REC (7) = 36
-# Added for domain instrumentation: SEC (4) + FIN (6) + UI (4) = 14
+# Added for domain instrumentation: SEC (6) + FIN (7) + UI (4) = 17
 
 def test_r01_registry_count():
-    assert len(EVENT_CODE_REGISTRY) == 50
+    assert len(EVENT_CODE_REGISTRY) == 53
 
 
-# ─── R-10: SEC- codes present (4 codes) ────────────────
+# ─── R-10: SEC- codes present (6 codes) ────────────────
 
 def test_r10_security_codes():
     sec_codes = [c for c in EVENT_CODE_REGISTRY if c.startswith("SEC-")]
-    assert len(sec_codes) == 4
+    assert len(sec_codes) == 6
 
 
-# ─── R-11: FIN- codes present (6 codes) ────────────────
+# ─── R-11: FIN- codes present (7 codes) ────────────────
 
 def test_r11_financial_codes():
     fin_codes = [c for c in EVENT_CODE_REGISTRY if c.startswith("FIN-")]
-    assert len(fin_codes) == 6
+    assert len(fin_codes) == 7
 
 
 # ─── R-12: UI- codes present (4 codes) ─────────────────

@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from app.api.dependencies import get_ledger, get_diagnostic_collector
 from app.config import settings as _settings
 from app.core.event_ledger import EventLedger
+from app.core.pin_hash import verify_pin_hash
 from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 from app.services.overseer_config_service import OverseerConfigService
 
@@ -177,6 +178,50 @@ async def auth_required(request: Request) -> Optional[dict]:
     return None
 
 
+_MANAGER_ROLES = {"manager", "admin", "owner"}
+
+
+async def require_manager(request: Request) -> Optional[dict]:
+    """Route-level dependency: session must carry a manager/admin/owner
+    role. Same soft/strict split as `auth_required`:
+      - enforced + no token            → 401 + SEC-005
+      - enforced + token w/o manager   → 403 + SEC-006
+      - soft     + no token            → SEC-005, allow, return None
+      - soft     + token w/o manager   → SEC-006, allow, return session
+    """
+    session = _extract_session(request)
+    if session is None:
+        await _record_diag(
+            category=DiagnosticCategory.SEC,
+            severity=DiagnosticSeverity.WARNING,
+            source=f"auth.manager.{request.url.path}",
+            event_code="SEC-005",
+            message="Manager required but no valid token",
+            context={"path": request.url.path, "method": request.method},
+        )
+        if getattr(_settings, "auth_enforced", True):
+            raise HTTPException(status_code=401, detail="Authentication required")
+        return None
+    if any(r in _MANAGER_ROLES for r in (session.get("roles") or [])):
+        return session
+    # Authenticated but not a manager.
+    await _record_diag(
+        category=DiagnosticCategory.SEC,
+        severity=DiagnosticSeverity.ERROR,
+        source=f"auth.manager.{request.url.path}",
+        event_code="SEC-006",
+        message="Manager role required but session lacks it",
+        context={
+            "path": request.url.path,
+            "session_employee_id": session.get("employee_id"),
+            "session_roles": session.get("roles") or [],
+        },
+    )
+    if getattr(_settings, "auth_enforced", True):
+        raise HTTPException(status_code=403, detail="Manager role required")
+    return session
+
+
 # ── Routes ────────────────────────────────────────
 
 class VerifyPinRequest(BaseModel):
@@ -217,13 +262,15 @@ async def verify_pin(
     service = OverseerConfigService(ledger)
     employees = await service.get_employees()
 
-    # Constant-time PIN comparison to avoid a timing side-channel that
-    # could leak digits to a co-located attacker on the LAN.
+    # Constant-time PIN verify. `verify_pin_hash` accepts both the new
+    # PBKDF2-tagged format and legacy plaintext, so employees created
+    # before the hashing rollout still authenticate (they'll migrate to
+    # hashed form the next time their record is written via the API).
     submitted = request_body.pin or ""
     for e in employees:
         if not e.active or not e.pin:
             continue
-        if secrets.compare_digest(e.pin, submitted):
+        if verify_pin_hash(submitted, e.pin):
             token = _create_token(e.employee_id, e.display_name, e.role_ids)
             return {
                 "valid": True,

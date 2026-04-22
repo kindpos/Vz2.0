@@ -15,7 +15,8 @@ from app.models.config_events import (
 from app.config import settings
 from app.services.store_config_service import StoreConfigService
 from app.services.overseer_config_service import OverseerConfigService
-from app.api.routes.auth import auth_required
+from app.api.routes.auth import auth_required, require_manager
+from app.core.pin_hash import ensure_hashed_pin
 
 # Allow-list of mime types we'll accept for the store logo. Keep this tight —
 # rendering anything else risks XSS via SVG or unbounded payloads.
@@ -145,7 +146,7 @@ async def get_routing(ledger: EventLedger = Depends(get_ledger)):
     return await service.get_routing_matrix()
 
 
-@router.post("/store/logo", dependencies=[Depends(auth_required)])
+@router.post("/store/logo", dependencies=[Depends(require_manager)])
 async def upload_store_logo(
         req: LogoUploadRequest,
         background_tasks: BackgroundTasks,
@@ -207,7 +208,7 @@ async def get_store_logo(ledger: EventLedger = Depends(get_ledger)):
     return Response(content=data, media_type=mime_type)
 
 
-@router.post("/store/info", dependencies=[Depends(auth_required)])
+@router.post("/store/info", dependencies=[Depends(require_manager)])
 async def update_store_info(info: StoreInfo, background_tasks: BackgroundTasks,
                             ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
@@ -220,7 +221,7 @@ async def update_store_info(info: StoreInfo, background_tasks: BackgroundTasks,
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/store/cc-rate", dependencies=[Depends(auth_required)])
+@router.post("/store/cc-rate", dependencies=[Depends(require_manager)])
 async def update_cc_rate(rate: CCProcessingRate, background_tasks: BackgroundTasks,
                          ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
@@ -233,7 +234,7 @@ async def update_cc_rate(rate: CCProcessingRate, background_tasks: BackgroundTas
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/push", dependencies=[Depends(auth_required)])
+@router.post("/push", dependencies=[Depends(require_manager)])
 async def push_changes(changes: List[PendingChange], background_tasks: BackgroundTasks,
                        ledger: EventLedger = Depends(get_ledger)):
     events = []
@@ -272,7 +273,7 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
     }
 
 
-@router.post("/menu/86", dependencies=[Depends(auth_required)])
+@router.post("/menu/86", dependencies=[Depends(require_manager)])
 async def item_86(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.MENU_ITEM_86D,
@@ -284,7 +285,7 @@ async def item_86(item_id: str, background_tasks: BackgroundTasks, ledger: Event
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/menu/restore", dependencies=[Depends(auth_required)])
+@router.post("/menu/restore", dependencies=[Depends(require_manager)])
 async def item_restore(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.MENU_ITEM_RESTORED,
@@ -296,7 +297,7 @@ async def item_restore(item_id: str, background_tasks: BackgroundTasks, ledger: 
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/roles", dependencies=[Depends(auth_required)])
+@router.post("/roles", dependencies=[Depends(require_manager)])
 async def create_role(role: Role, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.EMPLOYEE_ROLE_CREATED,
@@ -308,7 +309,7 @@ async def create_role(role: Role, background_tasks: BackgroundTasks, ledger: Eve
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.put("/roles/{role_id}", dependencies=[Depends(auth_required)])
+@router.put("/roles/{role_id}", dependencies=[Depends(require_manager)])
 async def update_role(role_id: str, role: Role, background_tasks: BackgroundTasks,
                       ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
@@ -321,7 +322,7 @@ async def update_role(role_id: str, role: Role, background_tasks: BackgroundTask
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.delete("/roles/{role_id}", dependencies=[Depends(auth_required)])
+@router.delete("/roles/{role_id}", dependencies=[Depends(require_manager)])
 async def delete_role(role_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.EMPLOYEE_ROLE_DELETED,
@@ -333,15 +334,22 @@ async def delete_role(role_id: str, background_tasks: BackgroundTasks, ledger: E
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/employees", dependencies=[Depends(auth_required)])
+@router.post("/employees", dependencies=[Depends(require_manager)])
 async def create_employee(employee: Employee, background_tasks: BackgroundTasks,
                           ledger: EventLedger = Depends(get_ledger)):
     # In a real system, we'd use employee.created event,
     # but for now let's stick to the pattern.
+    payload = employee.model_dump()
+    # PIN-at-rest: hash before the ledger append so the plaintext never
+    # hits disk, the audit trail, or any future sync-replay consumer.
+    # `ensure_hashed_pin` is idempotent — if caller already hashed, it's
+    # a no-op.
+    if payload.get("pin"):
+        payload["pin"] = ensure_hashed_pin(payload["pin"])
     event = create_event(
         event_type=EventType.EMPLOYEE_CREATED,
         terminal_id="OVERSEER",
-        payload=employee.model_dump()
+        payload=payload,
     )
     await ledger.append(event)
     background_tasks.add_task(broadcast_config_update, ["employees"])

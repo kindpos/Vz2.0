@@ -263,11 +263,15 @@ class TestEmployeeRoute:
         await cfg.create_employee(employee=emp, background_tasks=bg, ledger=ledger)
 
         from decimal import Decimal as _D
+        from app.core.pin_hash import verify_pin_hash, is_hashed
         events = await ledger.get_events_by_type(EventType.EMPLOYEE_CREATED)
         assert len(events) == 1
         payload = events[0].payload
         assert payload["employee_id"] == "emp_new"
-        assert payload["pin"] == "4321"
+        # PIN is hashed at rest (pbkdf2-sha256) so the plaintext never
+        # lands in the ledger. verify_pin_hash round-trips it.
+        assert is_hashed(payload["pin"]), "PIN should be stored hashed, not plaintext"
+        assert verify_pin_hash("4321", payload["pin"])
         # Decimal round-trips via repr — compare via Decimal equality so
         # "15.5" and "15.50" are treated the same.
         assert _D(str(payload["hourly_rate"])) == _D("15.5")

@@ -238,6 +238,8 @@ EVENT_CODE_REGISTRY: dict[str, str] = {
     "SEC-002": "Path-traversal attempt on fixture load (print/test)",
     "SEC-003": "Config-events replay invoked (no auth on sync endpoint)",
     "SEC-004": "Forged terminal_id / user_id suspected on replay",
+    "SEC-005": "Auth required but request had no/expired bearer token",
+    "SEC-006": "Cross-server data access attempted (server_id mismatch)",
 
     # FINANCIAL (FIN-)
     "FIN-001": "2dp precision gate rejected a monetary value",
@@ -246,6 +248,7 @@ EVENT_CODE_REGISTRY: dict[str, str] = {
     "FIN-004": "Batch settlement drift (device total ≠ ledger total)",
     "FIN-005": "Overpayment clamped at route layer",
     "FIN-006": "Tip adjustment after day close attempted",
+    "FIN-007": "Mutation blocked while day-close was in progress",
 
     # UI / SCENE LIFECYCLE (UI-)
     "UI-001": "Interrupt stacked over an existing interrupt (prior torn down)",
