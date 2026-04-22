@@ -171,6 +171,55 @@ describe('terminal/scene-manager', () => {
     expect(hook).toHaveBeenCalledTimes(1); // Still 1 — hook was removed.
   });
 
+  // ── _unmountWorkingInternal tears down layers above ─────────────
+  //
+  // Pins the fix from df3877d: switching working scenes while a transactional
+  // or interrupt was open used to orphan them in their layer with live timers
+  // and an unreachable DOM node. Now unmountWorking first resolves the
+  // interrupt (if any) and closes all transactionals before tearing down the
+  // working scene itself.
+
+  it('mounting a new working scene tears down any open interrupt first', () => {
+    const { scene: work1, handle: w1 } = makeScene('w-old');
+    const { scene: work2 } = makeScene('w-new');
+    const { scene: intr } = makeScene('i-on-top');
+    SceneManager.register(work1);
+    SceneManager.register(work2);
+    SceneManager.register(intr);
+
+    SceneManager.mountWorking('w-old');
+    SceneManager.interrupt('i-on-top');
+    expect(SceneManager.hasInterrupt()).toBe(true);
+
+    SceneManager.mountWorking('w-new');
+
+    expect(SceneManager.hasInterrupt()).toBe(false); // no orphan interrupt
+    expect(SceneManager.getActiveWorking()).toBe('w-new');
+    expect(w1.unmountCalls).toBe(1);                 // old working cleaned up
+  });
+
+  it('mounting a new working scene closes all transactionals (no orphan timers)', () => {
+    const { scene: work1 } = makeScene('w-old');
+    const { scene: work2 } = makeScene('w-new');
+    const { scene: tx1, handle: t1 } = makeScene('tx-one');
+    const { scene: tx2, handle: t2 } = makeScene('tx-two');
+    SceneManager.register(work1);
+    SceneManager.register(work2);
+    SceneManager.register(tx1);
+    SceneManager.register(tx2);
+
+    SceneManager.mountWorking('w-old');
+    SceneManager.openTransactional('tx-one');
+    SceneManager.openTransactional('tx-two');
+    expect(SceneManager.getTransactionalStack()).toEqual(['tx-one', 'tx-two']);
+
+    SceneManager.mountWorking('w-new');
+
+    expect(SceneManager.getTransactionalStack()).toEqual([]);
+    expect(t1.unmountCalls).toBe(1);
+    expect(t2.unmountCalls).toBe(1);
+  });
+
   // ── _emit error handling ────────────────────────────────────────
 
   it('_emit catches a throwing handler, emits UI-002, and other handlers still fire', () => {
