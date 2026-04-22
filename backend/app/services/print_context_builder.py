@@ -560,7 +560,12 @@ class PrintContextBuilder:
                     seats.add(seat)
                 # Category aggregation
                 cat = getattr(item, "category", None) or "Uncategorized"
-                item_total = Decimal(str(item.quantity * item.price))
+                # Use `item.subtotal` (which folds in modifier prices) rather
+                # than `quantity * price`. A pizza base at $15 with $4 of
+                # toppings should post $19 to PIZZA, not $15 — otherwise
+                # sales-recap category rankings undercount modifier revenue
+                # and don't sum to gross_sales.
+                item_total = Decimal(str(item.subtotal))
                 if cat not in category_totals:
                     category_totals[cat] = {"total": _ZERO, "count": 0}
                 category_totals[cat]["total"] += item_total
