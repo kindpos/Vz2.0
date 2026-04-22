@@ -1050,9 +1050,8 @@ function rerenderTopArea(state) {
   var shell = buildSeatsContainer(state);
   top.appendChild(shell.root);
 
-  if (state._mode === 'A')      renderModeA(state, shell.body);
-  else if (state._mode === 'B') renderModeB(state, shell.body);
-  else                          renderModeC(state, shell.body);
+  if (state._mode === 'A') renderModeA(state, shell.body);
+  else                     renderModeB(state, shell.body);
 
   renderTotals(state);
 }
@@ -1087,55 +1086,20 @@ function renderModeA(state, container) {
 }
 
 // ═══════════════════════════════════════════════════
-//  MODE B — 5 seats, all equal width, 5th col = stack
+//  MODE B — 5+ seats, recap + compact scrollable grid
+//
+//  Left column:  buildItemRecap scrolls vertically and is top-aligned
+//                so rows start at the top rather than centering in
+//                the column. Totals continue to mount separately in
+//                the bottom-left corner via renderTotals so scrolling
+//                the recap never clips them.
+//  Right column: a fixed-height card whose inner grid scrolls when
+//                more seat tiles are added than fit. The card itself
+//                never grows past the seats-container body — growth
+//                happens inside the scrolling grid instead.
 // ═══════════════════════════════════════════════════
 
 function renderModeB(state, container) {
-  var grid = document.createElement('div');
-  Object.assign(grid.style, {
-    flex:               '1',
-    minHeight:          '0',
-    display:            'grid',
-    gridTemplateColumns:'repeat(5, 1fr)',
-    gap:                '10px',
-  });
-  container.appendChild(grid);
-
-  // Filter to just the active (non-paid) seats
-  var active = [];
-  for (var i = 0; i < state.seats.length; i++) {
-    if (!state.paidSeats[state.seats[i].id]) active.push(i);
-  }
-  // First 4 seats: full cards
-  for (var a = 0; a < 4 && a < active.length; a++) {
-    grid.appendChild(buildSeatCard(state, active[a], { compact: false }));
-  }
-  // 5th column: stack with shortened S-005 card on top, + tile on bottom
-  var stack = document.createElement('div');
-  Object.assign(stack.style, {
-    display:       'flex',
-    flexDirection: 'column',
-    gap:           '10px',
-    minHeight:     '0',
-  });
-  if (active.length >= 5) {
-    var card = buildSeatCard(state, active[4], { compact: false });
-    card.style.flex      = '1';
-    card.style.minHeight = '0';
-    stack.appendChild(card);
-  }
-  var addTile = buildAddTile(state, { compact: false });
-  addTile.style.height     = '80px';
-  addTile.style.flexShrink = '0';
-  stack.appendChild(addTile);
-  grid.appendChild(stack);
-}
-
-// ═══════════════════════════════════════════════════
-//  MODE C — 6+ seats, OrderSummary + compact grid
-// ═══════════════════════════════════════════════════
-
-function renderModeC(state, container) {
   var wrap = document.createElement('div');
   Object.assign(wrap.style, {
     flex:               '1',
@@ -1146,28 +1110,35 @@ function renderModeC(state, container) {
   });
   container.appendChild(wrap);
 
-  // LEFT — new item-recap component replaces OrderSummary.
+  // ── LEFT: order recap ──
   var recapSlot = document.createElement('div');
   Object.assign(recapSlot.style, {
-    minHeight:    '0',
-    display:      'flex',
-    flexDirection:'column',
-    overflow:     'hidden',
+    minHeight:      '0',
+    display:        'flex',
+    flexDirection:  'column',
+    justifyContent: 'flex-start',
+    overflow:       'hidden',
   });
   var recap = buildItemRecap(_adaptOrderForRecap(state), {
-    hideTotals: true,
+    hideTotals:           true,
+    defaultItemCollapsed: true,
+    onSeatHeaderTap: function(seatIdx) {
+      if (seatIdx < 0 || seatIdx >= state.seats.length) return;
+      toggleSeat(state, state.seats[seatIdx].id);
+    },
     onRemoveItem: function(seatIdx, itemIdx) {
       _voidItems(state, [{ seatIdx: seatIdx, itemIdx: itemIdx }]);
     },
   });
   recap.style.flex = '1';
   recap.style.minHeight = '0';
+  recap.style.background = 'transparent';
   recapSlot.appendChild(recap);
   wrap.appendChild(recapSlot);
 
-  // RIGHT — compact seat grid card
-  var grid = document.createElement('div');
-  Object.assign(grid.style, {
+  // ── RIGHT: compact seat grid (fixed-height card, scrolling grid) ──
+  var gridCard = document.createElement('div');
+  Object.assign(gridCard.style, {
     background:   T.card,
     borderLeft:   T.accentBarW + ' solid ' + T.green,
     borderRadius: T.chamferCard + 'px',
@@ -1176,72 +1147,31 @@ function renderModeC(state, container) {
     overflow:     'hidden',
     boxShadow:    '0 4px 16px rgba(0,0,0,0.28)',
     minHeight:    '0',
+    flex:         '1',
   });
-
-  var hdr = document.createElement('div');
-  Object.assign(hdr.style, {
-    background:   T.green,
-    height:       '32px',
-    display:      'flex',
-    alignItems:   'center',
-    justifyContent:'space-between',
-    padding:      '0 14px',
-    fontFamily:   T.fh,
-    fontWeight:   T.fwBold,
-    fontSize:     T.fsB3,
-    color:        T.well,
-    letterSpacing:'0.18em',
-    textTransform:'uppercase',
-  });
-  var hL = document.createElement('span');
-  hL.textContent = 'SEATS';
-  hdr.appendChild(hL);
-  var allBtn = document.createElement('span');
-  allBtn.style.cssText = 'cursor:pointer;font-size:' + T.fsB4 + ';letter-spacing:0.2em;';
-  allBtn.textContent = 'ALL';
-  allBtn.addEventListener('pointerup', function() { forceSelectAll(state); });
-  hdr.appendChild(allBtn);
-  grid.appendChild(hdr);
-
-  // Right-column layout adapts to seat count. Up to 4 active seats
-  // (5 tiles including the add tile) share one row as equal-width,
-  // full-height columns — a "split view". Adding a 5th seat flips
-  // to the 3-wide compact grid that wraps naturally.
-  var activeCount = activeSeatCount(state.seats, state.paidSeats);
-  var tileCount = activeCount + 1; // seats + add tile
-  var splitView = tileCount <= 5;
 
   var cg = document.createElement('div');
-  var cgStyle = {
+  Object.assign(cg.style, {
     flex:               '1',
+    minHeight:          '0',
     padding:            '10px',
     display:            'grid',
     gap:                '10px',
     overflowY:          'auto',
-  };
-  if (splitView) {
-    cgStyle.gridTemplateColumns = 'repeat(' + tileCount + ', 1fr)';
-    cgStyle.gridAutoRows        = '1fr';
-    cgStyle.alignContent        = 'stretch';
-  } else {
-    cgStyle.gridTemplateColumns = 'repeat(3, 1fr)';
-    cgStyle.alignContent        = 'start';
-  }
-  Object.assign(cg.style, cgStyle);
+    gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))',
+    gridAutoRows:       '72px',
+    alignContent:       'start',
+  });
   cg.className = 'co-scroll';
 
   for (var i = 0; i < state.seats.length; i++) {
     if (state.paidSeats[state.seats[i].id]) continue;
-    var tile = buildCompactTile(state, i);
-    if (splitView) tile.style.minHeight = '0';
-    cg.appendChild(tile);
+    cg.appendChild(buildCompactTile(state, i));
   }
-  var addTile = buildAddTile(state, { compact: true });
-  if (splitView) addTile.style.minHeight = '0';
-  cg.appendChild(addTile);
+  cg.appendChild(buildAddTile(state, { compact: true }));
 
-  grid.appendChild(cg);
-  wrap.appendChild(grid);
+  gridCard.appendChild(cg);
+  wrap.appendChild(gridCard);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1538,15 +1468,16 @@ function _modRow(mod) {
 function buildCompactTile(state, seatIdx) {
   var seat = state.seats[seatIdx];
   var selected = !!state.selected[seat.id];
+  var accent = seatAccent(seatIdx);
   var canDelete = seat.items.length === 0
     && activeSeatCount(state.seats, state.paidSeats) > 1;
 
   var tile = document.createElement('div');
   Object.assign(tile.style, {
     position:       'relative',
-    background:     selected ? T.green : T.card,
+    background:     selected ? accent : T.well,
+    borderLeft:     T.accentBarW + ' solid ' + hexToRgba(accent, selected ? 0.4 : 1.0),
     borderRadius:   T.chamferCard + 'px',
-    minHeight:      '72px',
     padding:        '8px 10px',
     display:        'flex',
     flexDirection:  'column',
@@ -1560,8 +1491,6 @@ function buildCompactTile(state, seatIdx) {
     touchAction:    'manipulation',
   });
 
-  // (X button appended after content)
-
   var cid = document.createElement('span');
   Object.assign(cid.style, {
     fontFamily:   T.fh,
@@ -1571,7 +1500,7 @@ function buildCompactTile(state, seatIdx) {
     letterSpacing:'0.06em',
     lineHeight:   '1',
   });
-  cid.textContent = seat.id;
+  cid.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   tile.appendChild(cid);
 
   var ctot = document.createElement('span');

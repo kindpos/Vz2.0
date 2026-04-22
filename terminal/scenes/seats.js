@@ -55,13 +55,13 @@ export function activeSeatCount(seats, paidSeats) {
 }
 
 /**
- * Layout mode picker: A = 1-4 active seats, B = 5, C = 6+.
- * The scene picks a different grid layout per mode.
+ * Layout mode picker: A = 1-4 active seats, B = 5+.
+ * Mode A renders full-width seat tiles; Mode B switches to an order
+ * recap on the left and a compact, scrollable seat grid on the right.
  */
 export function layoutModeFor(count) {
   if (count <= 4) return 'A';
-  if (count === 5) return 'B';
-  return 'C';
+  return 'B';
 }
 
 /**

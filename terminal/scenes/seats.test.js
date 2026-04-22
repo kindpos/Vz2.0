@@ -69,12 +69,12 @@ describe('layout mode selection', () => {
     expect(activeSeatCount([], null)).toBe(0);
   });
 
-  it('layoutModeFor: 1-4 → A, 5 → B, 6+ → C', () => {
+  it('layoutModeFor: 1-4 → A, 5+ → B', () => {
     expect(layoutModeFor(1)).toBe('A');
     expect(layoutModeFor(4)).toBe('A');
     expect(layoutModeFor(5)).toBe('B');
-    expect(layoutModeFor(6)).toBe('C');
-    expect(layoutModeFor(100)).toBe('C');
+    expect(layoutModeFor(6)).toBe('B');
+    expect(layoutModeFor(100)).toBe('B');
   });
 });
 
