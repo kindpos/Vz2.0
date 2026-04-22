@@ -58,12 +58,14 @@
       <div class="panel-head">
         <h2>Recent Issues</h2>
         <div class="controls">
+          <span id="issues-updated" class="muted">—</span>
           <label for="days-select" class="muted">Window:</label>
           <select id="days-select">
             <option value="1">1 day</option>
             <option value="7" selected>7 days</option>
             <option value="30">30 days</option>
           </select>
+          <button id="btn-refresh-issues" class="btn-ghost">Refresh</button>
         </div>
       </div>
       <div id="issues-body"></div>
