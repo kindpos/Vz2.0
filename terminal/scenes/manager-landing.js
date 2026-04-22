@@ -669,9 +669,19 @@ defineScene({
           showToast('Manager approval required', { bg: T.verm, duration: 2000 });
           return;
         }
-        var confirmMsg = ids.length === 1
-          ? 'Void check ' + (ids[0]) + '?'
-          : 'Void ' + ids.length + ' checks?';
+        // Display the human-facing check_number (C-001), not the raw
+        // order_id UUID. `checkNum()` falls back to a derived short id
+        // if the order hasn't yet received its check_number from the
+        // ledger.
+        var orderById = {};
+        (st.allOrders || []).forEach(function(o) { orderById[o.order_id] = o; });
+        var confirmMsg;
+        if (ids.length === 1) {
+          var o0 = orderById[ids[0]];
+          confirmMsg = 'Void check ' + (o0 ? checkNum(o0) : ids[0]) + '?';
+        } else {
+          confirmMsg = 'Void ' + ids.length + ' checks?';
+        }
         showToast(confirmMsg + ' — tap again to confirm', { bg: T.verm, duration: 3000 });
         if (!st._voidPending) {
           st._voidPending = true;
