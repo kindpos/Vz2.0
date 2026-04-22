@@ -1,0 +1,297 @@
+// Integration-style tests for terminal/scenes/manager-landing.js.
+//
+// Tests drive the scene through its public surface: register via defineScene,
+// call render(), then interact with action-button handlers captured from
+// buildPillButton onClick callbacks.
+//
+// Key coverage:
+//   1. Void first tap — sets _voidPending, shows toast, does NOT fetch.
+//   2. Void second tap (same selection) — fires POST /orders/{id}/void.
+//   3. Void bypass fix — changing selection between tap-1 and tap-2 resets
+//      the confirmation so tap-2 is treated as a new first tap.
+//   4. Void pending expires after 3 s (fake timers).
+//   5. Void with no manager emp → error toast, no fetch.
+//   6. Merge guard: requires 2+ checks.
+//   7. Merge in-flight guard: rapid double-tap fires only one POST.
+//   8. Filter cycling clears selectedIds.
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// --- Mocks ---
+
+const registeredScenes = [];
+const pillHandlers = {};
+
+vi.mock('../scene-manager.js', () => ({
+  SceneManager: {
+    mountWorking:          vi.fn(),
+    openTransactional:     vi.fn(),
+    closeTransactional:    vi.fn(),
+    interrupt:             vi.fn(),
+    closeInterrupt:        vi.fn(),
+    hasInterrupt:          vi.fn(() => false),
+    on:                    vi.fn(),
+    off:                   vi.fn(),
+    emit:                  vi.fn(),
+  },
+  defineScene: (def) => { registeredScenes.push(def); return def; },
+}));
+
+vi.mock('../tokens.js', () => {
+  const T = {
+    bg: '#383c42', card: '#2e3236', well: '#22252a',
+    green: '#86efac', greenDk: '#4ade80', greenWarm: '#86efac', greenWarmDk: '#4ade80',
+    gold: '#f5a623', goldDk: '#e09010', elec: '#22d3ee', elecDk: '#0ea5e9',
+    verm: '#e8472a', vermDk: '#c03d22', text: '#e8eaed',
+    textMuted: 'rgba(232,234,237,0.55)', textDim: 'rgba(232,234,237,0.4)',
+    border: 'rgba(232,234,237,0.08)',
+    fb: 'sans-serif', fh: 'serif', fm: 'monospace',
+    fsB2: 14, fsB3: 12,
+    accentBarW: '4px',
+  };
+  return { T };
+});
+
+vi.mock('../theme-manager.js', () => ({
+  buildCard: () => {
+    const card = document.createElement('div');
+    const body = document.createElement('div');
+    card.appendChild(body);
+    return { wrap: card, card, body };
+  },
+  buildPillButton: ({ label, onClick } = {}) => {
+    const el = document.createElement('button');
+    el.textContent = label || '';
+    el.setColor = vi.fn();
+    if (label && onClick) pillHandlers[label] = onClick;
+    return el;
+  },
+  buildFloatButton: ({ label, onClick } = {}) => {
+    const el = document.createElement('button');
+    el.textContent = label || '';
+    el.setColor = vi.fn();
+    if (onClick) el.addEventListener('pointerup', onClick);
+    return el;
+  },
+  buildSectionLabel: () => document.createElement('div'),
+  hexToRgba:  (c) => c,
+  darkenHex:  (c) => c,
+}));
+
+vi.mock('../components.js', () => ({
+  showToast: vi.fn(),
+}));
+
+vi.mock('../charts.js', () => ({
+  buildSalesOverview: () => ({ wrap: document.createElement('div'), update: vi.fn() }),
+  buildLineCard:      () => ({ wrap: document.createElement('div'), update: vi.fn() }),
+  buildCOBCard:       () => ({ wrap: document.createElement('div'), update: vi.fn() }),
+  buildStatCard:      () => ({ wrap: document.createElement('div'), setValue: vi.fn() }),
+}));
+
+vi.mock('../app.js', () => ({
+  setHeaderUser:     vi.fn(),
+  setSceneName:      vi.fn(),
+  setHeaderSubtitle: vi.fn(),
+  setHeaderLogout:   vi.fn(),
+}));
+
+// --- Helpers ---
+
+const TEST_MGR = { id: 'mgr-01', employee_id: 'mgr-01', name: 'Big Boss' };
+
+const TEST_ORDERS = [
+  { order_id: 'order-a', status: 'open', server_id: 'srv-1', check_number: 'C-001', total: 45.00 },
+  { order_id: 'order-b', status: 'open', server_id: 'srv-1', check_number: 'C-002', total: 22.00 },
+];
+
+// --- Tests ---
+
+describe('terminal/scenes/manager-landing', () => {
+  let sceneDef;
+  let showToast;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    Object.keys(pillHandlers).forEach((k) => delete pillHandlers[k]);
+
+    // Reset fetch mock before each test.
+    global.fetch = vi.fn(() => Promise.resolve({
+      ok:   true,
+      json: () => Promise.resolve({}),
+    }));
+
+    const components = await import('../components.js');
+    showToast = components.showToast;
+    showToast.mockClear();
+
+    await import('./manager-landing.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'manager-landing');
+    expect(sceneDef).toBeDefined();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  function mount(stateOverrides = {}) {
+    const container = document.createElement('div');
+    const state     = Object.assign(
+      JSON.parse(JSON.stringify(sceneDef.state)),
+      stateOverrides,
+    );
+    state._refs = {};
+    sceneDef.render(container, TEST_MGR, state);
+    return { container, state };
+  }
+
+  // ── Void confirmation ───────────────────────────────────────────────
+
+  // Helper: mount then reset fetch so background fetchAllData calls don't
+  // pollute per-test assertions about action-specific endpoints.
+  function mountFresh(stateOverrides = {}) {
+    const result = mount(stateOverrides);
+    // fetchAllData fires during render() — reset after mount so each test
+    // only sees fetches it deliberately triggers.
+    global.fetch = vi.fn(() => Promise.resolve({
+      ok:   true,
+      json: () => Promise.resolve({}),
+    }));
+    return result;
+  }
+
+  it('Void first tap sets _voidPending, shows toast, does NOT fetch', () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    pillHandlers['Void']();
+
+    expect(state._voidPending).toBe(true);
+    expect(state._voidPendingKey).toBe('order-a');
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('tap again'),
+      expect.any(Object),
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('Void second tap with same selection fires POST to /orders/{id}/void', async () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    pillHandlers['Void']();  // first tap
+    pillHandlers['Void']();  // second tap — should fire
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/orders/order-a/void'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(state._voidPending).toBe(false);
+  });
+
+  it('changing selection between tap-1 and tap-2 resets confirmation (bypass fix)', () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    pillHandlers['Void']();          // first tap on A → arms pending for 'order-a'
+    state.selectedIds = ['order-b']; // switch selection
+    pillHandlers['Void']();          // tap on B → key mismatch → new first tap, no fetch
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(state._voidPendingKey).toBe('order-b');  // now armed for B
+    expect(showToast).toHaveBeenCalledTimes(2);      // two "tap again" toasts
+  });
+
+  it('Void pending flag expires after 3 s', () => {
+    vi.useFakeTimers();
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    pillHandlers['Void']();   // arms the pending timer
+    expect(state._voidPending).toBe(true);
+
+    vi.advanceTimersByTime(3001);
+    expect(state._voidPending).toBe(false);
+    expect(state._voidPendingKey).toBeNull();
+  });
+
+  it('Void with no manager emp shows error toast and does not fetch', () => {
+    const { state } = mountFresh();
+    state.emp         = {};   // no id / employee_id
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    pillHandlers['Void']();
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Manager approval'),
+      expect.any(Object),
+    );
+  });
+
+  // ── Merge ───────────────────────────────────────────────────────────
+
+  it('Merge with fewer than 2 checks selected shows error toast', () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    pillHandlers['Merge']();
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('2+'),
+      expect.any(Object),
+    );
+  });
+
+  it('Merge in-flight guard: rapid double-tap fires only one POST', async () => {
+    const { state } = mount();
+    // Override after mount with never-resolving fetch to keep _merging true.
+    global.fetch = vi.fn(() => new Promise(() => {}));
+
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a', 'order-b'];
+
+    pillHandlers['Merge']();  // first tap — starts in-flight
+    pillHandlers['Merge']();  // second tap — should be swallowed
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/orders/order-a/merge'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  // ── Filter cycling ──────────────────────────────────────────────────
+
+  it('filter cycles OPEN → CLOSED → VOID → OPEN and clears selectedIds each time', () => {
+    const { state } = mount();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    // The filter button has a pointerup listener wired directly.
+    const filterBtn = state._refs.filterBtn;
+    expect(filterBtn).toBeDefined();
+
+    filterBtn.dispatchEvent(new Event('pointerup'));
+    expect(state.filter).toBe('CLOSED');
+    expect(state.selectedIds).toHaveLength(0);
+
+    state.selectedIds = ['order-b'];
+    filterBtn.dispatchEvent(new Event('pointerup'));
+    expect(state.filter).toBe('VOID');
+    expect(state.selectedIds).toHaveLength(0);
+
+    filterBtn.dispatchEvent(new Event('pointerup'));
+    expect(state.filter).toBe('OPEN');
+  });
+});
