@@ -156,7 +156,7 @@ function closeGate(sceneName) {
   if (!_gateScene || _gateScene.name !== sceneName) return;
 
   var scene = _scenes[_gateScene.name];
-  if (scene && scene.unmount) scene.unmount();
+  if (scene && scene.unmount) scene.unmount(_gateScene.container);
   if (typeof _gateScene.cleanup === 'function') _gateScene.cleanup();
 
   // Clear DOM
@@ -217,10 +217,19 @@ function _unmountWorkingInternal() {
   if (!_workingScene) return;
 
   var scene = _scenes[_workingScene.name];
-  if (scene && scene.unmount) scene.unmount();
-  if (typeof _workingScene.cleanup === 'function') _workingScene.cleanup();
+  var container = _workingScene.container;
+  try {
+    if (scene && scene.unmount) scene.unmount(container);
+  } catch (e) {
+    console.error('SceneManager: unmount threw for "' + _workingScene.name + '":', e);
+  }
+  try {
+    if (typeof _workingScene.cleanup === 'function') _workingScene.cleanup();
+  } catch (e) {
+    console.error('SceneManager: cleanup threw for "' + _workingScene.name + '":', e);
+  }
 
-  _workingScene.container.remove();
+  container.remove();
   _workingScene = null;
 }
 
@@ -290,7 +299,7 @@ function closeTransactional(sceneName) {
 
   // Unmount scene
   var scene = _scenes[entry.name];
-  if (scene && scene.unmount) scene.unmount();
+  if (scene && scene.unmount) scene.unmount(entry.container);
   if (typeof entry.cleanup === 'function') entry.cleanup();
 
   // Remove DOM
@@ -313,7 +322,7 @@ function closeAllTransactional() {
   while (_transactionalStack.length > 0) {
     var entry = _transactionalStack.pop();
     var scene = _scenes[entry.name];
-    if (scene && scene.unmount) scene.unmount();
+    if (scene && scene.unmount) scene.unmount(entry.container);
     if (typeof entry.cleanup === 'function') entry.cleanup();
     entry.frame.remove();
     entry.scrim.remove();
@@ -406,7 +415,7 @@ function resolveInterrupt(sceneName) {
 
   var scene = _scenes[_interruptScene.name];
   var name = _interruptScene.name;
-  if (scene && scene.unmount) scene.unmount();
+  if (scene && scene.unmount) scene.unmount(_interruptScene.container);
   if (typeof _interruptScene.cleanup === 'function') _interruptScene.cleanup();
 
   _interruptScene.frame.remove();
