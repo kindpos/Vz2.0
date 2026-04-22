@@ -273,26 +273,42 @@ Codes with an actual emit site today (i.e. not just reserved):
 | Code | Level | Category | Where it fires |
 |------|-------|----------|----------------|
 | `DEV-001` | ERROR | DEVICE | `diagnostic_collector.py` (sample entry on seed) |
+| `DEV-002` | WARNING | DEVICE | `dejavoo_spin.py` — SPIn request timed out |
+| `DEV-003` | WARNING | DEVICE | `dejavoo_spin.py` — SPIn device unreachable (connect/network error) |
+| `DEV-004` | WARNING | DEVICE | `dejavoo_spin.py` — malformed / unexpected SPIn response |
 | `FIN-001` | WARNING | FIN | `orders.py` — 2dp precision gate rejected a monetary value |
 | `FIN-002` | WARNING | FIN | `payment_routes.py` — in-flight double-charge guard blocked a concurrent sale |
 | `FIN-003` | ERROR | FIN | `orders.py` — day-close invariant check failed |
 | `FIN-004` | ERROR | FIN | `payment_routes.py` — batch settlement drift (ledger vs processor) |
 | `FIN-005` | WARNING | FIN | `payment_routes.py` — overpayment clamped at route layer |
+| `FIN-006` | WARNING | FIN | `payment_routes.py` — tip adjustment on a payment confirmed before the last day-close |
 | `FIN-007` | WARNING | FIN | `orders.py` — new-order creation blocked (day close in progress) |
 | `FIN-008` | WARNING | FIN | `startup_sweep.py` — orphaned PAYMENT_INITIATED resolved at startup |
+| `PER-001` | WARNING/ERROR | PERIPHERAL | `print_dispatcher.py` — generic socket / OS error on a job send |
+| `PER-002` | WARNING/ERROR | PERIPHERAL | `print_dispatcher.py` — printer refused the connection |
+| `PER-003` | WARNING/ERROR | PERIPHERAL | `print_dispatcher.py` — print job send timed out |
+| `PER-007` | WARNING | PERIPHERAL | `printer_manager.py` — cash drawer open failed |
 | `SEC-001` | WARNING | SEC | `auth.py` — PIN rate-limit triggered |
 | `SEC-002` | ERROR | SEC | `printing.py` ×2 — path-traversal attempt blocked on `/print/test` |
 | `SEC-003` | INFO | SEC | `sync.py` — config events replay invoked |
+| `SEC-004` | WARNING | SEC | `sync.py` — replay batch claims this terminal's own id (self-impersonation) |
 | `SEC-005` | WARNING | SEC | `auth.py` ×2 + `reporting.py` — auth / manager required but no valid token |
 | `SEC-006` | ERROR | SEC | `auth.py` + `reporting.py` — manager role missing / cross-server access blocked |
 | `SYS-001` | ERROR | SYSTEM | `main.py` HTTP catch-all — ledger precision/idempotency `ValueError` |
+| `SYS-003` | WARNING | SYSTEM | `diagnostic_collector.py` — disk usage > 85% (derived from heartbeat) |
+| `SYS-004` | WARNING | SYSTEM | `diagnostic_collector.py` — memory usage > 85% |
+| `SYS-005` | WARNING | SYSTEM | `diagnostic_collector.py` — CPU temperature > 75°C |
 | `SYS-006` | ERROR | SYSTEM | `main.py` HTTP catch-all — any other unhandled exception |
 | `SYS-HEARTBEAT` | INFO | SYSTEM | `diagnostic_collector.py` — periodic ambient health snapshot |
 
-**Declared but never emitted** (reserved for future hooks; the registry
-keeps them so the codes are stable when hooks land):
-`DEV-002..006`, `NET-001..008`, `PER-001..007`, `REC-001..007`,
-`SYS-002..005`, `SYS-007`, `SEC-004`, `FIN-006`.
+**Still reserved** (declared, not wired — needs new infra to detect meaningfully):
+- `DEV-005` / `DEV-006` — payment terminal reboot + generic status transition; needs a status-watcher with de-bounce.
+- `NET-001..008` — a dedicated network-health monitor would be the emit point; route-level fetch calls use their own timeouts today.
+- `PER-004` (queue overflow), `PER-005` (printer status change), `PER-006` (failover triggered) — failover + queue-depth monitoring don't exist yet.
+- `REC-001..007` — the retry-success / failover-activated / deferred-mode events need a recovery pipeline that doesn't exist.
+- `SYS-002` — ledger integrity check; the hash chain is in place but no scheduled verifier trips it.
+- `SYS-007` — scheduled-reboot pre-shutdown marker; no 4am cron integration.
+- `UI-004` — reserved; was "unguarded fetch fallback detection".
 
 ---
 

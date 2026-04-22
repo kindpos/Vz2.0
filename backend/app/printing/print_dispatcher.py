@@ -18,6 +18,7 @@ from .templates.kitchen_ticket import KitchenTicketTemplate
 from .templates.clock_hours import ClockHoursTemplate
 from .templates.sales_recap import SalesRecapTemplate
 from .templates.server_checkout import ServerCheckoutTemplate
+from ..models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 
 logger = logging.getLogger("kindpos.printing.dispatcher")
 
@@ -187,12 +188,78 @@ class PrintDispatcher:
 
         except Exception as e:
             logger.warning(f"Job {job_id} attempt {attempt} failed: {e}")
+            # Classify the failure for entomology. Each class maps to the
+            # reserved PER-* code that matches its diagnostic meaning —
+            # lets the dashboard distinguish "printer is powered off"
+            # (PER-002) from "printer is unreachable over LAN" (PER-001)
+            # from "printer accepted the connection but never acked the
+            # payload" (PER-003).
+            await self._classify_and_report(job, attempt, e)
             if attempt >= MAX_ATTEMPTS:
                 await self._queue.mark_failed(job_id)
                 logger.error(f"Job {job_id} FAILED after {attempt} attempts: {e}")
                 self._broadcast_failure(job, str(e))
             else:
                 await self._queue.bump_attempt_for_retry(job_id, attempt)
+
+    async def _classify_and_report(self, job: dict, attempt: int, exc: Exception) -> None:
+        """Best-effort print-diagnostic emission.
+
+        Swallows its own failures — an instrumentation hiccup must never
+        block a print retry. Each branch matches a reserved PER-* code so
+        the entomology dashboard can surface what kind of problem this is
+        without opening the queue log.
+        """
+        # Late import to avoid circular: app.api.dependencies pulls
+        # PrintDispatcher/PrinterManager transitively.
+        from ..api.dependencies import get_diagnostic_collector
+        collector = get_diagnostic_collector()
+        if collector is None:
+            return
+
+        # PER-003 — we got as far as opening the socket but the send/recv
+        # timed out. socket.settimeout(5) at line 261 bounds this.
+        if isinstance(exc, socket.timeout) or isinstance(exc, asyncio.TimeoutError):
+            code = "PER-003"
+            msg = "Print job timeout (printer did not ack within 5s)"
+        elif isinstance(exc, ConnectionRefusedError):
+            # PER-002 — printer is reachable on the network but refused the
+            # connection (service off, port blocked, wrong port).
+            code = "PER-002"
+            msg = "Print job refused by printer endpoint (ConnectionRefusedError)"
+        elif isinstance(exc, (socket.gaierror, OSError)):
+            # PER-001 — any other socket / OS error. Includes "No route to
+            # host", "Host is unreachable", DNS failures.
+            code = "PER-001"
+            msg = f"Print job connection failed: {type(exc).__name__}: {exc}"
+        else:
+            # Not a network error — probably a template / formatting bug.
+            # Don't emit PER-* here; let it flow to the generic failure
+            # broadcast + queue mark_failed path instead.
+            return
+
+        sev = (
+            DiagnosticSeverity.ERROR
+            if attempt >= MAX_ATTEMPTS
+            else DiagnosticSeverity.WARNING
+        )
+        try:
+            await collector.record(
+                category=DiagnosticCategory.PERIPHERAL,
+                severity=sev,
+                source="print_dispatcher._process_job",
+                event_code=code,
+                message=msg,
+                context={
+                    "job_id": job.get("job_id"),
+                    "printer_mac": job.get("printer_mac"),
+                    "template_id": job.get("template_id"),
+                    "attempt": attempt,
+                    "max_attempts": MAX_ATTEMPTS,
+                },
+            )
+        except Exception:
+            logger.exception("PER-* diagnostic emit failed (swallowed)")
 
     # ── Render ────────────────────────────────────────────────────────────────
 

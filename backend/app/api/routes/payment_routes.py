@@ -522,6 +522,36 @@ async def adjust_tip(
     if target.status != "confirmed":
         raise HTTPException(status_code=400, detail="Can only adjust tips on confirmed payments")
 
+    # FIN-006 — tip adjusted on a payment confirmed BEFORE the last DAY_CLOSED.
+    # The mutation is still allowed (POS reality: servers sometimes reconcile
+    # a prior-day signed slip the next morning) but we surface it so the
+    # bookkeeper can see cross-day adjustments that will skew a closed batch.
+    try:
+        day_close_seq = await ledger.get_last_day_close_sequence()
+    except Exception:
+        day_close_seq = None
+    payment_seq = None
+    for e in events:
+        if (e.event_type == EventType.PAYMENT_CONFIRMED
+                and e.payload.get("payment_id") == request.payment_id):
+            payment_seq = getattr(e, "sequence_number", None)
+            break
+    if (day_close_seq is not None and payment_seq is not None
+            and payment_seq <= day_close_seq):
+        await _record_diag(
+            category=DiagnosticCategory.FIN,
+            severity=DiagnosticSeverity.WARNING,
+            source="payment_routes.adjust_tip",
+            event_code="FIN-006",
+            message="Tip adjustment after day close — prior-day payment altered",
+            context={
+                "order_id": request.order_id,
+                "payment_id": request.payment_id,
+                "payment_sequence": payment_seq,
+                "day_close_sequence": day_close_seq,
+            },
+        )
+
     # Get previous tip from existing TIP_ADJUSTED events
     previous_tip = Decimal("0.00")
     for e in events:

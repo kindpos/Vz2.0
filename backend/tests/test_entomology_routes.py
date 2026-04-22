@@ -238,3 +238,58 @@ async def test_issues_respects_min_severity(authed_client, collector):
     r4 = await authed_client.get("/api/v1/entomology/issues?days=1&min_severity=bogus")
     assert r4.status_code == 200
     assert r4.json()["total"] == 1
+
+
+# ─── SEC-004 — forged-self terminal_id on sync replay ─────────────────
+
+@pytest_asyncio.fixture
+async def authed_client_with_ledger(authed_client, ledger, collector):
+    """authed_client plus:
+      - get_ledger override so sync/replay can resolve its EventLedger dep
+      - DiagnosticCollector wired via set_diagnostic_collector so
+        _record_diag (which pulls the module-level singleton, not a
+        FastAPI Depends) can actually land SEC-004 into the test collector.
+    """
+    from app.main import app as _app
+    _app.dependency_overrides[deps.get_ledger] = lambda: ledger
+    prior = deps._diagnostic_collector  # type: ignore[attr-defined]
+    deps.set_diagnostic_collector(collector)
+    try:
+        yield authed_client
+    finally:
+        deps._diagnostic_collector = prior  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_sec004_emitted_when_replay_claims_this_terminal(
+    authed_client_with_ledger, collector,
+):
+    """A replay batch containing events whose terminal_id equals this
+    terminal's own id is suspicious — SEC-004 flags it."""
+    from app.config import settings
+
+    body = {"events": [
+        {"event_type": "ROLE_CREATED", "terminal_id": settings.terminal_id,
+         "event_id": "forged-1", "payload": {"role_id": "r1", "name": "X"}},
+    ]}
+    r = await authed_client_with_ledger.post("/api/v1/sync/config/events/replay", json=body)
+    assert r.status_code == 200
+    events = await collector.get_events(event_code="SEC-004")
+    assert len(events) >= 1
+    assert events[0].context["local_terminal_id"] == settings.terminal_id
+    assert events[0].context["self_claim_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_sec004_quiet_when_replay_claims_only_foreign_ids(
+    authed_client_with_ledger, collector,
+):
+    """Legitimate Overseer-origin replays (no self-claims) don't emit SEC-004."""
+    body = {"events": [
+        {"event_type": "ROLE_CREATED", "terminal_id": "OVERSEER",
+         "event_id": "from-overseer-1",
+         "payload": {"role_id": "r1", "name": "X"}},
+    ]}
+    r = await authed_client_with_ledger.post("/api/v1/sync/config/events/replay", json=body)
+    assert r.status_code == 200
+    assert len(await collector.get_events(event_code="SEC-004")) == 0

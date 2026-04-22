@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import get_ledger
 from app.api.routes.auth import _record_diag, auth_required
+from app.config import settings
 from app.core.event_ledger import EventLedger
 from app.core.events import (
     CONFIG_EVENT_PREFIXES,
@@ -91,6 +92,11 @@ async def replay_config_events(
     # event_id / user_id / terminal_id. Record every invocation so an
     # unexpected caller shows up in the bug report even if nobody is
     # actively monitoring it.
+    claimed_terminal_ids = sorted({
+        (r.get("terminal_id") or "OVERSEER")
+        for r in raw_events[:50]
+        if isinstance(r, dict)
+    })
     await _record_diag(
         category=DiagnosticCategory.SEC,
         severity=DiagnosticSeverity.INFO,
@@ -99,13 +105,36 @@ async def replay_config_events(
         message="Config events replay invoked",
         context={
             "batch_size": len(raw_events),
-            "claimed_terminal_ids": sorted({
-                (r.get("terminal_id") or "OVERSEER")
-                for r in raw_events[:50]
-                if isinstance(r, dict)
-            }),
+            "claimed_terminal_ids": claimed_terminal_ids,
         },
     )
+
+    # SEC-004 — a replay batch that claims to be FROM this local terminal
+    # is suspicious: outbound-then-inbound doesn't happen on the normal
+    # pull path (Overseer → terminal). Could be an on-box mis-configuration,
+    # or an attacker on the LAN posting forged events trying to impersonate
+    # this terminal's audit trail. The replay still proceeds (it's gated
+    # by idempotency keys and event validation) but the attempt is flagged
+    # so security review can see it.
+    local_tid = getattr(settings, "terminal_id", None)
+    self_claim_count = sum(
+        1 for r in raw_events
+        if isinstance(r, dict) and r.get("terminal_id") == local_tid
+    )
+    if local_tid and self_claim_count > 0:
+        await _record_diag(
+            category=DiagnosticCategory.SEC,
+            severity=DiagnosticSeverity.WARNING,
+            source="sync.replay_config_events",
+            event_code="SEC-004",
+            message="Replay batch contains events claiming to originate from this terminal",
+            context={
+                "local_terminal_id": local_tid,
+                "self_claim_count": self_claim_count,
+                "batch_size": len(raw_events),
+                "sample_claimed_ids": claimed_terminal_ids[:10],
+            },
+        )
 
     applied = 0
     skipped = 0
