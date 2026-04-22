@@ -55,6 +55,7 @@ import { showPizzaBuilderOverlay } from '../pizza-builder-overlay.js';
 import { PREFIXES as UNI_PREFIXES, getModHexData, hasPizzaCategory, PIZZA_PLACEMENTS, MOD_COLORS } from '../menu-data/universal-modifiers.js';
 import { computeTotals } from '../pricing.js';
 import { fetchWithTimeout } from '../sm2-shim.js';
+import { formatModifierLabel } from '../modifier-label.js';
 
 // Local bevel colors kept for any call sites that still reference them.
 var _bevelL = T.green;
@@ -1957,9 +1958,9 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       // the server taps ADD/NO/EXTRA/etc. A modifier picked before any
       // prefix is chosen previously rendered as "null Pepperoni" on
       // both the preview and (via commitModifierPanelItem) the kitchen
-      // ticket. Treat null prefix as "no prefix marker" — just the
-      // label, same as unadorned additions.
-      var displayName = m.prefix ? (m.prefix + ' ' + m.label) : m.label;
+      // ticket. formatModifierLabel handles the null-prefix fallback
+      // so the commit path (below) and this preview stay in lockstep.
+      var displayName = formatModifierLabel(m.prefix, m.label);
       previewMods.push({ name: displayName, price: charged ? m.price : 0, charged: charged, prefix: halfSide });
     });
 
@@ -2286,10 +2287,10 @@ function commitModifierPanelItem(originalItem, activeItem, modConfig) {
     var charged = m.prefix !== 'NO' && m.price > 0;
     var halfSide = m.placement === '1st' ? 'Left' : m.placement === '2nd' ? 'Right' : null;
     // `m.prefix` is null if the modifier was picked before the server
-    // tapped ADD/NO/EXTRA. Treat null as "unprefixed" rather than
-    // concatenating literal "null ". Previously shipped "null Pepperoni"
-    // to the kitchen ticket and the charged name.
-    var displayName = m.prefix ? (m.prefix + ' ' + m.label) : m.label;
+    // tapped ADD/NO/EXTRA. formatModifierLabel treats null as
+    // "unprefixed" rather than concatenating literal "null ".
+    // Previously shipped "null Pepperoni" to the kitchen ticket.
+    var displayName = formatModifierLabel(m.prefix, m.label);
     var parentMod = {
       name: displayName,
       price: m.prefix === 'NO' ? 0 : m.price,

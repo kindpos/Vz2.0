@@ -11,6 +11,11 @@
    ============================================ */
 
 import { pushChanges } from '../services/config-push.js';
+import {
+    buildPinResetPayload,
+    buildEmployeeUpdatePayload,
+    buildEmployeeCreatePayload,
+} from './employee-events.js';
 import { T, withAlpha } from '../ui/tokens.js';
 import {
     buildScenePage, sectionCard, button, field,
@@ -631,15 +636,13 @@ async function handleSave(isEdit, original, values, close) {
             notes,
         });
 
-        emitEvent('employee.updated', {
-            employee_id: original.id,
-            first_name: firstName,
-            last_name: lastName,
-            display_name: `${firstName} ${lastName}`,
-            role_ids: finalRoles,
-            hourly_rate: payRate,
-            active: status === 'active',
-        });
+        emitEvent('employee.updated', buildEmployeeUpdatePayload({
+            id: original.id,
+            firstName, lastName,
+            roles: finalRoles,
+            payRate,
+            status,
+        }));
 
         showToast(`${firstName} ${lastName} updated successfully`, 'success');
     } else {
@@ -651,16 +654,13 @@ async function handleSave(isEdit, original, values, close) {
         };
         employees.push(newEmp);
 
-        emitEvent('employee.created', {
-            employee_id: newEmp.id,
-            first_name: firstName,
-            last_name: lastName,
-            display_name: `${firstName} ${lastName}`,
-            role_ids: finalRoles,
-            hourly_rate: payRate,
-            pin,
-            active: status === 'active',
-        });
+        emitEvent('employee.created', buildEmployeeCreatePayload({
+            id: newEmp.id,
+            firstName, lastName,
+            roles: finalRoles,
+            payRate,
+            status,
+        }, pin));
 
         showToast(`${firstName} ${lastName} added successfully`, 'success');
     }
@@ -749,17 +749,11 @@ function showPINResetModal(container, employee) {
             // Send the REAL new PIN so the backend can persist it. The
             // previous code sent `new_pin_hash: 'SHA256_SIMULATED'` — a
             // literal string placeholder that /config/push happily wrote
-            // to the ledger. The employee would then try to log in with
-            // the PIN they'd been handed and fail, because the stored
-            // hash still matched the OLD PIN. `/config/push` now runs
-            // plaintext PINs through ensure_hashed_pin, same as POST
-            // /config/employees does on create.
-            emitEvent('employee.updated', {
-                employee_id: employee.id,
-                pin: newPIN,
-                force_change_on_login: forceChange,
-                reset_reason: 'Manager-initiated reset',
-            });
+            // to the ledger. `buildPinResetPayload` is the single source
+            // of truth for this shape so the contract can be unit-tested
+            // without driving the full modal.
+            emitEvent('employee.updated',
+                buildPinResetPayload(employee.id, newPIN, forceChange));
 
             modalRef.close();
             showPINDisplayModal(container, employee, newPIN, forceChange);

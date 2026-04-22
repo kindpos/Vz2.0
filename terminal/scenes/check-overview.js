@@ -38,6 +38,7 @@ import { showKeyboard, hideKeyboard } from '../keyboard.js';
 import { computeTotals, getTaxRate } from '../pricing.js';
 import { buildItemRecap, buildItemRecapTotals } from '../components/item-recap.js';
 import { fetchWithTimeout } from '../sm2-shim.js';
+import { computeDiscountAmount, extractItemIds, buildDiscountBody } from '../discount.js';
 import './column-editor.js';
 
 var _refreshInFlight = false;
@@ -1989,28 +1990,17 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     }
   }
 
-  // Compute the actual dollar amount discounted AND collect the
-  // server-side item_ids so the backend can attribute the DISCOUNT
-  // event to the right rows. Previously this was in-memory only with
-  // a TODO — discount survived re-render but not refresh/re-login.
-  var amount = 0;
-  var itemIds = [];
+  // Collect the selected lines so the pure discount helpers (see
+  // discount.js) can compute the dollar amount + item_ids and build
+  // the wire body. Previously this was inlined with a TODO — discount
+  // survived re-render but not refresh/re-login.
+  var lines = [];
   for (var i = 0; i < itemRefs.length; i++) {
     var r = itemRefs[i];
-    var it = state.seats[r.seatIdx].items[r.itemIdx];
-    var base = it.price || 0;
-    var modSum = 0;
-    if (Array.isArray(it.mods)) {
-      for (var m = 0; m < it.mods.length; m++) modSum += (it.mods[m].price || 0);
-    }
-    var effective = (base + modSum) * (it.qty || 1);
-    amount += effective * (pct / 100);
-    if (it.item_id) itemIds.push(it.item_id);
+    lines.push(state.seats[r.seatIdx].items[r.itemIdx]);
   }
-  // Match backend `_validate_2dp` — 2dp precision or the event is
-  // rejected. `Number(x.toFixed(2))` also dodges float drift from the
-  // pct / 100 division above.
-  amount = Number(amount.toFixed(2));
+  var amount = computeDiscountAmount(lines, pct);
+  var itemIds = extractItemIds(lines);
   if (amount <= 0 || !state.orderId) {
     showToast('Discount has no selected items', { bg: T.gold });
     return;
@@ -2019,13 +2009,7 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
   fetchWithTimeout('/api/v1/orders/' + state.orderId + '/discount', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({
-      discount_type: pct + '%',
-      amount:        amount,
-      reason:        'Manager ' + pct + '% discount',
-      approved_by:   approvedBy || null,
-      item_ids:      itemIds.length ? itemIds : null,
-    }),
+    body:    JSON.stringify(buildDiscountBody(pct, amount, itemIds, approvedBy)),
   }, 15000).then(function(r) {
     if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'HTTP ' + r.status); });
     return r.json();
