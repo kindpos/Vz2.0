@@ -682,13 +682,26 @@ defineScene({
         } else {
           confirmMsg = 'Void ' + ids.length + ' checks?';
         }
-        showToast(confirmMsg + ' — tap again to confirm', { bg: T.verm, duration: 3000 });
-        if (!st._voidPending) {
-          st._voidPending = true;
-          setTimeout(function() { st._voidPending = false; }, 3000);
+        // Track which check IDs the pending confirmation is for.  If the
+        // selection changes between tap-1 and tap-2 the old token becomes
+        // stale and the second tap is treated as a new first tap — preventing
+        // the bypass: [tap Void on A] → [switch to B] → [tap Void on B fires].
+        var voidKey = ids.slice().sort().join(',');
+        var pendingMatch = st._voidPending && st._voidPendingKey === voidKey;
+        if (!pendingMatch) {
+          showToast(confirmMsg + ' — tap again to confirm', { bg: T.verm, duration: 3000 });
+          clearTimeout(st._voidPendingTimer);
+          st._voidPending      = true;
+          st._voidPendingKey   = voidKey;
+          st._voidPendingTimer = setTimeout(function() {
+            st._voidPending    = false;
+            st._voidPendingKey = null;
+          }, 3000);
           return;
         }
-        st._voidPending = false;
+        clearTimeout(st._voidPendingTimer);
+        st._voidPending    = false;
+        st._voidPendingKey = null;
         var voided = 0, vFailed = 0;
         ids.forEach(function(orderId) {
           fetch('/api/v1/orders/' + orderId + '/void', {
@@ -723,6 +736,8 @@ defineScene({
           showToast('Manager approval required', { bg: T.verm, duration: 2000 });
           return;
         }
+        if (st._merging) return;
+        st._merging = true;
         // First selected = target, rest = sources
         var targetId  = ids[0];
         var sourceIds = ids.slice(1);
@@ -733,6 +748,7 @@ defineScene({
           body:    JSON.stringify({ source_ids: sourceIds, approved_by: approver }),
         }).then(function(r) {
           return r.json().then(function(data) {
+            st._merging = false;
             if (r.ok) {
               showToast('Merged into ' + targetId, { bg: T.green, duration: 2000 });
               st.selectedIds = [];
@@ -742,6 +758,7 @@ defineScene({
             }
           });
         }).catch(function() {
+          st._merging = false;
           showToast('Merge failed — check connection', { bg: T.verm, duration: 2000 });
         });
         return;
