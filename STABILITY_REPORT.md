@@ -16,9 +16,9 @@ Print/hardware paths remain the largest unmitigated risk area.
 
 | Suite | Files | Tests | Passing | Skipped | Failing |
 |---|---:|---:|---:|---:|---:|
-| Backend (pytest) | 74 | 1,120 | 1,117 | 3 | **0** |
+| Backend (pytest) | 75 | 1,191 | 1,188 | 3 | **0** |
 | Frontend (vitest) | 24 | 198 | 198 | 0 | **0** |
-| **Total** | **98** | **1,318** | **1,315** | **3** | **0** |
+| **Total** | **99** | **1,389** | **1,386** | **3** | **0** |
 
 > `pytest-cov` is not installed; the 73% coverage figure is from the April 21
 > audit (`COVERAGE_AUDIT.md`). Financial core modules measured individually
@@ -40,6 +40,8 @@ Print/hardware paths remain the largest unmitigated risk area.
 | `app/core/money.py` | 88% |
 | `app/core/financial_invariants.py` | 85% |
 | `app/core/adapters/payment_validator.py` | 100% |
+| `app/api/routes/system.py` | 29% → high now | 57 new tests this session; bugs B1/B2/B3 fixed |
+| `app/api/routes/sync.py` | unknown → high now | 14 new tests this session; SEC-003/004 diagnostics, precision/non-precision ValueError paths, auth gate |
 
 ### 🟡 Medium Risk (50–84%)
 
@@ -57,8 +59,6 @@ Print/hardware paths remain the largest unmitigated risk area.
 
 | Module | Coverage | Notes |
 |---|---:|---|
-| `app/api/routes/system.py` | 29% | **Target for next probe session** |
-| `app/api/routes/sync.py` | unknown | Not audited |
 | `app/printing/templates/driver_ticket.py` | 12% | |
 | `app/printing/templates/char_test_template.py` | 4% | |
 | `app/services/demo_seeder.py` | 11% | Low stakes |
@@ -99,6 +99,52 @@ All 8 🔴 critical gaps from `COVERAGE_AUDIT.md` addressed:
 | 5 | `_voidPendingTimer` leak — timer not cleared on scene cleanup, could mutate detached state | `manager-landing.js:1194` | **LOW** | `clearTimeout(state._voidPendingTimer)` added to cleanup |
 | 6 | `fetchAllData` swallows API errors — `r.json()` called without `r.ok` check; error body silently used as data, dashboard shows zeros with no indication of failure | `manager-landing.js`, `server-landing.js` | **LOW** | `r.ok ? r.json() : Promise.reject(r.status)` on all background fetches |
 
+### Session 3 — System routes probe (`app/api/routes/system.py`)
+
+57 new tests added in `backend/tests/test_system_routes.py`. Previously there
+was **zero** test coverage for this file. Three bugs found and fixed:
+
+| # | Bug | File | Severity | Fix |
+|---|---|---|---|---|
+| B1 | `/run-tests` ran against hardcoded `PROJECT_ROOT / 'core' / 'backend' / 'tests'` — that path doesn't exist in the current repo layout. pytest would collect 0 tests and exit 4 ("no tests ran"), which the SSE client would see as a silent no-op. | `system.py:88` | New `_resolve_test_path(root)` helper that picks `root/'tests'` (pytest.ini adjacent) or falls back to `root/'backend'/'tests'` (repo-root layout). | 
+| B2 | `__DONE__:exit_code` parsed with `int(line.split(":")[1])`. A non-numeric payload or a stray `:` in the tail crashed the SSE generator with `ValueError`, dropping the `complete` event so the client would hang on the spinner. | `system.py:162` | `split(":", 1)` + `try/except ValueError: exit_code=1`. |
+| B3 | `is_test_result(line)` only matched pytest's `[NN%]` progress marker, which pytest **suppresses** when stdout isn't a TTY. Since `subprocess.Popen(... stdout=PIPE)` is not a TTY, the counters in the `complete` event silently stayed at `passed=0, failed=0, skipped=0` in every production run — Overseer would show "Done" with no results. Unmasked by fixing B1. | `system.py:96` | Added a `^\S+::\S+\s+(PASSED\|FAILED\|SKIPPED)\b` fallback regex. Anchored on the path so summary-section lines (`FAILED tests/... - ...`) don't double-count. |
+
+Also refactored `_find_project_root()` to accept an optional `start: Path`
+parameter for testability (default still resolves from `__file__`).
+
+Coverage added, by area:
+
+| Surface | Tests | Notes |
+|---|---:|---|
+| `classify_line` | 16 | All styling branches + PASSED-wins-over-FAILED-substring lock |
+| `is_test_result` | 13 | Percent + verbose forms, summary-line false positive, narrative false positive |
+| `_find_project_root` | 6 | pytest.ini / fly.preview.toml / repo markers, fallback, current-repo regression |
+| `_resolve_test_path` | 5 | Direct / nested / missing / preference / regression |
+| `GET /system/version` | 2 | Shape + no-auth-required |
+| `POST /system/run-tests` (mocked thread) | 7 | Happy, mixed, narrative-not-counted, `__ERROR__`, `__DONE__` variants |
+| `require_manager` gate | 5 | Soft + strict-no-token + strict-non-manager + strict-manager + admin/owner |
+| Integration (real subprocess) | 3 | All-pass, with-failure, no-tests-dir |
+
+### Session 4 — LAN sync routes probe (`app/api/routes/sync.py`)
+
+The existing `test_sync_routes.py` covered the happy paths for the three
+endpoints (11 tests) but left five real branches cold. Filled the gaps
+with 14 new tests — no bugs found (the probe cleared the file).
+
+| Surface added | Tests | Why it matters |
+|---|---:|---|
+| SEC-003 diagnostic emission | 2 | Verifies the forensic snapshot (batch size + claimed `terminal_id` list) records on every replay. Without this test a silent diag regression would hide LAN tampering. |
+| SEC-004 self-claim warning | 3 | Batch that claims to originate from this terminal → WARNING diag. Covers on + off paths and the unconfigured-terminal short-circuit. |
+| Precision ValueError → skipped | 2 | A monetary payload with 3dp (e.g. `price: 10.123`) trips the ledger's precision gate. Replay must count it as `skipped` without aborting the rest of the batch. |
+| Non-precision ValueError → re-raise | 1 | Checksum mismatch (or any other non-"precision" ValueError) must propagate, not silently count as skipped. |
+| Pagination over operational-heavy ledger | 2 | A batch that's all operational events must still advance the cursor and terminate. Regression lock for the sync-stall scenario. |
+| HTTP-level auth gate on `/replay` | 4 | Soft / strict-no-token / strict-with-token / health-and-get-are-public. |
+
+Small cleanup: the SEC-003 comment at `sync.py:91` claimed the endpoint
+"has no auth" — stale since `Depends(auth_required)` is now applied at the
+route level. Comment updated.
+
 ---
 
 ## Remaining Known Issues (not yet fixed)
@@ -111,30 +157,26 @@ All 8 🔴 critical gaps from `COVERAGE_AUDIT.md` addressed:
 
 ---
 
-## System Routes — Next Probe Target
+## System Routes — Probe Complete (Session 3)
 
-**`app/api/routes/system.py`** — 29% coverage, **zero test file exists**.
+**`app/api/routes/system.py`** — now 57 tests covering both endpoints and
+all four pure helpers. Three real bugs found and fixed (see Session 3 table
+above). Remaining risks, still unaddressed:
 
-### What it does
+1. **SSE cancellation / thread lifetime** — if the client disconnects
+   mid-stream, the background thread keeps draining pytest stdout into an
+   unreferenced queue until the subprocess exits. No leak in normal use
+   (thread is `daemon=True` so it dies on process shutdown), but a long
+   run after a browser tab close still consumes CPU. Fixing cleanly needs
+   a cancellation `threading.Event` passed into `_run_pytest_in_thread`
+   plus a `CancelledError` handler in `test_stream`. Deferred — out of
+   scope for a probe session.
 
-| Endpoint | Auth | Description |
-|---|---|---|
-| `GET /api/v1/system/version` | None | Returns `settings.app_version` |
-| `POST /api/v1/system/run-tests` | Manager-gated | Spawns a `subprocess.Popen` pytest run; streams output via Server-Sent Events (SSE) with `__DONE__:exit_code` sentinel |
-
-### Known surface risks to probe
-
-1. **`_find_project_root()`** — walks parent directories looking for `pytest.ini` or `fly.preview.toml`. What happens in a Docker container where the layout differs? Fallback is `p.parents[5]` which could silently point to the wrong directory, causing pytest to find 0 tests and return a false-green exit code.
-
-2. **`_run_pytest_in_thread` test path** — hardcodes `PROJECT_ROOT / 'core' / 'backend' / 'tests'`. This path segment `'core'` does not exist in the current repo layout (`/home/user/Vz2.0/backend/tests/`). Likely always runs with 0 tests in the current environment.
-
-3. **Queue/thread lifetime** — if the SSE client disconnects mid-stream, the background thread continues running and pushing to the queue forever. No cancellation mechanism.
-
-4. **`require_manager` gate** — with `KINDPOS_AUTH_ENFORCED=false` (test default), the gate is soft. Should verify the gate is hard in production mode.
-
-5. **`classify_line` / `is_test_result`** — regex-based output parsing. No tests. Edge cases: ANSI escape codes (stripped by `--color=no`), multi-line tracebacks, Windows line endings.
-
-6. **Exit code handling** — `int(line.split(":")[1])` on `__DONE__:exit_code`. If pytest outputs a line starting with `__DONE__:` in a traceback, it would be misinterpreted.
+2. **`classify_line` keyword substring matching** — any line containing
+   `'ERROR'`, `'SKIP'`, etc. anywhere in the text is classified by that
+   keyword. Narrative lines like `'no errors'` or `'SKIPPED section'` in
+   an assertion message get styled accordingly. Cosmetic-only (doesn't
+   affect counts) and low-impact, so not fixed.
 
 ---
 

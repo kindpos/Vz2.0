@@ -34,8 +34,8 @@ async def get_version():
 
 # Project root: walk up from system.py until we find a directory containing 'backend' or 'app'
 # Works both locally (deep nesting) and in Docker (/app/app/api/routes/system.py)
-def _find_project_root() -> Path:
-    p = Path(__file__).resolve()
+def _find_project_root(start: Path | None = None) -> Path:
+    p = (start if start is not None else Path(__file__)).resolve()
     for parent in p.parents:
         if (parent / "pytest.ini").exists() or (parent / "fly.preview.toml").exists():
             return parent
@@ -46,6 +46,24 @@ def _find_project_root() -> Path:
         return p.parents[5]
     except IndexError:
         return p.parents[len(p.parents) - 1]
+
+
+def _resolve_test_path(root: Path) -> Path:
+    """Resolve the pytest test directory from a project root.
+
+    `root` may be either the backend package directory (where pytest.ini lives
+    and tests/ sits directly beneath), or the repo root (where tests live at
+    backend/tests/). Falls back to the direct layout when neither exists so a
+    wrong call surfaces as "no tests collected" rather than a silent zero-run.
+    """
+    direct = root / "tests"
+    if direct.is_dir():
+        return direct
+    nested = root / "backend" / "tests"
+    if nested.is_dir():
+        return nested
+    return direct
+
 
 PROJECT_ROOT = _find_project_root()
 
@@ -71,13 +89,30 @@ def classify_line(line: str) -> str:
         return 'normal'
 
 
+_PCT_RE = re.compile(r'\[\s*\d+%\]')
+_VERBOSE_RESULT_RE = re.compile(r'^\S+::\S+\s+(PASSED|FAILED|SKIPPED)\b')
+
+
 def is_test_result(line: str) -> bool:
     """
     Determine if a line is an actual pytest test result (not narrative output).
-    Real results have percentage brackets like [ 57%] or [100%].
-    This is what we count — not every green line.
+
+    Two output formats show up in the wild:
+      - TTY progress:     'tests/test_x.py::test_ok PASSED [ 57%]'
+      - Non-TTY verbose:  'tests/test_x.py::test_ok PASSED'
+
+    subprocess.Popen's PIPE strips the TTY, so pytest hides the `[NN%]`
+    progress indicator and only the verbose form reaches us. Without the
+    verbose fallback the passed/failed/skipped counters in the complete
+    event would silently stay at zero in production.
+
+    Summary-section lines like 'FAILED tests/test_x.py::test_bad - ...'
+    are *not* counted because the verbose pattern anchors the path at the
+    start of the line before `::`.
     """
-    return bool(re.search(r'\[\s*\d+%\]', line))
+    if _PCT_RE.search(line):
+        return True
+    return bool(_VERBOSE_RESULT_RE.match(line))
 
 
 def _run_pytest_in_thread(queue, loop):
@@ -85,7 +120,7 @@ def _run_pytest_in_thread(queue, loop):
     Run pytest in a background thread using subprocess.Popen.
     Reads stdout line-by-line and pushes each line into an asyncio.Queue.
     """
-    test_path = str(PROJECT_ROOT / 'core' / 'backend' / 'tests')
+    test_path = str(_resolve_test_path(PROJECT_ROOT))
 
     env = os.environ.copy()
     env['PYTHONIOENCODING'] = 'utf-8'
@@ -159,7 +194,14 @@ async def run_tests():
             line = await queue.get()
 
             if line.startswith("__DONE__:"):
-                exit_code = int(line.split(":")[1])
+                # split(":", 1) so a stray ':' in the payload (e.g. a pytest
+                # traceback echoing '__DONE__:something') doesn't get mis-sliced.
+                # try/except keeps a single non-numeric token from killing the
+                # generator with ValueError; we surface it as a generic failure.
+                try:
+                    exit_code = int(line.split(":", 1)[1])
+                except ValueError:
+                    exit_code = 1
                 break
 
             if line.startswith("__ERROR__:"):
