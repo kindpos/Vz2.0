@@ -1276,24 +1276,94 @@ function _makeUtilPill(label, textColor, opts) {
   return btn;
 }
 
+// MANAGE SPLIT opens column-editor with only the SPLIT operation
+// enabled so the cashier drops into the same interactive scene the
+// long-press "Edit seats" flow uses, but scoped to split work only.
+// The pre-split seats are captured into state._manageLog so Step 12's
+// UNDO can restore the full seat layout in one shot.
+function _openManageSplit(state) {
+  // Require a selection — column-editor can't pre-seed what to split,
+  // so without a prior selection the cashier has no anchor for the op.
+  // Prompt them to pick items first rather than landing them in an
+  // empty editor.
+  if (Object.keys(state.selectedItems || {}).length === 0) {
+    showToast('Select items to split first', { bg: T.gold });
+    return;
+  }
+
+  var columns = [];
+  for (var i = 0; i < state.seats.length; i++) {
+    if (state.paidSeats[state.seats[i].id]) continue;
+    columns.push({
+      id:    state.seats[i].id,
+      label: state.seats[i].id,
+      items: state.seats[i].items.map(function(it) {
+        return {
+          name:         it.name,
+          qty:          it.qty,
+          price:        it.price,
+          item_id:      it.item_id,
+          menu_item_id: it.menu_item_id,
+          category:     it.category,
+          mods:         it.mods,
+          notes:        it.notes,
+        };
+      }),
+    });
+  }
+
+  var preSplit = _cloneSeats(state.seats);
+
+  SceneManager.openTransactional('column-editor', {
+    columns:    columns,
+    operations: ['SPLIT'],
+    orderId:    state.orderId,
+    onSave: function(newColumns) {
+      var newSeats = [];
+      for (var c = 0; c < newColumns.length; c++) {
+        newSeats.push({
+          id:     'S-' + String(c + 1).padStart(3, '0'),
+          number: c + 1,
+          items:  newColumns[c].items,
+        });
+      }
+      var paid = [];
+      for (var p = 0; p < state.seats.length; p++) {
+        if (state.paidSeats[state.seats[p].id]) paid.push(state.seats[p]);
+      }
+      state.seats = paid.concat(newSeats);
+      state.selectedItems = {};
+      state.selected      = {};
+
+      state._manageLog.push({ kind: 'split-edit', preSeats: preSplit });
+      rerenderTopArea(state);
+      showToast('Split applied', { bg: T.greenWarm });
+    },
+  });
+}
+
 function renderManageToolbar(state) {
   var zone = state.actionGridEl;
   if (!zone) return;
   zone.innerHTML = '';
 
   // ── Left: tool pills ──
+  // MOVE and MERGE are "modes" — the pill selects the tool, then a
+  // seat-tile tap commits the op. SPLIT is a "trigger" — the pill
+  // opens column-editor directly because SPLIT has its own flow
+  // inside that transactional scene and there's no seat-tile tap
+  // to forward.
   for (var i = 0; i < MANAGE_TOOLS.length; i++) {
     var tool = MANAGE_TOOLS[i];
     var active = state._manageTool === tool.id;
     var pill = _makeToolPill(tool.label, active);
     (function(toolId) {
       pill.addEventListener('click', function() {
+        if (toolId === 'split') {
+          _openManageSplit(state);
+          return;
+        }
         state._manageTool = toolId;
-        renderManageToolbar(state);
-        // Re-render the banner so its "[TOOL] ACTIVE" segment updates.
-        // rerenderTopArea rebuilds the whole seats container — cheaper
-        // to just redraw the banner, but rerenderTopArea is what
-        // every other tap does and keeps MANAGE state coherent.
         rerenderTopArea(state);
       });
     })(tool.id);
