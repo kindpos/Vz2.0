@@ -213,9 +213,16 @@ function setActiveNavItem(sceneId) {
 ------------------------------------------ */
 function navigateTo(sceneId) {
     if (sceneId === _activeScene) return;
+    const prev = _activeScene;
     _activeScene = sceneId;
     setActiveNavItem(sceneId);
-    SceneManager.mountWorking(sceneId);
+    try {
+        SceneManager.mountWorking(sceneId);
+    } catch (e) {
+        console.error('navigateTo: mount failed for "' + sceneId + '":', e);
+        _activeScene = prev;
+        setActiveNavItem(prev);
+    }
 }
 
 /* ------------------------------------------
