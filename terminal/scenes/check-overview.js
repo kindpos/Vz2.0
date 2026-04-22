@@ -1528,6 +1528,20 @@ function deleteSeat(state, seatId) {
     if (state.seats[i].id === seatId) { seatIdx = i; break; }
   }
   if (seatIdx < 0) return;
+  // A paid seat still carries a backend payment record. Deleting it from
+  // the UI orphans that payment against a seat_id the check no longer has,
+  // desyncing the ledger. Block the delete and surface a hint that the
+  // payment must be voided/reopened first.
+  if (state.paidSeats && state.paidSeats[seatId]) {
+    entReport({
+      code: 'UI-007', level: 'INFO',
+      source: 'check-overview.deleteSeat',
+      message: 'dead-end tap: delete a paid seat',
+      ctx: { orderId: state.orderId, seatId: seatId },
+    });
+    showToast('Can’t remove a paid seat — reopen the payment first', { bg: T.gold });
+    return;
+  }
   if (state.seats[seatIdx].items.length > 0) {
     showToast('Seat has items — void them first', { bg: T.verm });
     return;
@@ -1546,6 +1560,11 @@ function deleteSeat(state, seatId) {
 // call (no orderId yet) and replaces the seat list thereafter. Seats live
 // in the backend as a first-class list, so they survive scene unmount,
 // logout, and lack-of-items.
+function _idemKey() {
+  // 16 hex chars of randomness. Good enough to dedupe at the backend.
+  return 'co-' + Math.random().toString(16).slice(2, 10) + Date.now().toString(16);
+}
+
 function persistSeats(state) {
   // Serialize requests via a per-state promise chain. Rapid taps on "+"
   // used to race: each call would see orderId=null and POST its own
@@ -1557,41 +1576,87 @@ function persistSeats(state) {
     if (nums.length === 0) return;
 
     if (state.orderId) {
-      return fetch('/api/v1/orders/' + state.orderId + '/seats', {
+      return fetchWithTimeout('/api/v1/orders/' + state.orderId + '/seats', {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ seat_numbers: nums }),
-      })
+      }, 15000)
         .then(function() {
           SceneManager.emit('order:updated', { orderId: state.orderId });
         })
         .catch(function(err) {
           console.warn('[KINDpos] Seat update failed:', err);
+          entReport({
+            code: 'UI-009', level: 'WARNING',
+            source: 'check-overview.persistSeats',
+            message: 'PUT /seats failed',
+            ctx: { orderId: state.orderId, error: String(err && err.message || err).slice(0, 200) },
+          });
         });
     }
 
     // First POST — create the order with the seats attached. Caller
     // params captured at mount time carry the employee identity.
+    //
+    // Idempotency-Key is stable per-mount: if the first POST times out
+    // (request reached the server but the response was lost) and the
+    // user taps "+ Add Seat" again, this retry hits the backend with the
+    // same key and the ledger returns the original order instead of
+    // minting a duplicate C-###. Verified by the pytest
+    // test_create_order_is_idempotent added earlier in this branch.
+    state._createOrderIdemKey = state._createOrderIdemKey || _idemKey();
     var params = state._mountParams || {};
-    return fetch('/api/v1/orders', {
+    return fetchWithTimeout('/api/v1/orders', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type':    'application/json',
+        'Idempotency-Key': state._createOrderIdemKey,
+      },
       body:    JSON.stringify({
         server_id:    params.employeeId || null,
         server_name:  params.employeeName || null,
         seat_numbers: nums,
       }),
-    })
+    }, 15000)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(order) {
-        if (!order) return;
-        state.orderId     = order.order_id || order.id;
+        if (!order) {
+          entReport({
+            code: 'UI-009', level: 'WARNING',
+            source: 'check-overview.persistSeats',
+            message: 'POST /orders returned empty or non-OK response',
+            ctx: { seatNumbers: nums },
+          });
+          return;
+        }
+        var newId = order.order_id || order.id;
+        if (!newId) {
+          // Backend returned 200 with no order_id. state.orderId stays
+          // null, which would send the next persistSeats tap back into
+          // the POST branch — the Idempotency-Key above is what prevents
+          // the duplicate from landing in the ledger. Still surface it
+          // so the malformed response is visible in entomology.
+          entReport({
+            code: 'UI-009', level: 'ERROR',
+            source: 'check-overview.persistSeats',
+            message: 'POST /orders response missing order_id',
+            ctx: { keys: Object.keys(order).slice(0, 20) },
+          });
+          return;
+        }
+        state.orderId     = newId;
         state.checkNumber = order.check_number || '';
         if (state.checkNumber) setSceneName(state.checkNumber);
         SceneManager.emit('order:updated', { orderId: state.orderId });
       })
       .catch(function(err) {
         console.warn('[KINDpos] Order create-with-seats failed:', err);
+        entReport({
+          code: 'UI-009', level: 'WARNING',
+          source: 'check-overview.persistSeats',
+          message: 'POST /orders rejected',
+          ctx: { error: String(err && err.message || err).slice(0, 200) },
+        });
       });
   });
   return state._seatsChain;
@@ -2420,6 +2485,14 @@ function refreshOrder(state, params) {
   // silently send every new item to seat 1 ("combined seats" bug).
   if (!state.orderId) return Promise.resolve();
   if (state._refreshPromise) return state._refreshPromise;
+  // If a seat-mutation chain (persistSeats) is in flight we must NOT
+  // overwrite state.seats with the backend's pre-mutation view — it
+  // would silently revert a seat the user just added locally. Defer
+  // the refresh until the chain completes (persistSeats emits
+  // order:updated on success, which re-triggers this path).
+  if (state._seatsChain) {
+    return state._seatsChain.then(function() { return refreshOrder(state, params); });
+  }
   _refreshInFlight = true;
 
   // 15s abort guard — matches order-entry's send/recall fetches so a hung

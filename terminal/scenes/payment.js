@@ -1070,7 +1070,9 @@ async function handleConfirm() {
 }
 
 function queueReceipt(copyType) {
-  fetch(API + '/print/receipt/' + sceneData.orderId + '?copy_type=' + copyType, { method: 'POST' })
+  // 15s abort guard — a hung printer endpoint used to leave this promise
+  // dangling forever with no error surfaced to the operator.
+  fetchWithTimeout(API + '/print/receipt/' + sceneData.orderId + '?copy_type=' + copyType, { method: 'POST' }, 15000)
     .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); })
     .catch(function(err) {
       console.warn('[KINDpos] Receipt print failed (' + copyType + '):', err);

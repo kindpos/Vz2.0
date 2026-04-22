@@ -1182,15 +1182,40 @@ function assignSeatsIfNeeded(callback) {
     return { id: inst.id, name: inst.name, mods: inst.mods };
   });
 
+  // Trace: which items came in, how many seats, whether any are pre-assigned.
+  // Pairs with UI-008 (confirm) so the end-to-end picker flow is visible.
+  entReport({
+    code: 'UI-010', level: 'INFO',
+    source: 'order-entry.assignSeatsIfNeeded',
+    message: 'seat-picker opened',
+    ctx: {
+      recallOrderId: sceneParams.recallOrderId || null,
+      itemCount: unsent.length,
+      seatCount: seats.length,
+      seatNumbers: seats,
+    },
+  });
+
+  // IMPORTANT: the interrupt's render reads items + seatNumbers from the
+  // TOP LEVEL of the params object (matching every other interrupt in
+  // this file). The earlier shape nested them under `params:` which made
+  // the render see an empty items list — no cards showed, CONFIRM did
+  // nothing, and items silently retained their add-time seat_number=1
+  // default (matches the "items only land on seat 1" user report).
   SceneManager.interrupt('seat-assign', {
-    params: { items: itemsForAssign, seatNumbers: seats },
+    items: itemsForAssign,
+    seatNumbers: seats,
     onConfirm: function(assignments) {
       // Apply assignments: { itemId: [seatNumber, ...] }
       // Items assigned to multiple seats get duplicated (one per extra seat)
       var dupes = [];
+      // Build a compact trace: {itemName: [seat, seat, ...]} so entomology
+      // shows which items went where without PII (no item_ids).
+      var trace = {};
       for (var j = 0; j < unsent.length; j++) {
         var seatList = assignments[unsent[j].id];
         if (!seatList || seatList.length === 0) continue;
+        trace[unsent[j].name] = (trace[unsent[j].name] || []).concat(seatList);
         // First seat goes on the original item
         unsent[j].seat_number = seatList[0];
         // Additional seats → duplicate the item
@@ -1206,6 +1231,21 @@ function assignSeatsIfNeeded(callback) {
       }
       // Add duplicated items to the ticket
       for (var d = 0; d < dupes.length; d++) ticket.push(dupes[d]);
+      // Trace: records operator seat-assignment choices so we can later
+      // correlate "items landed on the wrong seat" reports with what the
+      // user actually confirmed in the picker.
+      entReport({
+        code: 'UI-008', level: 'INFO',
+        source: 'order-entry.assignSeatsIfNeeded',
+        message: 'seat-assign confirm',
+        ctx: {
+          recallOrderId: sceneParams.recallOrderId || null,
+          itemCount: unsent.length,
+          cloneCount: dupes.length,
+          seatNumbers: seats,
+          assignments: trace,
+        },
+      });
       callback();
     },
     onCancel: function() {
