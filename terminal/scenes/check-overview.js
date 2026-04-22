@@ -1222,6 +1222,79 @@ function exitManageMode(state) {
   rerenderTopArea(state);
 }
 
+// ── UNDO replay ──
+// Each MANAGE op pushes a reverse-patch onto state._manageLog. UNDO
+// pops the last patch and replays the inverse. Shapes currently handled:
+//   { kind: 'move', targetSeatId, patches: [{fromSeatId, fromItemIdx,
+//     item}, ...] }  — pull each item off target, re-insert on source.
+//   { kind: 'merge-new-seat', newSeatId }  — consumes the preceding
+//     'move' patch too, then removes the (now-empty) new seat.
+//   { kind: 'split', preSeats }  — restore the whole seats array.
+//   { kind: 'merge-new-check-* }  — backend already spawned a child
+//     check so we can't locally revert. Push the patch back and
+//     nudge the cashier to RESET instead.
+
+function _undoMoveInverse(state, patch) {
+  var targetIdx = _seatIdxById(state, patch.targetSeatId);
+  var targetItems = targetIdx >= 0 ? state.seats[targetIdx].items : null;
+  for (var p = patch.patches.length - 1; p >= 0; p--) {
+    var pp = patch.patches[p];
+    // Pull the moved item off the target by identity — it's the same
+    // JS object reference that was pushed onto target.items.
+    if (targetItems) {
+      var at = targetItems.indexOf(pp.item);
+      if (at >= 0) targetItems.splice(at, 1);
+    }
+    var fromIdx = _seatIdxById(state, pp.fromSeatId);
+    if (fromIdx >= 0) {
+      var insertAt = Math.min(pp.fromItemIdx, state.seats[fromIdx].items.length);
+      state.seats[fromIdx].items.splice(insertAt, 0, pp.item);
+    }
+  }
+}
+
+function _removeSeatByIdIfEmpty(state, seatId) {
+  var idx = _seatIdxById(state, seatId);
+  if (idx < 0) return;
+  if (state.seats[idx].items.length > 0) return;  // safety
+  state.seats.splice(idx, 1);
+}
+
+function _undoManage(state) {
+  if (!state._manageLog || state._manageLog.length === 0) {
+    showToast('Nothing to undo', { bg: T.gold });
+    return;
+  }
+  var patch = state._manageLog.pop();
+  var undone = true;
+
+  if (patch.kind === 'move') {
+    _undoMoveInverse(state, patch);
+  } else if (patch.kind === 'merge-new-seat') {
+    // The preceding entry is the 'move' that relocated items onto
+    // the new seat — pop + invert it, then remove the now-empty seat.
+    var mv = state._manageLog.pop();
+    if (mv && mv.kind === 'move') _undoMoveInverse(state, mv);
+    _removeSeatByIdIfEmpty(state, patch.newSeatId);
+  } else if (patch.kind === 'split') {
+    state.seats = _cloneSeats(patch.preSeats);
+  } else if (patch.kind === 'merge-new-check-seats'
+             || patch.kind === 'merge-new-check-items') {
+    // The child check exists on the backend — no local undo.
+    state._manageLog.push(patch);
+    showToast('Check split can’t be undone — hold RESET to revert the session',
+              { bg: T.verm, duration: 2500 });
+    return;
+  } else {
+    undone = false;
+  }
+
+  state.selected      = {};
+  state.selectedItems = {};
+  rerenderTopArea(state);
+  if (undone) showToast('Undone', { bg: T.greenWarm });
+}
+
 function _resetManageSession(state) {
   if (!state._manageSnapshot) return;
   state.seats         = _cloneSeats(state._manageSnapshot.seats);
@@ -1535,15 +1608,7 @@ function renderManageToolbar(state) {
 
   // ── Right: utility pills — UNDO, RESET, DONE ──
   var undoBtn = _makeUtilPill('UNDO', T.text);
-  undoBtn.addEventListener('click', function() {
-    if (!state._manageLog || state._manageLog.length === 0) {
-      showToast('Nothing to undo', { bg: T.gold });
-      return;
-    }
-    // Step 12 wires the actual inverse-patch replay. For now, surface
-    // the no-op path so the pill reads as responsive.
-    showToast('Undo arriving in Step 12', { bg: T.elec });
-  });
+  undoBtn.addEventListener('click', function() { _undoManage(state); });
   zone.appendChild(undoBtn);
 
   var resetBtn = _makeUtilPill('RESET', T.verm);
