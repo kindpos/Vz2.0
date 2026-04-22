@@ -1389,6 +1389,15 @@ async def merge_orders(
             )
         sources.append(src)
 
+    # Re-fetch target just before the write loop: a concurrent payment could
+    # have closed it between the initial validation and now.
+    target = await get_order_or_404(ledger, order_id)
+    if target.status != "open":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Target order was {target.status} by a concurrent request; retry the merge",
+        )
+
     for src in sources:
         for item in src.items:
             new_item_id = f"item_{uuid.uuid4().hex[:8]}"

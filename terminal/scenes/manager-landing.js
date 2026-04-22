@@ -67,13 +67,13 @@ function fetchAllData(state) {
 
   return Promise.all([
     fetch('/api/v1/orders/day-summary')
-      .then(function(r) { return r.json(); }).catch(function() { return {}; }),
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return {}; }),
     fetch('/api/v1/orders')
-      .then(function(r) { return r.json(); }).catch(function() { return []; }),
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return []; }),
     fetch('/api/v1/servers/clocked-in')
-      .then(function(r) { return r.json(); }).catch(function() { return { staff: [] }; }),
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return { staff: [] }; }),
     fetch('/api/v1/reports/labor-summary?date=' + dateStr)
-      .then(function(r) { return r.json(); }).catch(function() { return {}; }),
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return {}; }),
   ]).then(function(results) {
     var daySummary  = results[0] || {};
     var orders      = Array.isArray(results[1]) ? results[1] : [];
@@ -1193,6 +1193,7 @@ defineScene({
 
     return function cleanup() {
       state.el = null;
+      clearTimeout(state._voidPendingTimer);
       SceneManager.off('order:updated', _onUpdate);
       SceneManager.off('order:closed',  _onUpdate);
       SceneManager.off('tip:adjusted',  _onUpdate);
