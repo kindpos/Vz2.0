@@ -35,6 +35,9 @@ EXPECTED_SHEETS = [
     "SYSTEM Issues",
     "PERIPHERAL Issues",
     "RECOVERY Issues",
+    "SEC Issues",
+    "FIN Issues",
+    "UI Issues",
 ]
 
 
