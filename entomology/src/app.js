@@ -5,7 +5,21 @@ const TOKEN_KEY = "entomology.token";
 const NAME_KEY = "entomology.name";
 const MAX_PIN_LENGTH = 6;
 const SNAPSHOT_REFRESH_MS = 15000;
-const CATEGORIES = ["DEVICE", "NETWORK", "SYSTEM", "PERIPHERAL", "RECOVERY"];
+// Must match the DiagnosticCategory enum the backend emits. Earlier versions
+// shipped only the 5 runtime categories; UI / SEC / FIN events were landing
+// in the API payload but the dashboard silently dropped them because they
+// weren't in this list. The Excel report always included them; only the
+// live view was blind. Order here = render order on the dashboard.
+const CATEGORIES = [
+  "UI",         // Frontend scene / interaction diagnostics (UI-001 … UI-006)
+  "SEC",        // Auth / manager-gate / rate-limit events
+  "FIN",        // Monetary precision + day-close guards
+  "DEVICE",
+  "NETWORK",
+  "SYSTEM",
+  "PERIPHERAL",
+  "RECOVERY",
+];
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
