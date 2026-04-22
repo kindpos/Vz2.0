@@ -38,6 +38,7 @@ import { showKeyboard, hideKeyboard } from '../keyboard.js';
 import { computeTotals, getTaxRate } from '../pricing.js';
 import { buildItemRecap, buildItemRecapTotals } from '../components/item-recap.js';
 import { fetchWithTimeout } from '../sm2-shim.js';
+import { entReport } from '../entomology-client.js';
 import { computeDiscountAmount, extractItemIds, buildDiscountBody } from '../discount.js';
 import { buildOrderEntryParams } from './transitions.js';
 import {
@@ -1722,7 +1723,23 @@ async function _gotoOrderEntry(state, params) {
   if (state.orderId && !state.order) {
     showToast('Loading check…', { bg: T.gold, duration: 800 });
     try { await refreshOrder(state, params); }
-    catch (e) { /* refreshOrder already swallows; keep navigation moving */ }
+    catch (e) { /* refreshOrder already swallows; fall through to the guard */ }
+  }
+  // After the await, state.order may STILL be null — refreshOrder only sets it
+  // on a 2xx response with a JSON body. A 404 / 500 / network error silently
+  // leaves state.seats at the [{number:1}] default and would re-expose the
+  // combining-seats bug. Refuse to navigate; surface the miss to entReport
+  // so the backend side of the bug is visible in diagnostics.
+  if (state.orderId && !state.order) {
+    showToast('Couldn’t load check — check network and try again', { bg: T.verm, duration: 2500 });
+    entReport({
+      code: 'UI-005',
+      source: 'check-overview._gotoOrderEntry',
+      message: 'Refused ADD ITEMS navigation: state.order is null after refresh',
+      ctx: { orderId: state.orderId },
+      level: 'WARNING',
+    });
+    return;
   }
   // Param shape lives in scenes/transitions.js so the check-overview
   // and order-entry sides of the handoff share one source of truth.

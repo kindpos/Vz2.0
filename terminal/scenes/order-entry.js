@@ -55,6 +55,7 @@ import { showPizzaBuilderOverlay } from '../pizza-builder-overlay.js';
 import { PREFIXES as UNI_PREFIXES, getModHexData, hasPizzaCategory, PIZZA_PLACEMENTS, MOD_COLORS } from '../menu-data/universal-modifiers.js';
 import { computeTotals } from '../pricing.js';
 import { fetchWithTimeout } from '../sm2-shim.js';
+import { entReport } from '../entomology-client.js';
 import { formatModifierLabel } from '../modifier-label.js';
 import { buildCheckOverviewParams } from './transitions.js';
 
@@ -1136,12 +1137,37 @@ function assignSeatsIfNeeded(callback) {
   var unsent = ticket.filter(function(i) { return !i.sent; });
   if (unsent.length === 0) { callback(); return; }
 
-  var seats = (sceneParams.seatNumbers && sceneParams.seatNumbers.length > 0)
-    ? sceneParams.seatNumbers : [1];
+  // Fallback to [1] when sceneParams.seatNumbers is missing. For brand-
+  // new checks (recallOrderId null — NEW CHECK, NEW ORDER from payment)
+  // this is expected and quiet. For an EXISTING check with a recallOrderId
+  // it means the transition lost the seat layout (stale state or broken
+  // thread-through) and is about to collapse items onto seat 1 — pin it
+  // to entomology so the hole shows up in diagnostics.
+  var rawSeats = sceneParams.seatNumbers;
+  var seats = (rawSeats && rawSeats.length > 0) ? rawSeats : [1];
+  if ((!rawSeats || rawSeats.length === 0) && sceneParams.recallOrderId) {
+    entReport({
+      code: 'UI-006',
+      source: 'order-entry.assignSeatsIfNeeded',
+      message: 'recall path lost seatNumbers; falling back to [1]',
+      ctx: {
+        recallOrderId: sceneParams.recallOrderId,
+        unsentCount: unsent.length,
+      },
+      level: 'WARNING',
+    });
+  }
 
-  // 1 seat → auto-assign all pending items
+  // Retry safety: if an item was already assigned a seat (e.g. from a prior
+  // seat-assign confirm that partially failed to POST), respect that choice.
+  // Branches 1 + 2 used to reassign every unsent item unconditionally, which
+  // would collapse user-picked-seats back to seat[0] on a retry.
+  var needsAssignment = unsent.filter(function(i) { return i.seat_number == null; });
+  if (needsAssignment.length === 0) { callback(); return; }
+
+  // 1 seat → auto-assign the remaining pending items to it
   if (seats.length === 1) {
-    for (var i = 0; i < unsent.length; i++) unsent[i].seat_number = seats[0];
+    for (var i = 0; i < needsAssignment.length; i++) needsAssignment[i].seat_number = seats[0];
     callback();
     return;
   }
@@ -1149,13 +1175,13 @@ function assignSeatsIfNeeded(callback) {
   // If exactly one seat is selected in check-overview, auto-assign to it
   var selSeats = sceneParams.selectedSeatNumbers;
   if (selSeats && selSeats.length === 1) {
-    for (var i = 0; i < unsent.length; i++) unsent[i].seat_number = selSeats[0];
+    for (var i = 0; i < needsAssignment.length; i++) needsAssignment[i].seat_number = selSeats[0];
     callback();
     return;
   }
 
-  // 2+ seats → open seat assignment interrupt
-  var itemsForAssign = unsent.map(function(inst) {
+  // 2+ seats → open seat assignment interrupt for the items that still need one
+  var itemsForAssign = needsAssignment.map(function(inst) {
     return { id: inst.id, name: inst.name, mods: inst.mods };
   });
 
@@ -1165,19 +1191,19 @@ function assignSeatsIfNeeded(callback) {
       // Apply assignments: { itemId: [seatNumber, ...] }
       // Items assigned to multiple seats get duplicated (one per extra seat)
       var dupes = [];
-      for (var j = 0; j < unsent.length; j++) {
-        var seatList = assignments[unsent[j].id];
+      for (var j = 0; j < needsAssignment.length; j++) {
+        var seatList = assignments[needsAssignment[j].id];
         if (!seatList || seatList.length === 0) continue;
         // First seat goes on the original item
-        unsent[j].seat_number = seatList[0];
+        needsAssignment[j].seat_number = seatList[0];
         // Additional seats → duplicate the item
         for (var s = 1; s < seatList.length; s++) {
-          var clone = Object.assign({}, unsent[j]);
-          clone.id = unsent[j].id + '_s' + seatList[s];
+          var clone = Object.assign({}, needsAssignment[j]);
+          clone.id = needsAssignment[j].id + '_s' + seatList[s];
           clone.idemKey = _idemKey();
           clone.seat_number = seatList[s];
           clone.sent = false;
-          clone.mods = (unsent[j].mods || []).slice();
+          clone.mods = (needsAssignment[j].mods || []).slice();
           dupes.push(clone);
         }
       }
@@ -1185,7 +1211,13 @@ function assignSeatsIfNeeded(callback) {
       for (var d = 0; d < dupes.length; d++) ticket.push(dupes[d]);
       callback();
     },
-    onCancel: function() { /* do nothing — stay on order scene */ },
+    onCancel: function() {
+      // Without this toast the CANCEL tap looks identical to the SEND tap
+      // (nothing visibly changes); users re-tapped SEND thinking it was
+      // swallowed. Make the cancellation visible AND note that items are
+      // still in the order.
+      showToast('Seat assignment cancelled — items still in order', { bg: T.gold, duration: 2200 });
+    },
   });
 }
 
