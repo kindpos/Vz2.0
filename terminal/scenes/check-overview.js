@@ -1711,7 +1711,19 @@ function handleAddItems(state, params) {
   _gotoOrderEntry(state, params);
 }
 
-function _gotoOrderEntry(state, params) {
+async function _gotoOrderEntry(state, params) {
+  // If the backend hasn't responded yet (user tapped ADD ITEMS before
+  // the initial refreshOrder fetch resolved), state.seats is still the
+  // default [{number:1}] that the scene paints on mount. Threading that
+  // into order-entry makes assignSeatsIfNeeded treat it as a 1-seat
+  // check and auto-assigns every new item to seat 1 — the "seats
+  // combine" regression. Await the refresh so seatNumbers reflects
+  // the real layout before we route.
+  if (state.orderId && !state.order) {
+    showToast('Loading check…', { bg: T.gold, duration: 800 });
+    try { await refreshOrder(state, params); }
+    catch (e) { /* refreshOrder already swallows; keep navigation moving */ }
+  }
   // Param shape lives in scenes/transitions.js so the check-overview
   // and order-entry sides of the handoff share one source of truth.
   // A brand-new check threads recallOrderId=null and order-entry POSTs
@@ -2330,15 +2342,22 @@ function openSeatPaymentInterrupt(state, seatId, payments) {
 // ═══════════════════════════════════════════════════
 
 function refreshOrder(state, params) {
-  if (!state.orderId) return;
-  if (_refreshInFlight) return;
+  // Return a Promise so callers that route away from check-overview (ADD
+  // ITEMS → order-entry) can await the backend truth before they thread
+  // seat data into the next scene. Previously refreshOrder was fire-and-
+  // forget; a fast tap on ADD ITEMS could land in order-entry with the
+  // default `state.seats = orderToSeats(null, 1)` = [1] still in place,
+  // which made `assignSeatsIfNeeded` treat it as a 1-seat check and
+  // silently send every new item to seat 1 ("combined seats" bug).
+  if (!state.orderId) return Promise.resolve();
+  if (state._refreshPromise) return state._refreshPromise;
   _refreshInFlight = true;
 
   // 15s abort guard — matches order-entry's send/recall fetches so a hung
   // backend doesn't leave the refresh indicator silently pending. The
   // existing catch already clears _refreshInFlight on rejection, so an
   // AbortError takes the same path as any other network failure.
-  fetchWithTimeout('/api/v1/orders/' + state.orderId, { cache: 'no-store' }, 15000)
+  state._refreshPromise = fetchWithTimeout('/api/v1/orders/' + state.orderId, { cache: 'no-store' }, 15000)
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(order) {
       _refreshInFlight = false;
@@ -2374,5 +2393,13 @@ function refreshOrder(state, params) {
     })
     .catch(function() {
       _refreshInFlight = false;
+    })
+    .finally(function() {
+      // Clear the per-state cache so a later tap on the same check
+      // (after payment, after refresh) re-fetches rather than handing
+      // back the stale resolved promise.
+      state._refreshPromise = null;
     });
+
+  return state._refreshPromise;
 }
