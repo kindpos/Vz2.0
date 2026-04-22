@@ -118,6 +118,21 @@ async def lifespan(app: FastAPI):
     set_print_dispatcher(_dispatcher)
     print("Print Dispatcher started")
 
+    # Crash-recovery sweep: resolve any PAYMENT_INITIATED that landed
+    # before a crash and never got a result event. Must run after the
+    # ledger + diagnostic collector are wired so FIN-008 can be recorded.
+    try:
+        from app.services.startup_sweep import sweep_orphan_initiated_payments
+        orphans = await sweep_orphan_initiated_payments(
+            ledger,
+            collector=diagnostic_collector,
+            terminal_id=settings.terminal_id,
+        )
+        if orphans:
+            print(f"Crash-recovery sweep: resolved {orphans} orphan PAYMENT_INITIATED")
+    except Exception as sweep_exc:  # pragma: no cover — startup must not die
+        print(f"Crash-recovery sweep failed: {sweep_exc}")
+
     yield
 
     await _dispatcher.stop()

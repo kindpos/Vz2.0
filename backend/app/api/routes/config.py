@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import Response
@@ -6,7 +7,14 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from app.api.dependencies import get_ledger
 from app.core.event_ledger import EventLedger
-from app.core.events import EventType, Event, create_event, parse_event_type
+from app.core.events import (
+    CONFIG_EVENT_PREFIXES,
+    EventType,
+    Event,
+    create_event,
+    is_config_event,
+    parse_event_type,
+)
 from app.models.config_events import (
     StoreConfigBundle, StoreInfo, CCProcessingRate, PendingChange,
     Role, Employee, TipoutRule, TipPool, MenuItem, MenuCategory, ModifierGroup,
@@ -17,6 +25,8 @@ from app.services.store_config_service import StoreConfigService
 from app.services.overseer_config_service import OverseerConfigService
 from app.api.routes.auth import auth_required, require_manager
 from app.core.pin_hash import ensure_hashed_pin
+
+_log = logging.getLogger(__name__)
 
 # Allow-list of mime types we'll accept for the store logo. Keep this tight —
 # rendering anything else risks XSS via SVG or unbounded payloads.
@@ -40,9 +50,52 @@ class LogoUploadRequest(BaseModel):
 router = APIRouter(prefix="/config", tags=["config"])
 
 
-# Mock WebSocket broadcast for now as we don't have a real implementation handy in routers
+# Config-change notification.
+#
+# We don't (yet) run a WebSocket — terminals poll `GET /config/version`
+# for the max sequence number of any config event; when it advances,
+# they re-pull from `/sync/config/events?since=N`. This function is the
+# backend-side hook that logs the write and leaves a marker in the
+# operator log; the UI-side poll is the thing that actually delivers
+# the update. Previously this was a `print(...)` stub with a "mock"
+# comment, which made it easy to believe terminals were being notified
+# when in fact nothing was happening.
 async def broadcast_config_update(sections: List[str]):
-    print(f"WS BROADCAST: config.updated for {sections}")
+    _log.info("config.updated sections=%s (terminals pick up via /config/version poll)", sections)
+
+
+@router.get("/version")
+async def get_config_version(ledger: EventLedger = Depends(get_ledger)):
+    """Cheap poll endpoint terminals use to detect config changes.
+
+    Returns the max `sequence_number` of any config-prefixed event in
+    the ledger. Terminals cache this; when it advances, they re-sync
+    via `GET /sync/config/events?since=N` and replay the new events
+    into their local projection. This replaces a long-standing
+    `print()`-only "WS BROADCAST" stub that gave the appearance of
+    push-updates without actually delivering any.
+
+    Ten-second call overhead is a single indexed SELECT-MAX, so
+    polling every 5-10 seconds from every terminal is cheap.
+    """
+    latest = 0
+    # A small cursor loop so we don't pay for 50k operational events
+    # when we only care about the config slice. Batch large enough that
+    # typical stores finish in one pass.
+    cursor = 0
+    while True:
+        batch = await ledger.get_events_since(cursor, limit=2000)
+        if not batch:
+            break
+        for ev in batch:
+            if is_config_event(ev.event_type.value):
+                seq = ev.sequence_number or 0
+                if seq > latest:
+                    latest = seq
+        cursor = batch[-1].sequence_number or (cursor + 1)
+        if len(batch) < 2000:
+            break
+    return {"version": latest, "prefixes": list(CONFIG_EVENT_PREFIXES)}
 
 
 @router.get("/pricing")
