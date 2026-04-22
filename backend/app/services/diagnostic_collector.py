@@ -508,11 +508,29 @@ class DiagnosticCollector:
             except Exception as e:
                 logger.error(f"Heartbeat collection failed: {e}")
 
+    # Thresholds for the SYS-003/004/005 derived-from-heartbeat emits.
+    # Modest defaults (override via env if ops wants to tune without a
+    # code push).
+    _DISK_WARN_PCT = 85.0
+    _MEM_WARN_PCT = 85.0
+    _CPU_TEMP_WARN_C = 75.0
+
     async def _collect_heartbeat(self) -> None:
-        """Gather system metrics and record a SYS-HEARTBEAT event."""
+        """Gather system metrics and record a SYS-HEARTBEAT event.
+
+        Also emits the following derived WARNINGs when thresholds are
+        exceeded, at most once per heartbeat tick:
+          - SYS-003: disk_used_pct > _DISK_WARN_PCT
+          - SYS-004: memory_used_pct > _MEM_WARN_PCT
+          - SYS-005: cpu_temp_c > _CPU_TEMP_WARN_C
+        Having these wired means the "Recent Issues" panel surfaces a
+        visible row the moment a box starts thrashing — operators don't
+        have to open Current Snapshot and eyeball the metric card.
+        """
+        system = self._collect_system_metrics()
         context = {
             "peripherals": {},
-            "system": self._collect_system_metrics(),
+            "system": system,
             "network": {"gateway_reachable": True, "gateway_latency_ms": 0.0},
         }
 
@@ -524,6 +542,39 @@ class DiagnosticCollector:
             message="Ambient health snapshot",
             context=context,
         )
+
+        disk = system.get("disk_used_pct") or 0.0
+        if disk > self._DISK_WARN_PCT:
+            await self.record(
+                category=DiagnosticCategory.SYSTEM,
+                severity=DiagnosticSeverity.WARNING,
+                source="DiagnosticCollector._collect_heartbeat",
+                event_code="SYS-003",
+                message=f"Disk usage {disk:.1f}% exceeds {self._DISK_WARN_PCT:.0f}% threshold",
+                context={"disk_used_pct": disk, "threshold": self._DISK_WARN_PCT},
+            )
+
+        mem = system.get("memory_used_pct") or 0.0
+        if mem > self._MEM_WARN_PCT:
+            await self.record(
+                category=DiagnosticCategory.SYSTEM,
+                severity=DiagnosticSeverity.WARNING,
+                source="DiagnosticCollector._collect_heartbeat",
+                event_code="SYS-004",
+                message=f"Memory usage {mem:.1f}% exceeds {self._MEM_WARN_PCT:.0f}% threshold",
+                context={"memory_used_pct": mem, "threshold": self._MEM_WARN_PCT},
+            )
+
+        temp = system.get("cpu_temp_c") or 0.0
+        if temp > self._CPU_TEMP_WARN_C:
+            await self.record(
+                category=DiagnosticCategory.SYSTEM,
+                severity=DiagnosticSeverity.WARNING,
+                source="DiagnosticCollector._collect_heartbeat",
+                event_code="SYS-005",
+                message=f"CPU temperature {temp:.1f}°C exceeds {self._CPU_TEMP_WARN_C:.0f}°C threshold",
+                context={"cpu_temp_c": temp, "threshold": self._CPU_TEMP_WARN_C},
+            )
 
     def _collect_system_metrics(self) -> dict:
         """Collect system-level metrics (memory, disk, CPU temp, uptime)."""

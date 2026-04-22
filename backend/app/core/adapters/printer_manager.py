@@ -26,6 +26,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from ...models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 from .base_printer import (
     BasePrinter,
     PrinterConfig,
@@ -709,6 +710,11 @@ class PrinterManager:
                 error="No receipt printer available",
             )
             await self._ephemeral.append(fail_event)
+            await _report_drawer_failure(
+                printer_id=printer_id or "unknown",
+                reason="No receipt printer available",
+                opened_by=opened_by,
+            )
             return False
 
         # Try to open
@@ -734,6 +740,11 @@ class PrinterManager:
             )
             await self._ephemeral.append(event)
             logger.warning(f"[MANAGER] Drawer kick failed on '{printer.name}'")
+            await _report_drawer_failure(
+                printer_id=printer.printer_id,
+                reason="Drawer kick command failed",
+                opened_by=opened_by,
+            )
 
         return success
 
@@ -976,3 +987,34 @@ class PrinterManager:
             "available_roles": sorted(self._custom_roles),
             "printers": printers,
         }
+
+
+# ─── PER-007 helper ────────────────────────────────────────────────────────
+# Best-effort diagnostic emission on cash-drawer open failure. Paired with
+# the DRAWER_OPEN_FAILED ephemeral event so the entomology dashboard
+# surfaces the failure at WARNING (operator-visible) while the ephemeral
+# ledger keeps the timestamped audit trail.
+
+async def _report_drawer_failure(
+    printer_id: str,
+    reason: str,
+    opened_by: Optional[str],
+) -> None:
+    # Late import to avoid circular: app.api.dependencies imports
+    # PrinterManager from this module, so we can't pull
+    # get_diagnostic_collector at module load time.
+    from ...api.dependencies import get_diagnostic_collector
+    collector = get_diagnostic_collector()
+    if collector is None:
+        return
+    try:
+        await collector.record(
+            category=DiagnosticCategory.PERIPHERAL,
+            severity=DiagnosticSeverity.WARNING,
+            source="printer_manager.open_drawer",
+            event_code="PER-007",
+            message=f"Cash drawer open failed: {reason}",
+            context={"printer_id": printer_id, "opened_by": opened_by},
+        )
+    except Exception:  # pragma: no cover — diagnostic must never raise
+        logger.exception("PER-007 diagnostic record failed")

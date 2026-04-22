@@ -24,8 +24,40 @@ from .base_payment import (
     PaymentError,
     PaymentErrorCategory
 )
+from ...models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 
 logger = logging.getLogger("kindpos.payment.dejavoo")
+
+
+async def _report_dev_event(
+    severity: DiagnosticSeverity,
+    event_code: str,
+    message: str,
+    context: dict,
+) -> None:
+    """Best-effort DEV-* emission from the Dejavoo adapter.
+
+    The adapter never raises up its own diagnostic errors — a failed emit
+    would interact badly with the payment flow's exception handlers. If
+    the collector is absent or the record call throws, swallow silently.
+    """
+    # Late import to avoid circular: app.api.dependencies imports
+    # PrinterManager → app.core.adapters → dejavoo_spin.
+    from ...api.dependencies import get_diagnostic_collector
+    collector = get_diagnostic_collector()
+    if collector is None:
+        return
+    try:
+        await collector.record(
+            category=DiagnosticCategory.DEVICE,
+            severity=severity,
+            source="dejavoo_spin._send",
+            event_code=event_code,
+            message=message,
+            context=context,
+        )
+    except Exception:  # pragma: no cover
+        logger.exception("DEV-* diagnostic record failed (swallowed)")
 
 
 class DejavooSPInAdapter(BasePaymentDevice):
@@ -368,10 +400,67 @@ class DejavooSPInAdapter(BasePaymentDevice):
             body = urllib.parse.unquote(body)
             logger.debug("SPIn resp parsed: %s", body)
 
-            return ET.fromstring(body)
+            try:
+                return ET.fromstring(body)
+            except ET.ParseError as pe:
+                # DEV-004 — malformed response. Device is reachable and the
+                # HTTP layer is fine, but the XML body doesn't parse.
+                await _report_dev_event(
+                    severity=DiagnosticSeverity.WARNING,
+                    event_code="DEV-004",
+                    message=f"Malformed SPIn response: {pe}",
+                    context={
+                        "device_ip": self._config.ip_address,
+                        "body_len": len(body),
+                        "body_head": body[:120],
+                    },
+                )
+                return None
+
+        except httpx.TimeoutException as e:
+            # DEV-002 — device didn't respond within the per-call timeout.
+            # This doesn't flip _status; check_status reconciles on next poll.
+            logger.error("SPIn request failed: %s: %s", type(e).__name__, e)
+            await _report_dev_event(
+                severity=DiagnosticSeverity.WARNING,
+                event_code="DEV-002",
+                message=f"SPIn request timed out after {request_timeout}s",
+                context={
+                    "device_ip": self._config.ip_address,
+                    "timeout_s": request_timeout,
+                    "exc": type(e).__name__,
+                },
+            )
+            return None
+
+        except (httpx.ConnectError, httpx.NetworkError) as e:
+            # DEV-003 — can't reach the device at all. Set_offline() will be
+            # called elsewhere; we just record the observation for the
+            # dashboard. Severity is WARNING (not ERROR): check_status may
+            # find the device a moment later.
+            logger.error("SPIn request failed: %s: %s", type(e).__name__, e)
+            await _report_dev_event(
+                severity=DiagnosticSeverity.WARNING,
+                event_code="DEV-003",
+                message=f"SPIn device unreachable: {type(e).__name__}: {e}",
+                context={
+                    "device_ip": self._config.ip_address,
+                    "exc": type(e).__name__,
+                },
+            )
+            return None
 
         except Exception as e:
             logger.error("SPIn request failed: %s: %s", type(e).__name__, e)
+            await _report_dev_event(
+                severity=DiagnosticSeverity.WARNING,
+                event_code="DEV-004",
+                message=f"SPIn request failed ({type(e).__name__}): {e}",
+                context={
+                    "device_ip": self._config.ip_address,
+                    "exc": type(e).__name__,
+                },
+            )
             return None
 
     def _parse_response(self, root: Optional[ET.Element], expected_inv: str) -> TransactionResult:
