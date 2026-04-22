@@ -1289,6 +1289,47 @@ function _makeUtilPill(label, textColor, opts) {
 // A snapshot of the pre-split seats is pushed onto state._manageLog so
 // Step 12's UNDO can restore the whole layout in one shot.
 
+// ── MANAGE MERGE ──
+// Selection + tile tap → move every selected item onto the tapped
+// seat. The add-tile doubles as +SEAT: tapping it while MERGE is
+// live creates a fresh seat on the check via addSeat() and then
+// moves the selection onto that new seat. Existing-seat merges log
+// a { kind: 'move' } patch for UNDO; new-seat merges additionally
+// carry a { kind: 'merge-new-seat', newSeatId } marker so Step 12
+// can replay the full inverse.
+
+function _enterManageMerge(state) {
+  if (Object.keys(state.selectedItems || {}).length === 0) {
+    showToast('Select items to merge first', { bg: T.gold });
+    return;
+  }
+  state._manageTool = 'merge';
+  rerenderTopArea(state);
+  showToast('Tap a seat tile or the + tile to merge into it',
+            { bg: T.elec, duration: 2500 });
+}
+
+function _mergeToNewSeat(state) {
+  var refs = getSelectedItemRefs(state);
+  if (refs.length === 0) {
+    showToast('Nothing selected to merge', { bg: T.gold });
+    return;
+  }
+  addSeat(state);
+  var newSeat = state.seats[state.seats.length - 1];
+  if (!newSeat) return;
+  // Refs computed above reference the pre-addSeat indices — addSeat
+  // only pushes a new empty seat at the end, so existing (seatIdx,
+  // itemIdx) tuples remain valid.
+  var moved = _moveItemsToSeat(state, refs, newSeat.id);
+  if (moved > 0) {
+    state._manageLog.push({
+      kind:      'merge-new-seat',
+      newSeatId: newSeat.id,
+    });
+  }
+}
+
 function _enterManageSplit(state) {
   if (Object.keys(state.selectedItems || {}).length === 0) {
     showToast('Select items to split first', { bg: T.gold });
@@ -1384,6 +1425,10 @@ function renderManageToolbar(state) {
           // Tap while split is already live = commit; otherwise enter.
           if (state._manageTool === 'split') _commitManageSplit(state);
           else                               _enterManageSplit(state);
+          return;
+        }
+        if (toolId === 'merge') {
+          _enterManageMerge(state);
           return;
         }
         state._manageTool = toolId;
@@ -2113,6 +2158,15 @@ function buildAddTile(state, opts) {
   });
   tile.addEventListener('pointerup', function() {
     tile.style.background = 'transparent';
+    // In MANAGE + MERGE mode with a live item selection, the add-tile
+    // doubles as "+SEAT to merge into" — create a fresh seat and
+    // move the selection onto it in one tap.
+    if (state._manageMode
+        && state._manageTool === 'merge'
+        && Object.keys(state.selectedItems || {}).length > 0) {
+      _mergeToNewSeat(state);
+      return;
+    }
     addSeat(state);
   });
   tile.addEventListener('pointerleave', function() {
@@ -2162,7 +2216,7 @@ function _wireHeaderTaps(state, seatId, el) {
         rerenderTopArea(state);
         return;
       }
-      if (state._manageTool === 'move'
+      if ((state._manageTool === 'move' || state._manageTool === 'merge')
           && Object.keys(state.selectedItems || {}).length > 0) {
         var refs = getSelectedItemRefs(state);
         _moveItemsToSeat(state, refs, seatId);
