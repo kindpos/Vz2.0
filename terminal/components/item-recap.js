@@ -688,62 +688,67 @@ function _buildSeatGroup(seat, seatIdx, opts) {
   var group = document.createElement('div');
   group.className = 'ir-seat-group';
 
-  var header = document.createElement('div');
-  header.className = 'ir-seat-header';
+  // When the consumer owns its own seat header (e.g. check-overview's
+  // Mode A tile already renders S-num / SEAT / subtotal) we skip the
+  // recap's internal header to avoid duplicating the same chrome.
+  if (!opts.hideSeatHeader) {
+    var header = document.createElement('div');
+    header.className = 'ir-seat-header';
 
-  var num = document.createElement('span');
-  num.className = 'ir-seat-num';
-  num.textContent = 'S' + seat.seatNumber;
-  header.appendChild(num);
+    var num = document.createElement('span');
+    num.className = 'ir-seat-num';
+    num.textContent = 'S' + seat.seatNumber;
+    header.appendChild(num);
 
-  var meta = document.createElement('div');
-  meta.className = 'ir-seat-meta';
-  var label = document.createElement('span');
-  label.className = 'ir-seat-label';
-  label.textContent = 'SEAT';
-  meta.appendChild(label);
-  var sub = document.createElement('span');
-  sub.className = 'ir-seat-sub';
-  sub.textContent = _fmt(seat.subtotal);
-  meta.appendChild(sub);
-  header.appendChild(meta);
+    var meta = document.createElement('div');
+    meta.className = 'ir-seat-meta';
+    var label = document.createElement('span');
+    label.className = 'ir-seat-label';
+    label.textContent = 'SEAT';
+    meta.appendChild(label);
+    var sub = document.createElement('span');
+    sub.className = 'ir-seat-sub';
+    sub.textContent = _fmt(seat.subtotal);
+    meta.appendChild(sub);
+    header.appendChild(meta);
 
-  var chev = document.createElement('span');
-  chev.className = 'ir-seat-chev';
-  chev.textContent = '▼';
-  header.appendChild(chev);
+    var chev = document.createElement('span');
+    chev.className = 'ir-seat-chev';
+    chev.textContent = '▼';
+    header.appendChild(chev);
 
-  group.appendChild(header);
+    group.appendChild(header);
+
+    // Chevron = toggle collapse (stops propagation so the select-all
+    // handler below doesn't also fire on the same tap).
+    chev.addEventListener('click', function(e) {
+      e.stopPropagation();
+      group.classList.toggle('collapsed');
+    });
+
+    // Header tap (anywhere but the chevron) = select every item / mod
+    // / microMod in the group. If a consumer supplied onSeatHeaderTap,
+    // call it too so the outer scene can mirror the selection in its
+    // own state. Mirror the "toggle if all already selected" behavior
+    // so a second tap clears.
+    header.addEventListener('click', function() {
+      var all = group.querySelectorAll('.ir-item-row, .ir-mod, .ir-mmod');
+      var allSelected = all.length > 0;
+      for (var i = 0; i < all.length; i++) {
+        if (!all[i].classList.contains('sel')) { allSelected = false; break; }
+      }
+      for (var j = 0; j < all.length; j++) {
+        all[j].classList.toggle('sel', !allSelected);
+      }
+      if (typeof opts.onSeatHeaderTap === 'function') {
+        opts.onSeatHeaderTap(seatIdx, !allSelected);
+      }
+    });
+  }
 
   var items = document.createElement('div');
   items.className = 'ir-seat-items';
   group.appendChild(items);
-
-  // Chevron = toggle collapse (stops propagation so the select-all
-  // handler below doesn't also fire on the same tap).
-  chev.addEventListener('click', function(e) {
-    e.stopPropagation();
-    group.classList.toggle('collapsed');
-  });
-
-  // Header tap (anywhere but the chevron) = select every item / mod /
-  // microMod in the group. If a consumer supplied onSeatHeaderTap,
-  // call it too so the outer scene can mirror the selection in its
-  // own state (e.g. state.selected / state.selectedItems). Mirror the
-  // "toggle if all already selected" behavior so a second tap clears.
-  header.addEventListener('click', function() {
-    var all = group.querySelectorAll('.ir-item-row, .ir-mod, .ir-mmod');
-    var allSelected = all.length > 0;
-    for (var i = 0; i < all.length; i++) {
-      if (!all[i].classList.contains('sel')) { allSelected = false; break; }
-    }
-    for (var j = 0; j < all.length; j++) {
-      all[j].classList.toggle('sel', !allSelected);
-    }
-    if (typeof opts.onSeatHeaderTap === 'function') {
-      opts.onSeatHeaderTap(seatIdx, !allSelected);
-    }
-  });
 
   return group;
 }

@@ -162,6 +162,25 @@ function _sumItemUpcharges(adaptedItem) {
   return uc;
 }
 
+// Build the single-seat order shape buildItemRecap expects so a Mode
+// A seat tile can embed the same recap chrome (chevrons, qty chips,
+// prefix badges, pizza halves) used by the Mode B recap column.
+function _adaptSeatForRecap(state, seatIdx) {
+  var seat = state.seats[seatIdx];
+  var adaptedItems = [];
+  for (var i = 0; i < seat.items.length; i++) {
+    adaptedItems.push(_adaptItem(seat.items[i]));
+  }
+  return {
+    seats: [{
+      seatNumber: seat.number,
+      subtotal:   seatTotal(seat),
+      items:      adaptedItems,
+    }],
+    totals: null,
+  };
+}
+
 function _adaptOrderForRecap(state) {
   var order  = state.order || {};
   var params = state._mountParams || {};
@@ -1256,6 +1275,7 @@ function buildSeatCard(state, seatIdx, opts) {
   var divColor   = selected ? 'rgba(0,0,0,0.20)' : T.border;
 
   var card = document.createElement('div');
+  if (selected) card.className = 'ir-inverted';
   Object.assign(card.style, {
     position:     'relative',
     background:   tileBg,
@@ -1268,6 +1288,10 @@ function buildSeatCard(state, seatIdx, opts) {
     minHeight:    '0',
     transition:   'background 0.12s ease',
   });
+  // Expose the tile accent so item-recap's .ir-qty chip (and any
+  // other .ir-inverted rule that needs to contrast against the tile
+  // surface) can read it as --ir-inv-bg.
+  card.style.setProperty('--ir-inv-bg', accent);
 
   // ── Header: big S-num | stacked (SEAT label + gold subtotal) ──
   var hdr = document.createElement('div');
@@ -1333,36 +1357,55 @@ function buildSeatCard(state, seatIdx, opts) {
   _wireHeaderTaps(state, seat.id, hdr);
 
   // ── Body (items) ──
-  // Step 4 swaps this for a buildItemRecap embed. Keep the existing
-  // buildItemRow pathway here so real data still renders in Step 3.
+  // Embed buildItemRecap so the tile shares one source of truth for
+  // item rendering with the Mode B recap column — chevrons, qty chips,
+  // colored prefix badges, microMODs, pizza halves, and the upcharge
+  // strip that stays visible while items are collapsed.
   var itemsEl = document.createElement('div');
   itemsEl.className = 'co-scroll';
   Object.assign(itemsEl.style, {
-    flex:            '1',
-    overflowY:       'auto',
-    padding:         '6px 10px',
-    display:         'flex',
-    flexDirection:   'column',
-    gap:             '2px',
-    minHeight:       '0',
+    flex:          '1',
+    overflowY:     'auto',
+    display:       'flex',
+    flexDirection: 'column',
+    minHeight:     '0',
   });
 
   if (seat.items.length === 0) {
     var empty = document.createElement('div');
     Object.assign(empty.style, {
+      flex:       '1',
+      display:    'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
       fontFamily: T.fb,
       fontSize:   T.fsB3,
       color:      selected ? hexToRgba(T.well, 0.6) : hexToRgba(T.text, 0.45),
-      textAlign:  'center',
-      padding:    '16px 0',
       fontStyle:  'italic',
     });
     empty.textContent = 'empty seat';
     itemsEl.appendChild(empty);
   } else {
-    for (var j = 0; j < seat.items.length; j++) {
-      itemsEl.appendChild(buildItemRow(state, seatIdx, j));
-    }
+    var recap = buildItemRecap(_adaptSeatForRecap(state, seatIdx), {
+      hideHeader:           true,
+      hideSeatHeader:       true,
+      hideTotals:           true,
+      defaultItemCollapsed: true,
+      onRemoveItem: function(_seatIdx0, itemIdx0) {
+        _voidItems(state, [{ seatIdx: seatIdx, itemIdx: itemIdx0 }]);
+      },
+    });
+    // Recap root ships with its own padding / max-width / bg for the
+    // standalone column use-case. Dial those off for the compact tile
+    // embed so the inherited tile surface shows through.
+    Object.assign(recap.style, {
+      padding:    '6px 8px 8px',
+      maxWidth:   'none',
+      background: 'transparent',
+      flex:       '1',
+      minHeight:  '0',
+    });
+    itemsEl.appendChild(recap);
   }
 
   card.appendChild(itemsEl);
@@ -1660,6 +1703,23 @@ function _wireItemTaps(state, seatIdx, itemIdx, el) {
 // fresh selection map; the scene owns the re-render trigger.
 function toggleSeat(state, seatId) {
   state.selected = toggleSeatSelection(state.selected, state.paidSeats, seatId);
+  // Mirror seat selection onto per-item selection: downstream ops
+  // (PAY SEATS, MANAGE, discount) read from state.selectedItems, so
+  // tapping a seat header behaves the same as hand-tapping every
+  // item in that seat.
+  var seatIdx = -1;
+  for (var i = 0; i < state.seats.length; i++) {
+    if (state.seats[i].id === seatId) { seatIdx = i; break; }
+  }
+  if (seatIdx >= 0) {
+    var seat = state.seats[seatIdx];
+    var nowSelected = !!state.selected[seatId];
+    for (var j = 0; j < seat.items.length; j++) {
+      var key = seatIdx + ':' + j;
+      if (nowSelected) state.selectedItems[key] = true;
+      else             delete state.selectedItems[key];
+    }
+  }
   rerenderTopArea(state);
 }
 
