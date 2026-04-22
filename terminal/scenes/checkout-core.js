@@ -561,6 +561,86 @@ defineScene({
   },
 });
 
+// ── Void-confirm interrupt ───────────────────────
+// params.checks      — array of check objects being voided
+// params.onConfirm(reason) — called with the non-empty reason string
+// params.onCancel    — fn()
+
+defineScene({
+  name: 'co-void-confirm',
+  render: function(container, params) {
+    var checks = params.checks || [];
+    var count  = checks.length;
+    var reason = '';
+
+    var panel = document.createElement('div');
+    panel.style.cssText = [
+      'display:flex;flex-direction:column;align-items:center;gap:12px;',
+      'background:' + T.well + ';border:4px solid ' + T.verm + ';',
+      'padding:' + T.scenePad + 'px;min-width:300px;max-width:380px;',
+      'border-radius:' + T.chamferCard + 'px;',
+    ].join('');
+
+    var lbl = document.createElement('div');
+    lbl.style.cssText = [
+      'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';font-weight:' + T.fwBold + ';',
+      'color:' + T.verm + ';letter-spacing:2px;',
+    ].join('');
+    lbl.textContent = count === 1 ? '// VOID CHECK //' : '// VOID ' + count + ' CHECKS //';
+    panel.appendChild(lbl);
+
+    var msg = document.createElement('div');
+    msg.style.cssText = [
+      'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
+      'color:' + T.text + ';text-align:center;',
+    ].join('');
+    msg.textContent = 'This action is permanent and cannot be undone.';
+    panel.appendChild(msg);
+
+    var reasonInput = document.createElement('input');
+    reasonInput.type        = 'text';
+    reasonInput.placeholder = 'Void reason (required)';
+    reasonInput.style.cssText = [
+      'width:100%;box-sizing:border-box;',
+      'padding:8px 10px;',
+      'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
+      'background:' + T.card + ';color:' + T.text + ';',
+      'border:1px solid ' + hexToRgba(T.text, 0.25) + ';border-radius:6px;',
+      'outline:none;',
+    ].join('');
+    reasonInput.addEventListener('input', function() {
+      reason = reasonInput.value.trim();
+      confirmBtn.style.opacity = reason ? '1' : '0.35';
+      confirmBtn.style.pointerEvents = reason ? 'auto' : 'none';
+    });
+    panel.appendChild(reasonInput);
+
+    var confirmBtn = buildButton('VOID', {
+      fill: T.verm, color: T.well, fontSize: T.fsB3, height: 44,
+      onTap: function() {
+        if (!reason) return;
+        params.onConfirm(reason);
+      },
+    });
+    confirmBtn.style.width = '100%';
+    confirmBtn.style.opacity = '0.35';
+    confirmBtn.style.pointerEvents = 'none';
+    panel.appendChild(confirmBtn);
+
+    var cancelBtn = buildButton('CANCEL', {
+      fill: T.card, color: T.green, fontSize: T.fsB3, height: 40,
+      onTap: function() { params.onCancel(); },
+    });
+    cancelBtn.style.width = '100%';
+    panel.appendChild(cancelBtn);
+
+    container.appendChild(panel);
+
+    // Auto-focus the reason input so the operator can type immediately.
+    setTimeout(function() { reasonInput.focus(); }, 50);
+  },
+});
+
 // ── Manager PIN gate interrupt ───────────────────
 // params.onConfirm(data), params.onCancel
 

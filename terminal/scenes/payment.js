@@ -1130,7 +1130,7 @@ function showSplitPopup() {
   if (remaining <= 0) return;
 
   SceneManager.interrupt('split-select', {
-    params: { remaining: remaining },
+    remaining: remaining,
     onConfirm: function(amount) {
       denomAccum = 0;
       enteredAmount = amount;
