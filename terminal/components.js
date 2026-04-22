@@ -207,6 +207,11 @@ export function buildRoleButton(roleName, roleColor, onSelect) {
     onSelect(roleName);
   });
   wrap.addEventListener('pointerleave', function() {
+    wrap.style.transform = '';
+    wrap._resetVisual();
+  });
+  wrap.addEventListener('pointercancel', function() {
+    wrap.style.transform = '';
     wrap._resetVisual();
   });
 

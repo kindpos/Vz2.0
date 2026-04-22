@@ -487,9 +487,12 @@ defineScene({
         body.appendChild(clockInBtn);
 
         // Fetch active pools in the background so they're ready when a role is picked.
-        fetch('/api/v1/config/tip_pools')
+        fetchWithTimeout('/api/v1/config/tip_pools', {}, 10000)
           .then(function(r) { return r.ok ? r.json() : []; })
-          .then(function(pools) { _allPools = Array.isArray(pools) ? pools : []; })
+          .then(function(pools) {
+            if (_overlayClosed) return;
+            _allPools = Array.isArray(pools) ? pools : [];
+          })
           .catch(function() { _allPools = []; });
 
         var clockOutBtn = buildPillButton({ label: 'CLOCK OUT', color: T.verm, darkBg: T.vermDk, fontSize: T.fsB3 });
@@ -502,24 +505,33 @@ defineScene({
         body.appendChild(cancelBtn);
 
         // Clocked-in check
-        fetch('/api/v1/servers/clocked-in').then(function(r) { return r.json(); }).then(function(d) {
-          var match = (d.staff || []).find(function(s) { return s.employee_id === empId; });
-          if (match) {
-            sub.textContent = 'You are currently clocked in';
-            greet.style.color = T.green;
-            roleGrid.style.display = 'none';
-            clockInBtn.style.display = 'none';
-            clockOutBtn.style.display = '';
-          }
-        }).catch(function() {});
+        fetchWithTimeout('/api/v1/servers/clocked-in', {}, 10000)
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (_overlayClosed) return;
+            var match = (d.staff || []).find(function(s) { return s.employee_id === empId; });
+            if (match) {
+              sub.textContent = 'You are currently clocked in';
+              greet.style.color = T.green;
+              roleGrid.style.display = 'none';
+              clockInBtn.style.display = 'none';
+              clockOutBtn.style.display = '';
+            }
+          }).catch(function() {});
 
         // Hours fetch
         var today = new Date();
         var ds = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
-        fetch('/api/v1/reports/labor-summary?date=' + ds + '&server_id=' + encodeURIComponent(empId))
+        fetchWithTimeout('/api/v1/reports/labor-summary?date=' + ds + '&server_id=' + encodeURIComponent(empId), {}, 10000)
           .then(function(r){return r.json();})
-          .then(function(d){ hrsVal.textContent = (d.weekly_hours||d.total_hours||0).toFixed(2)+'h'; })
-          .catch(function(){ hrsVal.textContent = '0.00h'; });
+          .then(function(d){
+            if (_overlayClosed) return;
+            hrsVal.textContent = (d.weekly_hours||d.total_hours||0).toFixed(2)+'h';
+          })
+          .catch(function(){
+            if (_overlayClosed) return;
+            hrsVal.textContent = '0.00h';
+          });
 
         // Clock In action
         clockInBtn.addEventListener('pointerup', function() {
