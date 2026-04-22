@@ -1676,7 +1676,16 @@ function _wireActions(state, params, grid) {
 // ═══════════════════════════════════════════════════
 
 function handlePrint(state) {
-  if (!state.orderId) { showToast('Save items first', { bg: T.gold }); return; }
+  if (!state.orderId) {
+    entReport({
+      code: 'UI-007', level: 'INFO',
+      source: 'check-overview.handlePrint',
+      message: 'dead-end tap: PRINT before any items saved',
+      ctx: { orderId: null, seatCount: (state.seats || []).length },
+    });
+    showToast('Save items first', { bg: T.gold });
+    return;
+  }
   showToast('Printing receipt…', { bg: T.green });
   fetch('/api/v1/orders/' + state.orderId + '/print/receipt', { method: 'POST' })
     .then(function(r) {
@@ -1691,7 +1700,16 @@ function handlePrint(state) {
 // ═══════════════════════════════════════════════════
 
 function handleResend(state) {
-  if (!state.orderId) { showToast('Nothing to resend', { bg: T.gold }); return; }
+  if (!state.orderId) {
+    entReport({
+      code: 'UI-007', level: 'INFO',
+      source: 'check-overview.handleResend',
+      message: 'dead-end tap: RESEND on a check with no orderId',
+      ctx: { orderId: null },
+    });
+    showToast('Nothing to resend', { bg: T.gold });
+    return;
+  }
   showToast('Resending to kitchen…', { bg: T.green });
   fetch('/api/v1/orders/' + state.orderId + '/resend', { method: 'POST' })
     .then(function(r) {
@@ -1754,6 +1772,12 @@ async function _gotoOrderEntry(state, params) {
 
 function handlePay(state, params) {
   if (!state.orderId) {
+    entReport({
+      code: 'UI-007', level: 'INFO',
+      source: 'check-overview.handlePay',
+      message: 'dead-end tap: PAY before any items saved',
+      ctx: { orderId: null },
+    });
     showToast('Save items first', { bg: T.gold });
     return;
   }
@@ -1769,6 +1793,16 @@ function handlePay(state, params) {
     }
   }
   if (selectedIds.length === 0) {
+    entReport({
+      code: 'UI-007', level: 'INFO',
+      source: 'check-overview.handlePay',
+      message: 'dead-end tap: PAY on an empty check',
+      ctx: {
+        orderId: state.orderId,
+        seatCount: (state.seats || []).length,
+        paidSeatCount: Object.keys(state.paidSeats || {}).length,
+      },
+    });
     showToast('No items to pay', { bg: T.gold });
     return;
   }
@@ -1814,6 +1848,12 @@ function handleVoid(state) {
   var seatIds  = getSelectedSeatIds(state);
 
   if (itemRefs.length === 0 && seatIds.length === 0) {
+    entReport({
+      code: 'UI-007', level: 'INFO',
+      source: 'check-overview.handleVoid',
+      message: 'dead-end tap: VOID with nothing selected',
+      ctx: { orderId: state.orderId || null },
+    });
     showToast('Select items or seats to void', { bg: T.gold });
     return;
   }
@@ -1830,6 +1870,12 @@ function handleVoid(state) {
   }
 
   if (itemRefs.length === 0) {
+    entReport({
+      code: 'UI-007', level: 'INFO',
+      source: 'check-overview.handleVoid',
+      message: 'dead-end tap: VOID on empty seats',
+      ctx: { orderId: state.orderId || null, seatIdsSelected: seatIds.length },
+    });
     showToast('Nothing to void', { bg: T.gold });
     return;
   }
@@ -1904,6 +1950,12 @@ function handleDiscount(state) {
   var seatIds  = getSelectedSeatIds(state);
 
   if (itemRefs.length === 0 && seatIds.length === 0) {
+    entReport({
+      code: 'UI-007', level: 'INFO',
+      source: 'check-overview.handleDiscount',
+      message: 'dead-end tap: DISC with nothing selected',
+      ctx: { orderId: state.orderId || null },
+    });
     showToast('Select items or seats to discount', { bg: T.gold });
     return;
   }

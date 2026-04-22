@@ -1159,30 +1159,26 @@ function assignSeatsIfNeeded(callback) {
     });
   }
 
-  // Retry safety: if an item was already assigned a seat (e.g. from a prior
-  // seat-assign confirm that partially failed to POST), respect that choice.
-  // Branches 1 + 2 used to reassign every unsent item unconditionally, which
-  // would collapse user-picked-seats back to seat[0] on a retry.
-  var needsAssignment = unsent.filter(function(i) { return i.seat_number == null; });
-  if (needsAssignment.length === 0) { callback(); return; }
-
-  // 1 seat → auto-assign the remaining pending items to it
+  // 1 seat → auto-assign all pending items to it. Overwrites any
+  // prior per-item assignments because there's only one target.
   if (seats.length === 1) {
-    for (var i = 0; i < needsAssignment.length; i++) needsAssignment[i].seat_number = seats[0];
+    for (var i = 0; i < unsent.length; i++) unsent[i].seat_number = seats[0];
     callback();
     return;
   }
 
-  // If exactly one seat is selected in check-overview, auto-assign to it
+  // If exactly one seat is selected in check-overview, auto-assign to it.
+  // (The earlier "retry safety" filter collapsed the next branch onto
+  // seat 1 because new items carry _activeSeat=1 at add time; removed.)
   var selSeats = sceneParams.selectedSeatNumbers;
   if (selSeats && selSeats.length === 1) {
-    for (var i = 0; i < needsAssignment.length; i++) needsAssignment[i].seat_number = selSeats[0];
+    for (var i = 0; i < unsent.length; i++) unsent[i].seat_number = selSeats[0];
     callback();
     return;
   }
 
-  // 2+ seats → open seat assignment interrupt for the items that still need one
-  var itemsForAssign = needsAssignment.map(function(inst) {
+  // 2+ seats and no single pre-selection → open the per-item seat picker
+  var itemsForAssign = unsent.map(function(inst) {
     return { id: inst.id, name: inst.name, mods: inst.mods };
   });
 
@@ -1192,19 +1188,19 @@ function assignSeatsIfNeeded(callback) {
       // Apply assignments: { itemId: [seatNumber, ...] }
       // Items assigned to multiple seats get duplicated (one per extra seat)
       var dupes = [];
-      for (var j = 0; j < needsAssignment.length; j++) {
-        var seatList = assignments[needsAssignment[j].id];
+      for (var j = 0; j < unsent.length; j++) {
+        var seatList = assignments[unsent[j].id];
         if (!seatList || seatList.length === 0) continue;
         // First seat goes on the original item
-        needsAssignment[j].seat_number = seatList[0];
+        unsent[j].seat_number = seatList[0];
         // Additional seats → duplicate the item
         for (var s = 1; s < seatList.length; s++) {
-          var clone = Object.assign({}, needsAssignment[j]);
-          clone.id = needsAssignment[j].id + '_s' + seatList[s];
+          var clone = Object.assign({}, unsent[j]);
+          clone.id = unsent[j].id + '_s' + seatList[s];
           clone.idemKey = _idemKey();
           clone.seat_number = seatList[s];
           clone.sent = false;
-          clone.mods = (needsAssignment[j].mods || []).slice();
+          clone.mods = (unsent[j].mods || []).slice();
           dupes.push(clone);
         }
       }
