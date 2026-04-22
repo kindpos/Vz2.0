@@ -47,12 +47,8 @@ import { buildPayrollAttendanceScene, cleanupPayrollAttendance } from './section
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
-   Order: STORE → STAFF → REPORTING → MENU → HARDWARE → SYSTEM
+   Order: STORE → STAFF → REPORTING → MENU → HARDWARE & TERMINAL CONFIGURATION
    (HOME is pinned top separately by buildNav — not in this array.)
-
-   Sub-items are intentionally unchanged in this pass — consolidation
-   (Payroll & Attendance merge, Printers merge, etc.) happens when
-   each section is reskinned individually.
 ------------------------------------------ */
 const NAV = [
     {
@@ -99,20 +95,14 @@ const NAV = [
     },
     {
         id: 'hardware',
-        label: 'HARDWARE',
+        label: 'HARDWARE & TERMINAL CONFIGURATION',
         subs: [
-            { id: 'network-setup',    label: 'Network Setup'    },
-            // { id: 'printer-setup',    label: 'Printer Setup'    },
-            // { id: 'printer-config',   label: 'Printer Config'   },
-            // { id: 'card-readers',     label: 'Card Readers'     },
-            { id: 'receipt-settings', label: 'Receipt Settings'  },
-        ]
-    },
-    {
-        id: 'system',
-        label: 'SYSTEM',
-        subs: [
-            { id: 'terminal-settings',  label: 'Terminal Settings'  },
+            { id: 'network-setup',     label: 'Network Setup'     },
+            // { id: 'printer-setup',     label: 'Printer Setup'     },
+            // { id: 'printer-config',    label: 'Printer Config'    },
+            // { id: 'card-readers',      label: 'Card Readers'      },
+            { id: 'receipt-settings',  label: 'Receipt Settings'  },
+            { id: 'terminal-settings', label: 'Terminal Settings' },
         ]
     },
 ];
