@@ -2050,9 +2050,20 @@ function _wireHeaderTaps(state, seatId, el) {
     // Tap = toggle selection (but paid seats go to reopen flow)
     if (state.paidSeats[seatId]) {
       reopenSeat(state, seatId);
-    } else {
-      toggleSeat(state, seatId);
+      return;
     }
+    // MANAGE + MOVE: if items are selected, the tap is the MOVE
+    // destination, not a selection toggle. If no items are selected
+    // yet, fall through so the cashier can use the seat-header tap
+    // to select every item in that seat.
+    if (state._manageMode
+        && state._manageTool === 'move'
+        && Object.keys(state.selectedItems || {}).length > 0) {
+      var refs = getSelectedItemRefs(state);
+      _moveItemsToSeat(state, refs, seatId);
+      return;
+    }
+    toggleSeat(state, seatId);
   });
   el.addEventListener('pointerleave', function() {
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
