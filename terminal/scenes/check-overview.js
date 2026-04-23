@@ -1109,9 +1109,27 @@ function renderActionBar(state) {
   discBtn.style.borderRadius = '12px 12px 6px 6px';
   leftStack.appendChild(discBtn);
 
-  // VOID
+  // VOID / DELETE — label flips to DELETE when every currently-selected
+  // item is pre-kitchen (no sent_at). Deleting pre-kitchen items is a
+  // local remove (no void record), so using the right verb matches the
+  // operator's mental model.
+  var voidLabel = 'VOID';
+  if (anyItemSel) {
+    var allUnsent = true;
+    for (var vki = 0; vki < itemKeys.length; vki++) {
+      var vp = itemKeys[vki].split(':');
+      var vSeat = state.seats[parseInt(vp[0], 10)];
+      var vItem = vSeat && vSeat.items[parseInt(vp[1], 10)];
+      if (!vItem) continue;
+      // Treat missing sent_at as unsent — state.seats mirrors backend
+      // items after orderToSeats preserves the field.
+      if (vItem.sent_at) { allUnsent = false; break; }
+    }
+    if (allUnsent) voidLabel = 'DELETE';
+  }
+
   var voidBtn = buildPillButton({
-    label: 'VOID',
+    label: voidLabel,
     color: T.verm,
     darkBg: T.vermDk,
     onClick: function() { handleVoid(state); }
