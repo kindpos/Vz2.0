@@ -57,6 +57,12 @@ vi.mock('../theme-manager.js', () => ({
     el.setAccent = vi.fn();
     return el;
   },
+  buildActionCard: ({ onClick } = {}) => {
+    const el = document.createElement('div');
+    if (onClick) el.addEventListener('pointerup', onClick);
+    el.setAccent = vi.fn();
+    return el;
+  },
 }));
 
 vi.mock('../sm2-shim.js', () => ({

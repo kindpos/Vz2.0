@@ -228,34 +228,131 @@ describe('terminal/scenes/server-landing', () => {
 
   // ── Tip-adjustment transactional ────────────────────────────────────
 
-  it('tip row tap opens tip-adjustment transactional with the check', async () => {
-    const salesData = {
-      checks: [
-        { check_id: 'chk-1', status: 'closed', tip: 8.00, adjusted: false, total: 40.00 },
-      ],
-    };
-    const { state } = mount({ salesData });
-    // Wait for fetch to resolve and renderTips() to run.
-    await Promise.resolve();
-    await Promise.resolve();
+  // ── Render exception isolation (S2) ─────────────────────────────────
 
-    // Simulate tip row click by calling openTransactional directly through
-    // the handler registered via SceneManager.on for 'tip:adjusted' — the
-    // actual tip row click fires SceneManager.openTransactional.  We verify
-    // the mock is wired correctly by confirming the call structure once
-    // salesData is present and a row tap would occur.
-    // Since renderTips rebuilds the list on each refresh, we verify the
-    // transactional would be called with the right shape by checking the
-    // capture from initial render:
+  async function flushPromises() {
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it('check tile tap passes pin to check-overview mountWorking params', async () => {
+    // Serve TEST_ORDERS from the orders fetch so renderTiles paints real tiles.
+    global.fetch = vi.fn((url) => {
+      if (String(url).indexOf('/api/v1/orders?') === 0) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(TEST_ORDERS) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+
+    const empWithPin = { id: 'srv-01', name: 'Mel Server', pin: '4321' };
+    const container  = document.createElement('div');
+    const state      = Object.assign(
+      JSON.parse(JSON.stringify(sceneDef.state)),
+      { _refs: {} },
+    );
+    sceneDef.render(container, empWithPin, state);
+    await flushPromises();
+
+    const tile = state._refs.tileGrid.firstChild;
+    expect(tile).toBeDefined();
+    tile.dispatchEvent(new Event('pointerup'));
+
+    expect(SceneManagerMock.mountWorking).toHaveBeenCalledWith(
+      'check-overview',
+      expect.objectContaining({ pin: '4321' }),
+    );
+  });
+
+  it('render exception in renderTips does not prevent renderStats from running', async () => {
+    const { state } = mount();
+    await flushPromises();
+    // Drop the initial mount-refresh effect so our second-refresh assertion
+    // measures only the post-break behavior.
+    state._refs.scGuests.setValue.mockClear();
+
+    // Force renderTips to throw: give it a closed check so it passes the
+    // empty-branch, then null unadjBadge so the `r.unadjBadge.textContent = …`
+    // assignment throws.
+    state.salesData  = { checks: [{ check_id: 'c1', status: 'closed', tip: 5, adjusted: false, total: 20 }] };
+    state._refs.unadjBadge = null;
+
+    const onCall = SceneManagerMock.on.mock.calls.find(([ev]) => ev === 'order:updated');
+    expect(onCall).toBeDefined();
+    const handler = onCall[1];
+    handler();
+    await flushPromises();
+
+    // Without the try/catch wrappers, renderTips' throw bubbles up through
+    // the Promise chain and short-circuits renderStats. The fix isolates
+    // each render so renderStats still runs.
+    expect(state._refs.scGuests.setValue).toHaveBeenCalled();
+  });
+
+  it('tip row pointerup opens tip-adjustment transactional with the check', async () => {
+    const CHECK = { check_id: 'chk-1', status: 'closed', tip: 8.00, adjusted: false, total: 40.00 };
+    global.fetch = vi.fn((url) => {
+      if (String(url).indexOf('/api/v1/orders/day-summary') === 0) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ checks: [CHECK] }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+    const { state } = mount();
+    await flushPromises();
+
     const tipList = state._refs.tipList;
     expect(tipList).toBeDefined();
-    // Trigger a tap on the first tip row button (built by buildTipRow).
-    const tapTargets = tipList.querySelectorAll('[data-tap]');
-    // If no [data-tap] elements exist yet (async render), verify via the
-    // SceneManager.openTransactional interface shape instead.
-    // The key contract: when tap fires, it calls:
-    //   SceneManager.openTransactional('tip-adjustment', { check, onAdjusted })
-    // confirmed by the source at server-landing.js:537.
-    expect(SceneManagerMock.openTransactional.mock.calls.length >= 0).toBe(true);
+    const row = tipList.firstChild;
+    expect(row).toBeDefined();
+    row.dispatchEvent(new Event('pointerup'));
+
+    expect(SceneManagerMock.openTransactional).toHaveBeenCalledWith(
+      'tip-adjustment',
+      expect.objectContaining({
+        check: expect.objectContaining({ check_id: 'chk-1' }),
+        onAdjusted: expect.any(Function),
+      }),
+    );
+  });
+
+  // ── Fetch rejection / refresh-guard release ─────────────────────────
+
+  it('fetch rejection clears _refreshing so a subsequent refresh is not blocked', async () => {
+    // Reject every fetch; the catch path should release the flag.
+    global.fetch = vi.fn(() => Promise.reject(new Error('network')));
+    const { state } = mount();
+    await flushPromises();
+
+    expect(state._refreshing).toBe(false);
+
+    // A follow-up event should not be blocked by a stuck flag.
+    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+    const onCall = SceneManagerMock.on.mock.calls.find(([ev]) => ev === 'order:updated');
+    const handler = onCall[1];
+    const callsBefore = global.fetch.mock.calls.length;
+    handler();
+    expect(global.fetch.mock.calls.length).toBeGreaterThan(callsBefore);
+  });
+
+  // ── Cleanup during in-flight refresh ────────────────────────────────
+
+  it('cleanup during in-flight refresh: state.el null-check blocks post-teardown render', async () => {
+    // Never-resolving fetch → refresh is perpetually in-flight at cleanup time.
+    let resolveFetch;
+    global.fetch = vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }));
+    const { state, cleanup } = mount();
+
+    expect(state.el).toBeDefined();
+    cleanup();
+    expect(state.el).toBeNull();
+
+    // Let the in-flight fetch resolve; the .then callback should short-circuit
+    // at the `if (!state.el) return;` gate and not touch refs.
+    resolveFetch({ ok: true, json: () => Promise.resolve({}) });
+    await flushPromises();
+
+    // scGuests.setValue was called on the mount-time initial refresh's render
+    // path? It can't be — the fetch never resolved before cleanup. Assert
+    // no post-cleanup render fired.
+    expect(state._refs.scGuests.setValue).not.toHaveBeenCalled();
   });
 });
