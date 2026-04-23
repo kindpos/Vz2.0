@@ -19,14 +19,12 @@ redesigned check-overview UI are the largest unmitigated risk areas today.
 | Suite | Files | Tests | Passing | Skipped | Failing |
 |---|---:|---:|---:|---:|---:|
 | Backend (pytest) | 76 | 1,196 | 1,193 | 3 | **0** |
-| Frontend (vitest) | 24 | 196 | 196 | 0 | **0** |
-| **Total** | **100** | **1,392** | **1,389** | **3** | **0** |
+| Frontend (vitest) | 24 | 207 | 207 | 0 | **0** |
+| **Total** | **100** | **1,403** | **1,400** | **3** | **0** |
 
-Net since 2026-04-22: **+3 passing tests**. Backend gained 5 tests across the
-post-report follow-ups (`test_new_shift_routes.py`, `test_pos_system.py`,
-`test_orders_mutations.py`, etc.); frontend lost 2 tests from removing stale
-assertions for behavior the redesign eliminated (see *Regressions Caught*
-below).
+Net since the prior 2026-04-23 revision: **+11 passing frontend tests** from
+the Session 5 landing-scenes probe (see the dedicated section below). Backend
+counts unchanged.
 
 > `pytest-cov` is still not installed in this environment; the coverage figures
 > below are reproduced from the April 21 audit (`COVERAGE_AUDIT.md`) for
@@ -168,6 +166,58 @@ current environment. Numbers below are a point-in-time reference from
 | File | Test count | Notes |
 |---|---:|---|
 | `terminal/scenes/check-overview.js` | 7 | Post-redesign this file grew from ~600 → ~1,800 lines. The 7 existing tests exercise a small slice (scene registration + a few top-level handlers). MANAGE mode, MOVE / SPLIT / MERGE / UNDO paths, seat-tile multi-select, and item-recap integration are **untested**. |
+
+---
+
+## Session 5 — Landing scenes probe
+
+Targeted probe of `terminal/scenes/manager-landing.js` and `server-landing.js`
+(plus their tests) following the brief in `LANDING_PROBE_PROMPT.md`. Four
+probe rounds mapped the surface; fixes landed failing-test-first.
+
+### Bugs found + fixed
+
+| # | Bug | File:line | Severity | Fix |
+|---|---|---|---|---|
+| 1 | Stale `selectedIds` after refresh — pill actions (Void/Merge/Print/Pay/Open/Split/Discount/Transfer) fire on orders that another terminal closed during the refresh window; preview panel also lingers empty | `manager-landing.js:1163` | HIGH | In `refresh()` completion, prune `state.selectedIds` against the truthful `state.allOrders` before any render reads it. Transitively fixes the ghost preview-panel. |
+| 2 | Print handler: completion toast/flag stalls when one POST rejects; no in-flight guard so a rapid second tap double-toasts | `manager-landing.js:645–668` | MED | Extracted a shared `finish()` helper called from both `.then` and `.catch`; added `if (st._printing) return; st._printing = true;` with the flag cleared inside `finish()`. (Printer itself is backend-dedup'd via `PrintJobQueue.enqueue` — the UX/flag stall was the real defect; double-print was already impossible.) |
+| 3 | Server-landing render exception in one `renderX` cancels the sibling renders, leaving tips/stats stale — asymmetric with manager-landing's resilience | `server-landing.js:519–525` | LOW–MED | Wrapped each of `renderTiles` / `renderTips` / `renderStats` in `try/catch` with `console.warn`, matching `manager-landing.js:1166–1172`. |
+| 4 | Server-landing tile tap omitted `pin` from `mountWorking('check-overview', …)` params — asymmetric with manager-landing | `server-landing.js:382, 392` | LOW | Added `pin: state.emp ? state.emp.pin : null` at both call sites. Latent today (nullable), but removes a silent divergence. |
+
+### Dead code removed
+
+- `manager-landing.js:1154–1155` — `renderBarStats()` empty stub. Zero callers.
+- `manager-landing.js:319–336` — `_buildGateRow(met, label)` helper. Zero callers.
+
+### Tests added
+
+| Surface | Tests | Notes |
+|---|---:|---|
+| manager-landing refresh reconciliation | 2 | `selectedIds` pruned on vanish; pill action does not fire for ghost order (locks bug 1) |
+| manager-landing Print handler | 3 | partial-failure completion, in-flight guard, all-success plural/singular wording (locks bug 2) |
+| manager-landing Merge error path | 1 | 400 `{detail}` path — plugs the rotted Session-1 error-swallowing coverage; confirms `_merging` cleared |
+| manager-landing Void partial failure | 1 | 1 of 2 succeeds — toast wording and `selectedIds` cleared |
+| server-landing render isolation | 1 | throw in `renderTips` still lets `renderStats` side effects fire (locks bug 3) |
+| server-landing tile-tap pin arg | 1 | `mountWorking('check-overview', …)` receives `pin` (locks bug 4) |
+| server-landing tip-row real click | 1 | actual `pointerup` dispatch → `openTransactional('tip-adjustment', …)` asserted (replaces prior placeholder test) |
+| server-landing fetch rejection | 1 | `_refreshing` cleared on reject; subsequent refresh not blocked |
+| server-landing cleanup during refresh | 1 | in-flight fetch resolving after `cleanup()` does not touch refs |
+
+**Net delta:** +11 frontend tests (manager-landing 9 → 16; server-landing 6 → 10). All existing tests retained; no test behavior weakened. `npx vitest run` → **24 files, 207 tests, 0 failing.**
+
+### Not-bugs retracted after verification
+
+- **Merge calls `r.json()` before `r.ok`:** backend's custom exception handler (`backend/app/main.py:182–209`) + FastAPI `HTTPException` guarantee JSON on every response, so `r.json()` cannot reject in production. Left as-is; the new 400-`{detail}` test locks the happy error path.
+- **Server-landing `_refreshing` stuck on render throw:** the flag is cleared at `server-landing.js:520` *before* the renders run, so a render throw leaves the flag already false. The real issue was the sibling-render cancellation, fixed above as bug 3.
+- **Server filter cycle leaves checkout button stale:** the checkout button's state (`unadj` count + `ordersByFilter(allOrders, 'OPEN')`) is by design filter-independent. The handler at `server-landing.js:492` is correct as-is.
+
+### Remaining risks, deferred
+
+- **Routing defect — separate session planned.** `check-overview.js:414–427`, `payment.js:1043–1045`, and `login.js:605/615` all default routing to `'server-landing'` when `returnLanding` is missing or role casing differs. This is what causes a manager to occasionally land on server-landing after a check-overview flow. check-overview already logs `UI-020 WARNING` on every occurrence — event-ledger can identify the offending callers. Out of Session-5 scope by user direction.
+- Long-press `lpTimer` callbacks in manager-landing can fire after the tile element is detached by the `renderTiles()` wipe. Closures read `ord.order_id` only, no mutation — left as-is.
+- Rapid double `order:updated` drops the second event because the `_refreshing` guard has no re-queue pattern. Real freshness gap but the fix is a non-trivial behavior change (`_dirty` flag); deferred.
+- Double-tap on a server-landing tile could open `check-overview` twice if `SceneManager.mountWorking` does not dedupe internally. Behavior not verified; no pinning test yet.
+- `tip_avg` Session-1 fix has no dedicated test — value is now backend-sourced (`manager-landing.js:1169` via `day.unadjusted_tips`), so future regressions would surface through the close-day flow.
 
 ---
 

@@ -343,4 +343,188 @@ describe('terminal/scenes/manager-landing', () => {
     // We verify the cleanup function ran without error.
     expect(typeof cleanup).toBe('function');
   });
+
+  // ── Refresh reconciliation (M5) ─────────────────────────────────────
+
+  // fetchAllData fans out to 4 parallel requests; only /api/v1/orders
+  // is used to rebuild state.allOrders. Other endpoints return empty shapes.
+  function fetchForOrders(orders) {
+    return vi.fn((url) => {
+      if (String(url) === '/api/v1/orders') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(orders) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  }
+
+  async function triggerOrderUpdated() {
+    const sm = await import('../scene-manager.js');
+    const call = sm.SceneManager.on.mock.calls.find((c) => c[0] === 'order:updated');
+    expect(call).toBeDefined();
+    const handler = call[1];
+    handler();
+    // Flush Promise.all → .then microtasks.
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it('refresh() prunes selectedIds when an order vanishes from allOrders', async () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    // Another terminal closed order-a — next refresh returns only order-b.
+    global.fetch = fetchForOrders([
+      { order_id: 'order-b', status: 'open', server_id: 'srv-1', check_number: 'C-002', total: 22 },
+    ]);
+
+    await triggerOrderUpdated();
+
+    expect(state.allOrders.map((o) => o.order_id)).toEqual(['order-b']);
+    expect(state.selectedIds).toEqual([]);
+  });
+
+  // ── Print handler (M1 + M2) ─────────────────────────────────────────
+
+  // Build a fetch that returns distinct responses per orderId. Unlisted orders
+  // resolve ok:true by default.
+  function fetchForPrint(results) {
+    return vi.fn((url) => {
+      const match = String(url).match(/\/orders\/([^/]+)\/print\/receipt/);
+      if (match) {
+        const outcome = results[match[1]];
+        if (outcome === 'reject') return Promise.reject(new Error('network'));
+        if (outcome === 'fail')   return Promise.resolve({ ok: false });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+  }
+
+  async function flushPromises() {
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it('Print partial failure: toast fires even when one POST rejects', async () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a', 'order-b'];
+
+    global.fetch = fetchForPrint({ 'order-a': 'reject' });   // order-b resolves ok
+
+    pillHandlers['Print']();
+    await flushPromises();
+
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('1 printed, 1 failed'),
+      expect.any(Object),
+    );
+    expect(state._printing).toBeFalsy();
+  });
+
+  it('Print in-flight guard: second tap during in-flight fetch does not fire another POST', () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    // Never-resolving fetch keeps the handler in-flight.
+    global.fetch = vi.fn(() => new Promise(() => {}));
+
+    pillHandlers['Print']();
+    pillHandlers['Print']();
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('Print all-success: completion toast uses plural/singular correctly', async () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a', 'order-b'];
+
+    global.fetch = fetchForPrint({});   // both ok:true
+
+    pillHandlers['Print']();
+    await flushPromises();
+
+    expect(showToast).toHaveBeenCalledWith(
+      'Printed 2 receipts',
+      expect.any(Object),
+    );
+  });
+
+  it('pill action does not fire a fetch for an order that vanished during refresh', async () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a'];
+
+    global.fetch = fetchForOrders([
+      { order_id: 'order-b', status: 'open', server_id: 'srv-1', check_number: 'C-002', total: 22 },
+    ]);
+
+    await triggerOrderUpdated();
+
+    // After reconciliation, selection is empty. Reset fetch so the next call
+    // is isolated to what the Void handler does.
+    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+
+    pillHandlers['Void']();   // first tap; empty selection → "Select a check first"
+    pillHandlers['Void']();   // second tap; still empty — must not fire a /void POST
+
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/orders/order-a/void'),
+      expect.anything(),
+    );
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Select a check first'),
+      expect.any(Object),
+    );
+  });
+
+  // ── Merge error-body (Tier B regression lock) ───────────────────────
+
+  it('Merge 400 with {detail}: toast shows server detail and clears _merging', async () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a', 'order-b'];
+
+    global.fetch = vi.fn(() => Promise.resolve({
+      ok:     false,
+      status: 400,
+      json:   () => Promise.resolve({ detail: 'Payment in progress' }),
+    }));
+
+    pillHandlers['Merge']();
+    await flushPromises();
+
+    expect(showToast).toHaveBeenCalledWith(
+      'Payment in progress',
+      expect.any(Object),
+    );
+    expect(state._merging).toBe(false);
+  });
+
+  // ── Void partial failure (Tier B regression lock) ───────────────────
+
+  it('Void partial failure: mixed success/fail toast fires and selection clears', async () => {
+    const { state } = mountFresh();
+    state.allOrders   = TEST_ORDERS;
+    state.selectedIds = ['order-a', 'order-b'];
+
+    global.fetch = vi.fn((url) => {
+      if (String(url).includes('/orders/order-a/void')) {
+        return Promise.resolve({ ok: false });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+
+    pillHandlers['Void']();   // arm pending
+    pillHandlers['Void']();   // commit
+    await flushPromises();
+
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('1 voided, 1 failed'),
+      expect.any(Object),
+    );
+    expect(state.selectedIds).toEqual([]);
+  });
 });

@@ -384,6 +384,7 @@ defineScene({
             returnLanding: 'server-landing',
             employeeId:    state.emp ? state.emp.id   : null,
             employeeName:  state.emp ? state.emp.name : null,
+            pin:           state.emp ? state.emp.pin  : null,
           });
         }));
       });
@@ -394,6 +395,7 @@ defineScene({
             returnLanding: 'server-landing',
             employeeId:    state.emp ? state.emp.id   : null,
             employeeName:  state.emp ? state.emp.name : null,
+            pin:           state.emp ? state.emp.pin  : null,
           });
         }));
       }
@@ -519,9 +521,9 @@ defineScene({
       fetchAllData(state).then(function() {
         state._refreshing = false;
         if (!state.el) return;
-        renderTiles();
-        renderTips();
-        renderStats();
+        try { renderTiles(); } catch(e) { console.warn('[sl] renderTiles threw:', e); }
+        try { renderTips();  } catch(e) { console.warn('[sl] renderTips threw:', e); }
+        try { renderStats(); } catch(e) { console.warn('[sl] renderStats threw:', e); }
       }).catch(function() { state._refreshing = false; });
     }
 

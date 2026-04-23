@@ -315,26 +315,6 @@ function _buildPreview(orders, allOrders) {
   return wrap;
 }
 
-// ── Gate row ──────────────────────────────────────
-function _buildGateRow(met, label) {
-  var row = document.createElement('div');
-  row.style.cssText = 'display:flex;align-items:center;gap:8px;';
-  var icon = document.createElement('span');
-  icon.style.cssText  = 'font-size:16px;color:' + (met ? T.green : T.verm) + ';';
-  icon.textContent    = met ? '✓' : '✗';
-  var text = document.createElement('span');
-  text.style.cssText  = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + (met ? T.green : T.verm) + ';';
-  text.textContent    = label;
-  row.appendChild(icon);
-  row.appendChild(text);
-  return { row: row, icon: icon, text: text, setMet: function(v, l) {
-    icon.textContent   = v ? '✓' : '✗';
-    icon.style.color   = v ? T.green : T.verm;
-    text.textContent   = l || label;
-    text.style.color   = v ? T.green : T.verm;
-  }};
-}
-
 // ── Server checkout tile ──────────────────────────
 // `state` is the scene state object; _buildServerRow used to read it from
 // the closure, but it's a module-level function so the reference was
@@ -643,23 +623,28 @@ defineScene({
       }
 
       if (label === 'Print') {
+        if (st._printing) return;
+        st._printing = true;
         // Fire a receipt print for each selected check.
         var printed = 0, failed = 0;
+        function finish() {
+          if (printed + failed !== ids.length) return;
+          st._printing = false;
+          showToast(
+            failed === 0
+              ? 'Printed ' + printed + ' receipt' + (printed === 1 ? '' : 's')
+              : printed + ' printed, ' + failed + ' failed',
+            { bg: failed === 0 ? T.green : T.gold, duration: 2000 }
+          );
+        }
         ids.forEach(function(orderId) {
           fetch('/api/v1/orders/' + orderId + '/print/receipt', { method: 'POST' })
             .then(function(r) {
               if (r.ok) printed++;
               else      failed++;
-              if (printed + failed === ids.length) {
-                showToast(
-                  failed === 0
-                    ? 'Printed ' + printed + ' receipt' + (printed === 1 ? '' : 's')
-                    : printed + ' printed, ' + failed + ' failed',
-                  { bg: failed === 0 ? T.green : T.gold, duration: 2000 }
-                );
-              }
+              finish();
             })
-            .catch(function() { failed++; });
+            .catch(function() { failed++; finish(); });
         });
         showToast('Printing ' + ids.length + ' receipt' + (ids.length === 1 ? '' : 's') + '…', { bg: T.green, duration: 1200 });
         return;
@@ -1151,9 +1136,6 @@ defineScene({
       SceneManager.openTransactional('close-day', { staff: state.emp });
     });
 
-    function renderBarStats() {
-    }
-
     // ─────────────────────────────────────────────
     //  DATA + REFRESH
     // ─────────────────────────────────────────────
@@ -1163,6 +1145,11 @@ defineScene({
       fetchAllData(state).then(function() {
         state._refreshing = false;
         if (!state.el) return;
+        // Reconcile selection against the truthful order set so pill actions
+        // never fire on orders closed/voided from another terminal.
+        var alive = {};
+        (state.allOrders || []).forEach(function(o) { alive[o.order_id] = true; });
+        state.selectedIds = (state.selectedIds || []).filter(function(id) { return alive[id]; });
         try { renderSales();        } catch(e) { console.warn('[ml] renderSales threw:', e); }
         try { renderGate();         } catch(e) { console.warn('[ml] renderGate threw:', e); }
         try { renderCOB();          } catch(e) { console.warn('[ml] renderCOB threw:', e); }
