@@ -109,6 +109,9 @@ export function orderToSeats(order, minSeats) {
         mods:           it.mods || [],
         notes:          it.notes || '',
         category:       it.category,
+        // Preserve kitchen-send status so check-overview can switch the
+        // VOID button to DELETE when only pre-kitchen items are picked.
+        sent_at:        it.sent_at || null,
       });
     }
   }
