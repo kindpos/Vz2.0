@@ -1731,12 +1731,6 @@ function rerenderTopArea(state) {
     state._osActive = false;
   }
 
-  // Totals render into the bottom-left corner (same row as the action
-  // buttons) via buildItemRecapTotals — keep the corner visible.
-  if (state.totalsEl) {
-    state.totalsEl.style.display = 'flex';
-  }
-
   var top = state.topAreaEl;
   top.innerHTML = '';
   state.seatEls = {};
