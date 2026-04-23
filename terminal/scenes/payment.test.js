@@ -94,23 +94,11 @@ function getSplitSelectRender(scenes) {
   return paymentDef.interrupts && paymentDef.interrupts['split-select'];
 }
 
-function getOptionButtons(container) {
-  // Option buttons are divs with two child divs (fraction + amount).
-  // They're the first 3 sibling-children of the btnRow inside the panel.
-  return Array.from(container.querySelectorAll('[data-split-opt]'));
-}
-
-// Build a minimal split-select render that attaches a data-attr to each button
-// so we can find them without relying on DOM structure.
-// The real render uses _buildSplitOption which is a module-local; we can't
-// replace it, but we can find the options by iterating divs in the button row.
-function getOptionDivs(container) {
-  // The btnRow contains 3 children — the 1/2, 1/3, 1/4 options.
-  // Each has two text children: fraction label and amount label.
-  // We find them by looking for divs whose text includes '$'.
-  return Array.from(container.querySelectorAll('div'))
-    .filter((el) => el.children.length === 2 &&
-      el.children[1] && el.children[1].textContent.startsWith('$'));
+// The split-select options are rendered as real <button>s via buildPillButton.
+// Find by label ('1/2', '1/3', '1/4').
+function findOption(container, label) {
+  return Array.from(container.querySelectorAll('button'))
+    .find((btn) => btn.textContent === label);
 }
 
 // --- Tests ---
@@ -148,46 +136,32 @@ describe('terminal/scenes/payment — split-select interrupt', () => {
 
   it('renders three split options (1/2, 1/3, 1/4)', () => {
     const container = mount(45.00);
-    expect(container.textContent).toContain('1/2');
-    expect(container.textContent).toContain('1/3');
-    expect(container.textContent).toContain('1/4');
+    expect(findOption(container, '1/2')).toBeDefined();
+    expect(findOption(container, '1/3')).toBeDefined();
+    expect(findOption(container, '1/4')).toBeDefined();
   });
 
-  it('1/2 option shows ceil(remaining / 2) amount', () => {
+  it('1/2 option passes ceil(remaining / 2) to onConfirm', () => {
     // 45.00 / 2 = 22.50 exactly
-    const container = mount(45.00);
-    expect(container.textContent).toContain('$22.50');
-  });
-
-  it('1/3 option rounds up to nearest cent', () => {
-    // 10.00 / 3 = 3.33… → ceil to $3.34
-    const container = mount(10.00);
-    expect(container.textContent).toContain('$3.34');
-  });
-
-  it('1/4 option shows ceil(remaining / 4)', () => {
-    // 45.00 / 4 = 11.25 exactly
-    const container = mount(45.00);
-    expect(container.textContent).toContain('$11.25');
-  });
-
-  it('clicking a split option calls onConfirm with the correct amount', () => {
     const onConfirm = vi.fn();
     const container = mount(45.00, onConfirm);
-
-    // Find option divs and trigger their pointerup.
-    const opts = getOptionDivs(container);
-    expect(opts.length).toBeGreaterThanOrEqual(1);
-
-    // Trigger the first option (1/2 = $22.50).
-    opts[0].dispatchEvent(new Event('pointerup', { bubbles: true }));
-
-    expect(onConfirm).toHaveBeenCalledTimes(1);
+    findOption(container, '1/2').dispatchEvent(new Event('pointerup'));
     expect(onConfirm).toHaveBeenCalledWith(22.50);
   });
 
-  it('zero remaining shows $0.00 for all splits (graceful degenerate)', () => {
-    const container = mount(0);
-    expect(container.textContent).toContain('$0.00');
+  it('1/3 option rounds the onConfirm payload up to the nearest cent', () => {
+    // 10.00 / 3 = 3.33… → ceil to $3.34
+    const onConfirm = vi.fn();
+    const container = mount(10.00, onConfirm);
+    findOption(container, '1/3').dispatchEvent(new Event('pointerup'));
+    expect(onConfirm).toHaveBeenCalledWith(3.34);
+  });
+
+  it('1/4 option passes ceil(remaining / 4) to onConfirm', () => {
+    // 45.00 / 4 = 11.25 exactly
+    const onConfirm = vi.fn();
+    const container = mount(45.00, onConfirm);
+    findOption(container, '1/4').dispatchEvent(new Event('pointerup'));
+    expect(onConfirm).toHaveBeenCalledWith(11.25);
   });
 });
