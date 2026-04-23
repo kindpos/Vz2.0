@@ -1992,6 +1992,11 @@ function buildCompactTile(state, seatIdx) {
   wrap.style.overflow      = 'hidden';
   wrap.style.minHeight     = '90px';
   wrap.style.cursor        = 'pointer';
+  // Let vertical drag gestures scroll the tiles grid — without this the
+  // browser fires a synthetic tap on pointerup and toggleSeat wins over
+  // the scroll, so only the +SEAT rail (which sets touchAction) would
+  // scroll. Match that here so any tile can drag-scroll the grid.
+  wrap.style.touchAction = 'pan-y';
 
   wrap.addEventListener('pointerup', function(e) {
     if (e.defaultPrevented) return;
