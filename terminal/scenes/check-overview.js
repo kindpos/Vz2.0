@@ -1706,38 +1706,30 @@ function buildSeatsContainer(state) {
     root.appendChild(banner);
   }
 
-  // Mode A (1-4 active seats): seats laid out as flex-row columns so each
-  // tile gets its own full-height column with a slim +SEAT rail on the
-  // right. Mode B/C (5+): fall back to the 2-col grid for density.
+  // Layout mode:
+  //   A  1-4 active seats  — each seat gets its own flex-row column with
+  //                          a slim +SEAT rail on the right.
+  //   B  5+ active seats   — item recap on the left, compact seat tile
+  //                          grid on the right. Matches the original
+  //                          Nostalgia spec and the manager-landing
+  //                          check-grid visual.
   var activeCount = activeSeatCount(state.seats, state.paidSeats);
-  var isModeA = activeCount <= 4;
+  var mode = activeCount <= 4 ? 'A' : 'B';
 
   var body = document.createElement('div');
-  if (isModeA) {
-    Object.assign(body.style, {
-      display:       'flex',
-      flexDirection: 'row',
-      gap:           '10px',
-      padding:       '12px',
-      flex:          '1',
-      minHeight:     '0',
-      overflow:      'hidden',
-      boxSizing:     'border-box',
-    });
-  } else {
-    Object.assign(body.style, {
-      display:             'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap:                 '10px',
-      padding:             '12px',
-      flex:                '1',
-      overflowY:           'auto',
-      boxSizing:           'border-box',
-    });
-  }
+  Object.assign(body.style, {
+    display:       'flex',
+    flexDirection: 'row',
+    gap:           '10px',
+    padding:       '12px',
+    flex:          '1',
+    minHeight:     '0',
+    overflow:      'hidden',
+    boxSizing:     'border-box',
+  });
   root.appendChild(body);
 
-  return { root: root, body: body, isModeA: isModeA };
+  return { root: root, body: body, mode: mode };
 }
 
 // ═══════════════════════════════════════════════════
@@ -1760,37 +1752,87 @@ function rerenderTopArea(state) {
   var shell = buildSeatsContainer(state);
   top.appendChild(shell.root);
 
-  renderSeatsGrid(state, shell.body, shell.isModeA);
+  renderSeatsGrid(state, shell.body, shell.mode);
   renderActionBar(state);
 }
 
-function renderSeatsGrid(state, container, isModeA) {
+function renderSeatsGrid(state, container, mode) {
+  if (mode === 'B') {
+    // ── Mode B: item recap on the left, compact seat tile grid on the right ──
+    var recapCol = document.createElement('div');
+    Object.assign(recapCol.style, {
+      flex:      '1',
+      minWidth:  '0',
+      overflowY: 'auto',
+    });
+    recapCol.appendChild(buildItemRecap(_adaptOrderForRecap(state), {
+      hideHeader: true,
+      hideTotals: true,
+    }));
+    container.appendChild(recapCol);
+
+    var tilesCol = document.createElement('div');
+    Object.assign(tilesCol.style, {
+      flex:         '1',
+      minWidth:     '0',
+      display:      'flex',
+      flexWrap:     'wrap',
+      alignContent: 'flex-start',
+      gap:          '10px',
+      overflowY:    'auto',
+    });
+    for (var i = 0; i < state.seats.length; i++) {
+      if (state.paidSeats[state.seats[i].id]) continue;
+      var tile = buildCompactTile(state, i);
+      tile.style.flex     = '0 0 calc(33.333% - 7px)';
+      tile.style.minWidth = '0';
+      tilesCol.appendChild(tile);
+    }
+    var addB = buildAddTile(state, { fullSize: true });
+    addB.style.flex = '0 0 calc(33.333% - 7px)';
+    tilesCol.appendChild(addB);
+    if (state._manageMode && state._manageTool === 'merge') {
+      var chkB = buildCheckTile(state, { fullSize: true });
+      chkB.style.flex = '0 0 calc(33.333% - 7px)';
+      tilesCol.appendChild(chkB);
+    }
+    container.appendChild(tilesCol);
+    return;
+  }
+
+  // ── Mode A: each seat is an equal flex-row column ──
+  // +SEAT tile matches seat width while there's capacity (1-3 seats);
+  // at 4 seats we're at Mode A's cap so the +SEAT shrinks to a slim
+  // rail to keep all four seat columns full-width.
+  var activeCount = activeSeatCount(state.seats, state.paidSeats);
   for (var i = 0; i < state.seats.length; i++) {
     if (state.paidSeats[state.seats[i].id]) continue;
     var panel = buildSeatCard(state, i);
-    if (isModeA) {
-      // Flex-row column — equal share of the horizontal space.
-      panel.style.flex  = '1';
-      panel.style.width = '0';
-    }
+    panel.style.flex  = '1';
+    panel.style.width = '0';
     container.appendChild(panel);
   }
 
   var addTile = buildAddTile(state, { fullSize: true });
-  if (isModeA) {
-    // Slim +SEAT rail on the right, full column height.
+  if (activeCount >= 4) {
     addTile.style.flex       = '0 0 auto';
     addTile.style.width      = '80px';
     addTile.style.flexShrink = '0';
+  } else {
+    addTile.style.flex  = '1';
+    addTile.style.width = '0';
   }
   container.appendChild(addTile);
 
   if (state._manageMode && state._manageTool === 'merge') {
     var checkTile = buildCheckTile(state, { fullSize: true });
-    if (isModeA) {
+    if (activeCount >= 4) {
       checkTile.style.flex       = '0 0 auto';
       checkTile.style.width      = '80px';
       checkTile.style.flexShrink = '0';
+    } else {
+      checkTile.style.flex  = '1';
+      checkTile.style.width = '0';
     }
     container.appendChild(checkTile);
   }
