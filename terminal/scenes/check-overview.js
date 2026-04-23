@@ -39,6 +39,7 @@ import {
   buildWell,
   buildCard,
   buildStaticCard,
+  buildActionCard,
   buildPillButton,
   hexToRgba,
   darkenHex,
@@ -81,7 +82,14 @@ var _refreshInFlight = false;
 //  HELPERS
 // ═══════════════════════════════════════════════════
 
-function fmt(n) { return '$' + (n || 0).toFixed(2); }
+function fmt(n) {
+  // Coerce to Number so we tolerate stringified prices from the backend
+  // ("9.00" is common) — the raw `n.toFixed(2)` path used to throw a
+  // TypeError on any non-number and take the whole action bar down.
+  var v = Number(n);
+  if (!isFinite(v)) v = 0;
+  return '$' + v.toFixed(2);
+}
 
 // seatTotal now wraps the pure helper from ./seats.js so the
 // rendering paths and transition paths share one math implementation.
@@ -1101,9 +1109,27 @@ function renderActionBar(state) {
   discBtn.style.borderRadius = '12px 12px 6px 6px';
   leftStack.appendChild(discBtn);
 
-  // VOID
+  // VOID / DELETE — label flips to DELETE when every currently-selected
+  // item is pre-kitchen (no sent_at). Deleting pre-kitchen items is a
+  // local remove (no void record), so using the right verb matches the
+  // operator's mental model.
+  var voidLabel = 'VOID';
+  if (anyItemSel) {
+    var allUnsent = true;
+    for (var vki = 0; vki < itemKeys.length; vki++) {
+      var vp = itemKeys[vki].split(':');
+      var vSeat = state.seats[parseInt(vp[0], 10)];
+      var vItem = vSeat && vSeat.items[parseInt(vp[1], 10)];
+      if (!vItem) continue;
+      // Treat missing sent_at as unsent — state.seats mirrors backend
+      // items after orderToSeats preserves the field.
+      if (vItem.sent_at) { allUnsent = false; break; }
+    }
+    if (allUnsent) voidLabel = 'DELETE';
+  }
+
   var voidBtn = buildPillButton({
-    label: 'VOID',
+    label: voidLabel,
     color: T.verm,
     darkBg: T.vermDk,
     onClick: function() { handleVoid(state); }
@@ -1746,6 +1772,34 @@ function buildSeatsContainer(state) {
     root.appendChild(banner);
   }
 
+  // ── Selection toolbar ──
+  // Small SELECT ALL / CLEAR chip above the seats area. Flips labels +
+  // color based on whether anything is currently selected so one button
+  // covers both directions. Positioned flush right to stay out of the
+  // seat-card visual rhythm.
+  var anySel = Object.keys(state.selectedItems || {}).length > 0
+            || Object.keys(state.selected      || {}).length > 0;
+  var selRow = document.createElement('div');
+  Object.assign(selRow.style, {
+    flexShrink:     '0',
+    display:        'flex',
+    justifyContent: 'flex-end',
+    padding:        '4px 12px 0',
+  });
+  var selBtn = buildPillButton({
+    label:    anySel ? 'CLEAR' : 'SELECT ALL',
+    color:    anySel ? T.verm : T.elec,
+    darkBg:   anySel ? T.vermDk : T.elecDk,
+    fontSize: T.fsB4,
+    padding:  '6px 14px',
+    onClick: function() {
+      if (anySel) clearAllSelection(state);
+      else         forceSelectAll(state);
+    },
+  });
+  selRow.appendChild(selBtn);
+  root.appendChild(selRow);
+
   // Layout mode:
   //   A  1-4 active seats  — each seat gets its own flex-row column with
   //                          a slim +SEAT rail on the right.
@@ -1821,10 +1875,14 @@ function renderSeatsGrid(state, container, mode) {
       }
     }
 
-    recapCol.appendChild(buildItemRecap(adaptedOrder, {
+    var recapEl = buildItemRecap(adaptedOrder, {
       hideHeader:  true,
       hideTotals:  true,
       collapsible: true,
+      seatAccent: function(fIdx) {
+        var realIdx = filteredToState[fIdx];
+        return realIdx != null ? seatAccent(realIdx) : null;
+      },
       itemSelected: function(fIdx, itemIdx) {
         var realIdx = filteredToState[fIdx];
         return realIdx != null
@@ -1834,7 +1892,14 @@ function renderSeatsGrid(state, container, mode) {
         var realIdx = filteredToState[fIdx];
         if (realIdx != null) toggleItem(state, realIdx, itemIdx);
       },
-    }));
+    });
+    // .ir-root defaults to max-width:400px, which left a dead strip of
+    // empty column between the recap and the tile grid in Mode B.
+    // Let it fill the whole recapCol instead — the column already has
+    // its own flex:1 sizing.
+    recapEl.style.maxWidth = 'none';
+    recapEl.style.width    = '100%';
+    recapCol.appendChild(recapEl);
     container.appendChild(recapCol);
 
     var tilesCol = document.createElement('div');
@@ -1909,61 +1974,84 @@ function renderSeatsGrid(state, container, mode) {
   }
 }
 
-// Per-seat accent color. First four seats use the canonical blueprint
-// palette; beyond that we rotate through T.srvPalette so large parties
-// still get distinct accents.
+// Per-seat accent color. Distinct from the action-bar palette (gold,
+// greenWarm, verm, elec, lavender, moon) so a selected seat never
+// looks like a PAY / ADD ITEMS / VOID / PRINT / DISC / EDIT button.
+// Rotates mod-length so large parties still get distinct accents.
+var SEAT_PALETTE = [
+  '#38bdf8', // sky
+  '#fb923c', // peach
+  '#f472b6', // pink
+  '#34d399', // emerald
+  '#facc15', // yellow
+  '#e879f9', // fuchsia
+  '#818cf8', // indigo
+  '#fb7185', // rose
+];
 function seatAccent(seatIdx) {
-  var first4 = [T.green, T.elec, T.gold, T.verm];
-  if (seatIdx < first4.length) return first4[seatIdx];
-  var pal = T.srvPalette || [];
-  if (!pal.length) return T.green;
-  return pal[seatIdx % pal.length];
+  return SEAT_PALETTE[seatIdx % SEAT_PALETTE.length];
 }
 
 function buildSeatCard(state, seatIdx) {
-  var seat = state.seats[seatIdx];
-  var wrap = buildStaticCard({ accent: T.green });
+  var seat       = state.seats[seatIdx];
+  var isSelected = !!(state.selected && state.selected[seat.id]);
+  var accent     = seatAccent(seatIdx);
+
+  // buildActionCard for cursor:pointer + touch-action:manipulation +
+  // press animation. buildStaticCard would trigger the theme-manager
+  // guard warning (it's display-only) and swallow touch taps on the
+  // card body.
+  var wrap = buildActionCard({ accent: accent });
   wrap.style.flex          = '1';
   wrap.style.padding       = '0';
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
-  var card = wrap;
 
-  wrap.addEventListener('pointerup', function(e) {
-    if (e.defaultPrevented) return;
-    toggleSeat(state, seatIdx);
-  });
+  // Selection visual: only the header and the item rows highlight —
+  // the card body stays T.card so selection reads as a focused strip
+  // rather than a full color flood. Item rows get the per-seat accent
+  // via the --ir-accent-selected CSS var on the embedded recap below.
 
   // ── Header Row ──
+  // Header owns the bulk-select tap so items inside the body stay free
+  // to register their own per-item taps (via buildItemRecap's onItemTap).
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    background:   T.well,
-    padding:      '8px 12px',
-    borderBottom: '1px solid ' + T.border,
-    display:      'flex',
-    alignItems:   'center',
+    background:     isSelected ? accent : T.well,
+    padding:        '8px 12px',
+    borderBottom:   '1px solid ' + T.border,
+    display:        'flex',
+    alignItems:     'center',
     justifyContent: 'space-between',
+    cursor:         'pointer',
+    userSelect:     'none',
   });
 
   var label = document.createElement('div');
   Object.assign(label.style, {
-    color:      T.green,
+    color:      isSelected ? T.well : T.green,
     fontFamily: T.fh,
-    fontWeight: 'bold',
+    fontWeight: T.fwBold,
   });
   label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   hdr.appendChild(label);
 
   var subtotal = document.createElement('div');
   Object.assign(subtotal.style, {
-    color:      T.gold,
+    color:      isSelected ? T.well : T.gold,
     fontFamily: T.fb,
+    fontWeight: T.fwBold,
   });
   subtotal.textContent = fmt(seatTotal(seat));
   hdr.appendChild(subtotal);
 
-  card.appendChild(hdr);
+  hdr.addEventListener('pointerup', function(e) {
+    if (e.defaultPrevented) return;
+    toggleSeat(state, seat.id);
+  });
+
+  wrap.appendChild(hdr);
 
   // ── Body ──
   var body = document.createElement('div');
@@ -1971,7 +2059,7 @@ function buildSeatCard(state, seatIdx) {
     background:    T.card,
     flex:          '1',
     minHeight:     '0',
-    padding:       '12px',
+    padding:       '8px 10px',
     display:       'flex',
     flexDirection: 'column',
     overflowY:     'auto',
@@ -1980,65 +2068,54 @@ function buildSeatCard(state, seatIdx) {
   if (seat.items.length === 0) {
     var empty = document.createElement('div');
     Object.assign(empty.style, {
-      flex:       '1',
-      display:    'flex',
-      alignItems: 'center',
+      flex:           '1',
+      display:        'flex',
+      alignItems:     'center',
       justifyContent: 'center',
-      color:      T.border,
-      fontStyle:  'italic',
-      fontFamily: T.fb,
+      color:          T.border,
+      fontStyle:      'italic',
+      fontFamily:     T.fb,
     });
     empty.textContent = 'empty seat';
     body.appendChild(empty);
   } else {
-    for (var i = 0; i < seat.items.length; i++) {
-      var it = seat.items[i];
-      var row = document.createElement('div');
-      row.style.marginBottom = '8px';
-
-      var mainLine = document.createElement('div');
-      Object.assign(mainLine.style, {
-        display:        'flex',
-        justifyContent: 'space-between',
-        fontFamily:     T.fb,
-      });
-
-      var name = document.createElement('span');
-      name.style.color = T.text;
-      name.textContent = it.name;
-      mainLine.appendChild(name);
-
-      var price = document.createElement('span');
-      price.style.color = T.gold;
-      price.textContent = fmt(it.qty * (it.effectivePrice || it.price));
-      mainLine.appendChild(price);
-
-      row.appendChild(mainLine);
-
-      if (it.mods && it.mods.length > 0) {
-        for (var m = 0; m < it.mods.length; m++) {
-          var mod = document.createElement('div');
-          Object.assign(mod.style, {
-            color:      T.border,
-            fontSize:   '12px',
-            paddingLeft:'12px',
-            fontFamily: T.fb,
-          });
-          mod.textContent = '↳ ' + it.mods[m].name;
-          row.appendChild(mod);
-        }
-      }
-      body.appendChild(row);
-    }
+    // Same component Mode B uses, scoped to this single seat via the
+    // existing _adaptSeatForRecap helper. onItemTap toggles individual
+    // items; itemSelected seeds the .sel cascade from state.selectedItems
+    // so the inverted styling survives rerenderTopArea.
+    var recapEl = buildItemRecap(_adaptSeatForRecap(state, seatIdx), {
+      hideHeader:     true,
+      hideTotals:     true,
+      hideSeatHeader: true,
+      itemSelected: function(_fIdx, itemIdx) {
+        return !!(state.selectedItems && state.selectedItems[seatIdx + ':' + itemIdx]);
+      },
+      onItemTap: function(_fIdx, itemIdx) {
+        toggleItem(state, seatIdx, itemIdx);
+      },
+    });
+    // Override .ir-root defaults so the recap fits the seat card body:
+    // no max-width cap, transparent background (card owns the fill),
+    // tight padding that matches the body's own padding.
+    recapEl.style.maxWidth   = 'none';
+    recapEl.style.width      = '100%';
+    recapEl.style.background = 'transparent';
+    recapEl.style.padding    = '4px 2px';
+    // Tint selected item rows with this seat's accent (instead of the
+    // item-recap default T.green) so the per-item highlight reads as
+    // "part of this seat's card" regardless of which accent slot the
+    // seat landed on.
+    recapEl.style.setProperty('--ir-accent-selected', accent);
+    body.appendChild(recapEl);
   }
 
-  card.appendChild(body);
+  wrap.appendChild(body);
 
   var canDelete = seat.items.length === 0
     && activeSeatCount(state.seats, state.paidSeats) > 1;
   if (canDelete) {
     var delX = _buildDeleteSeatX(state, seat.id);
-    card.appendChild(delX);
+    wrap.appendChild(delX);
   }
 
   state.seatEls[seat.id] = wrap;
@@ -2054,23 +2131,22 @@ function buildCompactTile(state, seatIdx) {
   var isSelected = !!(state.selected && state.selected[seat.id]);
   var accent     = seatAccent(seatIdx);
 
-  var wrap = buildStaticCard({ accent: accent });
+  // buildActionCard (same builder the manager-landing check grid uses)
+  // gives us cursor:pointer, pointer-events:auto, touch-action:manipulation,
+  // and the press-depress animation — everything a tappable tile needs.
+  // buildStaticCard is display-only, which is why taps on the tile body
+  // showed no cursor feedback and didn't register.
+  var wrap = buildActionCard({ accent: accent });
   wrap.style.padding       = '0';
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
   wrap.style.minHeight     = '90px';
-  wrap.style.cursor        = 'pointer';
-  // touch-action does not inherit, so apply it on every descendant of
-  // the tile (header, body, and any text child) — otherwise only the
-  // X / + children (which set it explicitly) drag-scroll the grid and
-  // the card body defaults to auto + fires toggleSeat on release.
-  wrap.style.touchAction = 'pan-y';
 
   // Inverted selection visual — wrap fills with the per-seat accent,
   // all text flips to T.well. Matches the file-header spec ('selected
   // tiles fill with a per-seat accent ... every text node flips to
-  // T.well'). Unselected tiles keep the dark card look.
+  // T.well').
   if (isSelected) {
     wrap.style.background = accent;
   }
@@ -2085,14 +2161,12 @@ function buildCompactTile(state, seatIdx) {
     background:   isSelected ? darkenHex(accent, 0.15) : T.well,
     padding:      '6px 12px',
     borderBottom: '1px solid ' + T.border,
-    touchAction:  'pan-y',
   });
   var label = document.createElement('div');
   Object.assign(label.style, {
-    color:       isSelected ? T.well : T.green,
-    fontFamily:  T.fh,
-    fontWeight:  T.fwBold,
-    touchAction: 'pan-y',
+    color:      isSelected ? T.well : T.green,
+    fontFamily: T.fh,
+    fontWeight: T.fwBold,
   });
   label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   hdr.appendChild(label);
@@ -2106,15 +2180,13 @@ function buildCompactTile(state, seatIdx) {
     alignItems:     'center',
     justifyContent: 'center',
     padding:        '10px',
-    touchAction:    'pan-y',
   });
   var totalEl = document.createElement('div');
   Object.assign(totalEl.style, {
-    color:       isSelected ? T.well : T.gold,
-    fontFamily:  T.fb,
-    fontSize:    T.fsB1,
-    fontWeight:  T.fwBold,
-    touchAction: 'pan-y',
+    color:      isSelected ? T.well : T.gold,
+    fontFamily: T.fb,
+    fontSize:   T.fsB1,
+    fontWeight: T.fwBold,
   });
   totalEl.textContent = fmt(seatTotal(seat));
   body.appendChild(totalEl);
@@ -2413,8 +2485,24 @@ function toggleItem(state, seatIdx, itemIdx) {
   rerenderTopArea(state);
 }
 
+// Populate state.selectedItems with every unpaid seat's items (plus
+// state.selected for empty unpaid seats so they still get the inverted
+// tile visual). The items-first totals + recap filter pick up the rest.
 function forceSelectAll(state) {
-  state.selected = selectAllUnpaid(state.seats, state.paidSeats);
+  if (!state.selectedItems) state.selectedItems = {};
+  if (!state.selected)      state.selected      = {};
+  for (var i = 0; i < state.seats.length; i++) {
+    var seat = state.seats[i];
+    if (state.paidSeats && state.paidSeats[seat.id]) continue;
+    if (seat.items.length === 0) {
+      state.selected[seat.id] = true;
+    } else {
+      for (var j = 0; j < seat.items.length; j++) {
+        state.selectedItems[i + ':' + j] = true;
+      }
+    }
+  }
+  _syncSelectedFromItems(state);
   rerenderTopArea(state);
 }
 
@@ -2496,7 +2584,8 @@ function persistSeats(state) {
   // /orders, creating duplicate C-### checks. The chain guarantees the
   // first tap completes (POSTing and capturing orderId) before any
   // follow-up runs as a PUT against that same orderId.
-  state._seatsChain = (state._seatsChain || Promise.resolve()).then(function() {
+  var _prevChain = state._seatsChain || Promise.resolve();
+  var myChain = _prevChain.then(function() {
     var nums = state.seats.map(function(s) { return s.number; });
     if (nums.length === 0) return;
 
@@ -2583,7 +2672,19 @@ function persistSeats(state) {
         });
       });
   });
-  return state._seatsChain;
+  state._seatsChain = myChain;
+  // Clear the chain reference once our tail resolves so refreshOrder's
+  // `if (state._seatsChain)` guard can fall through on the next call.
+  // Before this cleanup the chain stayed truthy forever, and refreshOrder
+  // would recurse on an already-resolved promise — an infinite microtask
+  // loop that locks the tab. Only clear when we're still the tail (a
+  // later persistSeats may have queued on top of us).
+  myChain.then(function() {
+    if (state._seatsChain === myChain) state._seatsChain = null;
+  }, function() {
+    if (state._seatsChain === myChain) state._seatsChain = null;
+  });
+  return myChain;
 }
 
 // Push item seat assignments to the backend. Used after MANAGE MOVE/MERGE

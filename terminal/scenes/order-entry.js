@@ -666,6 +666,138 @@ defineScene({
       },
       unmount: function() {},
     },
+    'qty-edit': {
+      render: function(container, params) {
+        var inner      = (params && params.params) || {};
+        var itemName   = inner.itemName || '';
+        var startQty   = Math.max(1, parseInt(inner.currentQty, 10) || 1);
+        var qty        = startQty;
+
+        container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
+
+        var panel = document.createElement('div');
+        panel.style.cssText = [
+          'display:flex;flex-direction:column;gap:14px;',
+          'background:' + T.card + ';',
+          'border:3px solid ' + T.green + ';',
+          'border-radius:' + T.chamferCard + 'px;',
+          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
+          'padding:16px 28px 24px;min-width:420px;max-width:520px;',
+        ].join('');
+
+        var title = document.createElement('div');
+        title.style.cssText = [
+          'font-family:' + T.fh + ';',
+          'font-size:' + T.fsB2 + ';',
+          'font-weight:' + T.fwBold + ';',
+          'color:' + T.green + ';',
+          'letter-spacing:0.2em;',
+          'text-transform:uppercase;',
+          'text-align:center;',
+        ].join('');
+        title.textContent = 'EDIT QUANTITY';
+        panel.appendChild(title);
+
+        if (itemName) {
+          var subtitle = document.createElement('div');
+          subtitle.style.cssText = [
+            'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
+            'color:' + T.text + ';text-align:center;',
+            'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+          ].join('');
+          subtitle.textContent = itemName;
+          panel.appendChild(subtitle);
+        }
+
+        // Stepper row: [ − ]  ( qty )  [ + ]
+        var stepper = document.createElement('div');
+        stepper.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:16px;margin:6px 0 4px;';
+
+        var minusBtn = buildPillButton({
+          label: '−',
+          color: T.card,
+          fontSize: T.fsB1,
+        });
+        minusBtn.style.width  = '64px';
+        minusBtn.style.height = '56px';
+        minusBtn.style.flexShrink = '0';
+
+        var qtyReadout = document.createElement('div');
+        qtyReadout.style.cssText = [
+          'min-width:80px;text-align:center;',
+          'font-family:' + T.fb + ';font-size:' + T.fsB1 + ';',
+          'font-weight:' + T.fwBold + ';color:' + T.gold + ';',
+          'pointer-events:none;',
+        ].join('');
+
+        var plusBtn = buildPillButton({
+          label: '+',
+          color: T.card,
+          fontSize: T.fsB1,
+        });
+        plusBtn.style.width  = '64px';
+        plusBtn.style.height = '56px';
+        plusBtn.style.flexShrink = '0';
+
+        stepper.appendChild(minusBtn);
+        stepper.appendChild(qtyReadout);
+        stepper.appendChild(plusBtn);
+        panel.appendChild(stepper);
+
+        // Bottom bar
+        var bottomBar = document.createElement('div');
+        bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
+
+        var cancelBtn = buildPillButton({
+          label: 'CANCEL',
+          color: T.card, fontSize: T.fsB2,
+          onClick: function() { params.onCancel(); },
+        });
+        cancelBtn.style.flex = '1';
+        cancelBtn.style.height = '48px';
+
+        var confirmBtn = buildPillButton({
+          label: 'CONFIRM',
+          color: T.card, fontSize: T.fsB2,
+          onClick: function() {
+            if (qty === startQty) return;
+            params.onConfirm(qty);
+          },
+        });
+        confirmBtn.style.flex = '1';
+        confirmBtn.style.height = '48px';
+
+        bottomBar.appendChild(cancelBtn);
+        bottomBar.appendChild(confirmBtn);
+        panel.appendChild(bottomBar);
+        container.appendChild(panel);
+
+        function paint() {
+          qtyReadout.textContent = String(qty);
+          minusBtn.style.opacity = qty > 1 ? '1' : '0.35';
+          var dirty = qty !== startQty;
+          confirmBtn.style.color       = dirty ? T.green   : T.dimText;
+          confirmBtn.style.borderColor = dirty ? T.green   : T.card;
+        }
+
+        minusBtn.addEventListener('pointerup', function(e) {
+          e.stopPropagation();
+          if (qty > 1) { qty -= 1; paint(); }
+        });
+        plusBtn.addEventListener('pointerup', function(e) {
+          e.stopPropagation();
+          qty += 1;
+          paint();
+        });
+
+        container.addEventListener('pointerup', function(e) {
+          if (e.target === container) { params.onCancel(); }
+        });
+
+        paint();
+      },
+      unmount: function() {},
+    },
     'oe-name-input': {
       render: function(container, params) {
         showKeyboard({
@@ -2278,9 +2410,8 @@ function openModifierPanel(item, modConfig, catColor, enablePlacement) {
 
   _modPanelOpen = true;
 
-  // Hide grid + tab bar, show snake strip above the panel, hide bottom bar
+  // Hide grid, show snake strip above the panel, hide bottom bar
   if (_gridWrap)    _gridWrap.style.display    = 'none';
-  if (_snakeTabBar) _snakeTabBar.style.display = 'none';
   if (_snakeStrip)  { _snakeStrip.innerHTML = ''; _snakeStrip.style.display = 'none'; }
   if (_bottomBar)   _bottomBar.style.display   = 'none';
   _mainArea.style.border = 'none';
@@ -2343,9 +2474,8 @@ function closeModifierPanel() {
   _modPanelItem = null;
   _modPanelOpen = false;
 
-  // Restore grid + tab bar
+  // Restore grid
   if (_gridWrap)    _gridWrap.style.display    = '';
-  if (_snakeTabBar) _snakeTabBar.style.display = '';
   if (_snakeStrip)  { _snakeStrip.innerHTML = ''; _snakeStrip.style.display = 'none'; }
   if (_mainArea)    _mainArea.style.border     = '';
 

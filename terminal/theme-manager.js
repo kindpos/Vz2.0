@@ -102,9 +102,48 @@ export function buildCard(opts) {
 // ═══════════════════════════════════════════════════
 //  KINDpos Card Affordance System
 // ═══════════════════════════════════════════════════
+//
+//  Three tiers — pick the one that matches the interaction:
+//
+//    buildStaticCard(opts)  — Tier 1, DISPLAY-ONLY panel.
+//                             cursor:default, no tap chrome, no press
+//                             animation. NEVER attach click/pointerup
+//                             listeners; nothing will visually confirm
+//                             the tap and touch devices may swallow it.
+//                             Use for read-only data surfaces
+//                             (COB panel, Sales card, totals cards).
+//
+//    buildNavCard(opts)     — Tier 2, drill-down / navigable card.
+//                             Adds hover shadow, chevron, and a
+//                             pointerdown-translate press. Extends
+//                             buildStaticCard internally and wires its
+//                             own pointer listeners — safe to click
+//                             via opts.onClick.
+//
+//    buildActionCard(opts)  — Tier 3, primary tappable card.
+//                             cursor:pointer, pointer-events:auto,
+//                             touch-action:manipulation, raised/pressed
+//                             shadow animation. The right choice for
+//                             grid tiles, check tiles, seat tiles —
+//                             anything whose whole surface is a button.
+//
+//  The wrong choice isn't a type error; it's a silent-tap bug that
+//  only surfaces on touch. See check-overview Mode B seat tiles
+//  (fixed 1913d94): buildStaticCard silently ignored taps on the
+//  card body because it has no touch-action:manipulation chrome.
+// ═══════════════════════════════════════════════════
 
 /**
- * buildStaticCard(opts) — Tier 1, read-only display panel
+ * buildStaticCard(opts) — Tier 1, read-only display panel.
+ *
+ * DO NOT attach click / pointerup / pointerdown listeners to the
+ * returned element — this builder is display-only. Use buildActionCard
+ * for tappable surfaces or buildNavCard for drill-down navigation.
+ *
+ * Dev-time guard: the returned element's addEventListener is wrapped
+ * to log a console.warn when an interactive event type is attached
+ * externally, so the mistake surfaces during development instead of
+ * being rediscovered on a touch device.
  */
 export function buildStaticCard(opts) {
   var o = opts || {};
@@ -141,9 +180,26 @@ export function buildStaticCard(opts) {
     el.accentBar.style.boxShadow = '0 0 10px ' + hexToRgba(color, 0.5);
   };
 
-  if (o.onClick) {
-    el.addEventListener('pointerup', o.onClick);
-  }
+  // Dev guard — warn if a consumer attaches an interactive listener to
+  // a display-only card. buildNavCard (and any other internal extender)
+  // sets _staticCardTappableAllowed = true before wiring its own
+  // pointerdown/pointerup so the warning only fires for external misuse.
+  var _origAdd = el.addEventListener.bind(el);
+  var _warned = false;
+  el.addEventListener = function(type, listener, options) {
+    if (!_warned && !el._staticCardTappableAllowed
+        && (type === 'click' || type === 'pointerup' || type === 'pointerdown')) {
+      _warned = true;
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[theme-manager] buildStaticCard is a display-only panel; ' +
+        'attaching "' + type + '" will not give the tile a tap cursor, ' +
+        'touch-action chrome, or the press animation. Use buildActionCard ' +
+        'for tappable cards or buildNavCard for drill-down navigation.'
+      );
+    }
+    return _origAdd(type, listener, options);
+  };
 
   return el;
 }
@@ -155,6 +211,10 @@ export function buildNavCard(opts) {
   var o = opts || {};
   var accent = o.accent || T.green;
   var el = buildStaticCard(o);
+  // Opt out of buildStaticCard's tappable-listener guard — buildNavCard
+  // legitimately attaches pointerdown/pointerup for its own press
+  // animation, and consumers may also attach a click via opts.onClick.
+  el._staticCardTappableAllowed = true;
   el.style.cursor = 'pointer';
   el.style.transition = 'transform 0.1s ease, box-shadow 0.1s ease';
 
