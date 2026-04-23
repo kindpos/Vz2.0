@@ -2344,22 +2344,38 @@ function _wireItemTaps(state, seatIdx, itemIdx, el) {
 // checks, so we keep it in sync after every mutation.
 function _syncSelectedFromItems(state) {
   var next = {};
-  for (var i = 0; i < state.seats.length; i++) {
-    if (state.paidSeats && state.paidSeats[state.seats[i].id]) continue;
-    var seat = state.seats[i];
-    if (!seat.items.length) continue;
-    var all = true;
-    for (var j = 0; j < seat.items.length; j++) {
-      if (!state.selectedItems[i + ':' + j]) { all = false; break; }
+  // Carry empty-seat selections forward — they have no items to
+  // mirror, so they persist based on explicit toggleSeat taps until
+  // the cashier untaps them (or ADD ITEMS populates the seat).
+  if (state.selected) {
+    for (var i = 0; i < state.seats.length; i++) {
+      var s = state.seats[i];
+      if (state.paidSeats && state.paidSeats[s.id]) continue;
+      if (s.items.length === 0 && state.selected[s.id]) {
+        next[s.id] = true;
+      }
     }
-    if (all) next[seat.id] = true;
+  }
+  // Non-empty seats are "fully selected" iff every one of their items
+  // is in state.selectedItems.
+  for (var i2 = 0; i2 < state.seats.length; i2++) {
+    var s2 = state.seats[i2];
+    if (state.paidSeats && state.paidSeats[s2.id]) continue;
+    if (!s2.items.length) continue;
+    var all = true;
+    for (var j = 0; j < s2.items.length; j++) {
+      if (!state.selectedItems[i2 + ':' + j]) { all = false; break; }
+    }
+    if (all) next[s2.id] = true;
   }
   state.selected = next;
 }
 
 // Tapping a seat is a bulk shortcut: if every item in the seat is
 // already selected, deselect the whole seat; otherwise select every
-// item. Individual item taps go through toggleItem instead.
+// item. Empty seats flip state.selected directly — no items to
+// mirror — so the tile still serves as ADD ITEMS scope. Individual
+// item taps go through toggleItem.
 function toggleSeat(state, seatId) {
   if (state.paidSeats && state.paidSeats[seatId]) return;
   var seatIdx = -1;
@@ -2369,8 +2385,16 @@ function toggleSeat(state, seatId) {
   if (seatIdx < 0) return;
   var seat = state.seats[seatIdx];
   if (!state.selectedItems) state.selectedItems = {};
+  if (!state.selected)      state.selected      = {};
 
-  var allSelected = seat.items.length > 0;
+  if (seat.items.length === 0) {
+    if (state.selected[seatId]) delete state.selected[seatId];
+    else                         state.selected[seatId] = true;
+    rerenderTopArea(state);
+    return;
+  }
+
+  var allSelected = true;
   for (var j = 0; j < seat.items.length; j++) {
     if (!state.selectedItems[seatIdx + ':' + j]) { allSelected = false; break; }
   }
