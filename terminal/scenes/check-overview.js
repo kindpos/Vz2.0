@@ -1992,10 +1992,10 @@ function buildCompactTile(state, seatIdx) {
   wrap.style.overflow      = 'hidden';
   wrap.style.minHeight     = '90px';
   wrap.style.cursor        = 'pointer';
-  // Let vertical drag gestures scroll the tiles grid — without this the
-  // browser fires a synthetic tap on pointerup and toggleSeat wins over
-  // the scroll, so only the +SEAT rail (which sets touchAction) would
-  // scroll. Match that here so any tile can drag-scroll the grid.
+  // touch-action does not inherit, so apply it on every descendant of
+  // the tile (header, body, and any text child) — otherwise only the
+  // X / + children (which set it explicitly) drag-scroll the grid and
+  // the card body defaults to auto + fires toggleSeat on release.
   wrap.style.touchAction = 'pan-y';
 
   wrap.addEventListener('pointerup', function(e) {
@@ -2008,12 +2008,14 @@ function buildCompactTile(state, seatIdx) {
     background:   T.well,
     padding:      '6px 12px',
     borderBottom: '1px solid ' + T.border,
+    touchAction:  'pan-y',
   });
   var label = document.createElement('div');
   Object.assign(label.style, {
-    color:      T.green,
-    fontFamily: T.fh,
-    fontWeight: T.fwBold,
+    color:       T.green,
+    fontFamily:  T.fh,
+    fontWeight:  T.fwBold,
+    touchAction: 'pan-y',
   });
   label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   hdr.appendChild(label);
@@ -2027,13 +2029,15 @@ function buildCompactTile(state, seatIdx) {
     alignItems:     'center',
     justifyContent: 'center',
     padding:        '10px',
+    touchAction:    'pan-y',
   });
   var totalEl = document.createElement('div');
   Object.assign(totalEl.style, {
-    color:      T.gold,
-    fontFamily: T.fb,
-    fontSize:   T.fsB1,
-    fontWeight: T.fwBold,
+    color:       T.gold,
+    fontFamily:  T.fb,
+    fontSize:    T.fsB1,
+    fontWeight:  T.fwBold,
+    touchAction: 'pan-y',
   });
   totalEl.textContent = fmt(seatTotal(seat));
   body.appendChild(totalEl);
