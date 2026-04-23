@@ -1072,13 +1072,6 @@ function renderActionBar(state) {
   voidBtn.style.borderRadius = '6px 6px 12px 12px';
   leftStack.appendChild(voidBtn);
 
-  // Spacer — pushes the primary actions (PAY / ADD ITEMS) and the
-  // secondary stack (EDIT SEATS / PRINT) flush against the right edge
-  // so they read as one grouped cluster next to DISC / VOID on the left.
-  var spacer = document.createElement('div');
-  spacer.style.flex = '1';
-  bar.appendChild(spacer);
-
   // PAY
   var payBtn = buildPillButton({
     label: 'PAY',
@@ -1143,6 +1136,13 @@ function renderActionBar(state) {
   printBtn.style.flex = '1';
   printBtn.style.borderRadius = '6px 6px 12px 12px';
   rightStack.appendChild(printBtn);
+
+  // Trailing spacer — pushes everything (totals + DISC/VOID + PAY +
+  // ADD ITEMS + EDIT SEATS/PRINT) flush against the left edge so the
+  // action group reads as one left-aligned cluster.
+  var spacer = document.createElement('div');
+  spacer.style.flex = '1';
+  bar.appendChild(spacer);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1773,27 +1773,32 @@ function renderSeatsGrid(state, container, mode) {
 
     var tilesCol = document.createElement('div');
     Object.assign(tilesCol.style, {
-      flex:         '1',
-      minWidth:     '0',
-      display:      'flex',
-      flexWrap:     'wrap',
-      alignContent: 'flex-start',
-      gap:          '10px',
-      overflowY:    'auto',
+      flex:                '1',
+      minWidth:             '0',
+      display:              'grid',
+      gridTemplateColumns:  'repeat(3, 1fr)',
+      gridAutoRows:         'min-content',
+      alignContent:         'start',
+      gap:                  '10px',
+      overflowY:            'auto',
     });
     for (var i = 0; i < state.seats.length; i++) {
       if (state.paidSeats[state.seats[i].id]) continue;
       var tile = buildCompactTile(state, i);
-      tile.style.flex     = '0 0 calc(33.333% - 7px)';
-      tile.style.minWidth = '0';
+      // Grid controls width — undo buildStaticCard's flex default so the
+      // tile doesn't try to stretch across tracks.
+      tile.style.flex  = '';
+      tile.style.width = '';
       tilesCol.appendChild(tile);
     }
     var addB = buildAddTile(state, { fullSize: true });
-    addB.style.flex = '0 0 calc(33.333% - 7px)';
+    addB.style.flex  = '';
+    addB.style.width = '';
     tilesCol.appendChild(addB);
     if (state._manageMode && state._manageTool === 'merge') {
       var chkB = buildCheckTile(state, { fullSize: true });
-      chkB.style.flex = '0 0 calc(33.333% - 7px)';
+      chkB.style.flex  = '';
+      chkB.style.width = '';
       tilesCol.appendChild(chkB);
     }
     container.appendChild(tilesCol);
@@ -1974,8 +1979,69 @@ function buildSeatCard(state, seatIdx) {
   return wrap;
 }
 
+// Mode B compact tile — header shows S# only (no subtotal column that
+// would overflow at 33 % width), body shows the seat total big and
+// centered so the tile doubles as a balance glance. Item detail lives
+// in the recap column to the left.
 function buildCompactTile(state, seatIdx) {
-  return buildSeatCard(state, seatIdx);
+  var seat = state.seats[seatIdx];
+  var wrap = buildStaticCard({ accent: T.green });
+  wrap.style.padding       = '0';
+  wrap.style.display       = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.overflow      = 'hidden';
+  wrap.style.minHeight     = '90px';
+  wrap.style.cursor        = 'pointer';
+
+  wrap.addEventListener('pointerup', function(e) {
+    if (e.defaultPrevented) return;
+    toggleSeat(state, seat.id);
+  });
+
+  var hdr = document.createElement('div');
+  Object.assign(hdr.style, {
+    background:   T.well,
+    padding:      '6px 12px',
+    borderBottom: '1px solid ' + T.border,
+  });
+  var label = document.createElement('div');
+  Object.assign(label.style, {
+    color:      T.green,
+    fontFamily: T.fh,
+    fontWeight: T.fwBold,
+  });
+  label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
+  hdr.appendChild(label);
+  wrap.appendChild(hdr);
+
+  var body = document.createElement('div');
+  Object.assign(body.style, {
+    background:     T.card,
+    flex:           '1',
+    display:        'flex',
+    alignItems:     'center',
+    justifyContent: 'center',
+    padding:        '10px',
+  });
+  var totalEl = document.createElement('div');
+  Object.assign(totalEl.style, {
+    color:      T.gold,
+    fontFamily: T.fb,
+    fontSize:   T.fsB1,
+    fontWeight: T.fwBold,
+  });
+  totalEl.textContent = fmt(seatTotal(seat));
+  body.appendChild(totalEl);
+  wrap.appendChild(body);
+
+  var canDelete = seat.items.length === 0
+    && activeSeatCount(state.seats, state.paidSeats) > 1;
+  if (canDelete) {
+    wrap.appendChild(_buildDeleteSeatX(state, seat.id));
+  }
+
+  state.seatEls[seat.id] = wrap;
+  return wrap;
 }
 
 // ═══════════════════════════════════════════════════
