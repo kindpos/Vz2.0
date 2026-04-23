@@ -328,6 +328,7 @@ var favorites    = [];   // item ids for personal tab
 var _gridEl      = null; // inner grid DOM container
 var _gridWrap    = null; // collapsible grid wrapper
 var _snakeStrip  = null; // crumb-only strip shown when mod panel open
+var _snakeTabBar = null; // ★ PERSONAL tab strip
 var _expandedItems = {}; // item id → true when mod rows are expanded
 
 // ── Modifier Panel (slide-up) ─────────────────────
@@ -397,6 +398,7 @@ defineScene({
     _gridEl        = null;
     _gridWrap      = null;
     _snakeStrip    = null;
+    _snakeTabBar   = null;
     _expandedItems = {};
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
@@ -465,6 +467,7 @@ defineScene({
     _gridEl        = null;
     _gridWrap      = null;
     _snakeStrip    = null;
+    _snakeTabBar   = null;
     _expandedItems = {};
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
@@ -666,6 +669,138 @@ defineScene({
       },
       unmount: function() {},
     },
+    'qty-edit': {
+      render: function(container, params) {
+        var inner      = (params && params.params) || {};
+        var itemName   = inner.itemName || '';
+        var startQty   = Math.max(1, parseInt(inner.currentQty, 10) || 1);
+        var qty        = startQty;
+
+        container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
+
+        var panel = document.createElement('div');
+        panel.style.cssText = [
+          'display:flex;flex-direction:column;gap:14px;',
+          'background:' + T.card + ';',
+          'border:3px solid ' + T.green + ';',
+          'border-radius:' + T.chamferCard + 'px;',
+          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
+          'padding:16px 28px 24px;min-width:420px;max-width:520px;',
+        ].join('');
+
+        var title = document.createElement('div');
+        title.style.cssText = [
+          'font-family:' + T.fh + ';',
+          'font-size:' + T.fsB2 + ';',
+          'font-weight:' + T.fwBold + ';',
+          'color:' + T.green + ';',
+          'letter-spacing:0.2em;',
+          'text-transform:uppercase;',
+          'text-align:center;',
+        ].join('');
+        title.textContent = 'EDIT QUANTITY';
+        panel.appendChild(title);
+
+        if (itemName) {
+          var subtitle = document.createElement('div');
+          subtitle.style.cssText = [
+            'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
+            'color:' + T.text + ';text-align:center;',
+            'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+          ].join('');
+          subtitle.textContent = itemName;
+          panel.appendChild(subtitle);
+        }
+
+        // Stepper row: [ − ]  ( qty )  [ + ]
+        var stepper = document.createElement('div');
+        stepper.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:16px;margin:6px 0 4px;';
+
+        var minusBtn = buildPillButton({
+          label: '−',
+          color: T.card,
+          fontSize: T.fsB1,
+        });
+        minusBtn.style.width  = '64px';
+        minusBtn.style.height = '56px';
+        minusBtn.style.flexShrink = '0';
+
+        var qtyReadout = document.createElement('div');
+        qtyReadout.style.cssText = [
+          'min-width:80px;text-align:center;',
+          'font-family:' + T.fb + ';font-size:' + T.fsB1 + ';',
+          'font-weight:' + T.fwBold + ';color:' + T.gold + ';',
+          'pointer-events:none;',
+        ].join('');
+
+        var plusBtn = buildPillButton({
+          label: '+',
+          color: T.card,
+          fontSize: T.fsB1,
+        });
+        plusBtn.style.width  = '64px';
+        plusBtn.style.height = '56px';
+        plusBtn.style.flexShrink = '0';
+
+        stepper.appendChild(minusBtn);
+        stepper.appendChild(qtyReadout);
+        stepper.appendChild(plusBtn);
+        panel.appendChild(stepper);
+
+        // Bottom bar
+        var bottomBar = document.createElement('div');
+        bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
+
+        var cancelBtn = buildPillButton({
+          label: 'CANCEL',
+          color: T.card, fontSize: T.fsB2,
+          onClick: function() { params.onCancel(); },
+        });
+        cancelBtn.style.flex = '1';
+        cancelBtn.style.height = '48px';
+
+        var confirmBtn = buildPillButton({
+          label: 'CONFIRM',
+          color: T.card, fontSize: T.fsB2,
+          onClick: function() {
+            if (qty === startQty) return;
+            params.onConfirm(qty);
+          },
+        });
+        confirmBtn.style.flex = '1';
+        confirmBtn.style.height = '48px';
+
+        bottomBar.appendChild(cancelBtn);
+        bottomBar.appendChild(confirmBtn);
+        panel.appendChild(bottomBar);
+        container.appendChild(panel);
+
+        function paint() {
+          qtyReadout.textContent = String(qty);
+          minusBtn.style.opacity = qty > 1 ? '1' : '0.35';
+          var dirty = qty !== startQty;
+          confirmBtn.style.color       = dirty ? T.green   : T.dimText;
+          confirmBtn.style.borderColor = dirty ? T.green   : T.card;
+        }
+
+        minusBtn.addEventListener('pointerup', function(e) {
+          e.stopPropagation();
+          if (qty > 1) { qty -= 1; paint(); }
+        });
+        plusBtn.addEventListener('pointerup', function(e) {
+          e.stopPropagation();
+          qty += 1;
+          paint();
+        });
+
+        container.addEventListener('pointerup', function(e) {
+          if (e.target === container) { params.onCancel(); }
+        });
+
+        paint();
+      },
+      unmount: function() {},
+    },
     'oe-name-input': {
       render: function(container, params) {
         showKeyboard({
@@ -855,7 +990,25 @@ function buildItemTile(item, catColor, isFav) {
 
 // ── SNAKE NAV GRID RENDERER ────────────────────────
 
+function _refreshSnakeTabBar() {
+  if (!_snakeTabBar) return;
+  var personalBtn = _snakeTabBar._personalBtn;
+  var homeBtn     = _snakeTabBar._homeBtn;
+  var isPersonal  = snakeState.view === 'personal';
+  var isCats      = snakeState.view === 'cats';
+
+  if (personalBtn) {
+    personalBtn.style.color              = isPersonal ? T.gold : T.mutedText;
+    personalBtn.style.borderBottomColor  = isPersonal ? T.gold : 'transparent';
+    personalBtn.style.opacity            = isPersonal ? '1' : '0.8';
+  }
+  if (homeBtn) {
+    homeBtn.style.display = isCats ? 'none' : '';
+  }
+}
+
 function renderSnakeGrid() {
+  _refreshSnakeTabBar();
   if (!_gridEl) return;
   _gridEl.innerHTML = '';
 
@@ -1055,6 +1208,55 @@ function buildMain(parentEl, params) {
   var main = document.createElement('div');
   main.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
   _mainArea = main;
+
+  // ── Tab bar (★ PERSONAL + ⌂ CATEGORIES) ──────────
+  var tabBar = document.createElement('div');
+  tabBar.style.cssText = [
+    'display:flex;background:' + T.well + ';',
+    'border-bottom:1px solid rgba(255,255,255,0.06);',
+    'padding:4px 8px 0;flex-shrink:0;',
+  ].join('');
+  _snakeTabBar = tabBar;
+
+  var personalBtn = document.createElement('div');
+  personalBtn.style.cssText = [
+    'padding:6px 14px;cursor:pointer;user-select:none;',
+    'pointer-events:auto;touch-action:manipulation;',
+    'font-family:' + T.fh + ';font-weight:700;font-size:11px;letter-spacing:1px;',
+    'color:' + T.mutedText + ';border-bottom:2px solid transparent;',
+    'transition:color 120ms;',
+  ].join('');
+  personalBtn.textContent = '★ PERSONAL';
+  personalBtn.addEventListener('pointerup', function() {
+    snakeState.view   = 'personal';
+    snakeState.crumbs = [];
+    snakeState.catId  = null;
+    snakeState.subId  = null;
+    renderSnakeGrid();
+  });
+  tabBar._personalBtn = personalBtn;
+
+  var homeBtn = document.createElement('div');
+  homeBtn.style.cssText = [
+    'padding:6px 12px;cursor:pointer;user-select:none;',
+    'pointer-events:auto;touch-action:manipulation;',
+    'font-family:' + T.fh + ';font-size:11px;letter-spacing:1px;',
+    'color:' + T.mutedText + ';border-bottom:2px solid transparent;',
+    'display:none;opacity:0.6;',
+  ].join('');
+  homeBtn.textContent = '⌂ CATEGORIES';
+  homeBtn.addEventListener('pointerup', function() {
+    snakeState.view   = 'cats';
+    snakeState.crumbs = [];
+    snakeState.catId  = null;
+    snakeState.subId  = null;
+    renderSnakeGrid();
+  });
+  tabBar._homeBtn = homeBtn;
+
+  tabBar.appendChild(personalBtn);
+  tabBar.appendChild(homeBtn);
+  main.appendChild(tabBar);
 
   // ── Collapsible grid wrapper ──────────────────────
   var gridWrap = document.createElement('div');
