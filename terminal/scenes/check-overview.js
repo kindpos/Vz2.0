@@ -834,6 +834,52 @@ defineScene({
       unmount: function() {},
     },
 
+    'seat-count': {
+      render: function(container, params) {
+        container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
+
+        var panel = document.createElement('div');
+        panel.style.cssText = [
+          'display:flex;flex-direction:column;align-items:center;gap:14px;',
+          'background:' + T.card + ';',
+          'border:3px solid ' + T.green + ';',
+          'border-radius:' + T.chamferCard + 'px;',
+          'padding:22px 24px;',
+          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
+        ].join('');
+
+        var lbl = document.createElement('div');
+        lbl.style.cssText = [
+          'font-family:' + T.fh + ';',
+          'font-size:' + T.fsB2 + ';',
+          'font-weight:' + T.fwBold + ';',
+          'color:' + T.green + ';',
+          'letter-spacing:0.2em;',
+          'text-transform:uppercase;',
+          'margin-bottom:2px;',
+        ].join('');
+        lbl.textContent = 'HOW MANY SEATS?';
+        panel.appendChild(lbl);
+
+        var numpad = buildNumpad({
+          onSubmit: function(val) {
+            var n = parseInt(val, 10);
+            if (!isFinite(n) || n < 1) { numpad.setError('ENTER A NUMBER'); return; }
+            if (n > 99)                 { numpad.setError('MAX 99');         return; }
+            params.onConfirm(n);
+          },
+          onCancel: function() { params.onCancel(); },
+        });
+        panel.appendChild(numpad);
+        container.appendChild(panel);
+
+        container.addEventListener('pointerup', function(e) {
+          if (e.target === container) params.onCancel();
+        });
+      },
+      unmount: function() {},
+    },
+
     'seat-payment': {
       render: function(container, params) {
         params = params || {};
@@ -2256,7 +2302,26 @@ function buildAddTile(state, opts) {
   wrap.style.touchAction   = 'manipulation';
   plus.style.pointerEvents = 'none';  // let clicks fall through to wrap
 
-  wrap.onclick = function() {
+  // Short tap = add one seat (or commit MERGE when items are selected in
+  // MANAGE/merge). Long press (~550 ms) opens the numeric keypad so the
+  // cashier can add several seats in a single gesture — handy for
+  // large parties landing on a fresh check.
+  var lpTimer = null;
+  var longPressed = false;
+  wrap.addEventListener('pointerdown', function() {
+    longPressed = false;
+    lpTimer = setTimeout(function() {
+      longPressed = true;
+      lpTimer = null;
+      SceneManager.interrupt('seat-count', {
+        onConfirm: function(n) { addSeatsBatch(state, n); },
+        onCancel:  function() {},
+      });
+    }, 550);
+  });
+  wrap.addEventListener('pointerup', function() {
+    if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+    if (longPressed) { longPressed = false; return; }
     if (state._manageMode
         && state._manageTool === 'merge'
         && Object.keys(state.selectedItems || {}).length > 0) {
@@ -2264,9 +2329,38 @@ function buildAddTile(state, opts) {
       return;
     }
     addSeat(state);
-  };
+  });
+  wrap.addEventListener('pointerleave', function() {
+    if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+    longPressed = false;
+  });
+  wrap.addEventListener('pointercancel', function() {
+    if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+    longPressed = false;
+  });
 
   return wrap;
+}
+
+// Append N empty seats in one shot (cheaper than looping addSeat and
+// chaining N persistSeats calls). Caps at 99 to match the seat-count
+// interrupt's validation. Triggers a single persistSeats + rerender.
+function addSeatsBatch(state, n) {
+  n = Math.max(1, Math.min(99, parseInt(n, 10) || 1));
+  var maxNum = 0;
+  for (var i = 0; i < state.seats.length; i++) {
+    if (state.seats[i].number > maxNum) maxNum = state.seats[i].number;
+  }
+  for (var j = 0; j < n; j++) {
+    var num = maxNum + j + 1;
+    state.seats.push({
+      id:     'S-' + String(num).padStart(3, '0'),
+      number: num,
+      items:  [],
+    });
+  }
+  persistSeats(state);
+  rerenderTopArea(state);
 }
 
 // ── +CHECK tile ──
