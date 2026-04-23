@@ -2496,7 +2496,8 @@ function persistSeats(state) {
   // /orders, creating duplicate C-### checks. The chain guarantees the
   // first tap completes (POSTing and capturing orderId) before any
   // follow-up runs as a PUT against that same orderId.
-  state._seatsChain = (state._seatsChain || Promise.resolve()).then(function() {
+  var _prevChain = state._seatsChain || Promise.resolve();
+  var myChain = _prevChain.then(function() {
     var nums = state.seats.map(function(s) { return s.number; });
     if (nums.length === 0) return;
 
@@ -2583,7 +2584,19 @@ function persistSeats(state) {
         });
       });
   });
-  return state._seatsChain;
+  state._seatsChain = myChain;
+  // Clear the chain reference once our tail resolves so refreshOrder's
+  // `if (state._seatsChain)` guard can fall through on the next call.
+  // Before this cleanup the chain stayed truthy forever, and refreshOrder
+  // would recurse on an already-resolved promise — an infinite microtask
+  // loop that locks the tab. Only clear when we're still the tail (a
+  // later persistSeats may have queued on top of us).
+  myChain.then(function() {
+    if (state._seatsChain === myChain) state._seatsChain = null;
+  }, function() {
+    if (state._seatsChain === myChain) state._seatsChain = null;
+  });
+  return myChain;
 }
 
 // Push item seat assignments to the backend. Used after MANAGE MOVE/MERGE
