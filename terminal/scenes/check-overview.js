@@ -1704,19 +1704,38 @@ function buildSeatsContainer(state) {
     root.appendChild(banner);
   }
 
+  // Mode A (1-4 active seats): seats laid out as flex-row columns so each
+  // tile gets its own full-height column with a slim +SEAT rail on the
+  // right. Mode B/C (5+): fall back to the 2-col grid for density.
+  var activeCount = activeSeatCount(state.seats, state.paidSeats);
+  var isModeA = activeCount <= 4;
+
   var body = document.createElement('div');
-  Object.assign(body.style, {
-    display:            'grid',
-    gridTemplateColumns:'1fr 1fr',
-    gap:                '10px',
-    padding:            '12px',
-    flex:               '1',
-    overflowY:          'auto',
-    boxSizing:          'border-box',
-  });
+  if (isModeA) {
+    Object.assign(body.style, {
+      display:       'flex',
+      flexDirection: 'row',
+      gap:           '10px',
+      padding:       '12px',
+      flex:          '1',
+      minHeight:     '0',
+      overflow:      'hidden',
+      boxSizing:     'border-box',
+    });
+  } else {
+    Object.assign(body.style, {
+      display:             'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap:                 '10px',
+      padding:             '12px',
+      flex:                '1',
+      overflowY:           'auto',
+      boxSizing:           'border-box',
+    });
+  }
   root.appendChild(body);
 
-  return { root: root, body: body };
+  return { root: root, body: body, isModeA: isModeA };
 }
 
 // ═══════════════════════════════════════════════════
@@ -1739,22 +1758,39 @@ function rerenderTopArea(state) {
   var shell = buildSeatsContainer(state);
   top.appendChild(shell.root);
 
-  renderSeatsGrid(state, shell.body);
+  renderSeatsGrid(state, shell.body, shell.isModeA);
   renderActionBar(state);
 }
 
-function renderSeatsGrid(state, container) {
+function renderSeatsGrid(state, container, isModeA) {
   for (var i = 0; i < state.seats.length; i++) {
     if (state.paidSeats[state.seats[i].id]) continue;
     var panel = buildSeatCard(state, i);
+    if (isModeA) {
+      // Flex-row column — equal share of the horizontal space.
+      panel.style.flex  = '1';
+      panel.style.width = '0';
+    }
     container.appendChild(panel);
   }
 
   var addTile = buildAddTile(state, { fullSize: true });
+  if (isModeA) {
+    // Slim +SEAT rail on the right, full column height.
+    addTile.style.flex       = '0 0 auto';
+    addTile.style.width      = '80px';
+    addTile.style.flexShrink = '0';
+  }
   container.appendChild(addTile);
 
   if (state._manageMode && state._manageTool === 'merge') {
-    container.appendChild(buildCheckTile(state, { fullSize: true }));
+    var checkTile = buildCheckTile(state, { fullSize: true });
+    if (isModeA) {
+      checkTile.style.flex       = '0 0 auto';
+      checkTile.style.width      = '80px';
+      checkTile.style.flexShrink = '0';
+    }
+    container.appendChild(checkTile);
   }
 }
 
