@@ -1822,7 +1822,7 @@ function renderSeatsGrid(state, container, mode) {
       }
     }
 
-    recapCol.appendChild(buildItemRecap(adaptedOrder, {
+    var recapEl = buildItemRecap(adaptedOrder, {
       hideHeader:  true,
       hideTotals:  true,
       collapsible: true,
@@ -1835,8 +1835,14 @@ function renderSeatsGrid(state, container, mode) {
         var realIdx = filteredToState[fIdx];
         if (realIdx != null) toggleItem(state, realIdx, itemIdx);
       },
-    }));
-    container.appendChild(recapCol);
+    });
+    // .ir-root defaults to max-width:400px, which left a dead strip of
+    // empty column between the recap and the tile grid in Mode B.
+    // Let it fill the whole recapCol instead — the column already has
+    // its own flex:1 sizing.
+    recapEl.style.maxWidth = 'none';
+    recapEl.style.width    = '100%';
+    recapCol.appendChild(recapEl);
 
     var tilesCol = document.createElement('div');
     Object.assign(tilesCol.style, {
