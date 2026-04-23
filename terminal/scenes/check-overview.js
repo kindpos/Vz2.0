@@ -1072,6 +1072,13 @@ function renderActionBar(state) {
   voidBtn.style.borderRadius = '6px 6px 12px 12px';
   leftStack.appendChild(voidBtn);
 
+  // Spacer — pushes the primary actions (PAY / ADD ITEMS) and the
+  // secondary stack (EDIT SEATS / PRINT) flush against the right edge
+  // so they read as one grouped cluster next to DISC / VOID on the left.
+  var spacer = document.createElement('div');
+  spacer.style.flex = '1';
+  bar.appendChild(spacer);
+
   // PAY
   var payBtn = buildPillButton({
     label: 'PAY',
@@ -1087,11 +1094,6 @@ function renderActionBar(state) {
     flexShrink: '0',
   });
   bar.appendChild(payBtn);
-
-  // Spacer
-  var spacer = document.createElement('div');
-  spacer.style.flex = '1';
-  bar.appendChild(spacer);
 
   // ADD ITEMS
   var addBtn = buildPillButton({
