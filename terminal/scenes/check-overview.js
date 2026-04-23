@@ -1945,15 +1945,22 @@ function renderSeatsGrid(state, container, mode) {
   }
 }
 
-// Per-seat accent color. First four seats use the canonical blueprint
-// palette; beyond that we rotate through T.srvPalette so large parties
-// still get distinct accents.
+// Per-seat accent color. Distinct from the action-bar palette (gold,
+// greenWarm, verm, elec, lavender, moon) so a selected seat never
+// looks like a PAY / ADD ITEMS / VOID / PRINT / DISC / EDIT button.
+// Rotates mod-length so large parties still get distinct accents.
+var SEAT_PALETTE = [
+  '#38bdf8', // sky
+  '#fb923c', // peach
+  '#f472b6', // pink
+  '#34d399', // emerald
+  '#facc15', // yellow
+  '#e879f9', // fuchsia
+  '#818cf8', // indigo
+  '#fb7185', // rose
+];
 function seatAccent(seatIdx) {
-  var first4 = [T.green, T.elec, T.gold, T.verm];
-  if (seatIdx < first4.length) return first4[seatIdx];
-  var pal = T.srvPalette || [];
-  if (!pal.length) return T.green;
-  return pal[seatIdx % pal.length];
+  return SEAT_PALETTE[seatIdx % SEAT_PALETTE.length];
 }
 
 function buildSeatCard(state, seatIdx) {
@@ -1972,18 +1979,17 @@ function buildSeatCard(state, seatIdx) {
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
 
-  // Selected-state visual — accent fill + T.well text, matching the
-  // Mode B compact tile and the file-header spec.
-  if (isSelected) {
-    wrap.style.background = accent;
-  }
+  // Selection visual: only the header and the item rows highlight —
+  // the card body stays T.card so selection reads as a focused strip
+  // rather than a full color flood. Item rows get the per-seat accent
+  // via the --ir-accent-selected CSS var on the embedded recap below.
 
   // ── Header Row ──
   // Header owns the bulk-select tap so items inside the body stay free
   // to register their own per-item taps (via buildItemRecap's onItemTap).
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    background:     isSelected ? darkenHex(accent, 0.15) : T.well,
+    background:     isSelected ? accent : T.well,
     padding:        '8px 12px',
     borderBottom:   '1px solid ' + T.border,
     display:        'flex',
@@ -2021,7 +2027,7 @@ function buildSeatCard(state, seatIdx) {
   // ── Body ──
   var body = document.createElement('div');
   Object.assign(body.style, {
-    background:    isSelected ? accent : T.card,
+    background:    T.card,
     flex:          '1',
     minHeight:     '0',
     padding:       '8px 10px',
@@ -2037,7 +2043,7 @@ function buildSeatCard(state, seatIdx) {
       display:        'flex',
       alignItems:     'center',
       justifyContent: 'center',
-      color:          isSelected ? hexToRgba(T.well, 0.7) : T.border,
+      color:          T.border,
       fontStyle:      'italic',
       fontFamily:     T.fb,
     });
@@ -2066,6 +2072,11 @@ function buildSeatCard(state, seatIdx) {
     recapEl.style.width      = '100%';
     recapEl.style.background = 'transparent';
     recapEl.style.padding    = '4px 2px';
+    // Tint selected item rows with this seat's accent (instead of the
+    // item-recap default T.green) so the per-item highlight reads as
+    // "part of this seat's card" regardless of which accent slot the
+    // seat landed on.
+    recapEl.style.setProperty('--ir-accent-selected', accent);
     body.appendChild(recapEl);
   }
 

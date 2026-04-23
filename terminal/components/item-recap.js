@@ -155,11 +155,15 @@ function _ensureStyles() {
     + '}'
 
     // ── Item selected ──
-    + '.ir-item-row.sel{background:' + T.green + ';}'
+    // Background falls through to the consumer-set --ir-accent-selected
+    // custom property so each check-overview seat card can tint its own
+    // selected rows with its per-seat accent. Defaults to T.green for
+    // any caller that doesn't set the var.
+    + '.ir-item-row.sel{background:var(--ir-accent-selected, ' + T.green + ');}'
     + '.ir-item-row.sel .ir-chev{color:' + T.well + ';}'
     + '.ir-item-row.sel .ir-iname{color:' + T.well + ';}'
     + '.ir-item-row.sel .ir-iprice{color:' + T.well + ';}'
-    + '.ir-item-row.sel .ir-qty{background:' + T.well + ';color:' + T.green + ';}'
+    + '.ir-item-row.sel .ir-qty{background:' + T.well + ';color:var(--ir-accent-selected, ' + T.green + ');}'
     + '.ir-item-row.sel ~ .ir-mods{background:' + T.greenWarm + ';}'
     + '.ir-item-row.sel ~ .ir-mods .ir-mod-arrow{color:' + T.well + ';}'
     + '.ir-item-row.sel ~ .ir-mods .ir-mname{color:' + T.well + ';}'
