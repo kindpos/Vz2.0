@@ -981,11 +981,11 @@ function renderActionBar(state) {
   var cashTotal = Math.round(total * (1 - discount) * 100) / 100;
 
   function buildInfoCard(label, valText, subLineEl) {
-    var card = document.createElement('div');
+    // Nostalgia card chassis — gold accent matches the "money = gold"
+    // convention used everywhere monetary values are displayed.
+    var card = buildStaticCard({ accent: T.gold });
     Object.assign(card.style, {
-      background: T.card,
-      borderRadius: '10px',
-      padding: '12px 14px',
+      padding: '8px 10px 8px 14px',
       flex: '1',
       display: 'flex',
       flexDirection: 'column',
@@ -996,8 +996,9 @@ function renderActionBar(state) {
     Object.assign(l.style, {
       color: T.text,
       fontFamily: T.fb,
-      fontSize: '9px',
-      fontWeight: '700',
+      fontSize: T.fsB4,
+      fontWeight: T.fwBold,
+      letterSpacing: '0.08em',
       textTransform: 'uppercase',
     });
     l.textContent = label;
@@ -1007,8 +1008,9 @@ function renderActionBar(state) {
     Object.assign(v.style, {
       color: T.gold,
       fontFamily: T.fb,
-      fontSize: '18px',
-      fontWeight: '700',
+      fontSize: T.fsB2,
+      fontWeight: T.fwBold,
+      marginTop: '2px',
     });
     v.textContent = valText;
     card.appendChild(v);
