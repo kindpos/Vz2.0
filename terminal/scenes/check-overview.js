@@ -838,30 +838,9 @@ defineScene({
       render: function(container, params) {
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'display:flex;flex-direction:column;align-items:center;gap:14px;',
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.green + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'padding:22px 24px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-        ].join('');
-
-        var lbl = document.createElement('div');
-        lbl.style.cssText = [
-          'font-family:' + T.fh + ';',
-          'font-size:' + T.fsB2 + ';',
-          'font-weight:' + T.fwBold + ';',
-          'color:' + T.green + ';',
-          'letter-spacing:0.2em;',
-          'text-transform:uppercase;',
-          'margin-bottom:2px;',
-        ].join('');
-        lbl.textContent = 'HOW MANY SEATS?';
-        panel.appendChild(lbl);
-
         var numpad = buildNumpad({
+          masked:    false,
+          maxDigits: 2,
           onSubmit: function(val) {
             var n = parseInt(val, 10);
             if (!isFinite(n) || n < 1) { numpad.setError('ENTER A NUMBER'); return; }
@@ -870,8 +849,7 @@ defineScene({
           },
           onCancel: function() { params.onCancel(); },
         });
-        panel.appendChild(numpad);
-        container.appendChild(panel);
+        container.appendChild(numpad);
 
         container.addEventListener('pointerup', function(e) {
           if (e.target === container) params.onCancel();
