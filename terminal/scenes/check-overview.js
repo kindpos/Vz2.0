@@ -39,6 +39,7 @@ import {
   buildWell,
   buildCard,
   buildStaticCard,
+  buildActionCard,
   buildPillButton,
   hexToRgba,
   darkenHex,
@@ -2054,23 +2055,22 @@ function buildCompactTile(state, seatIdx) {
   var isSelected = !!(state.selected && state.selected[seat.id]);
   var accent     = seatAccent(seatIdx);
 
-  var wrap = buildStaticCard({ accent: accent });
+  // buildActionCard (same builder the manager-landing check grid uses)
+  // gives us cursor:pointer, pointer-events:auto, touch-action:manipulation,
+  // and the press-depress animation — everything a tappable tile needs.
+  // buildStaticCard is display-only, which is why taps on the tile body
+  // showed no cursor feedback and didn't register.
+  var wrap = buildActionCard({ accent: accent });
   wrap.style.padding       = '0';
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
   wrap.style.minHeight     = '90px';
-  wrap.style.cursor        = 'pointer';
-  // touch-action does not inherit, so apply it on every descendant of
-  // the tile (header, body, and any text child) — otherwise only the
-  // X / + children (which set it explicitly) drag-scroll the grid and
-  // the card body defaults to auto + fires toggleSeat on release.
-  wrap.style.touchAction = 'pan-y';
 
   // Inverted selection visual — wrap fills with the per-seat accent,
   // all text flips to T.well. Matches the file-header spec ('selected
   // tiles fill with a per-seat accent ... every text node flips to
-  // T.well'). Unselected tiles keep the dark card look.
+  // T.well').
   if (isSelected) {
     wrap.style.background = accent;
   }
@@ -2085,14 +2085,12 @@ function buildCompactTile(state, seatIdx) {
     background:   isSelected ? darkenHex(accent, 0.15) : T.well,
     padding:      '6px 12px',
     borderBottom: '1px solid ' + T.border,
-    touchAction:  'pan-y',
   });
   var label = document.createElement('div');
   Object.assign(label.style, {
-    color:       isSelected ? T.well : T.green,
-    fontFamily:  T.fh,
-    fontWeight:  T.fwBold,
-    touchAction: 'pan-y',
+    color:      isSelected ? T.well : T.green,
+    fontFamily: T.fh,
+    fontWeight: T.fwBold,
   });
   label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   hdr.appendChild(label);
@@ -2106,15 +2104,13 @@ function buildCompactTile(state, seatIdx) {
     alignItems:     'center',
     justifyContent: 'center',
     padding:        '10px',
-    touchAction:    'pan-y',
   });
   var totalEl = document.createElement('div');
   Object.assign(totalEl.style, {
-    color:       isSelected ? T.well : T.gold,
-    fontFamily:  T.fb,
-    fontSize:    T.fsB1,
-    fontWeight:  T.fwBold,
-    touchAction: 'pan-y',
+    color:      isSelected ? T.well : T.gold,
+    fontFamily: T.fb,
+    fontSize:   T.fsB1,
+    fontWeight: T.fwBold,
   });
   totalEl.textContent = fmt(seatTotal(seat));
   body.appendChild(totalEl);
