@@ -720,18 +720,10 @@ function _buildSeatGroup(seat, seatIdx, opts) {
     }
   }
 
-  // Collapsible variant — seat groups start closed and the header is a
-  // tap-to-toggle affordance. Auto-expand any seat whose items are
-  // pre-selected so the cashier can see what's in scope right away.
-  if (opts.collapsible) {
-    var anySel = false;
-    if (typeof opts.itemSelected === 'function' && Array.isArray(seat.items)) {
-      for (var si = 0; si < seat.items.length; si++) {
-        if (opts.itemSelected(seatIdx, si)) { anySel = true; break; }
-      }
-    }
-    if (!anySel) group.classList.add('collapsed');
-  }
+  // Collapsible variant — groups start EXPANDED (items visible and
+  // tappable on first paint, matching Mode A), and the compact header
+  // remains a tap-to-toggle affordance so the cashier can hide detail
+  // for dense multi-seat checks on demand.
 
   // When the consumer owns its own seat header (e.g. check-overview's
   // Mode A tile already renders S-num / SEAT / subtotal) we skip the
