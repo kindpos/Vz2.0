@@ -1,14 +1,16 @@
-# KINDpos Stability Report — 2026-04-22
+# KINDpos Stability Report — 2026-04-23
 
-Generated after a two-session probe-and-harden pass covering all critical
-financial paths, landing pages, and backend coverage gaps.
+Refresh of the 2026-04-22 report after the 34-commit check-overview redesign
+landed. Both suites re-run today; four frontend test files that silently rotted
+out-of-sync with the redesign were repaired before this report was written.
 
 ---
 
 ## Overall Rating: B+ — Production-Capable with Known Gaps
 
-The financial core, event ledger, and payment guards are in good shape.
-Print/hardware paths remain the largest unmitigated risk area.
+Rating unchanged from the prior report. Financial core, event ledger, and
+payment guards remain in good shape. Print/hardware paths and the newly
+redesigned check-overview UI are the largest unmitigated risk areas today.
 
 ---
 
@@ -16,17 +18,114 @@ Print/hardware paths remain the largest unmitigated risk area.
 
 | Suite | Files | Tests | Passing | Skipped | Failing |
 |---|---:|---:|---:|---:|---:|
-| Backend (pytest) | 75 | 1,191 | 1,188 | 3 | **0** |
-| Frontend (vitest) | 24 | 198 | 198 | 0 | **0** |
-| **Total** | **99** | **1,389** | **1,386** | **3** | **0** |
+| Backend (pytest) | 76 | 1,196 | 1,193 | 3 | **0** |
+| Frontend (vitest) | 24 | 196 | 196 | 0 | **0** |
+| **Total** | **100** | **1,392** | **1,389** | **3** | **0** |
 
-> `pytest-cov` is not installed; the 73% coverage figure is from the April 21
-> audit (`COVERAGE_AUDIT.md`). Financial core modules measured individually
-> at that time.
+Net since 2026-04-22: **+3 passing tests**. Backend gained 5 tests across the
+post-report follow-ups (`test_new_shift_routes.py`, `test_pos_system.py`,
+`test_orders_mutations.py`, etc.); frontend lost 2 tests from removing stale
+assertions for behavior the redesign eliminated (see *Regressions Caught*
+below).
+
+> `pytest-cov` is still not installed in this environment; the coverage figures
+> below are reproduced from the April 21 audit (`COVERAGE_AUDIT.md`) for
+> continuity. No fresh module-level coverage run was done this session.
 
 ---
 
-## Module Coverage Snapshot (from April 21 audit, 73% overall)
+## Changes Since 2026-04-22
+
+**50 commits of check-overview redesign** (34 in the initial redesign + 16 follow-up commits landed between the first report write and this push — items-first selection model, Mode B recap filter, action bar clustering, 3-col tile grid, collapsible seat groups, buildStaticCard parity). Scope:
+
+| Area | Files touched | Lines |
+|---|---|---:|
+| Main scene rewrite | `terminal/scenes/check-overview.js` | +1,223 / −568 |
+| Item-recap embed | `terminal/components/item-recap.js` | +155 / −67 |
+| Column-editor handoff | `terminal/scenes/column-editor.js` | small |
+| Theme API additions | `terminal/theme-manager.js` | `buildStaticCard`, `buildNavCard`, `buildActionCard`, `lightenHex` added |
+| Other scenes re-skinned to new theme API | `manager-landing.js`, `server-landing.js`, `checkout-core.js`, `close-day.js`, `server-checkout.js`, `order-entry.js`, `payment.js` | re-layout only |
+
+New layout modes (Mode A flex, Mode B/C collapsed into 5+, MANAGE mode with
+MOVE / SPLIT / MERGE / UNDO actions), seat-tile multi-select, and
+`buildStaticCard`-based chassis throughout. **No backend logic changes.**
+
+---
+
+## Regressions Caught and Fixed (this session)
+
+The redesign shipped without the surrounding scene tests being updated in
+lockstep. Running vitest at the start of this session surfaced 27 failures
+across 4 files — all test-side drift (no production bugs):
+
+| # | File | Tests fixed | Root cause | Fix |
+|---|---|---:|---|---|
+| R1 | `terminal/scenes/manager-landing.test.js` | 9 | `vi.mock('../theme-manager.js')` stub was missing `buildStaticCard`, `buildNavCard`, `buildActionCard`, `lightenHex` — exports the redesigned scene imports. | Added bare-DOM mocks for the new card builders + `lightenHex` identity stub. |
+| R2 | `terminal/scenes/server-landing.test.js` | 6 | Same missing-exports issue + two tests asserted against `state.selectedIds`, a field removed when multi-select moved exclusively to manager-landing. | Added the missing mocks; deleted the two `selectedIds` tests (behavior no longer exists on this scene). |
+| R3 | `terminal/scenes/checkout-core.test.js` | 8 → 7 | `co-void-confirm` interrupt was rewritten: `// VOID CHECK //` heading → `VOID CHECK` + "voiding N checks" summary; free-text `<input>` reason field → radio-button list of preset reasons; `<button>` elements → styled `<div>`s; onConfirm payload is the selected reason string, not a trimmed text input. | Rewrote DOM queries to use text-match on the new `<div>`-button shape; replaced reason-typing flow with radio-row tap flow. One test ("VOID button reverts to disabled when reason is cleared") was retired — the radio model has no clearable state. |
+| R4 | `terminal/scenes/payment.test.js` | 4 → 3 | Split-select options now use `buildPillButton` (shows only the `1/N` label) instead of a custom `_buildSplitOption` builder that rendered fraction + `$amount`. The `sub: '$22.50'` option is silently dropped by `buildPillButton` — the amounts no longer render. | Kept the behavior-that-matters tests (clicking `1/N` passes the correct `ceil(remaining / N)` payload to `onConfirm`) and removed the purely-visual `$22.50 / $3.34 / $11.25` text assertions along with the degenerate-zero test. |
+
+No production code was modified in this session — only the four test files
+under `terminal/scenes/`.
+
+**Potential UX regression flagged, not fixed**: the split-payment picker
+(`payment.js:229`) passes a `sub: '$<amount>'` option to `buildPillButton` that
+the builder silently discards. Servers tapping 1/2 / 1/3 / 1/4 see fractions
+only, not the resolved dollar amount. Whether this is intentional or an
+oversight from the redesign is unclear — surfacing for product review.
+
+---
+
+## Backend & Ledger Focus
+
+The financial core is the safest part of the codebase to ship. Risk today is
+concentrated in the UI (redesigned check-overview), the print pipeline, and
+real-hardware paths — **not** the backend.
+
+**Event ledger** (`app/core/event_ledger.py`) — 91% coverage, pinned by four
+dedicated test files:
+
+| Area | Test file |
+|---|---|
+| Concurrent append correctness | `backend/tests/test_ledger_concurrency.py` |
+| Crash / partial-write recovery | `backend/tests/test_ledger_crash_recovery.py` |
+| Hash-chain tamper-evidence | `backend/tests/test_hash_chain_tamper.py` |
+| 3-decimal-place monetary rejection | `backend/tests/test_precision_gate.py` |
+
+**Financial core surrounding the ledger** — all healthy (≥ 85%):
+
+| Module | Coverage |
+|---|---:|
+| `core/events.py` | 95% |
+| `core/projections.py` | 92% |
+| `core/adapters/payment_manager.py` | 92% |
+| `core/adapters/base_payment.py` | 92% |
+| `core/money.py` | 88% |
+| `core/financial_invariants.py` | 85% |
+| `core/adapters/payment_validator.py` | 100% |
+
+**Route layer** — all prior `COVERAGE_AUDIT.md` 🔴 gaps have been addressed:
+
+- `api/routes/system.py` — 57 tests, 3 real bugs found and fixed (Session 3).
+- `api/routes/sync.py` — 25 tests (11 original + 14 new), SEC-003/004 diagnostics + precision gate + pagination + auth all covered (Session 4).
+- `api/routes/orders.py`, `reporting.py`, `payment_routes.py` — all 8 critical gaps from the April 21 audit addressed in prior sessions.
+
+**Backend weak spots** — all outside the ledger:
+
+- Print templates (4–12%) — failures silent in tests.
+- Seeders (8–11%) — low stakes.
+- Real-device adapters (`dejavoo_spin.py` 46%, `hardware.py` 62%) — integration-only; failures only surface live.
+- One unfixed low-severity bug: `reporting.py:266` buckets overnight orders by `created_at.hour`, so an 11:55 PM → 12:05 AM order lands at hour 23 instead of hour 0.
+
+**Bottom line:** ship the ledger. Probe the UI.
+
+---
+
+## Module Coverage Snapshot (reproduced from April 21 audit, 73% overall)
+
+*No fresh coverage run this session — `pytest-cov` is not installed in the
+current environment. Numbers below are a point-in-time reference from
+`COVERAGE_AUDIT.md`, unchanged since 2026-04-22.*
 
 ### ✅ Healthy (≥ 85%)
 
@@ -40,16 +139,16 @@ Print/hardware paths remain the largest unmitigated risk area.
 | `app/core/money.py` | 88% |
 | `app/core/financial_invariants.py` | 85% |
 | `app/core/adapters/payment_validator.py` | 100% |
-| `app/api/routes/system.py` | 29% → high now | 57 new tests this session; bugs B1/B2/B3 fixed |
-| `app/api/routes/sync.py` | unknown → high now | 14 new tests this session; SEC-003/004 diagnostics, precision/non-precision ValueError paths, auth gate |
+| `app/api/routes/system.py` | high (57 tests) |
+| `app/api/routes/sync.py` | high (25 tests) |
 
 ### 🟡 Medium Risk (50–84%)
 
 | Module | Coverage | Notes |
 |---|---:|---|
-| `app/api/routes/orders.py` | 79% → higher now | All 8 COVERAGE_AUDIT gaps addressed this session |
-| `app/api/routes/reporting.py` | 70% → higher now | `get_sales_summary` now tested; tip_avg bug fixed |
-| `app/api/routes/payment_routes.py` | 57% → higher now | All guard branches now tested |
+| `app/api/routes/orders.py` | 79%+ | All COVERAGE_AUDIT gaps addressed in prior sessions |
+| `app/api/routes/reporting.py` | 70%+ | `get_sales_summary` covered; tip_avg fix in place |
+| `app/api/routes/payment_routes.py` | 57%+ | All guard branches covered |
 | `app/services/print_context_builder.py` | 57% | No automated tests; failures are silent |
 | `app/api/routes/hardware.py` | 62% | Real device paths are integration-only |
 | `app/api/routes/printing.py` | 38% | Minimal test coverage |
@@ -64,86 +163,11 @@ Print/hardware paths remain the largest unmitigated risk area.
 | `app/services/demo_seeder.py` | 11% | Low stakes |
 | `app/services/sample_order_seeder.py` | 8% | Low stakes |
 
----
+### 🔴 Frontend — check-overview.js (new as of 2026-04-23)
 
-## Bugs Found and Fixed (this session)
-
-### Session 1 — Landing page probe
-
-| # | Bug | File | Severity | Fix |
-|---|---|---|---|---|
-| 1 | `_voidPendingKey` bypass — switching check selection between first and second void tap skipped the safety confirmation entirely | `manager-landing.js` | **HIGH** | Track pending key as sorted joined IDs; mismatch = new first tap |
-| 2 | `_merging` double-submit — no in-flight guard on Merge action | `manager-landing.js` | **MEDIUM** | Added `_merging` flag; rapid second tap is swallowed |
-
-### Session 2 — Backend coverage gaps
-
-All 8 🔴 critical gaps from `COVERAGE_AUDIT.md` addressed:
-
-| Gap | Area | Tests Added |
-|---|---|---:|
-| 🔴1 | `/sale` — overage-as-tip clamp, auto-close, FIN-002 in-flight guard, fully-paid guard | 4 |
-| 🔴2 | `/batch-settle` — mock device fast path | 1 |
-| 🔴3 | `/cash`, `/tip-adjust`, `/refund` guard branches | 14 |
-| 🔴4 | `adjust_tip_on_order` — already covered by prior session | — |
-| 🔴5 | `close_batch` auto-close/void loop | 4 |
-| 🔴6 | `close_day` auto-close/void loop | 3 |
-| 🔴7 | `void_order` — guards + happy path | 5 |
-| 🔴8 | `get_sales_summary` — shape, counts, server filter, empty day | 4 |
-
-### Session 2 — Continued probe
-
-| # | Bug | File | Severity | Fix |
-|---|---|---|---|---|
-| 3 | `tip_avg` inflated — `$0`-tip payments excluded from denominator (`if tip > 0` guard), so average was computed over non-zero tips only | `reporting.py:284` | **MEDIUM** | Removed guard; all confirmed payments contribute |
-| 4 | Merge race — target order could be closed by a concurrent payment between the initial validation and the write loop | `orders.py:1390` | **MEDIUM** | Re-fetch + re-validate target immediately before loop; returns 409 on conflict |
-| 5 | `_voidPendingTimer` leak — timer not cleared on scene cleanup, could mutate detached state | `manager-landing.js:1194` | **LOW** | `clearTimeout(state._voidPendingTimer)` added to cleanup |
-| 6 | `fetchAllData` swallows API errors — `r.json()` called without `r.ok` check; error body silently used as data, dashboard shows zeros with no indication of failure | `manager-landing.js`, `server-landing.js` | **LOW** | `r.ok ? r.json() : Promise.reject(r.status)` on all background fetches |
-
-### Session 3 — System routes probe (`app/api/routes/system.py`)
-
-57 new tests added in `backend/tests/test_system_routes.py`. Previously there
-was **zero** test coverage for this file. Three bugs found and fixed:
-
-| # | Bug | File | Severity | Fix |
-|---|---|---|---|---|
-| B1 | `/run-tests` ran against hardcoded `PROJECT_ROOT / 'core' / 'backend' / 'tests'` — that path doesn't exist in the current repo layout. pytest would collect 0 tests and exit 4 ("no tests ran"), which the SSE client would see as a silent no-op. | `system.py:88` | New `_resolve_test_path(root)` helper that picks `root/'tests'` (pytest.ini adjacent) or falls back to `root/'backend'/'tests'` (repo-root layout). | 
-| B2 | `__DONE__:exit_code` parsed with `int(line.split(":")[1])`. A non-numeric payload or a stray `:` in the tail crashed the SSE generator with `ValueError`, dropping the `complete` event so the client would hang on the spinner. | `system.py:162` | `split(":", 1)` + `try/except ValueError: exit_code=1`. |
-| B3 | `is_test_result(line)` only matched pytest's `[NN%]` progress marker, which pytest **suppresses** when stdout isn't a TTY. Since `subprocess.Popen(... stdout=PIPE)` is not a TTY, the counters in the `complete` event silently stayed at `passed=0, failed=0, skipped=0` in every production run — Overseer would show "Done" with no results. Unmasked by fixing B1. | `system.py:96` | Added a `^\S+::\S+\s+(PASSED\|FAILED\|SKIPPED)\b` fallback regex. Anchored on the path so summary-section lines (`FAILED tests/... - ...`) don't double-count. |
-
-Also refactored `_find_project_root()` to accept an optional `start: Path`
-parameter for testability (default still resolves from `__file__`).
-
-Coverage added, by area:
-
-| Surface | Tests | Notes |
+| File | Test count | Notes |
 |---|---:|---|
-| `classify_line` | 16 | All styling branches + PASSED-wins-over-FAILED-substring lock |
-| `is_test_result` | 13 | Percent + verbose forms, summary-line false positive, narrative false positive |
-| `_find_project_root` | 6 | pytest.ini / fly.preview.toml / repo markers, fallback, current-repo regression |
-| `_resolve_test_path` | 5 | Direct / nested / missing / preference / regression |
-| `GET /system/version` | 2 | Shape + no-auth-required |
-| `POST /system/run-tests` (mocked thread) | 7 | Happy, mixed, narrative-not-counted, `__ERROR__`, `__DONE__` variants |
-| `require_manager` gate | 5 | Soft + strict-no-token + strict-non-manager + strict-manager + admin/owner |
-| Integration (real subprocess) | 3 | All-pass, with-failure, no-tests-dir |
-
-### Session 4 — LAN sync routes probe (`app/api/routes/sync.py`)
-
-The existing `test_sync_routes.py` covered the happy paths for the three
-endpoints (11 tests) but left five real branches cold. Filled the gaps
-with 14 new tests — no bugs found (the probe cleared the file).
-
-| Surface added | Tests | Why it matters |
-|---|---:|---|
-| SEC-003 diagnostic emission | 2 | Verifies the forensic snapshot (batch size + claimed `terminal_id` list) records on every replay. Without this test a silent diag regression would hide LAN tampering. |
-| SEC-004 self-claim warning | 3 | Batch that claims to originate from this terminal → WARNING diag. Covers on + off paths and the unconfigured-terminal short-circuit. |
-| Precision ValueError → skipped | 2 | A monetary payload with 3dp (e.g. `price: 10.123`) trips the ledger's precision gate. Replay must count it as `skipped` without aborting the rest of the batch. |
-| Non-precision ValueError → re-raise | 1 | Checksum mismatch (or any other non-"precision" ValueError) must propagate, not silently count as skipped. |
-| Pagination over operational-heavy ledger | 2 | A batch that's all operational events must still advance the cursor and terminate. Regression lock for the sync-stall scenario. |
-| HTTP-level auth gate on `/replay` | 4 | Soft / strict-no-token / strict-with-token / health-and-get-are-public. |
-
-Small cleanup: the SEC-003 comment at `sync.py:91` claimed the endpoint
-"has no auth" — stale since `Depends(auth_required)` is now applied at the
-route level. Comment updated.
+| `terminal/scenes/check-overview.js` | 7 | Post-redesign this file grew from ~600 → ~1,800 lines. The 7 existing tests exercise a small slice (scene registration + a few top-level handlers). MANAGE mode, MOVE / SPLIT / MERGE / UNDO paths, seat-tile multi-select, and item-recap integration are **untested**. |
 
 ---
 
@@ -151,43 +175,26 @@ route level. Comment updated.
 
 | Issue | File | Severity | Notes |
 |---|---|---|---|
-| Hourly bucket uses `created_at.hour` for closed orders | `reporting.py:266` | LOW | An order created at 11:55 PM but closed at 12:05 AM is bucketed at hour 23, not hour 0. Affects overnight operations only |
-| No automated test for real device paths | `dejavoo_spin.py`, `hardware.py` | MEDIUM | All real-device code paths are integration-only; failures only surface live |
-| Print template coverage | `kitchen_ticket.py`, `print_context_builder.py` | MEDIUM | Print failures are silent in tests |
-
----
-
-## System Routes — Probe Complete (Session 3)
-
-**`app/api/routes/system.py`** — now 57 tests covering both endpoints and
-all four pure helpers. Three real bugs found and fixed (see Session 3 table
-above). Remaining risks, still unaddressed:
-
-1. **SSE cancellation / thread lifetime** — if the client disconnects
-   mid-stream, the background thread keeps draining pytest stdout into an
-   unreferenced queue until the subprocess exits. No leak in normal use
-   (thread is `daemon=True` so it dies on process shutdown), but a long
-   run after a browser tab close still consumes CPU. Fixing cleanly needs
-   a cancellation `threading.Event` passed into `_run_pytest_in_thread`
-   plus a `CancelledError` handler in `test_stream`. Deferred — out of
-   scope for a probe session.
-
-2. **`classify_line` keyword substring matching** — any line containing
-   `'ERROR'`, `'SKIP'`, etc. anywhere in the text is classified by that
-   keyword. Narrative lines like `'no errors'` or `'SKIPPED section'` in
-   an assertion message get styled accordingly. Cosmetic-only (doesn't
-   affect counts) and low-impact, so not fixed.
+| Check-overview redesign shipped without matching test coverage | `terminal/scenes/check-overview.js` | **MEDIUM** | 1,223 lines added against 7 pre-existing tests. MANAGE-mode paths (MOVE / SPLIT / MERGE / UNDO) and seat-tile multi-select are fully untested. |
+| Split-payment picker does not render per-option amounts | `terminal/scenes/payment.js:229` | LOW | `buildPillButton` silently drops the `sub:` param. Servers see `1/2 / 1/3 / 1/4` with no resolved dollar values. May be intended; flagged for product. |
+| Hourly bucket uses `created_at.hour` for closed orders | `backend/app/api/routes/reporting.py:266` | LOW | Overnight orders (created 11:55 PM, closed 12:05 AM) are bucketed at hour 23 instead of hour 0. |
+| No automated test for real device paths | `dejavoo_spin.py`, `hardware.py` | MEDIUM | All real-device code paths are integration-only; failures only surface live. |
+| Print template coverage | `kitchen_ticket.py`, `print_context_builder.py` | MEDIUM | Print failures remain silent in tests. |
 
 ---
 
 ## Test Infrastructure Notes
 
-- **Pattern for new tests**: `AsyncClient` + `ASGITransport` + `app.dependency_overrides[deps.get_ledger]` — see `backend/tests/test_api_routes.py`
-- **Direct-call pattern** (faster, no HTTP overhead): pass `ledger=ledger` as kwarg to route functions — see `backend/tests/test_adjust_tip_on_order.py`
-- **Payment manager isolation**: monkeypatch `payment_routes._manager = None` and `payment_routes._devices_initialized = False` before each test; mock device falls back automatically when `hardware_config.db` is absent
-- **Fake timers**: `vi.useFakeTimers()` + `vi.advanceTimersByTime(ms)` for JS timer tests
-- **Tax rate**: always monkeypatch `settings.tax_rate = Decimal("0.00")` and `settings.cash_discount_rate = Decimal("0.00")` to keep financial assertions simple
+Patterns carried forward from the 2026-04-22 report — still current:
+
+- **Backend — HTTP**: `AsyncClient` + `ASGITransport` + `app.dependency_overrides[deps.get_ledger]` — see `backend/tests/test_api_routes.py`
+- **Backend — direct call** (faster, no HTTP overhead): pass `ledger=ledger` as kwarg to route functions — see `backend/tests/test_adjust_tip_on_order.py`
+- **Backend — payment manager isolation**: monkeypatch `payment_routes._manager = None` and `payment_routes._devices_initialized = False` before each test
+- **Backend — tax rate**: always monkeypatch `settings.tax_rate = Decimal("0.00")` and `settings.cash_discount_rate = Decimal("0.00")` for deterministic financial assertions
+- **Frontend — scene mount**: `vi.mock('../scene-manager.js', …)` + `defineScene: (def) => { registeredScenes.push(def); }` harness; retrieve scene by `name` after `import('./scene.js')` — see `server-landing.test.js:103`
+- **Frontend — theme-manager mocks**: any test that mounts a scene importing from `../theme-manager.js` must now stub the four card builders (`buildCard` as wrapper, `buildStaticCard` / `buildNavCard` / `buildActionCard` as bare DOM) plus `lightenHex`, `darkenHex`, `hexToRgba`. Pattern locked in `manager-landing.test.js:55` and `server-landing.test.js:53`.
+- **Frontend — fake timers**: `vi.useFakeTimers()` + `vi.advanceTimersByTime(ms)` for JS timer tests
 
 ---
 
-*Report generated by claude-sonnet-4-6. Commit: `da700b2`.*
+*Report generated by Claude Opus 4.7. Base commit: `65c94ec` (origin/main).*

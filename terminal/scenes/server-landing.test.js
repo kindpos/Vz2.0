@@ -8,11 +8,14 @@
 // Coverage:
 //   1. Scene registers as 'server-landing'.
 //   2. Checkout button mounts 'server-checkout' working scene.
-//   3. Filter cycles OPEN → CLOSED → VOID → OPEN and clears selectedIds.
-//   4. Check tile tap toggles selectedIds.
-//   5. Refresh guard: concurrent _refreshing prevents double fetch.
-//   6. Event listener cleanup: state.el nulled + SceneManager.off called.
-//   7. Tip row tap opens 'tip-adjustment' transactional.
+//   3. Filter cycles OPEN → CLOSED → VOID → OPEN.
+//   4. Refresh guard: concurrent _refreshing prevents double fetch.
+//   5. Event listener cleanup: state.el nulled + SceneManager.off called.
+//   6. Tip row tap opens 'tip-adjustment' transactional.
+//
+// Note: server-landing no longer manages multi-select state (`selectedIds`) —
+// that moved to manager-landing. Tests for that behavior were removed with
+// the check-overview redesign.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -50,29 +53,42 @@ vi.mock('../tokens.js', () => {
   return { T };
 });
 
-vi.mock('../theme-manager.js', () => ({
-  buildCard: () => {
+vi.mock('../theme-manager.js', () => {
+  const wrapCard = () => {
     const card = document.createElement('div');
     const body = document.createElement('div');
     card.appendChild(body);
     return { wrap: card, card, body };
-  },
-  buildPillButton: ({ label } = {}) => {
-    const el = document.createElement('button');
-    el.textContent = label || '';
-    el.setColor = vi.fn();
+  };
+  const bareCard = (opts = {}) => {
+    const el = document.createElement('div');
+    if (opts.onClick) el.addEventListener('pointerup', opts.onClick);
+    el.setAccent = vi.fn();
     return el;
-  },
-  buildFloatButton: ({ label } = {}) => {
-    const el = document.createElement('button');
-    el.textContent = label || '';
-    el.setColor = vi.fn();
-    return el;
-  },
-  buildSectionLabel: () => document.createElement('div'),
-  hexToRgba:  (c) => c,
-  darkenHex:  (c) => c,
-}));
+  };
+  return {
+    buildCard: wrapCard,
+    buildStaticCard: bareCard,
+    buildNavCard:    bareCard,
+    buildActionCard: bareCard,
+    buildPillButton: ({ label } = {}) => {
+      const el = document.createElement('button');
+      el.textContent = label || '';
+      el.setColor = vi.fn();
+      return el;
+    },
+    buildFloatButton: ({ label } = {}) => {
+      const el = document.createElement('button');
+      el.textContent = label || '';
+      el.setColor = vi.fn();
+      return el;
+    },
+    buildSectionLabel: () => document.createElement('div'),
+    hexToRgba:  (c) => c,
+    lightenHex: (c) => c,
+    darkenHex:  (c) => c,
+  };
+});
 
 vi.mock('../app.js', () => ({
 }));
@@ -158,60 +174,20 @@ describe('terminal/scenes/server-landing', () => {
 
   // ── Filter cycling ──────────────────────────────────────────────────
 
-  it('filter cycles OPEN → CLOSED → VOID → OPEN and clears selectedIds', () => {
+  it('filter cycles OPEN → CLOSED → VOID → OPEN', () => {
     const { state } = mount();
-    state.allOrders   = TEST_ORDERS;
-    state.selectedIds = ['ord-1'];
+    state.allOrders = TEST_ORDERS;
 
     const filterBtn = state._refs.filterBtn;
 
     filterBtn.dispatchEvent(new Event('pointerup'));
     expect(state.filter).toBe('CLOSED');
-    expect(state.selectedIds).toHaveLength(0);
 
-    state.selectedIds = ['ord-2'];
     filterBtn.dispatchEvent(new Event('pointerup'));
     expect(state.filter).toBe('VOID');
-    expect(state.selectedIds).toHaveLength(0);
 
     filterBtn.dispatchEvent(new Event('pointerup'));
     expect(state.filter).toBe('OPEN');
-  });
-
-  // ── Check tile selection ────────────────────────────────────────────
-
-  it('tapping a check tile adds its id to selectedIds', () => {
-    const { container, state } = mount();
-    state.allOrders = TEST_ORDERS;
-    // Re-render so tiles are present with the test orders.
-    // tiles are built during renderTiles() called from initial refresh — we
-    // need to patch _refreshing so the first render happens synchronously
-    // after we provide data.
-    state._refreshing = false;
-    // Provide data directly and call render again to populate tiles.
-    const container2 = document.createElement('div');
-    const state2 = Object.assign(JSON.parse(JSON.stringify(sceneDef.state)), {
-      _refs: {},
-      allOrders: TEST_ORDERS,
-    });
-    // Use a fetch that resolves immediately with real data.
-    global.fetch = vi.fn().mockImplementation((url) => {
-      if (url.includes('/orders')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(TEST_ORDERS) });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
-    sceneDef.render(container2, TEST_EMP, state2);
-    // Tiles are added async; assert selection toggle works via direct state manipulation
-    // by simulating what the tile onClick does.
-    const idx = state2.selectedIds.indexOf('ord-1');
-    if (idx === -1) state2.selectedIds.push('ord-1');
-    expect(state2.selectedIds).toContain('ord-1');
-
-    // Simulate deselect
-    const idx2 = state2.selectedIds.indexOf('ord-1');
-    state2.selectedIds.splice(idx2, 1);
-    expect(state2.selectedIds).not.toContain('ord-1');
   });
 
   // ── Refresh guard ───────────────────────────────────────────────────

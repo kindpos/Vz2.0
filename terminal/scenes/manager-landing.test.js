@@ -52,31 +52,44 @@ vi.mock('../tokens.js', () => {
   return { T };
 });
 
-vi.mock('../theme-manager.js', () => ({
-  buildCard: () => {
+vi.mock('../theme-manager.js', () => {
+  const wrapCard = () => {
     const card = document.createElement('div');
     const body = document.createElement('div');
     card.appendChild(body);
     return { wrap: card, card, body };
-  },
-  buildPillButton: ({ label, onClick } = {}) => {
-    const el = document.createElement('button');
-    el.textContent = label || '';
-    el.setColor = vi.fn();
-    if (label && onClick) pillHandlers[label] = onClick;
+  };
+  const bareCard = (opts = {}) => {
+    const el = document.createElement('div');
+    if (opts.onClick) el.addEventListener('pointerup', opts.onClick);
+    el.setAccent = vi.fn();
     return el;
-  },
-  buildFloatButton: ({ label, onClick } = {}) => {
-    const el = document.createElement('button');
-    el.textContent = label || '';
-    el.setColor = vi.fn();
-    if (onClick) el.addEventListener('pointerup', onClick);
-    return el;
-  },
-  buildSectionLabel: () => document.createElement('div'),
-  hexToRgba:  (c) => c,
-  darkenHex:  (c) => c,
-}));
+  };
+  return {
+    buildCard: wrapCard,
+    buildStaticCard: bareCard,
+    buildNavCard:    bareCard,
+    buildActionCard: bareCard,
+    buildPillButton: ({ label, onClick } = {}) => {
+      const el = document.createElement('button');
+      el.textContent = label || '';
+      el.setColor = vi.fn();
+      if (label && onClick) pillHandlers[label] = onClick;
+      return el;
+    },
+    buildFloatButton: ({ label, onClick } = {}) => {
+      const el = document.createElement('button');
+      el.textContent = label || '';
+      el.setColor = vi.fn();
+      if (onClick) el.addEventListener('pointerup', onClick);
+      return el;
+    },
+    buildSectionLabel: () => document.createElement('div'),
+    hexToRgba:  (c) => c,
+    lightenHex: (c) => c,
+    darkenHex:  (c) => c,
+  };
+});
 
 vi.mock('../components.js', () => ({
   showToast: vi.fn(),

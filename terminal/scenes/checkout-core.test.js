@@ -3,8 +3,9 @@
 // close-day-checks-viewer.js called SceneManager.interrupt('co-void-confirm', ...)
 // and got a silent console.error + no-op because the scene didn't exist.
 //
-// These tests pin: heading copy (singular/plural), the reason-gate on the VOID
-// button, correct reason forwarding to onConfirm, and the cancel path.
+// These tests pin: heading copy + count summary, the reason-gate on the VOID
+// button (now driven by radio-row selection, not free text), correct reason
+// forwarding to onConfirm, and the cancel path.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -76,7 +77,14 @@ vi.mock('../entomology-client.js', () => ({
 // --- Helpers ---
 
 function triggerPointerUp(el) {
-  if (el._onTap) el._onTap();
+  el.dispatchEvent(new Event('pointerup'));
+}
+
+// The panel is built from <div>s styled as buttons/radios. Find one by its
+// visible text content.
+function findByText(container, text) {
+  return Array.from(container.querySelectorAll('div, button'))
+    .find((el) => el.textContent === text);
 }
 
 // --- Tests ---
@@ -106,76 +114,51 @@ describe('terminal/scenes/checkout-core — co-void-confirm interrupt', () => {
     return container;
   }
 
-  it('renders "// VOID CHECK //" heading for a single check', () => {
+  it('renders the "VOID CHECK" title and a "voiding 1 check" summary for a single check', () => {
     const container = mount([{ checkId: 'c1' }]);
-    expect(container.textContent).toContain('// VOID CHECK //');
-    expect(container.textContent).not.toContain('// VOID 1');
+    expect(container.textContent).toContain('VOID CHECK');
+    expect(container.textContent).toContain('voiding 1 check');
+    expect(container.textContent).not.toContain('voiding 1 checks');
   });
 
-  it('renders "// VOID N CHECKS //" heading for multiple checks', () => {
+  it('renders a "voiding N checks" summary for multiple checks', () => {
     const container = mount([{ checkId: 'c1' }, { checkId: 'c2' }, { checkId: 'c3' }]);
-    expect(container.textContent).toContain('// VOID 3 CHECKS //');
+    expect(container.textContent).toContain('VOID CHECK');
+    expect(container.textContent).toContain('voiding 3 checks');
   });
 
-  it('VOID button starts disabled (opacity 0.35, pointer-events none)', () => {
+  it('VOID button starts disabled (cursor:not-allowed) until a reason is chosen', () => {
     const container = mount([{ checkId: 'c1' }]);
-    const voidBtn = Array.from(container.querySelectorAll('button'))
-      .find((b) => b.textContent === 'VOID');
+    const voidBtn = findByText(container, 'VOID');
     expect(voidBtn).toBeDefined();
-    expect(voidBtn.style.opacity).toBe('0.35');
-    expect(voidBtn.style.pointerEvents).toBe('none');
+    expect(voidBtn.style.cursor).toBe('not-allowed');
   });
 
-  it('VOID button becomes enabled once a non-empty reason is typed', () => {
+  it('VOID button becomes enabled once a reason row is tapped', () => {
     const container = mount([{ checkId: 'c1' }]);
-    const input   = container.querySelector('input');
-    const voidBtn = Array.from(container.querySelectorAll('button'))
-      .find((b) => b.textContent === 'VOID');
+    const voidBtn = findByText(container, 'VOID');
 
-    input.value = 'Manager comp';
-    input.dispatchEvent(new Event('input'));
+    triggerPointerUp(findByText(container, 'Duplicate order'));
 
-    expect(voidBtn.style.opacity).toBe('1');
-    expect(voidBtn.style.pointerEvents).toBe('auto');
+    expect(voidBtn.style.cursor).toBe('pointer');
   });
 
-  it('VOID button reverts to disabled when reason is cleared', () => {
-    const container = mount([{ checkId: 'c1' }]);
-    const input   = container.querySelector('input');
-    const voidBtn = Array.from(container.querySelectorAll('button'))
-      .find((b) => b.textContent === 'VOID');
-
-    input.value = 'some reason';
-    input.dispatchEvent(new Event('input'));
-    expect(voidBtn.style.opacity).toBe('1');
-
-    input.value = '   ';
-    input.dispatchEvent(new Event('input'));
-    expect(voidBtn.style.opacity).toBe('0.35');
-  });
-
-  it('onConfirm is called with the trimmed reason when VOID is tapped', () => {
+  it('onConfirm is called with the chosen reason when VOID is tapped', () => {
     const onConfirm = vi.fn();
     const container = mount([{ checkId: 'c1' }], onConfirm);
-    const input   = container.querySelector('input');
-    const voidBtn = Array.from(container.querySelectorAll('button'))
-      .find((b) => b.textContent === 'VOID');
 
-    input.value = '  kitchen error  ';
-    input.dispatchEvent(new Event('input'));
-    triggerPointerUp(voidBtn);
+    triggerPointerUp(findByText(container, 'Wrong order'));
+    triggerPointerUp(findByText(container, 'VOID'));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onConfirm).toHaveBeenCalledWith('kitchen error');
+    expect(onConfirm).toHaveBeenCalledWith('Wrong order');
   });
 
-  it('onConfirm is NOT called when reason is empty and VOID is tapped', () => {
+  it('onConfirm is NOT called when no reason is selected and VOID is tapped', () => {
     const onConfirm = vi.fn();
     const container = mount([{ checkId: 'c1' }], onConfirm);
-    const voidBtn = Array.from(container.querySelectorAll('button'))
-      .find((b) => b.textContent === 'VOID');
 
-    triggerPointerUp(voidBtn);
+    triggerPointerUp(findByText(container, 'VOID'));
 
     expect(onConfirm).not.toHaveBeenCalled();
   });
@@ -183,10 +166,8 @@ describe('terminal/scenes/checkout-core — co-void-confirm interrupt', () => {
   it('CANCEL button calls onCancel', () => {
     const onCancel = vi.fn();
     const container = mount([{ checkId: 'c1' }], undefined, onCancel);
-    const cancelBtn = Array.from(container.querySelectorAll('button'))
-      .find((b) => b.textContent === 'CANCEL');
 
-    triggerPointerUp(cancelBtn);
+    triggerPointerUp(findByText(container, 'CANCEL'));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
