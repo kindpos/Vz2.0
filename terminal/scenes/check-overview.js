@@ -201,25 +201,24 @@ function _adaptOrderForRecap(state) {
   var order  = state.order || {};
   var params = state._mountParams || {};
 
-  // When any item is selected, the recap narrows to just the seats
-  // that contain at least one of those items. Empty selection falls
-  // back to the whole (unpaid) check. state.selectedItems is the
-  // source of truth; state.selected is a derived "fully-selected"
-  // mirror maintained by toggleSeat / toggleItem.
+  // Selection drives SORT, not filter: seats with at least one selected
+  // item float to the top of the recap so the cashier's working set is
+  // always visible first, while the rest of the check stays reachable
+  // below. state.selectedItems is the source of truth; state.selected
+  // is a derived "fully-selected" mirror maintained by toggleSeat /
+  // toggleItem.
   var selItems = state.selectedItems || {};
   var selKeys  = Object.keys(selItems);
-  var anyItemSelected = selKeys.length > 0;
   var seatIdxsWithSelected = {};
   for (var sk = 0; sk < selKeys.length; sk++) {
-    var sIdx = parseInt(selKeys[sk].split(':')[0], 10);
-    if (!isNaN(sIdx)) seatIdxsWithSelected[sIdx] = true;
+    var sIdxSel = parseInt(selKeys[sk].split(':')[0], 10);
+    if (!isNaN(sIdxSel)) seatIdxsWithSelected[sIdxSel] = true;
   }
 
   var adaptedSeats = [];
   var totalUpcharges = 0;
   for (var s = 0; s < state.seats.length; s++) {
     if (state.paidSeats && state.paidSeats[state.seats[s].id]) continue;
-    if (anyItemSelected && !seatIdxsWithSelected[s])           continue;
     var seat = state.seats[s];
     var adaptedItems = [];
     for (var i = 0; i < seat.items.length; i++) {
@@ -231,6 +230,18 @@ function _adaptOrderForRecap(state) {
       seatNumber: seat.number,
       subtotal:   seatTotal(seat),
       items:      adaptedItems,
+      _sIdx:      s,  // original state.seats index — used by the sort below
+    });
+  }
+
+  // Sort selected-having seats to the top; preserve seat-number order
+  // within each group. No-op when nothing is selected.
+  if (Object.keys(seatIdxsWithSelected).length > 0) {
+    adaptedSeats.sort(function(a, b) {
+      var aSel = seatIdxsWithSelected[a._sIdx] ? 1 : 0;
+      var bSel = seatIdxsWithSelected[b._sIdx] ? 1 : 0;
+      if (aSel !== bSel) return bSel - aSel;
+      return (a.seatNumber || 0) - (b.seatNumber || 0);
     });
   }
 
@@ -1913,6 +1924,17 @@ function renderSeatsGrid(state, container, mode) {
       gap:                  '10px',
       overflowY:            'auto',
     });
+    // +SEAT goes in first so grid places it at (1,1). position:sticky
+    // keeps it pinned to the top of the scroll container so the cashier
+    // can always add a seat without scrolling back up on dense checks.
+    var addB = buildAddTile(state, { fullSize: true });
+    addB.style.flex     = '';
+    addB.style.width    = '';
+    addB.style.position = 'sticky';
+    addB.style.top      = '0';
+    addB.style.zIndex   = '1';
+    tilesCol.appendChild(addB);
+
     for (var i = 0; i < state.seats.length; i++) {
       if (state.paidSeats[state.seats[i].id]) continue;
       var tile = buildCompactTile(state, i);
@@ -1922,10 +1944,6 @@ function renderSeatsGrid(state, container, mode) {
       tile.style.width = '';
       tilesCol.appendChild(tile);
     }
-    var addB = buildAddTile(state, { fullSize: true });
-    addB.style.flex  = '';
-    addB.style.width = '';
-    tilesCol.appendChild(addB);
     if (state._manageMode && state._manageTool === 'merge') {
       var chkB = buildCheckTile(state, { fullSize: true });
       chkB.style.flex  = '';
