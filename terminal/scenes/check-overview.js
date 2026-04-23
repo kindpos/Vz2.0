@@ -1284,33 +1284,39 @@ function _resetManageSession(state) {
   showToast('MANAGE session reset', { bg: T.verm });
 }
 
+// buildPillButton has no `height` option, so apply the 46 px chrome
+// directly on the returned element after construction. Keeps the
+// MANAGE toolbar pills the same uniform height that the old callsites
+// were silently asking for.
 function _makeToolPill(label, active) {
   var color  = active ? T.elec : T.card;
   var darkBg = active ? T.elecDk : darkenHex(T.card, 0.2);
-  return buildPillButton({
-    label:    label,
-    color:    color,
-    darkBg:   darkBg,
+  var btn = buildPillButton({
+    label:     label,
+    color:     color,
+    darkBg:    darkBg,
     textColor: active ? T.well : T.elec,
-    height:   '46px',
-    padding:  '0 20px',
-    fontSize: T.fsB3
+    padding:   '0 20px',
+    fontSize:  T.fsB3,
   });
+  btn.style.height = '46px';
+  return btn;
 }
 
 function _makeUtilPill(label, textColor, opts) {
   opts = opts || {};
   var color = opts.bg || T.card;
   var darkBg = opts.darkBg || darkenHex(color, 0.2);
-  return buildPillButton({
+  var btn = buildPillButton({
     label:     label,
     color:     color,
     darkBg:    darkBg,
     textColor: textColor,
-    height:    '46px',
     padding:   '0 20px',
-    fontSize:  T.fsB3
+    fontSize:  T.fsB3,
   });
+  btn.style.height = '46px';
+  return btn;
 }
 
 // Vertical dashed separator used inside the MANAGE toolbar between the
