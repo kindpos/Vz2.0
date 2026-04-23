@@ -1747,6 +1747,34 @@ function buildSeatsContainer(state) {
     root.appendChild(banner);
   }
 
+  // ── Selection toolbar ──
+  // Small SELECT ALL / CLEAR chip above the seats area. Flips labels +
+  // color based on whether anything is currently selected so one button
+  // covers both directions. Positioned flush right to stay out of the
+  // seat-card visual rhythm.
+  var anySel = Object.keys(state.selectedItems || {}).length > 0
+            || Object.keys(state.selected      || {}).length > 0;
+  var selRow = document.createElement('div');
+  Object.assign(selRow.style, {
+    flexShrink:     '0',
+    display:        'flex',
+    justifyContent: 'flex-end',
+    padding:        '4px 12px 0',
+  });
+  var selBtn = buildPillButton({
+    label:    anySel ? 'CLEAR' : 'SELECT ALL',
+    color:    anySel ? T.verm : T.elec,
+    darkBg:   anySel ? T.vermDk : T.elecDk,
+    fontSize: T.fsB4,
+    padding:  '6px 14px',
+    onClick: function() {
+      if (anySel) clearAllSelection(state);
+      else         forceSelectAll(state);
+    },
+  });
+  selRow.appendChild(selBtn);
+  root.appendChild(selRow);
+
   // Layout mode:
   //   A  1-4 active seats  — each seat gets its own flex-row column with
   //                          a slim +SEAT rail on the right.
@@ -2416,8 +2444,24 @@ function toggleItem(state, seatIdx, itemIdx) {
   rerenderTopArea(state);
 }
 
+// Populate state.selectedItems with every unpaid seat's items (plus
+// state.selected for empty unpaid seats so they still get the inverted
+// tile visual). The items-first totals + recap filter pick up the rest.
 function forceSelectAll(state) {
-  state.selected = selectAllUnpaid(state.seats, state.paidSeats);
+  if (!state.selectedItems) state.selectedItems = {};
+  if (!state.selected)      state.selected      = {};
+  for (var i = 0; i < state.seats.length; i++) {
+    var seat = state.seats[i];
+    if (state.paidSeats && state.paidSeats[seat.id]) continue;
+    if (seat.items.length === 0) {
+      state.selected[seat.id] = true;
+    } else {
+      for (var j = 0; j < seat.items.length; j++) {
+        state.selectedItems[i + ':' + j] = true;
+      }
+    }
+  }
+  _syncSelectedFromItems(state);
   rerenderTopArea(state);
 }
 
