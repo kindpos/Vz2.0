@@ -40,6 +40,7 @@ import {
   buildCard,
   buildStaticCard,
   buildPillButton,
+  buildDataRow,
   hexToRgba,
   darkenHex,
 } from '../theme-manager.js';
@@ -965,87 +966,45 @@ function renderActionBar(state) {
   var order = state.order || {};
   var discount = getCashDiscount();
 
-  // Totals block — two stacked info cards, width: 150px, flex-direction: column, gap: 8px:
-  var totalsBlock = document.createElement('div');
-  Object.assign(totalsBlock.style, {
-    width: '150px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    flexShrink: '0',
-  });
-  bar.appendChild(totalsBlock);
-
   var subtotal = order.subtotal || 0;
+  var tax = order.tax != null ? order.tax : (subtotal * getTaxRate());
   var total = order.total || 0;
   var cashTotal = Math.round(total * (1 - discount) * 100) / 100;
 
-  function buildInfoCard(label, valText, subLineEl) {
-    // Nostalgia card chassis — gold accent matches the "money = gold"
-    // convention used everywhere monetary values are displayed.
-    var card = buildStaticCard({ accent: T.gold });
+  // Totals block — two stacked Nostalgia cards matching the order-entry
+  // totals treatment: buildStaticCard (bevel + green accent bar) wrapping
+  // buildDataRow rows (uppercase label left, colored money value right).
+  var totalsBlock = document.createElement('div');
+  Object.assign(totalsBlock.style, {
+    width:         '200px',
+    display:       'flex',
+    flexDirection: 'column',
+    gap:           '8px',
+    flexShrink:    '0',
+  });
+  bar.appendChild(totalsBlock);
+
+  function buildTotalsCard() {
+    var card = buildStaticCard({ accent: T.green });
     Object.assign(card.style, {
-      padding: '8px 10px 8px 14px',
-      flex: '1',
+      padding: '8px 12px 8px 16px',
+      flex:    '1',
       display: 'flex',
-      flexDirection: 'column',
+      flexDirection:  'column',
       justifyContent: 'center',
     });
-
-    var l = document.createElement('div');
-    Object.assign(l.style, {
-      color: T.text,
-      fontFamily: T.fb,
-      fontSize: T.fsB4,
-      fontWeight: T.fwBold,
-      letterSpacing: '0.08em',
-      textTransform: 'uppercase',
-    });
-    l.textContent = label;
-    card.appendChild(l);
-
-    var v = document.createElement('div');
-    Object.assign(v.style, {
-      color: T.gold,
-      fontFamily: T.fb,
-      fontSize: T.fsB2,
-      fontWeight: T.fwBold,
-      marginTop: '2px',
-    });
-    v.textContent = valText;
-    card.appendChild(v);
-
-    if (subLineEl) card.appendChild(subLineEl);
     return card;
   }
 
-  // Top card: label SUBTOTAL, value from check.subtotal in T.gold
-  totalsBlock.appendChild(buildInfoCard('SUBTOTAL', fmt(subtotal)));
+  var summaryCard = buildTotalsCard();
+  summaryCard.appendChild(buildDataRow('SUBTOTAL', fmt(subtotal), T.gold));
+  summaryCard.appendChild(buildDataRow('TAX',      fmt(tax),      T.gold));
+  totalsBlock.appendChild(summaryCard);
 
-  // Bottom card: label CHECK TOTAL, value from check.total in T.gold, sub-line Card $X in T.gold · Cash $Y in T.greenWarm
-  var subLine = document.createElement('div');
-  Object.assign(subLine.style, {
-    fontSize: '9px',
-    fontFamily: T.fb,
-    marginTop: '2px',
-  });
-
-  var cardSpan = document.createElement('span');
-  cardSpan.style.color = T.gold;
-  cardSpan.textContent = 'Card ' + fmt(total);
-  subLine.appendChild(cardSpan);
-
-  var dot = document.createElement('span');
-  dot.style.color = T.text;
-  dot.textContent = ' · ';
-  subLine.appendChild(dot);
-
-  var cashSpan = document.createElement('span');
-  cashSpan.style.color = T.greenWarm;
-  cashSpan.textContent = 'Cash ' + fmt(cashTotal);
-  subLine.appendChild(cashSpan);
-
-  totalsBlock.appendChild(buildInfoCard('CHECK TOTAL', fmt(total), subLine));
+  var pricesCard = buildTotalsCard();
+  pricesCard.appendChild(buildDataRow('CARD PRICE', fmt(total),     T.elec));
+  pricesCard.appendChild(buildDataRow('CASH PRICE', fmt(cashTotal), T.greenWarm));
+  totalsBlock.appendChild(pricesCard);
 
   // Left stack — flex-direction: column, gap: 8px, width: 180px.
   var leftStack = document.createElement('div');
