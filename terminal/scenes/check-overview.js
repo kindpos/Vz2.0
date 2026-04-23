@@ -947,15 +947,16 @@ function renderActionBar(state) {
     return;
   }
 
-  // Container
-  var bar = document.createElement('div');
+  // Container — Nostalgia card chassis so the action bar matches the
+  // raised-bevel + accent treatment used by manager-landing / COB /
+  // sales cards. buildStaticCard sets background, 4-edge bevel,
+  // inset+drop shadow, and a glowing left accent bar.
+  var bar = buildStaticCard({ accent: T.green });
   Object.assign(bar.style, {
     display:     'flex',
     alignItems:  'stretch',
     gap:         '10px',
     padding:     '12px',
-    background:  T.well,
-    borderTop:   '1px solid ' + T.border,
     flex:        '1',
     boxSizing:   'border-box',
   });
