@@ -82,7 +82,14 @@ var _refreshInFlight = false;
 //  HELPERS
 // ═══════════════════════════════════════════════════
 
-function fmt(n) { return '$' + (n || 0).toFixed(2); }
+function fmt(n) {
+  // Coerce to Number so we tolerate stringified prices from the backend
+  // ("9.00" is common) — the raw `n.toFixed(2)` path used to throw a
+  // TypeError on any non-number and take the whole action bar down.
+  var v = Number(n);
+  if (!isFinite(v)) v = 0;
+  return '$' + v.toFixed(2);
+}
 
 // seatTotal now wraps the pure helper from ./seats.js so the
 // rendering paths and transition paths share one math implementation.
