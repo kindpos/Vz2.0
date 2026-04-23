@@ -1871,6 +1871,7 @@ function renderSeatsGrid(state, container, mode) {
     recapEl.style.maxWidth = 'none';
     recapEl.style.width    = '100%';
     recapCol.appendChild(recapEl);
+    container.appendChild(recapCol);
 
     var tilesCol = document.createElement('div');
     Object.assign(tilesCol.style, {
