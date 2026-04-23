@@ -1928,57 +1928,74 @@ function seatAccent(seatIdx) {
 }
 
 function buildSeatCard(state, seatIdx) {
-  var seat = state.seats[seatIdx];
-  var wrap = buildStaticCard({ accent: T.green });
+  var seat       = state.seats[seatIdx];
+  var isSelected = !!(state.selected && state.selected[seat.id]);
+  var accent     = seatAccent(seatIdx);
+
+  // buildActionCard for cursor:pointer + touch-action:manipulation +
+  // press animation. buildStaticCard would trigger the theme-manager
+  // guard warning (it's display-only) and swallow touch taps on the
+  // card body.
+  var wrap = buildActionCard({ accent: accent });
   wrap.style.flex          = '1';
   wrap.style.padding       = '0';
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
-  var card = wrap;
 
-  wrap.addEventListener('pointerup', function(e) {
-    if (e.defaultPrevented) return;
-    toggleSeat(state, seatIdx);
-  });
+  // Selected-state visual — accent fill + T.well text, matching the
+  // Mode B compact tile and the file-header spec.
+  if (isSelected) {
+    wrap.style.background = accent;
+  }
 
   // ── Header Row ──
+  // Header owns the bulk-select tap so items inside the body stay free
+  // to register their own per-item taps (via buildItemRecap's onItemTap).
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    background:   T.well,
-    padding:      '8px 12px',
-    borderBottom: '1px solid ' + T.border,
-    display:      'flex',
-    alignItems:   'center',
+    background:     isSelected ? darkenHex(accent, 0.15) : T.well,
+    padding:        '8px 12px',
+    borderBottom:   '1px solid ' + T.border,
+    display:        'flex',
+    alignItems:     'center',
     justifyContent: 'space-between',
+    cursor:         'pointer',
+    userSelect:     'none',
   });
 
   var label = document.createElement('div');
   Object.assign(label.style, {
-    color:      T.green,
+    color:      isSelected ? T.well : T.green,
     fontFamily: T.fh,
-    fontWeight: 'bold',
+    fontWeight: T.fwBold,
   });
   label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   hdr.appendChild(label);
 
   var subtotal = document.createElement('div');
   Object.assign(subtotal.style, {
-    color:      T.gold,
+    color:      isSelected ? T.well : T.gold,
     fontFamily: T.fb,
+    fontWeight: T.fwBold,
   });
   subtotal.textContent = fmt(seatTotal(seat));
   hdr.appendChild(subtotal);
 
-  card.appendChild(hdr);
+  hdr.addEventListener('pointerup', function(e) {
+    if (e.defaultPrevented) return;
+    toggleSeat(state, seat.id);
+  });
+
+  wrap.appendChild(hdr);
 
   // ── Body ──
   var body = document.createElement('div');
   Object.assign(body.style, {
-    background:    T.card,
+    background:    isSelected ? accent : T.card,
     flex:          '1',
     minHeight:     '0',
-    padding:       '12px',
+    padding:       '8px 10px',
     display:       'flex',
     flexDirection: 'column',
     overflowY:     'auto',
@@ -1987,65 +2004,49 @@ function buildSeatCard(state, seatIdx) {
   if (seat.items.length === 0) {
     var empty = document.createElement('div');
     Object.assign(empty.style, {
-      flex:       '1',
-      display:    'flex',
-      alignItems: 'center',
+      flex:           '1',
+      display:        'flex',
+      alignItems:     'center',
       justifyContent: 'center',
-      color:      T.border,
-      fontStyle:  'italic',
-      fontFamily: T.fb,
+      color:          isSelected ? hexToRgba(T.well, 0.7) : T.border,
+      fontStyle:      'italic',
+      fontFamily:     T.fb,
     });
     empty.textContent = 'empty seat';
     body.appendChild(empty);
   } else {
-    for (var i = 0; i < seat.items.length; i++) {
-      var it = seat.items[i];
-      var row = document.createElement('div');
-      row.style.marginBottom = '8px';
-
-      var mainLine = document.createElement('div');
-      Object.assign(mainLine.style, {
-        display:        'flex',
-        justifyContent: 'space-between',
-        fontFamily:     T.fb,
-      });
-
-      var name = document.createElement('span');
-      name.style.color = T.text;
-      name.textContent = it.name;
-      mainLine.appendChild(name);
-
-      var price = document.createElement('span');
-      price.style.color = T.gold;
-      price.textContent = fmt(it.qty * (it.effectivePrice || it.price));
-      mainLine.appendChild(price);
-
-      row.appendChild(mainLine);
-
-      if (it.mods && it.mods.length > 0) {
-        for (var m = 0; m < it.mods.length; m++) {
-          var mod = document.createElement('div');
-          Object.assign(mod.style, {
-            color:      T.border,
-            fontSize:   '12px',
-            paddingLeft:'12px',
-            fontFamily: T.fb,
-          });
-          mod.textContent = '↳ ' + it.mods[m].name;
-          row.appendChild(mod);
-        }
-      }
-      body.appendChild(row);
-    }
+    // Same component Mode B uses, scoped to this single seat via the
+    // existing _adaptSeatForRecap helper. onItemTap toggles individual
+    // items; itemSelected seeds the .sel cascade from state.selectedItems
+    // so the inverted styling survives rerenderTopArea.
+    var recapEl = buildItemRecap(_adaptSeatForRecap(state, seatIdx), {
+      hideHeader:     true,
+      hideTotals:     true,
+      hideSeatHeader: true,
+      itemSelected: function(_fIdx, itemIdx) {
+        return !!(state.selectedItems && state.selectedItems[seatIdx + ':' + itemIdx]);
+      },
+      onItemTap: function(_fIdx, itemIdx) {
+        toggleItem(state, seatIdx, itemIdx);
+      },
+    });
+    // Override .ir-root defaults so the recap fits the seat card body:
+    // no max-width cap, transparent background (card owns the fill),
+    // tight padding that matches the body's own padding.
+    recapEl.style.maxWidth   = 'none';
+    recapEl.style.width      = '100%';
+    recapEl.style.background = 'transparent';
+    recapEl.style.padding    = '4px 2px';
+    body.appendChild(recapEl);
   }
 
-  card.appendChild(body);
+  wrap.appendChild(body);
 
   var canDelete = seat.items.length === 0
     && activeSeatCount(state.seats, state.paidSeats) > 1;
   if (canDelete) {
     var delX = _buildDeleteSeatX(state, seat.id);
-    card.appendChild(delX);
+    wrap.appendChild(delX);
   }
 
   state.seatEls[seat.id] = wrap;
