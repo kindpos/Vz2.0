@@ -101,7 +101,7 @@ function _ensureStyles() {
     + '.ir-seat-num{'
     +   'font-family:' + T.fh + ';'
     +   'font-size:36px;font-weight:700;'
-    +   'color:' + T.green + ';line-height:1;min-width:48px;'
+    +   'color:var(--ir-seat-accent, ' + T.green + ');line-height:1;min-width:48px;'
     + '}'
     + '.ir-seat-meta{display:flex;flex-direction:column;gap:2px;flex:1;}'
     + '.ir-seat-label{'
@@ -158,11 +158,13 @@ function _ensureStyles() {
     // Background falls through to the consumer-set --ir-accent-selected
     // custom property so each check-overview seat card can tint its own
     // selected rows with its per-seat accent. Defaults to T.green for
-    // any caller that doesn't set the var.
+    // any caller that doesn't set the var. Text stays at T.text (white)
+    // instead of inverting to T.well — reads cleaner on the darker
+    // per-seat accents (indigo, rose, emerald).
     + '.ir-item-row.sel{background:var(--ir-accent-selected, ' + T.green + ');}'
-    + '.ir-item-row.sel .ir-chev{color:' + T.well + ';}'
-    + '.ir-item-row.sel .ir-iname{color:' + T.well + ';}'
-    + '.ir-item-row.sel .ir-iprice{color:' + T.well + ';}'
+    + '.ir-item-row.sel .ir-chev{color:' + T.text + ';}'
+    + '.ir-item-row.sel .ir-iname{color:' + T.text + ';}'
+    + '.ir-item-row.sel .ir-iprice{color:' + T.text + ';}'
     + '.ir-item-row.sel .ir-qty{background:' + T.well + ';color:var(--ir-accent-selected, ' + T.green + ');}'
     + '.ir-item-row.sel ~ .ir-mods{background:' + T.greenWarm + ';}'
     + '.ir-item-row.sel ~ .ir-mods .ir-mod-arrow{color:' + T.well + ';}'
@@ -705,6 +707,19 @@ function _buildSeatGroup(seat, seatIdx, opts) {
   opts = opts || {};
   var group = document.createElement('div');
   group.className = 'ir-seat-group';
+
+  // Per-seat accent drives the seat-num color (.ir-seat-num uses
+  // var(--ir-seat-accent, T.green)) AND tints this group's selected
+  // item rows (.sel background uses var(--ir-accent-selected, T.green))
+  // so each group in a multi-seat recap visually matches its sibling
+  // tile in the grid.
+  if (typeof opts.seatAccent === 'function') {
+    var sa = opts.seatAccent(seatIdx);
+    if (sa) {
+      group.style.setProperty('--ir-seat-accent', sa);
+      group.style.setProperty('--ir-accent-selected', sa);
+    }
+  }
 
   // Collapsible variant — seat groups start closed and the header is a
   // tap-to-toggle affordance. Auto-expand any seat whose items are

@@ -1854,6 +1854,10 @@ function renderSeatsGrid(state, container, mode) {
       hideHeader:  true,
       hideTotals:  true,
       collapsible: true,
+      seatAccent: function(fIdx) {
+        var realIdx = filteredToState[fIdx];
+        return realIdx != null ? seatAccent(realIdx) : null;
+      },
       itemSelected: function(fIdx, itemIdx) {
         var realIdx = filteredToState[fIdx];
         return realIdx != null
