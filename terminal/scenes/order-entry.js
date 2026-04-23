@@ -3669,7 +3669,20 @@ function _buildItemPayload(inst) {
   // Include modifier panel data for atomic ledger write (ORDER_ITEM_ADDED)
   if (inst._modPanelData) {
     var mpd = inst._modPanelData;
-    payload.mandatory_selections = mpd.mandatory;
+    // Backend expects list[str] ("{group_id}:{option_key}"); mpd.mandatory
+    // is the terminal-side object map {group_id: {key,label,price}}. Flatten
+    // so the ledger can audit which groups were picked without losing the
+    // group→choice mapping. Label/price already ride along in `modifiers[]`.
+    var mand = mpd.mandatory;
+    if (mand && typeof mand === 'object' && !Array.isArray(mand)) {
+      payload.mandatory_selections = Object.keys(mand).map(function(gid) {
+        var sel = mand[gid];
+        var key = (sel && sel.key) || '';
+        return gid + ':' + key;
+      });
+    } else {
+      payload.mandatory_selections = mand || [];
+    }
     payload.included_removals = mpd.includedRemovals;
     payload.allergens = mpd.allergens;
     payload.allergen_note = mpd.allergenNote || '';
