@@ -193,10 +193,17 @@ function _adaptOrderForRecap(state) {
   var order  = state.order || {};
   var params = state._mountParams || {};
 
+  // When seats are selected, the recap narrows to just those seats so
+  // the left-hand item list matches the scope the user is acting on.
+  // Empty selection falls back to the whole (unpaid) check.
+  var selectedIds = state.selected || {};
+  var anySelected = Object.keys(selectedIds).length > 0;
+
   var adaptedSeats = [];
   var totalUpcharges = 0;
   for (var s = 0; s < state.seats.length; s++) {
     if (state.paidSeats && state.paidSeats[state.seats[s].id]) continue;
+    if (anySelected && !selectedIds[state.seats[s].id])        continue;
     var seat = state.seats[s];
     var adaptedItems = [];
     for (var i = 0; i < seat.items.length; i++) {
@@ -965,10 +972,28 @@ function renderActionBar(state) {
   var order = state.order || {};
   var discount = getCashDiscount();
 
-  var subtotal = order.subtotal || 0;
-  var tax = order.tax != null ? order.tax : (subtotal * getTaxRate());
-  var total = order.total || 0;
-  var cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+  // Selection-aware totals: when seats are selected, the bar shows the
+  // sum of those seats only; otherwise the whole-check totals from
+  // state.order. Mirrors the anySelected pattern collectSummary uses.
+  var selectedIds = Object.keys(state.selected || {});
+  var anySelected = selectedIds.length > 0;
+
+  var subtotal, tax, total, cashTotal;
+  if (anySelected) {
+    subtotal = 0;
+    for (var si = 0; si < selectedIds.length; si++) {
+      var sidx = _seatIdxById(state, selectedIds[si]);
+      if (sidx >= 0) subtotal += seatTotal(state.seats[sidx]);
+    }
+    tax       = subtotal * getTaxRate();
+    total     = subtotal + tax;
+    cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+  } else {
+    subtotal  = order.subtotal || 0;
+    tax       = order.tax != null ? order.tax : (subtotal * getTaxRate());
+    total     = order.total || 0;
+    cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+  }
 
   // Totals block — two stacked Nostalgia cards matching the order-entry
   // totals treatment: buildStaticCard (bevel + green accent bar) wrapping
@@ -1985,7 +2010,10 @@ function buildSeatCard(state, seatIdx) {
 // in the recap column to the left.
 function buildCompactTile(state, seatIdx) {
   var seat = state.seats[seatIdx];
-  var wrap = buildStaticCard({ accent: T.green });
+  var isSelected = !!(state.selected && state.selected[seat.id]);
+  var accent     = seatAccent(seatIdx);
+
+  var wrap = buildStaticCard({ accent: accent });
   wrap.style.padding       = '0';
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
@@ -1998,6 +2026,14 @@ function buildCompactTile(state, seatIdx) {
   // the card body defaults to auto + fires toggleSeat on release.
   wrap.style.touchAction = 'pan-y';
 
+  // Inverted selection visual — wrap fills with the per-seat accent,
+  // all text flips to T.well. Matches the file-header spec ('selected
+  // tiles fill with a per-seat accent ... every text node flips to
+  // T.well'). Unselected tiles keep the dark card look.
+  if (isSelected) {
+    wrap.style.background = accent;
+  }
+
   wrap.addEventListener('pointerup', function(e) {
     if (e.defaultPrevented) return;
     toggleSeat(state, seat.id);
@@ -2005,14 +2041,14 @@ function buildCompactTile(state, seatIdx) {
 
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    background:   T.well,
+    background:   isSelected ? darkenHex(accent, 0.15) : T.well,
     padding:      '6px 12px',
     borderBottom: '1px solid ' + T.border,
     touchAction:  'pan-y',
   });
   var label = document.createElement('div');
   Object.assign(label.style, {
-    color:       T.green,
+    color:       isSelected ? T.well : T.green,
     fontFamily:  T.fh,
     fontWeight:  T.fwBold,
     touchAction: 'pan-y',
@@ -2023,7 +2059,7 @@ function buildCompactTile(state, seatIdx) {
 
   var body = document.createElement('div');
   Object.assign(body.style, {
-    background:     T.card,
+    background:     isSelected ? accent : T.card,
     flex:           '1',
     display:        'flex',
     alignItems:     'center',
@@ -2033,7 +2069,7 @@ function buildCompactTile(state, seatIdx) {
   });
   var totalEl = document.createElement('div');
   Object.assign(totalEl.style, {
-    color:       T.gold,
+    color:       isSelected ? T.well : T.gold,
     fontFamily:  T.fb,
     fontSize:    T.fsB1,
     fontWeight:  T.fwBold,
