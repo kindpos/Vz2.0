@@ -193,17 +193,25 @@ function _adaptOrderForRecap(state) {
   var order  = state.order || {};
   var params = state._mountParams || {};
 
-  // When seats are selected, the recap narrows to just those seats so
-  // the left-hand item list matches the scope the user is acting on.
-  // Empty selection falls back to the whole (unpaid) check.
-  var selectedIds = state.selected || {};
-  var anySelected = Object.keys(selectedIds).length > 0;
+  // When any item is selected, the recap narrows to just the seats
+  // that contain at least one of those items. Empty selection falls
+  // back to the whole (unpaid) check. state.selectedItems is the
+  // source of truth; state.selected is a derived "fully-selected"
+  // mirror maintained by toggleSeat / toggleItem.
+  var selItems = state.selectedItems || {};
+  var selKeys  = Object.keys(selItems);
+  var anyItemSelected = selKeys.length > 0;
+  var seatIdxsWithSelected = {};
+  for (var sk = 0; sk < selKeys.length; sk++) {
+    var sIdx = parseInt(selKeys[sk].split(':')[0], 10);
+    if (!isNaN(sIdx)) seatIdxsWithSelected[sIdx] = true;
+  }
 
   var adaptedSeats = [];
   var totalUpcharges = 0;
   for (var s = 0; s < state.seats.length; s++) {
     if (state.paidSeats && state.paidSeats[state.seats[s].id]) continue;
-    if (anySelected && !selectedIds[state.seats[s].id])        continue;
+    if (anyItemSelected && !seatIdxsWithSelected[s])           continue;
     var seat = state.seats[s];
     var adaptedItems = [];
     for (var i = 0; i < seat.items.length; i++) {
@@ -972,18 +980,25 @@ function renderActionBar(state) {
   var order = state.order || {};
   var discount = getCashDiscount();
 
-  // Selection-aware totals: when seats are selected, the bar shows the
-  // sum of those seats only; otherwise the whole-check totals from
-  // state.order. Mirrors the anySelected pattern collectSummary uses.
-  var selectedIds = Object.keys(state.selected || {});
-  var anySelected = selectedIds.length > 0;
+  // Selection-aware totals: when any items are selected, the bar shows
+  // the sum of those items only; otherwise the whole-check totals from
+  // state.order. Items are the source of truth — seat-level selection
+  // is just a bulk shortcut that writes to state.selectedItems.
+  var itemKeys   = Object.keys(state.selectedItems || {});
+  var anyItemSel = itemKeys.length > 0;
 
   var subtotal, tax, total, cashTotal;
-  if (anySelected) {
+  if (anyItemSel) {
     subtotal = 0;
-    for (var si = 0; si < selectedIds.length; si++) {
-      var sidx = _seatIdxById(state, selectedIds[si]);
-      if (sidx >= 0) subtotal += seatTotal(state.seats[sidx]);
+    for (var ki = 0; ki < itemKeys.length; ki++) {
+      var parts = itemKeys[ki].split(':');
+      var sIdx  = parseInt(parts[0], 10);
+      var iIdx  = parseInt(parts[1], 10);
+      var selSeat = state.seats[sIdx];
+      var selItem = selSeat && selSeat.items[iIdx];
+      if (!selItem) continue;
+      var selPrice = selItem.effectivePrice != null ? selItem.effectivePrice : (selItem.price || 0);
+      subtotal += (selItem.qty || 0) * selPrice;
     }
     tax       = subtotal * getTaxRate();
     total     = subtotal + tax;
@@ -1790,9 +1805,35 @@ function renderSeatsGrid(state, container, mode) {
       minWidth:  '0',
       overflowY: 'auto',
     });
-    recapCol.appendChild(buildItemRecap(_adaptOrderForRecap(state), {
-      hideHeader: true,
-      hideTotals: true,
+    // _adaptOrderForRecap may filter seats (by selection), so the
+    // indices buildItemRecap passes to its callbacks are FILTERED
+    // indices — translate back to the real state.seats index via
+    // seatNumber so selectedItems / toggleItem operate on the truth.
+    var adaptedOrder = _adaptOrderForRecap(state);
+    var filteredToState = [];
+    for (var ai = 0; ai < adaptedOrder.seats.length; ai++) {
+      var adaptedNum = adaptedOrder.seats[ai].seatNumber;
+      for (var si2 = 0; si2 < state.seats.length; si2++) {
+        if (state.seats[si2].number === adaptedNum) {
+          filteredToState[ai] = si2;
+          break;
+        }
+      }
+    }
+
+    recapCol.appendChild(buildItemRecap(adaptedOrder, {
+      hideHeader:  true,
+      hideTotals:  true,
+      collapsible: true,
+      itemSelected: function(fIdx, itemIdx) {
+        var realIdx = filteredToState[fIdx];
+        return realIdx != null
+          && !!(state.selectedItems && state.selectedItems[realIdx + ':' + itemIdx]);
+      },
+      onItemTap: function(fIdx, itemIdx) {
+        var realIdx = filteredToState[fIdx];
+        if (realIdx != null) toggleItem(state, realIdx, itemIdx);
+      },
     }));
     container.appendChild(recapCol);
 
@@ -2295,32 +2336,56 @@ function _wireItemTaps(state, seatIdx, itemIdx, el) {
 //  SELECTION OPERATIONS
 // ═══════════════════════════════════════════════════
 
-// Selection toggles forward to pure helpers in ./seats.js that return a
-// fresh selection map; the scene owns the re-render trigger.
+// ── Selection model ──
+// state.selectedItems (keyed "seatIdx:itemIdx") is the source of truth.
+// state.selected (keyed seat.id) is a derived mirror — true iff every
+// item in that seat is currently in selectedItems. Downstream consumers
+// (handlePay, handleVoid, etc.) still read state.selected for whole-seat
+// checks, so we keep it in sync after every mutation.
+function _syncSelectedFromItems(state) {
+  var next = {};
+  for (var i = 0; i < state.seats.length; i++) {
+    if (state.paidSeats && state.paidSeats[state.seats[i].id]) continue;
+    var seat = state.seats[i];
+    if (!seat.items.length) continue;
+    var all = true;
+    for (var j = 0; j < seat.items.length; j++) {
+      if (!state.selectedItems[i + ':' + j]) { all = false; break; }
+    }
+    if (all) next[seat.id] = true;
+  }
+  state.selected = next;
+}
+
+// Tapping a seat is a bulk shortcut: if every item in the seat is
+// already selected, deselect the whole seat; otherwise select every
+// item. Individual item taps go through toggleItem instead.
 function toggleSeat(state, seatId) {
-  state.selected = toggleSeatSelection(state.selected, state.paidSeats, seatId);
-  // Mirror seat selection onto per-item selection: downstream ops
-  // (PAY SEATS, MANAGE, discount) read from state.selectedItems, so
-  // tapping a seat header behaves the same as hand-tapping every
-  // item in that seat.
+  if (state.paidSeats && state.paidSeats[seatId]) return;
   var seatIdx = -1;
   for (var i = 0; i < state.seats.length; i++) {
     if (state.seats[i].id === seatId) { seatIdx = i; break; }
   }
-  if (seatIdx >= 0) {
-    var seat = state.seats[seatIdx];
-    var nowSelected = !!state.selected[seatId];
-    for (var j = 0; j < seat.items.length; j++) {
-      var key = seatIdx + ':' + j;
-      if (nowSelected) state.selectedItems[key] = true;
-      else             delete state.selectedItems[key];
-    }
+  if (seatIdx < 0) return;
+  var seat = state.seats[seatIdx];
+  if (!state.selectedItems) state.selectedItems = {};
+
+  var allSelected = seat.items.length > 0;
+  for (var j = 0; j < seat.items.length; j++) {
+    if (!state.selectedItems[seatIdx + ':' + j]) { allSelected = false; break; }
   }
+  for (var k = 0; k < seat.items.length; k++) {
+    var key = seatIdx + ':' + k;
+    if (allSelected) delete state.selectedItems[key];
+    else             state.selectedItems[key] = true;
+  }
+  _syncSelectedFromItems(state);
   rerenderTopArea(state);
 }
 
 function toggleItem(state, seatIdx, itemIdx) {
   state.selectedItems = toggleItemSelection(state.selectedItems, seatIdx, itemIdx);
+  _syncSelectedFromItems(state);
   rerenderTopArea(state);
 }
 
