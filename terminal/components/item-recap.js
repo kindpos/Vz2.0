@@ -604,6 +604,12 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
 
   var row = document.createElement('div');
   row.className = 'ir-item-row';
+  // When the consumer tracks selection across re-renders (check-overview's
+  // state.selectedItems), seed the row's .sel class so the inverted
+  // cascade persists after rerenderTopArea wipes and rebuilds the DOM.
+  if (typeof opts.itemSelected === 'function' && opts.itemSelected(seatIdx, itemIdx)) {
+    row.classList.add('sel');
+  }
 
   var chev = document.createElement('span');
   chev.className = 'ir-chev';
@@ -696,6 +702,19 @@ function _buildSeatGroup(seat, seatIdx, opts) {
   var group = document.createElement('div');
   group.className = 'ir-seat-group';
 
+  // Collapsible variant — seat groups start closed and the header is a
+  // tap-to-toggle affordance. Auto-expand any seat whose items are
+  // pre-selected so the cashier can see what's in scope right away.
+  if (opts.collapsible) {
+    var anySel = false;
+    if (typeof opts.itemSelected === 'function' && Array.isArray(seat.items)) {
+      for (var si = 0; si < seat.items.length; si++) {
+        if (opts.itemSelected(seatIdx, si)) { anySel = true; break; }
+      }
+    }
+    if (!anySel) group.classList.add('collapsed');
+  }
+
   // When the consumer owns its own seat header (e.g. check-overview's
   // Mode A tile already renders S-num / SEAT / subtotal) we skip the
   // recap's internal header to avoid duplicating the same chrome.
@@ -708,39 +727,64 @@ function _buildSeatGroup(seat, seatIdx, opts) {
     num.textContent = 'S' + seat.seatNumber;
     header.appendChild(num);
 
-    var meta = document.createElement('div');
-    meta.className = 'ir-seat-meta';
-    var label = document.createElement('span');
-    label.className = 'ir-seat-label';
-    label.textContent = 'SEAT';
-    meta.appendChild(label);
-    var sub = document.createElement('span');
-    sub.className = 'ir-seat-sub';
-    sub.textContent = _fmt(seat.subtotal);
-    meta.appendChild(sub);
-    header.appendChild(meta);
+    if (opts.collapsible) {
+      // Compact header: seat num on the left, subtotal flush right,
+      // chevron at the end. Drops the 'SEAT' label + stacked meta
+      // column so the subtotal sits directly next to the seat number
+      // per the Mode B design.
+      var subC = document.createElement('span');
+      subC.className = 'ir-seat-sub';
+      subC.style.marginLeft = 'auto';
+      subC.textContent = _fmt(seat.subtotal);
+      header.appendChild(subC);
 
-    var chev = document.createElement('span');
-    chev.className = 'ir-seat-chev';
-    chev.textContent = '›';
-    header.appendChild(chev);
+      var chevC = document.createElement('span');
+      chevC.className = 'ir-seat-chev';
+      chevC.textContent = '›';
+      header.appendChild(chevC);
+
+      // Tap header → toggle collapse. Item-level selection is driven
+      // by per-item taps (opts.onItemTap) and bulk-selection happens
+      // at the consumer's seat tile.
+      header.addEventListener('click', function() {
+        group.classList.toggle('collapsed');
+      });
+    } else {
+      // Original layout — retained for order-summary and any other
+      // consumer that hasn't opted into the collapsible flow.
+      var meta = document.createElement('div');
+      meta.className = 'ir-seat-meta';
+      var label = document.createElement('span');
+      label.className = 'ir-seat-label';
+      label.textContent = 'SEAT';
+      meta.appendChild(label);
+      var sub = document.createElement('span');
+      sub.className = 'ir-seat-sub';
+      sub.textContent = _fmt(seat.subtotal);
+      meta.appendChild(sub);
+      header.appendChild(meta);
+
+      var chev = document.createElement('span');
+      chev.className = 'ir-seat-chev';
+      chev.textContent = '›';
+      header.appendChild(chev);
+
+      header.addEventListener('click', function() {
+        var all = group.querySelectorAll('.ir-item-row, .ir-mod, .ir-mmod');
+        var allSelected = all.length > 0;
+        for (var i = 0; i < all.length; i++) {
+          if (!all[i].classList.contains('sel')) { allSelected = false; break; }
+        }
+        for (var j = 0; j < all.length; j++) {
+          all[j].classList.toggle('sel', !allSelected);
+        }
+        if (typeof opts.onSeatHeaderTap === 'function') {
+          opts.onSeatHeaderTap(seatIdx, !allSelected);
+        }
+      });
+    }
 
     group.appendChild(header);
-
-    // Header tap = select every item / mod / microMod in the group.
-    header.addEventListener('click', function() {
-      var all = group.querySelectorAll('.ir-item-row, .ir-mod, .ir-mmod');
-      var allSelected = all.length > 0;
-      for (var i = 0; i < all.length; i++) {
-        if (!all[i].classList.contains('sel')) { allSelected = false; break; }
-      }
-      for (var j = 0; j < all.length; j++) {
-        all[j].classList.toggle('sel', !allSelected);
-      }
-      if (typeof opts.onSeatHeaderTap === 'function') {
-        opts.onSeatHeaderTap(seatIdx, !allSelected);
-      }
-    });
   }
 
   var items = document.createElement('div');
