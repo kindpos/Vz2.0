@@ -40,7 +40,6 @@ import {
   buildCard,
   buildStaticCard,
   buildPillButton,
-  buildDataRow,
   hexToRgba,
   darkenHex,
 } from '../theme-manager.js';
@@ -973,7 +972,7 @@ function renderActionBar(state) {
 
   // Totals block — two stacked Nostalgia cards matching the order-entry
   // totals treatment: buildStaticCard (bevel + green accent bar) wrapping
-  // buildDataRow rows (uppercase label left, colored money value right).
+  // compact rows (uppercase label left, colored money value right).
   var totalsBlock = document.createElement('div');
   Object.assign(totalsBlock.style, {
     width:         '200px',
@@ -987,7 +986,7 @@ function renderActionBar(state) {
   function buildTotalsCard() {
     var card = buildStaticCard({ accent: T.green });
     Object.assign(card.style, {
-      padding: '8px 12px 8px 16px',
+      padding: '4px 10px 4px 14px',
       flex:    '1',
       display: 'flex',
       flexDirection:  'column',
@@ -996,14 +995,48 @@ function renderActionBar(state) {
     return card;
   }
 
+  // Compact variant of buildDataRow for the bottom bar — label T.fsB4,
+  // value T.fsB3, tight row padding. Keeps the buildStaticCard +
+  // label-left / money-right look from the order-entry totals cards
+  // without blowing out the bar height.
+  function buildCompactRow(label, valText, valColor) {
+    var row = document.createElement('div');
+    Object.assign(row.style, {
+      display:        'flex',
+      justifyContent: 'space-between',
+      alignItems:     'baseline',
+      padding:        '2px 0',
+    });
+    var lbl = document.createElement('span');
+    Object.assign(lbl.style, {
+      fontFamily:    T.fb,
+      fontSize:      T.fsB4,
+      color:         T.text,
+      letterSpacing: '0.08em',
+      textTransform: 'uppercase',
+    });
+    lbl.textContent = label;
+    row.appendChild(lbl);
+    var val = document.createElement('span');
+    Object.assign(val.style, {
+      fontFamily: T.fb,
+      fontSize:   T.fsB3,
+      fontWeight: T.fwBold,
+      color:      valColor || T.text,
+    });
+    val.textContent = valText;
+    row.appendChild(val);
+    return row;
+  }
+
   var summaryCard = buildTotalsCard();
-  summaryCard.appendChild(buildDataRow('SUBTOTAL', fmt(subtotal), T.gold));
-  summaryCard.appendChild(buildDataRow('TAX',      fmt(tax),      T.gold));
+  summaryCard.appendChild(buildCompactRow('SUBTOTAL', fmt(subtotal), T.gold));
+  summaryCard.appendChild(buildCompactRow('TAX',      fmt(tax),      T.gold));
   totalsBlock.appendChild(summaryCard);
 
   var pricesCard = buildTotalsCard();
-  pricesCard.appendChild(buildDataRow('CARD PRICE', fmt(total),     T.elec));
-  pricesCard.appendChild(buildDataRow('CASH PRICE', fmt(cashTotal), T.greenWarm));
+  pricesCard.appendChild(buildCompactRow('CARD PRICE', fmt(total),     T.elec));
+  pricesCard.appendChild(buildCompactRow('CASH PRICE', fmt(cashTotal), T.greenWarm));
   totalsBlock.appendChild(pricesCard);
 
   // Left stack — flex-direction: column, gap: 8px, width: 180px.
