@@ -334,7 +334,7 @@ def create_event(
 def order_created(
         terminal_id: str,
         order_id: str,
-        table: Optional[str] = None,
+        table: str | int | None = None,
         server_id: Optional[str] = None,
         server_name: Optional[str] = None,
         guest_count: int = 1,
@@ -459,25 +459,41 @@ def item_added(
         quantity: int = 1,
         category: Optional[str] = None,
         notes: Optional[str] = None,
+        table: str | int | None = None,
         seat_number: Optional[int] = None,
         idempotency_key: Optional[str] = None,
+        mandatory_selections: Optional[list[str]] = None,
+        allergens: Optional[list[str]] = None,
+        allergen_note: Optional[str] = None,
+        included_removals: Optional[list[str]] = None,
         **kwargs,
 ) -> Event:
     """Create an ITEM_ADDED event."""
+    payload = {
+        "order_id": order_id,
+        "item_id": item_id,
+        "menu_item_id": menu_item_id,
+        "name": name,
+        "price": price,
+        "quantity": quantity,
+        "category": category,
+        "notes": notes,
+        "table": table,
+        "seat_number": seat_number,
+    }
+    if mandatory_selections is not None:
+        payload["mandatory_selections"] = list(mandatory_selections)
+    if allergens is not None:
+        payload["allergens"] = list(allergens)
+    if allergen_note is not None:
+        payload["allergen_note"] = allergen_note
+    if included_removals is not None:
+        payload["included_removals"] = list(included_removals)
+
     return create_event(
         event_type=EventType.ITEM_ADDED,
         terminal_id=terminal_id,
-        payload={
-            "order_id": order_id,
-            "item_id": item_id,
-            "menu_item_id": menu_item_id,
-            "name": name,
-            "price": price,
-            "quantity": quantity,
-            "category": category,
-            "notes": notes,
-            "seat_number": seat_number,
-        },
+        payload=payload,
         correlation_id=order_id,
         idempotency_key=idempotency_key,
         **kwargs,

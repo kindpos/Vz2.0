@@ -66,11 +66,16 @@ export function buildOrderEntryParams(state, params) {
  */
 export function buildCheckOverviewParams(currentOrderId, sceneParams) {
   sceneParams = sceneParams || {};
+  // returnLanding lives at the top level when check-overview originates
+  // the call, but order-entry's sceneParams comes from buildOrderEntryParams
+  // which nests it under returnParams. Resolve from both shapes so the
+  // return path works regardless of which direction initiated the mount.
+  var rp = sceneParams.returnParams || {};
   return {
-    checkId:       currentOrderId || sceneParams.recallOrderId || null,
-    pin:           sceneParams.pin,
-    employeeId:    sceneParams.employeeId,
-    employeeName:  sceneParams.employeeName,
-    returnLanding: sceneParams.returnLanding,
+    checkId:       currentOrderId || sceneParams.recallOrderId || rp.checkId || null,
+    pin:           sceneParams.pin           || rp.pin           || null,
+    employeeId:    sceneParams.employeeId    || rp.employeeId    || null,
+    employeeName:  sceneParams.employeeName  || rp.employeeName  || null,
+    returnLanding: sceneParams.returnLanding || rp.returnLanding || null,
   };
 }

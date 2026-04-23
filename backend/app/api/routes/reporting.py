@@ -20,6 +20,7 @@ from app.core.event_ledger import EventLedger
 from app.core.events import EventType
 from app.core.projections import project_orders
 from app.core.money import money_round
+from app.services.print_context_builder import PrintContextBuilder
 from app.core.financial_invariants import (
     check_day_close,
     gate as invariant_gate,
@@ -126,8 +127,9 @@ async def _get_current_day_events(ledger: EventLedger, limit: int = 50000):
 async def _get_events_for_date(ledger: EventLedger, date_str: str, limit: int = 50000):
     """Get events for a specific date — uses date range query for historical,
     current-day query for today."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if date_str == today:
+    today_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_local = datetime.now().strftime("%Y-%m-%d")
+    if date_str in (today_utc, today_local):
         return await _get_current_day_events(ledger, limit=limit)
     # Historical: query by date range
     next_day = (datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -144,209 +146,9 @@ def _hour_label(h: int) -> str:
 
 
 def _aggregate_orders(orders, tip_map):
-    """Shared aggregation logic for a set of orders."""
-    net_sales = _ZERO
-    gross_sales = _ZERO
-    void_total = _ZERO
-    discount_total = _ZERO
-    refund_total = _ZERO
-    tax_total = _ZERO
-    cash_total = _ZERO
-    card_total = _ZERO
-    cash_count = 0
-    card_count = 0
-    total_tips = _ZERO
-    card_tips = _ZERO
-    cash_tips = _ZERO
-    total_checks = 0
-    voided_count = 0
-    open_count = 0
-    closed_count = 0
-    discount_count = 0
-    guest_count = 0
-    table_set = set()
-    hourly = {}          # hour -> {net, checks, tables, food, drink, other}
-    item_revenue = {}    # item_name -> {revenue, category, count}
-    category_totals = {} # category_name -> {revenue, items_sold}
-    closed_order_ids = []
-    tip_amounts = []     # list of individual tip values
-    # Home page additions:
-    open_total = _ZERO          # sum of subtotals for open orders
-    oldest_open_ts = None       # earliest created_at among open orders
-    server_totals = {}          # server_id -> {name, revenue, checks, tips}
-
-    for order in orders:
-        if order.status == "voided":
-            # Include voided subtotals in gross so that the canonical
-            # P&L identity holds: Net = Gross − Voids − Discounts − Refunds.
-            # Previously gross skipped voided orders, causing net to be
-            # reduced by the void amount a second time.
-            voided_count += 1
-            void_total += Decimal(str(order.subtotal))
-            gross_sales += Decimal(str(order.subtotal))
-            continue
-        # Skip open orders from financial totals — they have no
-        # confirmed payments yet and would inflate net_sales.
-        # Guests and tables still count toward coverage metrics
-        # so that guests_per_table uses matching cohorts.
-        if order.status == "open":
-            open_count += 1
-            guest_count += order.guest_count
-            if order.table:
-                table_set.add(order.table)
-            # Track open-check total and oldest timestamp for home dashboard
-            open_total += Decimal(str(order.subtotal or 0))
-            if order.created_at:
-                if oldest_open_ts is None or order.created_at < oldest_open_ts:
-                    oldest_open_ts = order.created_at
-            continue
-
-        # closed/paid from here on
-        closed_count += 1
-        closed_order_ids.append(order.order_id)
-
-        total_checks += 1
-        gross_sales += Decimal(str(order.subtotal))
-        order_discount = Decimal(str(order.discount_total))
-        if order_discount > 0:
-            discount_count += 1
-        discount_total += order_discount
-        refund_total += Decimal(str(order.refund_total))
-        tax_total += Decimal(str(order.tax))
-        guest_count += order.guest_count
-        if order.table:
-            table_set.add(order.table)
-
-        order_net = Decimal(str(order.subtotal)) - Decimal(str(order.discount_total)) - Decimal(str(order.refund_total))
-
-        # Per-server totals (for home page server leaderboard)
-        sid = getattr(order, "server_id", None)
-        if sid:
-            if sid not in server_totals:
-                server_totals[sid] = {
-                    "name": getattr(order, "server_name", None) or sid,
-                    "revenue": _ZERO,
-                    "checks": 0,
-                    "tips": _ZERO,
-                }
-            server_totals[sid]["revenue"] += order_net
-            server_totals[sid]["checks"] += 1
-
-        # Per-item tracking
-        food_total = _ZERO
-        drink_total = _ZERO
-        for item in order.items:
-            item_sub = Decimal(str(item.subtotal))
-            cat = item.category or ""
-            if cat in _BEVERAGE_CATS:
-                drink_total += item_sub
-            else:
-                food_total += item_sub
-
-            # Top items tracking
-            key = item.name
-            if key not in item_revenue:
-                item_revenue[key] = {"revenue": _ZERO, "category": cat, "count": 0}
-            item_revenue[key]["revenue"] += item_sub
-            item_revenue[key]["count"] += item.quantity
-
-            # Category rollup for the Sales by Category report
-            cat_key = cat or "Uncategorized"
-            if cat_key not in category_totals:
-                category_totals[cat_key] = {"revenue": _ZERO, "items_sold": 0}
-            category_totals[cat_key]["revenue"] += item_sub
-            category_totals[cat_key]["items_sold"] += item.quantity
-
-        other_total = order_net - food_total - drink_total
-        if other_total < 0:
-            other_total = _ZERO
-
-        # Hourly bucket
-        if order.created_at:
-            h = order.created_at.hour
-            if h not in hourly:
-                hourly[h] = {"net": _ZERO, "checks": 0, "tables": set(),
-                             "food": _ZERO, "drink": _ZERO, "other": _ZERO}
-            hourly[h]["net"] += order_net
-            hourly[h]["checks"] += 1
-            hourly[h]["food"] += food_total
-            hourly[h]["drink"] += drink_total
-            hourly[h]["other"] += other_total
-            if order.table:
-                hourly[h]["tables"].add(order.table)
-
-        # Payment breakdown
-        for p in order.payments:
-            if p.status != "confirmed":
-                continue
-            tip = Decimal(str(tip_map.get(p.payment_id, p.tip_amount)))
-            total_tips += tip
-            tip_amounts.append(tip)
-            # Attribute tip to server
-            if sid and sid in server_totals:
-                server_totals[sid]["tips"] += tip
-            if p.method == "cash":
-                cash_total += Decimal(str(p.amount))
-                cash_tips += tip
-                cash_count += 1
-            else:
-                card_total += Decimal(str(p.amount))
-                card_tips += tip
-                card_count += 1
-
-    net_sales = gross_sales - void_total - discount_total - refund_total
-
-    # Gate the aggregation behind the canonical invariants. In production
-    # (strict_invariants=False) any drift just logs WARN; in tests the
-    # conftest flips strict=True so regressions fail loudly.
-    invariant_gate(
-        check_day_close(
-            gross_sales=gross_sales,
-            void_total=void_total,
-            discount_total=discount_total,
-            refund_total=refund_total,
-            net_sales=net_sales,
-            tax_collected=tax_total,
-            cash_total=cash_total,
-            card_total=card_total,
-            total_tips=total_tips,
-            card_tips=card_tips,
-            cash_tips=cash_tips,
-        ),
-        context="_aggregate_orders",
-    )
-
-    return {
-        "net_sales": net_sales,
-        "gross_sales": gross_sales,
-        "void_total": void_total,
-        "discount_total": discount_total,
-        "refund_total": refund_total,
-        "tax_total": tax_total,
-        "total_checks": total_checks,
-        "voided_count": voided_count,
-        "open_count": open_count,
-        "closed_count": closed_count,
-        "discount_count": discount_count,
-        "closed_order_ids": closed_order_ids,
-        "cash_total": cash_total,
-        "card_total": card_total,
-        "cash_count": cash_count,
-        "card_count": card_count,
-        "total_tips": total_tips,
-        "card_tips": card_tips,
-        "cash_tips": cash_tips,
-        "guest_count": guest_count,
-        "table_count": len(table_set),
-        "hourly": hourly,
-        "item_revenue": item_revenue,
-        "category_totals": category_totals,
-        "tip_amounts": tip_amounts,
-        # Home page additions:
-        "open_total": open_total,
-        "oldest_open_ts": oldest_open_ts,
-        "server_totals": server_totals,
-    }
+    """Compatibility wrapper for legacy tests. Routes use PrintContextBuilder directly."""
+    builder = PrintContextBuilder(None)
+    return builder.aggregate_orders(orders, tip_map)
 
 
 def _build_top_items(item_revenue, limit=10):
@@ -382,12 +184,9 @@ def _build_tip_buckets(tip_amounts):
 
 
 def _build_tip_map(events):
-    """Build tip map from events (last-write-wins per payment_id)."""
-    tip_map = {}
-    for e in events:
-        if e.event_type == EventType.TIP_ADJUSTED:
-            tip_map[e.payload.get("payment_id")] = e.payload.get("tip_amount", 0.0)
-    return tip_map
+    """Compatibility wrapper for legacy tests."""
+    builder = PrintContextBuilder(None)
+    return builder.build_tip_map(events)
 
 
 # ── sales-summary ──────────────────────────────────────────────────────────
@@ -408,14 +207,15 @@ async def get_sales_summary(
         await _gate_server_scope(request, server_id, "reporting.sales_summary")
     all_events = await _get_events_for_date(ledger, date)
     all_orders = project_orders(all_events)
-    tip_map = _build_tip_map(all_events)
+    builder = PrintContextBuilder(ledger)
+    tip_map = builder.build_tip_map(all_events)
 
     # Filter by server if requested
     orders = list(all_orders.values())
     if server_id:
         orders = [o for o in orders if o.server_id == server_id]
 
-    agg = _aggregate_orders(orders, tip_map)
+    agg = builder.aggregate_orders(orders, tip_map)
     net = agg["net_sales"]
     checks = agg["total_checks"]
     check_avg = money_round(net / checks) if checks > 0 else Decimal("0.00")
@@ -439,11 +239,11 @@ async def get_sales_summary(
         lw_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
         lw_events = await _get_events_for_date(ledger, lw_date)
         lw_orders = project_orders(lw_events)
-        lw_tip_map = _build_tip_map(lw_events)
+        lw_tip_map = builder.build_tip_map(lw_events)
         lw_list = list(lw_orders.values())
         if server_id:
             lw_list = [o for o in lw_list if o.server_id == server_id]
-        lw_agg = _aggregate_orders(lw_list, lw_tip_map)
+        lw_agg = builder.aggregate_orders(lw_list, lw_tip_map)
         for h in sorted(lw_agg["hourly"].keys()):
             bucket = lw_agg["hourly"][h]
             last_week_hourly.append({
@@ -695,8 +495,9 @@ async def get_labor_summary(
     _apply_timecard_adjustments(date, clock_ins, clock_outs, emp_names)
 
     # Also get order data for tip calculations
+    builder = PrintContextBuilder(ledger)
     all_orders = project_orders(day_events)
-    tip_map = _build_tip_map(day_events)
+    tip_map = builder.build_tip_map(day_events)
 
     now = datetime.now(timezone.utc)
     today_str = now.strftime("%Y-%m-%d")
@@ -923,8 +724,8 @@ async def get_labor_summary(
             # Get sales for the day
             d_events = await _get_events_for_date(ledger, d_str)
             d_orders = project_orders(d_events)
-            d_tip_map = _build_tip_map(d_events)
-            d_agg = _aggregate_orders(list(d_orders.values()), d_tip_map)
+            d_tip_map = builder.build_tip_map(d_events)
+            d_agg = builder.aggregate_orders(list(d_orders.values()), d_tip_map)
             d_sales = d_agg["net_sales"]
 
             # Get labor cost per employee using their configured rate,
@@ -1026,7 +827,6 @@ async def _hourly_for_date(ledger: EventLedger, date_str: str, open_hour: int = 
         # Manager Landing sparkline against the rest of the UI.
         net = (
             Decimal(str(order.subtotal or 0))
-            - Decimal(str(order.discount_total or 0))
             - Decimal(str(order.refund_total or 0))
         )
         hourly[h] += net

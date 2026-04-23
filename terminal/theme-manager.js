@@ -100,6 +100,187 @@ export function buildCard(opts) {
 }
 
 // ═══════════════════════════════════════════════════
+//  KINDpos Card Affordance System
+// ═══════════════════════════════════════════════════
+
+/**
+ * buildStaticCard(opts) — Tier 1, read-only display panel
+ */
+export function buildStaticCard(opts) {
+  var o = opts || {};
+  var accent = o.accent || T.green;
+
+  var el = document.createElement('div');
+  el.style.position = 'relative';
+  el.style.backgroundColor = T.well;
+  el.style.borderRadius = '12px';
+  el.style.borderLeft = '5px solid ' + lightenHex(T.bg, 0.08);
+  el.style.borderTop = '5px solid ' + lightenHex(T.bg, 0.08);
+  el.style.borderRight = '5px solid ' + darkenHex(T.bg, 0.2);
+  el.style.borderBottom = '5px solid ' + darkenHex(T.bg, 0.2);
+  el.style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.06), 3px 5px 0 rgba(0,0,0,0.55)';
+  el.style.cursor = 'default';
+  el.style.padding = '16px 18px 14px 20px';
+  el.style.boxSizing = 'border-box';
+  if (o.width) el.style.width = o.width;
+
+  var bar = document.createElement('div');
+  bar.style.position = 'absolute';
+  bar.style.left = '0';
+  bar.style.top = '12px';
+  bar.style.bottom = '12px';
+  bar.style.width = T.accentBarW || '4px';
+  bar.style.borderRadius = '0 2px 2px 0';
+  bar.style.backgroundColor = accent;
+  bar.style.boxShadow = '0 0 10px ' + hexToRgba(accent, 0.5);
+  el.appendChild(bar);
+
+  el.accentBar = bar;
+  el.setAccent = function(color) {
+    el.accentBar.style.backgroundColor = color;
+    el.accentBar.style.boxShadow = '0 0 10px ' + hexToRgba(color, 0.5);
+  };
+
+  if (o.onClick) {
+    el.addEventListener('pointerup', o.onClick);
+  }
+
+  return el;
+}
+
+/**
+ * buildNavCard(opts) — Tier 2, drill-down / navigable
+ */
+export function buildNavCard(opts) {
+  var o = opts || {};
+  var accent = o.accent || T.green;
+  var el = buildStaticCard(o);
+  el.style.cursor = 'pointer';
+  el.style.transition = 'transform 0.1s ease, box-shadow 0.1s ease';
+
+  var showChevron = o.showChevron !== false;
+  var chevron;
+  if (showChevron) {
+    chevron = document.createElement('div');
+    chevron.textContent = '›';
+    chevron.style.position = 'absolute';
+    chevron.style.right = '14px';
+    chevron.style.bottom = '13px';
+    chevron.style.fontFamily = T.fb;
+    chevron.style.fontSize = '11px';
+    chevron.style.color = T.border;
+    chevron.style.opacity = '0.6';
+    chevron.style.transition = 'all 0.1s ease';
+    el.appendChild(chevron);
+    el.chevron = chevron;
+  }
+
+  var baseShadow = 'inset 0 1px 0 rgba(255,255,255,0.06), 3px 5px 0 rgba(0,0,0,0.55)';
+  var hoverShadow = baseShadow + ', 0 0 18px ' + hexToRgba(accent, 0.12);
+  var activeShadow = '1px 3px 0 rgba(0,0,0,0.55)';
+
+  el.addEventListener('mouseenter', function() {
+    el.style.transform = 'translateY(-1px)';
+    el.style.boxShadow = hoverShadow;
+    if (chevron) {
+      chevron.style.opacity = '1';
+      chevron.style.color = accent;
+      chevron.style.transform = 'translateX(2px)';
+    }
+  });
+
+  el.addEventListener('mouseleave', function() {
+    el.style.transform = 'none';
+    el.style.boxShadow = baseShadow;
+    if (chevron) {
+      chevron.style.opacity = '0.6';
+      chevron.style.color = T.border;
+      chevron.style.transform = 'none';
+    }
+  });
+
+  el.addEventListener('pointerdown', function() {
+    el.style.transform = 'translateY(2px)';
+    el.style.boxShadow = activeShadow;
+  });
+
+  el.addEventListener('pointerup', function() {
+    el.style.transform = 'translateY(-1px)';
+    el.style.boxShadow = hoverShadow;
+  });
+
+  return el;
+}
+
+/**
+ * buildActionCard(opts) — Tier 3, raised key / primary action
+ */
+export function buildActionCard(opts) {
+  var o = opts || {};
+  var accent = o.accent || T.green;
+
+  var el = document.createElement('div');
+  el.style.position = 'relative';
+  el.style.backgroundColor = T.card;
+  el.style.borderRadius = '14px';
+  el.style.cursor = 'pointer';
+  el.style.padding = '16px 18px 14px 20px';
+  el.style.boxSizing = 'border-box';
+  el.style.transition = 'transform 0.07s ease, box-shadow 0.07s ease';
+  el.style.pointerEvents = 'auto';
+  el.style.touchAction = 'manipulation';
+  if (o.width) el.style.width = o.width;
+
+  var bar = document.createElement('div');
+  bar.style.position = 'absolute';
+  bar.style.left = '0';
+  bar.style.top = '12px';
+  bar.style.bottom = '12px';
+  bar.style.width = T.accentBarW || '4px';
+  bar.style.borderRadius = '0 2px 2px 0';
+  bar.style.backgroundColor = accent;
+  bar.style.boxShadow = '0 0 10px ' + hexToRgba(accent, 0.5);
+  el.appendChild(bar);
+
+  el.accentBar = bar;
+  el.setAccent = function(color) {
+    el.accentBar.style.backgroundColor = color;
+    el.accentBar.style.boxShadow = '0 0 10px ' + hexToRgba(color, 0.5);
+  };
+
+  var baseShadow = '0 7px 0 ' + darkenHex(T.card, 0.35) + ', inset 0 1px 0 rgba(255,255,255,0.10), 0 10px 24px rgba(0,0,0,0.45)';
+  var hoverShadow = '0 8px 0 ' + darkenHex(T.card, 0.35) + ', inset 0 1px 0 rgba(255,255,255,0.10), 0 12px 26px rgba(0,0,0,0.5), 0 0 20px ' + hexToRgba(accent, 0.10);
+  var activeShadow = '0 3px 0 ' + darkenHex(T.card, 0.35) + ', inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 10px rgba(0,0,0,0.4)';
+
+  el.style.boxShadow = baseShadow;
+
+  el.addEventListener('mouseenter', function() {
+    el.style.boxShadow = hoverShadow;
+  });
+
+  el.addEventListener('mouseleave', function() {
+    el.style.boxShadow = baseShadow;
+    el.style.transform = 'none';
+  });
+
+  el.addEventListener('pointerdown', function() {
+    el.style.transform = 'translateY(4px)';
+    el.style.boxShadow = activeShadow;
+  });
+
+  el.addEventListener('pointerup', function() {
+    el.style.transform = 'none';
+    el.style.boxShadow = hoverShadow;
+  });
+
+  if (o.onClick) {
+    el.addEventListener('pointerup', o.onClick);
+  }
+
+  return el;
+}
+
+// ═══════════════════════════════════════════════════
 //  WELL BUILDER
 //  Inset panel — numpad chassis, data panels, PIN field
 // ═══════════════════════════════════════════════════
@@ -119,18 +300,19 @@ export function buildWell(opts) {
   return el;
 }
 
-// ═══════════════════════════════════════════════════
-//  PILL BUTTON BUILDER
-//  All interactive action buttons.
-//
-//  opts:
-//    label, color, darkBg, onClick, disabled, fontSize, width, variant
-// ═══════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════
+  //  PILL BUTTON BUILDER
+  //  All interactive action buttons.
+  //
+  //  opts:
+  //    label, color, darkBg, onClick, disabled, fontSize, width, variant, shape
+  // ═══════════════════════════════════════════════════
 
-export function buildPillButton(opts) {
-  var o      = opts || {};
-  var color  = o.color;
-  var darkBg = o.darkBg;
+  export function buildPillButton(opts) {
+    var o      = opts || {};
+    var color  = o.color;
+    var darkBg = o.darkBg;
+    var shape  = o.shape || 'pill'; // 'pill' or 'chamfer'
 
   if (o.variant === 'verm') {
     color  = T.verm;
@@ -138,6 +320,12 @@ export function buildPillButton(opts) {
   } else if (o.variant === 'elec') {
     color  = T.elec;
     darkBg = T.elecDk;
+  } else if (o.variant === 'goGreen') {
+    color  = T.greenWarm;
+    darkBg = T.greenWarmDk;
+  } else if (o.variant === 'mint') {
+    color  = T.green;
+    darkBg = T.greenDk;
   } else if (o.variant === 'ghost') {
     color  = 'transparent';
     darkBg = 'rgba(255,255,255,0.1)';
@@ -147,12 +335,17 @@ export function buildPillButton(opts) {
   }
   if (!darkBg) darkBg = darkenHex(color, 0.2);
 
-  var textColor = o.textColor || ((color === T.verm || o.variant === 'verm') ? '#fff' : T.well);
+  var textColor = o.textColor || ((color === T.verm || color === T.vermDk || o.variant === 'verm') ? '#fff' : T.well);
 
   var btn = document.createElement('button');
   btn.style.background    = color;
   btn.style.border        = o.variant === 'ghost' ? '1px solid ' + T.border : 'none';
-  btn.style.borderRadius  = T.pillRadius;
+  if (shape === 'chamfer') {
+    btn.style.borderRadius = '0';
+    btn.style.clipPath     = chamfer(o.chamferSize || 6);
+  } else {
+    btn.style.borderRadius = T.chamferBtn + 'px';
+  }
   btn.style.cursor        = 'pointer';
   btn.style.padding       = o.padding || '14px 32px';
   btn.style.fontFamily    = T.fh;
@@ -168,6 +361,7 @@ export function buildPillButton(opts) {
   btn.style.userSelect    = 'none';
   btn.style.pointerEvents = 'auto';
   btn.style.touchAction   = 'manipulation';
+  btn.style.zIndex        = '10';
   if (o.width) btn.style.width = o.width;
   if (o.label) btn.textContent = o.label;
 

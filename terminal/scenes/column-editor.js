@@ -21,14 +21,13 @@ import {
   darkenHex,
 } from '../theme-manager.js';
 import { showToast } from '../components.js';
-import { setHeaderBack } from '../app.js';
 
 // ── Inject invisible scrollbar styles ──
 (function() {
-  if (document.getElementById('ce-scroll-style')) return;
+  if (document.getElementById('co-scroll-style')) return;
   var s = document.createElement('style');
-  s.id = 'ce-scroll-style';
-  s.textContent = '.ce-scroll::-webkit-scrollbar{display:none}.ce-hscroll::-webkit-scrollbar{display:none}';
+  s.id = 'co-scroll-style';
+  s.textContent = '.co-scroll::-webkit-scrollbar{display:none}';
   document.head.appendChild(s);
 })();
 
@@ -99,15 +98,6 @@ defineScene({
       state.columns.push({ id: sc.id, label: sc.label, items: items });
     }
     state.onSave = params.onSave || null;
-
-    setHeaderBack({
-      back: true,
-      onBack: function() {
-        if (state.onSave) state.onSave(state.columns);
-        SceneManager.closeTransactional('column-editor');
-      },
-      x: true,
-    });
 
     var root = document.createElement('div');
     Object.assign(root.style, {
@@ -348,9 +338,10 @@ defineScene({
 
       // Item list (vertical scroll)
       var itemList = document.createElement('div');
-      itemList.className = 'ce-scroll';
+      itemList.className = 'ce-scroll co-scroll';
       Object.assign(itemList.style, {
         flex:            '1',
+        minHeight:       '0',
         overflowY:       'auto',
         scrollbarWidth:  'none',
         msOverflowStyle: 'none',

@@ -90,10 +90,6 @@ vi.mock('../charts.js', () => ({
 }));
 
 vi.mock('../app.js', () => ({
-  setHeaderUser:     vi.fn(),
-  setSceneName:      vi.fn(),
-  setHeaderSubtitle: vi.fn(),
-  setHeaderLogout:   vi.fn(),
 }));
 
 // --- Helpers ---

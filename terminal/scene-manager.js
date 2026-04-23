@@ -84,7 +84,7 @@ function init() {
 }
 
 function _applyLayerGeometry() {
-  var hH       = T.headerH + 'px';
+  var hH       = '36px';
   var bodyH    = 'calc(100% - ' + hH + ')';
   var summaryW = T.pcLeftW;
   var sceneLeft = _summaryVisible ? (summaryW + T.colGapSm) + 'px' : '0';
@@ -241,7 +241,7 @@ function openTransactional(sceneName, params) {
 
   var frame = document.createElement('div');
   frame.className = 'layer-frame layer-frame-transactional';
-  frame.style.cssText = 'position:absolute;inset:0;border:2px solid ' + T.frameTransactional + ';';
+  frame.style.cssText = 'position:absolute;inset:0;';
   _layerTransactional.appendChild(frame);
 
   var container = document.createElement('div');

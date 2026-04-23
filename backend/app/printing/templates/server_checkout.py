@@ -34,6 +34,7 @@ class ServerCheckoutTemplate(BaseTemplate):
         commands.extend(self._render_header(context, mode))
         commands.extend(self._render_sales_summary(context))
         commands.extend(self._render_check_stats(context))
+        commands.extend(self._render_check_list(context))
         commands.extend(self._render_payment_breakdown(context, mode))
         commands.extend(self._render_tips(context))
         commands.extend(self._render_tip_out(context))
@@ -164,6 +165,40 @@ class ServerCheckoutTemplate(BaseTemplate):
         covers = ctx.get('covers', 0)
         if covers > 0:
             cmds.append({'type': 'text', 'content': f"{'Covers':<{cpl - 10}}{covers:>10}"})
+
+        cmds.append({'type': 'divider', 'char': '='})
+        return cmds
+
+    # ------------------------------------------------------------------
+    # 3b. Check List
+    # ------------------------------------------------------------------
+
+    def _render_check_list(self, ctx: Dict) -> List[Dict]:
+        """List each individual check with its total and tip."""
+        cmds: List[Dict] = []
+        cpl = self.chars_per_line
+        checks = ctx.get('checks', [])
+
+        if not checks:
+            return cmds
+
+        cmds.append({'type': 'text', 'content': 'CHECK LIST', 'bold': True})
+        
+        # Header: CHECK #    TOTAL    TIP
+        # Assuming 42 chars per line (font B might allow more, but cpl is safe)
+        hdr_num = "CHECK #"
+        hdr_total = "TOTAL"
+        hdr_tip = "TIP"
+        hdr = f"{hdr_num:<14}{hdr_total:>10}{hdr_tip:>10}"
+        cmds.append({'type': 'text', 'content': hdr[:cpl], 'font': 'b', 'bold': True})
+        cmds.append({'type': 'divider', 'char': '-'})
+
+        for chk in checks:
+            num = str(chk.get('check_number', 'N/A'))[:13]
+            total = chk.get('total', 0.0)
+            tip = chk.get('tip', 0.0)
+            line = f"{num:<14}${total:>9.2f} ${tip:>9.2f}"
+            cmds.append({'type': 'text', 'content': line[:cpl], 'font': 'b'})
 
         cmds.append({'type': 'divider', 'char': '='})
         return cmds

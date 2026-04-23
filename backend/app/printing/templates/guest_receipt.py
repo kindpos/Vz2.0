@@ -163,11 +163,29 @@ class GuestReceiptTemplate(BaseTemplate):
                 if has_half_modifiers(item_mods):
                     cmds.extend(self._render_half_placement_items(item_mods))
                 else:
+                    # Non-half-placement (flat) modifiers
                     for mod in item_mods:
-                        mod_text = mod if isinstance(mod, str) else (
-                            mod.get('text') or mod.get('name', '')
-                        )
-                        cmds.append({'type': 'text', 'content': f"   {mod_text}"})
+                        if isinstance(mod, dict):
+                            name = mod.get('name', mod.get('text', ''))
+                            prefix = mod.get('prefix')
+                            price = mod.get('price', 0.0)
+                            half_price = mod.get('half_price')
+
+                            display_name = f"{prefix} {name}" if prefix else name
+                            if half_price is True:
+                                display_price = float(price) / 2
+                            else:
+                                display_price = float(price)
+
+                            if display_price:
+                                price_str = f"${display_price:>6.2f}"
+                                name_w = cpl - len(price_str) - 6
+                                line = f"   {display_name[:name_w]:<{name_w}} {price_str}"
+                                cmds.append({'type': 'text', 'content': line})
+                            else:
+                                cmds.append({'type': 'text', 'content': f"   {display_name}"})
+                        else:
+                            cmds.append({'type': 'text', 'content': f"   {mod}"})
 
         return cmds
 
@@ -185,10 +203,11 @@ class GuestReceiptTemplate(BaseTemplate):
         # Whole modifiers above the table
         for wm in whole_mods:
             price = wm['display_price']
+            name = wm.get('display_name', wm['name'])
             if price:
-                cmds.append({'type': 'text', 'content': f"   {wm['name']:<{cpl - 12}} ${price:>6.2f}"})
+                cmds.append({'type': 'text', 'content': f"   {name:<{cpl - 12}} ${price:>6.2f}"})
             else:
-                cmds.append({'type': 'text', 'content': f"   {wm['name']}"})
+                cmds.append({'type': 'text', 'content': f"   {name}"})
 
         # +---+---+ box table
         border_line = '+' + '-' * col_w + '+' + '-' * col_w + '+'

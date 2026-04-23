@@ -75,9 +75,6 @@ vi.mock('../theme-manager.js', () => ({
 }));
 
 vi.mock('../app.js', () => ({
-  setHeaderUser:  vi.fn(),
-  setSceneName:   vi.fn(),
-  setHeaderLogout: vi.fn(),
 }));
 
 vi.mock('../charts.js', () => ({

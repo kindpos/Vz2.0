@@ -54,6 +54,11 @@ class SalesRecapTemplate(BaseTemplate):
         else:
             cmds.append({'type': 'text', 'content': f"Date: {date_from}", 'align': 'center'})
 
+        # COB Status (Spec: Open/Closed/etc)
+        cob_status = ctx.get('cob_status', '').upper()
+        if cob_status:
+            cmds.append({'type': 'text', 'content': f"STATUS: {cob_status}", 'bold': True, 'align': 'center'})
+
         printed_by = ctx.get('printed_by', '')
         if printed_by:
             cmds.append({'type': 'text', 'content': f"Printed by: {printed_by}"})

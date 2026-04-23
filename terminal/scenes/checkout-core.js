@@ -4,13 +4,16 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T } from '../tokens.js';
-import { chamfer, buildStyledButton, applySunkenStyle, hexToRgba, fetchWithTimeout } from '../sm2-shim.js';
+import { T, chamfer } from '../tokens.js';
+import { buildStyledButton, applySunkenStyle, hexToRgba } from '../sm2-shim.js';
 import { buildButton, buildGap, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
-import { setSceneName, setHeaderBack } from '../app.js';
 import { buildNumpad } from '../numpad.js';
-import { buildCard } from '../theme-manager.js';
+import {
+  buildStaticCard,
+  buildNavCard,
+  buildActionCard,
+} from '../theme-manager.js';
 
 // Resolved at call time — captured default would never re-theme.
 function CHROME() { return T.headerBg || T.numpadChassis; }
@@ -40,10 +43,10 @@ export function detailRow(label, value, valueColor) {
   var row = document.createElement('div');
   row.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-family:' + T.fb + ';padding:2px 0;';
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-size:40px;color:' + T.mint + ';';
+  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.mint + ';';
   lbl.textContent = label;
   var val = document.createElement('span');
-  val.style.cssText = 'font-size:40px;color:' + (valueColor || T.gold) + ';font-weight:bold;';
+  val.style.cssText = 'font-size:' + T.fsB1 + ';color:' + (valueColor || T.gold) + ';font-weight:bold;';
   val.textContent = value;
   row.appendChild(lbl);
   row.appendChild(val);
@@ -66,7 +69,7 @@ export function buildMixBar(cashPct, cardPct) {
   bar.appendChild(cashSeg);
   bar.appendChild(cardSeg);
   var labels = document.createElement('div');
-  labels.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:40px;color:' + T.mint + ';margin-top:2px;';
+  labels.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + T.mint + ';margin-top:2px;';
   labels.innerHTML = '<span>Cash ' + cashPct + '%</span><span>Card ' + cardPct + '%</span>';
   var wrap = document.createElement('div');
   wrap.appendChild(bar);
@@ -80,15 +83,21 @@ export function buildMixBar(cashPct, cardPct) {
 // ─────────────────────────────────────────────────
 
 export function buildCardTile(def, idx, opts) {
-  var pair = buildCard({ bg: T.bgDark, padding: '0', chamferSize: 8, borderWidth: 5, glow: false });
-  pair.wrap.style.height = '100%';
-  var card = pair.card;
-  card.style.display = 'flex';
+  var card = buildNavCard({
+    accent: def.statusColor || T.green,
+    showChevron: false,
+    onClick: function(e) {
+      if (e.target.closest && e.target.closest('[data-shortcut]')) return;
+      if (opts && opts.onExpand) opts.onExpand(idx);
+    }
+  });
+  card.style.background = T.bgDark;
+  card.style.padding    = '0';
+  card.style.height     = '100%';
+  card.style.display    = 'flex';
   card.style.flexDirection = 'column';
-  card.style.overflow = 'hidden';
-  card.style.cursor = 'pointer';
-  card.style.position = 'relative';
-  card.style.height = '100%';
+  card.style.overflow   = 'hidden';
+  card.style.position   = 'relative';
 
   // Chrome header bar
   var hdr = document.createElement('div');
@@ -132,12 +141,7 @@ export function buildCardTile(def, idx, opts) {
     card.appendChild(shortcuts);
   }
 
-  pair.wrap.addEventListener('pointerup', function(e) {
-    if (e.target.closest && e.target.closest('[data-shortcut]')) return;
-    if (opts && opts.onExpand) opts.onExpand(idx);
-  });
-
-  return pair.wrap;
+  return card;
 }
 
 // ─────────────────────────────────────────────────
@@ -158,12 +162,12 @@ export function buildCardStrip(def, idx, opts) {
   ].join('');
 
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-size:40px;color:' + T.mint + ';';
+  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.mint + ';';
   lbl.textContent = def.title;
   strip.appendChild(lbl);
 
   var val = document.createElement('span');
-  val.style.cssText = 'font-size:40px;color:' + T.cyan + ';';
+  val.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.cyan + ';';
   val.textContent = def.hero;
   strip.appendChild(val);
 
@@ -213,15 +217,13 @@ export function buildExpandedCard(defs, idx, opts) {
     wrap.appendChild(buildCardStrip(defs[i], i, opts));
   }
 
-  var expPair = buildCard({ bg: T.bgDark, padding: '0', chamferSize: 8, borderWidth: 5, glow: false });
-  var expanded = expPair.card;
-  expanded.style.display = 'flex';
-  expanded.style.flexDirection = 'column';
-  expanded.style.flex = '1';
-  expanded.style.overflow = 'hidden';
-  expPair.wrap.style.flex = '1';
-  expPair.wrap.style.display = 'flex';
-  expPair.wrap.style.minHeight = '0';
+  var card = buildStaticCard({ accent: T.green });
+  card.style.background = T.bgDark;
+  card.style.padding    = '0';
+  card.style.display    = 'flex';
+  card.style.flexDirection = 'column';
+  card.style.flex       = '1';
+  card.style.overflow   = 'hidden';
 
   // Chrome header bar (tappable to collapse)
   var hdr = document.createElement('div');
@@ -241,14 +243,14 @@ export function buildExpandedCard(defs, idx, opts) {
   hdr.addEventListener('pointerup', function() {
     if (opts && opts.onCollapse) opts.onCollapse();
   });
-  expanded.appendChild(hdr);
+  card.appendChild(hdr);
 
   var content = document.createElement('div');
   content.style.cssText = 'flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:4px;';
   defs[idx].buildExpanded(content);
-  expanded.appendChild(content);
+  card.appendChild(content);
 
-  wrap.appendChild(expPair.wrap);
+  wrap.appendChild(card);
 
   for (var j = idx + 1; j < defs.length; j++) {
     wrap.appendChild(buildCardStrip(defs[j], j, opts));
@@ -267,7 +269,7 @@ export function buildBlockerBanner(messages) {
   el.style.cssText = [
     'flex-shrink:0;height:' + BANNER_H + 'px;',
     'display:flex;align-items:center;justify-content:center;',
-    'font-family:' + T.fb + ';font-size:40px;',
+    'font-family:' + T.fb + ';font-size:' + T.fsB1 + ';',
     'clip-path:' + chamfer(4) + ';',
   ].join('');
 
@@ -344,7 +346,7 @@ export function buildTipAdjustInline(opts) {
           var url = '/api/v1/payments/zero-unadjusted';
           if (serverId) url += '?server_id=' + encodeURIComponent(serverId);
           fetch(url, { method: 'POST' })
-            .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+            .then(function(r) { return r.json(); })
             .then(function() {
               _selected = null;
               numpad.clear();
@@ -399,7 +401,7 @@ export function buildTipAdjustInline(opts) {
       if (!_selected) return;
       var tipAmount = parseInt(digits || '0', 10) / 100;
       var adjusting = _selected; // capture ref — we null _selected optimistically
-      fetchWithTimeout('/api/v1/payments/tip-adjust', {
+      fetch('/api/v1/payments/tip-adjust', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -407,7 +409,7 @@ export function buildTipAdjustInline(opts) {
           payment_id: adjusting.payment_id,
           tip_amount: tipAmount,
         }),
-      }, 15000).then(function(r) {
+      }).then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         showToast('Tip adjusted', { bg: T.goGreen });
         adjusting.tip_amount = tipAmount;
@@ -425,11 +427,6 @@ export function buildTipAdjustInline(opts) {
           }
         });
       }).catch(function() {
-        // Reset selection so the operator doesn't silently re-submit the same
-        // stale check on the next ENT tap — they must re-pick from the list.
-        _selected = null;
-        numpad.clear();
-        onAdjusted();
         showToast('Tip adjust failed', { bg: T.verm });
       });
     },
@@ -532,7 +529,7 @@ defineScene({
   name: 'co-zero-confirm',
   render: function(container, params) {
     var panel = document.createElement('div');
-    panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;background:' + T.bgDark + ';border:4px solid ' + RED + ';padding:' + T.scenePad + 'px;min-width:280px;';
+    panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;background:' + T.bgDark + ';border:4px solid ' + RED + ';padding:8px ' + T.scenePad + 'px ' + T.scenePad + 'px ' + T.scenePad + 'px;min-width:280px;';
 
     var lbl = document.createElement('div');
     lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsMed + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;';
@@ -558,86 +555,6 @@ defineScene({
     cancelBtn.style.width = '240px';
     panel.appendChild(cancelBtn);
     container.appendChild(panel);
-  },
-});
-
-// ── Void-confirm interrupt ───────────────────────
-// params.checks      — array of check objects being voided
-// params.onConfirm(reason) — called with the non-empty reason string
-// params.onCancel    — fn()
-
-defineScene({
-  name: 'co-void-confirm',
-  render: function(container, params) {
-    var checks = params.checks || [];
-    var count  = checks.length;
-    var reason = '';
-
-    var panel = document.createElement('div');
-    panel.style.cssText = [
-      'display:flex;flex-direction:column;align-items:center;gap:12px;',
-      'background:' + T.well + ';border:4px solid ' + T.verm + ';',
-      'padding:' + T.scenePad + 'px;min-width:300px;max-width:380px;',
-      'border-radius:' + T.chamferCard + 'px;',
-    ].join('');
-
-    var lbl = document.createElement('div');
-    lbl.style.cssText = [
-      'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';font-weight:' + T.fwBold + ';',
-      'color:' + T.verm + ';letter-spacing:2px;',
-    ].join('');
-    lbl.textContent = count === 1 ? '// VOID CHECK //' : '// VOID ' + count + ' CHECKS //';
-    panel.appendChild(lbl);
-
-    var msg = document.createElement('div');
-    msg.style.cssText = [
-      'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-      'color:' + T.text + ';text-align:center;',
-    ].join('');
-    msg.textContent = 'This action is permanent and cannot be undone.';
-    panel.appendChild(msg);
-
-    var reasonInput = document.createElement('input');
-    reasonInput.type        = 'text';
-    reasonInput.placeholder = 'Void reason (required)';
-    reasonInput.style.cssText = [
-      'width:100%;box-sizing:border-box;',
-      'padding:8px 10px;',
-      'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-      'background:' + T.card + ';color:' + T.text + ';',
-      'border:1px solid ' + hexToRgba(T.text, 0.25) + ';border-radius:6px;',
-      'outline:none;',
-    ].join('');
-    reasonInput.addEventListener('input', function() {
-      reason = reasonInput.value.trim();
-      confirmBtn.style.opacity = reason ? '1' : '0.35';
-      confirmBtn.style.pointerEvents = reason ? 'auto' : 'none';
-    });
-    panel.appendChild(reasonInput);
-
-    var confirmBtn = buildButton('VOID', {
-      fill: T.verm, color: T.well, fontSize: T.fsB3, height: 44,
-      onTap: function() {
-        if (!reason) return;
-        params.onConfirm(reason);
-      },
-    });
-    confirmBtn.style.width = '100%';
-    confirmBtn.style.opacity = '0.35';
-    confirmBtn.style.pointerEvents = 'none';
-    panel.appendChild(confirmBtn);
-
-    var cancelBtn = buildButton('CANCEL', {
-      fill: T.card, color: T.green, fontSize: T.fsB3, height: 40,
-      onTap: function() { params.onCancel(); },
-    });
-    cancelBtn.style.width = '100%';
-    panel.appendChild(cancelBtn);
-
-    container.appendChild(panel);
-
-    // Auto-focus the reason input so the operator can type immediately.
-    setTimeout(function() { reasonInput.focus(); }, 50);
   },
 });
 
@@ -683,13 +600,7 @@ defineScene({
     var _checks = [];
     var _listEl = null;
 
-    setSceneName('Adjust Tips');
-    setHeaderBack({ back: true, onBack: function() {
-      SceneManager.closeTransactional('co-tip-adjust');
-      if (params.onDone) params.onDone();
-    }});
-
-    container.style.cssText = 'width:100%;height:100%;display:flex;gap:' + COL_GAP + 'px;padding:' + SCENE_PAD + 'px;box-sizing:border-box;';
+    container.style.cssText = 'width:100%;height:100%;display:flex;gap:' + COL_GAP + 'px;padding:8px ' + SCENE_PAD + 'px ' + SCENE_PAD + 'px;box-sizing:border-box;';
 
     // Left: check list
     var leftCol = document.createElement('div');
@@ -1323,5 +1234,344 @@ defineScene({
       if (!confirmEnabled || !selectedServer) return;
       if (params.onConfirm) params.onConfirm(selectedServer);
     });
+  },
+});
+
+// ═══════════════════════════════════════════════════
+//  CO-DISCOUNT-PICKER — preset discount tile picker
+//  Mounted as an interrupt after manager PIN verifies. Shows a tile grid
+//  of preset discounts. Tapping a tile selects; CONFIRM fires params.
+//  onConfirm(discount). Discount shape:
+//    { type: 'percent', value: 10 }   → 10% off
+//    { type: 'amount',  value: 5 }    → $5 off
+//    { type: 'comp',    value: 100 }  → comp (100% off)
+//
+//  params:
+//    checks     — array of check objects being discounted (for summary)
+//    onConfirm  — fn(discount)
+//    onCancel   — fn()
+// ═══════════════════════════════════════════════════
+
+defineScene({
+  name: 'co-discount-picker',
+  render: function(container, params) {
+    container.style.cssText = [
+      'width:100%;height:100%;',
+      'display:flex;align-items:center;justify-content:center;',
+    ].join('');
+
+    var panel = document.createElement('div');
+    panel.style.cssText = [
+      'display:flex;flex-direction:column;gap:14px;',
+      'background:' + T.bgDark + ';border:3px solid ' + T.elec + ';',
+      'padding:22px;border-radius:12px;',
+      'width:520px;max-width:92vw;box-sizing:border-box;',
+    ].join('');
+
+    // Header
+    var hdrRow = document.createElement('div');
+    hdrRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
+    var title = document.createElement('div');
+    title.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.elec + ';letter-spacing:2px;';
+    title.textContent = 'APPLY DISCOUNT';
+    var dismissX = document.createElement('span');
+    dismissX.style.cssText = [
+      'font-family:' + T.fb + ';font-size:20px;color:' + T.mutedText + ';',
+      'cursor:pointer;user-select:none;-webkit-user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;padding:0 4px;line-height:1;',
+    ].join('');
+    dismissX.textContent = '\u00D7';
+    dismissX.addEventListener('pointerup', function() { if (params.onCancel) params.onCancel(); });
+    hdrRow.appendChild(title);
+    hdrRow.appendChild(dismissX);
+    panel.appendChild(hdrRow);
+
+    // Summary
+    var checks = params.checks || [];
+    var totalAmt = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+    var summary = document.createElement('div');
+    summary.style.cssText = [
+      'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
+      'padding:10px 14px;background:' + T.well + ';border-radius:8px;',
+      'display:flex;justify-content:space-between;align-items:baseline;',
+    ].join('');
+    var sL = document.createElement('span');
+    sL.textContent = checks.length + (checks.length === 1 ? ' check' : ' checks') + ' \u2022 pick a discount';
+    var sR = document.createElement('span');
+    sR.style.cssText = 'font-family:' + T.fb + ';font-size:15px;font-weight:700;color:' + T.gold + ';';
+    sR.textContent = '$' + totalAmt.toFixed(2);
+    summary.appendChild(sL);
+    summary.appendChild(sR);
+    panel.appendChild(summary);
+
+    // Preset tile grid — 4 cols × 2 rows
+    var grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;';
+
+    var presets = [
+      { type: 'percent', value: 10, label: '10% OFF' },
+      { type: 'percent', value: 15, label: '15% OFF' },
+      { type: 'percent', value: 20, label: '20% OFF' },
+      { type: 'percent', value: 25, label: '25% OFF' },
+      { type: 'amount',  value:  5, label: '$5 OFF'  },
+      { type: 'amount',  value: 10, label: '$10 OFF' },
+      { type: 'amount',  value: 15, label: '$15 OFF' },
+      { type: 'comp',    value: 100, label: 'COMP'    },
+    ];
+
+    var selectedDiscount = null;
+    var tiles = [];
+
+    presets.forEach(function(preset) {
+      var tile = document.createElement('div');
+      var isSel = false;
+      var applyStyle = function() {
+        tile.style.cssText = [
+          'display:flex;align-items:center;justify-content:center;',
+          'padding:16px 8px;border-radius:10px;',
+          'background:' + (isSel ? hexToRgba(T.elec, 0.15) : T.well) + ';',
+          'border:2px solid ' + (isSel ? T.elec : 'transparent') + ';',
+          'font-family:' + T.fh + ';font-size:14px;font-weight:700;',
+          'color:' + (preset.type === 'comp' ? T.gold : T.text) + ';letter-spacing:0.5px;',
+          'cursor:pointer;user-select:none;-webkit-user-select:none;',
+          'pointer-events:auto;touch-action:manipulation;',
+          'transition:background 0.1s, border-color 0.1s;',
+          'min-height:56px;',
+        ].join('');
+      };
+      applyStyle();
+      tile.textContent = preset.label;
+
+      tile.addEventListener('pointerup', function() {
+        tiles.forEach(function(t) { t._deselect(); });
+        isSel = true;
+        applyStyle();
+        selectedDiscount = preset;
+        updateApplyStyle();
+      });
+
+      tile._deselect = function() { isSel = false; applyStyle(); };
+      tiles.push(tile);
+      grid.appendChild(tile);
+    });
+
+    panel.appendChild(grid);
+
+    // Action buttons
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
+
+    var cancel = document.createElement('div');
+    cancel.style.cssText = [
+      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
+      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
+      'border-radius:999px;',
+      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
+      'cursor:pointer;user-select:none;-webkit-user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;',
+    ].join('');
+    cancel.textContent = 'CANCEL';
+    cancel.addEventListener('pointerup', function() { if (params.onCancel) params.onCancel(); });
+
+    var apply = document.createElement('div');
+    var applyEnabled = false;
+    var updateApplyStyle = function() {
+      applyEnabled = !!selectedDiscount;
+      apply.style.cssText = [
+        'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
+        'background:' + (applyEnabled ? T.elec : hexToRgba(T.elec, 0.3)) + ';',
+        'border-radius:999px;',
+        'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
+        'color:' + (applyEnabled ? T.well : hexToRgba(T.well, 0.5)) + ';letter-spacing:1.2px;',
+        'cursor:' + (applyEnabled ? 'pointer' : 'not-allowed') + ';user-select:none;-webkit-user-select:none;',
+        'pointer-events:auto;touch-action:manipulation;',
+        applyEnabled ? 'box-shadow:0 3px 0 rgba(0,0,0,0.3);' : '',
+      ].join('');
+    };
+    updateApplyStyle();
+    apply.textContent = 'APPLY';
+    apply.addEventListener('pointerup', function() {
+      if (applyEnabled && params.onConfirm) params.onConfirm(selectedDiscount);
+    });
+
+    btnRow.appendChild(cancel);
+    btnRow.appendChild(apply);
+    panel.appendChild(btnRow);
+    container.appendChild(panel);
+  },
+});
+
+// ═══════════════════════════════════════════════════
+//  CO-VOID-CONFIRM — void confirmation with reason picker
+//  Mounted as an interrupt after manager PIN verifies. Shows the check(s)
+//  being voided with a strong warning, then a reason radio list. CONFIRM
+//  fires params.onConfirm(reason). No default reason — must pick one.
+//
+//  params:
+//    checks     — array of check objects being voided
+//    onConfirm  — fn(reason)
+//    onCancel   — fn()
+// ═══════════════════════════════════════════════════
+
+defineScene({
+  name: 'co-void-confirm',
+  render: function(container, params) {
+    container.style.cssText = [
+      'width:100%;height:100%;',
+      'display:flex;align-items:center;justify-content:center;',
+    ].join('');
+
+    var panel = document.createElement('div');
+    panel.style.cssText = [
+      'display:flex;flex-direction:column;gap:14px;',
+      'background:' + T.bgDark + ';border:3px solid ' + T.verm + ';',
+      'padding:22px;border-radius:12px;',
+      'width:420px;max-width:92vw;box-sizing:border-box;',
+    ].join('');
+
+    // Header — verm-colored title signals destructive action
+    var title = document.createElement('div');
+    title.style.cssText = [
+      'font-family:' + T.fh + ';font-size:14px;font-weight:700;',
+      'color:' + T.verm + ';letter-spacing:2px;text-align:center;',
+    ].join('');
+    title.textContent = 'VOID CHECK';
+    panel.appendChild(title);
+
+    var sub = document.createElement('div');
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';text-align:center;';
+    sub.textContent = 'this cannot be undone';
+    panel.appendChild(sub);
+
+    // Summary of what's being voided
+    var checks = params.checks || [];
+    var totalAmt = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+    var summary = document.createElement('div');
+    summary.style.cssText = [
+      'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
+      'padding:10px 14px;background:' + T.well + ';border-radius:8px;',
+      'display:flex;justify-content:space-between;align-items:baseline;',
+    ].join('');
+    var sL = document.createElement('span');
+    sL.textContent = 'voiding ' + checks.length + (checks.length === 1 ? ' check' : ' checks');
+    var sR = document.createElement('span');
+    sR.style.cssText = 'font-family:' + T.fb + ';font-size:15px;font-weight:700;color:' + T.gold + ';';
+    sR.textContent = '$' + totalAmt.toFixed(2);
+    summary.appendChild(sL);
+    summary.appendChild(sR);
+    panel.appendChild(summary);
+
+    // Reason picker — radio-button list
+    var reasonLabel = document.createElement('div');
+    reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;';
+    reasonLabel.textContent = 'reason';
+    panel.appendChild(reasonLabel);
+
+    var reasonList = document.createElement('div');
+    reasonList.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+
+    var reasons = [
+      'Customer walked out',
+      'Duplicate order',
+      'Wrong order',
+      'Server error',
+      'Other',
+    ];
+
+    var selectedReason = null;
+    var reasonRows = [];
+
+    reasons.forEach(function(reason) {
+      var row = document.createElement('div');
+      var isSel = false;
+      var applyStyle = function() {
+        row.style.cssText = [
+          'display:flex;align-items:center;gap:10px;',
+          'padding:10px 12px;border-radius:8px;',
+          'background:' + (isSel ? hexToRgba(T.verm, 0.15) : T.well) + ';',
+          'border:1.5px solid ' + (isSel ? T.verm : 'transparent') + ';',
+          'cursor:pointer;user-select:none;-webkit-user-select:none;',
+          'pointer-events:auto;touch-action:manipulation;',
+          'transition:background 0.1s, border-color 0.1s;',
+        ].join('');
+      };
+      applyStyle();
+
+      var radio = document.createElement('div');
+      var applyRadio = function() {
+        radio.style.cssText = [
+          'width:18px;height:18px;border-radius:999px;flex-shrink:0;',
+          'border:2px solid ' + (isSel ? T.verm : hexToRgba(T.text, 0.3)) + ';',
+          'background:' + (isSel ? T.verm : 'transparent') + ';',
+          'display:flex;align-items:center;justify-content:center;',
+        ].join('');
+        radio.innerHTML = isSel ? '<div style="width:6px;height:6px;border-radius:999px;background:' + T.well + ';"></div>' : '';
+      };
+      applyRadio();
+
+      var text = document.createElement('span');
+      text.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';';
+      text.textContent = reason;
+
+      row.appendChild(radio);
+      row.appendChild(text);
+
+      row.addEventListener('pointerup', function() {
+        reasonRows.forEach(function(r) { r._deselect(); });
+        isSel = true;
+        applyStyle();
+        applyRadio();
+        selectedReason = reason;
+        updateConfirmStyle();
+      });
+
+      row._deselect = function() { isSel = false; applyStyle(); applyRadio(); };
+      reasonRows.push(row);
+      reasonList.appendChild(row);
+    });
+
+    panel.appendChild(reasonList);
+
+    // Action buttons
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
+
+    var cancel = document.createElement('div');
+    cancel.style.cssText = [
+      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
+      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
+      'border-radius:999px;',
+      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
+      'cursor:pointer;user-select:none;-webkit-user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;',
+    ].join('');
+    cancel.textContent = 'CANCEL';
+    cancel.addEventListener('pointerup', function() { if (params.onCancel) params.onCancel(); });
+
+    var confirm = document.createElement('div');
+    var confirmEnabled = false;
+    var updateConfirmStyle = function() {
+      confirmEnabled = !!selectedReason;
+      confirm.style.cssText = [
+        'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
+        'background:' + (confirmEnabled ? T.verm : hexToRgba(T.verm, 0.3)) + ';',
+        'border-radius:999px;',
+        'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
+        'color:' + (confirmEnabled ? T.text : hexToRgba(T.text, 0.5)) + ';letter-spacing:1.2px;',
+        'cursor:' + (confirmEnabled ? 'pointer' : 'not-allowed') + ';user-select:none;-webkit-user-select:none;',
+        'pointer-events:auto;touch-action:manipulation;',
+        confirmEnabled ? 'box-shadow:0 3px 0 rgba(0,0,0,0.3);' : '',
+      ].join('');
+    };
+    updateConfirmStyle();
+    confirm.textContent = 'VOID';
+    confirm.addEventListener('pointerup', function() {
+      if (confirmEnabled && params.onConfirm) params.onConfirm(selectedReason);
+    });
+
+    btnRow.appendChild(cancel);
+    btnRow.appendChild(confirm);
+    panel.appendChild(btnRow);
+    container.appendChild(panel);
   },
 });

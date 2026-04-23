@@ -36,6 +36,9 @@
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../tokens.js';
 import {
+  buildWell,
+  buildCard,
+  buildStaticCard,
   buildPillButton,
   hexToRgba,
   darkenHex,
@@ -43,9 +46,8 @@ import {
 import { OrderSummary } from '../order-summary.js';
 import { buildNumpad } from '../numpad.js';
 import { showToast } from '../components.js';
-import { setSceneName, setHeaderBack } from '../app.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
-import { computeTotals, getTaxRate } from '../pricing.js';
+import { getTaxRate, getCashDiscount } from '../pricing.js';
 import { buildItemRecap, buildItemRecapTotals } from '../components/item-recap.js';
 import { fetchWithTimeout } from '../sm2-shim.js';
 import { entReport } from '../entomology-client.js';
@@ -81,14 +83,10 @@ var _refreshInFlight = false;
 
 function fmt(n) { return '$' + (n || 0).toFixed(2); }
 
-// seatTotal / checkTotals now wrap the pure helpers from ./seats.js so the
+// seatTotal now wraps the pure helper from ./seats.js so the
 // rendering paths and transition paths share one math implementation.
 function seatTotal(seat) {
   return seatSubtotal(seat);
-}
-
-function checkTotals(seats, paidSeats) {
-  return computeTotals(checkSubtotal(seats, paidSeats));
 }
 
 // ═══════════════════════════════════════════════════
@@ -213,7 +211,16 @@ function _adaptOrderForRecap(state) {
     });
   }
 
-  var totals = checkTotals(state.seats, state.paidSeats);
+  var order = state.order || {};
+  var discount = getCashDiscount();
+  var totals = {
+    subtotal:  order.subtotal || 0,
+    tax:       order.tax || 0,
+    cardTotal: order.total || 0,
+    cashPrice: Math.round((order.total || 0) * (1 - discount) * 100) / 100,
+    taxRate:   getTaxRate(),
+  };
+
   var paid = 0;
   if (Array.isArray(order.payments)) {
     for (var p = 0; p < order.payments.length; p++) {
@@ -233,7 +240,7 @@ function _adaptOrderForRecap(state) {
       paid:      Math.round(paid * 100) / 100,
       total:     totals.cardTotal,
       cash:      totals.cashPrice,
-      taxRate:   getTaxRate(),
+      taxRate:   totals.taxRate,
     },
   };
 }
@@ -288,13 +295,16 @@ function collectSummary(seats, selected, paidSeats) {
       subtotal += it.qty * ep;
     }
   }
-  var totals = computeTotals(subtotal);
+  var discount = getCashDiscount();
+  var taxRate  = getTaxRate();
+  var tax      = subtotal * taxRate;
+  var cardTotal = subtotal + tax;
   return {
     items:     items,
-    subtotal:  totals.subtotal,
-    tax:       totals.tax,
-    cardTotal: totals.cardTotal,
-    cashPrice: totals.cashPrice,
+    subtotal:  Math.round(subtotal * 100) / 100,
+    tax:       Math.round(tax * 100) / 100,
+    cardTotal: Math.round(cardTotal * 100) / 100,
+    cashPrice: Math.round((cardTotal * (1 - discount)) * 100) / 100,
   };
 }
 
@@ -324,6 +334,7 @@ defineScene({
     get handleVoid()     { return handleVoid; },
     get handleAddItems() { return handleAddItems; },
     get handleResend()   { return handleResend; },
+    get _commitManageSplit() { return _commitManageSplit; },
   },
 
   state: {
@@ -340,8 +351,7 @@ defineScene({
     _backConfirmed:false,
     rootEl:        null,
     topAreaEl:     null,
-    totalsEl:      null,
-    actionGridEl:  null,
+    bottomBarEl:   null,
     seatEls:       {},
     _lpTimers:     [],
     _mode:         null,
@@ -386,39 +396,32 @@ defineScene({
     state._seatsChain   = null;     // reset per mount
     state.seats = orderToSeats(null, 1);
 
-    var _landing = params.returnLanding || 'server-landing';
+    var _landing = params.returnLanding || null;
+    if (!_landing) {
+      entReport({
+        code:    'UI-020',
+        source:  'check-overview._landing',
+        message: 'returnLanding missing — defaulting to server-landing',
+        ctx: {
+          checkId:     params.checkId  || null,
+          employeeId:  params.employeeId || null,
+          paramKeys:   Object.keys(params),
+        },
+        level: 'WARNING',
+      });
+      _landing = 'server-landing';
+    }
     var _landingParams = { emp: { id: params.employeeId, name: params.employeeName, pin: params.pin } };
-
-    // ── Header ──
-    setSceneName(params.checkId ? 'CHECK' : 'NEW CHECK');
-    setHeaderBack({
-      back:   true,
-      onBack: function() {
-        var hasContent = state.seats.some(function(s) { return s.items.length > 0; });
-        if (!state.orderId && hasContent) {
-          if (state._backConfirmed) {
-            SceneManager.mountWorking(_landing, _landingParams);
-            return;
-          }
-          showToast('Unsaved items — tap back again to exit', { bg: T.gold });
-          state._backConfirmed = true;
-          setTimeout(function() { state._backConfirmed = false; }, 3000);
-          return;
-        }
-        SceneManager.mountWorking(_landing, _landingParams);
-      },
-      x: true,
-    });
 
     // ── Root + body layout ──
     var root = document.createElement('div');
     Object.assign(root.style, {
       position:      'absolute',
       inset:         '0',
-      paddingTop:    '44px',
       boxSizing:     'border-box',
       display:       'flex',
       flexDirection: 'column',
+      height:        '100%',
     });
     container.appendChild(root);
     state.rootEl = root;
@@ -427,7 +430,7 @@ defineScene({
     Object.assign(body.style, {
       flex:          '1',
       minHeight:     '0',
-      padding:       '16px',
+      padding:       '4px 12px 10px',
       boxSizing:     'border-box',
       display:       'flex',
       flexDirection: 'column',
@@ -447,42 +450,16 @@ defineScene({
 
     var bottomRow = document.createElement('div');
     Object.assign(bottomRow.style, {
-      height:     '96px',
+      minHeight:  '140px',
       flexShrink: '0',
       display:    'flex',
-      gap:        '12px',
-      alignItems: 'center',
+      pointerEvents: 'auto',
     });
     body.appendChild(bottomRow);
-
-    // Left: TotalsBar (single-row summary) — filled by renderTotals.
-    var totalsCorner = document.createElement('div');
-    Object.assign(totalsCorner.style, {
-      width:         '220px',
-      flexShrink:    '0',
-      display:       'flex',
-      alignItems:    'stretch',
-    });
-    bottomRow.appendChild(totalsCorner);
-    state.totalsEl = totalsCorner;
-
-    // Right: action zone — filled by renderActionBar. Hosts both the
-    // secondary pills (PRINT, VOID) and the primary pills (PAY, ADD
-    // ITEMS) with a dashed divider between them.
-    var actionZone = document.createElement('div');
-    Object.assign(actionZone.style, {
-      flex:           '1',
-      display:        'flex',
-      alignItems:     'center',
-      justifyContent: 'flex-end',
-      gap:            '10px',
-    });
-    bottomRow.appendChild(actionZone);
-    state.actionGridEl = actionZone;
+    state.bottomBarEl = bottomRow;
 
     // ── Initial paint ──
     state._params = params;
-    renderTotals(state);
     renderActionBar(state);
     rerenderTopArea(state);
 
@@ -545,7 +522,7 @@ defineScene({
           'background:' + T.card + ';',
           'border:3px solid ' + T.green + ';',
           'border-radius:' + T.chamferCard + 'px;',
-          'padding:20px 22px;min-width:300px;max-width:420px;',
+          'padding:8px 22px 22px;min-width:300px;max-width:420px;',
           'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
         ].join('');
 
@@ -618,7 +595,7 @@ defineScene({
           'background:' + T.card + ';',
           'border:3px solid ' + T.green + ';',
           'border-radius:' + T.chamferCard + 'px;',
-          'padding:18px;',
+          'padding:8px 18px 18px;',
           'min-width:320px;max-width:440px;max-height:460px;',
           'display:flex;flex-direction:column;gap:10px;',
           'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
@@ -930,82 +907,6 @@ defineScene({
 //  sum of selected seats.
 // ═══════════════════════════════════════════════════
 
-function _selectedSeatSubtotal(state) {
-  var sum = 0;
-  for (var i = 0; i < state.seats.length; i++) {
-    var s = state.seats[i];
-    if (state.selected[s.id] && !state.paidSeats[s.id]) {
-      sum += seatSubtotal(s);
-    }
-  }
-  return sum;
-}
-
-function _selectedSeatShortLabel(state) {
-  var parts = [];
-  for (var i = 0; i < state.seats.length; i++) {
-    var s = state.seats[i];
-    if (state.selected[s.id]) {
-      parts.push('S' + (s.number != null ? s.number : (i + 1)));
-    }
-  }
-  return parts.join(' + ');
-}
-
-function renderTotals(state) {
-  var el = state.totalsEl;
-  el.innerHTML = '';
-
-  var anySel = Object.keys(state.selected || {}).length > 0;
-  var label, value;
-  if (anySel) {
-    label = _selectedSeatShortLabel(state) + ' TOTAL';
-    value = _selectedSeatSubtotal(state);
-  } else {
-    label = 'CHECK TOTAL';
-    value = computeTotals(checkSubtotal(state.seats, state.paidSeats)).cardTotal;
-  }
-
-  var bar = document.createElement('div');
-  Object.assign(bar.style, {
-    flex:         '1',
-    display:      'flex',
-    flexDirection:'column',
-    justifyContent:'center',
-    gap:          '2px',
-    padding:      '8px 14px',
-    background:   T.well,
-    border:       '1px solid ' + T.border,
-    borderRadius: '8px',
-  });
-
-  var lbl = document.createElement('span');
-  Object.assign(lbl.style, {
-    fontFamily:    T.fb,
-    fontSize:      '10px',
-    fontWeight:    T.fwBold,
-    letterSpacing: '0.12em',
-    color:         T.mutedText,
-    whiteSpace:    'nowrap',
-    overflow:      'hidden',
-    textOverflow:  'ellipsis',
-  });
-  lbl.textContent = label;
-  bar.appendChild(lbl);
-
-  var val = document.createElement('span');
-  Object.assign(val.style, {
-    fontFamily: T.fb,
-    fontSize:   '22px',
-    fontWeight: T.fwBold,
-    color:      T.gold,
-    lineHeight: '1.1',
-  });
-  val.textContent = fmt(value);
-  bar.appendChild(val);
-
-  el.appendChild(bar);
-}
 
 // ═══════════════════════════════════════════════════
 //  ACTION BAR (bottom-right pills)
@@ -1016,69 +917,6 @@ function renderTotals(state) {
 //  State 2 (seats selected) and MANAGE mode toolbars come in later
 //  steps and dispatch from this same slot.
 // ═══════════════════════════════════════════════════
-
-function _makeSecondaryPill(label, textColor, opts) {
-  opts = opts || {};
-  var btn = document.createElement('button');
-  Object.assign(btn.style, {
-    height:        '36px',
-    padding:       '0 18px',
-    border:        'none',
-    borderRadius:  T.pillRadius,
-    background:    opts.bg || T.card,
-    color:         textColor,
-    fontFamily:    T.fb,
-    fontSize:      T.fsB3,
-    fontWeight:    T.fwBold,
-    letterSpacing: '0.12em',
-    cursor:        'pointer',
-    boxShadow:     '0 2px 0 rgba(0,0,0,0.35)',
-    pointerEvents: 'auto',
-  });
-  btn.textContent = label;
-  return btn;
-}
-
-function _makePrimaryPill(label, bg, opts) {
-  opts = opts || {};
-  var btn = document.createElement('button');
-  Object.assign(btn.style, {
-    height:        '48px',
-    padding:       '0 24px',
-    minWidth:      opts.minWidth || '120px',
-    border:        'none',
-    borderRadius:  T.pillRadius,
-    background:    bg,
-    color:         T.well,
-    fontFamily:    T.fb,
-    fontSize:      T.fsB2,
-    fontWeight:    T.fwBold,
-    letterSpacing: '0.10em',
-    cursor:        'pointer',
-    boxShadow:     '0 3px 0 rgba(0,0,0,0.4)',
-    display:       'flex',
-    flexDirection: 'column',
-    alignItems:    'center',
-    justifyContent:'center',
-    gap:           '1px',
-    pointerEvents: 'auto',
-  });
-  var main = document.createElement('span');
-  main.textContent = label;
-  btn.appendChild(main);
-  if (opts.sub) {
-    var sub = document.createElement('span');
-    Object.assign(sub.style, {
-      fontSize:      '9px',
-      fontWeight:    T.fwBold,
-      letterSpacing: '0.10em',
-      opacity:       '0.78',
-    });
-    sub.textContent = opts.sub;
-    btn.appendChild(sub);
-  }
-  return btn;
-}
 
 function _wireLongPress(el, onFire, holdMs) {
   var timer = null;
@@ -1099,88 +937,215 @@ function _wireLongPress(el, onFire, holdMs) {
   });
 }
 
-function _dashedDivider() {
-  var d = document.createElement('div');
-  Object.assign(d.style, {
-    width:      '0',
-    height:     '56px',
-    borderLeft: '1px dashed ' + T.border,
-    margin:     '0 4px',
-  });
-  return d;
-}
-
 function renderActionBar(state) {
-  var zone = state.actionGridEl;
-  if (!zone) return;
-  zone.innerHTML = '';
+  var barZone = state.bottomBarEl;
+  if (!barZone) return;
+  barZone.innerHTML = '';
 
-  // MANAGE mode owns the bottom-right zone while active — the tool
-  // pills and utility row replace PAY / ADD ITEMS until the cashier
-  // taps DONE (which calls exitManageMode → rerender → falls back
-  // to State 1 or 2 here).
   if (state._manageMode) {
     renderManageToolbar(state);
     return;
   }
 
-  var params = state._params || state._mountParams || {};
-  var anySel = Object.keys(state.selected || {}).length > 0;
+  // Container
+  var bar = document.createElement('div');
+  Object.assign(bar.style, {
+    display:     'flex',
+    alignItems:  'stretch',
+    gap:         '10px',
+    padding:     '12px',
+    background:  T.well,
+    borderTop:   '1px solid ' + T.border,
+    flex:        '1',
+    boxSizing:   'border-box',
+  });
+  barZone.appendChild(bar);
 
-  if (!anySel) {
-    // ── STATE 1: nothing selected ──
-    var printBtn = _makeSecondaryPill('PRINT', T.green);
-    printBtn.addEventListener('click', function() { handlePrint(state); });
-    zone.appendChild(printBtn);
+  var order = state.order || {};
+  var discount = getCashDiscount();
 
-    var voidBtn = _makeSecondaryPill('VOID', T.verm);
-    voidBtn.addEventListener('click', function() {
-      showToast('Hold VOID to confirm', { bg: T.gold });
+  // Totals block — two stacked info cards, width: 150px, flex-direction: column, gap: 8px:
+  var totalsBlock = document.createElement('div');
+  Object.assign(totalsBlock.style, {
+    width: '150px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    flexShrink: '0',
+  });
+  bar.appendChild(totalsBlock);
+
+  var subtotal = order.subtotal || 0;
+  var total = order.total || 0;
+  var cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+
+  function buildInfoCard(label, valText, subLineEl) {
+    var card = document.createElement('div');
+    Object.assign(card.style, {
+      background: T.card,
+      borderRadius: '10px',
+      padding: '12px 14px',
+      flex: '1',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
     });
-    _wireLongPress(voidBtn, function() { handleVoid(state); });
-    zone.appendChild(voidBtn);
 
-    zone.appendChild(_dashedDivider());
+    var l = document.createElement('div');
+    Object.assign(l.style, {
+      color: T.text,
+      fontFamily: T.fb,
+      fontSize: '9px',
+      fontWeight: '700',
+      textTransform: 'uppercase',
+    });
+    l.textContent = label;
+    card.appendChild(l);
 
-    var payBtn = _makePrimaryPill('PAY', T.gold, { minWidth: '150px' });
-    payBtn.addEventListener('click', function() { handlePay(state, params); });
-    zone.appendChild(payBtn);
+    var v = document.createElement('div');
+    Object.assign(v.style, {
+      color: T.gold,
+      fontFamily: T.fb,
+      fontSize: '18px',
+      fontWeight: '700',
+    });
+    v.textContent = valText;
+    card.appendChild(v);
 
-    var addBtn = _makePrimaryPill('ADD ITEMS', T.green, { minWidth: '158px' });
-    addBtn.addEventListener('click', function() { handleAddItems(state, params); });
-    zone.appendChild(addBtn);
-    return;
+    if (subLineEl) card.appendChild(subLineEl);
+    return card;
   }
 
-  // ── STATE 2: one or more seats selected ──
-  // Secondary: PRINT SEATS + MANAGE. MANAGE fills T.elec to flag that
-  // it opens a distinct mode (MOVE / SPLIT / MERGE / TRANSFER tools).
-  var selLabel = _selectedSeatShortLabel(state);
+  // Top card: label SUBTOTAL, value from check.subtotal in T.gold
+  totalsBlock.appendChild(buildInfoCard('SUBTOTAL', fmt(subtotal)));
 
-  var printSeatsBtn = _makeSecondaryPill('PRINT SEATS', T.green);
-  printSeatsBtn.addEventListener('click', function() { handlePrint(state); });
-  zone.appendChild(printSeatsBtn);
-
-  var manageBtn = _makeSecondaryPill('MANAGE', T.well, { bg: T.elec });
-  manageBtn.addEventListener('click', function() { enterManageMode(state); });
-  zone.appendChild(manageBtn);
-
-  zone.appendChild(_dashedDivider());
-
-  // Primary: PAY SEATS shows selected-seat sub-label so cashier knows
-  // exactly which totals are about to settle. ADD ITEMS continues to
-  // open order-entry; Step 9 adds a seatFilter so the assign modal
-  // inside order-entry pre-filters to the selected seats.
-  var paySeatsBtn = _makePrimaryPill('PAY SEATS', T.gold, {
-    minWidth: '170px',
-    sub:      selLabel,
+  // Bottom card: label CHECK TOTAL, value from check.total in T.gold, sub-line Card $X in T.gold · Cash $Y in T.greenWarm
+  var subLine = document.createElement('div');
+  Object.assign(subLine.style, {
+    fontSize: '9px',
+    fontFamily: T.fb,
+    marginTop: '2px',
   });
-  paySeatsBtn.addEventListener('click', function() { handlePay(state, params); });
-  zone.appendChild(paySeatsBtn);
 
-  var addItemsBtn = _makePrimaryPill('ADD ITEMS', T.green, { minWidth: '158px' });
-  addItemsBtn.addEventListener('click', function() { handleAddItems(state, params); });
-  zone.appendChild(addItemsBtn);
+  var cardSpan = document.createElement('span');
+  cardSpan.style.color = T.gold;
+  cardSpan.textContent = 'Card ' + fmt(total);
+  subLine.appendChild(cardSpan);
+
+  var dot = document.createElement('span');
+  dot.style.color = T.text;
+  dot.textContent = ' · ';
+  subLine.appendChild(dot);
+
+  var cashSpan = document.createElement('span');
+  cashSpan.style.color = T.greenWarm;
+  cashSpan.textContent = 'Cash ' + fmt(cashTotal);
+  subLine.appendChild(cashSpan);
+
+  totalsBlock.appendChild(buildInfoCard('CHECK TOTAL', fmt(total), subLine));
+
+  // Left stack — flex-direction: column, gap: 8px, width: 180px.
+  var leftStack = document.createElement('div');
+  Object.assign(leftStack.style, {
+    width: '180px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    flexShrink: '0',
+  });
+  bar.appendChild(leftStack);
+
+  // DISC
+  var discBtn = buildPillButton({
+    label: 'DISC',
+    color: T.lavender,
+    darkBg: darkenHex(T.lavender, 0.4),
+    onClick: function() { handleDiscount(state); }
+  });
+  discBtn.style.flex = '1';
+  discBtn.style.borderRadius = '12px 12px 6px 6px';
+  leftStack.appendChild(discBtn);
+
+  // VOID
+  var voidBtn = buildPillButton({
+    label: 'VOID',
+    color: T.verm,
+    darkBg: T.vermDk,
+    onClick: function() { handleVoid(state); }
+  });
+  voidBtn.style.flex = '1';
+  voidBtn.style.borderRadius = '6px 6px 12px 12px';
+  leftStack.appendChild(voidBtn);
+
+  // PAY
+  var payBtn = buildPillButton({
+    label: 'PAY',
+    color: T.gold,
+    darkBg: T.goldDk,
+    width: '220px',
+    onClick: function() { handlePay(state, state._params || {}); }
+  });
+  Object.assign(payBtn.style, {
+    alignSelf: 'stretch',
+    borderRadius: '14px',
+    fontSize: '20px',
+    flexShrink: '0',
+  });
+  bar.appendChild(payBtn);
+
+  // Spacer
+  var spacer = document.createElement('div');
+  spacer.style.flex = '1';
+  bar.appendChild(spacer);
+
+  // ADD ITEMS
+  var addBtn = buildPillButton({
+    label: 'ADD ITEMS',
+    color: T.greenWarm,
+    darkBg: T.greenWarmDk,
+    width: '220px',
+    onClick: function() { handleAddItems(state, state._params || {}); }
+  });
+  Object.assign(addBtn.style, {
+    alignSelf: 'stretch',
+    borderRadius: '14px',
+    fontSize: '20px',
+    flexShrink: '0',
+  });
+  bar.appendChild(addBtn);
+
+  // Right stack
+  var rightStack = document.createElement('div');
+  Object.assign(rightStack.style, {
+    width: '180px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    flexShrink: '0',
+  });
+  bar.appendChild(rightStack);
+
+  // EDIT SEATS
+  var editBtn = buildPillButton({
+    label: 'EDIT SEATS',
+    color: T.moon,
+    darkBg: T.moonDk,
+    onClick: function() { openEditSeats(state); }
+  });
+  editBtn.style.flex = '1';
+  editBtn.style.borderRadius = '12px 12px 6px 6px';
+  rightStack.appendChild(editBtn);
+
+  // PRINT
+  var printBtn = buildPillButton({
+    label: 'PRINT',
+    color: T.elec,
+    darkBg: T.elecDk,
+    onClick: function() { handlePrint(state); }
+  });
+  printBtn.style.flex = '1';
+  printBtn.style.borderRadius = '6px 6px 12px 12px';
+  rightStack.appendChild(printBtn);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1317,46 +1282,32 @@ function _resetManageSession(state) {
 }
 
 function _makeToolPill(label, active) {
-  var btn = document.createElement('button');
-  Object.assign(btn.style, {
-    height:        '36px',
-    padding:       '0 16px',
-    border:        'none',
-    borderRadius:  T.pillRadius,
-    background:    active ? T.elec : T.card,
-    color:         active ? T.well : T.elec,
-    fontFamily:    T.fb,
-    fontSize:      T.fsB3,
-    fontWeight:    T.fwBold,
-    letterSpacing: '0.14em',
-    cursor:        'pointer',
-    boxShadow:     '0 2px 0 rgba(0,0,0,0.35)',
-    pointerEvents: 'auto',
+  var color  = active ? T.elec : T.card;
+  var darkBg = active ? T.elecDk : darkenHex(T.card, 0.2);
+  return buildPillButton({
+    label:    label,
+    color:    color,
+    darkBg:   darkBg,
+    textColor: active ? T.well : T.elec,
+    height:   '46px',
+    padding:  '0 20px',
+    fontSize: T.fsB3
   });
-  btn.textContent = label;
-  return btn;
 }
 
 function _makeUtilPill(label, textColor, opts) {
   opts = opts || {};
-  var btn = document.createElement('button');
-  Object.assign(btn.style, {
-    height:        '36px',
-    padding:       '0 14px',
-    border:        'none',
-    borderRadius:  T.pillRadius,
-    background:    opts.bg || T.card,
-    color:         textColor,
-    fontFamily:    T.fb,
-    fontSize:      T.fsB3,
-    fontWeight:    T.fwBold,
-    letterSpacing: '0.14em',
-    cursor:        'pointer',
-    boxShadow:     '0 2px 0 rgba(0,0,0,0.35)',
-    pointerEvents: 'auto',
+  var color = opts.bg || T.card;
+  var darkBg = opts.darkBg || darkenHex(color, 0.2);
+  return buildPillButton({
+    label:     label,
+    color:     color,
+    darkBg:    darkBg,
+    textColor: textColor,
+    height:    '46px',
+    padding:   '0 20px',
+    fontSize:  T.fsB3
   });
-  btn.textContent = label;
-  return btn;
 }
 
 // ── MANAGE SPLIT ──
@@ -1526,7 +1477,7 @@ function _enterManageSplit(state) {
             { bg: T.elec, duration: 2500 });
 }
 
-function _commitManageSplit(state) {
+async function _commitManageSplit(state) {
   var recipients = [];
   for (var sid in state.selected) {
     if (!state.paidSeats[sid]) recipients.push(sid);
@@ -1549,14 +1500,26 @@ function _commitManageSplit(state) {
     return b.itemIdx - a.itemIdx;
   });
 
+  var itemsToVoid = [];
+  var newItemsToCreate = [];
+
   for (var r = 0; r < itemRefs.length; r++) {
     var ref = itemRefs[r];
     var src = state.seats[ref.seatIdx].items.splice(ref.itemIdx, 1)[0];
+    if (src.item_id) itemsToVoid.push(src.item_id);
+
     var orig = (src.effectivePrice != null ? src.effectivePrice : src.price) || 0;
-    var piece = orig / recipients.length;
+    var totalCents = Math.round(orig * 100);
+    var floorCents = Math.floor(totalCents / recipients.length);
+    var remainderCents = totalCents % recipients.length;
+
     for (var k = 0; k < recipients.length; k++) {
       var tIdx = _seatIdxById(state, recipients[k]);
       if (tIdx < 0) continue;
+
+      var shareCents = floorCents + (k === 0 ? remainderCents : 0);
+      var piece = shareCents / 100;
+
       var copy = Object.assign({}, src);
       // seatSubtotal prefers effectivePrice when present; set both so
       // later pricing passes stay consistent.
@@ -1569,19 +1532,52 @@ function _commitManageSplit(state) {
       // fractional cost obvious next to the item name.
       copy.name = (copy.name || '') + ' (1/' + recipients.length + ')';
       state.seats[tIdx].items.push(copy);
+
+      newItemsToCreate.push({
+        seat_number:  state.seats[tIdx].number || (tIdx + 1),
+        menu_item_id: src.menu_item_id || src.name.toLowerCase().replace(/\s+/g, '_'),
+        name:         copy.name,
+        price:        piece,
+        category:     src.category || 'general'
+      });
     }
   }
 
-  state._manageLog.push({ kind: 'split', preSeats: preSeats });
-  state.selected      = {};
-  state.selectedItems = {};
-  state._manageTool   = 'move';
-  rerenderTopArea(state);
-  showToast('Split across ' + recipients.length + ' seat(s)', { bg: T.greenWarm });
+  try {
+    if (state.orderId) {
+      for (var i = 0; i < newItemsToCreate.length; i++) {
+        var postRes = await fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(newItemsToCreate[i]),
+        }, 10000);
+        if (!postRes.ok) throw new Error('POST failed');
+      }
+
+      for (var j = 0; j < itemsToVoid.length; j++) {
+        var delRes = await fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items/' + itemsToVoid[j], {
+          method: 'DELETE',
+        }, 10000);
+        if (!delRes.ok) throw new Error('DELETE failed');
+      }
+    }
+
+    state._manageLog.push({ kind: 'split', preSeats: preSeats });
+    state.selected      = {};
+    state.selectedItems = {};
+    state._manageTool   = 'move';
+    rerenderTopArea(state);
+    showToast('Split across ' + recipients.length + ' seat(s)', { bg: T.greenWarm });
+  } catch (err) {
+    console.warn('[KINDpos] Split persistence failed:', err);
+    state.seats = preSeats;
+    showToast('Split failed: backend sync error', { bg: T.verm });
+    rerenderTopArea(state);
+  }
 }
 
 function renderManageToolbar(state) {
-  var zone = state.actionGridEl;
+  var zone = state.bottomBarEl;
   if (!zone) return;
   zone.innerHTML = '';
 
@@ -1661,50 +1657,8 @@ function buildSeatsContainer(state) {
     minHeight:    '0',
     display:      'flex',
     flexDirection:'column',
-    background:   T.card,
-    borderLeft:   T.accentBarW + ' solid ' + T.green,
-    borderRadius: T.chamferCard + 'px',
-    overflow:     'hidden',
-    boxShadow:    '0 4px 16px rgba(0,0,0,0.28)',
+    overflow:     'visible',
   });
-
-  var header = document.createElement('div');
-  Object.assign(header.style, {
-    flexShrink:             '0',
-    height:                 '24px',
-    background:             T.green,
-    borderTopRightRadius:   (T.chamferCard - 4) + 'px',
-    display:                'flex',
-    alignItems:             'center',
-    justifyContent:         'space-between',
-    padding:                '0 14px',
-    fontFamily:             T.fh,
-    fontWeight:             T.fwBold,
-    fontSize:               '11px',
-    letterSpacing:          '0.14em',
-    color:                  T.well,
-    userSelect:             'none',
-  });
-
-  var lbl = document.createElement('span');
-  lbl.textContent = 'SEATS';
-  header.appendChild(lbl);
-
-  var all = document.createElement('span');
-  all.textContent = 'ALL';
-  all.style.cursor = 'pointer';
-  all.style.padding = '0 4px';
-  all.addEventListener('click', function() {
-    if (_allSeatsSelected(state)) {
-      state.selected = {};
-    } else {
-      state.selected = selectAllUnpaid(state.seats, state.paidSeats);
-    }
-    rerenderTopArea(state);
-  });
-  header.appendChild(all);
-
-  root.appendChild(header);
 
   // MANAGE-mode banner. Shown only while state._manageMode is true so
   // the cashier always knows they're in the tool-dispatching surface
@@ -1735,12 +1689,13 @@ function buildSeatsContainer(state) {
 
   var body = document.createElement('div');
   Object.assign(body.style, {
-    flex:         '1',
-    minHeight:    '0',
-    display:      'flex',
-    flexDirection:'column',
-    padding:      '12px',
-    boxSizing:    'border-box',
+    display:            'grid',
+    gridTemplateColumns:'1fr 1fr',
+    gap:                '10px',
+    padding:            '12px',
+    flex:               '1',
+    overflowY:          'auto',
+    boxSizing:          'border-box',
   });
   root.appendChild(body);
 
@@ -1752,8 +1707,6 @@ function buildSeatsContainer(state) {
 // ═══════════════════════════════════════════════════
 
 function rerenderTopArea(state) {
-  state._mode = layoutModeFor(activeSeatCount(state.seats, state.paidSeats));
-
   if (state._osActive) {
     OrderSummary.hide();
     state._osActive = false;
@@ -1775,147 +1728,24 @@ function rerenderTopArea(state) {
   var shell = buildSeatsContainer(state);
   top.appendChild(shell.root);
 
-  if (state._mode === 'A') renderModeA(state, shell.body);
-  else                     renderModeB(state, shell.body);
-
-  renderTotals(state);
+  renderSeatsGrid(state, shell.body);
   renderActionBar(state);
 }
 
-// ═══════════════════════════════════════════════════
-//  MODE A — 1 to 4 seats, full-width cards
-// ═══════════════════════════════════════════════════
-
-function renderModeA(state, container) {
-  // Flex row instead of a uniform grid so the add-tile can stay a slim
-  // 54 px rail while the seat tiles share the remaining width evenly.
-  var row = document.createElement('div');
-  Object.assign(row.style, {
-    flex:         '1',
-    minHeight:    '0',
-    display:      'flex',
-    gap:          '10px',
-    alignItems:   'stretch',
-  });
-  container.appendChild(row);
-
+function renderSeatsGrid(state, container) {
   for (var i = 0; i < state.seats.length; i++) {
     if (state.paidSeats[state.seats[i].id]) continue;
-    var card = buildSeatCard(state, i, { compact: false });
-    card.style.flex = '1';
-    card.style.minWidth = '0';
-    row.appendChild(card);
+    var panel = buildSeatCard(state, i);
+    container.appendChild(panel);
   }
 
-  var addTile = buildAddTile(state, { narrow: true });
-  row.appendChild(addTile);
+  var addTile = buildAddTile(state, { fullSize: true });
+  container.appendChild(addTile);
 
-  // MANAGE + MERGE exposes a +CHECK destination alongside the +SEAT
-  // add-tile so the cashier can split the current selection off onto
-  // a brand-new sibling check.
   if (state._manageMode && state._manageTool === 'merge') {
-    row.appendChild(buildCheckTile(state, { narrow: true }));
+    container.appendChild(buildCheckTile(state, { fullSize: true }));
   }
 }
-
-// ═══════════════════════════════════════════════════
-//  MODE B — 5+ seats, recap + compact scrollable grid
-//
-//  Left column:  buildItemRecap scrolls vertically and is top-aligned
-//                so rows start at the top rather than centering in
-//                the column. Totals continue to mount separately in
-//                the bottom-left corner via renderTotals so scrolling
-//                the recap never clips them.
-//  Right column: a fixed-height card whose inner grid scrolls when
-//                more seat tiles are added than fit. The card itself
-//                never grows past the seats-container body — growth
-//                happens inside the scrolling grid instead.
-// ═══════════════════════════════════════════════════
-
-function renderModeB(state, container) {
-  var wrap = document.createElement('div');
-  Object.assign(wrap.style, {
-    flex:               '1',
-    minHeight:          '0',
-    display:            'grid',
-    gridTemplateColumns:'360px 1fr',
-    gap:                '12px',
-  });
-  container.appendChild(wrap);
-
-  // ── LEFT: order recap ──
-  var recapSlot = document.createElement('div');
-  Object.assign(recapSlot.style, {
-    minHeight:      '0',
-    display:        'flex',
-    flexDirection:  'column',
-    justifyContent: 'flex-start',
-    overflow:       'hidden',
-  });
-  var recap = buildItemRecap(_adaptOrderForRecap(state), {
-    hideTotals:           true,
-    defaultItemCollapsed: true,
-    onSeatHeaderTap: function(seatIdx) {
-      if (seatIdx < 0 || seatIdx >= state.seats.length) return;
-      toggleSeat(state, state.seats[seatIdx].id);
-    },
-    onItemTap: function(seatIdx, itemIdx) {
-      toggleItem(state, seatIdx, itemIdx);
-    },
-    onRemoveItem: function(seatIdx, itemIdx) {
-      _voidItems(state, [{ seatIdx: seatIdx, itemIdx: itemIdx }]);
-    },
-  });
-  recap.style.flex = '1';
-  recap.style.minHeight = '0';
-  recap.style.background = 'transparent';
-  recapSlot.appendChild(recap);
-  wrap.appendChild(recapSlot);
-
-  // ── RIGHT: compact seat grid (fixed-height card, scrolling grid) ──
-  var gridCard = document.createElement('div');
-  Object.assign(gridCard.style, {
-    background:   T.card,
-    borderLeft:   T.accentBarW + ' solid ' + T.green,
-    borderRadius: T.chamferCard + 'px',
-    display:      'flex',
-    flexDirection:'column',
-    overflow:     'hidden',
-    boxShadow:    '0 4px 16px rgba(0,0,0,0.28)',
-    minHeight:    '0',
-    flex:         '1',
-  });
-
-  var cg = document.createElement('div');
-  Object.assign(cg.style, {
-    flex:               '1',
-    minHeight:          '0',
-    padding:            '10px',
-    display:            'grid',
-    gap:                '10px',
-    overflowY:          'auto',
-    gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))',
-    gridAutoRows:       '72px',
-    alignContent:       'start',
-  });
-  cg.className = 'co-scroll';
-
-  for (var i = 0; i < state.seats.length; i++) {
-    if (state.paidSeats[state.seats[i].id]) continue;
-    cg.appendChild(buildCompactTile(state, i));
-  }
-  cg.appendChild(buildAddTile(state, { compact: true }));
-  if (state._manageMode && state._manageTool === 'merge') {
-    cg.appendChild(buildCheckTile(state, { compact: true }));
-  }
-
-  gridCard.appendChild(cg);
-  wrap.appendChild(gridCard);
-}
-
-// ═══════════════════════════════════════════════════
-//  SEAT CARD (used in Mode A and B for first 4 + the shortened 5th)
-// ═══════════════════════════════════════════════════
 
 // Per-seat accent color. First four seats use the canonical blueprint
 // palette; beyond that we rotate through T.srvPalette so large parties
@@ -1928,121 +1758,61 @@ function seatAccent(seatIdx) {
   return pal[seatIdx % pal.length];
 }
 
-function buildSeatCard(state, seatIdx, opts) {
-  opts = opts || {};
+function buildSeatCard(state, seatIdx) {
   var seat = state.seats[seatIdx];
-  var selected = !!state.selected[seat.id];
-  var accent = seatAccent(seatIdx);
-  var canDelete = seat.items.length === 0
-    && activeSeatCount(state.seats, state.paidSeats) > 1;
+  var wrap = buildStaticCard({ accent: T.green });
+  wrap.style.flex          = '1';
+  wrap.style.padding       = '0';
+  wrap.style.display       = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.overflow      = 'hidden';
+  var card = wrap;
 
-  // Inverted selection: the whole tile flips to the seat accent color
-  // and every text node reads as T.well. When unselected the tile is
-  // the dark T.well surface with per-role colors (names = T.text,
-  // prices = T.gold, mods = dim, labels = T.green).
-  var tileBg     = selected ? accent : T.well;
-  var labelCol   = selected ? T.well : T.green;      // big S-num
-  var subLblCol  = selected ? T.well : T.mutedText;  // "SEAT" / "SUBTOTAL"
-  var subValCol  = selected ? T.well : T.gold;       // subtotal value
-  var headerBg   = selected ? 'rgba(0,0,0,0.15)' : T.card;
-  var footerBg   = selected ? 'rgba(0,0,0,0.15)' : T.card;
-  var divColor   = selected ? 'rgba(0,0,0,0.20)' : T.border;
-
-  var card = document.createElement('div');
-  if (selected) card.className = 'ir-inverted';
-  Object.assign(card.style, {
-    position:     'relative',
-    background:   tileBg,
-    borderLeft:   T.accentBarW + ' solid ' + hexToRgba(accent, selected ? 0.4 : 1.0),
-    borderRadius: T.chamferCard + 'px',
-    boxShadow:    '0 4px 16px rgba(0,0,0,0.35)',
-    display:      'flex',
-    flexDirection:'column',
-    overflow:     'hidden',
-    minHeight:    '0',
-    transition:   'background 0.12s ease',
+  wrap.addEventListener('pointerup', function(e) {
+    if (e.defaultPrevented) return;
+    toggleSeat(state, seatIdx);
   });
-  // Expose the tile accent so item-recap's .ir-qty chip (and any
-  // other .ir-inverted rule that needs to contrast against the tile
-  // surface) can read it as --ir-inv-bg.
-  card.style.setProperty('--ir-inv-bg', accent);
 
-  // ── Header: big S-num | stacked (SEAT label + gold subtotal) ──
+  // ── Header Row ──
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    flexShrink:    '0',
-    height:        '36px',
-    background:    headerBg,
-    display:       'flex',
-    alignItems:    'center',
-    gap:           '10px',
-    padding:       '0 12px',
-    cursor:        'pointer',
-    userSelect:    'none',
-    pointerEvents: 'auto',
-    touchAction:   'manipulation',
+    background:   T.well,
+    padding:      '8px 12px',
+    borderBottom: '1px solid ' + T.border,
+    display:      'flex',
+    alignItems:   'center',
+    justifyContent: 'space-between',
   });
 
-  var sNum = document.createElement('span');
-  Object.assign(sNum.style, {
+  var label = document.createElement('div');
+  Object.assign(label.style, {
+    color:      T.green,
     fontFamily: T.fh,
-    fontWeight: T.fwBold,
-    fontSize:   '24px',
-    lineHeight: '1',
-    color:      labelCol,
-    minWidth:   '32px',
+    fontWeight: 'bold',
   });
-  sNum.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
-  hdr.appendChild(sNum);
+  label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
+  hdr.appendChild(label);
 
-  var meta = document.createElement('div');
-  Object.assign(meta.style, {
-    display:       'flex',
-    flexDirection: 'column',
-    gap:           '1px',
-    flex:          '1',
-    minWidth:      '0',
-  });
-
-  var metaLbl = document.createElement('span');
-  Object.assign(metaLbl.style, {
-    fontFamily:    T.fb,
-    fontSize:      '8px',
-    fontWeight:    T.fwBold,
-    letterSpacing: '0.16em',
-    color:         subLblCol,
-  });
-  metaLbl.textContent = 'SEAT';
-  meta.appendChild(metaLbl);
-
-  var metaVal = document.createElement('span');
-  Object.assign(metaVal.style, {
+  var subtotal = document.createElement('div');
+  Object.assign(subtotal.style, {
+    color:      T.gold,
     fontFamily: T.fb,
-    fontSize:   '11px',
-    fontWeight: T.fwBold,
-    color:      subValCol,
   });
-  metaVal.textContent = fmt(seatTotal(seat));
-  meta.appendChild(metaVal);
+  subtotal.textContent = fmt(seatTotal(seat));
+  hdr.appendChild(subtotal);
 
-  hdr.appendChild(meta);
   card.appendChild(hdr);
 
-  _wireHeaderTaps(state, seat.id, hdr);
-
-  // ── Body (items) ──
-  // Embed buildItemRecap so the tile shares one source of truth for
-  // item rendering with the Mode B recap column — chevrons, qty chips,
-  // colored prefix badges, microMODs, pizza halves, and the upcharge
-  // strip that stays visible while items are collapsed.
-  var itemsEl = document.createElement('div');
-  itemsEl.className = 'co-scroll';
-  Object.assign(itemsEl.style, {
+  // ── Body ──
+  var body = document.createElement('div');
+  Object.assign(body.style, {
+    background:    T.card,
     flex:          '1',
-    overflowY:     'auto',
+    minHeight:     '0',
+    padding:       '12px',
     display:       'flex',
     flexDirection: 'column',
-    minHeight:     '0',
+    overflowY:     'auto',
   });
 
   if (seat.items.length === 0) {
@@ -2052,141 +1822,69 @@ function buildSeatCard(state, seatIdx, opts) {
       display:    'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      fontFamily: T.fb,
-      fontSize:   T.fsB3,
-      color:      selected ? hexToRgba(T.well, 0.6) : hexToRgba(T.text, 0.45),
+      color:      T.border,
       fontStyle:  'italic',
+      fontFamily: T.fb,
     });
     empty.textContent = 'empty seat';
-    itemsEl.appendChild(empty);
+    body.appendChild(empty);
   } else {
-    var recap = buildItemRecap(_adaptSeatForRecap(state, seatIdx), {
-      hideHeader:           true,
-      hideSeatHeader:       true,
-      hideTotals:           true,
-      defaultItemCollapsed: true,
-      // Tile embeds only show one seat, so the adapted order has that
-      // seat at seats[0]. Item-recap emits seatIdx=0 in its callbacks;
-      // route back to the real seat index on the scene's state.
-      onItemTap: function(_seatIdx0, itemIdx0) {
-        toggleItem(state, seatIdx, itemIdx0);
-      },
-      onRemoveItem: function(_seatIdx0, itemIdx0) {
-        _voidItems(state, [{ seatIdx: seatIdx, itemIdx: itemIdx0 }]);
-      },
-    });
-    // Recap root ships with its own padding / max-width / bg for the
-    // standalone column use-case. Dial those off for the compact tile
-    // embed so the inherited tile surface shows through.
-    Object.assign(recap.style, {
-      padding:    '6px 8px 8px',
-      maxWidth:   'none',
-      background: 'transparent',
-      flex:       '1',
-      minHeight:  '0',
-    });
-    itemsEl.appendChild(recap);
+    for (var i = 0; i < seat.items.length; i++) {
+      var it = seat.items[i];
+      var row = document.createElement('div');
+      row.style.marginBottom = '8px';
+
+      var mainLine = document.createElement('div');
+      Object.assign(mainLine.style, {
+        display:        'flex',
+        justifyContent: 'space-between',
+        fontFamily:     T.fb,
+      });
+
+      var name = document.createElement('span');
+      name.style.color = T.text;
+      name.textContent = it.name;
+      mainLine.appendChild(name);
+
+      var price = document.createElement('span');
+      price.style.color = T.gold;
+      price.textContent = fmt(it.qty * (it.effectivePrice || it.price));
+      mainLine.appendChild(price);
+
+      row.appendChild(mainLine);
+
+      if (it.mods && it.mods.length > 0) {
+        for (var m = 0; m < it.mods.length; m++) {
+          var mod = document.createElement('div');
+          Object.assign(mod.style, {
+            color:      T.border,
+            fontSize:   '12px',
+            paddingLeft:'12px',
+            fontFamily: T.fb,
+          });
+          mod.textContent = '↳ ' + it.mods[m].name;
+          row.appendChild(mod);
+        }
+      }
+      body.appendChild(row);
+    }
   }
 
-  card.appendChild(itemsEl);
+  card.appendChild(body);
 
-  // ── Footer: SUBTOTAL row ──
-  var ftr = document.createElement('div');
-  Object.assign(ftr.style, {
-    flexShrink:    '0',
-    height:        '28px',
-    background:    footerBg,
-    borderTop:     '0.75px solid ' + divColor,
-    display:       'flex',
-    alignItems:    'center',
-    justifyContent:'space-between',
-    padding:       '0 12px',
-  });
-
-  var ftrL = document.createElement('span');
-  Object.assign(ftrL.style, {
-    fontFamily:    T.fb,
-    fontSize:      '9px',
-    fontWeight:    T.fwBold,
-    letterSpacing: '0.14em',
-    color:         subLblCol,
-  });
-  ftrL.textContent = 'SUBTOTAL';
-  ftr.appendChild(ftrL);
-
-  var ftrR = document.createElement('span');
-  Object.assign(ftrR.style, {
-    fontFamily: T.fb,
-    fontSize:   '13px',
-    fontWeight: T.fwBold,
-    color:      subValCol,
-  });
-  ftrR.textContent = fmt(seatTotal(seat));
-  ftr.appendChild(ftrR);
-
-  card.appendChild(ftr);
-
-  if (canDelete) card.appendChild(_buildDeleteSeatX(state, seat.id));
-  state.seatEls[seat.id] = { wrap: card, hdr: hdr, itemsEl: itemsEl };
-  return card;
-}
-
-// ═══════════════════════════════════════════════════
-//  COMPACT SEAT TILE (Mode B)
-// ═══════════════════════════════════════════════════
-
-function buildCompactTile(state, seatIdx) {
-  var seat = state.seats[seatIdx];
-  var selected = !!state.selected[seat.id];
-  var accent = seatAccent(seatIdx);
   var canDelete = seat.items.length === 0
     && activeSeatCount(state.seats, state.paidSeats) > 1;
+  if (canDelete) {
+    var delX = _buildDeleteSeatX(state, seat.id);
+    card.appendChild(delX);
+  }
 
-  var tile = document.createElement('div');
-  Object.assign(tile.style, {
-    position:       'relative',
-    background:     selected ? accent : T.well,
-    borderLeft:     T.accentBarW + ' solid ' + hexToRgba(accent, selected ? 0.4 : 1.0),
-    borderRadius:   T.chamferCard + 'px',
-    padding:        '8px 10px',
-    display:        'flex',
-    flexDirection:  'column',
-    alignItems:     'center',
-    justifyContent: 'center',
-    gap:            '2px',
-    cursor:         'pointer',
-    boxShadow:      '0 3px 0 rgba(0,0,0,0.4)',
-    userSelect:     'none',
-    pointerEvents:  'auto',
-    touchAction:    'manipulation',
-  });
+  state.seatEls[seat.id] = wrap;
+  return wrap;
+}
 
-  var cid = document.createElement('span');
-  Object.assign(cid.style, {
-    fontFamily:   T.fh,
-    fontWeight:   T.fwBold,
-    fontSize:     T.fsH4,
-    color:        selected ? T.well : T.text,
-    letterSpacing:'0.06em',
-    lineHeight:   '1',
-  });
-  cid.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
-  tile.appendChild(cid);
-
-  var ctot = document.createElement('span');
-  Object.assign(ctot.style, {
-    fontFamily: T.fb,
-    fontSize:   T.fsB3,
-    color:      selected ? T.well : T.gold,
-    lineHeight: '1',
-  });
-  ctot.textContent = fmt(seatTotal(seat));
-  tile.appendChild(ctot);
-
-  _wireHeaderTaps(state, seat.id, tile);
-  if (canDelete) tile.appendChild(_buildDeleteSeatX(state, seat.id));
-  state.seatEls[seat.id] = { wrap: tile, hdr: tile, itemsEl: null };
-  return tile;
+function buildCompactTile(state, seatIdx) {
+  return buildSeatCard(state, seatIdx);
 }
 
 // ═══════════════════════════════════════════════════
@@ -2195,41 +1893,37 @@ function buildCompactTile(state, seatIdx) {
 
 function buildAddTile(state, opts) {
   opts = opts || {};
-  var tile = document.createElement('div');
-  Object.assign(tile.style, {
-    background:     'transparent',
-    border:         '1px dashed ' + T.border,
-    borderRadius:   T.chamferCard + 'px',
+  var wrap = buildStaticCard({ accent: T.green });
+  wrap.style.flex          = '1';
+  wrap.style.padding       = '0';
+  wrap.style.display       = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.overflow      = 'hidden';
+
+  Object.assign(wrap.style, {
     display:        'flex',
     alignItems:     'center',
     justifyContent: 'center',
-    cursor:         'pointer',
-    minHeight:      opts.compact ? '72px' : '0',
-    pointerEvents:  'auto',
-    flexShrink:     '0',
   });
-  if (opts.narrow) {
-    tile.style.width = '54px';
-  }
+
   var plus = document.createElement('div');
   Object.assign(plus.style, {
-    fontFamily: T.fh,
-    fontWeight: T.fwBold,
-    fontSize:   opts.narrow ? '28px' : (opts.compact ? '32px' : '56px'),
-    color:      T.green,
-    lineHeight: '1',
+    fontFamily:  T.fh,
+    fontWeight:  T.fwBold,
+    fontSize:    '48px',
+    color:       T.green,
+    lineHeight:  '1',
+    userSelect:  'none',
   });
   plus.textContent = '+';
-  tile.appendChild(plus);
+  wrap.appendChild(plus);
 
-  tile.addEventListener('pointerdown', function() {
-    tile.style.background = hexToRgba(T.green, 0.08);
-  });
-  tile.addEventListener('pointerup', function() {
-    tile.style.background = 'transparent';
-    // In MANAGE + MERGE mode with a live item selection, the add-tile
-    // doubles as "+SEAT to merge into" — create a fresh seat and
-    // move the selection onto it in one tap.
+  wrap.style.cursor        = 'pointer';
+  wrap.style.pointerEvents = 'auto';
+  wrap.style.touchAction   = 'manipulation';
+  plus.style.pointerEvents = 'none';  // let clicks fall through to wrap
+
+  wrap.onclick = function() {
     if (state._manageMode
         && state._manageTool === 'merge'
         && Object.keys(state.selectedItems || {}).length > 0) {
@@ -2237,11 +1931,9 @@ function buildAddTile(state, opts) {
       return;
     }
     addSeat(state);
-  });
-  tile.addEventListener('pointerleave', function() {
-    tile.style.background = 'transparent';
-  });
-  return tile;
+  };
+
+  return wrap;
 }
 
 // ── +CHECK tile ──
@@ -2256,7 +1948,7 @@ function buildCheckTile(state, opts) {
   Object.assign(tile.style, {
     background:     'transparent',
     border:         '1px dashed ' + T.elec,
-    borderRadius:   T.chamferCard + 'px',
+    borderRadius:   '10px',
     display:        'flex',
     flexDirection:  'column',
     alignItems:     'center',
@@ -2273,7 +1965,7 @@ function buildCheckTile(state, opts) {
   Object.assign(plus.style, {
     fontFamily: T.fh,
     fontWeight: T.fwBold,
-    fontSize:   opts.narrow ? '22px' : (opts.compact ? '26px' : '40px'),
+    fontSize:   (opts.narrow || opts.fullSize) ? '40px' : (opts.compact ? '26px' : '40px'),
     color:      T.elec,
     lineHeight: '1',
   });
@@ -2588,7 +2280,6 @@ function persistSeats(state) {
         }
         state.orderId     = newId;
         state.checkNumber = order.check_number || '';
-        if (state.checkNumber) setSceneName(state.checkNumber);
         SceneManager.emit('order:updated', { orderId: state.orderId });
       })
       .catch(function(err) {
@@ -2602,6 +2293,39 @@ function persistSeats(state) {
       });
   });
   return state._seatsChain;
+}
+
+// Push item seat assignments to the backend. Used after MANAGE MOVE/MERGE
+// to ensure item assignments survive a scene transition or backend refresh.
+function persistItemSeats(state, items) {
+  if (!state.orderId || !items || items.length === 0) return Promise.resolve();
+
+  // Filter to items that have a server-assigned item_id (already persisted once).
+  // New items added in this session but not yet sent to kitchen won't have one,
+  // but move/merge only happens in check-overview on items that ARE already saved.
+  var persistedItems = items.filter(function(it) { return !!it.item_id; });
+  if (persistedItems.length === 0) return Promise.resolve();
+
+  var promises = persistedItems.map(function(it) {
+    return fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items/' + it.item_id, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ seat_number: it.seat_number }),
+    }, 15000);
+  });
+
+  return Promise.allSettled(promises).then(function(results) {
+    var failed = results.filter(function(r) { return r.status === 'rejected' || !r.value.ok; });
+    if (failed.length > 0) {
+      console.warn('[KINDpos] Some item seat updates failed:', failed.length);
+      entReport({
+        code: 'UI-009', level: 'WARNING',
+        source: 'check-overview.persistItemSeats',
+        message: 'PATCH /items/{id} failed for ' + failed.length + ' items',
+        ctx: { orderId: state.orderId, count: failed.length },
+      });
+    }
+  });
 }
 
 // Tiny × button overlay for empty seats. Tapping removes the seat.
@@ -3144,12 +2868,17 @@ function _moveItemsToSeat(state, refs, targetSeatId, opts) {
   });
 
   var patches = [];
+  var movedItems = [];
+  var targetNum = state.seats[targetIdx].number;
+
   for (var r = 0; r < refs.length; r++) {
     var rr = refs[r];
     if (rr.seatIdx === targetIdx) continue;  // skip no-op moves
     var fromSeat = state.seats[rr.seatIdx];
     var it = fromSeat.items.splice(rr.itemIdx, 1)[0];
+    it.seat_number = targetNum;
     state.seats[targetIdx].items.push(it);
+    movedItems.push(it);
     patches.push({
       fromSeatId: fromSeat.id,
       fromItemIdx: rr.itemIdx,
@@ -3161,6 +2890,9 @@ function _moveItemsToSeat(state, refs, targetSeatId, opts) {
     showToast('Already on ' + targetSeatId, { bg: T.gold });
     return 0;
   }
+
+  persistItemSeats(state, movedItems);
+  persistSeats(state);
 
   if (state._manageMode && !opts.skipLog) {
     state._manageLog.push({
@@ -3219,11 +2951,21 @@ function _pickMergeTarget(state, sourceSeatId) {
       var sIdx = _seatIdxById(state, sourceSeatId);
       var tIdx = _seatIdxById(state, targetId);
       if (sIdx < 0 || tIdx < 0) return;
-      state.seats[tIdx].items = state.seats[tIdx].items.concat(state.seats[sIdx].items);
+
+      var movedItems = state.seats[sIdx].items;
+      var targetNum = state.seats[tIdx].number;
+      for (var m = 0; m < movedItems.length; m++) {
+        movedItems[m].seat_number = targetNum;
+      }
+
+      state.seats[tIdx].items = state.seats[tIdx].items.concat(movedItems);
       state.seats.splice(sIdx, 1);
       delete state.selected[sourceSeatId];
       rerenderTopArea(state);
       showToast('Merged into ' + targetId, { bg: T.greenWarm });
+
+      persistItemSeats(state, movedItems);
+      persistSeats(state);
     },
     onCancel: function() {},
   });
@@ -3462,7 +3204,6 @@ function refreshOrder(state, params) {
       state.checkNumber  = order.check_number || '';
       state.customerName = order.customer_name || '';
 
-      if (state.checkNumber) setSceneName(state.checkNumber);
 
       state.seats = orderToSeats(order, order.guest_count || 1);
 

@@ -9,14 +9,18 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../tokens.js';
-import { hexToRgba, fetchWithTimeout } from '../sm2-shim.js';
 import { showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
-import { buildHeader } from '../header.js';
 import { OrderSummary } from '../order-summary.js';
-import { buildPillButton } from '../theme-manager.js';
+import {
+  buildStaticCard,
+  buildNavCard,
+  buildActionCard,
+  buildPillButton,
+  hexToRgba,
+  darkenHex,
+} from '../theme-manager.js';
 import { fmt, detailRow, detailDivider } from './checkout-core.js';
-import { entReport } from '../entomology-client.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS (match mockup exactly)
@@ -26,7 +30,7 @@ var LEFT_W   = 260;   // Receipt preview column
 var RIGHT_W  = 236;   // Actions column
 var COL_GAP  = 12;    // Gap between columns
 var PAD      = 14;    // Outer side/bottom padding
-var PAD_TOP  = 56;    // Top padding — clears app header chrome (~50px tall)
+var PAD_TOP  = 8;     // reduce top padding per UI audit
 
 // ─────────────────────────────────────────────────
 //  TYPOGRAPHY — aligned to KINDpos token scale
@@ -144,13 +148,12 @@ function buildBlockerBanner(state, startTime) {
   var blockerCount = state.openChecks.length + state.unadjustedChecks.length;
   if (blockerCount === 0) return null;
 
-  var wrap = document.createElement('div');
-  wrap.style.cssText = [
-    'flex-shrink:0;display:flex;align-items:center;gap:14px;',
-    'padding:10px 18px;box-sizing:border-box;',
-    'background:' + T.card + ';border-left:4px solid ' + T.verm + ';',
-    'border-radius:10px;',
-  ].join('');
+  var card = buildStaticCard({ accent: T.verm });
+  card.style.flexShrink = '0';
+  card.style.display = 'flex';
+  card.style.alignItems = 'center';
+  card.style.gap = '14px';
+  card.style.padding = '10px 18px';
 
   var icon = document.createElement('div');
   icon.style.cssText = [
@@ -183,7 +186,7 @@ function buildBlockerBanner(state, startTime) {
   timer.style.cssText = [
     'flex-shrink:0;padding:7px 18px;border-radius:999px;',
     'background:' + T.well + ';',
-    'font-family:' + T.fb + ';font-size:' + FS_META + ';color:' + (T.lavender || '#b48efa') + ';',
+    'font-family:' + T.fb + ';font-size:' + FS_META + ';color:' + T.lavender + ';',
     'letter-spacing:0.5px;',
   ].join('');
   timer.dataset.flsa = '1';
@@ -199,11 +202,11 @@ function buildBlockerBanner(state, startTime) {
   };
   setTimeout(tick, 1000);
 
-  wrap.appendChild(icon);
-  wrap.appendChild(textCol);
-  wrap.appendChild(timer);
+  card.appendChild(icon);
+  card.appendChild(textCol);
+  card.appendChild(timer);
 
-  return wrap;
+  return card;
 }
 
 // ─────────────────────────────────────────────────
@@ -283,17 +286,12 @@ function renderCheckPreview(paper, checks, allOrders) {
           'display:flex;justify-content:space-between;gap:8px;',
           'padding:3px 0;border-bottom:1px solid ' + hexToRgba(T.text, 0.06) + ';',
         ].join('');
-        // Backend sends `quantity` + `effective_price`; tolerate older keys.
-        var qty  = item.quantity != null ? item.quantity : (item.qty || 1);
-        var unit = (typeof item.effective_price === 'number')
-          ? item.effective_price
-          : (item.price || 0);
         var nm = document.createElement('span');
         nm.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';';
-        nm.textContent = (qty > 1 ? qty + '\u00D7 ' : '') + (item.name || 'Item');
+        nm.textContent = (item.qty && item.qty > 1 ? item.qty + '\u00D7 ' : '') + (item.name || 'Item');
         var pr = document.createElement('span');
         pr.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;';
-        pr.textContent = fmt(unit * qty);
+        pr.textContent = fmt((item.price || 0) * (item.qty || 1));
         row.appendChild(nm);
         row.appendChild(pr);
         paper.appendChild(row);
@@ -350,12 +348,10 @@ function buildReceiptCol(state, handlers, selectedChecks) {
   var showingPreview = selectedChecks.length > 0;
   var isMulti = selectedChecks.length > 1;
 
-  var wrap = document.createElement('div');
-  wrap.style.cssText = [
+  var wrap = buildStaticCard({ accent: T.green });
+  wrap.style.cssText += [
     'flex-shrink:0;width:' + LEFT_W + 'px;',
-    'background:' + T.card + ';',
-    'border-left:4px solid ' + T.elec + ';',
-    'border-radius:10px;padding:14px 18px 14px 14px;box-sizing:border-box;',
+    'padding:14px 18px 14px 14px;box-sizing:border-box;',
     'display:flex;flex-direction:column;gap:12px;',
     'opacity:' + (blocked && !showingPreview ? '0.45' : '1') + ';',
     'transition:opacity 0.2s;',
@@ -415,6 +411,7 @@ function buildReceiptCol(state, handlers, selectedChecks) {
       label:  isMulti ? 'Transfer ' + selectedChecks.length + ' Checks' : 'Transfer',
       color:  T.elec,
       darkBg: T.elecDk,
+      shape:  'chamfer',
       onClick: function() {
         if (handlers && handlers.onTransferChecks) handlers.onTransferChecks(selectedChecks);
       },
@@ -437,6 +434,7 @@ function buildReceiptCol(state, handlers, selectedChecks) {
         label:  op.label,
         color:  op.color,
         darkBg: op.dark,
+        shape:  'chamfer',
         onClick: function() {
           if (handlers && handlers[op.handler]) handlers[op.handler](selectedChecks);
         },
@@ -555,32 +553,25 @@ function buildReceiptCol(state, handlers, selectedChecks) {
 // ─────────────────────────────────────────────────
 
 // Base card shell — border-left accent + optional stroke border.
-// Returns { wrap, body } so callers can populate body directly.
 function buildBaseCard(opts) {
   opts = opts || {};
-  var accent = opts.accent || T.green;
-  var stroke = opts.stroke || null;
-  var dimmed = !!opts.dimmed;
+  var card = buildStaticCard({ accent: opts.accent || T.green });
+  if (opts.stroke) card.style.border = '1.5px solid ' + opts.stroke;
+  card.style.opacity = opts.dimmed ? '0.45' : '1';
+  card.style.transition = 'opacity 0.2s';
+  card.style.padding = '12px 16px';
+  card.style.display = 'flex';
+  card.style.flexDirection = 'column';
+  card.style.gap = '8px';
+  card.style.flexShrink = '0';
 
-  var card = document.createElement('div');
-  card.style.cssText = [
-    'flex-shrink:0;',
-    'background:' + T.card + ';border-left:4px solid ' + accent + ';',
-    stroke ? 'border:1.5px solid ' + stroke + ';border-left:4px solid ' + accent + ';' : '',
-    'border-radius:10px;',
-    'padding:12px 16px;box-sizing:border-box;',
-    'display:flex;flex-direction:column;gap:8px;',
-    'opacity:' + (dimmed ? '0.45' : '1') + ';',
-    'transition:opacity 0.2s;',
-  ].join('');
-
-  return { wrap: card };
+  return card;
 }
 
 // ── Sales Summary (always present, dimmed when blocked) ──
 function buildSalesSummaryCard(state, blocked) {
   var card = buildBaseCard({ accent: T.green, dimmed: blocked });
-  card.wrap.style.cssText += 'flex-shrink:0;';
+  card.style.flexShrink = '0';
 
   var hdr = document.createElement('div');
   hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
@@ -592,21 +583,21 @@ function buildSalesSummaryCard(state, blocked) {
   hint.textContent = '';
   hdr.appendChild(title);
   hdr.appendChild(hint);
-  card.wrap.appendChild(hdr);
+  card.appendChild(hdr);
 
   var line = document.createElement('div');
   line.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.mutedText + ';';
   line.textContent = fmt(state.netSales) + ' \u2022 ' + state.checksClosed + ' checks';
-  card.wrap.appendChild(line);
+  card.appendChild(line);
 
-  return card.wrap;
+  return card;
 }
 
 // ── Open Checks blocker card ──
 function buildOpenChecksCard(state, handlers, selectedCheckIds) {
   selectedCheckIds = selectedCheckIds || [];
   var card = buildBaseCard({ accent: T.verm, stroke: T.verm });
-  card.wrap.dataset.cardKey = 'open-checks';
+  card.dataset.cardKey = 'open-checks';
 
   var hdr = document.createElement('div');
   hdr.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
@@ -627,7 +618,7 @@ function buildOpenChecksCard(state, handlers, selectedCheckIds) {
   hdr.appendChild(icon);
   hdr.appendChild(title);
   hdr.appendChild(hint);
-  card.wrap.appendChild(hdr);
+  card.appendChild(hdr);
 
   // Row list — max 3 visible without scroll, then scrolls
   var list = document.createElement('div');
@@ -638,8 +629,8 @@ function buildOpenChecksCard(state, handlers, selectedCheckIds) {
     list.appendChild(buildOpenCheckRow(chk, handlers, selected));
   });
 
-  card.wrap.appendChild(list);
-  return card.wrap;
+  card.appendChild(list);
+  return card;
 }
 
 function buildOpenCheckRow(chk, handlers, isSelected) {
@@ -710,7 +701,7 @@ function buildTipsCard(state, handlers, tipFilter) {
   var accentColor = hasUnadj ? T.yellow : T.gold;
 
   var card = buildBaseCard({ accent: accentColor, stroke: accentColor });
-  card.wrap.dataset.cardKey = 'unadjusted-tips';
+  card.dataset.cardKey = 'unadjusted-tips';
 
   // Header row — icon + title + filter tabs on the right
   var hdr = document.createElement('div');
@@ -744,7 +735,7 @@ function buildTipsCard(state, handlers, tipFilter) {
   hdr.appendChild(title);
   hdr.appendChild(buildTipFilterTabs(tipFilter, unadjCount, adjCount, handlers));
 
-  card.wrap.appendChild(hdr);
+  card.appendChild(hdr);
 
   // Row list — content depends on current filter
   var list = document.createElement('div');
@@ -757,8 +748,8 @@ function buildTipsCard(state, handlers, tipFilter) {
     list.appendChild(buildTipRow(chk, mode, handlers));
   });
 
-  card.wrap.appendChild(list);
-  return card.wrap;
+  card.appendChild(list);
+  return card;
 }
 
 // Filter tab switcher — two pills, active one is filled, inactive is outlined.
@@ -896,14 +887,14 @@ function buildCollapsedSummaryLine() {
   lock.textContent = '';
   hdr.appendChild(title);
   hdr.appendChild(lock);
-  card.wrap.appendChild(hdr);
+  card.appendChild(hdr);
 
   var line = document.createElement('div');
   line.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.mutedText + ';';
   line.textContent = 'available once blockers resolved';
-  card.wrap.appendChild(line);
+  card.appendChild(line);
 
-  return card.wrap;
+  return card;
 }
 
 // ── Expanded Tip-Out card (when clear) ──
@@ -920,14 +911,14 @@ function buildTipOutCard(state) {
   pct.textContent = (state.tipOutRate * 100).toFixed(0) + '% \u2022 editable';
   hdr.appendChild(title);
   hdr.appendChild(pct);
-  card.wrap.appendChild(hdr);
+  card.appendChild(hdr);
 
-  card.wrap.appendChild(detailRow('Net sales base', fmt(state.netSales)));
-  card.wrap.appendChild(detailRow('Tip-out rate', (state.tipOutRate * 100).toFixed(0) + '%'));
-  card.wrap.appendChild(detailDivider());
-  card.wrap.appendChild(detailRow('Total tip-out', '\u2212' + fmt(state.tipOutTotal), T.gold));
+  card.appendChild(detailRow('Net sales base', fmt(state.netSales)));
+  card.appendChild(detailRow('Tip-out rate', (state.tipOutRate * 100).toFixed(0) + '%'));
+  card.appendChild(detailDivider());
+  card.appendChild(detailRow('Total tip-out', '\u2212' + fmt(state.tipOutTotal), T.gold));
 
-  return card.wrap;
+  return card;
 }
 
 // ── Take-Home hero card (when clear) ──
@@ -937,19 +928,19 @@ function buildTakeHomeCard(state) {
   var title = document.createElement('div');
   title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.green + ';letter-spacing:1.8px;';
   title.textContent = 'TAKE-HOME';
-  card.wrap.appendChild(title);
+  card.appendChild(title);
 
   var hero = document.createElement('div');
   hero.style.cssText = 'font-family:' + T.fb + ';font-size:28px;font-weight:700;color:' + T.green + ';text-align:center;padding:8px 0;';
   hero.textContent = fmt(state.takeHome);
-  card.wrap.appendChild(hero);
+  card.appendChild(hero);
 
   var formula = document.createElement('div');
   formula.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';text-align:center;';
   formula.textContent = 'tips \u2212 tipout + cash';
-  card.wrap.appendChild(formula);
+  card.appendChild(formula);
 
-  return card.wrap;
+  return card;
 }
 
 // ── Cash Expected card (when clear) ──
@@ -959,19 +950,19 @@ function buildCashExpectedCard(state) {
   var title = document.createElement('div');
   title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.gold + ';letter-spacing:1.8px;';
   title.textContent = 'CASH EXPECTED';
-  card.wrap.appendChild(title);
+  card.appendChild(title);
 
   var hero = document.createElement('div');
   hero.style.cssText = 'font-family:' + T.fb + ';font-size:28px;font-weight:700;color:' + T.gold + ';text-align:center;padding:8px 0;';
   hero.textContent = fmt(state.cashExpected);
-  card.wrap.appendChild(hero);
+  card.appendChild(hero);
 
   var formula = document.createElement('div');
   formula.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';text-align:center;';
   formula.textContent = 'cash sales \u2212 card tips';
-  card.wrap.appendChild(formula);
+  card.appendChild(formula);
 
-  return card.wrap;
+  return card;
 }
 
 // ─────────────────────────────────────────────────
@@ -1030,11 +1021,10 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds) {
 function buildActionsCol(state, handlers, startTime) {
   var blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
 
-  var col = document.createElement('div');
-  col.style.cssText = [
+  var col = buildStaticCard({ accent: T.lavender });
+  col.style.cssText += [
     'flex-shrink:0;width:' + RIGHT_W + 'px;',
-    'background:' + T.card + ';border-left:4px solid ' + (T.lavender || '#b48efa') + ';',
-    'border-radius:10px;padding:14px 16px;box-sizing:border-box;',
+    'padding:14px 16px;box-sizing:border-box;',
     'display:flex;flex-direction:column;gap:10px;',
   ].join('');
 
@@ -1044,16 +1034,23 @@ function buildActionsCol(state, handlers, startTime) {
   col.appendChild(title);
 
   // Back button
-  col.appendChild(buildActionPill({
+  col.appendChild(buildPillButton({
     label: 'BACK TO FLOOR',
-    variant: 'outline',
+    variant: 'ghost',
+    shape: 'chamfer',
+    fontSize: FS_PILL_LG,
+    padding: '10px 14px',
     onClick: function() { if (handlers.onBack) handlers.onBack(); },
   }));
 
   // Print Slip (disabled while blocked)
-  col.appendChild(buildActionPill({
+  col.appendChild(buildPillButton({
     label: 'PRINT SLIP',
-    variant: blocked ? 'disabled' : 'outline',
+    variant: blocked ? 'ghost' : 'ghost',
+    disabled: blocked,
+    shape: 'chamfer',
+    fontSize: FS_PILL_LG,
+    padding: '10px 14px',
     onClick: function() {
       if (blocked) return;
       if (handlers.onPrint) handlers.onPrint();
@@ -1061,14 +1058,31 @@ function buildActionsCol(state, handlers, startTime) {
   }));
 
   // Finalize — the big one.
-  col.appendChild(buildFinalizePill({
-    blocked: blocked,
-    blockerCount: state.openChecks.length + state.unadjustedChecks.length,
+  var finalizeBtn = buildPillButton({
+    label: 'FINALIZE' + (blocked ? '' : ' CHECKOUT'),
+    variant: blocked ? 'ghost' : 'goGreen',
+    disabled: blocked,
+    shape: 'chamfer',
+    fontSize: FS_PILL_LG,
+    padding: '12px 14px',
     onClick: function() {
       if (blocked) return;
       if (handlers.onFinalize) handlers.onFinalize();
     },
-  }));
+  });
+  if (blocked) {
+    finalizeBtn.style.opacity = '0.5';
+    var sub = document.createElement('div');
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';margin-top:2px;font-weight:normal;letter-spacing:0;text-transform:none;';
+    sub.textContent = 'resolve ' + (state.openChecks.length + state.unadjustedChecks.length) + ' blockers first';
+    finalizeBtn.appendChild(sub);
+    finalizeBtn.style.flexDirection = 'column';
+    finalizeBtn.style.height = '58px';
+  } else {
+    finalizeBtn.style.height = '58px';
+    finalizeBtn.style.boxShadow = '0 3px 0 rgba(0,0,0,0.3)';
+  }
+  col.appendChild(finalizeBtn);
 
   // Blocker queue (when blocked)
   if (blocked) {
@@ -1283,8 +1297,11 @@ defineScene({
     startTime: null,
     tipFilter: null, // 'unadjusted' | 'adjusted' — resolved per-render based on data
     selectedCheckIds: [], // array of check IDs pinned to the preview panel
+    _refreshing: false,
+    el: null,
   },
   render: function(container, params, state) {
+    state.el = container;
     // ── Param normalization — accepts legacy { employeeId, employeeName }
     //    and new { staff, fromManager } shape from manager-landing.
     //    staff object may carry either `.id` or `.employee_id` depending
@@ -1305,47 +1322,34 @@ defineScene({
       employeeName: employeeName,
     });
 
-    var staff = params.staff || {};
-    var header = buildHeader({
-      title: (state.fromManager ? 'MGR VIEW: ' : 'SERVER CHECKOUT: ') + (employeeName || '').toUpperCase(),
-      subtitle: 'LOADING...',
-      showBack: true,
-      onBack: function() {
-        OrderSummary.hide();
-        SceneManager.closeTransactional('server-checkout');
-      },
-      user: {
-        firstName: staff.first_name || (staff.name || '').split(' ')[0],
-        role: (staff.roles && staff.roles[0]) || 'server',
-      },
-    });
-    container.appendChild(header);
-    state._header = header;
-
     // Hide OrderSummary — this scene owns its own left column now.
     OrderSummary.hide();
 
-    container.style.cssText = 'width:100%;height:100%;background:' + T.bg + ';position:relative;';
-
-    var mainBody = document.createElement('div');
-    mainBody.id = 'checkout-body';
-    mainBody.style.cssText = [
-      'position:absolute;left:0;right:0;top:52px;bottom:0;',
+    container.style.cssText = [
+      'width:100%;height:100%;',
       'display:flex;flex-direction:column;gap:' + COL_GAP + 'px;',
-      'padding:' + PAD + 'px;',
+      'padding:' + PAD_TOP + 'px ' + PAD + 'px ' + PAD + 'px ' + PAD + 'px;',
       'box-sizing:border-box;overflow:hidden;',
+      'background:' + T.bg + ';',
     ].join('');
-    container.appendChild(mainBody);
 
-    function refreshScene() {
+    function refresh() {
+      if (state._refreshing || !state.el) return;
+      state._refreshing = true;
+
       fetchServerState(params).then(function(newData) {
+        state._refreshing = false;
+        if (!state.el) return;
         state.data = newData;
         rebuild();
       }).catch(function(err) {
+        state._refreshing = false;
+        if (!state.el) return;
+
         // Most likely: missing employee id (backend auth didn't populate
         // state.emp.id at login). Surface clearly so the server doesn't
         // see someone else's checks by accident.
-        mainBody.innerHTML = '';
+        container.innerHTML = '';
         var errPanel = document.createElement('div');
         errPanel.style.cssText = [
           'flex:1;display:flex;align-items:center;justify-content:center;',
@@ -1370,23 +1374,17 @@ defineScene({
         errCard.appendChild(m);
         errCard.appendChild(d);
         errPanel.appendChild(errCard);
-        mainBody.appendChild(errPanel);
+        container.appendChild(errPanel);
       });
     }
 
     function rebuild() {
       if (!state.data) return;
-      mainBody.innerHTML = '';
-
-      // Update header subtitle
-      var blockers = (state.data.openChecks || []).length + (state.data.unadjustedChecks || []).length;
-      state._header.update({
-        subtitle: fmt(state.data.takeHome) + ' \u00B7 ' + blockers + ' BLOCKERS'
-      });
+      container.innerHTML = '';
 
       // Optional blocker banner across the top
       var banner = buildBlockerBanner(state.data, state.startTime);
-      if (banner) mainBody.appendChild(banner);
+      if (banner) container.appendChild(banner);
 
       // 3-column row
       var body = document.createElement('div');
@@ -1423,26 +1421,10 @@ defineScene({
             showToast('Print failed \u2014 check printer connection', { bg: T.verm });
           });
         },
-        onFinalize: (function() {
-          var _finalizing = false;
-          return function() {
+        onFinalize: function() {
           // Full finalize flow: manager PIN → confirm totals → POST → return
           // to server-landing. On any backend error, stay on scene and surface
           // an actionable message — never give false success to the server.
-          if (_finalizing) {
-            // UI-003 — second tap while finalize was in flight. Server never
-            // sees the duplicate POST (the lock ate it), but we want the
-            // bug report to show that it happened.
-            entReport({
-              code: 'UI-003',
-              source: 'server-checkout.onFinalize',
-              message: 'Double-submit blocked by scene lock',
-              ctx: { employee: (state.data || {}).employeeName || null },
-              level: 'INFO',
-            });
-            return;
-          }
-          _finalizing = true;
           SceneManager.interrupt('co-manager-pin', {
             onConfirm: function(authData) {
               SceneManager.closeInterrupt('co-manager-pin');
@@ -1458,7 +1440,7 @@ defineScene({
                     // POST the finalize. Endpoint is stubbed — swap URL when
                     // backend lands. `/server/shift/finalize-checkout` matches
                     // the existing shift endpoint naming convention.
-                    fetchWithTimeout('/api/v1/server/shift/finalize-checkout', {
+                    fetch('/api/v1/server/shift/finalize-checkout', {
                       method:  'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -1467,7 +1449,7 @@ defineScene({
                         cash_expected:        state.data.cashExpected,
                         manager_pin_verified: true,
                       }),
-                    }, 20000).then(function(r) {
+                    }).then(function(r) {
                       if (r.ok) {
                         showToast('Checkout finalized', { bg: T.green });
                         OrderSummary.hide();
@@ -1481,37 +1463,31 @@ defineScene({
                       } else if (r.status === 404) {
                         // Endpoint not yet implemented on the backend.
                         showToast('Finalize endpoint pending — backend work needed', { bg: T.yellow });
-                        _finalizing = false;
                       } else {
                         showToast('Finalize failed (' + r.status + ') — try again', { bg: T.verm });
-                        _finalizing = false;
                       }
                     }).catch(function() {
                       showToast('Finalize unavailable — ask your manager', { bg: T.verm });
-                      _finalizing = false;
                     });
                   },
                   onCancel: function() {
                     SceneManager.closeInterrupt('co-finalize-confirm');
-                    _finalizing = false;
                   },
                 });
               }, 80);
             },
             onCancel: function() {
               SceneManager.closeInterrupt('co-manager-pin');
-              _finalizing = false;
             },
           });
-          };
-        }()),
+        },
         onAdjustTip: function(chk) {
           // Opens the single-check tip-adjust transactional from checkout-core.
           // On success, that scene calls onDone → we refresh → the card rebuilds
           // without this row (and collapses when the last unadjusted is cleared).
           SceneManager.openTransactional('co-adjust-single', {
             check: chk,
-            onDone: function() { refreshScene(); },
+            onDone: function() { refresh(); },
           });
         },
         onEditTip: function(chk) {
@@ -1522,7 +1498,7 @@ defineScene({
             check: chk,
             initialTip: chk.tip,
             mode: 'edit',
-            onDone: function() { refreshScene(); },
+            onDone: function() { refresh(); },
           });
         },
         onTipFilterChange: function(filter) {
@@ -1542,14 +1518,14 @@ defineScene({
               SceneManager.closeInterrupt('co-transfer-picker');
 
               var transfers = checks.map(function(chk) {
-                return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/transfer', {
+                return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/transfer', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     to_server_id: destServer.id,
                     from_server_id: state.data.employeeId,
                   }),
-                }, 15000).then(function(r) {
+                }).then(function(r) {
                   return { chk: chk, ok: r.ok, status: r.status };
                 }).catch(function() {
                   return { chk: chk, ok: false, status: 0 };
@@ -1584,7 +1560,7 @@ defineScene({
                 // Clear selection and refetch either way so the UI reflects
                 // whatever succeeded.
                 state.selectedCheckIds = [];
-                refreshScene();
+                refresh();
               });
             },
             onCancel: function() {
@@ -1616,11 +1592,11 @@ defineScene({
           showToast('Printing ' + label + '\u2026', { bg: T.greenWarm });
 
           var prints = checks.map(function(chk) {
-            return fetchWithTimeout('/api/v1/checks/' + (chk.checkId || chk.check_id) + '/print', {
+            return fetch('/api/v1/checks/' + (chk.checkId || chk.check_id) + '/print', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ kind: 'guest' }),
-            }, 15000).then(function(r) {
+            }).then(function(r) {
               return { chk: chk, ok: r.ok, status: r.status };
             }).catch(function() {
               return { chk: chk, ok: false, status: 0 };
@@ -1658,7 +1634,7 @@ defineScene({
                     SceneManager.closeInterrupt('co-discount-picker');
 
                     var discounts = checks.map(function(chk) {
-                      return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/discount', {
+                      return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/discount', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1666,7 +1642,7 @@ defineScene({
                           value: discount.value,
                           manager_pin_verified: true,
                         }),
-                      }, 15000).then(function(r) {
+                      }).then(function(r) {
                         return { chk: chk, ok: r.ok, status: r.status };
                       }).catch(function() {
                         return { chk: chk, ok: false, status: 0 };
@@ -1697,7 +1673,7 @@ defineScene({
                       }
 
                       state.selectedCheckIds = [];
-                      refreshScene();
+                      refresh();
                     });
                   },
                   onCancel: function() {
@@ -1724,14 +1700,14 @@ defineScene({
                     SceneManager.closeInterrupt('co-void-confirm');
 
                     var voids = checks.map(function(chk) {
-                      return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/void', {
+                      return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/void', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                           reason: reason,
                           manager_pin_verified: true,
                         }),
-                      }, 15000).then(function(r) {
+                      }).then(function(r) {
                         return { chk: chk, ok: r.ok, status: r.status };
                       }).catch(function() {
                         return { chk: chk, ok: false, status: 0 };
@@ -1757,7 +1733,7 @@ defineScene({
                       }
 
                       state.selectedCheckIds = [];
-                      refreshScene();
+                      refresh();
                     });
                   },
                   onCancel: function() {
@@ -1826,14 +1802,15 @@ defineScene({
       body.appendChild(buildMiddleCol(state.data, handlers, resolvedFilter, state.selectedCheckIds));
       body.appendChild(buildActionsCol(state.data, handlers, state.startTime));
 
-      mainBody.appendChild(body);
+      container.appendChild(body);
     }
 
-    refreshScene();
+    refresh();
+    var poll = setInterval(refresh, 15000);
 
     return function cleanup() {
-      OrderSummary.hide();
-      header.destroy();
+      state.el = null;
+      clearInterval(poll);
     };
   },
 });

@@ -59,7 +59,7 @@ from app.api.dependencies import get_diagnostic_collector
 from app.api.dependencies import get_ledger
 from app.core.event_ledger import EventLedger, get_open_orders
 from app.api.routes.payment_routes import get_payment_manager, _ensure_devices
-from app.api.routes.reporting import _aggregate_orders
+from app.services.print_context_builder import PrintContextBuilder
 from app.services.overseer_config_service import OverseerConfigService
 from app.core.adapters.base_payment import TransactionRequest as TxReq
 from app.core.events import (
@@ -118,7 +118,7 @@ async def get_current_day_events(ledger: EventLedger, limit: int = 50000) -> lis
 
 class CreateOrderRequest(BaseModel):
     """Request to create a new order."""
-    table: Optional[str] = None
+    table: str | int | None = None
     server_id: Optional[str] = None
     server_name: Optional[str] = None
     guest_count: int = Field(default=1, ge=1)
@@ -171,8 +171,13 @@ class AddItemRequest(BaseModel):
     quantity: int = Field(default=1, ge=1)
     category: Optional[str] = None
     notes: Optional[str] = None
+    table: str | int | None = None
     seat_number: Optional[int] = None
     modifiers: Optional[list[InlineModifier]] = None
+    mandatory_selections: Optional[list[str]] = None
+    allergens: Optional[list[str]] = None
+    allergen_note: Optional[str] = None
+    included_removals: Optional[list[str]] = None
 
 
 class ModifyItemRequest(BaseModel):
@@ -526,7 +531,8 @@ async def get_day_summary(
 
     # All monetary and count aggregation — runs the canonical identities
     # and (under strict_invariants) raises if anything drifts.
-    agg = _aggregate_orders(orders, tip_map)
+    builder = PrintContextBuilder(ledger)
+    agg = builder.aggregate_orders(orders, tip_map)
 
     # Presentation pass: per-check entries and per-payment entries, built
     # only for the day-summary endpoint. No math here beyond laying out
@@ -878,8 +884,13 @@ async def add_item(
         quantity=request.quantity,
         category=request.category,
         notes=request.notes,
+        table=request.table,
         seat_number=request.seat_number,
         idempotency_key=idem_key,
+        mandatory_selections=request.mandatory_selections,
+        allergens=request.allergens,
+        allergen_note=request.allergen_note,
+        included_removals=request.included_removals,
     )
     result = await ledger.append(event)
     if result is None:

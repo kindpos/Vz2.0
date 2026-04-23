@@ -100,9 +100,14 @@ class Order:
     _tax_rate: Decimal = None
 
     @property
-    def subtotal(self) -> Decimal:
-        """Sum of all items. Uses Decimal for exactness."""
+    def gross_subtotal(self) -> Decimal:
+        """Sum of all items before discounts."""
         return sum((item.subtotal for item in self.items), Decimal("0.00"))
+
+    @property
+    def subtotal(self) -> Decimal:
+        """Sum of all items minus discounts. Uses Decimal for exactness."""
+        return money_round(max(Decimal("0.00"), self.gross_subtotal - self.discount_total))
 
     @property
     def discount_total(self) -> Decimal:
@@ -127,13 +132,13 @@ class Order:
         captured = sum((p.tax_amount for p in self.payments if p.status == "confirmed"), Decimal("0.00"))
         if captured > 0:
             return captured
-        taxable = max(Decimal("0.00"), self.subtotal - self.discount_total)
+        taxable = self.subtotal
         return money_round(taxable * self.tax_rate)
 
     @property
     def total(self) -> Decimal:
         """Final total (clamped to zero — discount cannot make total negative)."""
-        raw = self.subtotal - self.discount_total + self.tax
+        raw = self.subtotal + self.tax
         return money_round(max(Decimal("0.00"), raw))
 
     @property

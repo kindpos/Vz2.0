@@ -40,6 +40,7 @@ vi.mock('../scene-manager.js', () => ({
 }));
 
 vi.mock('../theme-manager.js', () => ({
+  buildWell:       () => document.createElement('div'),
   buildPillButton: ({ label } = {}) => {
     const el = document.createElement('button');
     el.textContent = label || '';
@@ -47,7 +48,15 @@ vi.mock('../theme-manager.js', () => ({
   },
   hexToRgba:  (c) => c,
   darkenHex:  (c) => c,
-  buildCard:  () => document.createElement('div'),
+  buildCard:  () => ({
+    wrap: document.createElement('div'),
+    card: document.createElement('div'),
+  }),
+  buildStaticCard: () => {
+    const el = document.createElement('div');
+    el.setAccent = vi.fn();
+    return el;
+  },
 }));
 
 vi.mock('../sm2-shim.js', () => ({
@@ -68,8 +77,6 @@ vi.mock('../components.js', () => ({
 }));
 
 vi.mock('../app.js', () => ({
-  setSceneName:  vi.fn(),
-  setHeaderBack: vi.fn(),
 }));
 
 vi.mock('../numpad.js', () => ({
@@ -91,8 +98,8 @@ vi.mock('../keyboard.js', () => ({
 }));
 
 vi.mock('../pricing.js', () => ({
-  computeTotals: vi.fn(() => ({ subtotal: 0, tax: 0, total: 0 })),
-  getTaxRate:    vi.fn(() => 0.08),
+  getTaxRate:       vi.fn(() => 0.08),
+  getCashDiscount:  vi.fn(() => 0.04),
 }));
 
 vi.mock('../components/item-recap.js', () => ({
@@ -285,5 +292,79 @@ describe('terminal/scenes/check-overview — discount flow', () => {
       expect.anything(),
       expect.anything(),
     );
+  });
+});
+
+describe('terminal/scenes/check-overview — split flow', () => {
+  let sceneDef;
+  let showToast;
+  let fetchWithTimeout;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    
+    const components = await import('../components.js');
+    const smShim     = await import('../sm2-shim.js');
+    showToast        = components.showToast;
+    fetchWithTimeout = smShim.fetchWithTimeout;
+
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  it('split $10.00 item 3 ways produces $3.34, $3.33, $3.33', async () => {
+    const state = JSON.parse(JSON.stringify(sceneDef.state));
+    state.topAreaEl = document.createElement('div');
+    state.orderId = 'order-123';
+    state.seats = [
+      { id: 'S-001', number: 1, items: [{ item_id: 'it-1', name: 'Steak', price: 10.00, menu_item_id: 'steak' }] },
+      { id: 'S-002', number: 2, items: [] },
+      { id: 'S-003', number: 3, items: [] }
+    ];
+    state.selected = { 'S-001': true, 'S-002': true, 'S-003': true };
+    state.selectedItems = { '0:0': true };
+
+    await sceneDef.__handlers._commitManageSplit(state);
+
+    expect(state.seats[0].items[0].price).toBe(3.34);
+    expect(state.seats[1].items[0].price).toBe(3.33);
+    expect(state.seats[2].items[0].price).toBe(3.33);
+    
+    // Verify persistence
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining('/orders/order-123/items'),
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"price":3.34')
+      }),
+      expect.any(Number)
+    );
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining('/orders/order-123/items/it-1'),
+      expect.objectContaining({ method: 'DELETE' }),
+      expect.any(Number)
+    );
+  });
+
+  it('rolls back local state on POST failure', async () => {
+    fetchWithTimeout.mockImplementationOnce(() => Promise.resolve({ ok: false, status: 500 }));
+
+    const state = JSON.parse(JSON.stringify(sceneDef.state));
+    state.topAreaEl = document.createElement('div');
+    state.orderId = 'order-123';
+    state.seats = [
+      { id: 'S-001', number: 1, items: [{ item_id: 'it-1', name: 'Steak', price: 10.00 }] },
+      { id: 'S-002', number: 2, items: [] }
+    ];
+    state.selected = { 'S-001': true, 'S-002': true };
+    state.selectedItems = { '0:0': true };
+
+    const originalSeatsJson = JSON.stringify(state.seats);
+
+    await sceneDef.__handlers._commitManageSplit(state);
+
+    expect(JSON.stringify(state.seats)).toBe(originalSeatsJson);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('failed'), expect.objectContaining({ bg: expect.anything() }));
   });
 });

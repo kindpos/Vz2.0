@@ -6,12 +6,15 @@
 
 import { defineScene, SceneManager } from '../scene-manager.js';
 import { T }                          from '../tokens.js';
+import { entReport }                  from '../entomology-client.js';
 import {
-  buildCard,
+  buildStaticCard,
+  buildNavCard,
+  buildActionCard,
   buildPillButton,
-  buildFloatButton,
   buildSectionLabel,
   hexToRgba,
+  lightenHex,
   darkenHex,
 } from '../theme-manager.js';
 import { showToast } from '../components.js';
@@ -20,12 +23,6 @@ import {
   buildLineCard,
   buildCOBCard,
 } from '../charts.js';
-import {
-  setHeaderUser,
-  setSceneName,
-  setHeaderSubtitle,
-  setHeaderLogout,
-} from '../app.js';
 
 // ── Helpers ───────────────────────────────────────
 function fmt(n) {
@@ -82,7 +79,7 @@ function fetchAllData(state) {
 
     _wireSalesData(state, daySummary, orders, laborData);
     _wireOrders(state, orders);
-    _wireStaffData(state, staffResult, orders);
+    _wireStaffData(state, staffResult, orders, laborData);
     _wireCloseDayData(state, daySummary);
     _wireServerColors(state, staffResult);
   });
@@ -130,8 +127,10 @@ function _wireOrders(state, orders) {
   });
 }
 
-function _wireStaffData(state, staffResult, orders) {
+function _wireStaffData(state, staffResult, orders, laborData) {
   var staff = (staffResult.staff || []);
+  var laborStaff = (laborData || {}).staff_details || (laborData || {}).staff || [];
+
   state.staffData = {
     servers: staff.map(function(s) {
       var myOrders  = (orders || []).filter(function(o) { return o.server_id === s.employee_id; });
@@ -143,6 +142,10 @@ function _wireStaffData(state, staffResult, orders) {
           if (p.method === 'card' && p.status === 'confirmed' && !p.tip_adjusted) unadj++;
         });
       });
+
+      var lab = laborStaff.find(function(l) { return l.employee_id === s.employee_id; });
+      var hours = (lab && typeof lab.hours === 'number') ? lab.hours : 1;
+
       return {
         id:             s.employee_id,
         name:           s.employee_name || s.name || '',
@@ -150,6 +153,7 @@ function _wireStaffData(state, staffResult, orders) {
         closed_checks:  closed.length,
         unadj_tips:     unadj,
         checked_out:    false,
+        hours:          hours,
       };
     }),
   };
@@ -183,18 +187,20 @@ function _wireServerColors(state, staffResult) {
 
 // ── Check tile ────────────────────────────────────
 function _buildCheckTile(order, isSelected, srvColor, onClick, onLongPress, filterColor) {
-  var tile = document.createElement('div');
-  tile.style.cssText = [
-    'width:140px;height:120px;flex-shrink:0;',
-    'background:' + (isSelected ? hexToRgba(T.green, 0.12) : T.well) + ';',
-    'border-left:4px solid ' + (isSelected ? T.green : (filterColor || srvColor || T.border)) + ';',
-    'border-radius:10px;',
-    'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;',
-    'padding:10px 12px;cursor:pointer;text-align:center;',
-    'box-shadow:' + (isSelected ? '0 0 14px ' + hexToRgba(T.green, 0.2) : 'none') + ';',
-    'transition:all 0.15s;',
-    'pointer-events:auto;touch-action:manipulation;',
-  ].join('');
+  var tile = buildActionCard({
+    accent: isSelected ? T.green : (filterColor || srvColor || T.border)
+  });
+  tile.style.width          = '140px';
+  tile.style.height         = '120px';
+  tile.style.flexShrink     = '0';
+  tile.style.display        = 'flex';
+  tile.style.flexDirection  = 'column';
+  tile.style.alignItems     = 'center';
+  tile.style.justifyContent = 'center';
+  tile.style.gap            = '4px';
+  tile.style.padding        = '10px 12px';
+  tile.style.textAlign      = 'center';
+  tile.style.background     = isSelected ? hexToRgba(T.green, 0.12) : T.card;
 
   var idEl = document.createElement('div');
   idEl.textContent   = checkNum(order);
@@ -223,9 +229,10 @@ function _buildCheckTile(order, isSelected, srvColor, onClick, onLongPress, filt
   var didLongPress = false;
   tile.addEventListener('pointerdown', function() {
     didLongPress = false;
+    if (!onLongPress) return;
     lpTimer = setTimeout(function() {
       didLongPress = true;
-      if (onLongPress) onLongPress(order);
+      onLongPress(order);
     }, 550);
   });
   tile.addEventListener('pointerup', function() {
@@ -335,55 +342,47 @@ function _buildGateRow(met, label) {
 // "ReferenceError: state is not defined" and the list stayed empty.
 // Thread state in explicitly so the color map is reachable.
 function _buildServerRow(state, srv, onClick) {
+  var srvColor = state.serverColorMap[srv.id] || T.elec;
   var isDone = srv.checked_out;
-  var hasIssue = !isDone && (srv.open_tables > 0 || srv.unadj_tips > 0);
-  var srvColor = state.serverColorMap[srv.id] || T.green;
-  var bgColor = isDone ? hexToRgba(T.border, 0.1) : hexToRgba(srvColor, 0.12);
 
-  var tile = document.createElement('div');
-  tile.style.cssText = [
-    'display:flex;flex-direction:column;justify-content:space-between;',
-    'padding:10px 12px;border-radius:10px;',
-    'background:' + bgColor + ';',
-    'border-left:4px solid ' + srvColor + ';',
-    'cursor:' + (isDone ? 'default' : 'pointer') + ';',
-    'transition:background 0.1s;',
-    'min-height:80px;',
-  ].join('');
+  var tile = buildActionCard({
+    accent:      srvColor,
+    showChevron: false,
+    onClick:     null,
+  });
 
-  // Server name (top)
+  tile.style.width          = '140px';
+  tile.style.height         = '90px';
+  tile.style.flexShrink     = '0';
+  tile.style.display        = 'flex';
+  tile.style.flexDirection  = 'column';
+  tile.style.alignItems     = 'center';
+  tile.style.justifyContent = 'center';
+  tile.style.gap            = '4px';
+  tile.style.padding        = '10px 12px';
+  tile.style.textAlign      = 'center';
+
+  tile.addEventListener('pointerup', function() {
+    if (onClick) onClick(srv);
+  });
+
+  // Server name
   var name = document.createElement('div');
-  name.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.text + ';letter-spacing:0.06em;';
+  name.style.cssText = 'font-family:' + T.fh + ';font-size:16px;font-weight:700;color:' + T.text + ';';
   name.textContent   = srv.name.split(' ')[0].toUpperCase();
   tile.appendChild(name);
 
-  // Status badges (bottom)
-  var badges = document.createElement('div');
-  badges.style.cssText = 'display:flex;flex-direction:column;gap:3px;';
-
+  // Status
+  var status = document.createElement('div');
+  status.style.cssText = 'font-family:' + T.fb + ';font-size:10px;font-weight:700;letter-spacing:0.04em;';
   if (isDone) {
-    var doneBdg = document.createElement('span');
-    doneBdg.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';font-weight:700;letter-spacing:0.08em;';
-    doneBdg.textContent   = '✓ CHECKED OUT';
-    badges.appendChild(doneBdg);
+    status.style.color = T.elec;
+    status.textContent = 'CHECKED OUT';
   } else {
-    var openBdg = document.createElement('span');
-    openBdg.style.cssText = 'font-family:' + T.fb + ';font-size:10px;letter-spacing:0.06em;color:' + (srv.open_tables > 0 ? T.verm : T.green) + ';font-weight:700;';
-    openBdg.textContent   = srv.open_tables + ' OPEN';
-    badges.appendChild(openBdg);
-
-    var unadjBdg = document.createElement('span');
-    unadjBdg.style.cssText = 'font-family:' + T.fb + ';font-size:10px;letter-spacing:0.06em;color:' + (srv.unadj_tips > 0 ? T.verm : T.green) + ';font-weight:700;';
-    unadjBdg.textContent   = srv.unadj_tips + ' UNADJ';
-    badges.appendChild(unadjBdg);
+    status.style.color = (srv.open_tables > 0 || srv.unadj_tips > 0) ? T.verm : T.green;
+    status.textContent = srv.open_tables + ' OPEN \u00B7 ' + srv.unadj_tips + ' UNADJ';
   }
-  tile.appendChild(badges);
-
-  if (!isDone) {
-    tile.addEventListener('pointerdown',  function() { tile.style.background = hexToRgba(srvColor, 0.2); });
-    tile.addEventListener('pointerup',    function() { tile.style.background = bgColor; if (onClick) onClick(srv); });
-    tile.addEventListener('pointerleave', function() { tile.style.background = bgColor; });
-  }
+  tile.appendChild(status);
 
   return tile;
 }
@@ -414,11 +413,6 @@ defineScene({
     state.emp = params.staff || params.emp || params || {};
     state.el  = container;
 
-    // ── Global header (clock, greeting, LOGOUT) ───
-    setHeaderUser(state.emp);
-    setSceneName('MANAGER');
-    setHeaderLogout(true);
-
     // ── Root grid ──────────────────────────────────
     var root = document.createElement('div');
     root.style.cssText = [
@@ -426,7 +420,7 @@ defineScene({
       'display:grid;',
       'grid-template-columns:300px 1fr 1fr;',
       'grid-template-rows:1fr 250px;',
-      'gap:10px;padding:28px 10px 32px;',
+      'gap:10px;padding:8px 10px 32px;',
       'box-sizing:border-box;overflow:visible;',
       'font-family:' + T.fb + ';',
     ].join('');
@@ -443,6 +437,13 @@ defineScene({
     // Preview is absolutely positioned over heatmap, appears on tile select
     var topSlot = document.createElement('div');
     topSlot.style.cssText = 'flex:1;position:relative;overflow:hidden;border-radius:10px;';
+    topSlot.style.borderLeft   = '5px solid ' + lightenHex(T.bg, 0.08);
+    topSlot.style.borderTop    = '5px solid ' + lightenHex(T.bg, 0.08);
+    topSlot.style.borderRight  = '5px solid ' + darkenHex(T.bg, 0.2);
+    topSlot.style.borderBottom = '5px solid ' + darkenHex(T.bg, 0.2);
+    topSlot.style.boxShadow    = 'inset 0 1px 0 rgba(255,255,255,0.06), 3px 5px 0 rgba(0,0,0,0.55)';
+    topSlot.style.background   = T.well;
+    topSlot.style.borderRadius = '12px';
     leftCol.appendChild(topSlot);
 
     // ── Revenue Line Card (replaces heatmap placeholder) ──
@@ -466,9 +467,7 @@ defineScene({
       'border-radius:10px;',
       'box-shadow:0 4px 16px rgba(0,0,0,0.28);',
       'padding:12px 14px;',
-      'display:flex;flex-direction:column;',
-      'opacity:0;pointer-events:none;',
-      'transition:opacity 0.2s ease;',
+      'display:none;flex-direction:column;',
       'overflow:hidden;',
     ].join('');
     topSlot.appendChild(previewSlide);
@@ -507,41 +506,43 @@ defineScene({
     salesOuter.style.cssText = 'flex-shrink:0;height:250px;position:relative;overflow:visible;display:flex;flex-direction:column;';
     leftCol.appendChild(salesOuter);
 
-    var salesResult = buildCard({ accent: T.gold, padding: '20px 16px' });
-    salesResult.wrap.style.flex = '1';
-    salesResult.card.style.height = '100%';
-    salesResult.card.style.display       = 'flex';
-    salesResult.card.style.flexDirection = 'column';
-    salesResult.card.style.gap           = '18px';
-    salesOuter.appendChild(salesResult.wrap);
+    var salesResult = buildStaticCard({ accent: T.gold });
+    salesResult.style.flex    = '1';
+    salesResult.style.padding = '20px 16px';
+    salesResult.style.display = 'flex';
+    salesResult.style.flexDirection = 'column';
+    salesResult.style.gap = '18px';
+    salesResult.style.height = '100%';
+    salesOuter.appendChild(salesResult);
 
     var salesLabel = buildSectionLabel('Sales Overview', T.text);
     salesLabel.style.fontSize = '16px';
-    salesResult.card.appendChild(salesLabel);
+    salesResult.appendChild(salesLabel);
 
     var salesOverview = buildSalesOverview({ netSales: 0, cash: 0, card: 0 });
-    salesResult.card.appendChild(salesOverview.wrap);
+    salesResult.appendChild(salesOverview.wrap);
 
     // ─────────────────────────────────────────────
     //  CHECK GRID (cols 2-3, row 1)
     // ─────────────────────────────────────────────
     // ── Check grid (cols 2-3, row 1) ──
     var gridOuter = document.createElement('div');
-    gridOuter.style.cssText = 'grid-column:2/4;grid-row:1;position:relative;overflow:visible;';
+    gridOuter.style.cssText = 'grid-column:2/4;grid-row:1;position:relative;overflow:hidden;';
     root.appendChild(gridOuter);
 
-    var gridResult = buildCard({ accent: STATUS_COLORS['OPEN'].color, padding: '0', flex: '1' });
-    gridResult.wrap.style.height = '100%';
-    gridResult.card.style.height = '100%';
-    gridResult.card.style.boxSizing = 'border-box';
-    gridResult.card.style.overflow  = 'hidden';
-    gridResult.card.style.display   = 'flex';
-    gridResult.card.style.flexDirection = 'column';
-    gridOuter.appendChild(gridResult.wrap);
+    var gridResult = buildStaticCard({ accent: STATUS_COLORS['OPEN'].color });
+    gridResult.style.height    = '100%';
+    gridResult.style.padding   = '0';
+    gridResult.style.minHeight = '0';
+    gridResult.style.boxSizing = 'border-box';
+    gridResult.style.overflow  = 'hidden';
+    gridResult.style.display   = 'flex';
+    gridResult.style.flexDirection = 'column';
+    gridOuter.appendChild(gridResult);
 
     var tileGrid = document.createElement('div');
-    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;flex:1;min-height:0;padding:14px 14px 10px;overflow:hidden;';
-    gridResult.card.appendChild(tileGrid);
+    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;flex:1;min-height:0;padding:14px 14px 10px;overflow-y:auto;scrollbar-width:none;';
+    gridResult.appendChild(tileGrid);
 
     // Filter footer — sits inside the card at the bottom right
     var filterFooter = document.createElement('div');
@@ -550,7 +551,7 @@ defineScene({
       'padding:8px 14px 10px;flex-shrink:0;',
       'border-top:1px solid rgba(255,255,255,0.06);',
     ].join('');
-    gridResult.card.appendChild(filterFooter);
+    gridResult.appendChild(filterFooter);
 
     // Left side of footer: Edit/Close button (hidden until selection)
     var footerLeft = document.createElement('div');
@@ -768,51 +769,21 @@ defineScene({
       showToast(label + ' — coming soon', { bg: T.gold, duration: 1800 });
     }
 
-    // Filter tabs inside the card footer — scaled 75%, only respond to clicks
-    var _scaleTransform = 'scale(0.75)';
-    var _scalePress = 'scale(0.75) translateY(1px)';
-
-    var serverBtn = buildPillButton({ label: 'ALL SERVERS', color: T.elec, darkBg: T.elecDk, fontSize: T.fsB3 });
-    serverBtn.style.pointerEvents = 'auto';
-    serverBtn.style.transform = _scaleTransform;
-    serverBtn.style.transformOrigin = 'left center';
+    // Filter tabs inside the card footer — reduced to 32px height to match new tile style
+    var serverBtn = buildPillButton({ label: 'ALL SERVERS', color: T.elec, darkBg: T.elecDk, fontSize: T.fsB3, padding: '8px 16px' });
     serverBtn._color = T.elec; serverBtn._dark = T.elecDk;
     serverBtn.setColor = function(c, d) {
       serverBtn._color = c; serverBtn._dark = d;
       serverBtn.style.background = c;
       serverBtn.style.boxShadow  = '0 6px 0 ' + d;
     };
-    // Override press animation to preserve scale
-    serverBtn._origPointerdown = serverBtn.onpointerdown;
-    serverBtn.addEventListener('pointerdown', function() {
-      serverBtn.style.transform = _scalePress;
-    });
-    serverBtn.addEventListener('pointerup', function() {
-      serverBtn.style.transform = _scaleTransform;
-    });
-    serverBtn.addEventListener('pointerleave', function() {
-      serverBtn.style.transform = _scaleTransform;
-    });
     footerRight.appendChild(serverBtn);
 
-    var filterBtn = buildPillButton({ label: 'OPEN', color: T.green, darkBg: T.greenDk, fontSize: T.fsB3 });
-    filterBtn.style.pointerEvents = 'auto';
-    filterBtn.style.transform = _scaleTransform;
-    filterBtn.style.transformOrigin = 'left center';
+    var filterBtn = buildPillButton({ label: 'OPEN', color: T.green, darkBg: T.greenDk, fontSize: T.fsB3, padding: '8px 16px' });
     filterBtn.setColor = function(c, d) {
       filterBtn.style.background = c;
       filterBtn.style.boxShadow  = '0 6px 0 ' + d;
     };
-    // Override press animation to preserve scale
-    filterBtn.addEventListener('pointerdown', function() {
-      filterBtn.style.transform = _scalePress;
-    });
-    filterBtn.addEventListener('pointerup', function() {
-      filterBtn.style.transform = _scaleTransform;
-    });
-    filterBtn.addEventListener('pointerleave', function() {
-      filterBtn.style.transform = _scaleTransform;
-    });
     footerRight.appendChild(filterBtn);
 
     // Edit float button — bottom-left, appears when a tile is selected
@@ -850,20 +821,21 @@ defineScene({
     // ─────────────────────────────────────────────
     //  COB / LABOR (col 2, row 2)
     // ─────────────────────────────────────────────
-    var cobResult = buildCard({ accent: T.gold, padding: '12px 14px' });
-    cobResult.wrap.style.gridColumn = '2';
-    cobResult.wrap.style.gridRow    = '2';
-    cobResult.card.style.display    = 'flex';
-    cobResult.card.style.flexDirection = 'column';
-    cobResult.card.style.justifyContent = 'space-between';
-    root.appendChild(cobResult.wrap);
+    var cobResult = buildStaticCard({ accent: T.gold });
+    cobResult.style.gridColumn     = '2';
+    cobResult.style.gridRow        = '2';
+    cobResult.style.padding        = '12px 14px';
+    cobResult.style.display        = 'flex';
+    cobResult.style.flexDirection  = 'column';
+    cobResult.style.justifyContent = 'space-between';
+    root.appendChild(cobResult);
 
     var cobLabel = buildSectionLabel('Labor / COB', T.text);
     cobLabel.style.fontSize = '16px';
-    cobResult.card.appendChild(cobLabel);
+    cobResult.appendChild(cobLabel);
 
     var cobInst = buildCOBCard();
-    cobResult.card.appendChild(cobInst.wrap);
+    cobResult.appendChild(cobInst.wrap);
 
     // ─────────────────────────────────────────────
     //  SERVER CHECKOUTS (col 3, row 2)
@@ -872,25 +844,30 @@ defineScene({
     chkOuter.style.cssText = 'grid-column:3;grid-row:2;position:relative;overflow:visible;display:flex;flex-direction:column;';
     root.appendChild(chkOuter);
 
-    var chkResult = buildCard({ accent: T.elec, padding: '12px 14px' });
-    chkResult.wrap.style.flex = '1';
-    chkResult.card.style.display = 'flex';
-    chkResult.card.style.flexDirection = 'column';
-    chkOuter.appendChild(chkResult.wrap);
+    var chkResult = buildStaticCard({ accent: T.elec });
+    chkResult.style.flex          = '1';
+    chkResult.style.padding       = '12px 14px';
+    chkResult.style.display       = 'flex';
+    chkResult.style.flexDirection = 'column';
+    chkOuter.appendChild(chkResult);
 
     var chkLabel = buildSectionLabel('Server Checkouts', T.text);
     chkLabel.style.fontSize = '16px';
     chkLabel.style.marginBottom = '6px';
-    chkResult.card.appendChild(chkLabel);
+    chkResult.appendChild(chkLabel);
 
     var serverList = document.createElement('div');
-    serverList.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:5px;flex:1;overflow:hidden;';
-    chkResult.card.appendChild(serverList);
+    serverList.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start;flex:1;overflow:hidden;padding:4px 0;';
+    chkResult.appendChild(serverList);
 
-    // Close Day float button — repositioned to bottom-center of footer
-    var closeDayBtn = buildFloatButton({ label: 'Close Day', color: T.elec, darkBg: T.elecDk });
-    closeDayBtn.style.cssText += 'position:absolute;bottom:14px;left:50%;transform:translateX(-50%);';
-    chkOuter.appendChild(closeDayBtn);
+    // Close Day pill — lives in card footer, no float positioning
+    var closeDayBtn = buildPillButton({ label: 'CLOSE DAY', color: T.elec, darkBg: T.elecDk });
+    closeDayBtn.style.padding = '10px 28px';
+
+    var closeDayWrap = document.createElement('div');
+    closeDayWrap.style.cssText = 'display:flex;justify-content:flex-end;margin-top:8px;flex-shrink:0;';
+    closeDayWrap.appendChild(closeDayBtn);
+    chkResult.appendChild(closeDayWrap);
 
     // Store all live-update refs
     state._refs = {
@@ -912,21 +889,40 @@ defineScene({
         var selected = state.selectedIds.indexOf(id) !== -1;
         var srvColor = state.serverColorMap[order.server_id] || T.elec;
         var _fc = STATUS_COLORS[state.filter] || {};
-        r.tileGrid.appendChild(_buildCheckTile(order, selected, srvColor, function() {
-          var idx = state.selectedIds.indexOf(id);
-          if (idx === -1) state.selectedIds.push(id);
-          else state.selectedIds.splice(idx, 1);
-          renderTiles();
-          renderPreview();
-        }, function(ord) {
-          SceneManager.mountWorking('check-overview', {
-            checkId:       ord.order_id,
-            returnLanding: 'manager-landing',
-            employeeId:    state.emp ? state.emp.id   : null,
-            employeeName:  state.emp ? state.emp.name : null,
-            pin:           state.emp ? state.emp.pin  : null,
-          });
-        }, _fc.color));
+
+        var onClick, onLongPress;
+        if (state.filter === 'OPEN') {
+          onClick = function() {
+            var idx = state.selectedIds.indexOf(id);
+            if (idx === -1) state.selectedIds.push(id);
+            else state.selectedIds.splice(idx, 1);
+            renderTiles();
+            renderPreview();
+          };
+          onLongPress = function(ord) {
+            SceneManager.mountWorking('check-overview', {
+              checkId:       ord.order_id,
+              returnLanding: 'manager-landing',
+              employeeId:    state.emp ? state.emp.id   : null,
+              employeeName:  state.emp ? state.emp.name : null,
+              pin:           state.emp ? state.emp.pin  : null,
+            });
+          };
+        } else {
+          // CLOSED or VOID
+          onClick = function() {
+            SceneManager.mountWorking('check-overview', {
+              checkId:       order.order_id,
+              returnLanding: 'manager-landing',
+              employeeId:    state.emp ? state.emp.id   : null,
+              employeeName:  state.emp ? state.emp.name : null,
+              pin:           state.emp ? state.emp.pin  : null,
+            });
+          };
+          onLongPress = null;
+        }
+
+        r.tileGrid.appendChild(_buildCheckTile(order, selected, srvColor, onClick, onLongPress, _fc.color));
       });
       if (state.filter === 'OPEN') {
         var newTile = document.createElement('div');
@@ -970,8 +966,7 @@ defineScene({
       r.actGrid.style.display = 'none';
 
       if (state.selectedIds.length === 0) {
-        r.previewSlide.style.opacity       = '0';
-        r.previewSlide.style.pointerEvents = 'none';
+        r.previewSlide.style.display       = 'none';
         r.editBtn.style.opacity            = '0';
         r.editBtn.style.pointerEvents      = 'none';
         _editPanelOpen = false;
@@ -988,8 +983,8 @@ defineScene({
       });
       if (selected.length > 0) r.prevContent.appendChild(_buildPreview(selected, state.allOrders));
       r.actGrid.style.display            = 'grid';
+      r.previewSlide.style.display       = 'flex';
       r.previewSlide.style.opacity       = '1';
-      r.previewSlide.style.pointerEvents = 'auto';
       r.editBtn.style.opacity            = '1';
       r.editBtn.style.pointerEvents      = 'auto';
     }
@@ -1034,12 +1029,16 @@ defineScene({
     function renderGate() {
       var r  = state._refs;
       var cd = state.closeDayData || {};
-      // Close Day button — grey + dimmed when batch not ready. The click
-      // still registers so we can show a toast explaining what's blocking.
-      if (!cd.batch_ready) {
-        r.closeDayBtn.setColor(T.border, darkenHex(T.border, 0.3));
-        r.closeDayBtn.style.opacity = '0.55';
+      // Close Day is always tappable — the Finalize gate lives inside
+      // close-day.js. Color still communicates readiness at a glance.
+      if (cd.batch_ready) {
+        r.closeDayBtn.setColor(T.elec, T.elecDk);
+        r.closeDayBtn.style.opacity = '1';
+      } else if (!cd.all_checked_out) {
+        r.closeDayBtn.setColor(T.gold, T.goldDk);
+        r.closeDayBtn.style.opacity = '1';
       } else {
+        // Checked out but tips outstanding
         r.closeDayBtn.setColor(T.verm, T.vermDk);
         r.closeDayBtn.style.opacity = '1';
       }
@@ -1113,7 +1112,7 @@ defineScene({
       var fc = STATUS_COLORS[state.filter];
       state._refs.filterBtn.textContent = state.filter;
       state._refs.filterBtn.setColor(fc.color, fc.dark);
-      gridResult.card.style.borderLeft = T.accentBarW + ' solid ' + fc.color;
+      gridResult.setAccent(fc.color);
       renderTiles();
       renderPreview();
     });
@@ -1134,34 +1133,25 @@ defineScene({
     // ─────────────────────────────────────────────
     //  CLOSE DAY
     // ─────────────────────────────────────────────
+    // Close Day always opens — the gate lives on the Finalize action inside
+    // close-day.js, not here. Blocking entry was preventing managers from
+    // seeing WHY close day couldn't proceed. (UI-022)
     closeDayBtn.addEventListener('pointerup', function() {
-      var cd = state.closeDayData || {};
-      if (!cd.batch_ready) {
-        // Tell the manager what's blocking close-day instead of silently
-        // no-opping. Pending checkouts beat unadjusted tips for priority.
-        var msg;
-        if (!cd.all_checked_out) {
-          msg = cd.pending_count === 1
-            ? '1 server still on shift'
-            : cd.pending_count + ' servers still on shift';
-        } else if (!cd.all_tips_adjusted) {
-          msg = cd.unadjusted_count === 1
-            ? '1 unadjusted tip — adjust first'
-            : cd.unadjusted_count + ' unadjusted tips — adjust first';
-        } else {
-          msg = 'No servers have checked out yet';
-        }
-        showToast(msg, { bg: T.gold, duration: 3000 });
-        return;
-      }
+      entReport({
+        code:    'UI-022',
+        source:  'manager-landing.closeDayBtn',
+        message: 'Close Day opened',
+        ctx: {
+          batch_ready:       (state.closeDayData || {}).batch_ready     || false,
+          pending_count:     (state.closeDayData || {}).pending_count   || 0,
+          unadjusted_count:  (state.closeDayData || {}).unadjusted_count || 0,
+        },
+        level: 'INFO',
+      });
       SceneManager.openTransactional('close-day', { staff: state.emp });
     });
 
     function renderBarStats() {
-      var sd   = state.salesData  || {};
-      var open = sd.active_checks != null ? sd.active_checks : '–';
-      var cob  = sd.labor_cob    != null ? Math.round(sd.labor_cob * 100) + '% COB' : '–';
-      setHeaderSubtitle(open + ' OPEN · ' + cob);
     }
 
     // ─────────────────────────────────────────────
@@ -1180,7 +1170,6 @@ defineScene({
         try { renderServerFilter(); } catch(e) { console.warn('[ml] renderServerFilter threw:', e); }
         try { renderTiles();        } catch(e) { console.warn('[ml] renderTiles threw:', e); }
         try { renderPreview();      } catch(e) { console.warn('[ml] renderPreview threw:', e); }
-        try { renderBarStats();     } catch(e) { console.warn('[ml] renderBarStats threw:', e); }
       }).catch(function() { state._refreshing = false; });
     }
 

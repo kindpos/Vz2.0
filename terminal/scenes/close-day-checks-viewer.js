@@ -27,7 +27,6 @@ import {
   hexToRgba,
 }                                      from '../theme-manager.js';
 import { showToast }                   from '../components.js';
-import { setSceneName, setHeaderBack } from '../app.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS — matches close-day-checks-viewer.svg
@@ -37,7 +36,7 @@ var LEFT_W   = 260;
 var RIGHT_W  = 240;
 var COL_GAP  = 10;
 var PAD      = 10;
-var PAD_TOP  = 56;
+var PAD_TOP  = 8;
 
 // ─────────────────────────────────────────────────
 //  HELPERS — duplicated from close-day for independence
@@ -168,15 +167,7 @@ function fetchChecksState() {
         method:        method,
         amount:        (sum.amount != null) ? sum.amount : (raw.total_amount || raw.total || 0),
         tip:           tip,
-        // `adjusted` means "the tip on this check is final". Previously
-        // fell back to `tip != null`, but `raw.tip_amount` is NEVER null
-        // from the backend — it's 0 for un-adjusted card payments — so
-        // that fallback marked every check as adjusted. Now: trust the
-        // summary when present; otherwise cash is always baked-in, card
-        // is only considered adjusted when a non-zero tip is recorded.
-        adjusted:      (sum.adjusted != null)
-                         ? sum.adjusted
-                         : (method === 'cash' || (tip != null && tip > 0)),
+        adjusted:      (sum.adjusted != null) ? sum.adjusted : (tip != null),
         server_id:     raw.server_id   || sum.server_id   || '',
         server_name:   raw.server_name || sum.server_name || '',
         guests:        raw.guest_count || raw.seat_count || raw.covers || sum.guests || sum.guest_count || 0,
@@ -406,17 +397,12 @@ function renderCheckPreview(paper, checks, allOrders) {
           'display:flex;justify-content:space-between;gap:8px;',
           'padding:3px 0;border-bottom:1px solid ' + hexToRgba(T.text, 0.06) + ';',
         ].join('');
-        // Backend sends `quantity` + `effective_price`; tolerate older keys.
-        var qty  = item.quantity != null ? item.quantity : (item.qty || 1);
-        var unit = (typeof item.effective_price === 'number')
-          ? item.effective_price
-          : (item.price || item.amount || 0);
         var nm = document.createElement('span');
         nm.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';';
-        nm.textContent = (qty > 1 ? qty + '\u00D7 ' : '') + (item.name || item.display_name || 'Item');
+        nm.textContent = (item.qty && item.qty > 1 ? item.qty + '\u00D7 ' : '') + (item.name || item.display_name || 'Item');
         var pr = document.createElement('span');
         pr.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;';
-        pr.textContent = fmt(unit * qty);
+        pr.textContent = fmt((item.price || item.amount || 0) * (item.qty || 1));
         row.appendChild(nm);
         row.appendChild(pr);
         paper.appendChild(row);
@@ -540,21 +526,19 @@ function buildCheckRow(chk, handlers, sceneState) {
   var minutes  = minutesOpen(chk.rawCreatedAt);
   var srvCol   = serverColor(chk.server_id);
 
-  var row = document.createElement('div');
-  row.style.cssText = [
-    'flex-shrink:0;display:flex;align-items:center;gap:12px;',
-    'padding:12px 14px;box-sizing:border-box;min-height:88px;',
-    'background:' + T.well + ';border-radius:8px;',
-    'border:2px solid ' + (selected ? T.elec : hexToRgba(T.border, 0.3)) + ';',
-    'cursor:pointer;user-select:none;-webkit-user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'transition:border-color 0.15s;',
-  ].join('');
-
-  // Left accent stripe — colored by server so the list reads at a glance
-  var stripe = document.createElement('div');
-  stripe.style.cssText = 'flex-shrink:0;width:4px;align-self:stretch;border-radius:2px;background:' + srvCol + ';';
-  row.appendChild(stripe);
+  var card = buildActionCard({
+    accent: srvCol,
+    onClick: function() { if (handlers.onToggleCheck) handlers.onToggleCheck(chk); }
+  });
+  card.style.flexShrink = '0';
+  card.style.display = 'flex';
+  card.style.alignItems = 'center';
+  card.style.gap = '12px';
+  card.style.padding = '12px 14px';
+  card.style.minHeight = '88px';
+  card.style.background = T.well;
+  card.style.border = '2px solid ' + (selected ? T.elec : hexToRgba(T.border, 0.3));
+  card.style.transition = 'border-color 0.15s';
 
   // Selection checkbox — stays T.elec (selection is a UI state, not a server state)
   var check = document.createElement('div');
@@ -567,7 +551,7 @@ function buildCheckRow(chk, handlers, sceneState) {
       : 'background:transparent;border:1.5px solid ' + T.border + ';color:transparent;',
   ].join('');
   check.textContent = selected ? '\u2713' : '';
-  row.appendChild(check);
+  card.appendChild(check);
 
   // Info stack (flex:1)
   var info = document.createElement('div');
@@ -590,7 +574,7 @@ function buildCheckRow(chk, handlers, sceneState) {
   }
   info.appendChild(top);
 
-  // Server name — colored to match the stripe
+  // Server name — colored to match the accent
   if (chk.server_name) {
     var srv = document.createElement('div');
     srv.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + srvCol + ';font-weight:700;';
@@ -621,19 +605,15 @@ function buildCheckRow(chk, handlers, sceneState) {
   }
 
   info.appendChild(meta);
-  row.appendChild(info);
+  card.appendChild(info);
 
   // Amount — gold, large
   var amt = document.createElement('div');
   amt.style.cssText = 'flex-shrink:0;font-family:' + T.fh + ';font-size:24px;font-weight:700;color:' + T.gold + ';';
   amt.textContent = fmt(chk.amount || 0);
-  row.appendChild(amt);
+  card.appendChild(amt);
 
-  row.addEventListener('pointerup', function() {
-    if (handlers && handlers.onToggleCheck) handlers.onToggleCheck(chk);
-  });
-
-  return row;
+  return card;
 }
 
 // ─────────────────────────────────────────────────
@@ -665,8 +645,8 @@ function buildActionsCol(data, handlers, sceneState) {
   // BACK pill (app header also has a back, but having one here is clearer)
   var backBtn = buildPillButton({
     label:  '\u2039 BACK',
-    color:  T.text,
-    darkBg: T.well,
+    variant: 'ghost',
+    shape: 'chamfer',
     onClick: function() { if (handlers.onBack) handlers.onBack(); },
   });
   backBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:12px;';
@@ -675,8 +655,8 @@ function buildActionsCol(data, handlers, sceneState) {
   // SELECT ALL / DESELECT ALL
   var selectAllBtn = buildPillButton({
     label:  (allSelected ? 'DESELECT ALL' : 'SELECT ALL') + '  \u00B7  ' + data.openChecks.length,
-    color:  T.text,
-    darkBg: T.well,
+    variant: 'ghost',
+    shape: 'chamfer',
     onClick: function() { if (handlers.onToggleAll) handlers.onToggleAll(); },
   });
   selectAllBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:11px;';
@@ -710,6 +690,7 @@ function buildActionsCol(data, handlers, sceneState) {
     label:   transferLabel + '  \u203A',
     color:   T.elec,
     darkBg:  T.elecDk,
+    shape:   'chamfer',
     onClick: function() { if (handlers.onTransferChecks) handlers.onTransferChecks(selectedChecks); },
   });
   transferBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:12px;';
@@ -720,6 +701,7 @@ function buildActionsCol(data, handlers, sceneState) {
     label:  'Print Receipt  \u203A',
     color:  T.greenWarm,
     darkBg: T.greenWarmDk,
+    shape:  'chamfer',
     onClick: function() { if (handlers.onPrintCheck) handlers.onPrintCheck(selectedChecks); },
   });
   printBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:12px;';
@@ -730,6 +712,7 @@ function buildActionsCol(data, handlers, sceneState) {
     label:  'Void  \u00B7  MGR PIN  \u203A',
     color:  T.verm,
     darkBg: T.vermDk,
+    shape:  'chamfer',
     onClick: function() { if (handlers.onVoidCheck) handlers.onVoidCheck(selectedChecks); },
   });
   voidBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:12px;';
@@ -749,6 +732,7 @@ function buildActionsCol(data, handlers, sceneState) {
     label:  'Close Check  \u203A',
     color:  T.greenWarm,
     darkBg: T.greenWarmDk,
+    shape:  'chamfer',
     onClick: function() {
       if (!primaryEnabled) return;
       if (handlers.onCloseCheck) handlers.onCloseCheck(selectedChecks);
@@ -787,26 +771,6 @@ defineScene({
   render: function(container, params, state) {
     params = params || {};
     state.startTime = state.startTime || Date.now();
-    // Live scene element — cleared in the cleanup so async callbacks can
-    // bail out with `if (!state.el) return` and we don't write to a
-    // detached DOM after the user navigates away.
-    state.el = container;
-    // Track the one legitimate setTimeout (the 80ms defer before the
-    // second interrupt) so it can be cancelled on unmount.
-    state._voidDeferTimer = null;
-    // Lock held while a multi-check Transfer / Print / Void batch is
-    // in flight. Stops a double-tap on the action button from enqueueing
-    // a second Promise.all while the first is still resolving.
-    state._busy = false;
-
-    setSceneName('Open Checks');
-    setHeaderBack({
-      back: true, x: false,
-      onBack: function() {
-        if (params.onBack) params.onBack();
-        else SceneManager.closeTransactional('close-day-checks-viewer');
-      },
-    });
 
     container.style.cssText = [
       'width:100%;height:100%;',
@@ -818,11 +782,9 @@ defineScene({
 
     function refreshData() {
       fetchChecksState().then(function(newData) {
-        if (!state.el) return;
         state.data = newData;
         rebuild();
       }).catch(function(err) {
-        if (!state.el) return;
         console.error('[close-day-checks-viewer] fetch failed:', err);
         showToast('Checks data unavailable', { bg: T.verm });
       });
@@ -882,13 +844,11 @@ defineScene({
       },
 
       onTransferChecks: function(checks) {
-        if (state._busy) return;
         SceneManager.interrupt('co-transfer-picker', {
           checks: checks,
           currentEmpId: params.managerId,
           onConfirm: function(destServer) {
             SceneManager.closeInterrupt('co-transfer-picker');
-            state._busy = true;
             var transfers = checks.map(function(chk) {
               return fetch('/api/v1/orders/' + chk.checkId + '/transfer', {
                 method:  'POST',
@@ -901,8 +861,6 @@ defineScene({
                 .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
             });
             Promise.all(transfers).then(function(results) {
-              state._busy = false;
-              if (!state.el) return;
               var ok     = results.filter(function(r) { return  r.ok; });
               var failed = results.filter(function(r) { return !r.ok; });
               if (ok.length > 0 && failed.length === 0) {
@@ -925,8 +883,6 @@ defineScene({
       },
 
       onPrintCheck: function(checks) {
-        if (state._busy) return;
-        state._busy = true;
         var label = checks.length > 1 ? checks.length + ' checks' : checkNumDisplay(checks[0]);
         showToast('Printing ' + label + '\u2026', { bg: T.greenWarm });
 
@@ -940,8 +896,6 @@ defineScene({
         });
 
         Promise.all(prints).then(function(results) {
-          state._busy = false;
-          if (!state.el) return;
           var ok     = results.filter(function(r) { return  r.ok; });
           var failed = results.filter(function(r) { return !r.ok; });
           if (ok.length > 0 && failed.length === 0) {
@@ -975,23 +929,15 @@ defineScene({
       },
 
       onVoidCheck: function(checks) {
-        if (state._busy) return;
         // Destructive: manager PIN → reason-required confirm → POST per check.
         SceneManager.interrupt('co-manager-pin', {
           onConfirm: function() {
             SceneManager.closeInterrupt('co-manager-pin');
-            // The 80ms defer lets the PIN interrupt unmount before the
-            // next one mounts. Tracked on state so cleanup can cancel it
-            // — otherwise a back-nav during the window mounts the void-
-            // confirm interrupt on an already-unmounted scene.
-            state._voidDeferTimer = setTimeout(function() {
-              state._voidDeferTimer = null;
-              if (!state.el) return;
+            setTimeout(function() {
               SceneManager.interrupt('co-void-confirm', {
                 checks: checks,
                 onConfirm: function(reason) {
                   SceneManager.closeInterrupt('co-void-confirm');
-                  state._busy = true;
                   var voids = checks.map(function(chk) {
                     return fetch('/api/v1/orders/' + chk.checkId + '/void', {
                       method:  'POST',
@@ -1004,8 +950,6 @@ defineScene({
                       .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
                   });
                   Promise.all(voids).then(function(results) {
-                    state._busy = false;
-                    if (!state.el) return;
                     var ok     = results.filter(function(r) { return  r.ok; });
                     var failed = results.filter(function(r) { return !r.ok; });
                     if (ok.length > 0 && failed.length === 0) {
@@ -1033,16 +977,5 @@ defineScene({
     };
 
     refreshData();
-
-    // Return the scene cleanup — clears the pending void-defer timer
-    // and nulls state.el so any still-in-flight Promise.all callbacks
-    // can bail out instead of writing to a detached DOM.
-    return function cleanup() {
-      if (state._voidDeferTimer != null) {
-        clearTimeout(state._voidDeferTimer);
-        state._voidDeferTimer = null;
-      }
-      state.el = null;
-    };
   },
 });

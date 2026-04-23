@@ -5,11 +5,10 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../tokens.js';
-import { chamfer, applySunkenStyle, buildStyledButton, hexToRgba, fetchWithTimeout } from '../sm2-shim.js';
+import { hexToRgba, fetchWithTimeout } from '../sm2-shim.js';
 import { buildButton, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
-import { setSceneName, setHeaderBack } from '../app.js';
-import { buildNumpad } from '../numpad.js';
+import { buildPillButton, buildWell, buildNumpadChassis, buildHeroNumber } from '../theme-manager.js';
 import { OrderSummary } from '../order-summary.js';
 
 var PAD     = T.scenePad;
@@ -108,17 +107,10 @@ defineScene({
     _procStatusEl     = null;
     _procAnimTimer    = null;
 
-    setSceneName(params.checkId || 'ORDER');
-    setHeaderBack({
-      back: true,
-      onBack: function() { _returnToParent(params); },
-      x: true,
-    });
-
     container.style.cssText = [
       'width:100%;height:100%;',
       'display:flex;gap:' + GAP + 'px;',
-      'padding:' + (PAD + 12) + 'px ' + PAD + 'px ' + PAD + 'px ' + PAD + 'px;',
+      'padding:8px ' + PAD + 'px ' + PAD + 'px ' + PAD + 'px;',
       'box-sizing:border-box;overflow:hidden;',
       'background:' + T.bg + ';',
     ].join('');
@@ -200,7 +192,7 @@ defineScene({
         // Vz2.0 card: left accent bar + rounded corners + drop shadow
         container.style.cssText = [
           'display:flex;flex-direction:column;align-items:center;gap:18px;',
-          'padding:32px 44px;',
+          'padding:8px 44px 44px;',
           'background:' + T.card + ';',
           'border-left:4px solid ' + T.gold + ';',
           'border-radius:' + T.chamferCard + 'px;',
@@ -235,15 +227,25 @@ defineScene({
 
         [2, 3, 4].forEach(function(divisor) {
           var amt = Math.ceil(remaining / divisor * 100) / 100;
-          var btn = _buildSplitOption('1/' + divisor, '$' + amt.toFixed(2), function() {
-            params.onConfirm(amt);
+          var btn = buildPillButton({
+            label: '1/' + divisor,
+            sub: '$' + amt.toFixed(2),
+            color: T.card,
+            onClick: function() { params.onConfirm(amt); }
           });
+          btn.style.width = '120px';
+          btn.style.height = '88px';
+          btn.style.border = '2px solid ' + T.green;
+          btn.style.color = T.green;
           btnRow.appendChild(btn);
         });
         container.appendChild(btnRow);
 
-        var cancel = _buildActionBtn('Cancel', T.verm, function() { params.onCancel(); });
-        cancel.style.flex = '0 0 auto';
+        var cancel = buildPillButton({
+          label: 'CANCEL',
+          color: T.verm,
+          onClick: function() { params.onCancel(); }
+        });
         cancel.style.width = '160px';
         cancel.style.height = '48px';
         container.appendChild(cancel);
@@ -401,8 +403,6 @@ defineScene({
         var returned = false;
         _changeDueTimer = null;
 
-        setSceneName(null);
-        setHeaderBack({});
 
         container.style.cssText = [
           'width:100%;height:100%;',
@@ -504,13 +504,21 @@ defineScene({
         var btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:20px;';
 
-        var newOrderBtn = _buildActionBtn('NEW ORDER', T.green, function() { doReturn('order-entry'); });
+        var newOrderBtn = buildPillButton({
+          label: 'NEW ORDER',
+          color: T.green,
+          onClick: function() { doReturn('order-entry'); }
+        });
         newOrderBtn.style.flex = '0 0 auto';
         newOrderBtn.style.width  = '240px';
         newOrderBtn.style.height = '72px';
         btnRow.appendChild(newOrderBtn);
 
-        var logoutBtn = _buildActionBtn('LOGOUT', T.green, function() { doReturn('login'); });
+        var logoutBtn = buildPillButton({
+          label: 'LOGOUT',
+          color: T.green,
+          onClick: function() { doReturn('login'); }
+        });
         logoutBtn.style.flex = '0 0 auto';
         logoutBtn.style.width  = '240px';
         logoutBtn.style.height = '72px';
@@ -598,8 +606,8 @@ function buildCenterColumn(params) {
   grid.style.cssText = [
     'display:grid;',
     'grid-template-columns:1fr 1fr;',
-    'grid-template-rows:140px 140px;',
-    'gap:10px;flex-shrink:0;',
+    'grid-template-rows:1fr 1fr;',
+    'gap:10px;flex-grow:1;',
   ].join('');
 
   grid.appendChild(buildDenomBtn(5));
@@ -612,14 +620,23 @@ function buildCenterColumn(params) {
   var btn100 = buildDenomBtn(100);
   btn100.style.height = '70px';
   btn100.style.flexShrink = '0';
+  btn100.style.marginTop = '10px';
   col.appendChild(btn100);
 
   // ── Exact + Split row (two buttons, equal width) ──
   var actionRow = document.createElement('div');
   actionRow.style.cssText = 'flex-shrink:0;display:flex;gap:10px;';
 
-  actionRow.appendChild(_buildActionBtn('Exact', T.yellow, handleExact));
-  actionRow.appendChild(_buildActionBtn('Split', T.elec,   _onSplitTap));
+  actionRow.appendChild(buildPillButton({
+    label: 'EXACT',
+    color: T.yellow,
+    onClick: handleExact
+  }));
+  actionRow.appendChild(buildPillButton({
+    label: 'SPLIT',
+    color: T.elec,
+    onClick: _onSplitTap
+  }));
 
   col.appendChild(actionRow);
 
@@ -638,88 +655,6 @@ function buildCenterColumn(params) {
   return col;
 }
 
-function _buildSplitOption(topLine, bottomLine, onTap) {
-  var btn = document.createElement('div');
-  btn.style.cssText = [
-    'width:120px;height:88px;',
-    'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;',
-    'background:' + T.card + ';',
-    'border:2px solid ' + T.green + ';',
-    'border-radius:' + T.chamferCard + 'px;',
-    'font-family:' + T.fh + ';',
-    'color:' + T.green + ';',
-    'cursor:pointer;user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'box-shadow:0 4px 0 ' + T.well + ';',
-    'transition:transform 80ms, box-shadow 80ms;',
-  ].join('');
-
-  var top = document.createElement('div');
-  top.style.cssText = 'font-size:' + T.fsB2 + ';font-weight:' + T.fwBold + ';letter-spacing:0.08em;';
-  top.textContent = topLine;
-  btn.appendChild(top);
-
-  var bot = document.createElement('div');
-  bot.style.cssText = 'font-size:' + T.fsB3 + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';';
-  bot.textContent = bottomLine;
-  btn.appendChild(bot);
-
-  btn.addEventListener('pointerdown', function() {
-    btn.style.transform = 'translateY(2px)';
-    btn.style.boxShadow = '0 2px 0 ' + T.well;
-  });
-  function resetPress() {
-    btn.style.transform = '';
-    btn.style.boxShadow = '0 4px 0 ' + T.well;
-  }
-  btn.addEventListener('pointerup',     resetPress);
-  btn.addEventListener('pointercancel', resetPress);
-  btn.addEventListener('pointerleave',  resetPress);
-  // Fire on pointerup (not click) so touch-screen taps on the Pi 5 don't
-  // lose the action when synthesized click events fail to dispatch.
-  btn.addEventListener('pointerup', function() { if (onTap) onTap(); });
-
-  return btn;
-}
-
-function _buildActionBtn(label, accent, onTap) {
-  // Plain div, colored outline, text stays in the accent color through
-  // all states. Shares the depress visual language with denom buttons.
-  var btn = document.createElement('div');
-  btn.style.cssText = [
-    'flex:1;height:56px;',
-    'display:flex;align-items:center;justify-content:center;',
-    'background:' + T.card + ';',
-    'border:2px solid ' + accent + ';',
-    'border-radius:999px;',
-    'font-family:' + T.fh + ';',
-    'font-size:' + T.fsB2 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + accent + ';',
-    'letter-spacing:0.1em;',
-    'cursor:pointer;user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'box-shadow:0 4px 0 ' + T.well + ';',
-    'transition:transform 80ms, box-shadow 80ms;',
-  ].join('');
-  btn.textContent = label;
-
-  btn.addEventListener('pointerdown', function() {
-    btn.style.transform = 'translateY(2px)';
-    btn.style.boxShadow = '0 2px 0 ' + T.well;
-  });
-  function resetPress() {
-    btn.style.transform = '';
-    btn.style.boxShadow = '0 4px 0 ' + T.well;
-  }
-  btn.addEventListener('pointerup',     resetPress);
-  btn.addEventListener('pointercancel', resetPress);
-  btn.addEventListener('pointerleave',  resetPress);
-  // Fire on pointerup (not click) — see note in buildExactBtn.
-  btn.addEventListener('pointerup', function() { if (onTap) onTap(); });
-
-  return btn;
-}
 
 function buildDenomBtn(val) {
   // Plain div (not a pill) so we control the press state and the text
@@ -730,7 +665,7 @@ function buildDenomBtn(val) {
     'display:flex;align-items:center;justify-content:center;',
     'background:' + T.card + ';',
     'border:2px solid ' + T.border + ';',
-    'border-radius:14px;',
+    'border-radius:' + T.chamferCard + 'px;',
     'font-family:' + T.fh + ';',
     'font-size:' + T.fsDenom + ';',
     'font-weight:' + T.fwBold + ';',
@@ -773,47 +708,21 @@ function buildDenomBtn(val) {
 }
 
 function buildModeBtn(label, mode, activeColor) {
-  // Plain div (not a pill button) so we fully control the press/active
-  // visual states and keep the text mint regardless of interaction.
-  var wrap = document.createElement('div');
-  wrap.style.cssText = [
-    'flex:1;height:80px;',
-    'display:flex;align-items:center;justify-content:center;',
-    'background:' + T.card + ';',
-    'border:2px solid ' + T.border + ';',
-    'border-radius:999px;',
-    'font-family:' + T.fh + ';',
-    'font-size:' + T.fsB2 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.green + ';',
-    'letter-spacing:0.14em;',
-    'cursor:pointer;user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'transition:background 120ms, border-color 120ms, transform 80ms;',
-    'box-shadow:0 4px 0 ' + T.well + ';',
-  ].join('');
-  wrap.textContent = label;
-
-  // Tap visual: subtle depress — NO color flip (text stays mint always).
-  wrap.addEventListener('pointerdown', function() {
-    wrap.style.transform = 'translateY(2px)';
-    wrap.style.boxShadow = '0 2px 0 ' + T.well;
+  // Use buildPillButton for consistent Vz2.0 look
+  var btn = buildPillButton({
+    label: label,
+    color: T.card,
+    onClick: function() { setPaymentMode(mode); }
   });
-  function resetPress() {
-    wrap.style.transform = '';
-    wrap.style.boxShadow = '0 4px 0 ' + T.well;
-  }
-  wrap.addEventListener('pointerup',     resetPress);
-  wrap.addEventListener('pointercancel', resetPress);
-  wrap.addEventListener('pointerleave',  resetPress);
-  // Fire on pointerup — see note in buildExactBtn.
-  wrap.addEventListener('pointerup', function() {
-    setPaymentMode(mode);
-  });
+  btn.style.flex = '1';
+  btn.style.height = '80px';
+  btn.style.fontSize = T.fsB2;
+  btn.style.color = T.green;
+  btn.style.border = '2px solid ' + T.border;
 
   // Expose refs for setPaymentMode to toggle the active visual.
-  _modeButtons[mode] = { wrap: wrap, inner: wrap, color: activeColor };
-  return wrap;
+  _modeButtons[mode] = { wrap: btn, inner: btn, color: activeColor };
+  return btn;
 }
 
 
@@ -821,49 +730,78 @@ function buildModeBtn(label, mode, activeColor) {
 //  RIGHT COLUMN — Numpad
 // ═══════════════════════════════════════════════════
 
+function handleKey(label) {
+  if (label === 'CLR') {
+    numpadStr = '';
+    enteredAmount = 0;
+    denomAccum = 0;
+    if (numpadRef) numpadRef.clear();
+    updateSplitDisplay();
+  } else if (label === 'ENT') {
+    handleConfirm();
+  } else {
+    // Digit
+    if (numpadStr.length < 7) {
+      denomAccum = 0;
+      numpadStr += label;
+      enteredAmount = (parseInt(numpadStr, 10) || 0) / 100;
+      if (numpadRef) numpadRef.setPin(numpadStr);
+      updateSplitDisplay();
+    }
+  }
+}
+
 function buildRightColumn() {
   var col = document.createElement('div');
-  col.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;justify-content:stretch;';
+  col.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:16px;';
 
-  numpadRef = buildNumpad({
-    masked:         false,
-    maxDigits:      7,
-    displayH:       68,
-    cardPad:        18,
-    keyH:           96,
-    keyGap:         12,
-    gap:            16,
-    submitLabel:    'ent',
-    chassisColor:   T.card,
-    chassisChamfer: 6,
-    chassisBevel:   5,
-    digitColor:     T.digitColor,
-    clearColor:     T.clrColor,
-    submitColor:    T.submitColor,
-    displayColor:   T.pinDot,
-    displayBg:      T.pinFieldBg,
-    digitFont:      T.fhr,
-    canSubmit:      function() { return enteredAmount > 0; },
-    displayFormat:  function(digits) {
-      if (digits && digits.length > 0) {
-        var n = parseInt(digits, 10) || 0;
-        return '$' + (n / 100).toFixed(2);
-      }
-      if (denomAccum > 0) return '$' + denomAccum.toFixed(2);
-      return '$0.00';
-    },
-    onChange: function(digits) {
-      denomAccum = 0;
-      numpadStr = digits;
-      enteredAmount = (parseInt(digits, 10) || 0) / 100;
-      updateSplitDisplay();
-    },
-    onSubmit: function() {
-      handleConfirm();
-    },
+  var dispWell = buildWell({ padding: '20px' });
+  dispWell.style.height         = '68px';
+  dispWell.style.display        = 'flex';
+  dispWell.style.alignItems     = 'center';
+  dispWell.style.justifyContent = 'center';
+  dispWell.style.background     = T.well;
+
+  var hero = buildHeroNumber('$0.00', T.gold);
+  dispWell.appendChild(hero);
+  col.appendChild(dispWell);
+
+  const pad = buildNumpadChassis({
+    onKey: (label) => handleKey(label),
   });
+  col.appendChild(pad);
 
-  col.appendChild(numpadRef);
+  // Re-expose numpadRef interface for handleDenomination/handleExact/etc.
+  numpadRef = {
+    setPin: function(digits) {
+      numpadStr = digits || '';
+      updateDisplay();
+    },
+    setHint: function(msg, color) {
+      hero.textContent = msg;
+      hero.style.color = color || T.gold;
+    },
+    clear: function() {
+      numpadStr = '';
+      updateDisplay();
+    }
+  };
+
+  function updateDisplay() {
+    if (numpadStr.length > 0) {
+      var n = parseInt(numpadStr, 10) || 0;
+      hero.textContent = '$' + (n / 100).toFixed(2);
+      hero.style.color = T.gold;
+    } else if (denomAccum > 0) {
+      hero.textContent = '$' + denomAccum.toFixed(2);
+      hero.style.color = T.gold;
+    } else {
+      hero.textContent = '$0.00';
+      hero.style.color = T.gold;
+    }
+  }
+
+  updateDisplay();
   return col;
 }
 

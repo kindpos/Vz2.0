@@ -54,6 +54,10 @@ def get_half_modifiers(
             price = mod.get('price', 0)
             half_price = mod.get('half_price')
 
+            # If half_price is explicitly True (boolean), calculate half of price.
+            # Otherwise for half-placements, use the half_price value from the dict.
+            actual_half_price = (float(price) / 2) if half_price is True else half_price
+
             if prefix == 'Left' or prefix == 'Right':
                 is_extra = name in whole_names
                 entry = {
@@ -62,20 +66,22 @@ def get_half_modifiers(
                     'half_price': half_price,
                     'is_extra': is_extra,
                     'display_name': f"Xtra {name}" if is_extra else name,
-                    'display_price': half_price,
+                    'display_price': actual_half_price,
                 }
                 if prefix == 'Left':
                     left.append(entry)
                 else:
                     right.append(entry)
             else:
+                # Whole modifier: use full price unless half_price is explicitly True
+                display_price = (float(price) / 2) if half_price is True else price
                 whole.append({
                     'name': name,
                     'price': price,
                     'half_price': half_price,
                     'is_extra': False,
-                    'display_name': name,
-                    'display_price': price,
+                    'display_name': f"{prefix} {name}" if prefix else name,
+                    'display_price': display_price,
                 })
         else:
             # Plain string modifier — always whole

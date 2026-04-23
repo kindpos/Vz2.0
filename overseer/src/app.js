@@ -26,6 +26,7 @@ import { registerPricingSpecials }    from './sections/pricing-specials.js';
 import { registerPrinterConfig }      from './sections/printer-config.js';
 import { registerPrinterSetup }       from './sections/printer-setup.js';
 import { buildNetworkSetupScene, cleanupNetworkSetup } from './sections/hardware/network-setup.js';
+import { buildTerminalDetailsScene, cleanupTerminalDetailsScene } from './sections/hardware/terminal-details.js';
 
 // Build-pattern sections (no register wrapper — wrap manually below)
 import { buildStoreInfoScene,     cleanupStoreInfo     } from './sections/store-info.js';
@@ -353,6 +354,11 @@ function registerAllSections() {
         name: 'network-setup',
         mount: (container) => buildNetworkSetupScene(container),
         unmount: (container) => cleanupNetworkSetup(container),
+    });
+    SceneManager.register({
+        name: 'terminal-details',
+        mount: (container, params) => buildTerminalDetailsScene(container, params),
+        unmount: (container) => cleanupTerminalDetailsScene(container),
     });
     SceneManager.register({
         name: 'card-readers',

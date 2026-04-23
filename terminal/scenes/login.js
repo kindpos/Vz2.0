@@ -168,6 +168,31 @@ defineScene({
     // Clock block
     var clockBlock = document.createElement('div');
     clockBlock.style.cssText = 'flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;';
+
+    var clockBtn = buildPillButton({
+      label:   'Clock In / Out',
+      color:   T.greenWarm,
+      darkBg:  T.greenWarmDk,
+      onClick: function() {
+        if (state.pin.length === PIN_LENGTH) {
+          // PIN already entered — auth and always show timeclock (clock in OR out)
+          if (state.locked) return;
+          state.locked = true;
+          _attemptLogin(
+            state.pin.join(''),
+            function(data) { state.locked = false; _showTimeclock(data); },
+            function(msg)  { state.locked = false; numpad.setError(msg || 'INVALID PIN'); }
+          );
+        } else {
+          // No PIN yet — show overlay prompting for PIN entry
+          _showTimeclock(null);
+        }
+      },
+    });
+    clockBtn.style.flexShrink = '0';
+    clockBtn.style.width = 'fit-content'; clockBtn.style.alignSelf = 'center'; clockBtn.style.padding = '12px 48px';
+    leftWrap.appendChild(clockBtn);
+
     leftWrap.appendChild(clockBlock);
 
     var timeRow = document.createElement('div');
@@ -221,43 +246,17 @@ defineScene({
     ].join('');
     clockBlock.appendChild(dateEl);
 
-    // Bottom buttons
-    var btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:20px;';
-    leftWrap.appendChild(btnRow);
-
-    var clockBtn = buildPillButton({
-      label:   'Clock In / Out',
-      color:   T.green,
-      darkBg:  T.greenDk,
-      onClick: function() {
-        if (state.pin.length === PIN_LENGTH) {
-          // PIN already entered — auth and always show timeclock (clock in OR out)
-          if (state.locked) return;
-          state.locked = true;
-          _attemptLogin(
-            state.pin.join(''),
-            function(data) { state.locked = false; _showTimeclock(data); },
-            function(msg)  { state.locked = false; numpad.setError(msg || 'INVALID PIN'); }
-          );
-        } else {
-          // No PIN yet — show overlay prompting for PIN entry
-          _showTimeclock(null);
-        }
-      },
-    });
-    btnRow.appendChild(clockBtn);
-
     var configBtn = buildPillButton({
       label:   'Configuration',
-      color:   T.border,
-      darkBg:  T.well,
+      color:   T.verm,
+      darkBg:  T.vermDk,
       onClick: function() {
         SceneManager.mountWorking('settings', { tab: 'TERMINAL' });
         SceneManager.closeGate('login');
       },
     });
-    btnRow.appendChild(configBtn);
+    configBtn.style.width = 'fit-content'; configBtn.style.alignSelf = 'center'; configBtn.style.padding = '18px 32px'; configBtn.style.marginBottom = '8px';
+    leftWrap.appendChild(configBtn);
 
     // Version stamp — bottom right of full screen
     var version = document.createElement('div');
@@ -406,22 +405,25 @@ defineScene({
           poolSection.style.display = 'flex';
           matching.forEach(function(pool) {
             var joined = false;
-            var chip = document.createElement('button');
-            chip.type = 'button';
+            var chip = buildPillButton({
+              label: pool.name.toUpperCase(),
+              color: T.card,
+              darkBg: T.well,
+              fontSize: '10px',
+            });
             function _paint() {
-              chip.style.cssText = [
-                'font-family:' + T.fb + ';',
-                'font-size:10px;font-weight:700;letter-spacing:1.5px;',
-                'text-transform:uppercase;',
-                'padding:6px 14px;border-radius:999px;cursor:pointer;',
-                'border:1px solid ' + (joined ? T.elec : T.border) + ';',
-                'background:' + (joined ? hexToRgba(T.elec, 0.15) : 'transparent') + ';',
-                'color:' + (joined ? T.elec : T.border) + ';',
-                'transition:all 0.12s ease;',
-              ].join('');
+              chip.setColor(
+                joined ? T.elec : T.card,
+                joined ? hexToRgba(T.elec, 0.15) : T.well,
+                joined ? T.elec : T.border
+              );
+              chip.style.border = '1px solid ' + (joined ? T.elec : T.border);
             }
             _paint();
-            chip.textContent = pool.name.toUpperCase() + (joined ? ' ✓' : '');
+            chip.style.padding = '6px 14px';
+            chip.style.letterSpacing = '1.5px';
+            chip.style.height = 'auto';
+
             chip.addEventListener('pointerup', function() {
               joined = !joined;
               chip.textContent = pool.name.toUpperCase() + (joined ? ' ✓' : '');
@@ -469,7 +471,7 @@ defineScene({
 
         // Hours card
         var hrsWrap = document.createElement('div');
-        hrsWrap.style.cssText = 'flex-shrink:0;display:flex;align-items:baseline;gap:8px;padding:10px 14px;background:' + T.well + ';border-radius:8px;border-left:3px solid ' + T.gold + ';';
+        hrsWrap.style.cssText = 'flex-shrink:0;display:flex;align-items:baseline;gap:8px;padding:10px 14px;background:' + T.well + ';border-radius:' + T.chamferCard + 'px;border-left:' + T.accentBarW + ' solid ' + T.gold + ';';
         var hrsVal = document.createElement('span');
         hrsVal.textContent = '–';
         hrsVal.style.cssText = 'font-family:' + T.fh + ';font-size:28px;font-weight:800;color:' + T.gold + ';';
@@ -546,8 +548,8 @@ defineScene({
             showToast(empName + ' clocked in as ' + selectedRole.toUpperCase(), { bg: T.greenWarm, duration: 3000 });
             _closeOverlay();
             SceneManager.closeGate('login');
-            var role = (emp.roles || []).indexOf('manager') !== -1 ? 'manager' : 'server';
-            SceneManager.mountWorking(role === 'manager' ? 'manager-landing' : 'server-landing', { staff: emp });
+            var dest = selectedRole === 'manager' ? 'manager-landing' : 'server-landing';
+            SceneManager.mountWorking(dest, { staff: emp });
           }).catch(function(e) {
             showToast(e.message||'Clock-in failed', { bg: T.verm, duration: 3000 });
             clockInBtn.style.opacity = '1'; clockInBtn.style.pointerEvents = 'auto';

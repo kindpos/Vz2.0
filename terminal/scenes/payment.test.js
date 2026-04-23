@@ -61,8 +61,6 @@ vi.mock('../components.js', () => ({
 }));
 
 vi.mock('../app.js', () => ({
-  setSceneName:  vi.fn(),
-  setHeaderBack: vi.fn(),
 }));
 
 vi.mock('../numpad.js', () => ({

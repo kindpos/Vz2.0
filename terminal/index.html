@@ -38,18 +38,8 @@
 
     /* ── Header bar ─────────────────────────────── */
     #header {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 42px;           /* T.headerH */
-      z-index: 5;
-      background: #2c2f34;    /* T.well */
-      border-bottom: 1px solid #5a5f66;  /* T.border */
-      display: flex;
-      align-items: center;
-      padding: 0 14px;
-      gap: 10px;
+      height: 36px;
+      display: none;
     }
 
     /* ── Layer stack ────────────────────────────── */
@@ -59,6 +49,10 @@
     #layer-gate,
     #order-summary {
       position: absolute;
+      top: 36px;
+      left: 0;
+      right: 0;
+      bottom: 0;
       pointer-events: none;
     }
 

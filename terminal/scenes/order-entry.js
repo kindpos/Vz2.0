@@ -37,17 +37,14 @@
 
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../tokens.js';
-import { buildHeader } from '../header.js';
-import { buildPillButton, hexToRgba, darkenHex } from '../theme-manager.js';
+import { buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
 import {
-  buildStyledButton,
   applySunkenStyle,
   chamfer,
   bevelEdges,
   applyCardBevel as _applyCardBevel,
 } from '../sm2-shim.js';
 import { buildButton, showToast } from '../components.js';
-import { setSceneName, setHeaderBack } from '../app.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
 import { showHalfPlacementOverlay } from '../half-placement-overlay.js';
@@ -331,13 +328,21 @@ var favorites    = [];   // item ids for personal tab
 var _gridEl      = null; // inner grid DOM container
 var _gridWrap    = null; // collapsible grid wrapper
 var _snakeStrip  = null; // crumb-only strip shown when mod panel open
-var _snakeTabBar = null; // ★ PERSONAL tab strip
 var _expandedItems = {}; // item id → true when mod rows are expanded
 
 // ── Modifier Panel (slide-up) ─────────────────────
 var _modPanel      = null;   // buildKindModPanel instance
 var _modPanelItem  = null;   // ticket preview item for active panel
 var _modPanelOpen  = false;  // drives grid collapse animation
+
+// ── Inject invisible scrollbar style ──
+(function() {
+  if (document.getElementById('co-scroll-style')) return;
+  var s = document.createElement('style');
+  s.id = 'co-scroll-style';
+  s.textContent = '.co-scroll::-webkit-scrollbar{display:none}';
+  document.head.appendChild(s);
+})();
 
 // ── Batch Modifier Session ───────────────────────
 var modifierSession = {
@@ -368,23 +373,10 @@ defineScene({
     params = params || {};
     var staff = params.staff || params.emp || {};
 
-    // 1. Header
-    _header = buildHeader({
-      title:    params.recallOrderId ? 'ADD ITEMS' : 'NEW ORDER',
-      subtitle: (params.table ? 'TABLE ' + params.table : '') + (params.guests ? ' · ' + params.guests + ' GUESTS' : ''),
-      showBack: true,
-      user: {
-        firstName: staff.first_name || (staff.name || '').split(' ')[0] || 'Server',
-        role:      (staff.roles && staff.roles[0]) || 'server',
-      },
-      onBack: function() { handleClose(); }
-    });
-    container.appendChild(_header);
-
-    // 2. Body container — fills the remaining 548px, offset by summary
+    // 2. Body container — fills the entire screen
     var body = document.createElement('div');
-    var offset = (T.pcLeftW + T.colGapSm) + 'px';
-    body.style.cssText = 'position:absolute;left:' + offset + ';right:0;top:52px;bottom:0;overflow:hidden;';
+    var offset = '0';
+    body.style.cssText = 'position:absolute;left:' + offset + ';right:0;top:0;bottom:0;overflow:hidden;display:flex;flex-direction:column;';
     container.appendChild(body);
 
     ticket         = [];
@@ -405,7 +397,6 @@ defineScene({
     _gridEl        = null;
     _gridWrap      = null;
     _snakeStrip    = null;
-    _snakeTabBar   = null;
     _expandedItems = {};
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
@@ -415,7 +406,19 @@ defineScene({
 
     // Show persistent order summary panel (left column)
     // Lock _renderItems so stale check-overview updates can't write into our ticket list
-    OrderSummary.show({ title: 'ITEM RECAP', checkId: params.recallCheckNumber || '', customerName: '', items: [], subtotal: 0, tax: 0, cardTotal: 0, cashPrice: 0, onNameTap: _handleNameTap });
+    OrderSummary.show({
+      title: 'ITEM RECAP',
+      checkId: params.recallCheckNumber || '',
+      customerName: '',
+      items: [],
+      subtotal: 0,
+      tax: 0,
+      cardTotal: 0,
+      cashPrice: 0,
+      onNameTap: _handleNameTap,
+      showBack: true,
+      onBack: handleClose
+    });
     OrderSummary.lockItemRender();
 
     var mainArea = buildMain(body, params);
@@ -441,7 +444,7 @@ defineScene({
       if (hasUnsent && !isSending) handleSaveOnly();
     } catch (_) { /* best-effort only */ }
 
-    if (_header) { _header.destroy(); _header = null; }
+    // if (_header) { _header.destroy(); _header = null; }
     OrderSummary.unlockItemRender();
     OrderSummary.hide();
     if (_modPanel) { _modPanel.destroy(); _modPanel = null; }
@@ -462,7 +465,6 @@ defineScene({
     _gridEl        = null;
     _gridWrap      = null;
     _snakeStrip    = null;
-    _snakeTabBar   = null;
     _expandedItems = {};
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
@@ -488,7 +490,7 @@ defineScene({
           'border:3px solid ' + T.green + ';',
           'border-radius:' + T.chamferCard + 'px;',
           'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-          'padding:20px 24px;min-width:500px;max-width:620px;',
+          'padding:8px 24px 24px;min-width:500px;max-width:620px;',
           'max-height:520px;overflow:hidden;',
         ].join('');
 
@@ -517,42 +519,23 @@ defineScene({
         // the main bottom-bar buttons, toggles between T.card (unselected)
         // and T.green (selected).
         function makeSeatTile(sn) {
-          var btn = document.createElement('button');
-          btn.type = 'button';
-          btn.textContent = 'S' + sn;
-          btn.style.cssText = [
-            'border:none;',
-            'border-radius:' + T.pillRadius + ';',
-            'width:64px;height:48px;',
-            'font-family:' + T.fh + ';',
-            'font-size:' + T.fsB3 + ';',
-            'font-weight:' + T.fwBold + ';',
-            'letter-spacing:0.1em;',
-            'text-transform:uppercase;',
-            'cursor:pointer;',
-            'user-select:none;',
-            'touch-action:manipulation;',
-            'outline:none;',
-            'transition:' + T.transitionFast + ';',
-            'flex-shrink:0;',
-          ].join('');
-          function paint(selected) {
-            var bg = selected ? T.green : T.card;
-            var sh = selected ? T.greenDk : T.well;
-            var tc = selected ? T.well : T.text;
-            btn.style.background = bg;
-            btn.style.color = tc;
-            btn.style.boxShadow = '0 4px 0 ' + sh;
-          }
-          paint(false);
-          // Press feedback without overriding the selected-state palette.
-          btn.addEventListener('pointerdown', function() {
-            btn.style.transform = 'translateY(1px)';
+          var btn = buildPillButton({
+            label: 'S' + sn,
+            color: T.card,
+            darkBg: T.well,
+            fontSize: T.fsB3,
           });
-          var rel = function() { btn.style.transform = ''; };
-          btn.addEventListener('pointerup', rel);
-          btn.addEventListener('pointerleave', rel);
-          btn.addEventListener('pointercancel', rel);
+          btn.style.width = '64px';
+          btn.style.height = '48px';
+          btn.style.flexShrink = '0';
+          
+          function paint(selected) {
+            btn.setColor(
+              selected ? T.green : T.card,
+              selected ? T.greenDk : T.well,
+              selected ? T.well : T.text
+            );
+          }
           return { btn: btn, paint: paint };
         }
 
@@ -621,16 +604,19 @@ defineScene({
         var bottomBar = document.createElement('div');
         bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
 
-        var cancelBtn = buildButton('CANCEL', {
-          fill: T.card, color: T.text, fontSize: T.fsB2, height: 48,
-          onTap: function() { params.onCancel(); },
+        var cancelBtn = buildPillButton({
+          label: 'CANCEL',
+          color: T.card, fontSize: T.fsB2,
+          onClick: function() { params.onCancel(); },
         });
         cancelBtn.style.flex = '1';
+        cancelBtn.style.height = '48px';
         bottomBar.appendChild(cancelBtn);
 
-        var selectAllBtn = buildButton('SELECT ALL', {
-          fill: T.card, color: T.gold, fontSize: T.fsB2, height: 48,
-          onTap: function() {
+        var selectAllBtn = buildPillButton({
+          label: 'SELECT ALL',
+          color: T.card, fontSize: T.fsB2,
+          onClick: function() {
             for (var ai = 0; ai < items.length; ai++) {
               assignments[items[ai].id] = seatNumbers.slice();
             }
@@ -638,12 +624,15 @@ defineScene({
             updateConfirmState();
           },
         });
+        selectAllBtn.style.color = T.gold;
         selectAllBtn.style.flex = '1';
+        selectAllBtn.style.height = '48px';
         bottomBar.appendChild(selectAllBtn);
 
-        var confirmBtn = buildButton('CONFIRM', {
-          fill: T.card, color: T.dimText, fontSize: T.fsB2, height: 48,
-          onTap: function() {
+        var confirmBtn = buildPillButton({
+          label: 'CONFIRM',
+          color: T.card, fontSize: T.fsB2,
+          onClick: function() {
             // Only proceed if all items have at least one seat
             var ready = true;
             for (var k = 0; k < items.length; k++) {
@@ -653,7 +642,9 @@ defineScene({
             params.onConfirm(assignments);
           },
         });
+        confirmBtn.style.color = T.dimText;
         confirmBtn.style.flex = '1';
+        confirmBtn.style.height = '48px';
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
         container.appendChild(panel);
@@ -758,31 +749,35 @@ function toggleFavorite(itemId) {
 // ── SNAKE NAV TILE BUILDERS ────────────────────────
 
 function _tileStyle(color, filled, extraCss) {
+  var bg = filled ? color : T.card;
+  var darkBg = darkenHex(bg, 0.2);
   return [
     'display:flex;flex-direction:column;justify-content:center;align-items:center;',
-    'min-height:95px;padding:12px 10px;box-sizing:border-box;',
-    'border-radius:10px;cursor:pointer;user-select:none;',
+    'min-height:120px;padding:12px 10px;box-sizing:border-box;',
+    'border-radius:' + T.chamferCard + 'px;cursor:pointer;user-select:none;',
     'pointer-events:auto;touch-action:manipulation;',
-    'border-left:4px solid ' + color + ';',
-    'background:' + (filled ? color : T.card) + ';',
-    'box-shadow:0 4px 0 ' + (filled ? hexToRgba(color, 0.55) : '#111') + ';',
+    'border-left:' + T.accentBarW + ' solid ' + color + ';',
+    'background:' + bg + ';',
+    'box-shadow:0 6px 0 ' + darkBg + ';',
     'transition:transform 80ms,box-shadow 80ms;',
     extraCss || '',
   ].join('');
 }
 
 function _applyPress(el, color, filled) {
+  var bg = filled ? color : T.card;
+  var darkBg = darkenHex(bg, 0.2);
   el.addEventListener('pointerdown', function() {
-    el.style.transform = 'translateY(3px)';
+    el.style.transform = 'translateY(1px)';
     el.style.boxShadow = 'none';
   });
   el.addEventListener('pointerup', function() {
     el.style.transform = '';
-    el.style.boxShadow = '0 4px 0 ' + (filled ? hexToRgba(color, 0.55) : '#111');
+    el.style.boxShadow = '0 6px 0 ' + darkBg;
   });
   el.addEventListener('pointerleave', function() {
     el.style.transform = '';
-    el.style.boxShadow = '0 4px 0 ' + (filled ? hexToRgba(color, 0.55) : '#111');
+    el.style.boxShadow = '0 6px 0 ' + darkBg;
   });
 }
 
@@ -799,7 +794,7 @@ function buildCrumbTile(crumb, isLast) {
   }
 
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:22px;color:' + (isLast ? '#fff' : 'rgba(0,0,0,0.75)') + ';letter-spacing:1px;text-align:center;pointer-events:none;';
+  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB1 + ';color:' + (isLast ? '#fff' : 'rgba(0,0,0,0.75)') + ';letter-spacing:1px;text-align:center;pointer-events:none;';
   lbl.textContent = crumb.label;
   el.appendChild(lbl);
 
@@ -812,7 +807,7 @@ function buildCatTile(cat) {
   el.style.cssText = _tileStyle(cat.color, false);
 
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:24px;color:' + cat.color + ';letter-spacing:1.5px;text-align:center;pointer-events:none;';
+  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB1 + ';color:' + cat.color + ';letter-spacing:1.5px;text-align:center;pointer-events:none;';
   lbl.textContent = cat.label;
   el.appendChild(lbl);
 
@@ -825,7 +820,7 @@ function buildSubcatTile(sub, color) {
   el.style.cssText = _tileStyle(color, false, 'opacity:0.9;');
 
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:21px;color:' + color + ';letter-spacing:1px;text-align:center;pointer-events:none;';
+  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB1 + ';color:' + color + ';letter-spacing:1px;text-align:center;pointer-events:none;';
   lbl.textContent = sub.label;
   el.appendChild(lbl);
 
@@ -871,6 +866,16 @@ function renderSnakeGrid() {
 
   // ── PERSONAL TAB ──
   if (view === 'personal') {
+    var pCrumb = { id: 'personal', label: 'PERSONAL', color: T.green };
+    var pTile = buildCrumbTile(pCrumb, true);
+    pTile.addEventListener('pointerup', function() {
+      snakeState.view   = 'cats';
+      snakeState.crumbs = [];
+      snakeState.catId  = null;
+      snakeState.subId  = null;
+      renderSnakeGrid();
+    });
+    _gridEl.appendChild(pTile);
     _renderPersonalGrid();
     return;
   }
@@ -886,6 +891,18 @@ function renderSnakeGrid() {
 
   // ── Category home ──
   if (view === 'cats') {
+    // Inject PERSONAL as first tile
+    var personalCat = { id: 'personal', label: 'PERSONAL', color: T.green };
+    var pTile = buildCatTile(personalCat);
+    pTile.addEventListener('pointerup', function() {
+      snakeState.view = 'personal';
+      snakeState.crumbs = [];
+      snakeState.catId = null;
+      snakeState.subId = null;
+      renderSnakeGrid();
+    });
+    _gridEl.appendChild(pTile);
+
     MENU_DATA.forEach(function(cat) {
       var tile = buildCatTile(cat);
       tile.addEventListener('pointerup', function() { _selectCat(cat); });
@@ -1008,7 +1025,6 @@ function _selectCat(cat) {
   snakeState.subId  = null;
   snakeState.view   = hasSubs ? 'subcats' : 'items';
   renderSnakeGrid();
-  _refreshSnakeTabBar();
 }
 
 function _selectSubcat(sub, menuCat) {
@@ -1032,24 +1048,6 @@ function _crumbTap(idx) {
     snakeState.view   = 'subcats';
   }
   renderSnakeGrid();
-  _refreshSnakeTabBar();
-}
-
-function _refreshSnakeTabBar() {
-  if (!_snakeTabBar) return;
-  var homeBtn = _snakeTabBar._homeBtn;
-  var personalBtn = _snakeTabBar._personalBtn;
-  if (!homeBtn || !personalBtn) return;
-
-  var isPersonal = snakeState.view === 'personal';
-  var isDrilling = !isPersonal && snakeState.view !== 'cats';
-
-  // Personal tab active state
-  personalBtn.style.borderBottom = isPersonal ? '2px solid ' + T.gold : '2px solid transparent';
-  personalBtn.style.color = isPersonal ? T.gold : T.mutedText;
-
-  // Show/hide ⌂ CATEGORIES back button
-  homeBtn.style.display = isDrilling ? '' : 'none';
 }
 
 // ── MAIN AREA ─────────────────────────────────────
@@ -1057,57 +1055,6 @@ function buildMain(parentEl, params) {
   var main = document.createElement('div');
   main.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
   _mainArea = main;
-
-  // ── Tab bar (★ PERSONAL + ⌂ CATEGORIES) ──────────
-  var tabBar = document.createElement('div');
-  tabBar.style.cssText = [
-    'display:flex;background:' + T.well + ';',
-    'border-bottom:1px solid rgba(255,255,255,0.06);',
-    'padding:4px 8px 0;flex-shrink:0;',
-  ].join('');
-  _snakeTabBar = tabBar;
-
-  var personalBtn = document.createElement('div');
-  personalBtn.style.cssText = [
-    'padding:6px 14px;cursor:pointer;user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'font-family:' + T.fh + ';font-weight:700;font-size:11px;letter-spacing:1px;',
-    'color:' + T.mutedText + ';border-bottom:2px solid transparent;',
-    'transition:color 120ms;',
-  ].join('');
-  personalBtn.textContent = '★ PERSONAL';
-  personalBtn.addEventListener('pointerup', function() {
-    snakeState.view   = 'personal';
-    snakeState.crumbs = [];
-    snakeState.catId  = null;
-    snakeState.subId  = null;
-    renderSnakeGrid();
-    _refreshSnakeTabBar();
-  });
-  tabBar._personalBtn = personalBtn;
-
-  var homeBtn = document.createElement('div');
-  homeBtn.style.cssText = [
-    'padding:6px 12px;cursor:pointer;user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'font-family:' + T.fh + ';font-size:11px;letter-spacing:1px;',
-    'color:' + T.mutedText + ';border-bottom:2px solid transparent;',
-    'display:none;opacity:0.6;',
-  ].join('');
-  homeBtn.textContent = '⌂ CATEGORIES';
-  homeBtn.addEventListener('pointerup', function() {
-    snakeState.view   = 'cats';
-    snakeState.crumbs = [];
-    snakeState.catId  = null;
-    snakeState.subId  = null;
-    renderSnakeGrid();
-    _refreshSnakeTabBar();
-  });
-  tabBar._homeBtn = homeBtn;
-
-  tabBar.appendChild(personalBtn);
-  tabBar.appendChild(homeBtn);
-  main.appendChild(tabBar);
 
   // ── Collapsible grid wrapper ──────────────────────
   var gridWrap = document.createElement('div');
@@ -1117,7 +1064,7 @@ function buildMain(parentEl, params) {
   var grid = document.createElement('div');
   grid.style.cssText = [
     'display:grid;',
-    'grid-template-columns:repeat(auto-fill,minmax(120px,1fr));',
+    'grid-template-columns:repeat(auto-fill,minmax(140px,1fr));',
     'gap:6px;padding:10px;',
   ].join('');
   _gridEl = grid;
@@ -1139,7 +1086,7 @@ function buildMain(parentEl, params) {
 
   // ── Bottom action bar ─────────────────────────────
   _bottomBar = document.createElement('div');
-  _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:4px;';
+  _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:auto;';
   main.appendChild(_bottomBar);
 
   // Load menu data + favorites, then render grid
@@ -1305,11 +1252,19 @@ function rebuildBottomBar() {
 
   // ── Active modifier session: CANCEL / UNDO / DONE ──
   if (modifierSession.active) {
-    var cancelBtn = buildButton('CANCEL', { fill: T.card, color: T.verm, fontSize: '26px', fontFamily: T.fh,
-      onTap: function() { cancelSession(); },
+    _bottomBar.style.display = 'grid';
+    var cancelBtn = buildPillButton({
+      label: 'CANCEL',
+      color: T.card, fontSize: '26px',
+      onClick: function() { cancelSession(); },
     });
-    var undoBtn = buildButton('UNDO', { fill: T.card, color: T.gold, fontSize: '26px', fontFamily: T.fh,
-      onTap: function() {
+    cancelBtn.style.color = T.verm;
+    cancelBtn.style.fontFamily = T.fh;
+
+    var undoBtn = buildPillButton({
+      label: 'UNDO',
+      color: T.card, fontSize: '26px',
+      onClick: function() {
         if (modifierSession.appliedMods.length === 0) return;
         var last = modifierSession.appliedMods.pop();
         last.modRefs.forEach(function(ref) {
@@ -1320,9 +1275,17 @@ function rebuildBottomBar() {
         refreshModifierPanel();
       },
     });
-    var doneBtn = buildButton('DONE', { fill: T.card, color: T.greenWarm, fontSize: '26px', fontFamily: T.fh,
-      onTap: function() { finalizeSession(); },
+    undoBtn.style.color = T.gold;
+    undoBtn.style.fontFamily = T.fh;
+
+    var doneBtn = buildPillButton({
+      label: 'DONE',
+      color: T.card, fontSize: '26px',
+      onClick: function() { finalizeSession(); },
     });
+    doneBtn.style.color = T.greenWarm;
+    doneBtn.style.fontFamily = T.fh;
+
     cancelBtn.style.gridColumn = '1 / 2'; cancelBtn.style.gridRow = '1'; cancelBtn.style.height = '100%';
     undoBtn.style.gridColumn = '2 / 4'; undoBtn.style.gridRow = '1'; undoBtn.style.height = '100%';
     doneBtn.style.gridColumn = '4 / 6'; doneBtn.style.gridRow = '1'; doneBtn.style.height = '100%';
@@ -1335,16 +1298,29 @@ function rebuildBottomBar() {
   // ── Items selected (not in session): DESELECT / MODIFY / SEND ──
   var hasSelected = modifierSession.selectedItems.length > 0;
   if (hasSelected) {
-    var deselectBtn = buildButton('DESELECT', { fill: T.card, color: T.dimText, fontSize: '22px', fontFamily: T.fh,
-      onTap: function() { clearModifierSelection(); },
+    _bottomBar.style.display = 'grid';
+    var deselectBtn = buildPillButton({
+      label: 'DESELECT',
+      color: T.card, fontSize: '22px',
+      onClick: function() { clearModifierSelection(); },
     });
-    var modifyBtn = buildButton('MODIFY', { fill: T.card, color: T.gold, fontSize: '26px', fontFamily: T.fh,
-      onTap: function() { openModifierSession(); },
+    deselectBtn.style.color = T.dimText;
+    deselectBtn.style.fontFamily = T.fh;
+
+    var modifyBtn = buildPillButton({
+      label: 'MODIFY',
+      color: T.card, fontSize: '26px',
+      onClick: function() { openModifierSession(); },
     });
+    modifyBtn.style.color = T.gold;
+    modifyBtn.style.fontFamily = T.fh;
     modifyBtn.style.outline = '3px solid ' + T.gold;
     modifyBtn.style.outlineOffset = '-1px';
-    var sendBtn2 = buildButton('SEND', { fill: T.card, color: T.green, fontSize: '26px', fontFamily: T.fh,
-      onTap: function() {
+
+    var sendBtn2 = buildPillButton({
+      label: 'SEND',
+      color: T.card, fontSize: '26px',
+      onClick: function() {
         clearModifierSelection();
         if (!hasUnsent) { handleClose(); return; }
         assignSeatsIfNeeded(async function() {
@@ -1353,6 +1329,9 @@ function rebuildBottomBar() {
         });
       },
     });
+    sendBtn2.style.color = T.green;
+    sendBtn2.style.fontFamily = T.fh;
+
     deselectBtn.style.gridColumn = '1 / 2'; deselectBtn.style.gridRow = '1'; deselectBtn.style.height = '100%';
     modifyBtn.style.gridColumn = '2 / 4'; modifyBtn.style.gridRow = '1'; modifyBtn.style.height = '100%';
     sendBtn2.style.gridColumn = '4 / 6'; sendBtn2.style.gridRow = '1'; sendBtn2.style.height = '100%';
@@ -1363,33 +1342,22 @@ function rebuildBottomBar() {
   }
 
   // ── Default: SAVE / SEND ──
-  // Switch bottomBar to flex centered layout
-  _bottomBar.style.cssText = 'display:flex;gap:12px;justify-content:center;align-items:center;flex-shrink:0;margin-top:6px;padding:0 4px;';
+  _bottomBar.style.display = 'grid';
 
-  // While a POST chain is in flight both buttons go inert + relabel so the
-  // operator sees the tap registered. Without this, the isSending guard
-  // swallows taps silently and users re-tap repeatedly.
   var saveLabel = isSending ? 'SAVING…' : 'SAVE';
   var sendLabel = isSending ? 'SENDING…' : 'SEND';
   var buttonsActive = hasUnsent && !isSending;
-  var saveColor = buttonsActive ? T.greenWarm : T.mutedText;
-  var sendColor = buttonsActive ? T.gold      : T.mutedText;
 
-  var finalizeBtn = buildPillButton({ label: saveLabel, color: saveColor, textColor: T.well });
-  finalizeBtn.style.flex        = '1';
-  finalizeBtn.style.height      = '58px';
-  finalizeBtn.style.fontSize    = '22px';
-  finalizeBtn.style.touchAction = 'manipulation';
-  finalizeBtn.style.pointerEvents = isSending ? 'none' : 'auto';
-  finalizeBtn.style.opacity       = isSending ? '0.55' : '1';
-  finalizeBtn.addEventListener('pointerenter', function() {
-    if (buttonsActive) finalizeBtn.style.filter = 'brightness(1.15)';
+  var finalizeBtn = buildPillButton({
+    label: saveLabel,
+    variant: 'goGreen',
+    disabled: !buttonsActive,
+    fontSize: '22px',
   });
-  finalizeBtn.addEventListener('pointerleave', function() {
-    finalizeBtn.style.filter = '';
-  });
+  finalizeBtn.style.gridColumn = '4';
+  finalizeBtn.style.height = '60px';
+  finalizeBtn.style.margin = '4px';
   finalizeBtn.addEventListener('pointerup', function() {
-    finalizeBtn.style.filter = '';
     if (isSending) return;
     if (!hasUnsent) { handleClose(); return; }
     assignSeatsIfNeeded(async function() {
@@ -1398,21 +1366,16 @@ function rebuildBottomBar() {
     });
   });
 
-  var sendBtn = buildPillButton({ label: sendLabel, color: sendColor, textColor: T.well });
-  sendBtn.style.flex        = '1';
-  sendBtn.style.height      = '58px';
-  sendBtn.style.fontSize    = '22px';
-  sendBtn.style.touchAction = 'manipulation';
-  sendBtn.style.pointerEvents = isSending ? 'none' : 'auto';
-  sendBtn.style.opacity       = isSending ? '0.55' : '1';
-  sendBtn.addEventListener('pointerenter', function() {
-    if (buttonsActive) sendBtn.style.filter = 'brightness(1.15)';
+  var sendBtn = buildPillButton({
+    label: sendLabel,
+    variant: 'mint',
+    disabled: !buttonsActive,
+    fontSize: '22px',
   });
-  sendBtn.addEventListener('pointerleave', function() {
-    sendBtn.style.filter = '';
-  });
+  sendBtn.style.gridColumn = '5';
+  sendBtn.style.height = '60px';
+  sendBtn.style.margin = '4px';
   sendBtn.addEventListener('pointerup', function() {
-    sendBtn.style.filter = '';
     if (isSending) return;
     if (!hasUnsent) { handleClose(); return; }
     assignSeatsIfNeeded(async function() {
@@ -1477,13 +1440,12 @@ function buildPlacementBar() {
   var plText  = MOD_COLORS.pizza.textColor;
   var dimText = T.mutedText;
 
-  var styled = buildStyledButton(T.card);
-  styled.wrap.style.flexShrink = '0';
-  styled.inner.style.height = '38px';
-  styled.inner.style.display = 'flex';
-  styled.inner.style.alignItems = 'stretch';
-  styled.inner.style.justifyContent = 'stretch';
-  styled.inner.style.padding = '0';
+  var container = document.createElement('div');
+  container.style.cssText = [
+    'flex-shrink:0;height:44px;display:flex;align-items:stretch;',
+    'background:' + T.well + ';border-radius:' + T.pillRadius + ';',
+    'overflow:hidden;border:1px solid ' + T.border + ';',
+  ].join('');
 
   var segments = {};
   var order = ['left', 'whole', 'right'];
@@ -1495,20 +1457,20 @@ function buildPlacementBar() {
 
     if (i > 0) {
       var div = document.createElement('div');
-      div.style.cssText = 'width:2px;background:' + T.border + ';flex-shrink:0;align-self:stretch;';
-      styled.inner.appendChild(div);
+      div.style.cssText = 'width:1px;background:' + T.border + ';flex-shrink:0;align-self:stretch;';
+      container.appendChild(div);
     }
 
     var seg = document.createElement('div');
     seg.style.cssText = [
       'flex:' + (id === 'whole' ? '2' : '1') + ';',
       'display:flex;align-items:center;justify-content:center;',
-      'font-family:' + T.fh + ';font-size:22px;',
+      'font-family:' + T.fh + ';font-size:13px;font-weight:700;letter-spacing:1px;',
       'background:' + (isActive ? plColor : 'transparent') + ';',
       'color:' + (isActive ? plText : dimText) + ';',
-      'cursor:pointer;transition:background 80ms,color 80ms;',
+      'cursor:pointer;transition:all 120ms;',
     ].join('');
-    seg.textContent = pl.label;
+    seg.textContent = pl.label.toUpperCase();
 
     seg.addEventListener('pointerup', function(e) {
       e.stopPropagation();
@@ -1516,11 +1478,11 @@ function buildPlacementBar() {
       refreshPlacementBar();
     });
 
-    styled.inner.appendChild(seg);
+    container.appendChild(seg);
     segments[id] = seg;
   });
 
-  return { wrap: styled.wrap, segments: segments, plColor: plColor, plText: plText, dimText: dimText };
+  return { wrap: container, segments: segments, plColor: plColor, plText: plText, dimText: dimText };
 }
 
 function refreshPlacementBar() {
@@ -1542,9 +1504,12 @@ function buildModifierPanel(catIds) {
   panel.style.cssText = [
     'flex:1;display:flex;flex-direction:column;gap:4px;',
     'background:' + T.card + ';',
-    'border:7px solid ' + T.gold + ';',
-    'padding:6px;overflow:hidden;',
-    'margin-bottom:0;padding-bottom:' + OVERLAP + 'px;',
+    'border-left:' + T.accentBarW + ' solid ' + T.gold + ';',
+    'border-radius:' + T.chamferCard + 'px;',
+    'box-shadow:0 4px 16px rgba(0,0,0,0.28);',
+    'padding:10px;overflow:hidden;',
+    'margin:0 10px 10px;',
+    'padding-bottom:' + OVERLAP + 'px;',
   ].join('');
 
   // ── PREFIX ROW ──
@@ -1558,20 +1523,20 @@ function buildModifierPanel(catIds) {
     var pColor = pDef.color || T.card;
     var pTextColor = pDef.textColor || T.text;
 
-    var btn = buildButton(p.label, {
-      fill: isActive ? pColor : T.card,
-      color: isActive ? pTextColor : pColor,
+    var btn = buildPillButton({
+      label: p.label,
+      color: isActive ? pColor : T.card,
       fontSize: '26px',
-      fontFamily: T.fh,
+      onClick: function(e) {
+        // e.stopPropagation(); // buildPillButton uses addEventListener internally or wraps it
+        modifierSession.activePrefix = (modifierSession.activePrefix === p.id) ? null : p.id;
+        refreshModifierPanel();
+      }
     });
+    btn.style.color = isActive ? pTextColor : pColor;
+    btn.style.fontFamily = T.fh;
     btn.style.flex = '1';
     btn.style.height = '44px';
-
-    btn.addEventListener('pointerup', function(e) {
-      e.stopPropagation();
-      modifierSession.activePrefix = (modifierSession.activePrefix === p.id) ? null : p.id;
-      refreshModifierPanel();
-    });
 
     panel._prefixBtns[p.id] = btn;
     prefixRow.appendChild(btn);
@@ -1822,12 +1787,17 @@ function renderAppliedModsLog(panel) {
 
   // RESET button to clear all applied modifiers
   if (modifierSession.appliedMods.length > 0) {
-    var resetPair = buildStyledButton({ label: 'RESET ALL', variant: 'vermillion', size: 'sm', onClick: function() {
-      cancelSession();
-    } });
-    resetPair.wrap.style.marginTop = '6px';
-    resetPair.wrap.style.width = '100%';
-    log.appendChild(resetPair.wrap);
+    var resetBtn = buildPillButton({
+      label: 'RESET ALL',
+      color: T.verm,
+      fontSize: '11px',
+      onClick: function() {
+        cancelSession();
+      }
+    });
+    resetBtn.style.marginTop = '6px';
+    resetBtn.style.width = '100%';
+    log.appendChild(resetBtn);
   }
 
   log.scrollTop = log.scrollHeight;
@@ -1950,7 +1920,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
   // ── Scrollable content ──────────────────────────────
   var scroll = document.createElement('div');
-  scroll.style.cssText = 'flex:1;overflow-y:auto;padding:44px 14px 10px;';
+  scroll.style.cssText = 'flex:1;overflow-y:auto;padding:8px 14px 10px;';
   ov.appendChild(scroll);
 
   // ── DONE button ─────────────────────────────────────
@@ -1982,20 +1952,21 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   }
 
   function pill(label, bg, active, onClick) {
-    var el = document.createElement('div');
-    el.style.cssText = [
-      'display:inline-flex;align-items:center;gap:5px;',
-      'padding:8px 16px;border-radius:999px;cursor:pointer;',
-      'user-select:none;font-family:' + T.fh + ';font-weight:700;font-size:13px;',
-      'color:#fff;',
-      'background:' + (active ? bg : T.card) + ';',
-      'border:1px solid ' + (active ? bg : 'rgba(255,255,255,0.1)') + ';',
-      'box-shadow:' + (active ? '0 4px 0 ' + hexToRgba(bg, 0.5) : '0 3px 0 #111') + ';',
-      'transition:all 100ms;',
-      'pointer-events:auto;touch-action:manipulation;white-space:nowrap;',
-    ].join('');
-    el.textContent = label;
-    if (onClick) el.addEventListener('pointerup', onClick);
+    var el = buildPillButton({
+      label: label,
+      color: active ? bg : T.card,
+      darkBg: true,
+      onClick: onClick
+    });
+    Object.assign(el.style, {
+      padding:      '8px 16px',
+      fontSize:     '13px',
+      height:       'auto', // let padding define it or set an explicit height if needed
+      border:       '1px solid ' + (active ? bg : 'rgba(255,255,255,0.1)'),
+      boxShadow:    (active ? '0 4px 0 ' + hexToRgba(bg, 0.5) : '0 3px 0 #111'),
+      whiteSpace:   'nowrap',
+      width:        'auto',
+    });
     return el;
   }
 
@@ -2465,6 +2436,7 @@ function commitModifierPanelItem(originalItem, activeItem, modConfig) {
 
   var ticketItem = {
     id:        ++ticketSeq,
+    menu_item_id: originalItem.id,
     idemKey:   _idemKey(),
     name:      activeItem.itemLabel,
     unitPrice: activeItem.basePrice,
@@ -2616,7 +2588,6 @@ function handleItemSelect(item) {
       // Return to category home
       snakeState = { view:'cats', crumbs:[], catId:null, subId:null };
       renderSnakeGrid();
-      _refreshSnakeTabBar();
       renderTicket();
       rebuildBottomBar();
       return;
@@ -2633,6 +2604,7 @@ function handleItemSelect(item) {
     }
     var ticketItem = {
       id:        ++ticketSeq,
+      menu_item_id: item.id,
       idemKey:   _idemKey(),
       name:      'Combo ' + name,
       unitPrice: price,
@@ -2656,6 +2628,7 @@ function handleItemSelect(item) {
     showPizzaBuilderOverlay(item, PIZZA_BUILDER_DATA).then(function(result) {
       ticket.push({
         id:        ++ticketSeq,
+        menu_item_id: item.id,
         idemKey:   _idemKey(),
         name:      result.name,
         unitPrice: result.unitPrice,
@@ -2760,6 +2733,7 @@ function addToTicket(item) {
     }
     ticket.push({
       id:        ++ticketSeq,
+      menu_item_id: item.id,
       idemKey:   _idemKey(),
       name:      name,
       unitPrice: price,
@@ -2849,7 +2823,7 @@ function _appendModPreview(list) {
   var pc = document.createElement('div');
   pc.setAttribute('data-mod-preview', '1');
   pc.style.cssText = 'flex-shrink:0;margin-bottom:2px;background:' + T.well + ';border-left:3px solid ' + T.gold + ';';
-  _applyCardBevel(pc);
+  // _applyCardBevel(pc);
 
   var pRow = document.createElement('div');
   pRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;';
@@ -3045,7 +3019,7 @@ function _renderTicketGroup(list, displayTicket) {
         'flex-shrink:0;cursor:pointer;touch-action:manipulation;',
         'background:' + T.bg + ';',
       ].join('');
-      _applyCardBevel(gc);
+      // _applyCardBevel(gc);
 
       var gRow = document.createElement('div');
       gRow.style.cssText = 'display:flex;align-items:center;padding:3px 6px 3px 8px;';
@@ -3160,7 +3134,7 @@ function _renderTicketGroup(list, displayTicket) {
           'flex-shrink:0;touch-action:manipulation;pointer-events:auto;',
           'background:' + bg + ';margin-bottom:2px;',
         ].join('');
-        _applyCardBevel(ic);
+        // _applyCardBevel(ic);
 
         // ── Header row ─────────────────────────────
         var iRow = document.createElement('div');
@@ -3169,13 +3143,21 @@ function _renderTicketGroup(list, displayTicket) {
           'pointer-events:auto;touch-action:manipulation;cursor:pointer;',
         ].join('');
 
-        // Expand chevron — only if has mods
+        // Info chevron — only if has mods
         if (hasMods) {
           var chevron = document.createElement('span');
-          chevron.style.cssText = 'font-size:10px;color:' + T.mutedText + ';margin-right:4px;flex-shrink:0;pointer-events:none;transition:transform 150ms;';
-          chevron.textContent = isExpanded ? '▾' : '▸';
+          chevron.style.cssText = [
+            'width:24px;height:24px;display:flex;align-items:center;justify-content:center;',
+            'font-size:16px;color:' + T.mutedText + ';margin-right:4px;flex-shrink:0;',
+            'pointer-events:auto;touch-action:manipulation;cursor:pointer;',
+            'background:' + T.well + ';border-radius:4px;',
+          ].join('');
+          chevron.textContent = '›';
+          chevron.addEventListener('pointerup', function(e) {
+            e.stopPropagation();
+            SceneManager.openTransactional('item-detail', { item: inst });
+          });
           iRow.appendChild(chevron);
-          ic._chevron = chevron;
         }
 
         var iName = document.createElement('span');
@@ -3221,55 +3203,17 @@ function _renderTicketGroup(list, displayTicket) {
 
         ic.appendChild(iRow);
 
-        // ── Mod rows — collapsed by default ──────────
-        if (hasMods && isExpanded) {
-          var wholeMods = [], leftMods = [], rightMods = [];
-          inst.mods.forEach(function(m) {
-            if (m.prefix === 'Left') leftMods.push(m);
-            else if (m.prefix === 'Right') rightMods.push(m);
-            else wholeMods.push(m);
-          });
-
-          if (wholeMods.length > 0) {
-            ic.appendChild(buildSeparator());
-            wholeMods.forEach(function(m) {
-              ic.appendChild(buildModRowSized(m.name, m.price, '13px', null));
-              if (m.children && m.children.length > 0) {
-                m.children.forEach(function(child) {
-                  var cr = buildModRowSized(child.name, child.price, '12px');
-                  cr.style.paddingLeft = '28px';
-                  cr.style.color = T.verm;
-                  cr.style.fontStyle = 'italic';
-                  ic.appendChild(cr);
-                });
-              }
-            });
-          }
-
-          if (leftMods.length > 0 || rightMods.length > 0) {
-            ic.appendChild(buildHalfTable(leftMods, rightMods, '13px', inst.sent ? null : inst));
-          }
-        }
-
-        // Collapsed mod count hint
-        if (hasMods && !isExpanded) {
+        // ── Mod hint row — never expanded inline ──────────
+        if (hasMods) {
           var modHint = document.createElement('div');
           modHint.style.cssText = 'padding:1px 8px 3px 22px;font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';pointer-events:none;';
           modHint.textContent = inst.mods.length + ' modifier' + (inst.mods.length > 1 ? 's' : '');
           ic.appendChild(modHint);
         }
 
-        // Tap header row → expand/collapse mods; toggle selection
+        // Tap header row → toggle selection
         iRow.addEventListener('pointerup', function(e) {
           if (modifierSession.active) return;
-          if (hasMods) {
-            // Toggle expand
-            if (_expandedItems[inst.id]) {
-              delete _expandedItems[inst.id];
-            } else {
-              _expandedItems[inst.id] = true;
-            }
-          }
           // Toggle selection
           var idx = modifierSession.selectedItems.indexOf(inst.id);
           if (idx !== -1) {
@@ -3296,7 +3240,7 @@ function _renderTicketGroup(list, displayTicket) {
       'background:' + T.bg + ';',
       'margin-bottom:2px;',
     ].join('');
-    _applyCardBevel(previewCard);
+    // _applyCardBevel(previewCard);
 
     // Item header row
     var pRow = document.createElement('div');
@@ -3468,11 +3412,30 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
     lText.textContent = leftMods[i] ? stripPlacementPrefix(leftMods[i].name) : '';
     cellL.appendChild(lText);
 
+    if (leftMods[i] && leftMods[i].priceDelta) {
+      var lp = leftMods[i].priceDelta;
+      var lpRow = buildDataRow('', (lp > 0 ? '+$' : '-$') + Math.abs(lp).toFixed(2), T.gold);
+      lpRow.style.flex = '1';
+      lpRow.style.border = 'none';
+      lpRow.style.padding = '0 0 0 8px';
+      cellL.appendChild(lpRow);
+    }
+
     var sep = document.createElement('div');
     sep.style.cssText = 'width:1px;align-self:stretch;background:' + T.greenDk + ';margin:0 4px;flex-shrink:0;';
 
     var cellR = document.createElement('div');
     cellR.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:flex-end;font-family:' + T.fb + ';font-size:' + fontSize + ';color:' + T.green + ';padding:0 4px;';
+
+    if (rightMods[i] && rightMods[i].priceDelta) {
+      var rp = rightMods[i].priceDelta;
+      var rpRow = buildDataRow('', (rp > 0 ? '+$' : '-$') + Math.abs(rp).toFixed(2), T.gold);
+      rpRow.style.flex = '1';
+      rpRow.style.border = 'none';
+      rpRow.style.padding = '0 8px 0 0';
+      cellR.appendChild(rpRow);
+    }
+
     var rText = document.createElement('span');
     rText.textContent = rightMods[i] ? stripPlacementPrefix(rightMods[i].name) : '';
     cellR.appendChild(rText);
@@ -3529,6 +3492,7 @@ function showQtyEditor(itemName, instances) {
         for (var i = 0; i < newQty - currentQty; i++) {
           ticket.push({
             id:        ++ticketSeq,
+            menu_item_id: template.menu_item_id,
             idemKey:   _idemKey(),
             name:      template.name,
             unitPrice: template.unitPrice,
@@ -3557,7 +3521,7 @@ function showQtyEditor(itemName, instances) {
 
 function _buildItemPayload(inst) {
   var payload = {
-    menu_item_id: inst.name.toLowerCase().replace(/\s+/g, '_'),
+    menu_item_id: inst.menu_item_id || inst.name.toLowerCase().replace(/\s+/g, '_'),
     name:         inst.name,
     price:        inst.unitPrice,
     quantity:     1,
@@ -3585,6 +3549,7 @@ function _buildItemPayload(inst) {
     });
   }
 
+  console.log('POST payload:', payload);
   return payload;
 }
 
@@ -3707,7 +3672,6 @@ async function handleSend() {
       if (!created || !created.order_id) throw new Error('Invalid order response — missing order_id');
       currentOrderId = created.order_id;   // use the backend-generated ID
       currentCheckNumber = created.check_number;
-      setSceneName(currentCheckNumber);
     }
 
     // Step 2 — post unsent instances (seat already assigned per-item)
@@ -3780,6 +3744,7 @@ function deepCopyTicket(src) {
   return src.map(function(inst) {
     return {
       id:        inst.id,
+      menu_item_id: inst.menu_item_id,
       idemKey:   inst.idemKey || _idemKey(),
       name:      inst.name,
       unitPrice: inst.unitPrice,
@@ -3830,7 +3795,9 @@ function recallFromBackend(orderId) {
       if (SceneManager.getActiveWorking() !== 'order-entry') return;
       currentOrderId = order.order_id;
       currentCheckNumber = order.check_number || null;
-      if (currentCheckNumber) setSceneName(currentCheckNumber);
+      if (currentCheckNumber) {
+        OrderSummary.update({ checkId: currentCheckNumber });
+      }
 
       // Convert backend items to frontend ticket format.
       // Backend Decimals serialize as JSON strings ("12.50"), so every
@@ -3846,6 +3813,7 @@ function recallFromBackend(orderId) {
         if (!Number.isFinite(unit)) unit = 0;
         return {
           id:        ticketSeq,
+          menu_item_id: item.menu_item_id,
           idemKey:   _idemKey(),
           name:      item.name,
           unitPrice: unit,
@@ -3856,7 +3824,7 @@ function recallFromBackend(orderId) {
             return {
               name:       m.name,
               price:      p,
-              charged:    m.charged != null ? m.charged : true,
+              charged:    (m.prefix !== 'NO') && p > 0,
               prefix:     m.prefix || null,
               half_price: m.half_price != null ? m.half_price : null,
             };

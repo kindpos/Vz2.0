@@ -7,14 +7,14 @@
 import { defineScene, SceneManager } from '../scene-manager.js';
 import { T }                          from '../tokens.js';
 import {
-  buildCard,
+  buildStaticCard,
+  buildNavCard,
+  buildActionCard,
   buildPillButton,
-  buildFloatButton,
   buildSectionLabel,
   hexToRgba,
   darkenHex,
 } from '../theme-manager.js';
-import { setHeaderUser, setSceneName, setHeaderLogout } from '../app.js';
 import {
   buildSalesOverview,
   buildStatCard,
@@ -95,22 +95,22 @@ function fetchAllData(state) {
 }
 
 // ── Check tile ────────────────────────────────────
-function buildCheckTile(order, isSelected, onClick) {
-  var tile = document.createElement('div');
-  tile.style.cssText = [
-    'width:110px;height:90px;flex-shrink:0;',
-    'background:' + (isSelected ? hexToRgba(T.green, 0.15) : T.well) + ';',
-    'border-left:4px solid ' + (isSelected ? T.green : T.border) + ';',
-    'border-radius:10px;',
-    'display:flex;flex-direction:column;justify-content:space-between;',
-    'padding:12px 14px;cursor:pointer;',
-    'box-shadow:' + (isSelected ? '0 0 16px ' + hexToRgba(T.green, 0.25) : 'none') + ';',
-    'transition:all 0.15s;',
-  ].join('');
+function buildCheckTile(order, onClick) {
+  var tile = buildActionCard({
+    accent: T.border,
+    onClick: onClick
+  });
+  tile.style.width          = '110px';
+  tile.style.height         = '90px';
+  tile.style.flexShrink     = '0';
+  tile.style.display        = 'flex';
+  tile.style.flexDirection  = 'column';
+  tile.style.justifyContent = 'space-between';
+  tile.style.padding        = '12px 14px';
 
   var idEl = document.createElement('div');
   idEl.textContent   = checkNum(order);
-  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + (isSelected ? T.green : T.text) + ';letter-spacing:0.06em;';
+  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.text + ';letter-spacing:0.06em;';
 
   var guestEl = document.createElement('div');
   var guests = order.seat_count || order.guest_count || order.covers || 1;
@@ -125,80 +125,31 @@ function buildCheckTile(order, isSelected, onClick) {
   tile.appendChild(idEl);
   tile.appendChild(guestEl);
   tile.appendChild(totalEl);
-  tile.addEventListener('pointerup', onClick);
   return tile;
 }
 
 function buildNewCheckTile(onClick) {
-  var tile = document.createElement('div');
-  tile.style.cssText = [
-    'width:110px;height:90px;flex-shrink:0;',
-    'border:1px dashed ' + hexToRgba(T.green, 0.5) + ';',
-    'border-radius:10px;',
-    'display:flex;align-items:center;justify-content:center;',
-    'cursor:pointer;transition:background 0.1s;',
-  ].join('');
+  var tile = buildActionCard({
+    accent: T.green,
+    onClick: onClick
+  });
+  tile.style.width          = '110px';
+  tile.style.height         = '90px';
+  tile.style.flexShrink     = '0';
+  tile.style.display        = 'flex';
+  tile.style.alignItems     = 'center';
+  tile.style.justifyContent = 'center';
+  tile.style.background     = 'transparent';
+  tile.style.border         = '1px dashed ' + hexToRgba(T.green, 0.5);
+
   var plus = document.createElement('span');
   plus.style.cssText = 'font-family:' + T.fh + ';font-size:32px;color:' + hexToRgba(T.green, 0.6) + ';pointer-events:none;';
   plus.textContent = '+';
   tile.appendChild(plus);
-  tile.addEventListener('pointerdown',  function() { tile.style.background = hexToRgba(T.green, 0.08); });
-  tile.addEventListener('pointerup',    function() { tile.style.background = 'transparent'; if (onClick) onClick(); });
-  tile.addEventListener('pointerleave', function() { tile.style.background = 'transparent'; });
+
   return tile;
 }
 
-// ── Check preview ─────────────────────────────────
-function buildPreview(orders) {
-  var wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
-  var combinedTotal = orders.reduce(function(s, o) {
-    return s + (o.total != null ? (o.total || 0) : (o.total_cents || 0) / 100);
-  }, 0);
-
-  // Header
-  var hdr = document.createElement('div');
-  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;padding-bottom:6px;border-bottom:1px solid ' + hexToRgba(T.border, 0.5) + ';margin-bottom:4px;';
-  var hLabel = document.createElement('div');
-  hLabel.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.green + ';letter-spacing:0.08em;';
-  hLabel.textContent   = orders.length > 1 ? orders.length + ' CHECKS' : checkNum(orders[0]);
-  var hTotal = document.createElement('div');
-  hTotal.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.gold + ';text-shadow:0 0 8px ' + hexToRgba(T.gold, 0.4) + ';';
-  hTotal.textContent   = fmt(combinedTotal);
-  hdr.appendChild(hLabel);
-  hdr.appendChild(hTotal);
-  wrap.appendChild(hdr);
-
-  orders.forEach(function(order, oi) {
-    if (orders.length > 1) {
-      var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.06em;margin-top:4px;';
-      sub.textContent   = checkNum(order);
-      wrap.appendChild(sub);
-    }
-    var items = order.items || [];
-    items.slice(0, 4).forEach(function(item) {
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ' + hexToRgba(T.border, 0.3) + ';';
-      var nm = document.createElement('span');
-      nm.style.cssText  = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';';
-      nm.textContent    = item.name || item.menu_item_name || 'Item';
-      var pr = document.createElement('span');
-      pr.style.cssText  = 'font-family:' + T.fb + ';font-size:11px;color:' + T.gold + ';';
-      pr.textContent    = fmt(item.price || (item.price_cents || 0) / 100);
-      row.appendChild(nm);
-      row.appendChild(pr);
-      wrap.appendChild(row);
-    });
-    if (items.length > 4) {
-      var more = document.createElement('div');
-      more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.5;padding-top:2px;';
-      more.textContent   = '+ ' + (items.length - 4) + ' more';
-      wrap.appendChild(more);
-    }
-  });
-  return wrap;
-}
 
 // ── Tip row ───────────────────────────────────────
 function buildTipRow(chk, onTap) {
@@ -261,7 +212,6 @@ defineScene({
     tableStats:  {},
     checkoutStatus: { openChecks: 0, unadjustedTips: 0 },
     tipoutRate:  0,
-    selectedIds: [],
     emp:         null,
     _refreshing: false,
     el:          null,
@@ -274,11 +224,6 @@ defineScene({
     state.emp = params.staff || params.emp || params || {};
     state.el  = container;
 
-    // ── Global header ─────────────────────────────
-    setHeaderUser(state.emp);
-    setSceneName('SERVER LANDING');
-    setHeaderLogout(true);
-
     // ── Root grid ──────────────────────────────────
     var root = document.createElement('div');
     root.style.cssText = [
@@ -287,7 +232,7 @@ defineScene({
       'display:grid;',
       'grid-template-columns:300px 1fr 1fr;',
       'grid-template-rows:1fr 250px;',
-      'gap:10px;padding:28px 10px 32px;',
+      'gap:10px;padding:8px 10px 32px;',
       'box-sizing:border-box;overflow:visible;',
       'font-family:' + T.fb + ';',
     ].join('');
@@ -300,63 +245,22 @@ defineScene({
     leftCol.style.cssText = 'grid-column:1;grid-row:1/3;display:flex;flex-direction:column;gap:10px;overflow:visible;';
     root.appendChild(leftCol);
 
-    // ── Check preview (collapses when nothing selected) ──
-    var previewSlide = document.createElement('div');
-    previewSlide.style.cssText = 'max-height:0;overflow:hidden;transition:max-height 0.25s ease;flex-shrink:0;';
-    leftCol.appendChild(previewSlide);
-
-    var prevResult = buildCard({ accent: T.green, padding: '12px 14px' });
-    previewSlide.appendChild(prevResult.wrap);
-
-    var prevLabel = buildSectionLabel('Check Preview');
-    prevLabel.style.marginBottom = '10px';
-    prevResult.card.appendChild(prevLabel);
-
-    var prevContent = document.createElement('div');
-    prevResult.card.appendChild(prevContent);
-
-    var optionsBtn = buildPillButton({ label: 'Options', color: T.gold, darkBg: T.goldDk });
-    optionsBtn.style.width      = '100%';
-    optionsBtn.style.marginTop  = '10px';
-    optionsBtn.style.display    = 'none';
-    prevResult.card.appendChild(optionsBtn);
-
-    var optionsGrid = document.createElement('div');
-    optionsGrid.style.cssText = 'display:none;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;';
-    ['Fire','Void','Split','Discount','Transfer','Print'].forEach(function(opt) {
-      var b = buildPillButton({
-        label:  opt,
-        color:  opt === 'Void' ? T.verm : T.border,
-        darkBg: opt === 'Void' ? T.vermDk : darkenHex(T.border, 0.3),
-      });
-      b.style.cssText += 'font-size:14px;padding:8px 10px;';
-      optionsGrid.appendChild(b);
-    });
-    prevResult.card.appendChild(optionsGrid);
-
-    var _optOpen = false;
-    optionsBtn.addEventListener('pointerup', function() {
-      _optOpen = !_optOpen;
-      optionsBtn.textContent    = _optOpen ? '✕ Close' : 'Options';
-      optionsGrid.style.display = _optOpen ? 'grid' : 'none';
-    });
-
     // ── Tip queue (always visible) ──
     var tipOuter = document.createElement('div');
     tipOuter.style.cssText = 'flex:1;position:relative;overflow:visible;display:flex;flex-direction:column;';
     leftCol.appendChild(tipOuter);
 
-    var tipResult = buildCard({ accent: T.green, flex: '1', padding: '0' });
-    tipResult.wrap.style.flex   = '1';
-    tipResult.card.style.display       = 'flex';
-    tipResult.card.style.flexDirection = 'column';
-    tipResult.card.style.overflow      = 'hidden';
-    tipResult.card.style.position      = 'relative';
-    tipOuter.appendChild(tipResult.wrap);
+    var tipResult = buildStaticCard({ accent: T.green });
+    tipResult.style.flex          = '1';
+    tipResult.style.display       = 'flex';
+    tipResult.style.flexDirection = 'column';
+    tipResult.style.overflow      = 'hidden';
+    tipResult.style.position      = 'relative';
+    tipOuter.appendChild(tipResult);
 
     // Tip accumulation sparkline background
     var tipSparkBg = buildTipSparkBg({ data: [0] });
-    tipResult.card.insertBefore(tipSparkBg.el, tipResult.card.firstChild);
+    tipResult.insertBefore(tipSparkBg.el, tipResult.firstChild);
 
     // Tips header
     var tipHdr = document.createElement('div');
@@ -366,7 +270,7 @@ defineScene({
     tipHdrRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;';
     var tipHdrLabel = buildSectionLabel('Tip Queue', T.text);
     var unadjBadge  = document.createElement('div');
-    unadjBadge.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.verm + ';letter-spacing:0.1em;display:none;';
+    unadjBadge.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.verm+ ';letter-spacing:0.1em;display:none;';
     tipHdrRow.appendChild(tipHdrLabel);
     tipHdrRow.appendChild(unadjBadge);
     tipHdr.appendChild(tipHdrRow);
@@ -375,56 +279,65 @@ defineScene({
     tipsTotal.style.cssText = 'font-family:' + T.fh + ';font-size:28px;font-weight:700;color:' + T.gold + ';text-shadow:0 0 14px ' + hexToRgba(T.gold, 0.4) + ';';
     tipsTotal.textContent   = '$0.00';
     tipHdr.appendChild(tipsTotal);
-    tipResult.card.appendChild(tipHdr);
+    tipResult.appendChild(tipHdr);
 
     // Scrollable tip rows
     var tipList = document.createElement('div');
     tipList.style.cssText = 'flex:1;overflow-y:auto;padding:6px 10px;display:flex;flex-direction:column;gap:2px;';
-    tipResult.card.appendChild(tipList);
+    tipResult.appendChild(tipList);
 
-    // Checkout float button
-    var checkoutBtn = buildFloatButton({ label: 'Checkout', color: T.green, darkBg: T.greenDk });
-    checkoutBtn.style.cssText += 'position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);';
-    tipOuter.appendChild(checkoutBtn);
+    // Checkout pill — inside tip card footer, no float positioning
+    var checkoutBtn = buildPillButton({ label: 'CHECKOUT', color: T.green, darkBg: T.greenDk });
+    checkoutBtn.style.marginTop = '10px';
+    checkoutBtn.style.width     = '100%';
+    tipResult.appendChild(checkoutBtn);
 
     // ─────────────────────────────────────────────
     //  CHECK GRID (cols 2-3, row 1)
     // ─────────────────────────────────────────────
-    var gridOuter = document.createElement('div');
-    gridOuter.style.cssText = 'grid-column:2/4;grid-row:1;position:relative;overflow:visible;';
-    root.appendChild(gridOuter);
-
-    var gridResult = buildCard({ accent: T.green, padding: '14px 14px 14px', flex: '1' });
-    gridResult.wrap.style.height           = '100%';
-    gridResult.card.style.height           = '100%';
-    gridResult.card.style.boxSizing        = 'border-box';
-    gridResult.card.style.overflow         = 'visible';
-    gridOuter.appendChild(gridResult.wrap);
+    var gridResult = buildStaticCard({ accent: T.green });
+    gridResult.style.gridColumn = '2/4';
+    gridResult.style.gridRow    = '1';
+    gridResult.style.height     = '100%';
+    gridResult.style.display    = 'flex';
+    gridResult.style.flexDirection = 'column';
+    root.appendChild(gridResult);
 
     var tileGrid = document.createElement('div');
-    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;height:100%;';
-    gridResult.card.appendChild(tileGrid);
+    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;height:100%;flex:1;overflow-y:auto;';
+    gridResult.appendChild(tileGrid);
 
-    // OPEN/CLOSED/VOID float toggle
-    var filterBtn = buildFloatButton({ label: 'OPEN', color: T.green, darkBg: T.greenDk });
-    filterBtn.style.cssText += 'position:absolute;top:-18px;right:16px;';
-    gridOuter.appendChild(filterBtn);
+    // Filter footer row — inside grid card, no float positioning
+    var gridFooter = document.createElement('div');
+    gridFooter.style.cssText = [
+      'display:flex;justify-content:flex-end;',
+      'padding:8px 0 0;flex-shrink:0;',
+      'border-top:1px solid rgba(255,255,255,0.06);',
+    ].join('');
+    gridResult.appendChild(gridFooter);
+
+    // OPEN/CLOSED/VOID pill filter — sits in the grid card footer
+    var filterBtn = buildPillButton({ label: 'OPEN', color: T.green, darkBg: T.greenDk, fontSize: T.fsB3 });
+    filterBtn.style.pointerEvents = 'auto';
+    gridFooter.appendChild(filterBtn);
 
     // ─────────────────────────────────────────────
     //  TABLE STATS (col 2, row 2)
     // ─────────────────────────────────────────────
-    var statsResult = buildCard({ accent: T.elec, padding: '12px 14px' });
-    statsResult.wrap.style.gridColumn = '2';
-    statsResult.wrap.style.gridRow    = '2';
-    root.appendChild(statsResult.wrap);
+    var statsResult = buildStaticCard({ accent: T.elec });
+    statsResult.style.gridColumn = '2';
+    statsResult.style.gridRow    = '2';
+    statsResult.style.display    = 'flex';
+    statsResult.style.flexDirection = 'column';
+    root.appendChild(statsResult);
 
     var statsLbl = buildSectionLabel('Table Stats', T.text);
     statsLbl.style.marginBottom = '8px'; statsLbl.style.fontSize = '16px';
-    statsResult.card.appendChild(statsLbl);
+    statsResult.appendChild(statsLbl);
 
     var statsGrid = document.createElement('div');
     statsGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;min-height:0;overflow:hidden;';
-    statsResult.card.appendChild(statsGrid);
+    statsResult.appendChild(statsGrid);
 
     var scGuests = buildStatCard({ title: 'Guests',  value: '0',     color: T.text, delta: '' });
     var scAvg    = buildStatCard({ title: 'Chk Avg', value: '$0.00', color: T.gold, delta: '' });
@@ -435,21 +348,23 @@ defineScene({
     // ─────────────────────────────────────────────
     //  SALES OVERVIEW (col 3, row 2)
     // ─────────────────────────────────────────────
-    var salesResult = buildCard({ accent: T.gold, padding: '12px 14px' });
-    salesResult.wrap.style.gridColumn = '3';
-    salesResult.wrap.style.gridRow    = '2';
-    root.appendChild(salesResult.wrap);
+    var salesResult = buildStaticCard({ accent: T.gold });
+    salesResult.style.gridColumn = '3';
+    salesResult.style.gridRow    = '2';
+    salesResult.style.display    = 'flex';
+    salesResult.style.flexDirection = 'column';
+    root.appendChild(salesResult);
 
     var salesLbl = buildSectionLabel('Sales Overview', T.text);
     salesLbl.style.marginBottom = '6px'; salesLbl.style.fontSize = '16px';
-    salesResult.card.appendChild(salesLbl);
+    salesResult.appendChild(salesLbl);
 
     var srvSalesOverview = buildSalesOverview({ netSales: 0, cash: 0, card: 0 });
-    salesResult.card.appendChild(srvSalesOverview.wrap);
+    salesResult.appendChild(srvSalesOverview.wrap);
 
     // Store refs for live updates
     state._refs = {
-      tileGrid, previewSlide, prevContent, optionsBtn, optionsGrid,
+      tileGrid,
       tipList, tipsTotal, unadjBadge, tipResult, checkoutBtn, filterBtn,
       tipSparkBg, scGuests, scAvg, scTables, scTurn, srvSalesOverview,
     };
@@ -463,14 +378,13 @@ defineScene({
       r.tileGrid.innerHTML = '';
       var visible = ordersByFilter(state.allOrders, state.filter);
       visible.forEach(function(order) {
-        var id = order.order_id;
-        var selected = state.selectedIds.indexOf(id) !== -1;
-        r.tileGrid.appendChild(buildCheckTile(order, selected, function() {
-          var idx = state.selectedIds.indexOf(id);
-          if (idx === -1) state.selectedIds.push(id);
-          else state.selectedIds.splice(idx, 1);
-          renderTiles();
-          renderPreview();
+        r.tileGrid.appendChild(buildCheckTile(order, function() {
+          SceneManager.mountWorking('check-overview', {
+            checkId:       order.order_id,
+            returnLanding: 'server-landing',
+            employeeId:    state.emp ? state.emp.id   : null,
+            employeeName:  state.emp ? state.emp.name : null,
+          });
         }));
       });
       if (state.filter === 'OPEN') {
@@ -491,26 +405,6 @@ defineScene({
       }
     }
 
-    function renderPreview() {
-      var r = state._refs;
-      r.prevContent.innerHTML = '';
-      _optOpen = false;
-      r.optionsGrid.style.display = 'none';
-      r.optionsBtn.textContent    = 'Options';
-
-      if (state.selectedIds.length === 0) {
-        r.previewSlide.style.maxHeight = '0';
-        r.optionsBtn.style.display     = 'none';
-        return;
-      }
-
-      var selected = state.allOrders.filter(function(o) {
-        return state.selectedIds.indexOf(o.order_id) !== -1;
-      });
-      if (selected.length > 0) r.prevContent.appendChild(buildPreview(selected));
-      r.optionsBtn.style.display     = 'block';
-      r.previewSlide.style.maxHeight = '320px';
-    }
 
     function renderTips() {
       var r     = state._refs;
@@ -542,7 +436,7 @@ defineScene({
       });
 
       r.tipsTotal.textContent = fmt(total);
-      r.tipResult.card.style.borderLeft = '4px solid ' + (unadj > 0 ? T.verm : T.green);
+      r.tipResult.setAccent(unadj > 0 ? T.verm : T.green);
       r.unadjBadge.textContent   = unadj > 0 ? (unadj + ' unadj') : '';
       r.unadjBadge.style.display = unadj > 0 ? 'block' : 'none';
 
@@ -597,12 +491,10 @@ defineScene({
     // ─────────────────────────────────────────────
     filterBtn.addEventListener('pointerup', function() {
       state.filter      = FILTER_CYCLE[state.filter];
-      state.selectedIds = [];
       var fc = FILTER_COLORS[state.filter];
       state._refs.filterBtn.textContent = state.filter;
       state._refs.filterBtn.setColor(fc.color, fc.dark);
       renderTiles();
-      renderPreview();
     });
 
     // ─────────────────────────────────────────────
@@ -628,7 +520,6 @@ defineScene({
         state._refreshing = false;
         if (!state.el) return;
         renderTiles();
-        renderPreview();
         renderTips();
         renderStats();
       }).catch(function() { state._refreshing = false; });

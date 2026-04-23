@@ -105,6 +105,7 @@ export function buildStyledButton(arg) {
     color:    color,
     darkBg:   dark,
     fontSize: size,
+    shape:    'chamfer',
     onClick:  onClick,
   });
   btn.style.color         = textColor;

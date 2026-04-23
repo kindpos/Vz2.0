@@ -14,9 +14,10 @@
 import { T } from './tokens.js';
 import { buildButton } from './components.js';
 import { SceneManager } from './scene-manager.js';
-import { hexToRgba } from './theme-manager.js';
+import { hexToRgba, buildCard, buildSectionLabel, buildDataRow, buildDivider } from './theme-manager.js';
 
 var _el = null;          // #order-summary container
+var _card = null;        // buildCard return
 var _itemScroll = null;  // scrollable item list
 var _summaryBox = null;  // subtotal/discount/tax box
 var _pricesBox = null;   // card/cash prices box
@@ -27,6 +28,8 @@ var _nameEl = null;      // customer name display (tappable)
 var _onNameTap = null;   // callback when check ID / name is tapped
 var _splitBtn = null;    // split button ref
 var _headerTitle = null; // header title element ref
+var _backBtn = null;     // back button ref
+var _onBack = null;      // callback for back button
 var _colHead = null;     // column header container ref
 var _summaryRowEl = null;// summary row (contains summary box + split btn)
 var _mode = 'order';     // 'order' or 'checkout'
@@ -62,52 +65,62 @@ function _build() {
   if (!el) return;
   el.innerHTML = '';
 
-  el.style.cssText += [
-    'display:none;',
-    'flex-direction:column;',
-    'background:' + T.card + ';',
-    'border-left:' + T.accentBarW + ' solid ' + T.green + ';',
-    'border-radius:' + T.chamferCard + 'px;',
-    'box-shadow:0 4px 16px rgba(0,0,0,0.28);',
-    'overflow:hidden;',
-  ].join('');
+  // Use buildCard for the main container
+  var cardRes = buildCard({
+    accent: T.green,
+    padding: '0'
+  });
+  _card = cardRes.card;
+  _card.style.display = 'flex';
+  _card.style.flexDirection = 'column';
+  _card.style.height = '100%';
+  var wrap = cardRes.wrap;
+  wrap.style.display = 'none';
+  wrap.style.flexDirection = 'column';
+  wrap.style.height = '100%';
+  el.appendChild(wrap);
 
   // ── Header ──
   var header = document.createElement('div');
   header.style.cssText = [
     'padding:10px 14px;flex-shrink:0;',
-    'background:' + T.green + ';',
-    'display:flex;justify-content:space-between;align-items:center;',
+    'display:flex;align-items:center;',
     'gap:8px;',
+    'border-bottom:1px solid ' + hexToRgba(T.green, 0.3),
+    'margin-left:' + T.accentBarW, // Align with content to the right of the accent bar
   ].join('');
 
-  _headerTitle = document.createElement('div');
-  _headerTitle.style.cssText = [
-    'font-family:' + T.fh + ';',
-    'font-size:' + T.fsB3 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.well + ';',
-    'letter-spacing:0.12em;',
-    'text-transform:uppercase;',
+  _backBtn = document.createElement('div');
+  _backBtn.style.cssText = [
+    'display:none;flex-shrink:0;',
+    'font-family:' + T.fh + ';font-size:28px;',
+    'font-weight:' + T.fwBold + ';color:' + T.green + ';',
+    'cursor:pointer;user-select:none;',
+    'padding:0 4px 0 0;line-height:1;margin-top:-2px;',
   ].join('');
-  _headerTitle.textContent = 'ORDER RECAP';
+  _backBtn.textContent = '‹';
+  _backBtn.addEventListener('pointerup', function() {
+    if (_onBack) _onBack();
+  });
+  header.appendChild(_backBtn);
+
+  _headerTitle = buildSectionLabel('ITEM RECAP', T.green);
+  _headerTitle.style.flex = '1';
 
   var checkWrap = document.createElement('div');
   checkWrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;cursor:pointer;min-width:0;touch-action:manipulation;';
-  _checkIdEl = document.createElement('div');
-  _checkIdEl.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + T.fsB3 + ';',
-    'color:' + T.well + ';',
-    'white-space:nowrap;',
-  ].join('');
+  
+  _checkIdEl = buildSectionLabel('', hexToRgba(T.text, 0.55));
+  _checkIdEl.style.fontSize = T.fsB4;
+  _checkIdEl.style.letterSpacing = '0.1em';
+
   _nameEl = document.createElement('div');
   _nameEl.style.cssText = [
     'font-family:' + T.fb + ';',
     'font-size:' + T.fsB4 + ';',
-    'color:' + T.well + ';',
-    'opacity:0.75;',
+    'color:' + hexToRgba(T.text, 0.4) + ';',
     'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;',
+    'text-transform:uppercase;',
   ].join('');
   checkWrap.appendChild(_checkIdEl);
   checkWrap.appendChild(_nameEl);
@@ -116,34 +129,28 @@ function _build() {
   });
   header.appendChild(_headerTitle);
   header.appendChild(checkWrap);
-  el.appendChild(header);
+  _card.appendChild(header);
 
   // ── Column headers ──
   _colHead = document.createElement('div');
   _colHead.style.cssText = [
     'display:grid;grid-template-columns:1fr 40px 68px;align-items:center;',
     'padding:6px 12px;',
-    'font-family:' + T.fh + ';',
-    'font-size:' + T.fsB4 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.text + ';',
-    'opacity:0.7;',
-    'letter-spacing:0.12em;',
-    'border-bottom:1px solid ' + T.border + ';',
     'flex-shrink:0;',
+    'margin-left:' + T.accentBarW,
   ].join('');
-  var hdrItem = document.createElement('span');
-  hdrItem.textContent = 'ITEM';
-  var hdrQty = document.createElement('span');
-  hdrQty.textContent = 'QTY';
-  hdrQty.style.cssText = 'text-align:right;';
-  var hdrPrice = document.createElement('span');
-  hdrPrice.textContent = 'PRICE';
-  hdrPrice.style.cssText = 'text-align:right;';
+
+  var hdrItem = buildSectionLabel('ITEM', hexToRgba(T.text, 0.55));
+  var hdrQty = buildSectionLabel('QTY', hexToRgba(T.text, 0.55));
+  hdrQty.style.textAlign = 'right';
+  var hdrPrice = buildSectionLabel('PRICE', hexToRgba(T.text, 0.55));
+  hdrPrice.style.textAlign = 'right';
+
   _colHead.appendChild(hdrItem);
   _colHead.appendChild(hdrQty);
   _colHead.appendChild(hdrPrice);
-  el.appendChild(_colHead);
+  _card.appendChild(_colHead);
+  _card.appendChild(buildDivider('0 0 0 ' + T.accentBarW));
 
   // ── Scrollable items ──
   _itemScroll = document.createElement('div');
@@ -153,16 +160,19 @@ function _build() {
     'padding:4px 10px;',
     'scrollbar-width:none;-ms-overflow-style:none;',
     'display:flex;flex-direction:column;gap:4px;',
+    'margin-left:' + T.accentBarW,
   ].join('');
   // Kill the scrollbar on webkit
   _injectScrollStyle();
-  el.appendChild(_itemScroll);
+  _card.appendChild(_itemScroll);
 
   // ── Bottom: [Summary | Split] row ──
   _summaryRowEl = document.createElement('div');
   _summaryRowEl.style.cssText = [
     'flex-shrink:0;display:flex;gap:6px;',
     'padding:6px 8px;',
+    'margin-left:' + T.accentBarW,
+    'flex-shrink:0;',
   ].join('');
 
   _summaryBox = document.createElement('div');
@@ -171,15 +181,17 @@ function _build() {
   _summaryRowEl.appendChild(_summaryBox);
 
   _splitBtn = null;
-  el.appendChild(_summaryRowEl);
+  _card.appendChild(_summaryRowEl);
 
   // ── Prices box ──
   _pricesBox = document.createElement('div');
   _pricesBox.style.cssText = [
     'flex-shrink:0;padding:8px 12px;margin:0 8px 8px;',
+    'margin-left:calc(' + T.accentBarW + ' + 8px)',
+    'flex-shrink:0;',
   ].join('');
   _applyWellStyle(_pricesBox);
-  el.appendChild(_pricesBox);
+  _card.appendChild(_pricesBox);
 }
 
 var _scrollStyleInjected = false;
@@ -244,22 +256,11 @@ function _halfCell(mod) {
 }
 
 function _summaryRow(label, value, color, bold) {
-  var row = document.createElement('div');
-  row.style.cssText = [
-    'display:flex;justify-content:space-between;padding:2px 0;',
-    'font-family:' + T.fb + ';',
-    'font-size:' + T.fsB2 + ';',
-    bold ? 'font-weight:' + T.fwBold + ';' : '',
-  ].join('');
-  var l = document.createElement('span');
-  l.style.color = T.text;
-  l.textContent = label;
-  var v = document.createElement('span');
-  v.style.color = color || T.gold;
-  v.textContent = value;
-  v.setAttribute('data-val', '1');
-  row.appendChild(l);
-  row.appendChild(v);
+  var row = buildDataRow(label, value, color || T.gold);
+  if (bold) {
+    var val = row.querySelector('span:last-child');
+    if (val) val.style.fontWeight = T.fwBold;
+  }
   return row;
 }
 
@@ -273,23 +274,40 @@ function _renderItems(items) {
     if (item.seatHeader) {
       var hdr = document.createElement('div');
       hdr.style.cssText = [
-        'display:flex;justify-content:space-between;align-items:center;',
-        'padding:6px 4px 4px;margin-top:6px;',
-        'font-family:' + T.fh + ';',
-        'font-size:' + T.fsB3 + ';',
-        'font-weight:' + T.fwBold + ';',
-        'color:' + T.green + ';',
-        'letter-spacing:0.14em;',
-        'border-bottom:2px solid ' + T.green + ';',
+        'display:flex;align-items:center;gap:10px;',
+        'padding:8px 10px;margin:8px 0 4px;',
         'cursor:pointer;user-select:none;touch-action:manipulation;',
+        'background:' + T.card + ';',
+        'border-radius:6px;',
+        'border-bottom:1px dashed ' + hexToRgba(T.green, 0.35) + ';',
       ].join('');
-      var hdrLabel = document.createElement('span');
-      hdrLabel.textContent = item.seatId;
-      var hdrTotal = document.createElement('span');
-      hdrTotal.style.color = T.gold;
-      hdrTotal.textContent = '$' + (item.seatTotal || 0).toFixed(2);
-      hdr.appendChild(hdrLabel);
-      hdr.appendChild(hdrTotal);
+
+      var seatNum = document.createElement('div');
+      seatNum.style.cssText = [
+        'font-family:' + T.fh + ';font-size:32px;font-weight:' + T.fwBold + ';',
+        'color:' + T.green + ';line-height:1;min-width:36px;',
+      ].join('');
+      // Extract number from "SEAT 1" or similar
+      var numOnly = (item.seatId || '').replace(/\D/g, '');
+      seatNum.textContent = numOnly || '?';
+
+      var meta = document.createElement('div');
+      meta.style.cssText = 'display:flex;flex-direction:column;gap:2px;flex:1;';
+
+      var label = buildSectionLabel('SEAT', hexToRgba(T.text, 0.35));
+      label.style.fontSize = '9px';
+      label.style.letterSpacing = '0.15em';
+
+      var total = document.createElement('div');
+      total.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';';
+      total.textContent = '$' + (item.seatTotal || 0).toFixed(2);
+
+      meta.appendChild(label);
+      meta.appendChild(total);
+
+      hdr.appendChild(seatNum);
+      hdr.appendChild(meta);
+
       if (_onSeatHeaderTap && item.seatIdx != null) {
         (function(idx) {
           hdr.addEventListener('pointerup', function() {
@@ -306,37 +324,62 @@ function _renderItems(items) {
 
     // ── Item header row ──
     var isSel = !!item.selected;
-    var row = document.createElement('div');
-    row.style.cssText = [
-      'display:grid;grid-template-columns:1fr 40px 68px;align-items:center;',
-      'padding:4px 10px 2px;',
-      'font-family:' + T.fb + ';',
-      'font-size:' + T.fsB2 + ';',
-      'color:' + (isSel ? T.well : T.text) + ';',
-      isSel ? 'background:' + T.gold + ';border-radius:6px;' : '',
-      'border-bottom:1px solid ' + hexToRgba(T.border, 0.4) + ';',
-      isCollapsible ? 'cursor:pointer;user-select:none;touch-action:manipulation;' : '',
-    ].join('');
-    var name = document.createElement('span');
-    name.textContent = (item.sent ? '\u2713 ' : '') + item.name;
-    name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;';
-    var qtyEl = document.createElement('span');
-    qtyEl.style.cssText = 'text-align:right;color:' + (isSel ? T.well : T.text) + ';';
-    qtyEl.textContent = String(item.qty || 1);
-    var priceEl = document.createElement('span');
-    priceEl.style.cssText = 'text-align:right;color:' + (isSel ? T.well : T.gold) + ';';
-    priceEl.textContent = '$' + ((item.unitPrice || 0) * (item.qty || 1)).toFixed(2);
-    row.appendChild(name);
-    row.appendChild(qtyEl);
-    row.appendChild(priceEl);
+    var row = buildDataRow('', '', isSel ? T.well : T.gold);
+    row.style.padding = '4px 10px 2px';
+    row.style.borderBottom = '1px solid ' + hexToRgba(T.border, 0.4);
+    if (isSel) {
+      row.style.background = T.gold;
+      row.style.borderRadius = '6px';
+    }
+    if (isCollapsible) {
+      row.style.cursor = 'pointer';
+      row.style.userSelect = 'none';
+      row.style.touchAction = 'manipulation';
+    }
 
-    // Collapse arrow only in collapsible mode
+    // Customize the label part
+    var lblContainer = row.querySelector('span:first-child');
+    lblContainer.innerHTML = '';
+    lblContainer.style.display = 'flex';
+    lblContainer.style.alignItems = 'center';
+    lblContainer.style.gap = '4px';
+    lblContainer.style.color = isSel ? T.well : T.text;
+    lblContainer.style.flex = '1';
+    lblContainer.style.minWidth = '0';
+
+    if (item.sent) {
+      var check = document.createElement('span');
+      check.textContent = '\u2713 ';
+      check.style.color = T.greenWarm;
+      lblContainer.appendChild(check);
+    }
+
+    var qtyPrefix = document.createElement('span');
+    qtyPrefix.textContent = (item.qty || 1) + '×';
+    qtyPrefix.style.color = isSel ? T.well : hexToRgba(T.text, 0.55);
+    qtyPrefix.style.fontSize = T.fsB3;
+    lblContainer.appendChild(qtyPrefix);
+
+    var nameSpan = document.createElement('span');
+    nameSpan.textContent = item.name;
+    nameSpan.style.overflow = 'hidden';
+    nameSpan.style.textOverflow = 'ellipsis';
+    nameSpan.style.whiteSpace = 'nowrap';
+    lblContainer.appendChild(nameSpan);
+
+    // Set the price
+    row.setValue('$' + ((item.unitPrice || 0) * (item.qty || 1)).toFixed(2));
+
+    // Info chevron only in collapsible mode
     var arrow = null;
-    var isExpanded = !!_expandedItems[itemIndex];
     if (isCollapsible && hasMods) {
       arrow = document.createElement('span');
-      arrow.style.cssText = 'flex-shrink:0;margin-left:4px;font-size:10px;color:' + _muted() + ';';
-      arrow.textContent = isExpanded ? '\u25B2' : '\u25BC';
+      arrow.style.cssText = 'flex-shrink:0;margin-left:4px;font-size:14px;color:' + _muted() + ';cursor:pointer;';
+      arrow.textContent = '›';
+      arrow.addEventListener('pointerup', function(e) {
+        e.stopPropagation();
+        SceneManager.openTransactional('item-detail', { item: item });
+      });
       row.appendChild(arrow);
     }
 
@@ -351,122 +394,33 @@ function _renderItems(items) {
       })(itemIndex);
     }
 
-    if (!hasMods) return;
-
-    // ── Modifier detail container ──
-    var modDetail = document.createElement('div');
-    if (isCollapsible && !isExpanded) modDetail.style.display = 'none';
-
-    // Partition into whole / left / right
-    var wholeMods = [];
-    var leftMods = [];
-    var rightMods = [];
-    for (var m = 0; m < mods.length; m++) {
-      if (mods[m].prefix === 'Left') leftMods.push(mods[m]);
-      else if (mods[m].prefix === 'Right') rightMods.push(mods[m]);
-      else wholeMods.push(mods[m]);
-    }
-
-    // Whole mods + children
-    for (var w = 0; w < wholeMods.length; w++) {
-      modDetail.appendChild(_modRow(wholeMods[w]));
-      if (wholeMods[w].children && wholeMods[w].children.length > 0) {
-        for (var c = 0; c < wholeMods[w].children.length; c++) {
-          var childRow = _modRow(wholeMods[w].children[c]);
-          childRow.style.paddingLeft = '20px';
-          childRow.style.color = T.verm;
-          childRow.style.fontStyle = 'italic';
-          modDetail.appendChild(childRow);
-        }
-      }
-    }
-
-    // 1st/2nd table (half-and-half mods, e.g. pizza)
-    if (leftMods.length > 0 || rightMods.length > 0) {
-      var halfTable = document.createElement('div');
-      halfTable.style.cssText = 'padding:2px 0 2px 10px;';
-
-      var hdrRow = document.createElement('div');
-      hdrRow.style.cssText = [
-        'display:flex;',
-        'border-bottom:1px solid ' + _muted() + ';',
-        'margin-bottom:1px;',
-        'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-        'font-weight:' + T.fwBold + ';',
-        'color:' + T.green + ';',
-      ].join('');
-      var hdrL = document.createElement('div');
-      hdrL.style.cssText = 'flex:1;text-align:center;';
-      hdrL.textContent = '1ST';
-      var hdrSep = document.createElement('div');
-      hdrSep.style.cssText = 'width:1px;background:' + _muted() + ';margin:0 3px;';
-      var hdrR = document.createElement('div');
-      hdrR.style.cssText = 'flex:1;text-align:center;';
-      hdrR.textContent = '2ND';
-      hdrRow.appendChild(hdrL);
-      hdrRow.appendChild(hdrSep);
-      hdrRow.appendChild(hdrR);
-      halfTable.appendChild(hdrRow);
-
-      var maxRows = Math.max(leftMods.length, rightMods.length);
-      for (var r = 0; r < maxRows; r++) {
-        var tr = document.createElement('div');
-        tr.style.cssText = 'display:flex;font-family:' + T.fb + ';line-height:1.3;';
-        var tdL = _halfCell(leftMods[r]);
-        var tdSep2 = document.createElement('div');
-        tdSep2.style.cssText = 'width:1px;background:' + _muted() + ';margin:0 3px;flex-shrink:0;';
-        var tdR = _halfCell(rightMods[r]);
-        tr.appendChild(tdL);
-        tr.appendChild(tdSep2);
-        tr.appendChild(tdR);
-        halfTable.appendChild(tr);
-      }
-
-      modDetail.appendChild(halfTable);
-    }
-
-    _itemScroll.appendChild(modDetail);
-
-    // Toggle expand/collapse on tap (item selection handled above for all items)
-    if (isCollapsible && hasMods) {
-      (function(detail, arrowEl, idx) {
-        row.addEventListener('pointerup', function() {
-          if (detail && arrowEl) {
-            var isOpen = detail.style.display !== 'none';
-            detail.style.display = isOpen ? 'none' : '';
-            arrowEl.textContent = isOpen ? '\u25BC' : '\u25B2';
-            if (isOpen) delete _expandedItems[idx];
-            else _expandedItems[idx] = true;
-          }
-        });
-      })(modDetail, arrow, itemIndex);
-    }
+    // ── Modifier detail container — always hidden in order-summary, use overlay ──
   });
 }
 
 function _renderSummary(params) {
   if (!_summaryBox) return;
   _summaryBox.innerHTML = '';
-  _summaryBox.appendChild(_summaryRow('Subtotal:', '$' + (params.subtotal || 0).toFixed(2), T.gold));
+  _summaryBox.appendChild(buildDataRow('Subtotal', '$' + (params.subtotal || 0).toFixed(2), T.gold));
   if (params.discount && params.discount > 0) {
-    _summaryBox.appendChild(_summaryRow('Discount:', '$' + params.discount.toFixed(2), T.gold));
+    _summaryBox.appendChild(buildDataRow('Discount', '$' + params.discount.toFixed(2), T.gold));
   }
-  _summaryBox.appendChild(_summaryRow('Tax:', '$' + (params.tax || 0).toFixed(2), T.gold));
+  _summaryBox.appendChild(buildDataRow('Tax', '$' + (params.tax || 0).toFixed(2), T.gold));
   _applyWellStyle(_summaryBox);
 }
 
 function _renderPrices(params) {
   if (!_pricesBox) return;
   _pricesBox.innerHTML = '';
-  _pricesBox.appendChild(_summaryRow('Card Price:', '$' + (params.cardTotal || 0).toFixed(2), T.elec, true));
-  _pricesBox.appendChild(_summaryRow('Cash Price:', '$' + (params.cashPrice || 0).toFixed(2), T.gold, true));
+  _pricesBox.appendChild(buildDataRow('CARD PRICE', '$' + (params.cardTotal || 0).toFixed(2), T.elec));
+  _pricesBox.appendChild(buildDataRow('CASH PRICE', '$' + (params.cashPrice || 0).toFixed(2), T.greenWarm));
 
   // Dynamic split-progress rows (hidden until partial payment)
-  _paidRow = _summaryRow('Paid:', '$0.00', T.elec);
+  _paidRow = buildDataRow('Paid', '$0.00', T.elec);
   _paidRow.style.display = 'none';
   _pricesBox.appendChild(_paidRow);
 
-  _remainRow = _summaryRow('Remaining:', '$' + (params.cardTotal || 0).toFixed(2), T.elec);
+  _remainRow = buildDataRow('Remaining', '$' + (params.cardTotal || 0).toFixed(2), T.elec);
   _remainRow.style.display = 'none';
   _pricesBox.appendChild(_remainRow);
 
@@ -488,15 +442,19 @@ function _configureForMode(mode) {
   } else {
     if (_headerTitle) _headerTitle.textContent = _customTitle || 'ORDER RECAP';
     if (_colHead) {
-      _colHead.style.display = '';
+      _colHead.style.display = 'grid';
       _colHead.style.gridTemplateColumns = '1fr 40px 68px';
       _colHead.innerHTML = '';
-      ['ITEM', 'QTY', 'PRICE'].forEach(function(t, i) {
-        var c = document.createElement('div');
-        c.textContent = t;
-        if (i > 0) c.style.textAlign = 'right';
-        _colHead.appendChild(c);
-      });
+
+      var hdrItem = buildSectionLabel('ITEM', hexToRgba(T.text, 0.55));
+      var hdrQty = buildSectionLabel('QTY', hexToRgba(T.text, 0.55));
+      hdrQty.style.textAlign = 'right';
+      var hdrPrice = buildSectionLabel('PRICE', hexToRgba(T.text, 0.55));
+      hdrPrice.style.textAlign = 'right';
+
+      _colHead.appendChild(hdrItem);
+      _colHead.appendChild(hdrQty);
+      _colHead.appendChild(hdrPrice);
     }
     if (_splitBtn) _splitBtn.style.display = '';
     if (_summaryRowEl) _summaryRowEl.style.padding = '6px 8px';
@@ -511,22 +469,16 @@ function _renderCheckoutBreakdown(params) {
   for (var s = 0; s < sections.length; s++) {
     var sec = sections[s];
 
-    var hdr = document.createElement('div');
-    hdr.style.cssText = [
-      'font-family:' + T.fh + ';',
-      'font-size:' + T.fsB2 + ';',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.text + ';',
-      'letter-spacing:0.08em;',
-      'padding:6px 0 2px;',
-      s > 0 ? 'border-top:1px solid ' + T.border + ';margin-top:4px;' : '',
-    ].join('');
-    hdr.textContent = sec.title;
+    var hdr = buildSectionLabel(sec.title, T.text);
+    hdr.style.padding = '6px 0 2px';
+    if (s > 0) {
+      _itemScroll.appendChild(buildDivider('4px 0'));
+    }
     _itemScroll.appendChild(hdr);
 
     var rows = sec.rows || [];
     for (var r = 0; r < rows.length; r++) {
-      _itemScroll.appendChild(_summaryRow(rows[r].label, rows[r].value, T.gold));
+      _itemScroll.appendChild(buildDataRow(rows[r].label, rows[r].value, T.gold));
     }
   }
 }
@@ -534,8 +486,8 @@ function _renderCheckoutBreakdown(params) {
 function _renderCheckoutSummary(params) {
   if (!_summaryBox) return;
   _summaryBox.innerHTML = '';
-  _summaryBox.appendChild(_summaryRow('Cash Sales:', '$' + (params.cashSales || 0).toFixed(2), T.gold));
-  _summaryBox.appendChild(_summaryRow('Tips:', '$' + (params.tips || 0).toFixed(2), T.gold));
+  _summaryBox.appendChild(buildDataRow('Cash Sales', '$' + (params.cashSales || 0).toFixed(2), T.gold));
+  _summaryBox.appendChild(buildDataRow('Tips', '$' + (params.tips || 0).toFixed(2), T.gold));
   _applyWellStyle(_summaryBox);
 }
 
@@ -543,27 +495,24 @@ function _renderCashExpected(params) {
   if (!_pricesBox) return;
   _pricesBox.innerHTML = '';
 
-  var label = document.createElement('div');
-  label.style.cssText = [
-    'font-family:' + T.fh + ';',
-    'font-size:' + T.fsB2 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.text + ';',
-    'letter-spacing:0.08em;',
-    'text-align:center;margin-bottom:2px;',
-  ].join('');
-  label.textContent = 'CASH EXPECTED';
+  var label = buildSectionLabel('CASH EXPECTED', T.text);
+  label.style.textAlign = 'center';
+  label.style.marginBottom = '2px';
   _pricesBox.appendChild(label);
 
-  var hero = document.createElement('div');
-  hero.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + T.fsH3 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.gold + ';',
-    'text-align:center;padding:4px 0;',
-  ].join('');
-  hero.textContent = '$' + (params.cashExpected || 0).toFixed(2);
+  var heroVal = '$' + (params.cashExpected || 0).toFixed(2);
+  var hero = buildDataRow('', heroVal, T.gold);
+  hero.style.borderBottom = 'none';
+  var lblPart = hero.querySelector('span:first-child');
+  if (lblPart) lblPart.style.display = 'none';
+  var valPart = hero.querySelector('span:last-child');
+  if (valPart) {
+    valPart.style.width = '100%';
+    valPart.style.textAlign = 'center';
+    valPart.style.fontSize = T.fsH3;
+    valPart.style.fontWeight = T.fwBold;
+    valPart.style.padding = '4px 0';
+  }
   hero.setAttribute('data-cash-expected', '1');
   _pricesBox.appendChild(hero);
 
@@ -585,6 +534,8 @@ export var OrderSummary = {
     _collapsible = !!params.collapsible;
     _onItemTap = params.onItemTap || null;
     _onSeatHeaderTap = params.onSeatHeaderTap || null;
+    _onBack = params.onBack || null;
+    if (_backBtn) _backBtn.style.display = params.showBack ? 'block' : 'none';
     _customTitle = params.title || null;
     _configureForMode('order');
 
@@ -598,16 +549,30 @@ export var OrderSummary = {
     _renderPrices(params);
 
     SceneManager.showSummary();
+
+    // Ensure wrap is visible (it might have been hidden in _build)
+    var wrap = el.querySelector('div');
+    if (wrap) wrap.style.display = 'flex';
   },
 
   hide: function() {
     _onNameTap = null;
     _onItemTap = null;
+    _onBack = null;
+    if (_backBtn) _backBtn.style.display = 'none';
     SceneManager.hideSummary();
   },
 
   lockItemRender: function() { _itemRenderLocked = true; },
   unlockItemRender: function() { _itemRenderLocked = false; },
+
+  showBack: function(show) {
+    if (_backBtn) _backBtn.style.display = show ? 'block' : 'none';
+  },
+
+  setOnBack: function(fn) {
+    _onBack = fn;
+  },
 
   update: function(params) {
     params = params || {};
@@ -650,6 +615,10 @@ export var OrderSummary = {
     _renderCashExpected(params);
 
     SceneManager.showSummary();
+
+    // Ensure wrap is visible
+    var wrap = el.querySelector('div');
+    if (wrap) wrap.style.display = 'flex';
   },
 
   updateCheckout: function(params) {

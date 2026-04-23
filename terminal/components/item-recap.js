@@ -137,7 +137,7 @@ function _ensureStyles() {
     +   'transition:color 0.12s,transform 0.15s;'
     + '}'
     + '.ir-card.collapsed .ir-chev{transform:rotate(-90deg);}'
-    + '.ir-card.collapsed .ir-mods{display:none;}'
+    + '.ir-card .ir-mods{display:none;}'
     + '.ir-iname{'
     +   'flex:1;font-size:12px;font-weight:700;color:' + T.text + ';'
     +   'letter-spacing:.01em;transition:color 0.12s;'
@@ -673,27 +673,17 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
     card.appendChild(well);
   }
 
-  if (opts.defaultItemCollapsed) card.classList.add('collapsed');
-
-  // Chevron alone toggles collapse so the row itself can own a
-  // selection tap. stopPropagation keeps the row handler from firing
-  // on the same event.
+  // Chevron alone opens details overlay
   chev.addEventListener('click', function(e) {
     e.stopPropagation();
-    card.classList.toggle('collapsed');
+    SceneManager.openTransactional('item-detail', { item: item });
   });
 
   // Row tap — toggles the visual .sel class and notifies the consumer
-  // so it can mirror selection in its own state (state.selectedItems
-  // in the check-overview scene). When no callback is supplied we
-  // fall back to the historical "tap row = collapse" behavior so the
-  // component stays useful for read-only contexts.
   row.addEventListener('click', function() {
     if (typeof opts.onItemTap === 'function') {
       row.classList.toggle('sel');
       opts.onItemTap(seatIdx, itemIdx);
-    } else {
-      card.classList.toggle('collapsed');
     }
   });
 
@@ -732,23 +722,12 @@ function _buildSeatGroup(seat, seatIdx, opts) {
 
     var chev = document.createElement('span');
     chev.className = 'ir-seat-chev';
-    chev.textContent = '▼';
+    chev.textContent = '›';
     header.appendChild(chev);
 
     group.appendChild(header);
 
-    // Chevron = toggle collapse (stops propagation so the select-all
-    // handler below doesn't also fire on the same tap).
-    chev.addEventListener('click', function(e) {
-      e.stopPropagation();
-      group.classList.toggle('collapsed');
-    });
-
-    // Header tap (anywhere but the chevron) = select every item / mod
-    // / microMod in the group. If a consumer supplied onSeatHeaderTap,
-    // call it too so the outer scene can mirror the selection in its
-    // own state. Mirror the "toggle if all already selected" behavior
-    // so a second tap clears.
+    // Header tap = select every item / mod / microMod in the group.
     header.addEventListener('click', function() {
       var all = group.querySelectorAll('.ir-item-row, .ir-mod, .ir-mmod');
       var allSelected = all.length > 0;

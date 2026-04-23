@@ -30,8 +30,8 @@ export const T = {
   greenWarmDk: '#166534',  // Shadow / press state
 
   // ── Gold (money — ALWAYS and ONLY) ────────────────
-  gold:     '#f5a623',   // All monetary values
-  goldDk:   '#7a4d00',   // Shadow / press state
+  gold:     '#e8c84e',   // All monetary values
+  goldDk:   '#7a5c00',   // Shadow / press state
 
   // ── Vermillion (destructive) ──────────────────────
   verm:     '#e8472a',   // CLR key, void, delete, critical
@@ -40,6 +40,10 @@ export const T = {
   // ── Electric cyan (card/credit payments only) ─────
   elec:     '#22d3ee',   // Card payment amounts
   elecDk:   '#0e6b7a',   // Shadow / press state
+
+  moon:     '#7e8896',
+  moonDk:   '#4a5059',
+  moonText: '#22252a',  // label color on moon fill
 
    // ── Chart semantic colors ─────────────────────────
   lavender:   '#b48efa',   // Last week / comparison period — never use for current data
@@ -107,6 +111,7 @@ export const T = {
 
   // ── Geometry ──────────────────────────────────────
   chamferCard:   10,    // Cards and panels
+  chamferBtn:    6,
   chamferWell:   10,    // Inset wells, numpad chassis
   chamferKey:    12,    // Numpad keys
   chamferPin:    10,    // PIN input boxes
@@ -118,7 +123,6 @@ export const T = {
   // Animation durations
   transitionFast:  'all 0.07s ease',
   transitionMed:   'all 0.2s ease',
-  transitionSlide: 'max-height 0.25s ease',
 
   // ── Scrims ────────────────────────────────────────
   scrimWorking:     'rgba(44, 47, 52, 0.70)',
@@ -127,7 +131,7 @@ export const T = {
 
   // ── Frame colors (tier borders) ───────────────────
   frameTransactional:     '#86efac',   // green — overlay frame
-  frameInterruptDecision: '#f5a623',   // gold — decision interrupt
+  frameInterruptDecision: '#e8c84e',   // gold — decision interrupt
   frameInterruptCritical: '#e8472a',   // verm — critical interrupt
 
   // ── Layer z-indexes ───────────────────────────────
@@ -142,8 +146,8 @@ export const T = {
   terminalId:   'Terminal 01',
   storePrimary:    '#86efac',   // defaults to system green
   storePrimaryDk:  '#1a5c2e',
-  storeSecondary:  '#f5a623',   // defaults to gold
-  storeSecondaryDk:'#7a4d00',
+  storeSecondary:  '#e8c84e',   // defaults to gold
+  storeSecondaryDk:'#7a5c00',
   storeTertiary:   '#22d3ee',   // defaults to elec
   storeTertiaryDk: '#0e6b7a',
   storeLogoUrl:    null,

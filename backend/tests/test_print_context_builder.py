@@ -32,6 +32,7 @@ from app.core.events import (
     EventType,
     cash_refund_due,
     create_event,
+    day_closed,
     item_added,
     order_closed,
     order_created,
@@ -378,6 +379,46 @@ class TestSalesRecapContext:
         assert ctx["cash_tips"] == pytest.approx(0.00)
         assert ctx["total_tips"] == pytest.approx(5.00)
 
+    @pytest.mark.asyncio
+    async def test_build_sales_recap_context_v2_open(self, ledger):
+        """v2: Returns a simplified dict with cob_status='Open' when not closed."""
+        await _make_order(ledger, order_id="o_v2_open", items=[("Burger", 10.00, 1)])
+        await _pay_and_close(ledger, order_id="o_v2_open", amount=10.00, method="cash")
+
+        ctx = await PrintContextBuilder(ledger).build_sales_recap_context("2026-04-22")
+
+        assert ctx["cob_status"] == "Open"
+        assert ctx["total_sales"] == Decimal("10.00")
+        assert ctx["cash_sales"] == Decimal("10.00")
+        assert ctx["card_sales"] == Decimal("0.00")
+        assert ctx["total_tips"] == Decimal("0.00")
+        assert ctx["total_checks"] == 1
+
+    @pytest.mark.asyncio
+    async def test_build_sales_recap_context_v2_closed(self, ledger):
+        """v2: Returns a simplified dict with cob_status='Closed' from stored event."""
+        business_date = "2026-04-21"
+        await ledger.append(day_closed(
+            terminal_id=TERMINAL,
+            date=business_date,
+            total_orders=5,
+            total_sales=Decimal("100.00"),
+            total_tips=Decimal("15.00"),
+            cash_total=Decimal("30.00"),
+            card_total=Decimal("70.00"),
+            order_ids=["o1", "o2", "o3", "o4", "o5"],
+            payment_count=5
+        ))
+
+        ctx = await PrintContextBuilder(ledger).build_sales_recap_context(business_date)
+
+        assert ctx["cob_status"] == "Closed"
+        assert ctx["total_sales"] == Decimal("100.00")
+        assert ctx["cash_sales"] == Decimal("30.00")
+        assert ctx["card_sales"] == Decimal("70.00")
+        assert ctx["total_tips"] == Decimal("15.00")
+        assert ctx["total_checks"] == 5
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # SERVER CHECKOUT CONTEXT
@@ -536,3 +577,33 @@ class TestServerCheckoutContext:
         assert ctx["gross_sales"] == pytest.approx(0.00)
         assert ctx["net_sales"] == pytest.approx(0.00)
         assert ctx["cc_transactions"] == []
+
+    @pytest.mark.asyncio
+    async def test_build_server_checkout_context_v2(self, ledger):
+        """v2: Returns a simplified dict with checks as a list of {check_number, total, tip}."""
+        server_id = "emp_v2"
+        await ledger.append(user_logged_in(
+            terminal_id=TERMINAL, employee_id=server_id, employee_name="V2 Server",
+        ))
+        await _make_order(ledger, order_id="o_v2_1", server_id=server_id, items=[("A", 10.00, 1)])
+        await _pay_and_close(ledger, order_id="o_v2_1", amount=10.00, method="card", tip=2.00)
+
+        # Logout to ensure clock times are present
+        await ledger.append(user_logged_out(
+            terminal_id=TERMINAL, employee_id=server_id, employee_name="V2 Server",
+        ))
+
+        ctx = await PrintContextBuilder(ledger).build_server_checkout_context(server_id)
+
+        assert ctx["server_name"] == "V2 Server"
+        assert ctx["clock_in"] is not None
+        assert ctx["clock_out"] is not None
+        assert ctx["gross_sales"] == Decimal("10.00")
+        assert ctx["net_sales"] == Decimal("10.00")
+        assert isinstance(ctx["checks"], list)
+        assert len(ctx["checks"]) == 1
+        assert "check_number" in ctx["checks"][0]
+        assert ctx["checks"][0]["total"] == Decimal("10.00")
+        assert ctx["checks"][0]["tip"] == Decimal("2.00")
+        # Check that check_number is populated (defaults to order_id in _make_order)
+        assert ctx["checks"][0]["check_number"] == "o_v2_1"

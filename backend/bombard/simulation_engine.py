@@ -478,7 +478,7 @@ class SimulationEngine:
         # Tip on card payments
         if method in ("card", "split"):
             # Tip 15-25% of pre-tax subtotal
-            pretax = self._d(order.subtotal - order.discount_total)
+            pretax = self._d(order.subtotal)
             tip_pct = Decimal(str(random.randint(15, 25))) / Decimal("100")
             tip = (pretax * tip_pct).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -513,7 +513,7 @@ class SimulationEngine:
                 total=order.total,
             )
             await self._append(evt)
-            self.total_gross_sales += self._d(order.subtotal)
+            self.total_gross_sales += self._d(order.gross_subtotal)
             self.total_tax += self._d(order.tax)
 
         check.status = "closed"

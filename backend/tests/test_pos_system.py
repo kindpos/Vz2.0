@@ -1002,8 +1002,8 @@ class TestReportingReconciliation:
         await ledger.append(disc)
         order = await _get_order(ledger, oid)
         assert order.discount_total == 10.00
-        # net = subtotal - discount = 50 - 10 = 40
-        net = order.subtotal - order.discount_total
+        # net = subtotal = 50 - 10 = 40
+        net = order.subtotal
         assert net == 40.00
 
 

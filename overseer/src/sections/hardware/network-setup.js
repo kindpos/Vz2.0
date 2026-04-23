@@ -344,11 +344,8 @@ export function buildNetworkSetupScene(container) {
 
     // ── Terminal cards ────────────────────────────────────────────────
     SEED_TERMINALS.forEach((terminal, idx) => {
-        const { card, expand } = buildTerminalCard(terminal);
+        const { card } = buildTerminalCard(terminal);
         scrollGrid.appendChild(card);
-        if (idx === 0) {
-            requestAnimationFrame(() => expand());
-        }
     });
 
     // ── Ghost add-terminal card ───────────────────────────────────────

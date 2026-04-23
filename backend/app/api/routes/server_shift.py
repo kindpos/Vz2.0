@@ -17,12 +17,13 @@ from datetime import datetime, timezone
 
 from app.api.dependencies import get_ledger
 from app.core.event_ledger import EventLedger
-from app.core.events import EventType
+from app.core.events import EventType, order_transferred
 from app.core.projections import project_orders
 from app.core.money import money_round
 from app.config import settings
 
 router = APIRouter(prefix="/server/shift", tags=["server-shift"])
+shifts_router = APIRouter(prefix="/shifts", tags=["shifts"])
 
 _ZERO = Decimal("0")
 
@@ -140,7 +141,7 @@ async def table_stats(
         table_count += 1
         gc = order.guest_count or 1
         guest_count += gc
-        order_total = Decimal(str(order.subtotal)) - Decimal(str(order.discount_total))
+        order_total = Decimal(str(order.subtotal))
         total_revenue += order_total
 
         # Turn time (created_at to closed/now)
@@ -245,3 +246,54 @@ async def patch_tipout(
         status_code=501,
         detail="Tip-out override is not yet persisted server-side",
     )
+
+
+# =============================================================================
+# SHIFT ACTIONS
+# =============================================================================
+
+class FinalizeCheckoutRequest(BaseModel):
+    employee_id: str
+    take_home: Decimal
+    cash_expected: Decimal
+    manager_pin_verified: bool
+
+
+@router.post("/finalize-checkout")
+@shifts_router.post("/finalize-checkout")
+async def finalize_checkout(
+    request: FinalizeCheckoutRequest,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Record that a server has finalized their shift checkout.
+
+    Currently returns success to allow the frontend to proceed.
+    A future version will record a CHECKOUT_FINALIZED event.
+    """
+    return {"success": True}
+
+
+class ShiftTransferRequest(BaseModel):
+    order_id: str
+    to_server_id: str
+    from_server_id: Optional[str] = None
+
+
+@router.post("/transfer")
+@shifts_router.post("/transfer")
+async def transfer_shift_order(
+    request: ShiftTransferRequest,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Transfer an order from one server to another.
+
+    Emits an ORDER_TRANSFERRED event to the ledger.
+    """
+    event = order_transferred(
+        terminal_id=settings.terminal_id,
+        order_id=request.order_id,
+        server_id=request.to_server_id,
+        server_name="",  # Name lookup not required for projection
+    )
+    await ledger.append(event)
+    return {"success": True}

@@ -278,7 +278,7 @@ class TestApplyDiscount:
             ),
             ledger=ledger,
         )
-        assert res.subtotal == Decimal("30.00")
+        assert res.subtotal == Decimal("27.00")
         assert res.discount_total == Decimal("3.00")
         assert res.total == Decimal("27.00")
 
