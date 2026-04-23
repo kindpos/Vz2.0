@@ -1313,6 +1313,22 @@ function _makeUtilPill(label, textColor, opts) {
   });
 }
 
+// Vertical dashed separator used inside the MANAGE toolbar between the
+// tool pills (MOVE / SPLIT / MERGE) and the utility pills (UNDO /
+// RESET / DONE). Zero-width element whose left border paints the
+// dashed line, stretched to the toolbar's full height.
+function _dashedDivider() {
+  var el = document.createElement('div');
+  Object.assign(el.style, {
+    width:       '0',
+    alignSelf:   'stretch',
+    borderLeft:  '2px dashed ' + T.border,
+    margin:      '4px 8px',
+    flexShrink:  '0',
+  });
+  return el;
+}
+
 // ── MANAGE SPLIT ──
 // The split flow is a pick-then-pick-then-commit pattern:
 //   1. Cashier pre-selects items with item taps (state.selectedItems).
