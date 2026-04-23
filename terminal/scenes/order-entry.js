@@ -328,7 +328,6 @@ var favorites    = [];   // item ids for personal tab
 var _gridEl      = null; // inner grid DOM container
 var _gridWrap    = null; // collapsible grid wrapper
 var _snakeStrip  = null; // crumb-only strip shown when mod panel open
-var _snakeTabBar = null; // ★ PERSONAL tab strip
 var _expandedItems = {}; // item id → true when mod rows are expanded
 
 // ── Modifier Panel (slide-up) ─────────────────────
@@ -398,7 +397,6 @@ defineScene({
     _gridEl        = null;
     _gridWrap      = null;
     _snakeStrip    = null;
-    _snakeTabBar   = null;
     _expandedItems = {};
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
@@ -467,7 +465,6 @@ defineScene({
     _gridEl        = null;
     _gridWrap      = null;
     _snakeStrip    = null;
-    _snakeTabBar   = null;
     _expandedItems = {};
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
@@ -990,25 +987,7 @@ function buildItemTile(item, catColor, isFav) {
 
 // ── SNAKE NAV GRID RENDERER ────────────────────────
 
-function _refreshSnakeTabBar() {
-  if (!_snakeTabBar) return;
-  var personalBtn = _snakeTabBar._personalBtn;
-  var homeBtn     = _snakeTabBar._homeBtn;
-  var isPersonal  = snakeState.view === 'personal';
-  var isCats      = snakeState.view === 'cats';
-
-  if (personalBtn) {
-    personalBtn.style.color              = isPersonal ? T.gold : T.mutedText;
-    personalBtn.style.borderBottomColor  = isPersonal ? T.gold : 'transparent';
-    personalBtn.style.opacity            = isPersonal ? '1' : '0.8';
-  }
-  if (homeBtn) {
-    homeBtn.style.display = isCats ? 'none' : '';
-  }
-}
-
 function renderSnakeGrid() {
-  _refreshSnakeTabBar();
   if (!_gridEl) return;
   _gridEl.innerHTML = '';
 
@@ -1208,55 +1187,6 @@ function buildMain(parentEl, params) {
   var main = document.createElement('div');
   main.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
   _mainArea = main;
-
-  // ── Tab bar (★ PERSONAL + ⌂ CATEGORIES) ──────────
-  var tabBar = document.createElement('div');
-  tabBar.style.cssText = [
-    'display:flex;background:' + T.well + ';',
-    'border-bottom:1px solid rgba(255,255,255,0.06);',
-    'padding:4px 8px 0;flex-shrink:0;',
-  ].join('');
-  _snakeTabBar = tabBar;
-
-  var personalBtn = document.createElement('div');
-  personalBtn.style.cssText = [
-    'padding:6px 14px;cursor:pointer;user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'font-family:' + T.fh + ';font-weight:700;font-size:11px;letter-spacing:1px;',
-    'color:' + T.mutedText + ';border-bottom:2px solid transparent;',
-    'transition:color 120ms;',
-  ].join('');
-  personalBtn.textContent = '★ PERSONAL';
-  personalBtn.addEventListener('pointerup', function() {
-    snakeState.view   = 'personal';
-    snakeState.crumbs = [];
-    snakeState.catId  = null;
-    snakeState.subId  = null;
-    renderSnakeGrid();
-  });
-  tabBar._personalBtn = personalBtn;
-
-  var homeBtn = document.createElement('div');
-  homeBtn.style.cssText = [
-    'padding:6px 12px;cursor:pointer;user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'font-family:' + T.fh + ';font-size:11px;letter-spacing:1px;',
-    'color:' + T.mutedText + ';border-bottom:2px solid transparent;',
-    'display:none;opacity:0.6;',
-  ].join('');
-  homeBtn.textContent = '⌂ CATEGORIES';
-  homeBtn.addEventListener('pointerup', function() {
-    snakeState.view   = 'cats';
-    snakeState.crumbs = [];
-    snakeState.catId  = null;
-    snakeState.subId  = null;
-    renderSnakeGrid();
-  });
-  tabBar._homeBtn = homeBtn;
-
-  tabBar.appendChild(personalBtn);
-  tabBar.appendChild(homeBtn);
-  main.appendChild(tabBar);
 
   // ── Collapsible grid wrapper ──────────────────────
   var gridWrap = document.createElement('div');
@@ -2480,9 +2410,8 @@ function openModifierPanel(item, modConfig, catColor, enablePlacement) {
 
   _modPanelOpen = true;
 
-  // Hide grid + tab bar, show snake strip above the panel, hide bottom bar
+  // Hide grid, show snake strip above the panel, hide bottom bar
   if (_gridWrap)    _gridWrap.style.display    = 'none';
-  if (_snakeTabBar) _snakeTabBar.style.display = 'none';
   if (_snakeStrip)  { _snakeStrip.innerHTML = ''; _snakeStrip.style.display = 'none'; }
   if (_bottomBar)   _bottomBar.style.display   = 'none';
   _mainArea.style.border = 'none';
@@ -2545,9 +2474,8 @@ function closeModifierPanel() {
   _modPanelItem = null;
   _modPanelOpen = false;
 
-  // Restore grid + tab bar
+  // Restore grid
   if (_gridWrap)    _gridWrap.style.display    = '';
-  if (_snakeTabBar) _snakeTabBar.style.display = '';
   if (_snakeStrip)  { _snakeStrip.innerHTML = ''; _snakeStrip.style.display = 'none'; }
   if (_mainArea)    _mainArea.style.border     = '';
 
