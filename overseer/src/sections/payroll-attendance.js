@@ -2412,17 +2412,6 @@ function openEditShiftModal(shift) {
     notesWrap.appendChild(notesTa);
     content.appendChild(notesWrap);
 
-    // Manager PIN
-    const pinF = field({
-        label: 'Manager PIN (required)',
-        type: 'password',
-        placeholder: 'Enter 4–6 digit PIN',
-    });
-    pinF.input.maxLength = 6;
-    pinF.input.style.letterSpacing = '4px';
-    pinF.input.addEventListener('input', () => { draft.pin = pinF.input.value; });
-    content.appendChild(pinF.wrap);
-
     // Audit notice
     const notice = document.createElement('div');
     notice.style.cssText = `
@@ -2450,10 +2439,6 @@ function openEditShiftModal(shift) {
         onClick: async () => {
             if (!draft.reason) {
                 showToast('Please select a reason for this edit.', 'error');
-                return;
-            }
-            if (!draft.pin || draft.pin.length < 4) {
-                showToast('Manager PIN is required.', 'error');
                 return;
             }
 
