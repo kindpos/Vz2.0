@@ -26,6 +26,10 @@ from app.services.entomology_report import (
     build_bug_report_workbook,
     workbook_to_bytes,
 )
+from app.services.ledger_gap_report import (
+    LEDGER_GAP_NODES,
+    aggregate_summary,
+)
 
 router = APIRouter(prefix="/entomology", tags=["entomology"])
 
@@ -123,6 +127,18 @@ async def get_snapshot(
         "probes": probes,
         "heartbeat_age_seconds": heartbeat_age,
         "system_metrics": system_metrics,
+    }
+
+
+@router.get("/ledger-gaps")
+async def get_ledger_gaps(
+    session: dict = Depends(get_current_session),
+) -> dict:
+    """Static Event Ledger Gap audit (LG-## nodes) for the /entomology UI tab."""
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "nodes": LEDGER_GAP_NODES,
+        "summary": aggregate_summary(LEDGER_GAP_NODES),
     }
 
 
