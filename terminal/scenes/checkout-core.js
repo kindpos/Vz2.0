@@ -26,7 +26,6 @@ export var ACTION_H  = 48;
 export var BANNER_H  = 36;
 export var BEVEL     = 4;
 export var CHAM      = 8;
-export var COL_GAP   = 20;
 export var SCENE_PAD = 13;
 export var RED       = T.verm;
 
@@ -599,7 +598,7 @@ defineScene({
     var _checks = [];
     var _listEl = null;
 
-    container.style.cssText = 'width:100%;height:100%;display:flex;gap:' + COL_GAP + 'px;padding:8px ' + SCENE_PAD + 'px ' + SCENE_PAD + 'px;box-sizing:border-box;';
+    container.style.cssText = 'width:100%;height:100%;display:flex;gap:' + T.colGap + 'px;padding:8px ' + SCENE_PAD + 'px ' + SCENE_PAD + 'px;box-sizing:border-box;';
 
     // Left: check list
     var leftCol = document.createElement('div');

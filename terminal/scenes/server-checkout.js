@@ -28,7 +28,6 @@ import { fmt, detailRow, detailDivider } from './checkout-core.js';
 
 var LEFT_W   = 260;   // Receipt preview column
 var RIGHT_W  = 236;   // Actions column
-var COL_GAP  = 12;    // Gap between columns
 var PAD      = 14;    // Outer side/bottom padding
 var PAD_TOP  = 8;     // reduce top padding per UI audit
 
@@ -973,7 +972,7 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds) {
   selectedCheckIds = selectedCheckIds || [];
   var col = document.createElement('div');
   col.style.cssText = [
-    'flex:1;display:flex;flex-direction:column;gap:' + COL_GAP + 'px;',
+    'flex:1;display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
     'min-width:0;min-height:0;',
     // Single scroll surface — whole column width is draggable/wheel-scrollable.
     // touch-action:pan-y tells the browser vertical panning is the intended
@@ -1327,7 +1326,7 @@ defineScene({
 
     container.style.cssText = [
       'width:100%;height:100%;',
-      'display:flex;flex-direction:column;gap:' + COL_GAP + 'px;',
+      'display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
       'padding:' + PAD_TOP + 'px ' + PAD + 'px ' + PAD + 'px ' + PAD + 'px;',
       'box-sizing:border-box;overflow:hidden;',
       'background:' + T.bg + ';',
@@ -1388,7 +1387,7 @@ defineScene({
 
       // 3-column row
       var body = document.createElement('div');
-      body.style.cssText = 'flex:1;display:flex;gap:' + COL_GAP + 'px;min-height:0;overflow:hidden;';
+      body.style.cssText = 'flex:1;display:flex;gap:' + T.colGapSm + 'px;min-height:0;overflow:hidden;';
 
       var handlers = {
         onBack: function() {

@@ -34,7 +34,6 @@ import { showToast }                   from '../components.js';
 
 var LEFT_W   = 260;
 var RIGHT_W  = 240;
-var COL_GAP  = 10;
 var PAD      = 10;
 var PAD_TOP  = 8;
 
@@ -774,7 +773,7 @@ defineScene({
 
     container.style.cssText = [
       'width:100%;height:100%;',
-      'display:flex;flex-direction:column;gap:' + COL_GAP + 'px;',
+      'display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
       'padding:' + PAD_TOP + 'px ' + PAD + 'px ' + PAD + 'px ' + PAD + 'px;',
       'box-sizing:border-box;overflow:hidden;',
       'background:' + T.bg + ';',
@@ -797,7 +796,7 @@ defineScene({
       container.appendChild(buildHeader(state.data));
 
       var body = document.createElement('div');
-      body.style.cssText = 'flex:1;display:flex;gap:' + COL_GAP + 'px;min-height:0;overflow:hidden;';
+      body.style.cssText = 'flex:1;display:flex;gap:' + T.colGapSm + 'px;min-height:0;overflow:hidden;';
 
       // Stale-cleanup: if a check got paid/voided externally, drop it.
       state.selectedCheckIds = state.selectedCheckIds.filter(function(id) {
