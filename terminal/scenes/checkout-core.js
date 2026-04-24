@@ -912,7 +912,7 @@ defineScene({
     var panel = document.createElement('div');
     panel.style.cssText = [
       'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.green + ';',
+      'background:' + T.well + ';border:3px solid ' + T.green + ';',
       'padding:22px;border-radius:12px;',
       'width:320px;box-sizing:border-box;',
     ].join('');
@@ -926,7 +926,7 @@ defineScene({
     panel.appendChild(title);
 
     var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';text-align:center;';
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
     sub.textContent = 'confirm these totals — this is final';
     panel.appendChild(sub);
 
@@ -940,7 +940,7 @@ defineScene({
     var takeRow = document.createElement('div');
     takeRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
     var takeL = document.createElement('span');
-    takeL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';letter-spacing:1px;';
+    takeL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;';
     takeL.textContent = 'TAKE-HOME';
     var takeR = document.createElement('span');
     takeR.style.cssText = 'font-family:' + T.fb + ';font-size:20px;font-weight:700;color:' + T.green + ';';
@@ -956,7 +956,7 @@ defineScene({
     var cashRow = document.createElement('div');
     cashRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
     var cashL = document.createElement('span');
-    cashL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';letter-spacing:1px;';
+    cashL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;';
     cashL.textContent = 'CASH EXPECTED';
     var cashR = document.createElement('span');
     cashR.style.cssText = 'font-family:' + T.fb + ';font-size:20px;font-weight:700;color:' + T.gold + ';';
@@ -967,38 +967,27 @@ defineScene({
 
     panel.appendChild(totals);
 
-    // Action buttons
+    // Action buttons — canonical pills.
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:10px;';
 
-    var cancel = document.createElement('div');
-    cancel.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    cancel.textContent = 'CANCEL';
-    cancel.addEventListener('pointerup', function() {
-      if (params.onCancel) params.onCancel();
+    var cancel = buildPillButton({
+      label: 'CANCEL',
+      variant: 'ghost',
+      fontSize: T.fsB3,
+      onClick: function() { if (params.onCancel) params.onCancel(); },
     });
+    cancel.style.flex = '1';
+    cancel.style.height = '48px';
 
-    var confirm = document.createElement('div');
-    confirm.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.green + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.well + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-      'box-shadow:0 3px 0 rgba(0,0,0,0.3);',
-    ].join('');
-    confirm.textContent = 'CONFIRM';
-    confirm.addEventListener('pointerup', function() {
-      if (params.onConfirm) params.onConfirm();
+    var confirm = buildPillButton({
+      label: 'CONFIRM',
+      variant: 'mint',
+      fontSize: T.fsB3,
+      onClick: function() { if (params.onConfirm) params.onConfirm(); },
     });
+    confirm.style.flex = '1';
+    confirm.style.height = '48px';
 
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
