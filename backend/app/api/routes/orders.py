@@ -874,9 +874,23 @@ async def add_item(
         # lookup doesn't block a live service.
         pass
 
+    # Pre-flight idempotency check. Previously the dedup lived inside
+    # ledger.append(item_added) and we early-returned on a duplicate —
+    # but a crash between the item append and the modifier appends
+    # could leave inline modifiers permanently lost on the retry
+    # (item blocked as dup; modifiers never re-emitted). Checking
+    # upfront lets us emit item + all modifiers in one append_batch,
+    # so either everything lands or nothing does.
+    if idem_key:
+        existing = await ledger.get_event_by_idempotency_key(idem_key)
+        if existing is not None:
+            _logger.warning("BLOCKED duplicate item POST (idempotency_key=%s)", idem_key)
+            order = await get_order_or_404(ledger, order_id)
+            return OrderResponse.from_order(order)
+
     item_id = f"item_{uuid.uuid4().hex[:8]}"
 
-    event = item_added(
+    batch_events: list = [item_added(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         item_id=item_id,
@@ -893,22 +907,10 @@ async def add_item(
         allergens=request.allergens,
         allergen_note=request.allergen_note,
         included_removals=request.included_removals,
-    )
-    result = await ledger.append(event)
-    if result is None:
-        # Duplicate blocked by ledger — return current order state.
-        # IMPORTANT: don't emit the inline MODIFIER_APPLIED events either.
-        # The generated item_id is fresh on each retry, so those modifiers
-        # would attach to an item_id that has no ITEM_ADDED event — the
-        # projection discards them as no-ops but they pollute the ledger,
-        # the audit trail, and print context rebuilds.
-        _logger.warning("BLOCKED duplicate item POST (idempotency_key=%s)", idem_key)
-        order = await get_order_or_404(ledger, order_id)
-        return OrderResponse.from_order(order)
+    )]
 
-    # Emit MODIFIER_APPLIED events for inline modifiers from the frontend
     for mod in (request.modifiers or []):
-        mod_event = modifier_applied(
+        batch_events.append(modifier_applied(
             terminal_id=settings.terminal_id,
             order_id=order_id,
             item_id=item_id,
@@ -918,8 +920,9 @@ async def add_item(
             action="add",
             prefix=mod.prefix,
             half_price=mod.half_price,
-        )
-        await ledger.append(mod_event)
+        ))
+
+    await ledger.append_batch(batch_events)
 
     # Return updated order
     order = await get_order_or_404(ledger, order_id)
@@ -1321,25 +1324,26 @@ async def void_order(
             detail=f"Cannot void order — card reversal failed: {'; '.join(device_void_errors)}",
         )
 
-    # Emit refund-due events for any confirmed cash payments
+    # After device voids succeeded, batch the refund-due events +
+    # order.voided so a crash cannot leave cash refunds appended
+    # without the void event (or vice versa).
+    batch_events: list = []
     for p in order.payments:
         if p.status == "confirmed" and p.method == "cash":
-            refund_evt = cash_refund_due(
+            batch_events.append(cash_refund_due(
                 terminal_id=settings.terminal_id,
                 order_id=order_id,
                 payment_id=p.payment_id,
                 amount=p.amount,
                 reason=request.reason or "Order voided after cash payment",
-            )
-            await ledger.append(refund_evt)
-
-    event = order_voided(
+            ))
+    batch_events.append(order_voided(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         reason=request.reason,
         approved_by=request.approved_by,
-    )
-    await ledger.append(event)
+    ))
+    await ledger.append_batch(batch_events)
 
     order = await get_order_or_404(ledger, order_id)
     return OrderResponse.from_order(order)
@@ -1416,10 +1420,16 @@ async def merge_orders(
     operation_id = f"op_{uuid.uuid4().hex[:8]}"
     source_ids = [s.order_id for s in sources]
 
+    # Collect every event into one batch so the full merge commits
+    # atomically. A mid-flow crash under the previous per-append model
+    # could leave items copied into the target while the source was
+    # still alive (double-count), or sources voided without the matching
+    # target audit event.
+    batch_events: list = []
     for src in sources:
         for item in src.items:
             new_item_id = f"item_{uuid.uuid4().hex[:8]}"
-            evt = item_added(
+            batch_events.append(item_added(
                 terminal_id=settings.terminal_id,
                 order_id=order_id,
                 item_id=new_item_id,
@@ -1430,10 +1440,9 @@ async def merge_orders(
                 category=item.category,
                 notes=item.notes,
                 seat_number=item.seat_number,
-            )
-            await ledger.append(evt)
+            ))
             for mod in item.modifiers or []:
-                mod_evt = modifier_applied(
+                batch_events.append(modifier_applied(
                     terminal_id=settings.terminal_id,
                     order_id=order_id,
                     item_id=new_item_id,
@@ -1443,13 +1452,12 @@ async def merge_orders(
                     action="add",
                     prefix=mod.get("prefix"),
                     half_price=mod.get("half_price"),
-                )
-                await ledger.append(mod_evt)
+                ))
 
         # Source timeline: emit CHECK_MERGED BEFORE the ORDER_VOIDED so
         # the source history reads alive → merged → voided, not
         # alive → voided → (audit arrives after death).
-        await ledger.append(check_merged(
+        batch_events.append(check_merged(
             terminal_id=settings.terminal_id,
             order_id=src.order_id,
             operation_id=operation_id,
@@ -1458,17 +1466,15 @@ async def merge_orders(
             source_order_ids=source_ids,
             approved_by=request.approved_by,
         ))
-
-        void_evt = order_voided(
+        batch_events.append(order_voided(
             terminal_id=settings.terminal_id,
             order_id=src.order_id,
             reason=f"Merged into {order_id}",
             approved_by=request.approved_by,
-        )
-        await ledger.append(void_evt)
+        ))
 
     # Target timeline: single CHECK_MERGED summarizing the full operation.
-    await ledger.append(check_merged(
+    batch_events.append(check_merged(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         operation_id=operation_id,
@@ -1477,6 +1483,8 @@ async def merge_orders(
         source_order_ids=source_ids,
         approved_by=request.approved_by,
     ))
+
+    await ledger.append_batch(batch_events)
 
     target = await get_order_or_404(ledger, order_id)
     return OrderResponse.from_order(target)
@@ -1905,7 +1913,10 @@ async def _do_close_day(body, ledger):
             },
         )
 
-    # Gate passed — safe to emit BATCH_SUBMITTED (settlement record)
+    # Gate passed — emit BATCH_SUBMITTED + DAY_CLOSED atomically so a
+    # mid-flow crash cannot leave a settled batch without a day
+    # boundary (which would make tomorrow's first event land inside
+    # today's window for day-scoped queries).
     submit_evt = batch_submitted(
         terminal_id=settings.terminal_id,
         order_count=total_orders,
@@ -1914,9 +1925,6 @@ async def _do_close_day(body, ledger):
         card_total=card_total_f,
         order_ids=order_ids,
     )
-    await ledger.append(submit_evt)
-
-    # Emit DAY_CLOSED — auditable snapshot and day boundary
     today = datetime.now().strftime("%Y-%m-%d")
     close_evt = day_closed(
         terminal_id=settings.terminal_id,
@@ -1930,7 +1938,7 @@ async def _do_close_day(body, ledger):
         payment_count=payment_count,
         opened_at=opened_at,
     )
-    await ledger.append(close_evt)
+    await ledger.append_batch([submit_evt, close_evt])
 
     summary = {
         "date": today,
@@ -1995,7 +2003,16 @@ async def split_by_seat(
             detail="No items with seat numbers found to split",
         )
 
+    # Collect every event -- child order.created, per-item item.added
+    # with its modifier.applied events, parent item.removed, plus the
+    # directional check.split audit events -- into a single
+    # append_batch. A crash under the previous per-append model could
+    # leave a child order created with some items while the parent still
+    # owned those same items (double-count) or orphan children with no
+    # audit event.
+    operation_id = f"op_{uuid.uuid4().hex[:8]}"
     child_orders = []
+    batch_events: list = []
     for seat_num, items in sorted(seat_items.items()):
         child_id = f"order_{uuid.uuid4().hex[:8]}"
         # Create child order (set correlation_id so the CREATE event
@@ -2009,10 +2026,8 @@ async def split_by_seat(
             server_id=order.server_id,
             server_name=order.server_name,
         )
-        create_evt = create_evt.model_copy(update={"correlation_id": child_id})
-        await ledger.append(create_evt)
+        batch_events.append(create_evt.model_copy(update={"correlation_id": child_id}))
 
-        # Add items to child order
         for item in items:
             new_item_id = f"item_{uuid.uuid4().hex[:8]}"
             # item_added's payload doesn't carry modifiers — they live
@@ -2022,7 +2037,7 @@ async def split_by_seat(
             # lost every modifier price (a $10 item + $3 mod became a
             # $10-only child). Re-emit the modifier events the same
             # way the merge route does.
-            add_evt = item_added(
+            batch_events.append(item_added(
                 terminal_id=settings.terminal_id,
                 order_id=child_id,
                 item_id=new_item_id,
@@ -2033,11 +2048,10 @@ async def split_by_seat(
                 category=getattr(item, "category", None),
                 notes=getattr(item, "notes", None),
                 seat_number=seat_num,
-            )
-            await ledger.append(add_evt)
+            ))
 
             for mod in (getattr(item, "modifiers", None) or []):
-                mod_evt = modifier_applied(
+                batch_events.append(modifier_applied(
                     terminal_id=settings.terminal_id,
                     order_id=child_id,
                     item_id=new_item_id,
@@ -2047,17 +2061,14 @@ async def split_by_seat(
                     action=mod.get("action", "add"),
                     prefix=mod.get("prefix"),
                     half_price=mod.get("half_price"),
-                )
-                await ledger.append(mod_evt)
+                ))
 
-            # Remove from parent order
-            remove_evt = item_removed(
+            batch_events.append(item_removed(
                 terminal_id=settings.terminal_id,
                 order_id=order_id,
                 item_id=item.item_id,
                 reason=f"Split to seat {seat_num} check",
-            )
-            await ledger.append(remove_evt)
+            ))
 
         child_orders.append({
             "order_id": child_id,
@@ -2069,9 +2080,8 @@ async def split_by_seat(
     # affected order (parent + each child) with a shared operation_id so
     # each timeline is self-describing without forcing readers to infer
     # the operation from ITEM_REMOVED "reason" strings.
-    operation_id = f"op_{uuid.uuid4().hex[:8]}"
     child_ids = [c["order_id"] for c in child_orders]
-    await ledger.append(check_split(
+    batch_events.append(check_split(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         operation_id=operation_id,
@@ -2080,7 +2090,7 @@ async def split_by_seat(
         child_order_ids=child_ids,
     ))
     for c in child_orders:
-        await ledger.append(check_split(
+        batch_events.append(check_split(
             terminal_id=settings.terminal_id,
             order_id=c["order_id"],
             operation_id=operation_id,
@@ -2089,6 +2099,8 @@ async def split_by_seat(
             child_order_ids=child_ids,
             seat=c["seat"],
         ))
+
+    await ledger.append_batch(batch_events)
 
     return {
         "success": True,
