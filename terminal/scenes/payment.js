@@ -615,9 +615,9 @@ defineScene({
 
 function buildLeftColumn(params) {
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'width:210px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;';
+  wrap.style.cssText = 'width:260px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;';
 
-  var card = buildStaticCard({ accent: T.green, width: '210px' });
+  var card = buildStaticCard({ accent: T.green, width: '260px' });
   card.style.flex          = '1';
   card.style.display       = 'flex';
   card.style.flexDirection = 'column';
@@ -855,6 +855,16 @@ function buildModeToggle(mode, label, color, dkColor) {
   btn.style.flex   = '1';
   btn.style.height = '48px';
   _modeButtons[mode] = { el: btn, color: color, dk: dkColor };
+
+  // buildPillButton's pointerleave handler repaints the pill to its
+  // "default fill" — which on an inactive toggle wrongly reads as
+  // selected whenever the pointer just scrolls across it. Re-run
+  // setPaymentMode after every pointer event so our own active /
+  // inactive paint wins and only an actual tap changes the state.
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(function(ev) {
+    btn.addEventListener(ev, function() { setPaymentMode(paymentMode); });
+  });
+
   return btn;
 }
 
