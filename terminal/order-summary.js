@@ -3,13 +3,6 @@
 //  Left-column panel that persists across order + payment flow
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
-//
-//  Ported from SM2 version. Reskinned to Nostalgia theme:
-//    - Left accent bar + border-radius instead of applyCardBevel/chamfer
-//    - T.green replaces T.mint for structural elements
-//    - T.elec (cyan) replaces T.cyan for card/payment accents
-//    - T.text (with opacity) replaces T.mutedText
-// ═══════════════════════════════════════════════════
 
 import { T } from './tokens.js';
 import { buildButton } from './components.js';
@@ -40,7 +33,7 @@ var _expandedItems = {};
 var _itemRenderLocked = false;
 var _customTitle = null;
 
-// Muted text helper (replaces T.mutedText)
+// Muted text helper — lowers T.text opacity for label/sub text.
 function _muted() { return hexToRgba(T.text, 0.55); }
 
 // Apply the Vz2.0 "inset well" look to a box (used for summary + prices panels).
