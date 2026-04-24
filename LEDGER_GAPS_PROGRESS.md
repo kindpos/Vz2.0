@@ -72,6 +72,25 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 6: staff + config dark-ship completeness.
+  Eleven new `EventType` entries plus factories, all emittable
+  via `/config/push`:
+  - `staff.updated` / `staff.role_changed` / `staff.deactivated` /
+    `staff.reactivated` (LG-57 / 58 / 60 / 61).
+  - `clock.edit` / `shift.deleted` (LG-66 / 67) -- wage-dispute
+    and shift-correction audit anchors.
+  - `category.deactivated` / `category.reactivated` (LG-71 / 72) --
+    soft-delete distinct from `MENU_CATEGORY_DELETED`.
+  - `tipout.rule_deactivated` (LG-98) -- soft-delete distinct from
+    `TIPOUT_RULE_DELETED`.
+  - `security.setting_updated` (LG-109, HIGH) -- PCI/SOX compliance
+    anchor with setting_key + previous_value + new_value, string
+    values so secrets never land on the ledger.
+  Also reclassified LG-103 (`tax.rate_updated`) and LG-104
+  (`terminal.settings_updated`) from MISSING/FACTORY-ONLY to
+  RENAMED -- both are already emittable via `/config/push` under
+  the existing `STORE_TAX_RULE_*` and `TERMINAL_UPDATED` names.
+  8 new tests; 1227 backend tests green.
 - 2026-04-24 — Phase 5: menu-catalog completeness + table-change
   audit. New event types:
   - `check.table_changed` (HIGH-value quick win) wired into PATCH
