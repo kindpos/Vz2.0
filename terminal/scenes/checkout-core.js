@@ -1063,7 +1063,7 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildStaticCard({ accent: T.elec });
+    var shell = buildStaticCard({ accent: T.groups.picker.shellAccent });
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
     shell.style.gap           = '14px';
@@ -1142,7 +1142,7 @@ defineScene({
 
     var cancel = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.picker.cancel,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
@@ -1155,7 +1155,7 @@ defineScene({
 
     var confirm = buildPillButton({
       label:    'CONFIRM',
-      variant:  'elec',
+      variant:  T.groups.picker.apply,
       fontSize: T.fsB2,
       onClick:  function() {
         if (!selectedServer) return;
@@ -1294,7 +1294,7 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildStaticCard({ accent: T.elec });
+    var shell = buildStaticCard({ accent: T.groups.picker.shellAccent });
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
     shell.style.gap           = '14px';
@@ -1365,8 +1365,8 @@ defineScene({
         tile.style.cssText = [
           'display:flex;align-items:center;justify-content:center;',
           'padding:16px 8px;border-radius:10px;',
-          'background:' + (isSel ? hexToRgba(T.elec, 0.15) : T.well) + ';',
-          'border:2px solid ' + (isSel ? T.elec : 'transparent') + ';',
+          'background:' + (isSel ? hexToRgba(T.groups.picker.optionSelected, 0.15) : T.well) + ';',
+          'border:2px solid ' + (isSel ? T.groups.picker.optionSelected : 'transparent') + ';',
           'font-family:' + T.fh + ';font-size:14px;font-weight:700;',
           'color:' + (preset.type === 'comp' ? T.gold : T.text) + ';letter-spacing:0.5px;',
           'cursor:pointer;user-select:none;-webkit-user-select:none;',
@@ -1399,7 +1399,7 @@ defineScene({
 
     var cancel = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.picker.cancel,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
@@ -1412,7 +1412,7 @@ defineScene({
 
     var apply = buildPillButton({
       label:    'APPLY',
-      variant:  'elec',
+      variant:  T.groups.picker.apply,
       fontSize: T.fsB2,
       onClick:  function() {
         if (!selectedDiscount) return;

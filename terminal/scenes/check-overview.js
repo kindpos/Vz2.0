@@ -809,7 +809,7 @@ defineScene({
       render: function(container, params) {
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var shell = buildStaticCard({ accent: T.gold });
+        var shell = buildStaticCard({ accent: T.groups.picker.shellAccentAuth });
         shell.style.display       = 'flex';
         shell.style.flexDirection = 'column';
         shell.style.alignItems    = 'center';
