@@ -3,7 +3,7 @@
 
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../tokens.js';
-import { buildPillButton } from '../theme-manager.js';
+import { buildPillButton, hexToRgba } from '../theme-manager.js';
 
 defineScene({
   name: 'item-detail',
@@ -31,7 +31,7 @@ defineScene({
 
     if (!inst.mods || inst.mods.length === 0) {
       var none = document.createElement('div');
-      none.style.cssText = 'font-family:' + T.fh + ';font-size:14px;color:' + T.mutedText + ';font-style:italic;';
+      none.style.cssText = 'font-family:' + T.fh + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;';
       none.textContent = 'No modifiers';
       modScroll.appendChild(none);
     } else {
