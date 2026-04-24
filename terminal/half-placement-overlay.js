@@ -7,7 +7,7 @@
  */
 
 import { T } from './tokens.js';
-import { buildStyledButton } from './sm2-shim.js';
+import { buildPillButton, hexToRgba } from './theme-manager.js';
 import { SceneManager } from './scene-manager.js';
 
 /**
@@ -22,10 +22,17 @@ import { SceneManager } from './scene-manager.js';
  */
 export function showHalfPlacementOverlay(itemName, modName, modPrice, halfPrice, currentMods) {
   return new Promise(function(resolve, reject) {
+    // Flat params, matching every other interrupt in the codebase. The
+    // earlier nested shape (`params: {...}`) made mount() see undefined
+    // fields — same class of bug as order-entry.js:1315-1320's seat-assign.
     SceneManager.interrupt('half-placement', {
+      itemName: itemName,
+      modName: modName,
+      modPrice: modPrice,
+      halfPrice: halfPrice,
+      currentMods: currentMods,
       onConfirm: function(result) { resolve(result); },
       onCancel: function() { reject(new Error('Interrupt cancelled')); },
-      params: { itemName: itemName, modName: modName, modPrice: modPrice, halfPrice: halfPrice, currentMods: currentMods },
     });
   });
 }
@@ -44,7 +51,7 @@ function _buildOverlay(el, itemName, modName, modPrice, halfPrice, currentMods, 
     'width:90%;max-width:900px;',
     'background:' + T.bg + ';',
     'border:3px solid ' + T.border + ';',
-    'clip-path:polygon(8px 0%,calc(100% - 8px) 0%,100% 8px,100% calc(100% - 8px),calc(100% - 8px) 100%,8px 100%,0% calc(100% - 8px),0% 8px);',
+    'border-radius:' + T.chamferCard + 'px;',
     'display:flex;flex-direction:column;',
     'font-family:' + T.fb + ';',
     'overflow:hidden;',
@@ -55,26 +62,28 @@ function _buildOverlay(el, itemName, modName, modPrice, halfPrice, currentMods, 
   header.style.cssText = [
     'display:flex;align-items:center;justify-content:space-between;',
     'padding:10px 16px;',
-    'background:' + T.bgDark + ';',
+    'background:' + T.well + ';',
     'border-bottom:2px solid ' + T.border + ';',
   ].join('');
 
   var titleSpan = document.createElement('span');
-  titleSpan.style.cssText = 'color:' + T.gold + ';font-size:' + T.fsBtnSm + ';font-family:' + T.fb + ';';
-  titleSpan.textContent = itemName + '  \u2014  ' + modName;
+  titleSpan.style.cssText = 'color:' + T.gold + ';font-size:' + T.fsB3 + ';font-family:' + T.fb + ';';
+  titleSpan.textContent = itemName + '  —  ' + modName;
   header.appendChild(titleSpan);
 
-  // CANCEL button (Style D dark)
-  var cancelPair = buildStyledButton(T.darkBtn);
-  cancelPair.wrap.style.cssText += 'width:100px;height:40px;';
-  cancelPair.inner.textContent = 'CANCEL';
-  cancelPair.inner.style.color = T.mint;
-  cancelPair.inner.style.fontSize = T.fsSmall;
-  cancelPair.inner.style.fontFamily = T.fb;
-  cancelPair.wrap.addEventListener('pointerup', function() {
-    onCancel();
+  var cancelBtn = buildPillButton({
+    label: 'CANCEL',
+    color: T.card,
+    darkBg: T.well,
+    textColor: T.green,
+    fontSize: T.fsB3,
+    shape: 'chamfer',
+    onClick: function() { onCancel(); },
   });
-  header.appendChild(cancelPair.wrap);
+  cancelBtn.dataset.role = 'cancel';
+  cancelBtn.style.width = '100px';
+  cancelBtn.style.height = '40px';
+  header.appendChild(cancelBtn);
   panel.appendChild(header);
 
   // ── Body: two columns with vertical wall ──
@@ -100,7 +109,7 @@ function _buildOverlay(el, itemName, modName, modPrice, halfPrice, currentMods, 
   var wall = document.createElement('div');
   wall.style.cssText = [
     'width:7px;',
-    'background:' + T.bgDark + ';',
+    'background:' + T.well + ';',
     'flex-shrink:0;',
   ].join('');
   body.appendChild(wall);
@@ -121,27 +130,33 @@ function _buildColumn(label, mods, wholeNames, onTap) {
     'flex:1;display:flex;flex-direction:column;padding:12px;',
   ].join('');
 
-  // Side button (Style D dark with mint shadow)
-  var btnPair = buildStyledButton(T.darkBtn);
-  btnPair.wrap.style.cssText += 'width:100%;height:56px;margin-bottom:12px;';
-  btnPair.inner.textContent = label;
-  btnPair.inner.style.color = T.mint;
-  btnPair.inner.style.fontSize = T.fsBtn;
-  btnPair.inner.style.fontFamily = T.fb;
-  btnPair.wrap.addEventListener('pointerup', onTap);
-  col.appendChild(btnPair.wrap);
+  var sideBtn = buildPillButton({
+    label: label,
+    color: T.card,
+    darkBg: T.well,
+    textColor: T.green,
+    fontSize: T.fsB2,
+    shape: 'chamfer',
+    onClick: onTap,
+  });
+  sideBtn.dataset.role = 'side';
+  sideBtn.dataset.side = label;
+  sideBtn.style.width = '100%';
+  sideBtn.style.height = '56px';
+  sideBtn.style.marginBottom = '12px';
+  col.appendChild(sideBtn);
 
   // Live modifier list
   var list = document.createElement('div');
   list.style.cssText = [
     'flex:1;overflow-y:auto;',
     'font-family:' + T.fb + ';',
-    'font-size:' + T.fsSmall + ';',
+    'font-size:' + T.fsB3 + ';',
   ].join('');
 
   if (mods.length === 0) {
     var placeholder = document.createElement('div');
-    placeholder.style.cssText = 'color:' + T.dimText + ';padding:4px 0;';
+    placeholder.style.cssText = 'color:' + hexToRgba(T.text, 0.45) + ';padding:4px 0;';
     placeholder.textContent = 'Nothing on ' + label.toLowerCase();
     list.appendChild(placeholder);
   } else {
@@ -153,10 +168,10 @@ function _buildColumn(label, mods, wholeNames, onTap) {
       var isExtra = wholeNames[m.name];
       if (isExtra) {
         nameSpan.style.color = T.gold;
-        nameSpan.textContent = '\u2022 Xtra ' + m.name;
+        nameSpan.textContent = '• Xtra ' + m.name;
       } else {
-        nameSpan.style.color = T.mint;
-        nameSpan.textContent = '\u2022 ' + m.name;
+        nameSpan.style.color = T.green;
+        nameSpan.textContent = '• ' + m.name;
       }
       row.appendChild(nameSpan);
 
