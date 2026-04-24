@@ -37,7 +37,7 @@
 
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
-import { buildCard, buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
+import { buildCard, buildStaticCard, buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
 import { buildButton, showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
@@ -470,21 +470,20 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        // Nostalgia card shell — green accent bar, chamfered corners,
-        // modal-depth drop-shadow.
-        var shell = buildCard({
-          accent: T.green,
-          bg: T.card,
-          padding: '8px 24px 24px',
-        });
-        shell.card.style.display       = 'flex';
-        shell.card.style.flexDirection = 'column';
-        shell.card.style.gap           = '10px';
-        shell.card.style.minWidth      = '500px';
-        shell.card.style.maxWidth      = '620px';
-        shell.card.style.maxHeight     = '520px';
-        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
-        var panel = shell.card;
+        // Shell: Nostalgia landing-page card affordance (beveled borders,
+        // T.well bg, inset + 3D drop shadow). Taller min-height so the
+        // card has presence even with one item; more interior padding
+        // below so action bar breathes away from the list.
+        var shell = buildStaticCard({ accent: T.green });
+        shell.style.display       = 'flex';
+        shell.style.flexDirection = 'column';
+        shell.style.gap           = '10px';
+        shell.style.minWidth      = '500px';
+        shell.style.maxWidth      = '620px';
+        shell.style.minHeight     = '420px';
+        shell.style.maxHeight     = '520px';
+        shell.style.padding       = '20px 28px 28px 32px';
+        var panel = shell;
 
         // Title
         var title = document.createElement('div');
@@ -507,25 +506,35 @@ defineScene({
 
         var seatBtnRefs = {}; // { itemId: [ { btn, paint, seatNum } ] }
 
-        // Nostalgia pill-styled seat tile. Compact size, drop-shadow like
-        // the main bottom-bar buttons, toggles between T.card (unselected)
-        // and T.green (selected).
+        // Nostalgia seat tile. Per-seat palette (T.seatPalette) drives
+        // both states:
+        //   UNSELECTED  moon bg    + seat-color label
+        //   SELECTED    seat fill  + dark (moonText) label
+        // Same convention the item-recap and check-overview picker grid
+        // already use — keep them in lockstep.
         function makeSeatTile(sn) {
+          var seatColor = T.seatPalette[(sn - 1) % T.seatPalette.length];
           var btn = buildPillButton({
             label: 'S' + sn,
-            color: T.card,
-            darkBg: T.well,
-            fontSize: T.fsB3,
+            color: T.moon,
+            darkBg: T.moonDk,
+            textColor: seatColor,
+            fontSize: T.fsB2,
           });
-          btn.style.width = '64px';
-          btn.style.height = '48px';
-          btn.style.flexShrink = '0';
-          
+          btn.style.width           = '64px';
+          btn.style.height          = '48px';
+          btn.style.flexShrink      = '0';
+          btn.style.borderRadius    = '14px';
+          btn.style.padding         = '0';
+          btn.style.display         = 'flex';
+          btn.style.alignItems      = 'center';
+          btn.style.justifyContent  = 'center';
+
           function paint(selected) {
             btn.setColor(
-              selected ? T.green : T.card,
-              selected ? T.greenDk : T.well,
-              selected ? T.well : T.text
+              selected ? seatColor : T.moon,
+              selected ? darkenHex(seatColor, 0.2) : T.moonDk,
+              selected ? T.moonText : seatColor
             );
           }
           return { btn: btn, paint: paint };
@@ -592,28 +601,36 @@ defineScene({
           }
         }
 
-        // Bottom bar: select-all + confirm + cancel
+        // Bottom bar — check-overview hierarchy.
+        //   Left column  : SELECT ALL (elec/cyan) stacked on top of
+        //                  CANCEL (verm — destructive exit).
+        //   Right column : CONFIRM, full-height mint primary CTA.
+        //                  Disabled (dimmed, unclickable) until every
+        //                  item has at least one seat.
         var bottomBar = document.createElement('div');
-        bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
+        bottomBar.style.cssText = [
+          'display:flex;gap:10px;margin-top:auto;',
+          'padding-top:28px;align-items:stretch;',
+        ].join('');
 
-        // Button hierarchy (Nostalgia):
-        //   CANCEL      — ghost (secondary exit)
-        //   SELECT ALL  — ghost (secondary helper)
-        //   CONFIRM     — ghost (disabled) → mint primary when all assigned
-        var cancelBtn = buildPillButton({
-          label: 'CANCEL',
-          variant: 'ghost',
-          fontSize: T.fsB2,
-          onClick: function() { params.onCancel(); },
-        });
-        cancelBtn.style.flex = '1';
-        cancelBtn.style.height = '48px';
-        bottomBar.appendChild(cancelBtn);
+        var leftCol = document.createElement('div');
+        leftCol.style.cssText = [
+          'flex:1;display:flex;flex-direction:column;gap:8px;',
+        ].join('');
+
+        // Match check-overview's action-bar button chrome: 14px border
+        // radius + flex-centered text so the whole family reads as one.
+        function shapeAction(btn) {
+          btn.style.borderRadius   = '14px';
+          btn.style.display        = 'flex';
+          btn.style.alignItems     = 'center';
+          btn.style.justifyContent = 'center';
+        }
 
         var selectAllBtn = buildPillButton({
           label: 'SELECT ALL',
-          variant: 'ghost',
-          fontSize: T.fsB2,
+          variant: 'elec',
+          fontSize: T.fsB3,
           onClick: function() {
             for (var ai = 0; ai < items.length; ai++) {
               assignments[items[ai].id] = seatNumbers.slice();
@@ -622,47 +639,43 @@ defineScene({
             updateConfirmState();
           },
         });
-        selectAllBtn.style.color = T.gold;
-        selectAllBtn.style.flex = '1';
-        selectAllBtn.style.height = '48px';
-        bottomBar.appendChild(selectAllBtn);
+        selectAllBtn.style.height = '36px';
+        selectAllBtn.style.padding = '0 18px';
+        shapeAction(selectAllBtn);
+        leftCol.appendChild(selectAllBtn);
+
+        var cancelBtn = buildPillButton({
+          label: 'CANCEL',
+          variant: 'verm',
+          fontSize: T.fsB3,
+          onClick: function() { params.onCancel(); },
+        });
+        cancelBtn.style.height = '36px';
+        cancelBtn.style.padding = '0 18px';
+        shapeAction(cancelBtn);
+        leftCol.appendChild(cancelBtn);
+
+        bottomBar.appendChild(leftCol);
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          variant: 'ghost',
+          variant: 'mint',
           fontSize: T.fsB2,
-          onClick: function() {
-            // Only proceed if all items have at least one seat
-            var ready = true;
-            for (var k = 0; k < items.length; k++) {
-              if (!assignments[items[k].id] || assignments[items[k].id].length === 0) { ready = false; break; }
-            }
-            if (!ready) return;
-            params.onConfirm(assignments);
-          },
+          onClick: function() { params.onConfirm(assignments); },
         });
         confirmBtn.style.flex = '1';
-        confirmBtn.style.height = '48px';
+        confirmBtn.style.minHeight = '80px';
+        shapeAction(confirmBtn);
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
-        container.appendChild(shell.wrap);
+        container.appendChild(shell);
 
-        // CONFIRM promotes from ghost (disabled) to mint primary (ready).
         function updateConfirmState() {
           var allAssigned = true;
           for (var k = 0; k < items.length; k++) {
             if (!assignments[items[k].id] || assignments[items[k].id].length === 0) { allAssigned = false; break; }
           }
-          if (allAssigned) {
-            confirmBtn.setColor(T.green, T.greenDk, T.well);
-            confirmBtn.style.border = 'none';
-            confirmBtn.style.boxShadow = '0 6px 0 ' + T.greenDk;
-          } else {
-            confirmBtn.setColor('transparent', 'rgba(255,255,255,0.1)', T.text);
-            confirmBtn.style.color = hexToRgba(T.text, 0.45);
-            confirmBtn.style.border = '1px solid ' + T.border;
-            confirmBtn.style.boxShadow = 'none';
-          }
+          confirmBtn.setDisabled(!allAssigned);
         }
         updateConfirmState();
 
@@ -723,13 +736,16 @@ defineScene({
         var stepper = document.createElement('div');
         stepper.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:16px;margin:6px 0 4px;';
 
+        // Stepper −/+: neutral elec cyan so they don't blend with the
+        // card bg and don't claim primary-action color.
         var minusBtn = buildPillButton({
           label: '−',
-          color: T.card,
+          variant: 'elec',
           fontSize: T.fsB1,
         });
         minusBtn.style.width  = '64px';
         minusBtn.style.height = '56px';
+        minusBtn.style.borderRadius = '14px';
         minusBtn.style.flexShrink = '0';
 
         var qtyReadout = document.createElement('div');
@@ -742,11 +758,12 @@ defineScene({
 
         var plusBtn = buildPillButton({
           label: '+',
-          color: T.card,
+          variant: 'elec',
           fontSize: T.fsB1,
         });
         plusBtn.style.width  = '64px';
         plusBtn.style.height = '56px';
+        plusBtn.style.borderRadius = '14px';
         plusBtn.style.flexShrink = '0';
 
         stepper.appendChild(minusBtn);
@@ -754,21 +771,29 @@ defineScene({
         stepper.appendChild(plusBtn);
         panel.appendChild(stepper);
 
-        // Bottom bar
+        // Button hierarchy: CANCEL (verm destructive) + CONFIRM (mint
+        // primary). Matching 14px radius + flex-centered text so the
+        // pair reads as one family with the check-overview action bar.
         var bottomBar = document.createElement('div');
         bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
 
         var cancelBtn = buildPillButton({
           label: 'CANCEL',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'verm',
+          fontSize: T.fsB2,
           onClick: function() { params.onCancel(); },
         });
         cancelBtn.style.flex = '1';
         cancelBtn.style.height = '48px';
+        cancelBtn.style.borderRadius = '14px';
+        cancelBtn.style.display = 'flex';
+        cancelBtn.style.alignItems = 'center';
+        cancelBtn.style.justifyContent = 'center';
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'mint',
+          fontSize: T.fsB2,
           onClick: function() {
             if (qty === startQty) return;
             params.onConfirm(qty);
@@ -776,6 +801,10 @@ defineScene({
         });
         confirmBtn.style.flex = '1';
         confirmBtn.style.height = '48px';
+        confirmBtn.style.borderRadius = '14px';
+        confirmBtn.style.display = 'flex';
+        confirmBtn.style.alignItems = 'center';
+        confirmBtn.style.justifyContent = 'center';
 
         bottomBar.appendChild(cancelBtn);
         bottomBar.appendChild(confirmBtn);
