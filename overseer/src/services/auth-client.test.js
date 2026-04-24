@@ -1,12 +1,6 @@
-// Tests for overseer/src/services/auth-client.js — pins the same token-storage
-// contract as the terminal client, PLUS the 401/403 PIN-prompt retry flow that
-// keeps Overseer config writes from dying on a stale session.
-//
-// The overseer module uses window.prompt + _originalFetch for its PIN prompt,
-// so every test stubs window.prompt explicitly. Note: on 429 the current source
-// returns early via `if (!res.ok) return false;` so the `window.alert(...)` at
-// line 77 is unreachable — we pin the actual behavior (prompt returns false,
-// no retry) rather than the alert the code intended to show.
+// Tests for overseer/src/services/auth-client.js — pins the token-storage
+// contract and fetch interceptor behavior. 401/403 responses are passed through
+// to the caller without a PIN prompt or retry.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -22,8 +16,6 @@ function jsonResponse(body, status = 200) {
 describe('overseer/src/services/auth-client', () => {
   let fetchMock;
   let originalFetch;
-  let promptSpy;
-  let alertSpy;
 
   beforeEach(() => {
     vi.resetModules();
@@ -31,8 +23,6 @@ describe('overseer/src/services/auth-client', () => {
     originalFetch = window.fetch;
     fetchMock = vi.fn();
     window.fetch = fetchMock;
-    promptSpy = vi.spyOn(window, 'prompt').mockReturnValue(null);
-    alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -69,129 +59,30 @@ describe('overseer/src/services/auth-client', () => {
     expect(init.headers.get('Authorization')).toBe('Bearer tok-1');
   });
 
-  // ── 401 → prompt → retry once ────────────────────────────────────
+  // ── 401 / 403 pass-through (no PIN gate) ─────────────────────────
 
-  it('on 401, prompts for PIN via _originalFetch, stores new token, and retries original request once', async () => {
-    // Sequence:
-    //   1) original GET /api/v1/orders → 401
-    //   2) POST /api/v1/auth/verify-pin → 200 { valid: true, token: 'fresh' }
-    //   3) retry GET /api/v1/orders → 200 { ok: true }
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({ detail: 'auth' }, 401))
-      .mockResolvedValueOnce(jsonResponse({ valid: true, token: 'fresh', employee_id: 'mgr1', name: 'Mel', roles: ['manager'] }))
-      .mockResolvedValueOnce(jsonResponse({ ok: true }, 200));
-    promptSpy.mockReturnValue('4321');
+  it('on 401, returns the response directly with no prompt and no retry', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: 'auth' }, 401));
+    const promptSpy = vi.spyOn(window, 'prompt');
 
     const { getToken } = await import(MODULE);
-
     const res = await window.fetch('/api/v1/orders');
 
-    expect(promptSpy).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    // The verify-pin call goes to the correct endpoint with a JSON body.
-    const [verifyUrl, verifyInit] = fetchMock.mock.calls[1];
-    expect(verifyUrl).toBe('/api/v1/auth/verify-pin');
-    expect(verifyInit.method).toBe('POST');
-    expect(JSON.parse(verifyInit.body)).toEqual({ pin: '4321' });
-
-    // Token is persisted after a successful verify.
-    expect(getToken()).toBe('fresh');
-    // The caller sees the successful retry, not the original 401.
-    expect(res.status).toBe(200);
+    expect(promptSpy).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getToken()).toBeNull();
+    expect(res.status).toBe(401);
   });
 
-  it('on 403, the prompt message includes "Manager role required"', async () => {
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({ detail: 'need manager' }, 403));
-    promptSpy.mockReturnValue(null); // User cancels the prompt.
+  it('on 403, returns the response directly with no prompt and no retry', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: 'need manager' }, 403));
+    const promptSpy = vi.spyOn(window, 'prompt');
 
     await import(MODULE);
     const res = await window.fetch('/api/v1/config/tip_pools', { method: 'POST', body: '{}' });
 
-    expect(promptSpy).toHaveBeenCalledTimes(1);
-    const promptMsg = promptSpy.mock.calls[0][0];
-    expect(promptMsg).toMatch(/Manager role required/);
-    // Prompt cancelled → no retry, caller sees the original 403.
+    expect(promptSpy).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(403);
-  });
-
-  // ── 429 on PIN verify ────────────────────────────────────────────
-
-  it('on 429 from verify-pin, window.alert fires with the "wait 60 seconds" copy', async () => {
-    // Original 401 → PIN prompt fires → verify-pin returns 429. The rate-limit
-    // status triggers a distinct alert so the operator doesn't retype a valid
-    // PIN thinking they typo'd. Earlier the `if (!res.ok) return false` check
-    // shadowed this alert; the fix hoists the 429 branch above that guard.
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({ detail: 'auth' }, 401))
-      .mockResolvedValueOnce(jsonResponse({ valid: false }, 429));
-    promptSpy.mockReturnValue('4321');
-
-    const { getToken } = await import(MODULE);
-    const res = await window.fetch('/api/v1/orders');
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);   // Original + verify, no retry.
-    expect(getToken()).toBeNull();                 // No setToken fired.
-    expect(res.status).toBe(401);                  // Caller sees original failure.
-    expect(alertSpy).toHaveBeenCalledTimes(1);
-    expect(alertSpy.mock.calls[0][0]).toMatch(/Too many PIN attempts/i);
-    expect(alertSpy.mock.calls[0][0]).toMatch(/60 seconds/);
-  });
-
-  // ── Concurrent-401 dedupe via _pinPromptInFlight ────────────────
-
-  it('_pinPromptInFlight dedupes: two concurrent 401s fire the prompt exactly once', async () => {
-    let verifyResolve;
-    const verifyPromise = new Promise((resolve) => { verifyResolve = resolve; });
-
-    fetchMock.mockImplementation((url) => {
-      if (String(url).endsWith('/auth/verify-pin')) {
-        return verifyPromise;
-      }
-      // Both original requests 401 on first hit; their retries return 200.
-      const call = fetchMock.mock.calls.filter(
-        (c) => !String(c[0]).endsWith('/auth/verify-pin') && c[0] === url,
-      ).length;
-      // 1st call to each URL → 401; 2nd (retry) → 200.
-      return Promise.resolve(jsonResponse({ call }, call === 1 ? 401 : 200));
-    });
-    promptSpy.mockReturnValue('4321');
-
-    await import(MODULE);
-
-    const [resA, resB] = await Promise.all([
-      // Start both requests. They'll both 401, both await the single in-flight prompt.
-      window.fetch('/api/v1/orders').then(async (r) => {
-        // r is the first-attempt 401 if dedupe fails to retry; 200 if retry happened.
-        return r;
-      }),
-      window.fetch('/api/v1/payouts').then(async (r) => r),
-      // Resolve verify after both are awaiting.
-      Promise.resolve().then(() => {
-        verifyResolve(jsonResponse({ valid: true, token: 'dedupe-tok' }));
-      }),
-    ]);
-
-    expect(promptSpy).toHaveBeenCalledTimes(1); // The critical assertion.
-    expect(resA.status).toBe(200);
-    expect(resB.status).toBe(200);
-  });
-
-  // ── Retry is only once ──────────────────────────────────────────
-
-  it('retry happens at most once: if the retried request also 401s, the 401 is returned (no loop)', async () => {
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({}, 401))                                           // 1: original
-      .mockResolvedValueOnce(jsonResponse({ valid: true, token: 'x' }))                        // 2: verify-pin
-      .mockResolvedValueOnce(jsonResponse({}, 401));                                          // 3: retry STILL 401
-    promptSpy.mockReturnValue('4321');
-
-    await import(MODULE);
-    const res = await window.fetch('/api/v1/orders');
-
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(promptSpy).toHaveBeenCalledTimes(1);
-    expect(res.status).toBe(401);
   });
 });

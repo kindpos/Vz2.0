@@ -137,21 +137,6 @@ export function installAuthFetchInterceptor() {
             throw e;
         }
 
-        // If the backend says "you need to authenticate", drop any
-        // stored token (it may be stale) and ask the user for a PIN.
-        // Retry once on success so the caller sees the real response.
-        if (res.status === 401 || res.status === 403) {
-            clearToken();
-            const ok = await promptManagerPin(
-                res.status === 403
-                    ? 'Manager role required.'
-                    : 'Session expired or not signed in.'
-            );
-            if (ok) {
-                const retryInit = attach(init);
-                return _originalFetch(input, retryInit);
-            }
-        }
         return res;
     };
 }
