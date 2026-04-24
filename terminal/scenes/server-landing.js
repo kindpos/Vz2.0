@@ -129,7 +129,7 @@ function buildCheckTile(order, onClick) {
 
 function buildNewCheckTile(onClick) {
   var tile = buildActionCard({
-    accent: T.green,
+    accent: T.groups.landing.tileAccent,
     onClick: onClick
   });
   tile.style.width          = '110px';
@@ -139,10 +139,10 @@ function buildNewCheckTile(onClick) {
   tile.style.alignItems     = 'center';
   tile.style.justifyContent = 'center';
   tile.style.background     = 'transparent';
-  tile.style.border         = '1px dashed ' + hexToRgba(T.green, 0.5);
+  tile.style.border         = '1px dashed ' + hexToRgba(T.groups.landing.newCheckBorder, 0.5);
 
   var plus = document.createElement('span');
-  plus.style.cssText = 'font-family:' + T.fh + ';font-size:32px;color:' + hexToRgba(T.green, 0.6) + ';pointer-events:none;';
+  plus.style.cssText = 'font-family:' + T.fh + ';font-size:32px;color:' + hexToRgba(T.groups.landing.newCheckBorder, 0.6) + ';pointer-events:none;';
   plus.textContent = '+';
   tile.appendChild(plus);
 
@@ -249,7 +249,7 @@ defineScene({
     tipOuter.style.cssText = 'flex:1;position:relative;overflow:visible;display:flex;flex-direction:column;';
     leftCol.appendChild(tipOuter);
 
-    var tipResult = buildStaticCard({ accent: T.green });
+    var tipResult = buildStaticCard({ accent: T.groups.landing.infoAccent });
     tipResult.style.flex          = '1';
     tipResult.style.display       = 'flex';
     tipResult.style.flexDirection = 'column';
@@ -294,7 +294,7 @@ defineScene({
     // ─────────────────────────────────────────────
     //  CHECK GRID (cols 2-3, row 1)
     // ─────────────────────────────────────────────
-    var gridResult = buildStaticCard({ accent: T.green });
+    var gridResult = buildStaticCard({ accent: T.groups.landing.infoAccent });
     gridResult.style.gridColumn = '2/4';
     gridResult.style.gridRow    = '1';
     gridResult.style.height     = '100%';
@@ -437,7 +437,7 @@ defineScene({
       });
 
       r.tipsTotal.textContent = fmt(total);
-      r.tipResult.setAccent(unadj > 0 ? T.verm : T.green);
+      r.tipResult.setAccent(unadj > 0 ? T.verm : T.groups.landing.infoAccent);
       r.unadjBadge.textContent   = unadj > 0 ? (unadj + ' unadj') : '';
       r.unadjBadge.style.display = unadj > 0 ? 'block' : 'none';
 

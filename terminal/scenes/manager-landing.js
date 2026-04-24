@@ -185,6 +185,7 @@ function _wireCloseDayData(state, day) {
 function _wireServerColors(state, staffResult) {
   var staff = staffResult.staff || [];
   state.serverColorMap = {};
+  // T.groups.landing.srvChipAccent sentinel — rotates per-server via srvPalette
   staff.forEach(function(s, i) {
     state.serverColorMap[s.employee_id] = T.srvPalette[i % T.srvPalette.length];
   });
@@ -280,12 +281,12 @@ function _buildCheckTile(order, isSelected, srvColor, onClick, onLongPress, filt
 
 function _buildNewTile(onClick) {
   var tile = document.createElement('div');
-  tile.style.cssText = 'width:110px;height:90px;flex-shrink:0;border:1px dashed ' + hexToRgba(T.green, 0.4) + ';border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.1s;';
+  tile.style.cssText = 'width:110px;height:90px;flex-shrink:0;border:1px dashed ' + hexToRgba(T.groups.landing.newCheckBorder, 0.4) + ';border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.1s;';
   var plus = document.createElement('span');
-  plus.style.cssText = 'font-family:' + T.fh + ';font-size:28px;color:' + hexToRgba(T.green, 0.5) + ';pointer-events:none;';
+  plus.style.cssText = 'font-family:' + T.fh + ';font-size:28px;color:' + hexToRgba(T.groups.landing.newCheckBorder, 0.5) + ';pointer-events:none;';
   plus.textContent = '+';
   tile.appendChild(plus);
-  tile.addEventListener('pointerdown',  function() { tile.style.background = hexToRgba(T.green, 0.08); });
+  tile.addEventListener('pointerdown',  function() { tile.style.background = hexToRgba(T.groups.landing.newCheckBorder, 0.08); });
   tile.addEventListener('pointerup',    function() { tile.style.background = 'transparent'; if (onClick) onClick(); });
   tile.addEventListener('pointerleave', function() { tile.style.background = 'transparent'; });
   return tile;
@@ -474,7 +475,7 @@ defineScene({
       'z-index:2;',
       'position:absolute;inset:0;',
       'background:' + T.card + ';',
-      'border-left:4px solid ' + T.green + ';',
+      'border-left:4px solid ' + T.groups.landing.infoAccent + ';',
       'border-radius:10px;',
       'box-shadow:0 4px 16px rgba(0,0,0,0.28);',
       'padding:12px 14px;',
@@ -942,14 +943,14 @@ defineScene({
         var newTile = document.createElement('div');
         newTile.style.cssText = [
           'width:140px;height:120px;flex-shrink:0;',
-          'border:1px dashed ' + hexToRgba(T.green, 0.5) + ';',
+          'border:1px dashed ' + hexToRgba(T.groups.landing.newCheckBorder, 0.5) + ';',
           'border-radius:10px;',
           'display:flex;align-items:center;justify-content:center;',
           'cursor:pointer;transition:background 0.1s;',
           'pointer-events:auto;touch-action:manipulation;',
         ].join('');
         var plus = document.createElement('span');
-        plus.style.cssText = 'font-family:' + T.fh + ';font-size:36px;color:' + hexToRgba(T.green, 0.6) + ';pointer-events:none;';
+        plus.style.cssText = 'font-family:' + T.fh + ';font-size:36px;color:' + hexToRgba(T.groups.landing.newCheckBorder, 0.6) + ';pointer-events:none;';
         plus.textContent = '+';
         newTile.appendChild(plus);
         newTile.addEventListener('pointerdown',  function() {

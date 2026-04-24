@@ -45,10 +45,24 @@ vi.mock('../../common/tokens.js', () => {
     bg: '#383c42', card: '#2e3236', well: '#22252a',
     green: '#86efac', greenDk: '#4ade80', gold: '#f5a623', goldDk: '#e09010',
     elec: '#22d3ee', elecDk: '#0ea5e9', verm: '#e8472a', vermDk: '#c03d22',
+    moon: '#7e8896', moonDk: '#4a5059', moonText: '#22252a',
+    lavender: '#b48efa',
     text: '#e8eaed', textMuted: 'rgba(232,234,237,0.55)',
     textDim: 'rgba(232,234,237,0.4)', border: 'rgba(232,234,237,0.08)',
     fb: 'sans-serif', fh: 'serif',
     fsB2: 14, fsB3: 12,
+    srvPalette: ['#38bdf8','#a78bfa','#fb923c','#34d399','#facc15','#f472b6','#e879f9','#4ade80'],
+    seatPalette: ['#38bdf8','#fb923c','#f472b6','#34d399','#facc15','#e879f9','#818cf8','#fb7185'],
+    groups: {
+      landing: { tileAccent: '#86efac', infoAccent: '#86efac', srvChipAccent: 'srvPalette', newCheckBorder: '#86efac' },
+      confirmation: { shellAccentDanger: '#e8472a', shellAccentOk: '#86efac', cancel: 'ghost', confirmAffirm: 'mint', confirmDelete: 'verm' },
+      picker: { shellAccent: '#22d3ee', shellAccentAuth: '#f5a623', cancel: 'ghost', apply: 'elec', optionDefault: 'ghost', optionSelected: '#22d3ee' },
+      auth: { shellAccent: '#f5a623' },
+      composite: { shellAccent: '#86efac', selectAll: 'elec', cancel: 'verm', confirm: 'mint', stepper: 'elec' },
+      paymentPreset: { tileAccent: '#86efac', tapFlashFill: '#86efac', tapFlashLabel: '#22252a' },
+      actionBar: { disc: '#b48efa', void: '#e8472a', pay: '#f5a623', addItems: '#86efac', editSeats: '#7e8896', print: '#22d3ee', radius: '14px' },
+      selectionGrid: { unselectedBg: '#7e8896', unselectedFg: 'seatPalette', selectedBg: 'seatPalette', selectedFg: '#22252a', radius: '14px' },
+    },
   };
   return { T };
 });
