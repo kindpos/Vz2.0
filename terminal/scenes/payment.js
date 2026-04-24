@@ -774,7 +774,7 @@ function populateLeftCard(order) {
 
 function buildCenterColumn(params) {
   var col = document.createElement('div');
-  col.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:10px;overflow:hidden;min-width:0;';
+  col.style.cssText = 'width:230px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;overflow:hidden;min-width:0;';
 
   col.appendChild(buildTenderToggle());
   col.appendChild(buildBalanceStrip());
@@ -811,12 +811,14 @@ function buildTenderToggle() {
 
 function buildModeToggle(mode, label, color, dkColor) {
   var btn = buildPillButton({
-    label:   label,
-    color:   color,
-    onClick: function() { setPaymentMode(mode); },
+    label:    label,
+    color:    color,
+    padding:  '6px 14px',
+    fontSize: T.fsB3,
+    onClick:  function() { setPaymentMode(mode); },
   });
   btn.style.flex   = '1';
-  btn.style.height = '44px';
+  btn.style.height = '34px';
   _modeButtons[mode] = { el: btn, color: color, dk: dkColor };
   return btn;
 }
@@ -970,7 +972,7 @@ function handleKey(label) {
 
 function buildRightColumn() {
   var col = document.createElement('div');
-  col.style.cssText = 'width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;min-height:0;';
+  col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;min-height:0;';
 
   // Amount well — TENDERING label + hero number
   var dispWell = buildWell({ padding: '8px 16px' });
