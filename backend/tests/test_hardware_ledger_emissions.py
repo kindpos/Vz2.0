@@ -87,3 +87,31 @@ async def test_delete_device_emits_printer_removed(isolated_hw_db, ledger):
 async def test_delete_unknown_mac_emits_nothing(isolated_hw_db, ledger):
     await hw.delete_device(mac="de:ad:be:ef:00:00", ledger=ledger)
     assert await ledger.get_events_by_type(EventType.PRINTER_REMOVED) == []
+
+
+@pytest.mark.asyncio
+async def test_card_reader_save_emits_payment_processor_configured(isolated_hw_db, ledger):
+    record = hw.DeviceRecord(
+        mac="11:22:33:44:55:66",
+        ip="10.0.0.9",
+        type="card_reader",
+        name="Dejavoo #1",
+        port=9000,
+        register_id="REG-7",
+        tpn="TPN-SECRET",
+        auth_key="KEY-SECRET",
+        categories="",
+    )
+    await hw.save_device(device=record, ledger=ledger)
+
+    processor = await ledger.get_events_by_type(EventType.PAYMENT_PROCESSOR_CONFIGURED)
+    assert len(processor) == 1
+    p = processor[0].payload
+    assert p["mac"] == "11:22:33:44:55:66"
+    assert p["register_id"] == "REG-7"
+    # Credential material must never land in the audit payload.
+    assert "tpn" not in p
+    assert "auth_key" not in p
+
+    # And a card-reader save must NOT emit printer.configured.
+    assert await ledger.get_events_by_type(EventType.PRINTER_CONFIGURED) == []

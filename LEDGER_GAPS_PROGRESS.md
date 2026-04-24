@@ -142,6 +142,14 @@ the `/entomology` → Event Ledger Gaps tab.
   - LG-78 / LG-79: `/menu/86` and `/menu/restore` now emit
     `item.86ed` / `item.86_cleared` in one `append_batch` with the
     legacy `menu.item_86d` / `menu.item_restored`.
+- 2026-04-24 — Phase 3d: card reader admin flow now ledgered.
+  `POST /hardware/devices` with `type="card_reader"` emits
+  `payment.processor_configured` (LG-108, PCI/SOX audit anchor).
+  Payload carries `mac`, `ip`, `name`, and `register_id` but
+  deliberately excludes `tpn` and `auth_key` so the audit record
+  cannot leak credentials. Printer and card-reader emission paths are
+  now correctly divided (card readers no longer mis-fire
+  printer.configured). 1 new test; 1196 backend tests green.
 - 2026-04-24 — Phase 3c: printer admin flow now ledgered. `POST
   /hardware/devices` emits `printer.configured` (new MAC) or
   `printer.assignment_changed` (existing MAC, category list changed);

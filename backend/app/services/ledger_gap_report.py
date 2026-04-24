@@ -328,8 +328,9 @@ _CONFIG_NODES: list[dict[str, Any]] = [
     _node("LG-107", "config", "printer.assignment_changed", "IMPLEMENTED", "HIGH",
           "Emitted by POST /hardware/devices when an existing printer's category list changes; payload carries previous_categories + new_categories so routing drift is auditable.",
           site="hardware.py:save_device"),
-    _node("LG-108", "config", "payment.processor_configured", "MISSING", "HIGH",
-          "Critical: processor credential changes unaudited -- PCI compliance gap."),
+    _node("LG-108", "config", "payment.processor_configured", "IMPLEMENTED", "HIGH",
+          "Emitted by POST /hardware/devices when a card reader is saved. Payload carries mac/ip/name/register_id; tpn and auth_key are deliberately excluded so the audit record cannot leak credentials.",
+          site="hardware.py:save_device"),
     _node("LG-109", "config", "security.setting_updated", "MISSING", "HIGH",
           "Critical: security policy changes (lockout, 2FA, session TTL) unaudited."),
 ]
