@@ -69,6 +69,9 @@ class EventType(str, Enum):
     # ── Discounts (LEDGER_CORE) ──────────────────────────────────────
     DISCOUNT_APPROVED = "discount.approved"
     DISCOUNT_VOIDED = "discount.voided"
+    SEAT_DISCOUNT_APPLIED = "seat.discount_applied"
+    SEAT_DISCOUNT_VOIDED = "seat.discount_voided"
+    SEAT_COMPED = "seat.comped"
 
     # ── Printing (LEDGER_OPERATIONAL / EPHEMERAL) ────────────────────
     TICKET_PRINTED = "ticket.printed"               # LEDGER_OPERATIONAL
@@ -108,6 +111,7 @@ class EventType(str, Enum):
     # ── Post-authorization (LEDGER_CORE) ─────────────────────────────
     PAYMENT_REFUNDED = "payment.refunded"
     SEAT_PAID = "seat.paid"
+    SEAT_PAYMENT_VOIDED = "seat.payment_voided"
     SEAT_TIP_ADDED = "seat.tip_added"
     SEAT_OVERPAYMENT_RESOLVED = "seat.overpayment_resolved"
     TIP_ADJUSTED = "payment.tip_adjusted"
@@ -161,6 +165,9 @@ class EventType(str, Enum):
     TIPOUT_POOL_CREATED = "tipout.pool_created"
     TIPOUT_POOL_UPDATED = "tipout.pool_updated"
     TIPOUT_POOL_DELETED = "tipout.pool_deleted"
+    TIPOUT_CALCULATED = "tipout.calculated"
+    TIPOUT_ADJUSTED = "tipout.adjusted"
+    TIPOUT_DISTRIBUTED = "tipout.distributed"
 
     # ── Menu management (LEDGER_OPERATIONAL) ─────────────────────────
     MENU_ITEM_CREATED = "menu.item_created"
@@ -2635,6 +2642,223 @@ def security_setting_updated(
         event_type=EventType.SECURITY_SETTING_UPDATED,
         terminal_id=terminal_id,
         payload=payload,
+        **kwargs,
+    )
+
+
+def seat_discount_applied(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        amount: Decimal,
+        discount_type: str,
+        discount_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        approved_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_DISCOUNT_APPLIED: discount applied to a specific seat on a
+    split-check table. Distinct from order-level discount.approved so
+    per-seat audit retains attribution (e.g. comping one seat at a
+    3-seat table without blurring the other two)."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "amount": money_round(amount),
+        "discount_type": discount_type,
+    }
+    if discount_id is not None:
+        payload["discount_id"] = discount_id
+    if reason is not None:
+        payload["reason"] = reason
+    if approved_by is not None:
+        payload["approved_by"] = approved_by
+    return create_event(
+        event_type=EventType.SEAT_DISCOUNT_APPLIED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_discount_voided(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        amount: Decimal,
+        voided_by: str,
+        discount_type: Optional[str] = None,
+        discount_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_DISCOUNT_VOIDED: reverses a seat.discount_applied on a
+    specific seat."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "amount": money_round(amount),
+        "voided_by": voided_by,
+    }
+    if discount_type is not None:
+        payload["discount_type"] = discount_type
+    if discount_id is not None:
+        payload["discount_id"] = discount_id
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.SEAT_DISCOUNT_VOIDED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_comped(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        amount: Decimal,
+        comped_by: str,
+        reason: Optional[str] = None,
+        comp_category: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_COMPED: a specific seat is comped (manager waves the
+    check for a guest). Distinct from a generic discount.approved
+    with discount_type='comp' so comp-reporting can filter cleanly."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "amount": money_round(amount),
+        "comped_by": comped_by,
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    if comp_category is not None:
+        payload["comp_category"] = comp_category
+    return create_event(
+        event_type=EventType.SEAT_COMPED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_payment_voided(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        payment_id: str,
+        amount: Decimal,
+        voided_by: str,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_PAYMENT_VOIDED: reverses a specific seat's payment on a
+    split-check table. Distinct from order-level payment.refunded
+    which covers the whole order."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "payment_id": payment_id,
+        "amount": money_round(amount),
+        "voided_by": voided_by,
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.SEAT_PAYMENT_VOIDED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def tipout_calculated(
+        terminal_id: str,
+        tipout_id: str,
+        shift_date: str,
+        total_tipout: Decimal,
+        rule_ids: list[str],
+        breakdown: Optional[list[dict]] = None,
+        **kwargs
+) -> Event:
+    """TIPOUT_CALCULATED: result of running tipout rules over a
+    shift's tips. Payload carries the total and per-recipient
+    breakdown so disputes ('why did I get $X') are replayable."""
+    payload = {
+        "tipout_id": tipout_id,
+        "shift_date": shift_date,
+        "total_tipout": money_round(total_tipout),
+        "rule_ids": list(rule_ids),
+    }
+    if breakdown is not None:
+        payload["breakdown"] = breakdown
+    return create_event(
+        event_type=EventType.TIPOUT_CALCULATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=tipout_id,
+        **kwargs,
+    )
+
+
+def tipout_adjusted(
+        terminal_id: str,
+        tipout_id: str,
+        recipient_id: str,
+        previous_amount: Decimal,
+        new_amount: Decimal,
+        adjusted_by: str,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """TIPOUT_ADJUSTED: manager override of a calculated tipout line."""
+    payload = {
+        "tipout_id": tipout_id,
+        "recipient_id": recipient_id,
+        "previous_amount": money_round(previous_amount),
+        "new_amount": money_round(new_amount),
+        "adjusted_by": adjusted_by,
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.TIPOUT_ADJUSTED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=tipout_id,
+        **kwargs,
+    )
+
+
+def tipout_distributed(
+        terminal_id: str,
+        tipout_id: str,
+        total_distributed: Decimal,
+        distributed_by: str,
+        recipient_count: int = 0,
+        **kwargs
+) -> Event:
+    """TIPOUT_DISTRIBUTED: pay-out anchor; emitted after the tipout
+    cash has actually been handed out (or credited to a payroll run).
+    Pairs with tipout.calculated on tipout_id so replay can confirm
+    'calculated but not distributed' gaps."""
+    return create_event(
+        event_type=EventType.TIPOUT_DISTRIBUTED,
+        terminal_id=terminal_id,
+        payload={
+            "tipout_id": tipout_id,
+            "total_distributed": money_round(total_distributed),
+            "distributed_by": distributed_by,
+            "recipient_count": recipient_count,
+        },
+        correlation_id=tipout_id,
         **kwargs,
     )
 

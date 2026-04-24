@@ -72,6 +72,21 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 8: seat-scoped financial audit + tipout calc
+  lifecycle. Seven new `EventType` entries with matching factories;
+  all emittable via `/config/push`:
+  - `seat.discount_applied` / `seat.discount_voided` / `seat.comped`
+    (LG-28 / 29 / 30) -- per-seat discount audit on split-check
+    tables. `seat.comped` carries `comp_category` so comp-reporting
+    can filter cleanly.
+  - `seat.payment_voided` (LG-33) -- seat-scoped payment void
+    distinct from order-level `payment.refunded`.
+  - `tipout.calculated` / `tipout.adjusted` / `tipout.distributed`
+    (LG-99 / 100 / 101) -- full tipout pipeline: math result with
+    per-recipient breakdown, manager overrides, and pay-out anchor.
+    `tipout_id` is the correlation_id across the three events.
+  5 round-trip tests. Dataset now: 69 IMPLEMENTED / 18 RENAMED / 4
+  PARTIAL / 3 FACTORY-ONLY / 24 MISSING of 118 (58%).
 - 2026-04-24 — Phase 6: staff + config dark-ship completeness.
   Eleven new `EventType` entries plus factories, all emittable
   via `/config/push`:
