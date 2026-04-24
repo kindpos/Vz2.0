@@ -303,7 +303,7 @@ defineScene({
       var isSplitTarget = state.mode === 'split' && state.splitTargets.indexOf(colIdx) >= 0;
       var hdr = document.createElement('div');
       Object.assign(hdr.style, {
-        background:     isSplitTarget ? T.gold : T.green,
+        background:     isSplitTarget ? T.gold : T.well,
         height:         '32px',
         display:        'flex',
         alignItems:     'center',
@@ -313,7 +313,7 @@ defineScene({
         fontSize:       T.fsB3,
         fontWeight:     T.fwBold,
         letterSpacing:  '0.2em',
-        color:          T.well,
+        color:          isSplitTarget ? T.well : T.green,
         textTransform:  'uppercase',
         cursor:         'pointer',
       });
@@ -323,7 +323,7 @@ defineScene({
       hdr.appendChild(hdrLabel);
 
       var hdrTotal = document.createElement('span');
-      hdrTotal.style.color = T.well;
+      hdrTotal.style.color = isSplitTarget ? T.well : T.gold;
       hdrTotal.textContent = fmt(colTotal(col));
       hdr.appendChild(hdrTotal);
 
