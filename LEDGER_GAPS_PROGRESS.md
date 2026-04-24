@@ -8,15 +8,15 @@ inventory is `backend/app/services/ledger_gap_report.py` (surfaced in the
 
 | Status | Count | % | Notes |
 | --- | --- | --- | --- |
-| IMPLEMENTED | 91 | 77% | Emission wired in routes and/or via `/config/push` |
+| IMPLEMENTED | 93 | 79% | Emission wired in routes and/or via `/config/push` |
 | RENAMED | 18 | 15% | Code emits under a different name than the spec (audit-equivalent) |
 | PARTIAL | 4 | 3% | Covered but with a known caveat (see per-node `drop_risk`) |
-| FACTORY-ONLY | 3 | 3% | Enum + factory live; no emission path yet (dark-ship) |
+| FACTORY-ONLY | 1 | 1% | `menu.import_rolled_back` awaits rollback endpoint |
 | **MISSING** | **2** | **2%** | See list below |
 | **Total** | **118** | | |
 
 Events in `EventType` enum: **~182** (from ~63 at start).
-Backend tests: **1273 passing** (from 1247 at start).
+Backend tests: **1275 passing** (from 1247 at start).
 
 ## Phases shipped
 
@@ -41,6 +41,7 @@ Backend tests: **1273 passing** (from 1247 at start).
 | 8 | Seat financial + tipout pipeline | `seat.discount_*`, `seat.comped`, `seat.payment_voided`, `tipout.calculated/adjusted/distributed` | **DONE** |
 | 9 | Seat-transfer family (dark-ship) | 12 per-seat / cross-check / whole-seat / split-merge / reopen events | **DONE** |
 | 10 | Discount catalog CRUD | `discount.created` / `updated` / `deactivated` / `reactivated` (closes LG-87/88/89) | **DONE** |
+| 11 | Tipout rule factory + wiring | `tipout.rule_created/updated` factories added, LG-96/97 FACTORY-ONLY→IMPLEMENTED | **DONE** |
 
 ## Still MISSING (2 nodes)
 
@@ -78,6 +79,34 @@ Every other event is either emitted, renamed from the spec but audit-equivalent,
 ### Test file
 
 `tests/test_phase10_discount_catalog.py` — 9 tests, all passing.
+
+---
+
+## Phase 11 — Tipout rule factory + wiring (branch `claude/ledger-tipout-rules-phase11`)
+
+**Date**: 2026-04-24  
+**Closes**: LG-96 (`tipout.rule_created`), LG-97 (`tipout.rule_updated`)  
+**FACTORY-ONLY → IMPLEMENTED**: 2 nodes
+
+### What shipped
+
+The `TIPOUT_RULE_CREATED` and `TIPOUT_RULE_UPDATED` enum entries have existed since Phase 8 but lacked factory functions, making them un-emittable from application code (only raw `create_event` calls worked). This phase adds proper factories.
+
+| Event | EventType | Site |
+| --- | --- | --- |
+| `tipout.rule_created` | `TIPOUT_RULE_CREATED` | `events.py:tipout_rule_created, config.py:push_changes` |
+| `tipout.rule_updated` | `TIPOUT_RULE_UPDATED` | `events.py:tipout_rule_updated, config.py:push_changes` |
+
+### Key decisions
+
+- `tipout.rule_created` payload: `rule_id`, `name`, `pool_id`, `role_ids` (list), `percentage` (string Decimal), `effective_date` (ISO-8601), `created_by`.
+- `tipout.rule_updated` payload: `rule_id`, `fields_changed` (dict of changed fields), `updated_by`. No full-snapshot approach — consumers replay the changed fields.
+- No config.py changes needed: `tipout.*` already maps to the `"employees"` section in `push_changes`.
+- `percentage` stored as string via `money_round` to avoid float drift, consistent with all other financial fields.
+
+### Test file
+
+`tests/test_phase11_tipout_rules.py` — 6 tests, all passing.
 
 ---
 

@@ -359,10 +359,12 @@ _BATCH_NODES: list[dict[str, Any]] = [
 
 
 _TIPOUT_NODES: list[dict[str, Any]] = [
-    _node("LG-96", "tipout", "tipout.rule_created", "FACTORY-ONLY", "HIGH",
-          "Defined but unemitted; rule changes silent."),
-    _node("LG-97", "tipout", "tipout.rule_updated", "FACTORY-ONLY", "HIGH",
-          "Same as LG-96."),
+    _node("LG-96", "tipout", "tipout.rule_created", "IMPLEMENTED", "HIGH",
+          "Factory + enum live; emittable via /config/push. Payload carries rule_id, name, pool_id, role_ids, percentage, effective_date, created_by.",
+          site="events.py:tipout_rule_created, config.py:push_changes"),
+    _node("LG-97", "tipout", "tipout.rule_updated", "IMPLEMENTED", "HIGH",
+          "Parameter change for an existing rule; fields_changed dict + updated_by. Emittable via /config/push.",
+          site="events.py:tipout_rule_updated, config.py:push_changes"),
     _node("LG-98", "tipout", "tipout.rule_deactivated", "IMPLEMENTED", "MEDIUM",
           "Dedicated soft-delete event distinct from TIPOUT_RULE_DELETED. Emittable via /config/push.",
           site="events.py:tipout_rule_deactivated, config.py:push_changes"),
