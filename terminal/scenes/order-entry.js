@@ -474,7 +474,7 @@ defineScene({
         // T.well bg, inset + 3D drop shadow). Taller min-height so the
         // card has presence even with one item; more interior padding
         // below so action bar breathes away from the list.
-        var shell = buildStaticCard({ accent: T.green });
+        var shell = buildStaticCard({ accent: T.groups.composite.shellAccent });
         shell.style.display       = 'flex';
         shell.style.flexDirection = 'column';
         shell.style.gap           = '10px';
@@ -507,16 +507,16 @@ defineScene({
         var seatBtnRefs = {}; // { itemId: [ { btn, paint, seatNum } ] }
 
         // Nostalgia seat tile. Per-seat palette (T.seatPalette) drives
-        // both states:
-        //   UNSELECTED  moon bg    + seat-color label
-        //   SELECTED    seat fill  + dark (moonText) label
+        // both states — see T.groups.selectionGrid for sentinel refs:
+        //   UNSELECTED  selectionGrid.unselectedBg  + selectionGrid.unselectedFg (seatPalette)
+        //   SELECTED    selectionGrid.selectedBg (seatPalette fill) + selectionGrid.selectedFg
         // Same convention the item-recap and check-overview picker grid
         // already use — keep them in lockstep.
         function makeSeatTile(sn) {
           var seatColor = T.seatPalette[(sn - 1) % T.seatPalette.length];
           var btn = buildPillButton({
             label: 'S' + sn,
-            color: T.moon,
+            color: T.groups.selectionGrid.unselectedBg,
             darkBg: T.moonDk,
             textColor: seatColor,
             fontSize: T.fsB2,
@@ -524,7 +524,7 @@ defineScene({
           btn.style.width           = '64px';
           btn.style.height          = '48px';
           btn.style.flexShrink      = '0';
-          btn.style.borderRadius    = '14px';
+          btn.style.borderRadius    = T.groups.selectionGrid.radius;
           btn.style.padding         = '0';
           btn.style.display         = 'flex';
           btn.style.alignItems      = 'center';
@@ -532,9 +532,9 @@ defineScene({
 
           function paint(selected) {
             btn.setColor(
-              selected ? seatColor : T.moon,
+              selected ? seatColor : T.groups.selectionGrid.unselectedBg,
               selected ? darkenHex(seatColor, 0.2) : T.moonDk,
-              selected ? T.moonText : seatColor
+              selected ? T.groups.selectionGrid.selectedFg : seatColor
             );
           }
           return { btn: btn, paint: paint };
@@ -629,7 +629,7 @@ defineScene({
 
         var selectAllBtn = buildPillButton({
           label: 'SELECT ALL',
-          variant: 'elec',
+          variant: T.groups.composite.selectAll,
           fontSize: T.fsB3,
           onClick: function() {
             for (var ai = 0; ai < items.length; ai++) {
@@ -646,7 +646,7 @@ defineScene({
 
         var cancelBtn = buildPillButton({
           label: 'CANCEL',
-          variant: 'verm',
+          variant: T.groups.composite.cancel,
           fontSize: T.fsB3,
           onClick: function() { params.onCancel(); },
         });
@@ -659,7 +659,7 @@ defineScene({
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          variant: 'mint',
+          variant: T.groups.composite.confirm,
           fontSize: T.fsB2,
           onClick: function() { params.onConfirm(assignments); },
         });
@@ -695,7 +695,7 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var shell = buildStaticCard({ accent: T.green });
+        var shell = buildStaticCard({ accent: T.groups.composite.shellAccent });
         shell.style.display       = 'flex';
         shell.style.flexDirection = 'column';
         shell.style.gap           = '14px';
@@ -736,7 +736,7 @@ defineScene({
         // card bg and don't claim primary-action color.
         var minusBtn = buildPillButton({
           label: '−',
-          variant: 'elec',
+          variant: T.groups.composite.stepper,
           fontSize: T.fsB1,
         });
         minusBtn.style.width  = '64px';
@@ -754,7 +754,7 @@ defineScene({
 
         var plusBtn = buildPillButton({
           label: '+',
-          variant: 'elec',
+          variant: T.groups.composite.stepper,
           fontSize: T.fsB1,
         });
         plusBtn.style.width  = '64px';
@@ -775,7 +775,7 @@ defineScene({
 
         var cancelBtn = buildPillButton({
           label: 'CANCEL',
-          variant: 'verm',
+          variant: T.groups.composite.cancel,
           fontSize: T.fsB2,
           onClick: function() { params.onCancel(); },
         });
@@ -788,7 +788,7 @@ defineScene({
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          variant: 'mint',
+          variant: T.groups.composite.confirm,
           fontSize: T.fsB2,
           onClick: function() {
             if (qty === startQty) return;

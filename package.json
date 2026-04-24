@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "lint:theme": "bash scripts/lint-theme.sh"
   },
   "devDependencies": {
     "@vitest/ui": "^2.1.8",

@@ -531,7 +531,7 @@ defineScene({
 
     // Nostalgia landing-page card shell — verm accent marks
     // destructive intent.
-    var shell = buildStaticCard({ accent: RED });
+    var shell = buildStaticCard({ accent: T.groups.confirmation.shellAccentDanger });
     shell.style.padding = '20px ' + T.scenePad + 'px ' + T.scenePad + 'px';
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
@@ -554,7 +554,7 @@ defineScene({
     // to the destructive action first.
     var confirmBtn = buildPillButton({
       label:    'CONFIRM',
-      variant:  'verm',
+      variant:  T.groups.confirmation.confirmDelete,
       fontSize: T.fsB2,
       onClick:  function() { params.onConfirm(); },
     });
@@ -568,7 +568,7 @@ defineScene({
 
     var cancelBtn = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.confirmation.cancel,
       fontSize: T.fsB3,
       onClick:  function() { params.onCancel(); },
     });
@@ -612,9 +612,7 @@ defineScene({
       },
       onCancel: function() { params.onCancel(); },
     });
-    // Nostalgia card shell — chamfer + drop-shadow + gold accent bar.
-    // Replaces the legacy bare-numpad look the framework used to impose.
-    var shell = buildStaticCard({ accent: T.gold });
+    var shell = buildStaticCard({ accent: T.groups.auth.shellAccent });
     shell.style.padding = '20px 24px';
     shell.appendChild(numpad);
     container.appendChild(shell);
@@ -944,7 +942,7 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildStaticCard({ accent: T.green });
+    var shell = buildStaticCard({ accent: T.groups.confirmation.shellAccentOk });
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
     shell.style.gap           = '14px';
@@ -1009,7 +1007,7 @@ defineScene({
 
     var cancel = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.confirmation.cancel,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
@@ -1022,7 +1020,7 @@ defineScene({
 
     var confirm = buildPillButton({
       label:    'CONFIRM',
-      variant:  'mint',
+      variant:  T.groups.confirmation.confirmAffirm,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onConfirm) params.onConfirm(); },
     });
@@ -1063,7 +1061,7 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildStaticCard({ accent: T.elec });
+    var shell = buildStaticCard({ accent: T.groups.picker.shellAccent });
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
     shell.style.gap           = '14px';
@@ -1142,7 +1140,7 @@ defineScene({
 
     var cancel = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.picker.cancel,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
@@ -1155,7 +1153,7 @@ defineScene({
 
     var confirm = buildPillButton({
       label:    'CONFIRM',
-      variant:  'elec',
+      variant:  T.groups.picker.apply,
       fontSize: T.fsB2,
       onClick:  function() {
         if (!selectedServer) return;
@@ -1294,7 +1292,7 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildStaticCard({ accent: T.elec });
+    var shell = buildStaticCard({ accent: T.groups.picker.shellAccent });
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
     shell.style.gap           = '14px';
@@ -1365,8 +1363,8 @@ defineScene({
         tile.style.cssText = [
           'display:flex;align-items:center;justify-content:center;',
           'padding:16px 8px;border-radius:10px;',
-          'background:' + (isSel ? hexToRgba(T.elec, 0.15) : T.well) + ';',
-          'border:2px solid ' + (isSel ? T.elec : 'transparent') + ';',
+          'background:' + (isSel ? hexToRgba(T.groups.picker.optionSelected, 0.15) : T.well) + ';',
+          'border:2px solid ' + (isSel ? T.groups.picker.optionSelected : 'transparent') + ';',
           'font-family:' + T.fh + ';font-size:14px;font-weight:700;',
           'color:' + (preset.type === 'comp' ? T.gold : T.text) + ';letter-spacing:0.5px;',
           'cursor:pointer;user-select:none;-webkit-user-select:none;',
@@ -1399,7 +1397,7 @@ defineScene({
 
     var cancel = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.picker.cancel,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
@@ -1412,7 +1410,7 @@ defineScene({
 
     var apply = buildPillButton({
       label:    'APPLY',
-      variant:  'elec',
+      variant:  T.groups.picker.apply,
       fontSize: T.fsB2,
       onClick:  function() {
         if (!selectedDiscount) return;
@@ -1456,7 +1454,7 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildStaticCard({ accent: T.verm });
+    var shell = buildStaticCard({ accent: T.groups.confirmation.shellAccentDanger });
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
     shell.style.gap           = '14px';
@@ -1576,7 +1574,7 @@ defineScene({
 
     var cancel = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.confirmation.cancel,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
@@ -1589,7 +1587,7 @@ defineScene({
 
     var confirm = buildPillButton({
       label:    'VOID',
-      variant:  'verm',
+      variant:  T.groups.confirmation.confirmDelete,
       fontSize: T.fsB2,
       onClick:  function() {
         if (!selectedReason) return;

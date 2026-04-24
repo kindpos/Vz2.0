@@ -756,7 +756,7 @@ defineScene({
       render: function(container, params) {
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var shell = buildStaticCard({ accent: T.gold });
+        var shell = buildStaticCard({ accent: T.groups.auth.shellAccent });
         shell.style.display       = 'flex';
         shell.style.flexDirection = 'column';
         shell.style.alignItems    = 'center';
@@ -809,7 +809,7 @@ defineScene({
       render: function(container, params) {
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var shell = buildStaticCard({ accent: T.gold });
+        var shell = buildStaticCard({ accent: T.groups.picker.shellAccentAuth });
         shell.style.display       = 'flex';
         shell.style.flexDirection = 'column';
         shell.style.alignItems    = 'center';
@@ -881,9 +881,7 @@ defineScene({
           onCancel: function() { params.onCancel(); },
         });
 
-        // Nostalgia landing-page card shell around the numpad — matches
-        // co-manager-pin.
-        var shell = buildStaticCard({ accent: T.gold });
+        var shell = buildStaticCard({ accent: T.groups.auth.shellAccent });
         shell.style.padding = '20px 24px';
         shell.appendChild(numpad);
         container.appendChild(shell);
@@ -1179,8 +1177,8 @@ function renderActionBar(state) {
   // DISC
   var discBtn = buildPillButton({
     label: 'DISC',
-    color: T.lavender,
-    darkBg: darkenHex(T.lavender, 0.4),
+    color: T.groups.actionBar.disc,
+    darkBg: darkenHex(T.groups.actionBar.disc, 0.4),
     onClick: function() { handleDiscount(state); }
   });
   discBtn.style.flex = '1';
@@ -1208,7 +1206,7 @@ function renderActionBar(state) {
 
   var voidBtn = buildPillButton({
     label: voidLabel,
-    color: T.verm,
+    color: T.groups.actionBar.void,
     darkBg: T.vermDk,
     onClick: function() { handleVoid(state); }
   });
@@ -1219,14 +1217,14 @@ function renderActionBar(state) {
   // PAY
   var payBtn = buildPillButton({
     label: 'PAY',
-    color: T.gold,
+    color: T.groups.actionBar.pay,
     darkBg: T.goldDk,
     width: '220px',
     onClick: function() { handlePay(state, state._params || {}); }
   });
   Object.assign(payBtn.style, {
     alignSelf: 'stretch',
-    borderRadius: '14px',
+    borderRadius: T.groups.actionBar.radius,
     fontSize: '20px',
     flexShrink: '0',
   });
@@ -1235,14 +1233,14 @@ function renderActionBar(state) {
   // ADD ITEMS
   var addBtn = buildPillButton({
     label: 'ADD ITEMS',
-    color: T.greenWarm,
+    color: T.groups.actionBar.addItems,
     darkBg: T.greenWarmDk,
     width: '220px',
     onClick: function() { handleAddItems(state, state._params || {}); }
   });
   Object.assign(addBtn.style, {
     alignSelf: 'stretch',
-    borderRadius: '14px',
+    borderRadius: T.groups.actionBar.radius,
     fontSize: '20px',
     flexShrink: '0',
   });
@@ -1262,7 +1260,7 @@ function renderActionBar(state) {
   // EDIT SEATS
   var editBtn = buildPillButton({
     label: 'EDIT SEATS',
-    color: T.moon,
+    color: T.groups.actionBar.editSeats,
     darkBg: T.moonDk,
     onClick: function() { openEditSeats(state); }
   });
@@ -1273,7 +1271,7 @@ function renderActionBar(state) {
   // PRINT
   var printBtn = buildPillButton({
     label: 'PRINT',
-    color: T.elec,
+    color: T.groups.actionBar.print,
     darkBg: T.elecDk,
     onClick: function() { handlePrint(state); }
   });

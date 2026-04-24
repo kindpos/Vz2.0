@@ -255,7 +255,7 @@ T.groups = {
     disc:              T.lavender,
     void:              T.verm,
     pay:               T.gold,
-    addItems:          T.green,
+    addItems:          T.greenWarm,
     editSeats:         T.moon,
     print:             T.elec,
     radius:            '14px',
