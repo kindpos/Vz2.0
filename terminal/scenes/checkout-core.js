@@ -612,9 +612,7 @@ defineScene({
       },
       onCancel: function() { params.onCancel(); },
     });
-    // Nostalgia card shell — chamfer + drop-shadow + gold accent bar.
-    // Replaces the legacy bare-numpad look the framework used to impose.
-    var shell = buildStaticCard({ accent: T.gold });
+    var shell = buildStaticCard({ accent: T.groups.auth.shellAccent });
     shell.style.padding = '20px 24px';
     shell.appendChild(numpad);
     container.appendChild(shell);
