@@ -166,6 +166,12 @@ defineScene({
             tax:          tax,
             cardTotal:    cardTotal,
             cashPrice:    cashPrice,
+            // BACK is live only while no money has been taken yet. Once the
+            // first payment lands (see handleConfirm) we hide it via
+            // OrderSummary.showBack(false) so a mid-split back-tap can't
+            // strand the recorded payments.
+            showBack:     totalPaid <= 0,
+            onBack:       function() { _returnToParent(sceneData); },
           });
         })
         .catch(function() { /* silently skip — scene still works */ });
@@ -981,6 +987,10 @@ async function handleConfirm() {
 
     payments.push({ method: paymentMode, amount: paymentAmount });
     totalPaid += paymentAmount;
+
+    // Lock the OrderSummary BACK chevron now that money has been taken —
+    // a back-to-check-overview here would orphan the recorded payment.
+    if (OrderSummary && OrderSummary.showBack) OrderSummary.showBack(false);
 
     var newRemaining = getRemainingBalance();
     confirmProcessing = false;

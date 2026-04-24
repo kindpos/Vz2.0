@@ -61,6 +61,10 @@ function register(scene) {
   _scenes[scene.name] = scene;
 }
 
+function hasScene(name) {
+  return !!(name && _scenes[name]);
+}
+
 // ═══════════════════════════════════════════════════
 //  INIT — Wire DOM containers
 // ═══════════════════════════════════════════════════
@@ -510,6 +514,7 @@ function onBeforeTransition(fn) {
 
 export const SceneManager = {
   register,
+  hasScene,
   init,
 
   openGate,

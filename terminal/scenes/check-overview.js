@@ -447,6 +447,11 @@ defineScene({
     }
     var _landingParams = { emp: { id: params.employeeId, name: params.employeeName, pin: params.pin } };
 
+    // Stash the landing target on state so renderOrderSummary can wire its
+    // own BACK chevron without re-deriving the landing/emp bundle each call.
+    state._landing       = _landing;
+    state._landingParams = _landingParams;
+
     // ── Root + body layout ──
     var root = document.createElement('div');
     Object.assign(root.style, {
@@ -3562,6 +3567,10 @@ function renderOrderSummary(state) {
       cashPrice:    s.cashPrice,
       onNameTap:    function() { openNameEditor(state); },
       onItemTap:    function(idx) { _onOSItemTap(state, idx); },
+      showBack:     !!state._landing,
+      onBack:       function() {
+        if (state._landing) SceneManager.mountWorking(state._landing, state._landingParams);
+      },
     });
     state._osActive = true;
   } else {

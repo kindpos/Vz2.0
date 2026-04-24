@@ -104,6 +104,24 @@ describe('terminal/scene-manager', () => {
     expect(userCancel).toHaveBeenCalledWith('user-backed-out');
   });
 
+  // ── hasScene registration probe ─────────────────────────────────
+  //
+  // Pins the fix that restored the header's LOGOUT button: header.js gates
+  // its `SM.interrupt('confirm-logout', …)` call on `SM.hasScene(…)`, so
+  // that when no confirm-logout interrupt scene is registered the flow
+  // falls through to the window.confirm() path instead of silently no-op.
+
+  it('hasScene returns false for unregistered names and true after register', () => {
+    expect(SceneManager.hasScene('nope')).toBe(false);
+
+    const { scene } = makeScene('confirm-logout');
+    SceneManager.register(scene);
+
+    expect(SceneManager.hasScene('confirm-logout')).toBe(true);
+    expect(SceneManager.hasScene('')).toBe(false);
+    expect(SceneManager.hasScene(undefined)).toBe(false);
+  });
+
   // ── closeInterrupt alias ────────────────────────────────────────
 
   it('closeInterrupt is an exported alias that resolves the current interrupt (same as resolveInterrupt)', () => {
