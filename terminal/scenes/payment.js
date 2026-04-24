@@ -159,6 +159,10 @@ defineScene({
     setPaymentMode(paymentMode);
     updateSplitDisplay();
 
+    if (window._header && window._header.setBackHandler) {
+      window._header.setBackHandler(function() { _returnToParent(sceneData); });
+    }
+
     // Prefer the authoritative data from check-overview: it already knows
     // which seats we're paying for, applied effectivePrice (modifiers /
     // discounts), and pre-computed totals that match what the operator
@@ -195,6 +199,9 @@ defineScene({
     if (dotTimer) { clearInterval(dotTimer); dotTimer = null; }
     if (_procAnimTimer) { clearInterval(_procAnimTimer); _procAnimTimer = null; }
     if (OrderSummary && OrderSummary.hide) OrderSummary.hide();
+    if (window._header && window._header.setBackHandler) {
+      window._header.setBackHandler(null);
+    }
   },
 
   events: {

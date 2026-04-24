@@ -49,19 +49,44 @@ async function boot() {
     ].join('');
 
     var exitBtn = document.createElement('div');
-    exitBtn.style.cssText = [
-      'width:24px;height:24px;',
-      'background:' + T.verm + ';',
+    var exitBtnBase = [
+      'height:24px;',
       'border-radius:4px;',
       'display:flex;align-items:center;justify-content:center;',
       'cursor:pointer;',
-      'font-family:' + T.fb + ';font-size:14px;font-weight:700;',
-      'color:#fff;',
+      'font-family:' + T.fb + ';font-weight:700;',
+      'background:' + T.verm + ';color:#fff;',
       'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    exitBtn.textContent = '×';
-    exitBtn.addEventListener('click', performLogout);
+    ];
+    function applyExitMode() {
+      exitBtn.style.cssText = exitBtnBase.concat([
+        'width:24px;', 'font-size:14px;',
+      ]).join('');
+      exitBtn.textContent = '×';
+    }
+    function applyBackMode() {
+      exitBtn.style.cssText = exitBtnBase.concat([
+        'width:40px;', 'font-size:11px;', 'letter-spacing:0.5px;',
+      ]).join('');
+      exitBtn.textContent = 'esc';
+    }
+    applyExitMode();
+
+    var _backHandler = null;
+    exitBtn.addEventListener('click', function() {
+      if (_backHandler) _backHandler();
+      else performLogout();
+    });
     placeholderHeader.appendChild(exitBtn);
+
+    // Scenes that want a back affordance instead of logout call
+    // window._header.setBackHandler(fn) in their render; clear with (null)
+    // on unmount. The button switches between × (logout) and esc (back).
+    placeholderHeader.setBackHandler = function(fn) {
+      _backHandler = (typeof fn === 'function') ? fn : null;
+      if (_backHandler) applyBackMode();
+      else applyExitMode();
+    };
 
     window._header = placeholderHeader;
     appRoot.insertBefore(placeholderHeader, appRoot.firstChild);

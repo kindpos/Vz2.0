@@ -1324,6 +1324,13 @@ defineScene({
     // Hide OrderSummary — this scene owns its own left column now.
     OrderSummary.hide();
 
+    if (window._header && window._header.setBackHandler) {
+      window._header.setBackHandler(function() {
+        var target = state.fromManager ? 'manager-landing' : 'server-landing';
+        SceneManager.mountWorking(target, { staff: params.staff });
+      });
+    }
+
     container.style.cssText = [
       'width:100%;height:100%;',
       'display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
@@ -1810,6 +1817,9 @@ defineScene({
     return function cleanup() {
       state.el = null;
       clearInterval(poll);
+      if (window._header && window._header.setBackHandler) {
+        window._header.setBackHandler(null);
+      }
     };
   },
 });

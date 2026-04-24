@@ -771,6 +771,12 @@ defineScene({
     params = params || {};
     state.startTime = state.startTime || Date.now();
 
+    if (window._header && window._header.setBackHandler) {
+      window._header.setBackHandler(function() {
+        SceneManager.closeTransactional('close-day-checks-viewer');
+      });
+    }
+
     container.style.cssText = [
       'width:100%;height:100%;',
       'display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
@@ -976,5 +982,11 @@ defineScene({
     };
 
     refreshData();
+  },
+
+  unmount: function() {
+    if (window._header && window._header.setBackHandler) {
+      window._header.setBackHandler(null);
+    }
   },
 });
