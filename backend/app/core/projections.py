@@ -63,6 +63,44 @@ class Payment:
 
 
 @dataclass
+class SeatBalance:
+    """Per-seat financial state, projected from seat-scoped events.
+
+    Used for split-check audit: replay exactly which items, discounts, and
+    payment slices belong to each seat so disputes are replayable from the
+    ledger without re-running the checkout flow.
+    """
+    seat_number: int
+    items: list["OrderItem"] = field(default_factory=list)
+    discounts: list[dict] = field(default_factory=list)
+    seat_payments: list[dict] = field(default_factory=list)
+    is_paid: bool = False
+    is_comped: bool = False
+    comp_category: Optional[str] = None
+
+    @property
+    def item_subtotal(self) -> Decimal:
+        return sum((i.subtotal for i in self.items), Decimal("0.00"))
+
+    @property
+    def discount_total(self) -> Decimal:
+        return sum((Decimal(str(d.get("amount", 0))) for d in self.discounts), Decimal("0.00"))
+
+    @property
+    def amount_paid(self) -> Decimal:
+        return sum(
+            (Decimal(str(p.get("amount", 0))) for p in self.seat_payments
+             if p.get("status") == "confirmed"),
+            Decimal("0.00"),
+        )
+
+    @property
+    def balance_due(self) -> Decimal:
+        from app.core.money import money_round as _mr
+        return _mr(max(Decimal("0.00"), self.item_subtotal - self.discount_total - self.amount_paid))
+
+
+@dataclass
 class Order:
     """
     Current state of an order, projected from events.
@@ -87,6 +125,9 @@ class Order:
     payments: list[Payment] = field(default_factory=list)
     discounts: list[dict] = field(default_factory=list)
     refunds: list[dict] = field(default_factory=list)
+
+    # Per-seat financial state — populated by seat-scoped events
+    seat_balances: dict = field(default_factory=dict)  # int → SeatBalance
 
     created_at: Optional[datetime] = None
     closed_at: Optional[datetime] = None
@@ -189,6 +230,12 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
 
     order: Optional[Order] = None
 
+    def _seat(sn: int) -> "SeatBalance":
+        """Return-or-create the SeatBalance for seat_number sn."""
+        if sn not in order.seat_balances:
+            order.seat_balances[sn] = SeatBalance(seat_number=sn)
+        return order.seat_balances[sn]
+
     for event in events:
         payload = event.payload
 
@@ -284,10 +331,16 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                 # via explicit SEATS_UPDATED.
                 if item.seat_number is not None and item.seat_number not in order.seat_numbers:
                     order.seat_numbers.append(item.seat_number)
+                # Per-seat balance
+                if item.seat_number is not None:
+                    _seat(item.seat_number).items.append(item)
 
         elif event.event_type == EventType.ITEM_REMOVED:
             if order:
                 item_id = payload["item_id"]
+                # Remove from per-seat balance as well
+                for sb in order.seat_balances.values():
+                    sb.items = [i for i in sb.items if i.item_id != item_id]
                 order.items = [i for i in order.items if i.item_id != item_id]
 
         elif event.event_type == EventType.ITEM_MODIFIED:
@@ -396,11 +449,77 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                         payment.tax_amount = Decimal(str(payload.get("tax", Decimal("0.00"))))
                         if payload.get("seat_numbers"):
                             payment.seat_numbers = payload["seat_numbers"]
+                        # Distribute a payment slice to each covered seat
+                        seat_nums = payload.get("seat_numbers") or []
+                        if seat_nums:
+                            slice_amount = Decimal(str(payment.amount)) / len(seat_nums)
+                            for sn in seat_nums:
+                                _seat(int(sn)).seat_payments.append({
+                                    "payment_id": pid,
+                                    "amount": str(money_round(slice_amount)),
+                                    "status": "confirmed",
+                                    "confirmed_at": str(event.timestamp),
+                                })
                         break
 
                 # Auto-update order status if fully paid
                 if order.is_fully_paid and order.status == "open":
                     order.status = "paid"
+
+        # ── Seat-scoped financial events ─────────────────────────────
+
+        elif event.event_type == EventType.SEAT_DISCOUNT_APPLIED:
+            if order:
+                sn = payload.get("seat_number")
+                if sn is not None:
+                    _seat(int(sn)).discounts.append({
+                        "discount_id": payload.get("discount_id"),
+                        "discount_type": payload.get("discount_type"),
+                        "amount": payload.get("amount", 0),
+                        "approved_by": payload.get("approved_by"),
+                        "applied_at": str(event.timestamp),
+                    })
+
+        elif event.event_type == EventType.SEAT_DISCOUNT_VOIDED:
+            if order:
+                sn = payload.get("seat_number")
+                if sn is not None:
+                    sb = _seat(int(sn))
+                    did = payload.get("discount_id")
+                    if did:
+                        sb.discounts = [d for d in sb.discounts if d.get("discount_id") != did]
+                    else:
+                        # Fall back to type+amount match
+                        dtype = payload.get("discount_type")
+                        amt = str(payload.get("amount", 0))
+                        sb.discounts = [
+                            d for d in sb.discounts
+                            if not (d.get("discount_type") == dtype and str(d.get("amount", 0)) == amt)
+                        ]
+
+        elif event.event_type == EventType.SEAT_COMPED:
+            if order:
+                sn = payload.get("seat_number")
+                if sn is not None:
+                    sb = _seat(int(sn))
+                    sb.is_comped = True
+                    sb.comp_category = payload.get("comp_category")
+
+        elif event.event_type == EventType.SEAT_PAYMENT_VOIDED:
+            if order:
+                sn = payload.get("seat_number")
+                pid = payload.get("payment_id")
+                if sn is not None and pid:
+                    sb = _seat(int(sn))
+                    sb.seat_payments = [
+                        p for p in sb.seat_payments if p.get("payment_id") != pid
+                    ]
+
+        elif event.event_type == EventType.SEAT_PAID:
+            if order:
+                sn = payload.get("seat_number")
+                if sn is not None:
+                    _seat(int(sn)).is_paid = True
 
         elif event.event_type in (
             EventType.PAYMENT_DECLINED,
