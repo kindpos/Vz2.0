@@ -688,12 +688,17 @@ defineScene({
 
         var cancelBtn = buildPillButton({
           label:    'CANCEL',
-          color:    T.verm,
-          darkBg:   T.vermDk,
+          variant:  'verm',
           fontSize: T.fsB2,
           onClick:  function() { params.onCancel(); },
         });
-        cancelBtn.style.alignSelf = 'center';
+        cancelBtn.style.alignSelf       = 'center';
+        cancelBtn.style.height          = '48px';
+        cancelBtn.style.minWidth        = '160px';
+        cancelBtn.style.borderRadius    = '14px';
+        cancelBtn.style.display         = 'flex';
+        cancelBtn.style.alignItems      = 'center';
+        cancelBtn.style.justifyContent  = 'center';
         panel.appendChild(cancelBtn);
         container.appendChild(shell);
 
@@ -950,12 +955,16 @@ defineScene({
               row.appendChild(info);
               var delBtn = buildPillButton({
                 label:    'DELETE',
-                color:    T.verm,
-                darkBg:   T.vermDk,
+                variant:  'verm',
                 fontSize: T.fsB3,
                 onClick:  function() { params.onConfirm(p.payment_id); },
               });
-              delBtn.style.minWidth = '100px';
+              delBtn.style.minWidth         = '100px';
+              delBtn.style.height           = '40px';
+              delBtn.style.borderRadius     = '14px';
+              delBtn.style.display          = 'flex';
+              delBtn.style.alignItems       = 'center';
+              delBtn.style.justifyContent   = 'center';
               row.appendChild(delBtn);
               panel.appendChild(row);
             })(payments[pi]);

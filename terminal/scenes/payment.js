@@ -243,23 +243,53 @@ defineScene({
         var btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:14px;margin-top:4px;';
 
+        // Fraction tiles match the payment denomination presets: raised
+        // buildActionCard with green accent bar, "1/N" stacked over the
+        // dollar amount, mint flash on tap.
         [2, 3, 4].forEach(function(divisor) {
           var amt = Math.ceil(remaining / divisor * 100) / 100;
-          var btn = buildPillButton({
-            label: '1/' + divisor,
-            sub: '$' + amt.toFixed(2),
-            color: T.card,
-            onClick: function() { params.onConfirm(amt); }
+          var tile = buildActionCard({
+            accent:  T.green,
+            onClick: function() { params.onConfirm(amt); },
           });
-          btn.style.width           = '120px';
-          btn.style.height          = '88px';
-          btn.style.border          = '2px solid ' + T.green;
-          btn.style.color           = T.green;
-          btn.style.borderRadius    = '14px';
-          btn.style.display         = 'flex';
-          btn.style.alignItems      = 'center';
-          btn.style.justifyContent  = 'center';
-          btnRow.appendChild(btn);
+          tile.style.cssText += [
+            'width:120px;height:96px;flex-shrink:0;',
+            'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+            'gap:4px;padding:14px 14px 12px 20px;',
+          ].join('');
+
+          var label = document.createElement('div');
+          label.textContent         = '1/' + divisor;
+          label.style.fontFamily    = T.fh;
+          label.style.fontSize      = T.fsH2;
+          label.style.fontWeight    = T.fwBold;
+          label.style.color         = T.green;
+          label.style.letterSpacing = '0.04em';
+          label.style.pointerEvents = 'none';
+          tile.appendChild(label);
+
+          var subLabel = document.createElement('div');
+          subLabel.textContent         = '$' + amt.toFixed(2);
+          subLabel.style.fontFamily    = T.fb;
+          subLabel.style.fontSize      = T.fsB3;
+          subLabel.style.color         = hexToRgba(T.text, 0.7);
+          subLabel.style.letterSpacing = '0.04em';
+          subLabel.style.pointerEvents = 'none';
+          tile.appendChild(subLabel);
+
+          // Mint flash on tap — same feedback pattern as buildDenomTile.
+          tile.addEventListener('pointerup', function() {
+            tile.style.backgroundColor = T.green;
+            label.style.color          = T.well;
+            subLabel.style.color       = T.well;
+            setTimeout(function() {
+              tile.style.backgroundColor = T.card;
+              label.style.color          = T.green;
+              subLabel.style.color       = hexToRgba(T.text, 0.7);
+            }, 180);
+          });
+
+          btnRow.appendChild(tile);
         });
         shell.appendChild(btnRow);
 

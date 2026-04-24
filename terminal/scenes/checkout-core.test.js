@@ -56,11 +56,24 @@ vi.mock('../theme-manager.js', () => ({
     return { wrap: wrap, card: card };
   },
   buildStaticCard: () => document.createElement('div'),
-  buildPillButton: ({ label } = {}) => {
+  buildPillButton: (opts = {}) => {
     const el = document.createElement('button');
-    el.textContent = label || '';
-    el.setColor = () => {};
-    el.setDisabled = () => {};
+    el.textContent = opts.label || '';
+    el._disabled  = false;
+    el.style.cursor = 'pointer';
+    el.setColor     = () => {};
+    el.setDisabled  = (d) => {
+      el._disabled = d;
+      el.style.cursor        = d ? 'not-allowed' : 'pointer';
+      el.style.pointerEvents = d ? 'none' : 'auto';
+      el.style.opacity       = d ? '0.4' : '1';
+    };
+    if (opts.onClick) {
+      el.addEventListener('pointerup', (e) => {
+        if (el._disabled) return;
+        opts.onClick(e);
+      });
+    }
     return el;
   },
   hexToRgba:  (c) => c,
