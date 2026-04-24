@@ -52,6 +52,7 @@ class EventType(str, Enum):
     ORDER_TRANSFERRED = "order.transferred"
     GUEST_COUNT_UPDATED = "guest_count.updated"
     SEATS_UPDATED = "seats.updated"
+    CHECK_OPENED = "check.opened"
     CHECK_NAMED = "check.named"
     CHECK_ABANDONED = "check.abandoned"
     CHECK_SPLIT = "check.split"
@@ -366,6 +367,39 @@ def order_created(
         terminal_id=terminal_id,
         payload=payload,
         **kwargs
+    )
+
+
+def check_opened(
+        terminal_id: str,
+        order_id: str,
+        check_number: Optional[str] = None,
+        table: str | int | None = None,
+        server_id: Optional[str] = None,
+        server_name: Optional[str] = None,
+        guest_count: int = 1,
+        seat_numbers: Optional[list[int]] = None,
+        **kwargs
+) -> Event:
+    """CHECK_OPENED: distinct anchor for the check timeline, emitted
+    alongside ORDER_CREATED so downstream replayers can separate
+    check-lifecycle moments (open / named / closed / voided) from the
+    underlying order-lifecycle moments."""
+    payload = {
+        "order_id": order_id,
+        "check_number": check_number,
+        "table": table,
+        "server_id": server_id,
+        "server_name": server_name,
+        "guest_count": guest_count,
+    }
+    if seat_numbers is not None:
+        payload["seat_numbers"] = list(seat_numbers)
+    return create_event(
+        event_type=EventType.CHECK_OPENED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
     )
 
 
