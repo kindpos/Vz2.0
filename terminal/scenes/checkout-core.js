@@ -529,27 +529,27 @@ defineScene({
   name: 'co-zero-confirm',
   render: function(container, params) {
     var panel = document.createElement('div');
-    panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;background:' + T.bgDark + ';border:4px solid ' + RED + ';padding:8px ' + T.scenePad + 'px ' + T.scenePad + 'px ' + T.scenePad + 'px;min-width:280px;';
+    panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;background:' + T.well + ';border:4px solid ' + T.verm + ';border-radius:' + T.chamferCard + 'px;padding:8px ' + T.scenePad + 'px ' + T.scenePad + 'px ' + T.scenePad + 'px;min-width:280px;';
 
     var lbl = document.createElement('div');
-    lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsMed + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;';
+    lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + T.verm + ';letter-spacing:2px;margin-bottom:4px;';
     lbl.textContent = '// ZERO ALL TIPS //';
     panel.appendChild(lbl);
 
     var msg = document.createElement('div');
-    msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsSmall + ';color:' + T.mint + ';text-align:center;';
+    msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';text-align:center;';
     msg.textContent = 'Set ' + (params.count || 0) + ' unadjusted tip(s) to $0.00?';
     panel.appendChild(msg);
 
     var confirmBtn = buildButton('CONFIRM', {
-      fill: T.darkBtn, color: RED, fontSize: T.fsBtnSm, height: 44,
+      fill: T.card, color: T.verm, fontSize: T.fsB3, height: 44,
       onTap: function() { params.onConfirm(); },
     });
     confirmBtn.style.width = '240px';
     panel.appendChild(confirmBtn);
 
     var cancelBtn = buildButton('CANCEL', {
-      fill: T.darkBtn, color: T.mint, fontSize: T.fsSmall, height: 40,
+      fill: T.card, color: T.green, fontSize: T.fsB3, height: 40,
       onTap: function() { params.onCancel(); },
     });
     cancelBtn.style.width = '240px';
