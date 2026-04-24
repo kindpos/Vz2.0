@@ -2003,7 +2003,16 @@ async def split_by_seat(
             detail="No items with seat numbers found to split",
         )
 
+    # Collect every event -- child order.created, per-item item.added
+    # with its modifier.applied events, parent item.removed, plus the
+    # directional check.split audit events -- into a single
+    # append_batch. A crash under the previous per-append model could
+    # leave a child order created with some items while the parent still
+    # owned those same items (double-count) or orphan children with no
+    # audit event.
+    operation_id = f"op_{uuid.uuid4().hex[:8]}"
     child_orders = []
+    batch_events: list = []
     for seat_num, items in sorted(seat_items.items()):
         child_id = f"order_{uuid.uuid4().hex[:8]}"
         # Create child order (set correlation_id so the CREATE event
@@ -2017,10 +2026,8 @@ async def split_by_seat(
             server_id=order.server_id,
             server_name=order.server_name,
         )
-        create_evt = create_evt.model_copy(update={"correlation_id": child_id})
-        await ledger.append(create_evt)
+        batch_events.append(create_evt.model_copy(update={"correlation_id": child_id}))
 
-        # Add items to child order
         for item in items:
             new_item_id = f"item_{uuid.uuid4().hex[:8]}"
             # item_added's payload doesn't carry modifiers — they live
@@ -2030,7 +2037,7 @@ async def split_by_seat(
             # lost every modifier price (a $10 item + $3 mod became a
             # $10-only child). Re-emit the modifier events the same
             # way the merge route does.
-            add_evt = item_added(
+            batch_events.append(item_added(
                 terminal_id=settings.terminal_id,
                 order_id=child_id,
                 item_id=new_item_id,
@@ -2041,11 +2048,10 @@ async def split_by_seat(
                 category=getattr(item, "category", None),
                 notes=getattr(item, "notes", None),
                 seat_number=seat_num,
-            )
-            await ledger.append(add_evt)
+            ))
 
             for mod in (getattr(item, "modifiers", None) or []):
-                mod_evt = modifier_applied(
+                batch_events.append(modifier_applied(
                     terminal_id=settings.terminal_id,
                     order_id=child_id,
                     item_id=new_item_id,
@@ -2055,17 +2061,14 @@ async def split_by_seat(
                     action=mod.get("action", "add"),
                     prefix=mod.get("prefix"),
                     half_price=mod.get("half_price"),
-                )
-                await ledger.append(mod_evt)
+                ))
 
-            # Remove from parent order
-            remove_evt = item_removed(
+            batch_events.append(item_removed(
                 terminal_id=settings.terminal_id,
                 order_id=order_id,
                 item_id=item.item_id,
                 reason=f"Split to seat {seat_num} check",
-            )
-            await ledger.append(remove_evt)
+            ))
 
         child_orders.append({
             "order_id": child_id,
@@ -2077,9 +2080,8 @@ async def split_by_seat(
     # affected order (parent + each child) with a shared operation_id so
     # each timeline is self-describing without forcing readers to infer
     # the operation from ITEM_REMOVED "reason" strings.
-    operation_id = f"op_{uuid.uuid4().hex[:8]}"
     child_ids = [c["order_id"] for c in child_orders]
-    await ledger.append(check_split(
+    batch_events.append(check_split(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         operation_id=operation_id,
@@ -2088,7 +2090,7 @@ async def split_by_seat(
         child_order_ids=child_ids,
     ))
     for c in child_orders:
-        await ledger.append(check_split(
+        batch_events.append(check_split(
             terminal_id=settings.terminal_id,
             order_id=c["order_id"],
             operation_id=operation_id,
@@ -2097,6 +2099,8 @@ async def split_by_seat(
             child_order_ids=child_ids,
             seat=c["seat"],
         ))
+
+    await ledger.append_batch(batch_events)
 
     return {
         "success": True,
