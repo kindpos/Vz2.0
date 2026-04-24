@@ -383,6 +383,7 @@ defineScene({
     selected:      {},
     selectedItems: {},
     paidSeats:     {},
+    showPaidSeats: false,
     _payingSeats:  [],
     _backConfirmed:false,
     rootEl:        null,
@@ -1862,8 +1863,28 @@ function buildSeatsContainer(state) {
     flexShrink:     '0',
     display:        'flex',
     justifyContent: 'flex-end',
+    alignItems:     'center',
+    gap:            '8px',
     padding:        '4px 12px 0',
   });
+
+  // Show/Hide paid seats toggle — only rendered when there are paid seats
+  var paidCount = Object.keys(state.paidSeats || {}).length;
+  if (paidCount > 0) {
+    var paidToggleBtn = buildPillButton({
+      label:    state.showPaidSeats ? 'HIDE PAID' : ('PAID (' + paidCount + ')'),
+      color:    T.gold,
+      darkBg:   T.goldDk,
+      fontSize: T.fsB4,
+      padding:  '6px 14px',
+      onClick: function() {
+        state.showPaidSeats = !state.showPaidSeats;
+        rerenderTopArea(state);
+      },
+    });
+    selRow.appendChild(paidToggleBtn);
+  }
+
   var selBtn = buildPillButton({
     label:    anySel ? 'CLEAR' : 'SELECT ALL',
     color:    anySel ? T.verm : T.elec,
@@ -2003,7 +2024,14 @@ function renderSeatsGrid(state, container, mode) {
     tilesCol.appendChild(addB);
 
     for (var i = 0; i < state.seats.length; i++) {
-      if (state.paidSeats[state.seats[i].id]) continue;
+      if (state.paidSeats[state.seats[i].id]) {
+        if (!state.showPaidSeats) continue;
+        var paidTile = buildPaidCompactTile(state, i);
+        paidTile.style.flex  = '';
+        paidTile.style.width = '';
+        tilesCol.appendChild(paidTile);
+        continue;
+      }
       var tile = buildCompactTile(state, i);
       // Grid controls width — undo buildStaticCard's flex default so the
       // tile doesn't try to stretch across tracks.
@@ -2027,7 +2055,14 @@ function renderSeatsGrid(state, container, mode) {
   // rail to keep all four seat columns full-width.
   var activeCount = activeSeatCount(state.seats, state.paidSeats);
   for (var i = 0; i < state.seats.length; i++) {
-    if (state.paidSeats[state.seats[i].id]) continue;
+    if (state.paidSeats[state.seats[i].id]) {
+      if (!state.showPaidSeats) continue;
+      var paidPanel = buildPaidSeatCard(state, i);
+      paidPanel.style.flex  = '1';
+      paidPanel.style.width = '0';
+      container.appendChild(paidPanel);
+      continue;
+    }
     var panel = buildSeatCard(state, i);
     panel.style.flex  = '1';
     panel.style.width = '0';
@@ -2195,6 +2230,122 @@ function buildSeatCard(state, seatIdx) {
   return wrap;
 }
 
+// Paid seat card (Mode A) — gold-infilled, read-only. Tapping opens
+// the reopen/void flow. Items are shown greyed out so the server can
+// see what was paid without being able to interact with it.
+function buildPaidSeatCard(state, seatIdx) {
+  var seat = state.seats[seatIdx];
+
+  var wrap = buildStaticCard({ accent: T.gold });
+  wrap.style.flex          = '1';
+  wrap.style.padding       = '0';
+  wrap.style.display       = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.overflow      = 'hidden';
+  wrap.style.cursor        = 'pointer';
+
+  // ── Gold header ──
+  var hdr = document.createElement('div');
+  Object.assign(hdr.style, {
+    background:     T.gold,
+    padding:        '8px 12px',
+    borderBottom:   '1px solid ' + T.goldDk,
+    display:        'flex',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    cursor:         'pointer',
+    userSelect:     'none',
+  });
+
+  var label = document.createElement('div');
+  Object.assign(label.style, {
+    color:      T.moonText,
+    fontFamily: T.fh,
+    fontWeight: T.fwBold,
+  });
+  label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
+  hdr.appendChild(label);
+
+  var rightSide = document.createElement('div');
+  rightSide.style.cssText = 'display:flex;align-items:center;gap:8px;';
+
+  var subtotal = document.createElement('div');
+  Object.assign(subtotal.style, {
+    color:      T.moonText,
+    fontFamily: T.fb,
+    fontWeight: T.fwBold,
+  });
+  subtotal.textContent = fmt(seatTotal(seat));
+  rightSide.appendChild(subtotal);
+
+  var paidBadge = document.createElement('div');
+  Object.assign(paidBadge.style, {
+    background:    T.moonText,
+    color:         T.gold,
+    borderRadius:  '4px',
+    fontFamily:    T.fh,
+    fontWeight:    T.fwBold,
+    fontSize:      '9px',
+    letterSpacing: '0.15em',
+    padding:       '2px 5px',
+  });
+  paidBadge.textContent = 'PAID';
+  rightSide.appendChild(paidBadge);
+  hdr.appendChild(rightSide);
+
+  hdr.addEventListener('pointerup', function() {
+    reopenSeat(state, seat.id);
+  });
+  wrap.appendChild(hdr);
+
+  // ── Greyed-out body (items visible, not interactive) ──
+  var body = document.createElement('div');
+  Object.assign(body.style, {
+    background:    hexToRgba(T.gold, 0.06),
+    flex:          '1',
+    minHeight:     '0',
+    padding:       '8px 10px',
+    display:       'flex',
+    flexDirection: 'column',
+    overflowY:     'auto',
+    cursor:        'pointer',
+  });
+  body.addEventListener('pointerup', function() {
+    reopenSeat(state, seat.id);
+  });
+
+  if (seat.items.length === 0) {
+    var empty = document.createElement('div');
+    Object.assign(empty.style, {
+      flex:           '1',
+      display:        'flex',
+      alignItems:     'center',
+      justifyContent: 'center',
+      color:          hexToRgba(T.gold, 0.5),
+      fontStyle:      'italic',
+      fontFamily:     T.fb,
+    });
+    empty.textContent = 'empty seat';
+    body.appendChild(empty);
+  } else {
+    seat.items.forEach(function(item) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 2px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.gold, 0.7) + ';border-bottom:1px solid ' + hexToRgba(T.gold, 0.15) + ';pointer-events:none;';
+      var nameEl = document.createElement('span');
+      nameEl.textContent = (item.qty > 1 ? item.qty + 'x ' : '') + item.name;
+      var priceEl = document.createElement('span');
+      priceEl.textContent = fmt(item.price);
+      row.appendChild(nameEl);
+      row.appendChild(priceEl);
+      body.appendChild(row);
+    });
+  }
+  wrap.appendChild(body);
+
+  state.seatEls[seat.id] = wrap;
+  return wrap;
+}
+
 // Mode B compact tile — header shows S# only (no subtotal column that
 // would overflow at 33 % width), body shows the seat total big and
 // centered so the tile doubles as a balance glance. Item detail lives
@@ -2270,6 +2421,78 @@ function buildCompactTile(state, seatIdx) {
   if (canDelete) {
     wrap.appendChild(_buildDeleteSeatX(state, seat.id));
   }
+
+  state.seatEls[seat.id] = wrap;
+  return wrap;
+}
+
+// Paid compact tile (Mode B) — gold-filled. Tapping reopens the seat payment.
+function buildPaidCompactTile(state, seatIdx) {
+  var seat = state.seats[seatIdx];
+
+  var wrap = buildStaticCard({ accent: T.gold });
+  wrap.style.padding       = '0';
+  wrap.style.display       = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.overflow      = 'hidden';
+  wrap.style.minHeight     = '90px';
+  wrap.style.background    = hexToRgba(T.gold, 0.18);
+  wrap.style.cursor        = 'pointer';
+
+  wrap.addEventListener('pointerup', function() {
+    reopenSeat(state, seat.id);
+  });
+
+  var hdr = document.createElement('div');
+  Object.assign(hdr.style, {
+    background:   T.gold,
+    padding:      '6px 12px',
+    borderBottom: '1px solid ' + T.goldDk,
+    display:      'flex',
+    alignItems:   'center',
+    justifyContent: 'space-between',
+  });
+  var label = document.createElement('div');
+  Object.assign(label.style, {
+    color:      T.moonText,
+    fontFamily: T.fh,
+    fontWeight: T.fwBold,
+  });
+  label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
+  hdr.appendChild(label);
+  var badge = document.createElement('div');
+  Object.assign(badge.style, {
+    background:    T.moonText,
+    color:         T.gold,
+    borderRadius:  '4px',
+    fontFamily:    T.fh,
+    fontWeight:    T.fwBold,
+    fontSize:      '8px',
+    letterSpacing: '0.12em',
+    padding:       '1px 4px',
+  });
+  badge.textContent = 'PAID';
+  hdr.appendChild(badge);
+  wrap.appendChild(hdr);
+
+  var body = document.createElement('div');
+  Object.assign(body.style, {
+    flex:           '1',
+    display:        'flex',
+    alignItems:     'center',
+    justifyContent: 'center',
+    padding:        '10px',
+  });
+  var totalEl = document.createElement('div');
+  Object.assign(totalEl.style, {
+    color:      T.gold,
+    fontFamily: T.fb,
+    fontSize:   T.fsB1,
+    fontWeight: T.fwBold,
+  });
+  totalEl.textContent = fmt(seatTotal(seat));
+  body.appendChild(totalEl);
+  wrap.appendChild(body);
 
   state.seatEls[seat.id] = wrap;
   return wrap;
