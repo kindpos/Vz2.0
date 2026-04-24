@@ -37,7 +37,7 @@
 
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
-import { buildCard, buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
+import { buildCard, buildStaticCard, buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
 import { buildButton, showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
@@ -470,21 +470,20 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        // Nostalgia card shell — green accent bar, chamfered corners,
-        // modal-depth drop-shadow.
-        var shell = buildCard({
-          accent: T.green,
-          bg: T.card,
-          padding: '8px 24px 24px',
-        });
-        shell.card.style.display       = 'flex';
-        shell.card.style.flexDirection = 'column';
-        shell.card.style.gap           = '10px';
-        shell.card.style.minWidth      = '500px';
-        shell.card.style.maxWidth      = '620px';
-        shell.card.style.maxHeight     = '520px';
-        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
-        var panel = shell.card;
+        // Shell: Nostalgia landing-page card affordance (beveled borders,
+        // T.well bg, inset + 3D drop shadow). Taller min-height so the
+        // card has presence even with one item; more interior padding
+        // below so action bar breathes away from the list.
+        var shell = buildStaticCard({ accent: T.green });
+        shell.style.display       = 'flex';
+        shell.style.flexDirection = 'column';
+        shell.style.gap           = '10px';
+        shell.style.minWidth      = '500px';
+        shell.style.maxWidth      = '620px';
+        shell.style.minHeight     = '420px';
+        shell.style.maxHeight     = '520px';
+        shell.style.padding       = '20px 28px 28px 32px';
+        var panel = shell;
 
         // Title
         var title = document.createElement('div');
@@ -520,11 +519,16 @@ defineScene({
             color: T.moon,
             darkBg: T.moonDk,
             textColor: seatColor,
-            fontSize: T.fsB3,
+            fontSize: T.fsB2,
           });
-          btn.style.width = '64px';
-          btn.style.height = '48px';
-          btn.style.flexShrink = '0';
+          btn.style.width           = '64px';
+          btn.style.height          = '48px';
+          btn.style.flexShrink      = '0';
+          btn.style.borderRadius    = '14px';
+          btn.style.padding         = '0';
+          btn.style.display         = 'flex';
+          btn.style.alignItems      = 'center';
+          btn.style.justifyContent  = 'center';
 
           function paint(selected) {
             btn.setColor(
@@ -600,13 +604,13 @@ defineScene({
         // Bottom bar — check-overview hierarchy.
         //   Left column  : SELECT ALL (elec/cyan) stacked on top of
         //                  CANCEL (verm — destructive exit).
-        //   Right column : CONFIRM, full-height primary CTA (green
-        //                  when every item has a seat, dimmed ghost
-        //                  while any row is empty).
+        //   Right column : CONFIRM, full-height mint primary CTA.
+        //                  Disabled (dimmed, unclickable) until every
+        //                  item has at least one seat.
         var bottomBar = document.createElement('div');
         bottomBar.style.cssText = [
-          'display:flex;gap:10px;margin-top:8px;',
-          'align-items:stretch;',
+          'display:flex;gap:10px;margin-top:auto;',
+          'padding-top:28px;align-items:stretch;',
         ].join('');
 
         var leftCol = document.createElement('div');
@@ -655,41 +659,23 @@ defineScene({
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          variant: 'ghost',
+          variant: 'mint',
           fontSize: T.fsB2,
-          onClick: function() {
-            // Only proceed if all items have at least one seat
-            var ready = true;
-            for (var k = 0; k < items.length; k++) {
-              if (!assignments[items[k].id] || assignments[items[k].id].length === 0) { ready = false; break; }
-            }
-            if (!ready) return;
-            params.onConfirm(assignments);
-          },
+          onClick: function() { params.onConfirm(assignments); },
         });
         confirmBtn.style.flex = '1';
         confirmBtn.style.minHeight = '80px';
         shapeAction(confirmBtn);
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
-        container.appendChild(shell.wrap);
+        container.appendChild(shell);
 
-        // CONFIRM promotes from ghost (disabled) to mint primary (ready).
         function updateConfirmState() {
           var allAssigned = true;
           for (var k = 0; k < items.length; k++) {
             if (!assignments[items[k].id] || assignments[items[k].id].length === 0) { allAssigned = false; break; }
           }
-          if (allAssigned) {
-            confirmBtn.setColor(T.green, T.greenDk, T.well);
-            confirmBtn.style.border = 'none';
-            confirmBtn.style.boxShadow = '0 6px 0 ' + T.greenDk;
-          } else {
-            confirmBtn.setColor('transparent', 'rgba(255,255,255,0.1)', T.text);
-            confirmBtn.style.color = hexToRgba(T.text, 0.45);
-            confirmBtn.style.border = '1px solid ' + T.border;
-            confirmBtn.style.boxShadow = 'none';
-          }
+          confirmBtn.setDisabled(!allAssigned);
         }
         updateConfirmState();
 
