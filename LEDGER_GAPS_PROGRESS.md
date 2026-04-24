@@ -142,6 +142,15 @@ the `/entomology` → Event Ledger Gaps tab.
   - LG-78 / LG-79: `/menu/86` and `/menu/restore` now emit
     `item.86ed` / `item.86_cleared` in one `append_batch` with the
     legacy `menu.item_86d` / `menu.item_restored`.
+- 2026-04-24 — Phase 3e: dataset correction for merge / split
+  directional encoding. Phase 1 already landed `role=source|target`
+  on check.merged and `role=parent|child` on check.split (plus full
+  atomic fan-out via append_batch), so LG-14, LG-15, LG-16 are
+  semantically IMPLEMENTED -- the spec's `merged_into` /
+  `absorbed_by` / `split_from` are just the role-valued views of
+  those events. Dataset flipped, citations updated. PARTIAL count
+  drops to 1 (LG-27 seat.course_fired, genuinely not covered by the
+  per-item item.sent event). IMPLEMENTED: 34.
 - 2026-04-24 — Phase 3d: card reader admin flow now ledgered.
   `POST /hardware/devices` with `type="card_reader"` emits
   `payment.processor_configured` (LG-108, PCI/SOX audit anchor).
