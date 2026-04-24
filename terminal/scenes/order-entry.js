@@ -38,12 +38,6 @@
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../tokens.js';
 import { buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
-import {
-  applySunkenStyle,
-  chamfer,
-  bevelEdges,
-  applyCardBevel as _applyCardBevel,
-} from '../sm2-shim.js';
 import { buildButton, showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
@@ -55,10 +49,6 @@ import { fetchWithTimeout } from '../sm2-shim.js';
 import { entReport } from '../entomology-client.js';
 import { formatModifierLabel } from '../modifier-label.js';
 import { buildCheckOverviewParams } from './transitions.js';
-
-// Local bevel colors kept for any call sites that still reference them.
-var _bevelL = T.green;
-var _bevelD = T.greenDk;
 
 var PAD      = 16;
 var GAP      = 16;
@@ -193,7 +183,7 @@ function fetchMenuFromAPI() {
           return hexItem;
         });
       // Prefer the user-set color from the Overseer; fall back to theme token
-      var catColor = cat.color || cat.hex_color || T.catColor(cat.label || cat.name.toUpperCase()) || T.mutedText;
+      var catColor = cat.color || cat.hex_color || T.catColor(cat.label || cat.name.toUpperCase()) || hexToRgba(T.text, 0.6);
       var textColor = _textColorForHex(catColor);
       return {
         id: cat.category_id,
@@ -642,7 +632,7 @@ defineScene({
             params.onConfirm(assignments);
           },
         });
-        confirmBtn.style.color = T.dimText;
+        confirmBtn.style.color = hexToRgba(T.text, 0.45);
         confirmBtn.style.flex = '1';
         confirmBtn.style.height = '48px';
         bottomBar.appendChild(confirmBtn);
@@ -654,7 +644,7 @@ defineScene({
           for (var k = 0; k < items.length; k++) {
             if (!assignments[items[k].id] || assignments[items[k].id].length === 0) { allAssigned = false; break; }
           }
-          confirmBtn.style.color = allAssigned ? T.green : T.dimText;
+          confirmBtn.style.color = allAssigned ? T.green : hexToRgba(T.text, 0.45);
           confirmBtn.style.borderColor = allAssigned ? T.green : T.card;
         }
         updateConfirmState();
@@ -776,7 +766,7 @@ defineScene({
           qtyReadout.textContent = String(qty);
           minusBtn.style.opacity = qty > 1 ? '1' : '0.35';
           var dirty = qty !== startQty;
-          confirmBtn.style.color       = dirty ? T.green   : T.dimText;
+          confirmBtn.style.color       = dirty ? T.green   : hexToRgba(T.text, 0.45);
           confirmBtn.style.borderColor = dirty ? T.green   : T.card;
         }
 
@@ -1106,7 +1096,7 @@ function _renderPersonalGrid() {
     empty.style.cssText = [
       'grid-column:1/-1;display:flex;flex-direction:column;',
       'align-items:center;justify-content:center;height:200px;gap:10px;',
-      'font-family:' + T.fh + ';font-size:13px;color:' + T.mutedText + ';text-align:center;',
+      'font-family:' + T.fh + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;',
     ].join('');
     empty.innerHTML = '<div style="font-size:35px;color:' + T.gold + ';opacity:0.5;pointer-events:none;">★</div><span style="pointer-events:none;">Hold any item to add it here</span>';
     _gridEl.appendChild(empty);
@@ -1436,7 +1426,7 @@ function rebuildBottomBar() {
       color: T.card, fontSize: '22px',
       onClick: function() { clearModifierSelection(); },
     });
-    deselectBtn.style.color = T.dimText;
+    deselectBtn.style.color = hexToRgba(T.text, 0.45);
     deselectBtn.style.fontFamily = T.fh;
 
     var modifyBtn = buildPillButton({
@@ -1534,7 +1524,7 @@ function openModifierSession() {
   var ids = modifierSession.selectedItems;
   var items = ticket.filter(function(i) { return ids.indexOf(i.id) !== -1 && !i.sent; });
   if (items.length === 0) {
-    showToast('No unsent items selected', { bg: T.dimText, duration: 2000 });
+    showToast('No unsent items selected', { bg: hexToRgba(T.text, 0.45), duration: 2000 });
     return;
   }
   modifierSession.active = true;
@@ -1570,7 +1560,7 @@ function openModifierSession() {
 function buildPlacementBar() {
   var plColor = MOD_COLORS.pizza.color;
   var plText  = MOD_COLORS.pizza.textColor;
-  var dimText = T.mutedText;
+  var dimText = hexToRgba(T.text, 0.6);
 
   var container = document.createElement('div');
   container.style.cssText = [
@@ -1736,8 +1726,9 @@ function buildModifierPanel(catIds) {
   logWrap.style.cssText = [
     'max-height:100px;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none;',
     'background:' + T.well + ';padding:4px 8px;flex-shrink:0;',
+    'border:1px solid ' + T.border + ';border-radius:6px;',
+    'box-shadow:inset 0 2px 4px rgba(0,0,0,0.35);',
   ].join('');
-  applySunkenStyle(logWrap);
   panel._log = logWrap;
   panel.appendChild(logWrap);
 
@@ -1749,7 +1740,7 @@ function buildModifierPanel(catIds) {
 
 function applyModifier(mod) {
   if (!modifierSession.activePrefix) {
-    showToast('Select a prefix first', { bg: T.dimText, duration: 2000 });
+    showToast('Select a prefix first', { bg: hexToRgba(T.text, 0.45), duration: 2000 });
     return;
   }
   var prefix = UNI_PREFIXES.find(function(p) { return p.id === modifierSession.activePrefix; });
@@ -1886,7 +1877,7 @@ function renderAppliedModsLog(panel) {
 
   if (modifierSession.appliedMods.length === 0) {
     var empty = document.createElement('div');
-    empty.style.cssText = 'font-family:' + T.fb + ';font-size:30px;color:' + T.mutedText + ';text-align:center;padding:4px 0;';
+    empty.style.cssText = 'font-family:' + T.fb + ';font-size:30px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:4px 0;';
     empty.textContent = 'No modifiers applied';
     log.appendChild(empty);
     return;
@@ -2278,7 +2269,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
     // ── INCLUDED ──
     if (includedItems.length > 0) {
-      scroll.appendChild(sectionLabel('INCLUDED — TAP TO REMOVE OR SIDE', T.mutedText));
+      scroll.appendChild(sectionLabel('INCLUDED — TAP TO REMOVE OR SIDE', hexToRgba(T.text, 0.6)));
       var inclWrap = pillWrap();
       includedItems.forEach(function(inc) {
         var state = inclState[inc.id] || null;
@@ -2340,7 +2331,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
             'padding:7px 8px;border-radius:8px;cursor:pointer;',
             'pointer-events:auto;touch-action:manipulation;',
             'font-family:' + T.fb + ';font-weight:700;font-size:10px;letter-spacing:1px;',
-            'color:' + (isActive ? '#fff' : T.mutedText) + ';',
+            'color:' + (isActive ? '#fff' : hexToRgba(T.text, 0.6)) + ';',
             'background:' + (isActive ? catColor : 'transparent') + ';',
             'box-shadow:' + (isActive ? '0 3px 0 ' + hexToRgba(catColor, 0.55) : 'none') + ';',
             'transition:all 120ms;',
@@ -2378,13 +2369,13 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       // Show a message if no groups configured (pizza fallback)
       if (optionalGroups.length === 0 && includedItems.length === 0 && mandatoryGroups.length === 0) {
         var msg = document.createElement('div');
-        msg.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + T.mutedText + ';text-align:center;padding:24px 0;';
+        msg.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:24px 0;';
         msg.textContent = 'No modifiers configured — tap DONE to add';
         scroll.appendChild(msg);
       }
     } else if (optionalGroups.length === 0 && includedItems.length === 0 && mandatoryGroups.length === 0) {
       var msg2 = document.createElement('div');
-      msg2.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + T.mutedText + ';text-align:center;padding:24px 0;';
+      msg2.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:24px 0;';
       msg2.textContent = 'No modifiers configured — tap DONE to add';
       scroll.appendChild(msg2);
     }
@@ -2812,7 +2803,7 @@ function addToTicket(item) {
     // Apply modifier to all selected instances
     var selected = ticket.filter(function(i) { return i.selected; });
     if (selected.length === 0) {
-      showToast('Select an item first', { bg: T.dimText, duration: 2000 });
+      showToast('Select an item first', { bg: hexToRgba(T.text, 0.45), duration: 2000 });
       return;
     }
 
@@ -2890,7 +2881,7 @@ function renderTicket() {
     displayTicket = ticket.filter(function(inst) { return !inst.sent; });
     if (displayTicket.length === 0 && !_modPanelItem) {
       var hint = document.createElement('div');
-      hint.style.cssText = 'padding:20px 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.mutedText + ';text-align:center;';
+      hint.style.cssText = 'padding:20px 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
       hint.textContent = 'Tap items to add';
       list.appendChild(hint);
       return;
@@ -2953,7 +2944,6 @@ function _appendModPreview(list) {
   var pc = document.createElement('div');
   pc.setAttribute('data-mod-preview', '1');
   pc.style.cssText = 'flex-shrink:0;margin-bottom:2px;background:' + T.well + ';border-left:3px solid ' + T.gold + ';';
-  // _applyCardBevel(pc);
 
   var pRow = document.createElement('div');
   pRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;';
@@ -3149,7 +3139,6 @@ function _renderTicketGroup(list, displayTicket) {
         'flex-shrink:0;cursor:pointer;touch-action:manipulation;',
         'background:' + T.bg + ';',
       ].join('');
-      // _applyCardBevel(gc);
 
       var gRow = document.createElement('div');
       gRow.style.cssText = 'display:flex;align-items:center;padding:3px 6px 3px 8px;';
@@ -3264,7 +3253,6 @@ function _renderTicketGroup(list, displayTicket) {
           'flex-shrink:0;touch-action:manipulation;pointer-events:auto;',
           'background:' + bg + ';margin-bottom:2px;',
         ].join('');
-        // _applyCardBevel(ic);
 
         // ── Header row ─────────────────────────────
         var iRow = document.createElement('div');
@@ -3278,7 +3266,7 @@ function _renderTicketGroup(list, displayTicket) {
           var chevron = document.createElement('span');
           chevron.style.cssText = [
             'width:24px;height:24px;display:flex;align-items:center;justify-content:center;',
-            'font-size:16px;color:' + T.mutedText + ';margin-right:4px;flex-shrink:0;',
+            'font-size:16px;color:' + hexToRgba(T.text, 0.6) + ';margin-right:4px;flex-shrink:0;',
             'pointer-events:auto;touch-action:manipulation;cursor:pointer;',
             'background:' + T.well + ';border-radius:4px;',
           ].join('');
@@ -3336,7 +3324,7 @@ function _renderTicketGroup(list, displayTicket) {
         // ── Mod hint row — never expanded inline ──────────
         if (hasMods) {
           var modHint = document.createElement('div');
-          modHint.style.cssText = 'padding:1px 8px 3px 22px;font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';pointer-events:none;';
+          modHint.style.cssText = 'padding:1px 8px 3px 22px;font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';pointer-events:none;';
           modHint.textContent = inst.mods.length + ' modifier' + (inst.mods.length > 1 ? 's' : '');
           ic.appendChild(modHint);
         }
@@ -3370,7 +3358,6 @@ function _renderTicketGroup(list, displayTicket) {
       'background:' + T.bg + ';',
       'margin-bottom:2px;',
     ].join('');
-    // _applyCardBevel(previewCard);
 
     // Item header row
     var pRow = document.createElement('div');
