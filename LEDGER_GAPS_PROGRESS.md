@@ -12,7 +12,7 @@ inventory is `backend/app/services/ledger_gap_report.py` (surfaced in the
 | 2 | Missing CRITICAL | `check.opened`, `seat.paid`, `day.opened`, real clock.in/out | ~6 | **DONE** |
 | 3a | HIGH payload fixes + renames | item.86ed/cleared, tip adjusted_by, item.removed voided_by, discount.approved discount_id | 5 | **DONE** |
 | 3b | HIGH severity MISSING | Seat-granular events, compliance, batch lifecycle | ~55 | pending |
-| 4 | FACTORY-ONLY wiring | Emitters for declared factories | 13 | pending |
+| 4 | FACTORY-ONLY wiring | Emitters for declared factories | 13 → 5 | audit-corrected in 3b; remaining 5 need new endpoints |
 | 5 | RENAMED consolidation | Align code ↔ spec names | 20 | pending |
 | 6 | PARTIAL payload fixes | Fill missing payload fields on implemented events | ~11 | pending |
 | 7 | MEDIUM / LOW severity | Remaining nodes | ~41 | pending |
@@ -142,3 +142,20 @@ the `/entomology` → Event Ledger Gaps tab.
   - LG-78 / LG-79: `/menu/86` and `/menu/restore` now emit
     `item.86ed` / `item.86_cleared` in one `append_batch` with the
     legacy `menu.item_86d` / `menu.item_restored`.
+- 2026-04-24 — Phase 3b (dataset audit correction). A thorough
+  reconnaissance against `backend/app/core/adapters/printer_manager.py`
+  and `backend/app/api/routes/orders.py` revealed eight nodes
+  previously tagged `FACTORY-ONLY` in the ledger-gap dataset are
+  actually wired and emit from production code paths today:
+  - LG-03 `check.reopened` (`orders.py:reopen_order`)
+  - LG-09 `check.server_transferred` (`orders.py:patch_order`, `server_shift.py`)
+  - LG-11 `check.cover_count_updated` (`orders.py:patch_order`)
+  - LG-20 `check.named` (`orders.py:patch_order`)
+  - LG-114 ticket print lifecycle (`printer_manager.py`)
+  - LG-115 print retry / reroute (`printer_manager.py`)
+  - LG-116 drawer open events (`printer_manager.py`)
+  - LG-117 printer health family (`printer_manager.py`)
+  Dataset updated to `IMPLEMENTED` with accurate `site` citations.
+  No code changes — this was the audit correcting itself. Dataset
+  counts now: 27 IMPLEMENTED, 16 RENAMED, 4 PARTIAL, 5 FACTORY-ONLY,
+  66 MISSING (of 118 total).
