@@ -38,12 +38,10 @@
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../tokens.js';
 import { buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
-import {
-  applySunkenStyle,
-  chamfer,
-  bevelEdges,
-  applyCardBevel as _applyCardBevel,
-} from '../sm2-shim.js';
+// chamfer / bevelEdges / applyCardBevel were imported here but never called
+// (applyCardBevel usage survives only in commented-out _applyCardBevel
+// references below). Dropped so this file no longer pulls the sm2-shim
+// helpers — only fetchWithTimeout, a legitimate utility, remains.
 import { buildButton, showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
@@ -1736,8 +1734,10 @@ function buildModifierPanel(catIds) {
   logWrap.style.cssText = [
     'max-height:100px;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none;',
     'background:' + T.well + ';padding:4px 8px;flex-shrink:0;',
+    // Sunken-well look (inlined from the retired applySunkenStyle shim).
+    'border:1px solid ' + T.border + ';border-radius:6px;',
+    'box-shadow:inset 0 2px 4px rgba(0,0,0,0.35);',
   ].join('');
-  applySunkenStyle(logWrap);
   panel._log = logWrap;
   panel.appendChild(logWrap);
 
