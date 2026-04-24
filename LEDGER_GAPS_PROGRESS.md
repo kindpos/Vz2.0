@@ -72,6 +72,17 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 4e: menu-import lifecycle wired around
+  `/config/push`. Any batch containing `menu.*`, `category.*`,
+  `modifier.*`, `restaurant.configured`, or `*_batch_created` events
+  now lands inside a `menu.import_started` → ... → `menu.import_completed`
+  envelope sharing an `import_id`. On a failed `append_batch`, a
+  standalone `menu.import_failed` is emitted before the error
+  propagates (nothing menu-related committed — this event is the sole
+  record). `menu.import_rolled_back` is dark-shipped: enum + factory
+  live, emission awaits an overseer rollback endpoint. LG-110 / 111 /
+  112 flipped to IMPLEMENTED; LG-113 flipped to FACTORY-ONLY with a
+  note. 3 new tests; 1209 backend tests green.
 - 2026-04-24 — Phase 4g: micromod.* dark-shipped. 9 new EventType
   entries (`micromod.created` / `updated` / `price_changed` /
   `deactivated` / `reactivated` / `assigned_to_modifier` /

@@ -199,6 +199,12 @@ class EventType(str, Enum):
     CATEGORIES_BATCH_CREATED = "categories.batch_created"
     ITEMS_BATCH_CREATED = "items.batch_created"
 
+    # ── Menu import lifecycle (LEDGER_OPERATIONAL) ───────────────────
+    MENU_IMPORT_STARTED = "menu.import_started"
+    MENU_IMPORT_COMPLETED = "menu.import_completed"
+    MENU_IMPORT_FAILED = "menu.import_failed"
+    MENU_IMPORT_ROLLED_BACK = "menu.import_rolled_back"
+
     # ── Floor Plan (LEDGER_OPERATIONAL) ──────────────────────────────
     FLOORPLAN_SECTION_CREATED = "floorplan.section_created"
     FLOORPLAN_SECTION_UPDATED = "floorplan.section_updated"
@@ -2089,6 +2095,108 @@ def micromod_86_cleared(
         event_type=EventType.MICROMOD_86_CLEARED,
         terminal_id=terminal_id,
         payload=payload,
+        **kwargs,
+    )
+
+
+
+def menu_import_started(
+        terminal_id: str,
+        import_id: str,
+        source: str = "config_push",
+        expected_event_count: Optional[int] = None,
+        initiated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MENU_IMPORT_STARTED: leading event of a menu-import batch.
+    Grouped by import_id so replayers can pair started/completed/
+    failed/rolled_back on the same operation."""
+    payload = {
+        "import_id": import_id,
+        "source": source,
+    }
+    if expected_event_count is not None:
+        payload["expected_event_count"] = expected_event_count
+    if initiated_by is not None:
+        payload["initiated_by"] = initiated_by
+    return create_event(
+        event_type=EventType.MENU_IMPORT_STARTED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=import_id,
+        **kwargs,
+    )
+
+
+def menu_import_completed(
+        terminal_id: str,
+        import_id: str,
+        event_count: int,
+        **kwargs
+) -> Event:
+    """MENU_IMPORT_COMPLETED: trailing event of a successful menu-import
+    batch. event_count matches the number of menu-* events that landed
+    atomically between started and completed."""
+    return create_event(
+        event_type=EventType.MENU_IMPORT_COMPLETED,
+        terminal_id=terminal_id,
+        payload={
+            "import_id": import_id,
+            "event_count": event_count,
+        },
+        correlation_id=import_id,
+        **kwargs,
+    )
+
+
+def menu_import_failed(
+        terminal_id: str,
+        import_id: str,
+        reason: str,
+        error_type: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MENU_IMPORT_FAILED: emitted when a menu-import batch raises
+    during the atomic write. Because the batch is atomic, no menu.*
+    events landed — this event stands alone on the ledger as the sole
+    record of the attempt."""
+    payload = {
+        "import_id": import_id,
+        "reason": reason,
+    }
+    if error_type is not None:
+        payload["error_type"] = error_type
+    return create_event(
+        event_type=EventType.MENU_IMPORT_FAILED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=import_id,
+        **kwargs,
+    )
+
+
+def menu_import_rolled_back(
+        terminal_id: str,
+        import_id: str,
+        reason: Optional[str] = None,
+        rolled_back_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MENU_IMPORT_ROLLED_BACK: emitted when a previously-completed
+    menu import is explicitly reversed (e.g. via an overseer rollback
+    action). Compensating menu events are expected to be emitted
+    alongside; this event is the audit anchor that links them to the
+    original import_id."""
+    payload = {"import_id": import_id}
+    if reason is not None:
+        payload["reason"] = reason
+    if rolled_back_by is not None:
+        payload["rolled_back_by"] = rolled_back_by
+    return create_event(
+        event_type=EventType.MENU_IMPORT_ROLLED_BACK,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=import_id,
         **kwargs,
     )
 
