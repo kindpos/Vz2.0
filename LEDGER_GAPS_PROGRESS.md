@@ -72,6 +72,18 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 4f: modifier CRUD ledgered. Seven new
+  `EventType` entries (`modifier.created`, `modifier.updated`,
+  `modifier.price_changed`, `modifier.deactivated`,
+  `modifier.reactivated`, `modifier.86ed`, `modifier.86_cleared`)
+  with matching factories. Events flow through the existing
+  `/config/push` overseer batch route -- no new endpoint surface --
+  so the moment the overseer UI sends them they land in the ledger.
+  `modifier.price_changed` carries `previous_price` + `new_price`
+  for historical-pricing replay; `modifier.updated` carries
+  `fields_changed` so projections can apply minimal diffs. 5 new
+  tests pin emission and payload shape. LG-80 / 81 / 82 / 83 / 84
+  flipped to IMPLEMENTED.
 - 2026-04-24 — Phase 4d: `batch.settlement_failed` now emitted in the
   `_do_close_day` append_batch alongside `batch.submitted` + `day.closed`
   whenever the close-day invariant gate reports failures. Payload
