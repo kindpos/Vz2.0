@@ -1929,6 +1929,24 @@ defineScene({
     params = params || {};
     state.startTime = state.startTime || Date.now();
 
+    // close-day owns the esc button while it's the visible transactional.
+    // close-day-checks-viewer opens on top and sets its own handler (then
+    // clears it on unmount), so re-apply ours whenever a child transactional
+    // closes — otherwise esc would silently lose its target.
+    function applyBack() {
+      if (window._header && window._header.setBackHandler) {
+        window._header.setBackHandler(function() {
+          SceneManager.closeTransactional('close-day');
+        });
+      }
+    }
+    function _onChildClosed(evt) {
+      if (evt && evt.sceneName !== 'close-day') applyBack();
+    }
+    applyBack();
+    SceneManager.on('transactional:closed', _onChildClosed);
+    state._onChildClosed = _onChildClosed;
+
     container.style.cssText = [
       'width:100%;height:100%;',
       'display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
@@ -2422,6 +2440,13 @@ defineScene({
       SceneManager.off('order:updated', _onUpdate);
       SceneManager.off('order:closed',  _onUpdate);
       SceneManager.off('tip:adjusted',  _onUpdate);
+      if (state._onChildClosed) {
+        SceneManager.off('transactional:closed', state._onChildClosed);
+        state._onChildClosed = null;
+      }
+      if (window._header && window._header.setBackHandler) {
+        window._header.setBackHandler(null);
+      }
     };
   },
 });
