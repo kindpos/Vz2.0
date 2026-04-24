@@ -1597,7 +1597,23 @@ function openItemModal(cfg) {
         rowWrap.appendChild(priceCol); rowWrap.appendChild(catCol);
         body.appendChild(rowWrap);
 
-        const priceField = buildTextField(priceCol, 'Price', Number(item.price).toFixed(2), { type: 'number' });
+        const priceField = buildTextField(priceCol, 'Price', Number(item.price).toFixed(2), { type: 'text', inputmode: 'decimal' });
+        // Centavo-style entry: digits shift right of decimal; backspace unshifts.
+        // Typing 1→5→0 yields $0.01→$0.15→$1.50, preventing the common
+        // "$10.00 instead of $1.00" mistake on a touchscreen numpad.
+        let _priceCents = Math.round((Number(item.price) || 0) * 100);
+        priceField.input.addEventListener('keydown', function(e) {
+            if (e.key >= '0' && e.key <= '9') {
+                e.preventDefault();
+                if (_priceCents < 9999999) _priceCents = _priceCents * 10 + Number(e.key);
+                priceField.input.value = (_priceCents / 100).toFixed(2);
+            } else if (e.key === 'Backspace') {
+                e.preventDefault();
+                _priceCents = Math.floor(_priceCents / 10);
+                priceField.input.value = (_priceCents / 100).toFixed(2);
+            }
+        });
+        priceField.input.addEventListener('focus', () => priceField.input.select());
         const catField   = buildSelectField(catCol, 'Category', item.category_id, categoryChoices);
 
         const descField   = buildTextField(body, 'Description', item.description, { textarea: true });
@@ -1794,7 +1810,7 @@ function openItemModal(cfg) {
             return {
                 ...item,
                 name:        nameField.input.value.trim(),
-                price:       parseFloat(priceField.input.value) || 0,
+                price:       _priceCents / 100,
                 category_id: catField.input.value,
                 description: descField.input.value.trim(),
                 active:      activeField.input.checked,

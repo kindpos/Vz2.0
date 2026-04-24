@@ -153,7 +153,7 @@ function fetchMenuFromAPI() {
     menu.items.forEach(function(item) {
       // Match item.category (name like "Pizza") to category
       var cat = menu.categories.find(function(c) {
-        return c.name === item.category || c.category_id === item.category;
+        return c.name === item.category || c.category_id === item.category || c.category_id === item.category_id;
       });
       if (cat) {
         if (!itemsByCatId[cat.category_id]) itemsByCatId[cat.category_id] = [];
@@ -850,6 +850,127 @@ defineScene({
       },
       unmount: function() { hideKeyboard(); },
     },
+
+    'oe-open-item': {
+      render: function(container, params) {
+        container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
+        container.addEventListener('pointerup', function(e) {
+          if (e.target === container) params.onCancel();
+        });
+
+        var shell = buildStaticCard({ accent: T.gold });
+        Object.assign(shell.style, {
+          display: 'flex', flexDirection: 'column', gap: '14px',
+          minWidth: '340px', maxWidth: '420px',
+          padding: '20px 24px 24px',
+        });
+
+        var title = document.createElement('div');
+        title.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB2 + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';letter-spacing:0.2em;text-transform:uppercase;text-align:center;';
+        title.textContent = 'OPEN ITEM';
+        shell.appendChild(title);
+
+        // ── Name ──
+        var nameInput = document.createElement('input');
+        Object.assign(nameInput.style, {
+          width: '100%', boxSizing: 'border-box',
+          background: hexToRgba(T.text, 0.06), border: '1px solid ' + hexToRgba(T.text, 0.18),
+          borderRadius: '10px', color: T.text,
+          fontFamily: T.fb, fontSize: T.fsB3,
+          padding: '10px 12px', outline: 'none',
+        });
+        nameInput.placeholder = 'Item name (required)';
+        nameInput.maxLength = 50;
+        shell.appendChild(nameInput);
+
+        // ── Category ──
+        var catSelect = document.createElement('select');
+        Object.assign(catSelect.style, {
+          width: '100%', boxSizing: 'border-box',
+          background: hexToRgba(T.text, 0.06), border: '1px solid ' + hexToRgba(T.text, 0.18),
+          borderRadius: '10px', color: T.text,
+          fontFamily: T.fb, fontSize: T.fsB3,
+          padding: '10px 12px', outline: 'none',
+          appearance: 'none',
+        });
+        var catPlaceholder = document.createElement('option');
+        catPlaceholder.value = '';
+        catPlaceholder.textContent = 'Select category…';
+        catPlaceholder.disabled = true;
+        catPlaceholder.selected = true;
+        catSelect.appendChild(catPlaceholder);
+        MENU_DATA.forEach(function(cat) {
+          var opt = document.createElement('option');
+          opt.value = cat.id;
+          opt.textContent = cat.label || cat.id;
+          catSelect.appendChild(opt);
+        });
+        shell.appendChild(catSelect);
+
+        // ── Price display ──
+        var _cents = 0;
+        var priceDisplay = document.createElement('div');
+        Object.assign(priceDisplay.style, {
+          textAlign: 'center', fontFamily: T.fb,
+          fontSize: '2rem', fontWeight: T.fwBold, color: T.gold,
+          letterSpacing: '0.05em',
+        });
+        function _refreshPrice() { priceDisplay.textContent = '$' + (_cents / 100).toFixed(2); }
+        _refreshPrice();
+        shell.appendChild(priceDisplay);
+
+        // ── Digit pad ──
+        var pad = document.createElement('div');
+        pad.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;';
+        [7,8,9,4,5,6,1,2,3,'⌫',0,'✓'].forEach(function(key) {
+          var btn = document.createElement('button');
+          Object.assign(btn.style, {
+            padding: '14px 0', borderRadius: '10px', border: 'none',
+            background: (key === '✓') ? T.greenWarm : hexToRgba(T.text, 0.08),
+            color: (key === '✓') ? T.moonText : T.text,
+            fontFamily: T.fb, fontSize: T.fsB2, fontWeight: T.fwBold,
+            cursor: 'pointer',
+          });
+          btn.textContent = String(key);
+          btn.addEventListener('pointerup', function(e) {
+            e.stopPropagation();
+            if (key === '⌫') {
+              _cents = Math.floor(_cents / 10);
+            } else if (key === '✓') {
+              _commit();
+              return;
+            } else {
+              if (_cents < 9999999) _cents = _cents * 10 + Number(key);
+            }
+            _refreshPrice();
+          });
+          pad.appendChild(btn);
+        });
+        shell.appendChild(pad);
+
+        // ── Buttons ──
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
+        var cancelBtn = buildPillButton({ label: 'CANCEL', variant: T.groups.composite.cancel, fontSize: T.fsB2, onClick: function() { params.onCancel(); } });
+        cancelBtn.style.flex = '1'; cancelBtn.style.height = '48px';
+        var addBtn = buildPillButton({ label: 'ADD ITEM', variant: T.groups.composite.confirm, fontSize: T.fsB2, onClick: _commit });
+        addBtn.style.flex = '1'; addBtn.style.height = '48px';
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(addBtn);
+        shell.appendChild(btnRow);
+
+        container.appendChild(shell);
+        nameInput.focus();
+
+        function _commit() {
+          var name = nameInput.value.trim();
+          if (!name) { nameInput.style.borderColor = T.verm; return; }
+          if (!catSelect.value) { catSelect.style.borderColor = T.verm; return; }
+          params.onConfirm({ label: name, price: _cents / 100, categoryId: catSelect.value });
+        }
+      },
+      unmount: function() {},
+    },
   },
 });
 
@@ -1136,6 +1257,39 @@ function _bindItemTile(tile, item, menuCat) {
 }
 
 function _renderPersonalGrid() {
+  // Open Item tile — always present at the top of Personal
+  var openTile = document.createElement('div');
+  openTile.style.cssText = _tileStyle(T.gold, false, 'justify-content:space-between;align-items:flex-start;');
+  var openLabel = document.createElement('span');
+  openLabel.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:14px;color:' + T.text + ';letter-spacing:0.3px;pointer-events:none;';
+  openLabel.textContent = 'Open Item';
+  var openIcon = document.createElement('span');
+  openIcon.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.gold + ';font-weight:700;margin-top:4px;pointer-events:none;';
+  openIcon.textContent = '+';
+  openTile.appendChild(openLabel);
+  openTile.appendChild(openIcon);
+  _applyPress(openTile, T.gold, false);
+  openTile.addEventListener('pointerup', function() {
+    SceneManager.interrupt('oe-open-item', {
+      onConfirm: function(result) {
+        var menuCat = MENU_DATA.find(function(c) { return c.id === result.categoryId; });
+        addToTicket({
+          label: result.label,
+          price: result.price,
+          id:    null,
+          selectedMods: [],
+        });
+        // Override category on the ticket item just added (last in array)
+        if (ticket.length > 0) ticket[ticket.length - 1].category = result.categoryId;
+        SceneManager.closeInterrupt('oe-open-item');
+      },
+      onCancel: function() {
+        SceneManager.closeInterrupt('oe-open-item');
+      },
+    });
+  });
+  _gridEl.appendChild(openTile);
+
   if (favorites.length === 0) {
     var empty = document.createElement('div');
     empty.style.cssText = [

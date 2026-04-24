@@ -153,6 +153,14 @@ def project_menu(events: List[Event]) -> MenuState:
     state.items = list(items_map.values())
     state.modifier_groups = list(modifier_groups_map.values())
 
+    # Enrich items authored by Overseer: they carry category_id but not
+    # category (the name string). The terminal's fetchMenuFromAPI matches
+    # items by category name, so resolve it here from categories_map.
+    cat_name_by_id = {cid: cat.get('name', '') for cid, cat in categories_map.items()}
+    for item in state.items:
+        if not item.get('category') and item.get('category_id'):
+            item['category'] = cat_name_by_id.get(item['category_id'], 'Uncategorized')
+
     # Build items_by_category
     for item in state.items:
         cat_name = item.get('category', 'Uncategorized')
