@@ -382,9 +382,10 @@ defineScene({
     customerName:  '',
     selected:      {},
     selectedItems: {},
-    paidSeats:     {},
-    showPaidSeats: false,
-    _payingSeats:  [],
+    paidSeats:          {},
+    seatPayments:       {},
+    _selectedPaidSeat:  null,
+    _payingSeats:       [],
     _backConfirmed:false,
     rootEl:        null,
     topAreaEl:     null,
@@ -423,8 +424,10 @@ defineScene({
     state.selected      = {};
     state.selectedItems = {};
     state.seatEls       = {};
-    state.paidSeats     = {};
-    state._payingSeats  = [];
+    state.paidSeats          = {};
+    state.seatPayments       = {};
+    state._selectedPaidSeat  = null;
+    state._payingSeats       = [];
     state._backConfirmed= false;
     state._lpTimers     = [];
     state._mode         = null;
@@ -1868,23 +1871,6 @@ function buildSeatsContainer(state) {
     padding:        '4px 12px 0',
   });
 
-  // Show/Hide paid seats toggle — only rendered when there are paid seats
-  var paidCount = Object.keys(state.paidSeats || {}).length;
-  if (paidCount > 0) {
-    var paidToggleBtn = buildPillButton({
-      label:    state.showPaidSeats ? 'HIDE PAID' : ('PAID (' + paidCount + ')'),
-      color:    T.gold,
-      darkBg:   T.goldDk,
-      fontSize: T.fsB4,
-      padding:  '6px 14px',
-      onClick: function() {
-        state.showPaidSeats = !state.showPaidSeats;
-        rerenderTopArea(state);
-      },
-    });
-    selRow.appendChild(paidToggleBtn);
-  }
-
   var selBtn = buildPillButton({
     label:    anySel ? 'CLEAR' : 'SELECT ALL',
     color:    anySel ? T.verm : T.elec,
@@ -1951,54 +1937,54 @@ function rerenderTopArea(state) {
 
 function renderSeatsGrid(state, container, mode) {
   if (mode === 'B') {
-    // ── Mode B: item recap on the left, compact seat tile grid on the right ──
+    // ── Mode B: left column = recap OR paid-seat payment detail ──
     var recapCol = document.createElement('div');
     Object.assign(recapCol.style, {
       flex:      '1',
       minWidth:  '0',
       overflowY: 'auto',
     });
-    // _adaptOrderForRecap may filter seats (by selection), so the
-    // indices buildItemRecap passes to its callbacks are FILTERED
-    // indices — translate back to the real state.seats index via
-    // seatNumber so selectedItems / toggleItem operate on the truth.
-    var adaptedOrder = _adaptOrderForRecap(state);
-    var filteredToState = [];
-    for (var ai = 0; ai < adaptedOrder.seats.length; ai++) {
-      var adaptedNum = adaptedOrder.seats[ai].seatNumber;
-      for (var si2 = 0; si2 < state.seats.length; si2++) {
-        if (state.seats[si2].number === adaptedNum) {
-          filteredToState[ai] = si2;
-          break;
+
+    if (state._selectedPaidSeat) {
+      // A paid tile is selected — show that seat's payment rows in the
+      // left column instead of the normal item recap.
+      recapCol.appendChild(_buildPaidRecapPanel(state, state._selectedPaidSeat));
+    } else {
+      // Normal item recap — skip paid seats (they live in the tile grid).
+      var adaptedOrder = _adaptOrderForRecap(state);
+      var filteredToState = [];
+      for (var ai = 0; ai < adaptedOrder.seats.length; ai++) {
+        var adaptedNum = adaptedOrder.seats[ai].seatNumber;
+        for (var si2 = 0; si2 < state.seats.length; si2++) {
+          if (state.seats[si2].number === adaptedNum) {
+            filteredToState[ai] = si2;
+            break;
+          }
         }
       }
-    }
 
-    var recapEl = buildItemRecap(adaptedOrder, {
-      hideHeader:  true,
-      hideTotals:  true,
-      collapsible: true,
-      seatAccent: function(fIdx) {
-        var realIdx = filteredToState[fIdx];
-        return realIdx != null ? seatAccent(realIdx) : null;
-      },
-      itemSelected: function(fIdx, itemIdx) {
-        var realIdx = filteredToState[fIdx];
-        return realIdx != null
-          && !!(state.selectedItems && state.selectedItems[realIdx + ':' + itemIdx]);
-      },
-      onItemTap: function(fIdx, itemIdx) {
-        var realIdx = filteredToState[fIdx];
-        if (realIdx != null) toggleItem(state, realIdx, itemIdx);
-      },
-    });
-    // .ir-root defaults to max-width:400px, which left a dead strip of
-    // empty column between the recap and the tile grid in Mode B.
-    // Let it fill the whole recapCol instead — the column already has
-    // its own flex:1 sizing.
-    recapEl.style.maxWidth = 'none';
-    recapEl.style.width    = '100%';
-    recapCol.appendChild(recapEl);
+      var recapEl = buildItemRecap(adaptedOrder, {
+        hideHeader:  true,
+        hideTotals:  true,
+        collapsible: true,
+        seatAccent: function(fIdx) {
+          var realIdx = filteredToState[fIdx];
+          return realIdx != null ? seatAccent(realIdx) : null;
+        },
+        itemSelected: function(fIdx, itemIdx) {
+          var realIdx = filteredToState[fIdx];
+          return realIdx != null
+            && !!(state.selectedItems && state.selectedItems[realIdx + ':' + itemIdx]);
+        },
+        onItemTap: function(fIdx, itemIdx) {
+          var realIdx = filteredToState[fIdx];
+          if (realIdx != null) toggleItem(state, realIdx, itemIdx);
+        },
+      });
+      recapEl.style.maxWidth = 'none';
+      recapEl.style.width    = '100%';
+      recapCol.appendChild(recapEl);
+    }
     container.appendChild(recapCol);
 
     var tilesCol = document.createElement('div');
@@ -2025,7 +2011,6 @@ function renderSeatsGrid(state, container, mode) {
 
     for (var i = 0; i < state.seats.length; i++) {
       if (state.paidSeats[state.seats[i].id]) {
-        if (!state.showPaidSeats) continue;
         var paidTile = buildPaidCompactTile(state, i);
         paidTile.style.flex  = '';
         paidTile.style.width = '';
@@ -2056,7 +2041,6 @@ function renderSeatsGrid(state, container, mode) {
   var activeCount = activeSeatCount(state.seats, state.paidSeats);
   for (var i = 0; i < state.seats.length; i++) {
     if (state.paidSeats[state.seats[i].id]) {
-      if (!state.showPaidSeats) continue;
       var paidPanel = buildPaidSeatCard(state, i);
       paidPanel.style.flex  = '1';
       paidPanel.style.width = '0';
@@ -2230,11 +2214,173 @@ function buildSeatCard(state, seatIdx) {
   return wrap;
 }
 
-// Paid seat card (Mode A) — gold-infilled, read-only. Tapping opens
-// the reopen/void flow. Items are shown greyed out so the server can
-// see what was paid without being able to interact with it.
+// ═══════════════════════════════════════════════════
+//  PAID SEAT HELPERS — shared between Mode A cards and Mode B recap panel
+// ═══════════════════════════════════════════════════
+
+// One tappable payment row: METHOD · $AMOUNT · S1,S2 · C-042
+function _buildPaymentRow(state, seatId, pmt) {
+  var row = document.createElement('div');
+  Object.assign(row.style, {
+    display:       'flex',
+    alignItems:    'center',
+    justifyContent:'space-between',
+    padding:       '9px 12px',
+    borderBottom:  '1px solid ' + hexToRgba(T.gold, 0.18),
+    cursor:        'pointer',
+    userSelect:    'none',
+    background:    'transparent',
+    touchAction:   'manipulation',
+  });
+
+  var left = document.createElement('div');
+  Object.assign(left.style, {
+    display:    'flex',
+    gap:        '8px',
+    alignItems: 'center',
+    fontFamily: T.fb,
+    fontSize:   T.fsB3,
+    color:      T.gold,
+  });
+
+  var methodEl = document.createElement('span');
+  Object.assign(methodEl.style, {
+    fontWeight:    T.fwBold,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+  });
+  methodEl.textContent = pmt.method || 'payment';
+  left.appendChild(methodEl);
+
+  var sep1 = document.createElement('span');
+  sep1.style.color   = hexToRgba(T.gold, 0.4);
+  sep1.textContent   = '·';
+  left.appendChild(sep1);
+
+  // Seat numbers this payment covers
+  var seatNums = Array.isArray(pmt.seat_numbers) ? pmt.seat_numbers : [];
+  var seatLabel = seatNums.map(function(n) { return 'S' + n; }).join(', ') || seatId;
+  var seatEl = document.createElement('span');
+  seatEl.style.color = hexToRgba(T.gold, 0.7);
+  seatEl.textContent = seatLabel;
+  left.appendChild(seatEl);
+
+  if (state.checkNumber) {
+    var sep2 = document.createElement('span');
+    sep2.style.color   = hexToRgba(T.gold, 0.4);
+    sep2.textContent   = '·';
+    left.appendChild(sep2);
+
+    var checkEl = document.createElement('span');
+    checkEl.style.color = hexToRgba(T.gold, 0.7);
+    checkEl.textContent = state.checkNumber;
+    left.appendChild(checkEl);
+  }
+
+  row.appendChild(left);
+
+  var amountEl = document.createElement('div');
+  Object.assign(amountEl.style, {
+    fontFamily: T.fb,
+    fontWeight: T.fwBold,
+    fontSize:   T.fsB3,
+    color:      T.gold,
+  });
+  amountEl.textContent = fmt(pmt.amount || 0);
+  row.appendChild(amountEl);
+
+  row.addEventListener('pointerup', function(e) {
+    if (e.defaultPrevented) return;
+    openSeatPaymentInterrupt(state, seatId, [pmt]);
+  });
+
+  return row;
+}
+
+// Mode B left-column panel shown when a paid tile is selected.
+function _buildPaidRecapPanel(state, seatId) {
+  var seatIdx = -1;
+  for (var i = 0; i < state.seats.length; i++) {
+    if (state.seats[i].id === seatId) { seatIdx = i; break; }
+  }
+  var seat     = seatIdx >= 0 ? state.seats[seatIdx] : null;
+  var payments = state.seatPayments[seatId] || [];
+  var seatNum  = seat ? (seat.number != null ? seat.number : seatIdx + 1) : '?';
+
+  var panel = document.createElement('div');
+  Object.assign(panel.style, {
+    display:       'flex',
+    flexDirection: 'column',
+    width:         '100%',
+  });
+
+  // Header bar
+  var hdr = document.createElement('div');
+  Object.assign(hdr.style, {
+    background:    T.gold,
+    padding:       '10px 14px',
+    display:       'flex',
+    alignItems:    'center',
+    justifyContent:'space-between',
+    borderRadius:  '8px 8px 0 0',
+    userSelect:    'none',
+  });
+  var titleEl = document.createElement('div');
+  Object.assign(titleEl.style, {
+    color:      T.moonText,
+    fontFamily: T.fh,
+    fontWeight: T.fwBold,
+    fontSize:   T.fsB2,
+  });
+  titleEl.textContent = 'S' + seatNum + ' — PAID';
+  hdr.appendChild(titleEl);
+
+  if (seat) {
+    var totalEl = document.createElement('div');
+    Object.assign(totalEl.style, {
+      color:      T.moonText,
+      fontFamily: T.fb,
+      fontWeight: T.fwBold,
+    });
+    totalEl.textContent = fmt(seatTotal(seat));
+    hdr.appendChild(totalEl);
+  }
+  panel.appendChild(hdr);
+
+  // Payment rows
+  var body = document.createElement('div');
+  Object.assign(body.style, {
+    background:    hexToRgba(T.gold, 0.06),
+    borderRadius:  '0 0 8px 8px',
+    overflow:      'hidden',
+  });
+
+  if (payments.length === 0) {
+    var empty = document.createElement('div');
+    Object.assign(empty.style, {
+      padding:    '20px',
+      textAlign:  'center',
+      color:      hexToRgba(T.gold, 0.5),
+      fontStyle:  'italic',
+      fontFamily: T.fb,
+      fontSize:   T.fsB3,
+    });
+    empty.textContent = 'no payment record';
+    body.appendChild(empty);
+  } else {
+    payments.forEach(function(pmt) {
+      body.appendChild(_buildPaymentRow(state, seatId, pmt));
+    });
+  }
+  panel.appendChild(body);
+
+  return panel;
+}
+
+// Paid seat card (Mode A) — gold-infilled; body shows tappable payment rows.
 function buildPaidSeatCard(state, seatIdx) {
   var seat = state.seats[seatIdx];
+  var payments = state.seatPayments[seat.id] || [];
 
   var wrap = buildStaticCard({ accent: T.gold });
   wrap.style.flex          = '1';
@@ -2242,7 +2388,6 @@ function buildPaidSeatCard(state, seatIdx) {
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
-  wrap.style.cursor        = 'pointer';
 
   // ── Gold header ──
   var hdr = document.createElement('div');
@@ -2253,7 +2398,6 @@ function buildPaidSeatCard(state, seatIdx) {
     display:        'flex',
     alignItems:     'center',
     justifyContent: 'space-between',
-    cursor:         'pointer',
     userSelect:     'none',
   });
 
@@ -2292,29 +2436,21 @@ function buildPaidSeatCard(state, seatIdx) {
   paidBadge.textContent = 'PAID';
   rightSide.appendChild(paidBadge);
   hdr.appendChild(rightSide);
-
-  hdr.addEventListener('pointerup', function() {
-    reopenSeat(state, seat.id);
-  });
   wrap.appendChild(hdr);
 
-  // ── Greyed-out body (items visible, not interactive) ──
+  // ── Body: one tappable row per payment ──
   var body = document.createElement('div');
   Object.assign(body.style, {
     background:    hexToRgba(T.gold, 0.06),
     flex:          '1',
     minHeight:     '0',
-    padding:       '8px 10px',
+    padding:       '6px 0',
     display:       'flex',
     flexDirection: 'column',
     overflowY:     'auto',
-    cursor:        'pointer',
-  });
-  body.addEventListener('pointerup', function() {
-    reopenSeat(state, seat.id);
   });
 
-  if (seat.items.length === 0) {
+  if (payments.length === 0) {
     var empty = document.createElement('div');
     Object.assign(empty.style, {
       flex:           '1',
@@ -2324,20 +2460,14 @@ function buildPaidSeatCard(state, seatIdx) {
       color:          hexToRgba(T.gold, 0.5),
       fontStyle:      'italic',
       fontFamily:     T.fb,
+      fontSize:       T.fsB3,
+      padding:        '12px',
     });
-    empty.textContent = 'empty seat';
+    empty.textContent = 'no payment record';
     body.appendChild(empty);
   } else {
-    seat.items.forEach(function(item) {
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 2px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.gold, 0.7) + ';border-bottom:1px solid ' + hexToRgba(T.gold, 0.15) + ';pointer-events:none;';
-      var nameEl = document.createElement('span');
-      nameEl.textContent = (item.qty > 1 ? item.qty + 'x ' : '') + item.name;
-      var priceEl = document.createElement('span');
-      priceEl.textContent = fmt(item.price);
-      row.appendChild(nameEl);
-      row.appendChild(priceEl);
-      body.appendChild(row);
+    payments.forEach(function(pmt) {
+      body.appendChild(_buildPaymentRow(state, seat.id, pmt));
     });
   }
   wrap.appendChild(body);
@@ -2426,30 +2556,33 @@ function buildCompactTile(state, seatIdx) {
   return wrap;
 }
 
-// Paid compact tile (Mode B) — gold-filled. Tapping reopens the seat payment.
+// Paid compact tile (Mode B) — gold-filled. Tapping selects it and
+// shows that seat's payment detail in the left recap column.
 function buildPaidCompactTile(state, seatIdx) {
   var seat = state.seats[seatIdx];
+  var isSelected = state._selectedPaidSeat === seat.id;
 
-  var wrap = buildStaticCard({ accent: T.gold });
+  var wrap = buildActionCard({ accent: T.gold });
   wrap.style.padding       = '0';
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
   wrap.style.minHeight     = '90px';
-  wrap.style.background    = hexToRgba(T.gold, 0.18);
-  wrap.style.cursor        = 'pointer';
+  wrap.style.background    = isSelected ? T.gold : hexToRgba(T.gold, 0.18);
 
-  wrap.addEventListener('pointerup', function() {
-    reopenSeat(state, seat.id);
+  wrap.addEventListener('pointerup', function(e) {
+    if (e.defaultPrevented) return;
+    state._selectedPaidSeat = isSelected ? null : seat.id;
+    rerenderTopArea(state);
   });
 
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    background:   T.gold,
-    padding:      '6px 12px',
-    borderBottom: '1px solid ' + T.goldDk,
-    display:      'flex',
-    alignItems:   'center',
+    background:     isSelected ? darkenHex(T.gold, 0.15) : T.gold,
+    padding:        '6px 12px',
+    borderBottom:   '1px solid ' + T.goldDk,
+    display:        'flex',
+    alignItems:     'center',
     justifyContent: 'space-between',
   });
   var label = document.createElement('div');
@@ -2485,7 +2618,7 @@ function buildPaidCompactTile(state, seatIdx) {
   });
   var totalEl = document.createElement('div');
   Object.assign(totalEl.style, {
-    color:      T.gold,
+    color:      isSelected ? T.moonText : T.gold,
     fontFamily: T.fb,
     fontSize:   T.fsB1,
     fontWeight: T.fwBold,
@@ -3828,21 +3961,13 @@ function openNameEditor(state) {
 // ═══════════════════════════════════════════════════
 
 function reopenSeat(state, seatId) {
-  if (!state.orderId) return;
-  // 15s abort guard so a hung backend doesn't leave the reopen flow
-  // waiting indefinitely.
-  fetchWithTimeout('/api/v1/orders/' + state.orderId, { cache: 'no-store' }, 15000)
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(order) {
-      if (order) state.order = order;
-      var source = (order && order.payments) || (state.order && state.order.payments) || [];
-      var matches = source.filter(function(p) { return p.seat_id === seatId; });
-      if (matches.length === 0) {
-        showToast('No payment found for this seat', { bg: T.gold });
-        return;
-      }
-      openSeatPaymentInterrupt(state, seatId, matches);
-    });
+  // Use the already-built seatPayments cache; no extra fetch needed.
+  var matches = state.seatPayments[seatId] || [];
+  if (matches.length === 0) {
+    showToast('No payment found for this seat', { bg: T.gold });
+    return;
+  }
+  openSeatPaymentInterrupt(state, seatId, matches);
 }
 
 function openSeatPaymentInterrupt(state, seatId, payments) {
@@ -3855,6 +3980,8 @@ function openSeatPaymentInterrupt(state, seatId, payments) {
       }).then(function(r) {
         if (r.ok) {
           delete state.paidSeats[seatId];
+          delete state.seatPayments[seatId];
+          if (state._selectedPaidSeat === seatId) state._selectedPaidSeat = null;
           showToast('Payment voided', { bg: T.greenWarm });
           refreshOrder(state, {});
         } else {
@@ -3906,12 +4033,27 @@ function refreshOrder(state, params) {
 
       state.seats = orderToSeats(order, order.guest_count || 1);
 
-      // Recompute paid seats
-      state.paidSeats = {};
+      // Recompute paid seats from payment.seat_numbers (list of seat
+      // numbers). Build seatPayments[seat.id] = [payment, ...] so the
+      // UI can render per-seat payment rows without another fetch.
+      state.paidSeats    = {};
+      state.seatPayments = {};
       if (Array.isArray(order.payments)) {
         for (var p = 0; p < order.payments.length; p++) {
-          if (order.payments[p].seat_id) {
-            state.paidSeats[order.payments[p].seat_id] = true;
+          var pmt = order.payments[p];
+          var seatNums = pmt.seat_numbers || [];
+          for (var si = 0; si < state.seats.length; si++) {
+            if (seatNums.indexOf(state.seats[si].number) < 0) continue;
+            var sid = state.seats[si].id;
+            state.paidSeats[sid] = true;
+            if (!state.seatPayments[sid]) state.seatPayments[sid] = [];
+            // De-duplicate by payment_id (a payment covering S1+S2
+            // appears in both seats' lists).
+            var dup = false;
+            for (var qi = 0; qi < state.seatPayments[sid].length; qi++) {
+              if (state.seatPayments[sid][qi].payment_id === pmt.payment_id) { dup = true; break; }
+            }
+            if (!dup) state.seatPayments[sid].push(pmt);
           }
         }
       }
