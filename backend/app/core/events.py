@@ -106,6 +106,7 @@ class EventType(str, Enum):
 
     # ── Batch / Day (LEDGER_CORE) ────────────────────────────────────
     BATCH_SUBMITTED = "batch.submitted"
+    DAY_OPENED = "day.opened"
     DAY_CLOSED = "day.closed"
 
     # ── Device (EPHEMERAL) ───────────────────────────────────────────
@@ -1426,6 +1427,22 @@ def batch_submitted(
             "submitted_at": datetime.now(timezone.utc).isoformat(),
         },
         **kwargs
+    )
+
+
+def day_opened(
+        terminal_id: str,
+        date: str,
+        **kwargs
+) -> Event:
+    """DAY_OPENED: anchors the start of a business day. Emitted exactly
+    once per day as the first ledger write after the previous
+    DAY_CLOSED (or on a cold ledger)."""
+    return create_event(
+        event_type=EventType.DAY_OPENED,
+        terminal_id=terminal_id,
+        payload={"date": date},
+        **kwargs,
     )
 
 

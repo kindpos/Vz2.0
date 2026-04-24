@@ -65,6 +65,7 @@ from app.core.adapters.base_payment import TransactionRequest as TxReq
 from app.core.events import (
     order_created,
     check_opened,
+    day_opened,
     order_transferred,
     check_named,
     guest_count_updated,
@@ -438,7 +439,19 @@ async def create_order(
     event = event.model_copy(update={"correlation_id": order_id})
     check_evt = check_evt.model_copy(update={"correlation_id": order_id})
 
-    await ledger.append_batch([event, check_evt])
+    # If this is the first event of a new business day (nothing since
+    # the last DAY_CLOSED), emit DAY_OPENED as the leading event in the
+    # same batch so the day boundary is atomically anchored alongside
+    # the first order.
+    batch = [event, check_evt]
+    boundary = await ledger.get_last_day_close_sequence()
+    if not await ledger.get_events_since(boundary, limit=1):
+        batch.insert(0, day_opened(
+            terminal_id=settings.terminal_id,
+            date=datetime.now().strftime("%Y-%m-%d"),
+        ))
+
+    await ledger.append_batch(batch)
 
     # Notify diagnostic collector of order activity
     dc = get_diagnostic_collector()
