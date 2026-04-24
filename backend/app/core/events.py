@@ -112,6 +112,9 @@ class EventType(str, Enum):
     # ── Batch / Day (LEDGER_CORE) ────────────────────────────────────
     BATCH_SUBMITTED = "batch.submitted"
     DAY_OPENED = "day.opened"
+    DAY_CASH_FLOAT_UPDATED = "day.cash_float_updated"
+    DAY_CASH_DROP = "day.cash_drop"
+    DAY_CASH_PAYOUT = "day.cash_payout"
     DAY_CLOSED = "day.closed"
 
     # ── Device (EPHEMERAL) ───────────────────────────────────────────
@@ -1597,6 +1600,89 @@ def day_opened(
         event_type=EventType.DAY_OPENED,
         terminal_id=terminal_id,
         payload={"date": date},
+        **kwargs,
+    )
+
+
+def day_cash_float_updated(
+        terminal_id: str,
+        amount: Decimal,
+        previous_float: Decimal = Decimal("0.00"),
+        set_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DAY_CASH_FLOAT_UPDATED: starting-cash / float adjustment on the
+    drawer. Emitted when a manager sets or changes the float so the
+    cash-variance calculation at day close has a stable lower bound."""
+    payload = {
+        "amount": money_round(amount),
+        "previous_float": money_round(previous_float),
+    }
+    if set_by is not None:
+        payload["set_by"] = set_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.DAY_CASH_FLOAT_UPDATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def day_cash_drop(
+        terminal_id: str,
+        amount: Decimal,
+        approved_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        deposit_ref: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DAY_CASH_DROP: cash removed from the drawer to safe. Payload
+    records amount, who approved, and an optional deposit reference
+    so manager-skim audits can reconcile ledger against safe log."""
+    payload = {"amount": money_round(amount)}
+    if approved_by is not None:
+        payload["approved_by"] = approved_by
+    if reason is not None:
+        payload["reason"] = reason
+    if deposit_ref is not None:
+        payload["deposit_ref"] = deposit_ref
+    return create_event(
+        event_type=EventType.DAY_CASH_DROP,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def day_cash_payout(
+        terminal_id: str,
+        amount: Decimal,
+        recipient: str,
+        approved_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        category: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DAY_CASH_PAYOUT: cash paid out of the drawer to a vendor,
+    employee tip-out, or other operational payee. Recipient + category
+    are required for reporting; approved_by anchors accountability."""
+    payload = {
+        "amount": money_round(amount),
+        "recipient": recipient,
+    }
+    if approved_by is not None:
+        payload["approved_by"] = approved_by
+    if reason is not None:
+        payload["reason"] = reason
+    if category is not None:
+        payload["category"] = category
+    return create_event(
+        event_type=EventType.DAY_CASH_PAYOUT,
+        terminal_id=terminal_id,
+        payload=payload,
         **kwargs,
     )
 

@@ -142,6 +142,14 @@ the `/entomology` → Event Ledger Gaps tab.
   - LG-78 / LG-79: `/menu/86` and `/menu/restore` now emit
     `item.86ed` / `item.86_cleared` in one `append_batch` with the
     legacy `menu.item_86d` / `menu.item_restored`.
+- 2026-04-24 — Phase 4a: cash control ledgered. New route group
+  `/day/cash/float`, `/day/cash/drop`, `/day/cash/payout`, all
+  manager-gated via `require_manager`. Three new `EventType` entries
+  (`DAY_CASH_FLOAT_UPDATED`, `DAY_CASH_DROP`, `DAY_CASH_PAYOUT`) and
+  matching factories. Float route auto-derives `previous_float` from
+  the last float event since the previous `day.closed` so clients
+  don't have to track it. 4 new tests; LG-49 / LG-50 / LG-51 flipped
+  to IMPLEMENTED.
 - 2026-04-24 — Phase 3d: card reader admin flow now ledgered.
   `POST /hardware/devices` with `type="card_reader"` emits
   `payment.processor_configured` (LG-108, PCI/SOX audit anchor).
