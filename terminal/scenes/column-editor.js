@@ -284,6 +284,7 @@ defineScene({
 
     function buildColumn(colIdx) {
       var col = state.columns[colIdx];
+      var accent = T.seatPalette[colIdx % T.seatPalette.length];
 
       var colEl = document.createElement('div');
       Object.assign(colEl.style, {
@@ -291,7 +292,7 @@ defineScene({
         maxWidth:       '300px',
         borderRadius:   T.chamferCard + 'px',
         background:     T.card,
-        borderLeft:     T.accentBarW + ' solid ' + T.green,
+        borderLeft:     T.accentBarW + ' solid ' + accent,
         boxShadow:      '0 4px 16px rgba(0,0,0,0.28)',
         display:        'flex',
         flexDirection:  'column',
@@ -303,7 +304,7 @@ defineScene({
       var isSplitTarget = state.mode === 'split' && state.splitTargets.indexOf(colIdx) >= 0;
       var hdr = document.createElement('div');
       Object.assign(hdr.style, {
-        background:     isSplitTarget ? T.gold : T.well,
+        background:     isSplitTarget ? accent : T.well,
         height:         '32px',
         display:        'flex',
         alignItems:     'center',
@@ -313,7 +314,7 @@ defineScene({
         fontSize:       T.fsB3,
         fontWeight:     T.fwBold,
         letterSpacing:  '0.2em',
-        color:          isSplitTarget ? T.well : T.green,
+        color:          isSplitTarget ? T.moonText : T.green,
         textTransform:  'uppercase',
         cursor:         'pointer',
       });
@@ -323,7 +324,7 @@ defineScene({
       hdr.appendChild(hdrLabel);
 
       var hdrTotal = document.createElement('span');
-      hdrTotal.style.color = isSplitTarget ? T.well : T.gold;
+      hdrTotal.style.color = isSplitTarget ? T.moonText : T.gold;
       hdrTotal.textContent = fmt(colTotal(col));
       hdr.appendChild(hdrTotal);
 
