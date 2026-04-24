@@ -1905,7 +1905,10 @@ async def _do_close_day(body, ledger):
             },
         )
 
-    # Gate passed — safe to emit BATCH_SUBMITTED (settlement record)
+    # Gate passed — emit BATCH_SUBMITTED + DAY_CLOSED atomically so a
+    # mid-flow crash cannot leave a settled batch without a day
+    # boundary (which would make tomorrow's first event land inside
+    # today's window for day-scoped queries).
     submit_evt = batch_submitted(
         terminal_id=settings.terminal_id,
         order_count=total_orders,
@@ -1914,9 +1917,6 @@ async def _do_close_day(body, ledger):
         card_total=card_total_f,
         order_ids=order_ids,
     )
-    await ledger.append(submit_evt)
-
-    # Emit DAY_CLOSED — auditable snapshot and day boundary
     today = datetime.now().strftime("%Y-%m-%d")
     close_evt = day_closed(
         terminal_id=settings.terminal_id,
@@ -1930,7 +1930,7 @@ async def _do_close_day(body, ledger):
         payment_count=payment_count,
         opened_at=opened_at,
     )
-    await ledger.append(close_evt)
+    await ledger.append_batch([submit_evt, close_evt])
 
     summary = {
         "date": today,

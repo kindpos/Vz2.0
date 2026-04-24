@@ -38,7 +38,7 @@ Contract (verified via `event_ledger.py:249-321`):
 | LG-16 | Check split / child create + items + parent remove + splits | `orders.py:1963-2097` | structural batching (per-seat) | pending |
 | LG-22 | Seat item add / `item.added` + `modifier.applied × N` | `orders.py:824-926` | batch; consolidate idempotency gate | pending |
 | LG-32 | `payment.confirmed` + `order.closed` (credit sale path) | `payment_routes.py:212-349` | straight `append_batch` swap (partial — LG-32 deep fix deferred to Phase 2) | **DONE** |
-| LG-53 | Day close / per-order closes + `batch.submitted` + `day.closed` | `orders.py:1766-1952` | straight `append_batch` swap | pending |
+| LG-53 | Day close / per-order closes + `batch.submitted` + `day.closed` | `orders.py:1766-1952` | conservative: batch the boundary pair only | **DONE** |
 
 Test files to extend (no new parallel suites):
 - `tests/test_cash_and_tip_flows.py`, `tests/test_payment_routes_gaps.py`,
@@ -82,3 +82,8 @@ the `/entomology` → Event Ledger Gaps tab.
   green. Remaining LG-32 work (fully atomic `payment.confirmed` +
   `order.closed` across the `manager.initiate_sale` boundary) deferred
   to Phase 2.
+- 2026-04-24 — LG-53: `batch.submitted` + `day.closed` now emitted via
+  one `append_batch` at the end of `_do_close_day`. Per-order
+  close/void loop left as independent appends (each is idempotent via
+  projection; loop-mid-crash only leaves some orders open for the next
+  close attempt). 4 day-close tests green.
