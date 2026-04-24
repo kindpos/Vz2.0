@@ -72,6 +72,38 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 4e: menu-import lifecycle wired around
+  `/config/push`. Any batch containing `menu.*`, `category.*`,
+  `modifier.*`, `restaurant.configured`, or `*_batch_created` events
+  now lands inside a `menu.import_started` → ... → `menu.import_completed`
+  envelope sharing an `import_id`. On a failed `append_batch`, a
+  standalone `menu.import_failed` is emitted before the error
+  propagates (nothing menu-related committed — this event is the sole
+  record). `menu.import_rolled_back` is dark-shipped: enum + factory
+  live, emission awaits an overseer rollback endpoint. LG-110 / 111 /
+  112 flipped to IMPLEMENTED; LG-113 flipped to FACTORY-ONLY with a
+  note. 3 new tests; 1209 backend tests green.
+- 2026-04-24 — Phase 4g: micromod.* dark-shipped. 9 new EventType
+  entries (`micromod.created` / `updated` / `price_changed` /
+  `deactivated` / `reactivated` / `assigned_to_modifier` /
+  `unassigned_from_modifier` / `86ed` / `86_cleared`) plus matching
+  factories. Events flow through `/config/push` (no new endpoint
+  surface). The product does not surface micromods yet -- this lands
+  the schema so the overseer rollout can emit without a follow-up
+  events-table migration. 5 round-trip tests pin emission + payload
+  shape. LG-85 flipped to IMPLEMENTED.
+- 2026-04-24 — Phase 4f: modifier CRUD ledgered. Seven new
+  `EventType` entries (`modifier.created`, `modifier.updated`,
+  `modifier.price_changed`, `modifier.deactivated`,
+  `modifier.reactivated`, `modifier.86ed`, `modifier.86_cleared`)
+  with matching factories. Events flow through the existing
+  `/config/push` overseer batch route -- no new endpoint surface --
+  so the moment the overseer UI sends them they land in the ledger.
+  `modifier.price_changed` carries `previous_price` + `new_price`
+  for historical-pricing replay; `modifier.updated` carries
+  `fields_changed` so projections can apply minimal diffs. 5 new
+  tests pin emission and payload shape. LG-80 / 81 / 82 / 83 / 84
+  flipped to IMPLEMENTED.
 - 2026-04-24 — Phase 4d: `batch.settlement_failed` now emitted in the
   `_do_close_day` append_batch alongside `batch.submitted` + `day.closed`
   whenever the close-day invariant gate reports failures. Payload

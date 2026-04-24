@@ -169,12 +169,41 @@ class EventType(str, Enum):
     MODIFIER_GROUP_CREATED = "modifier.group_created"
     MODIFIER_GROUP_UPDATED = "modifier.group_updated"
     MODIFIER_GROUP_DELETED = "modifier.group_deleted"
+    MODIFIER_CREATED = "modifier.created"
+    MODIFIER_UPDATED = "modifier.updated"
+    MODIFIER_PRICE_CHANGED = "modifier.price_changed"
+    MODIFIER_DEACTIVATED = "modifier.deactivated"
+    MODIFIER_REACTIVATED = "modifier.reactivated"
+    MODIFIER_86ED = "modifier.86ed"
+    MODIFIER_86_CLEARED = "modifier.86_cleared"
+
+    # ── Micromods (LEDGER_OPERATIONAL, dark-shipped) ─────────────────
+    # A micromod is a sub-selection on a modifier (e.g. the modifier
+    # "Sauce on the side" offers micromods "Ranch", "BBQ", etc.). The
+    # product does not carry micromods yet; these enum entries exist so
+    # when overseer lands the feature, /config/push can emit them
+    # without a follow-up schema migration of the events table.
+    MICROMOD_CREATED = "micromod.created"
+    MICROMOD_UPDATED = "micromod.updated"
+    MICROMOD_PRICE_CHANGED = "micromod.price_changed"
+    MICROMOD_DEACTIVATED = "micromod.deactivated"
+    MICROMOD_REACTIVATED = "micromod.reactivated"
+    MICROMOD_ASSIGNED_TO_MODIFIER = "micromod.assigned_to_modifier"
+    MICROMOD_UNASSIGNED_FROM_MODIFIER = "micromod.unassigned_from_modifier"
+    MICROMOD_86ED = "micromod.86ed"
+    MICROMOD_86_CLEARED = "micromod.86_cleared"
 
     # ── Batch setup (LEDGER_OPERATIONAL) ─────────────────────────────
     RESTAURANT_CONFIGURED = "restaurant.configured"
     TAX_RULES_BATCH_CREATED = "tax_rules.batch_created"
     CATEGORIES_BATCH_CREATED = "categories.batch_created"
     ITEMS_BATCH_CREATED = "items.batch_created"
+
+    # ── Menu import lifecycle (LEDGER_OPERATIONAL) ───────────────────
+    MENU_IMPORT_STARTED = "menu.import_started"
+    MENU_IMPORT_COMPLETED = "menu.import_completed"
+    MENU_IMPORT_FAILED = "menu.import_failed"
+    MENU_IMPORT_ROLLED_BACK = "menu.import_rolled_back"
 
     # ── Floor Plan (LEDGER_OPERATIONAL) ──────────────────────────────
     FLOORPLAN_SECTION_CREATED = "floorplan.section_created"
@@ -1707,6 +1736,470 @@ def batch_settlement_failed(
         payload=payload,
         **kwargs,
     )
+
+
+def modifier_created(
+        terminal_id: str,
+        modifier_id: str,
+        name: str,
+        price: Decimal = Decimal("0.00"),
+        modifier_group_id: Optional[str] = None,
+        created_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MODIFIER_CREATED: a single modifier ('Add Bacon', 'No Onions',
+    etc.) becomes part of the catalog. Distinct from
+    modifier.group_created which adds the parent grouping."""
+    payload = {
+        "modifier_id": modifier_id,
+        "name": name,
+        "price": money_round(price),
+    }
+    if modifier_group_id is not None:
+        payload["modifier_group_id"] = modifier_group_id
+    if created_by is not None:
+        payload["created_by"] = created_by
+    return create_event(
+        event_type=EventType.MODIFIER_CREATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def modifier_updated(
+        terminal_id: str,
+        modifier_id: str,
+        fields_changed: list[str],
+        updated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MODIFIER_UPDATED: non-price changes (name, sort, group). Price
+    deltas are emitted as MODIFIER_PRICE_CHANGED instead."""
+    payload = {
+        "modifier_id": modifier_id,
+        "fields_changed": list(fields_changed),
+    }
+    if updated_by is not None:
+        payload["updated_by"] = updated_by
+    return create_event(
+        event_type=EventType.MODIFIER_UPDATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def modifier_price_changed(
+        terminal_id: str,
+        modifier_id: str,
+        previous_price: Decimal,
+        new_price: Decimal,
+        changed_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MODIFIER_PRICE_CHANGED: a dedicated event for price deltas so
+    historical-pricing replay can survive without re-projecting the
+    full modifier catalog."""
+    payload = {
+        "modifier_id": modifier_id,
+        "previous_price": money_round(previous_price),
+        "new_price": money_round(new_price),
+    }
+    if changed_by is not None:
+        payload["changed_by"] = changed_by
+    return create_event(
+        event_type=EventType.MODIFIER_PRICE_CHANGED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def modifier_deactivated(
+        terminal_id: str,
+        modifier_id: str,
+        deactivated_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MODIFIER_DEACTIVATED: soft-delete -- modifier is hidden from
+    new orders but historical references remain valid."""
+    payload = {"modifier_id": modifier_id}
+    if deactivated_by is not None:
+        payload["deactivated_by"] = deactivated_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.MODIFIER_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def modifier_reactivated(
+        terminal_id: str,
+        modifier_id: str,
+        reactivated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MODIFIER_REACTIVATED: undo for modifier_deactivated."""
+    payload = {"modifier_id": modifier_id}
+    if reactivated_by is not None:
+        payload["reactivated_by"] = reactivated_by
+    return create_event(
+        event_type=EventType.MODIFIER_REACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def modifier_86ed(
+        terminal_id: str,
+        modifier_id: str,
+        reason: Optional[str] = None,
+        expected_return_at: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MODIFIER_86ED: temporarily out-of-stock. Distinct from
+    DEACTIVATED, which is a permanent catalog change."""
+    payload = {"modifier_id": modifier_id}
+    if reason is not None:
+        payload["reason"] = reason
+    if expected_return_at is not None:
+        payload["expected_return_at"] = expected_return_at
+    return create_event(
+        event_type=EventType.MODIFIER_86ED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def modifier_86_cleared(
+        terminal_id: str,
+        modifier_id: str,
+        cleared_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MODIFIER_86_CLEARED: undo for modifier_86ed."""
+    payload = {"modifier_id": modifier_id}
+    if cleared_by is not None:
+        payload["cleared_by"] = cleared_by
+    return create_event(
+        event_type=EventType.MODIFIER_86_CLEARED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_created(
+        terminal_id: str,
+        micromod_id: str,
+        name: str,
+        price: Decimal = Decimal("0.00"),
+        modifier_id: Optional[str] = None,
+        created_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_CREATED: a sub-selection on a modifier joins the catalog.
+    Dark-shipped -- the product does not surface micromods yet; this
+    factory exists so the overseer-side feature rollout has a stable
+    emission point."""
+    payload = {
+        "micromod_id": micromod_id,
+        "name": name,
+        "price": money_round(price),
+    }
+    if modifier_id is not None:
+        payload["modifier_id"] = modifier_id
+    if created_by is not None:
+        payload["created_by"] = created_by
+    return create_event(
+        event_type=EventType.MICROMOD_CREATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_updated(
+        terminal_id: str,
+        micromod_id: str,
+        fields_changed: list[str],
+        updated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_UPDATED: non-price changes. Price deltas emit
+    MICROMOD_PRICE_CHANGED instead."""
+    payload = {
+        "micromod_id": micromod_id,
+        "fields_changed": list(fields_changed),
+    }
+    if updated_by is not None:
+        payload["updated_by"] = updated_by
+    return create_event(
+        event_type=EventType.MICROMOD_UPDATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_price_changed(
+        terminal_id: str,
+        micromod_id: str,
+        previous_price: Decimal,
+        new_price: Decimal,
+        changed_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_PRICE_CHANGED: dedicated price-delta event so
+    historical-pricing replay survives without re-projecting the full
+    micromod catalog."""
+    payload = {
+        "micromod_id": micromod_id,
+        "previous_price": money_round(previous_price),
+        "new_price": money_round(new_price),
+    }
+    if changed_by is not None:
+        payload["changed_by"] = changed_by
+    return create_event(
+        event_type=EventType.MICROMOD_PRICE_CHANGED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_deactivated(
+        terminal_id: str,
+        micromod_id: str,
+        deactivated_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_DEACTIVATED: soft-delete."""
+    payload = {"micromod_id": micromod_id}
+    if deactivated_by is not None:
+        payload["deactivated_by"] = deactivated_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.MICROMOD_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_reactivated(
+        terminal_id: str,
+        micromod_id: str,
+        reactivated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_REACTIVATED: undo for micromod_deactivated."""
+    payload = {"micromod_id": micromod_id}
+    if reactivated_by is not None:
+        payload["reactivated_by"] = reactivated_by
+    return create_event(
+        event_type=EventType.MICROMOD_REACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_assigned_to_modifier(
+        terminal_id: str,
+        micromod_id: str,
+        modifier_id: str,
+        assigned_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_ASSIGNED_TO_MODIFIER: attach a micromod to a modifier
+    (e.g. "Ranch" attaches to "Sauce on the side")."""
+    payload = {
+        "micromod_id": micromod_id,
+        "modifier_id": modifier_id,
+    }
+    if assigned_by is not None:
+        payload["assigned_by"] = assigned_by
+    return create_event(
+        event_type=EventType.MICROMOD_ASSIGNED_TO_MODIFIER,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_unassigned_from_modifier(
+        terminal_id: str,
+        micromod_id: str,
+        modifier_id: str,
+        unassigned_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_UNASSIGNED_FROM_MODIFIER: detach a micromod from a
+    modifier."""
+    payload = {
+        "micromod_id": micromod_id,
+        "modifier_id": modifier_id,
+    }
+    if unassigned_by is not None:
+        payload["unassigned_by"] = unassigned_by
+    return create_event(
+        event_type=EventType.MICROMOD_UNASSIGNED_FROM_MODIFIER,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_86ed(
+        terminal_id: str,
+        micromod_id: str,
+        reason: Optional[str] = None,
+        expected_return_at: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_86ED: temporarily out-of-stock."""
+    payload = {"micromod_id": micromod_id}
+    if reason is not None:
+        payload["reason"] = reason
+    if expected_return_at is not None:
+        payload["expected_return_at"] = expected_return_at
+    return create_event(
+        event_type=EventType.MICROMOD_86ED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_86_cleared(
+        terminal_id: str,
+        micromod_id: str,
+        cleared_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_86_CLEARED: undo for micromod_86ed."""
+    payload = {"micromod_id": micromod_id}
+    if cleared_by is not None:
+        payload["cleared_by"] = cleared_by
+    return create_event(
+        event_type=EventType.MICROMOD_86_CLEARED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+
+def menu_import_started(
+        terminal_id: str,
+        import_id: str,
+        source: str = "config_push",
+        expected_event_count: Optional[int] = None,
+        initiated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MENU_IMPORT_STARTED: leading event of a menu-import batch.
+    Grouped by import_id so replayers can pair started/completed/
+    failed/rolled_back on the same operation."""
+    payload = {
+        "import_id": import_id,
+        "source": source,
+    }
+    if expected_event_count is not None:
+        payload["expected_event_count"] = expected_event_count
+    if initiated_by is not None:
+        payload["initiated_by"] = initiated_by
+    return create_event(
+        event_type=EventType.MENU_IMPORT_STARTED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=import_id,
+        **kwargs,
+    )
+
+
+def menu_import_completed(
+        terminal_id: str,
+        import_id: str,
+        event_count: int,
+        **kwargs
+) -> Event:
+    """MENU_IMPORT_COMPLETED: trailing event of a successful menu-import
+    batch. event_count matches the number of menu-* events that landed
+    atomically between started and completed."""
+    return create_event(
+        event_type=EventType.MENU_IMPORT_COMPLETED,
+        terminal_id=terminal_id,
+        payload={
+            "import_id": import_id,
+            "event_count": event_count,
+        },
+        correlation_id=import_id,
+        **kwargs,
+    )
+
+
+def menu_import_failed(
+        terminal_id: str,
+        import_id: str,
+        reason: str,
+        error_type: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MENU_IMPORT_FAILED: emitted when a menu-import batch raises
+    during the atomic write. Because the batch is atomic, no menu.*
+    events landed — this event stands alone on the ledger as the sole
+    record of the attempt."""
+    payload = {
+        "import_id": import_id,
+        "reason": reason,
+    }
+    if error_type is not None:
+        payload["error_type"] = error_type
+    return create_event(
+        event_type=EventType.MENU_IMPORT_FAILED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=import_id,
+        **kwargs,
+    )
+
+
+def menu_import_rolled_back(
+        terminal_id: str,
+        import_id: str,
+        reason: Optional[str] = None,
+        rolled_back_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MENU_IMPORT_ROLLED_BACK: emitted when a previously-completed
+    menu import is explicitly reversed (e.g. via an overseer rollback
+    action). Compensating menu events are expected to be emitted
+    alongside; this event is the audit anchor that links them to the
+    original import_id."""
+    payload = {"import_id": import_id}
+    if reason is not None:
+        payload["reason"] = reason
+    if rolled_back_by is not None:
+        payload["rolled_back_by"] = rolled_back_by
+    return create_event(
+        event_type=EventType.MENU_IMPORT_ROLLED_BACK,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=import_id,
+        **kwargs,
+    )
+
 
 
 def day_opened(
