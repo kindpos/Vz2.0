@@ -3011,19 +3011,36 @@ function handlePay(state, params) {
     });
   }
 
-  // Pre-seed totals so payment's baseTotal isn't 0 until the /api/v1/orders reconcile returns.
-  var order     = state.order || {};
-  var discount  = getCashDiscount();
-  var cardTotal = order.total || 0;
+  // Pre-seed totals from the seats we're about to pay — not state.order.total.
+  // state.order.total is the whole-check total and can be stale or zero when
+  // the user pays a subset of seats; this mirrors renderActionBar's own
+  // selection-aware totals calc so what payment shows matches what was just
+  // displayed on the overview.
+  var discount = getCashDiscount();
+  var taxRate  = getTaxRate();
+  var subtotal = 0;
+  for (var ssI = 0; ssI < seatSummary.length; ssI++) {
+    var ssItems = seatSummary[ssI].items || [];
+    for (var iI = 0; iI < ssItems.length; iI++) {
+      var it = ssItems[iI];
+      if (it.voided) continue;
+      var p = (it.effectivePrice != null) ? it.effectivePrice : (it.price || 0);
+      subtotal += (it.qty || 0) * p;
+    }
+  }
+  subtotal      = Math.round(subtotal * 100) / 100;
+  var tax       = Math.round(subtotal * taxRate * 100) / 100;
+  var cardTotal = Math.round((subtotal + tax) * 100) / 100;
+  var cashPrice = Math.round(cardTotal * (1 - discount) * 100) / 100;
 
   SceneManager.mountWorking('payment', {
     orderId:      state.orderId,
     seatIds:      selectedIds,
     seats:        seatSummary,
     cardTotal:    cardTotal,
-    cashPrice:    Math.round(cardTotal * (1 - discount) * 100) / 100,
-    subtotal:     order.subtotal || 0,
-    tax:          order.tax || 0,
+    cashPrice:    cashPrice,
+    subtotal:     subtotal,
+    tax:          tax,
     returnTo:     'check-overview',
     returnParams: {
       checkId:       state.orderId,

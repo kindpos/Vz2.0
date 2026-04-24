@@ -149,11 +149,12 @@ defineScene({
             ? order.balance_due : (subtotal + tax);
           var cashPrice = cardTotal; // cash-discount logic lives upstream; pass through
 
-          // Set baseTotal from the backend. Only inflate (not shrink) if
-          // the upstream passed a higher cardTotal — avoids a re-fetch
-          // race where an outdated cardTotal would overwrite the correct
-          // fresh value.
-          if (!baseTotal || cardTotal > 0) {
+          // Trust params.cardTotal when the caller pre-seeded it: the caller
+          // (check-overview) knows exactly which seats it's paying for, while
+          // order.balance_due here is the whole-check remaining — which would
+          // over-state the total for a partial-seat pay. Only fall back to
+          // the backend value when no cardTotal was passed at mount.
+          if (!baseTotal) {
             baseTotal = cardTotal;
             updateSplitDisplay();
           }
@@ -633,15 +634,17 @@ function buildCenterColumn(params) {
   var actionRow = document.createElement('div');
   actionRow.style.cssText = 'flex-shrink:0;display:flex;gap:10px;';
 
-  actionRow.appendChild(buildPillButton({
-    label: 'EXACT',
-    color: T.warning,
-    onClick: handleExact
+  actionRow.appendChild(buildPaymentActionBtn({
+    label:   'EXACT',
+    color:   T.gold,
+    radius:  '12px 6px 6px 12px',
+    onClick: handleExact,
   }));
-  actionRow.appendChild(buildPillButton({
-    label: 'SPLIT',
-    color: T.elec,
-    onClick: _onSplitTap
+  actionRow.appendChild(buildPaymentActionBtn({
+    label:   'SPLIT',
+    color:   T.elec,
+    radius:  '6px 12px 12px 6px',
+    onClick: _onSplitTap,
   }));
 
   col.appendChild(actionRow);
@@ -714,20 +717,64 @@ function buildDenomBtn(val) {
 }
 
 function buildModeBtn(label, mode, activeColor) {
-  // Use buildPillButton for consistent Vz2.0 look
-  var btn = buildPillButton({
-    label: label,
-    color: T.card,
-    onClick: function() { setPaymentMode(mode); }
+  var btn = buildPaymentActionBtn({
+    label:   label,
+    color:   activeColor,
+    onClick: function() { setPaymentMode(mode); },
   });
-  btn.style.flex = '1';
-  btn.style.height = '80px';
-  btn.style.fontSize = T.fsB2;
-  btn.style.color = T.green;
-  btn.style.border = '2px solid ' + T.border;
+  _modeButtons[mode] = { wrap: btn, color: activeColor };
+  return btn;
+}
 
-  // Expose refs for setPaymentMode to toggle the active visual.
-  _modeButtons[mode] = { wrap: btn, inner: btn, color: activeColor };
+// Vz2.0 "outlined chip" for payment actions and toggles:
+// resting   = T.moon fill, accent-color border + text
+// active    = filled with the accent color, label flips to T.moonText
+// buildPillButton uses a saturated darkBg press-state which reads too loud
+// next to the denomination tiles; this helper keeps the column calm.
+function buildPaymentActionBtn(opts) {
+  opts = opts || {};
+  var color   = opts.color || T.green;
+  var radius  = opts.radius || '12px';
+  var height  = opts.height || '80px';
+
+  var btn = document.createElement('button');
+  btn.textContent = opts.label || '';
+  btn.style.cssText = [
+    'flex:1;',
+    'height:' + height + ';',
+    'background:' + T.moon + ';',
+    'color:' + color + ';',
+    'border:2px solid ' + color + ';',
+    'border-radius:' + radius + ';',
+    'font-family:' + T.fh + ';',
+    'font-size:' + (opts.fontSize || '20px') + ';',
+    'font-weight:' + T.fwBold + ';',
+    'letter-spacing:0.08em;',
+    'text-transform:uppercase;',
+    'cursor:pointer;user-select:none;',
+    'pointer-events:auto;touch-action:manipulation;',
+    'transition:background 120ms, color 120ms;',
+    'outline:none;',
+  ].join('');
+
+  function paint(active) {
+    btn.style.background = active ? color   : T.moon;
+    btn.style.color      = active ? T.moonText : color;
+  }
+
+  btn._setActive = function(active) {
+    btn._locked = !!active;
+    paint(active);
+  };
+
+  btn.addEventListener('pointerdown', function() { paint(true); });
+  function release() { if (!btn._locked) paint(false); }
+  btn.addEventListener('pointerup',     release);
+  btn.addEventListener('pointercancel', release);
+  btn.addEventListener('pointerleave',  release);
+
+  if (opts.onClick) btn.addEventListener('click', opts.onClick);
+
   return btn;
 }
 
@@ -820,20 +867,8 @@ function setPaymentMode(mode) {
   paymentMode = mode;
   Object.keys(_modeButtons).forEach(function(m) {
     var b = _modeButtons[m];
-    if (!b) return;
-    var isActive = (m === mode);
-    if (isActive) {
-      // Active: filled with the mode color, dark text.
-      b.wrap.style.background   = b.color;
-      b.wrap.style.borderColor  = b.color;
-      b.wrap.style.boxShadow    = '0 0 14px ' + hexToRgba(b.color, 0.55) + ', 0 4px 0 ' + T.well;
-      b.wrap.style.color        = T.well;
-    } else {
-      // Inactive: plain card bg, mint text.
-      b.wrap.style.background   = T.card;
-      b.wrap.style.borderColor  = T.border;
-      b.wrap.style.boxShadow    = '0 4px 0 ' + T.well;
-      b.wrap.style.color        = T.green;
+    if (b && b.wrap && b.wrap._setActive) {
+      b.wrap._setActive(m === mode);
     }
   });
 }
