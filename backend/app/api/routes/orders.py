@@ -1321,25 +1321,26 @@ async def void_order(
             detail=f"Cannot void order — card reversal failed: {'; '.join(device_void_errors)}",
         )
 
-    # Emit refund-due events for any confirmed cash payments
+    # After device voids succeeded, batch the refund-due events +
+    # order.voided so a crash cannot leave cash refunds appended
+    # without the void event (or vice versa).
+    batch_events: list = []
     for p in order.payments:
         if p.status == "confirmed" and p.method == "cash":
-            refund_evt = cash_refund_due(
+            batch_events.append(cash_refund_due(
                 terminal_id=settings.terminal_id,
                 order_id=order_id,
                 payment_id=p.payment_id,
                 amount=p.amount,
                 reason=request.reason or "Order voided after cash payment",
-            )
-            await ledger.append(refund_evt)
-
-    event = order_voided(
+            ))
+    batch_events.append(order_voided(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         reason=request.reason,
         approved_by=request.approved_by,
-    )
-    await ledger.append(event)
+    ))
+    await ledger.append_batch(batch_events)
 
     order = await get_order_or_404(ledger, order_id)
     return OrderResponse.from_order(order)

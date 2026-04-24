@@ -32,7 +32,7 @@ Contract (verified via `event_ledger.py:249-321`):
 | ID | Flow | Site | Verdict | Status |
 | --- | --- | --- | --- | --- |
 | LG-04 | Check close / `payment.confirmed` + `order.closed` | `payment_routes.py:363-486` | straight `append_batch` swap | **DONE** |
-| LG-05 | Check void / refunds + `order.voided` | `orders.py:1266-1345` | reorder device-side-effects first, then batch | pending |
+| LG-05 | Check void / refunds + `order.voided` | `orders.py:1266-1345` | device voids first, then one `append_batch` for refunds + void | **DONE** |
 | LG-14 | Check merge target / items + modifiers + `check.merged` | `orders.py:1358-1482` | one big `append_batch` for the whole merge | **DONE** |
 | LG-15 | Check absorb (source side of merge) | `orders.py:1419-1469` | same batch as LG-14 (source `check.merged` + `order.voided` interleaved with items) | **DONE** |
 | LG-16 | Check split / child create + items + parent remove + splits | `orders.py:1963-2097` | structural batching (per-seat) | pending |
@@ -94,3 +94,7 @@ the `/entomology` → Event Ledger Gaps tab.
   `append_batch`. Items can no longer be copied to the target while
   sources stay alive on crash. 68 order mutation / api route tests
   green.
+- 2026-04-24 — LG-05: `void_order` now runs device voids first
+  (502 on failure, no ledger writes) and then emits `cash_refund_due`
+  per confirmed cash payment plus `order.voided` as one
+  `append_batch`. Partial-refund ghosts on crash are eliminated.
