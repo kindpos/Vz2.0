@@ -37,7 +37,7 @@
 
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
-import { buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
+import { buildCard, buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
 import { buildButton, showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
@@ -470,17 +470,21 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        // Nostalgia-themed modal panel — matches co-item-menu's shape.
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'display:flex;flex-direction:column;gap:10px;',
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.green + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-          'padding:8px 24px 24px;min-width:500px;max-width:620px;',
-          'max-height:520px;overflow:hidden;',
-        ].join('');
+        // Nostalgia card shell — green accent bar, chamfered corners,
+        // modal-depth drop-shadow.
+        var shell = buildCard({
+          accent: T.green,
+          bg: T.card,
+          padding: '8px 24px 24px',
+        });
+        shell.card.style.display       = 'flex';
+        shell.card.style.flexDirection = 'column';
+        shell.card.style.gap           = '10px';
+        shell.card.style.minWidth      = '500px';
+        shell.card.style.maxWidth      = '620px';
+        shell.card.style.maxHeight     = '520px';
+        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
+        var panel = shell.card;
 
         // Title
         var title = document.createElement('div');
@@ -635,7 +639,7 @@ defineScene({
         confirmBtn.style.height = '48px';
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
-        container.appendChild(panel);
+        container.appendChild(shell.wrap);
 
         function updateConfirmState() {
           var allAssigned = true;
@@ -663,15 +667,18 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'display:flex;flex-direction:column;gap:14px;',
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.green + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-          'padding:16px 28px 24px;min-width:420px;max-width:520px;',
-        ].join('');
+        var shell = buildCard({
+          accent: T.green,
+          bg: T.card,
+          padding: '16px 28px 24px',
+        });
+        shell.card.style.display       = 'flex';
+        shell.card.style.flexDirection = 'column';
+        shell.card.style.gap           = '14px';
+        shell.card.style.minWidth      = '420px';
+        shell.card.style.maxWidth      = '520px';
+        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
+        var panel = shell.card;
 
         var title = document.createElement('div');
         title.style.cssText = [
@@ -758,7 +765,7 @@ defineScene({
         bottomBar.appendChild(cancelBtn);
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
-        container.appendChild(panel);
+        container.appendChild(shell.wrap);
 
         function paint() {
           qtyReadout.textContent = String(qty);
