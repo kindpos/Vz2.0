@@ -39,8 +39,8 @@ function colTotal(col) {
 // Color assignments per operation.
 function _opColors(label) {
   switch (label) {
-    case 'MERGE':    return { color: T.green,     dark: T.greenDk     };
-    case 'CONFIRM':  return { color: T.green,     dark: T.greenDk     };
+    case 'MERGE':    return { color: T.greenWarm, dark: T.greenWarmDk };
+    case 'CONFIRM':  return { color: T.greenWarm, dark: T.greenWarmDk };
     case 'CANCEL':   return { color: T.verm,      dark: T.vermDk      };
     case 'TRANSFER': return { color: T.gold,      dark: T.goldDk      };
     case 'DONE':     return { color: T.greenWarm, dark: T.greenWarmDk };
@@ -126,7 +126,7 @@ defineScene({
 
     var opsH = document.createElement('div');
     Object.assign(opsH.style, {
-      background:     T.green,
+      background:     T.well,
       height:         '32px',
       display:        'flex',
       alignItems:     'center',
