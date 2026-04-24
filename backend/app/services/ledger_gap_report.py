@@ -344,14 +344,18 @@ _CONFIG_NODES: list[dict[str, Any]] = [
 
 
 _IMPORT_NODES: list[dict[str, Any]] = [
-    _node("LG-110", "import", "menu.import_started", "MISSING", "HIGH",
-          "No import lifecycle; partial imports cannot be tied back to a root event."),
-    _node("LG-111", "import", "menu.import_completed", "MISSING", "HIGH",
-          "Same as LG-110."),
-    _node("LG-112", "import", "menu.import_failed", "MISSING", "HIGH",
-          "Mid-import crash leaves orphan menu events with no failure marker."),
-    _node("LG-113", "import", "menu.import_rolled_back", "MISSING", "HIGH",
-          "No rollback semantics."),
+    _node("LG-110", "import", "menu.import_started", "IMPLEMENTED", "HIGH",
+          "config/push now wraps any batch containing menu.*, category.*, modifier.*, restaurant.configured, or *_batch_created events with menu.import_started as the leading event. Correlated by import_id.",
+          site="config.py:push_changes"),
+    _node("LG-111", "import", "menu.import_completed", "IMPLEMENTED", "HIGH",
+          "Trailing event of the same config/push batch when append_batch succeeds. event_count matches the number of menu events that landed.",
+          site="config.py:push_changes"),
+    _node("LG-112", "import", "menu.import_failed", "IMPLEMENTED", "HIGH",
+          "Emitted as a standalone append when the wrapped append_batch raises. Atomic semantics mean nothing menu-related committed; this event is the sole record of the attempt.",
+          site="config.py:push_changes"),
+    _node("LG-113", "import", "menu.import_rolled_back", "FACTORY-ONLY", "HIGH",
+          "Enum + factory live; emission awaits an overseer rollback endpoint that reverses a previously-completed import_id. Dark-shipped so future rollback routes can emit without a schema change.",
+          site="events.py:menu_import_rolled_back"),
 ]
 
 

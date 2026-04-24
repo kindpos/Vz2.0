@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -13,6 +14,9 @@ from app.core.events import (
     Event,
     create_event,
     is_config_event,
+    menu_import_completed,
+    menu_import_failed,
+    menu_import_started,
     parse_event_type,
 )
 from app.models.config_events import (
@@ -287,11 +291,28 @@ async def update_cc_rate(rate: CCProcessingRate, background_tasks: BackgroundTas
     return {"status": "ok", "event_id": event.sequence_number}
 
 
+def _is_menu_import_event(etype: str) -> bool:
+    """True when a config-push change belongs to the menu-import audit
+    envelope (menu.*, category.*, modifier.*, tax_rules.*, items.*,
+    categories.*, restaurant.configured)."""
+    if etype.startswith(("menu.", "category.", "modifier.")):
+        return True
+    if etype in {
+        "restaurant.configured",
+        "tax_rules.batch_created",
+        "categories.batch_created",
+        "items.batch_created",
+    }:
+        return True
+    return False
+
+
 @router.post("/push", dependencies=[Depends(require_manager)])
 async def push_changes(changes: List[PendingChange], background_tasks: BackgroundTasks,
                        ledger: EventLedger = Depends(get_ledger)):
     events = []
     sections = set()
+    menu_import_count = 0
     for change in changes:
         payload = dict(change.payload or {})
         # PIN-at-rest on the batch path. /config/employees (POST) already
@@ -309,6 +330,9 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
             payload=payload,
         )
         events.append(event)
+
+        if _is_menu_import_event(change.event_type):
+            menu_import_count += 1
 
         # Infer section from event type
         etype = change.event_type
@@ -328,7 +352,44 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
             sections.add("hardware")
 
     if events:
-        await ledger.append_batch(events)
+        # Wrap menu-touching batches with menu.import_started /
+        # menu.import_completed so replayers can pair the inner events
+        # back to a single import operation. Non-menu batches pass
+        # through unchanged so employee / store / floorplan pushes
+        # don't accidentally inherit a menu-import envelope.
+        import_id: str | None = None
+        if menu_import_count > 0:
+            import_id = f"imp_{uuid.uuid4().hex[:10]}"
+            started_evt = menu_import_started(
+                terminal_id="OVERSEER",
+                import_id=import_id,
+                source="config_push",
+                expected_event_count=menu_import_count,
+            )
+            completed_evt = menu_import_completed(
+                terminal_id="OVERSEER",
+                import_id=import_id,
+                event_count=menu_import_count,
+            )
+            batch = [started_evt, *events, completed_evt]
+        else:
+            batch = events
+
+        try:
+            await ledger.append_batch(batch)
+        except Exception as exc:
+            if import_id is not None:
+                # Atomic batch failed -- no menu events landed, but
+                # record the attempt so the ledger isn't silent about
+                # the failure.
+                failure_evt = menu_import_failed(
+                    terminal_id="OVERSEER",
+                    import_id=import_id,
+                    reason=str(exc) or "config_push_failed",
+                    error_type=type(exc).__name__,
+                )
+                await ledger.append(failure_evt)
+            raise
         background_tasks.add_task(broadcast_config_update, list(sections))
 
     return {
