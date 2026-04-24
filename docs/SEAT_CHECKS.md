@@ -58,12 +58,14 @@ Relevant to seats/checks:
 | `ORDER_CLOSED` | 49 | Finalizes an order after payment. |
 | `ORDER_VOIDED` | 51 | Used by merge to retire source orders. |
 | `SEATS_UPDATED` | 54 | Mutates `Order.seat_numbers` directly. |
-| `ITEM_ADDED` | 59 | Carries `seat_number` in payload. |
-| `ITEM_REMOVED` | 60 | Used by split-by-seat to drop items from the parent. |
-| `MODIFIER_APPLIED` | 63 | Separate event, re-emitted when items move between orders. |
-| `PAYMENT_INITIATED` / `PAYMENT_CONFIRMED` | 92-93 | Carry `seat_numbers` in payload. |
+| `CHECK_SPLIT` | 57 | Audit event emitted per affected order during split-by-seat (see §3). |
+| `CHECK_MERGED` | 58 | Audit event emitted per affected order during merge (see §4). |
+| `ITEM_ADDED` | 61 | Carries `seat_number` in payload. |
+| `ITEM_REMOVED` | 62 | Used by split-by-seat to drop items from the parent. |
+| `MODIFIER_APPLIED` | 65 | Separate event, re-emitted when items move between orders. |
+| `PAYMENT_INITIATED` / `PAYMENT_CONFIRMED` | 94-95 | Carry `seat_numbers` in payload. |
 
-**Explicitly absent:** no `CHECK_SPLIT`, `CHECK_MERGED`, `SEAT_MOVED`, or `ITEM_MOVED`. Split is implicit: `ORDER_CREATED` (child) + `ITEM_ADDED` (child) + `MODIFIER_APPLIED` (child) + `ITEM_REMOVED` (parent). Merge is implicit: `ITEM_ADDED` (target) + `MODIFIER_APPLIED` (target) + `ORDER_VOIDED` (source).
+`CHECK_SPLIT` and `CHECK_MERGED` are audit events emitted alongside the state-mutating events above — they do not themselves mutate `Order` state. `SEAT_MOVED` / `ITEM_MOVED` do not exist; items moving between orders use `ITEM_ADDED` + `ITEM_REMOVED`.
 
 ---
 
@@ -151,6 +153,22 @@ For each seat in sorted order, a new `order_id` is minted (`order_<uuid8>` at `:
 
 This is the difference from the UI-only grouping in §2. Section 2 is layout. Section 3 is ledger.
 
+### First-class audit event — `CHECK_SPLIT`
+
+After the per-child loop completes, `split-by-seat` emits one `CHECK_SPLIT` per affected order — one on the parent (`role="parent"`) and one on each child (`role="child"`, carrying that child's `seat`). All emissions share an `operation_id` so the full split can be reassembled across timelines. See `backend/app/api/routes/orders.py:2068-2093` (emission) and `backend/app/core/events.py:783-815` (factory).
+
+```json
+{
+  "operation_id": "op_<uuid8>",
+  "role": "parent" | "child",
+  "parent_order_id": "...",
+  "child_order_ids": ["...", "..."],
+  "seat": <int | null>
+}
+```
+
+`seat` is present only on `role="child"` emissions. The projection ignores `CHECK_SPLIT` — state still comes exclusively from `ORDER_CREATED` / `ITEM_ADDED` / `ITEM_REMOVED` / `MODIFIER_APPLIED`. Test coverage: `test_split_emits_check_split_on_parent_and_children` and `test_check_split_does_not_affect_projection` in `backend/tests/test_orders_mutations.py`.
+
 ### Frontend caller
 
 - `terminal/scenes/check-overview.js:1471-1502` — `_callSplitBySeat(state, seatNumbers)` posts to the endpoint, toasts the new order IDs from `res.body.child_orders[].order_id`, and re-fetches the parent so its missing items disappear from the view.
@@ -194,6 +212,22 @@ For each source, in order:
 Response: a fresh `OrderResponse` built from the re-projected target (`:1450-1451`).
 
 Tests: `backend/tests/test_orders_mutations.py:104-266` (`TestMergeOrders`) — covers item copy, modifier preservation, multi-source, self-merge rejection, manager-approval requirement, closed-source rejection, confirmed-payment rejection, and target-must-be-open.
+
+### First-class audit event — `CHECK_MERGED`
+
+`merge_orders` emits one `CHECK_MERGED` per affected order: one on each source (`role="source"`) emitted **before** that source's `ORDER_VOIDED` so the source timeline stays monotone (alive → merged → voided), and one on the target (`role="target"`) after the loop. All share an `operation_id`. See `backend/app/api/routes/orders.py:1414-1482` (emission) and `backend/app/core/events.py:818-846` (factory).
+
+```json
+{
+  "operation_id": "op_<uuid8>",
+  "role": "target" | "source",
+  "target_order_id": "...",
+  "source_order_ids": ["...", "..."],
+  "approved_by": "<manager_id>"
+}
+```
+
+The projection ignores `CHECK_MERGED` — state still comes from `ITEM_ADDED` (target) + `ORDER_VOIDED` (source). Test coverage: `test_merge_emits_check_merged_on_target_and_sources` and `test_merge_source_check_merged_precedes_void` in `backend/tests/test_orders_mutations.py`.
 
 ---
 
@@ -349,6 +383,7 @@ rg -n -i "subcheck" .        # MUST remain 0 hits
 rg -n "split-by-seat" .      # endpoint + callers
 rg -n "paid_seats" backend/app
 rg -n "seat_groups" backend/app/printing
+rg -n "check\.split|check\.merged" backend/   # §3 and §4 audit events
 ```
 
 ### Manual end-to-end
