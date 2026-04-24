@@ -87,6 +87,7 @@ from app.core.events import (
     cash_refund_due,
     ticket_printed,
     batch_submitted,
+    batch_settlement_failed,
     day_closed,
     create_event,
     EventType,
@@ -1948,10 +1949,12 @@ async def _do_close_day(body, ledger):
             },
         )
 
-    # Gate passed — emit BATCH_SUBMITTED + DAY_CLOSED atomically so a
-    # mid-flow crash cannot leave a settled batch without a day
-    # boundary (which would make tomorrow's first event land inside
-    # today's window for day-scoped queries).
+    # Emit BATCH_SUBMITTED + (optional) BATCH_SETTLEMENT_FAILED +
+    # DAY_CLOSED atomically. The invariant gate is logs-only in prod so
+    # the close proceeds even on failure, but the ledger records the
+    # settlement mismatch as a first-class event alongside the
+    # diagnostic record so replayers can tell a clean close from a
+    # drifted one without mining the diagnostic store.
     submit_evt = batch_submitted(
         terminal_id=settings.terminal_id,
         order_count=total_orders,
@@ -1973,7 +1976,19 @@ async def _do_close_day(body, ledger):
         payment_count=payment_count,
         opened_at=opened_at,
     )
-    await ledger.append_batch([submit_evt, close_evt])
+    batch_to_emit: list = [submit_evt]
+    if _close_failures:
+        batch_to_emit.append(batch_settlement_failed(
+            terminal_id=settings.terminal_id,
+            reason="day_close_invariants_failed",
+            recon_diff=Decimal(str(recon_diff)),
+            failed_invariants=[
+                {"name": r.name, "diff": str(r.diff), "message": r.message}
+                for r in _close_failures[:8]
+            ],
+        ))
+    batch_to_emit.append(close_evt)
+    await ledger.append_batch(batch_to_emit)
 
     summary = {
         "date": today,

@@ -111,6 +111,7 @@ class EventType(str, Enum):
 
     # ── Batch / Day (LEDGER_CORE) ────────────────────────────────────
     BATCH_SUBMITTED = "batch.submitted"
+    BATCH_SETTLEMENT_FAILED = "batch.settlement_failed"
     DAY_OPENED = "day.opened"
     DAY_CLOSED = "day.closed"
 
@@ -1582,6 +1583,33 @@ def batch_submitted(
             "submitted_at": datetime.now(timezone.utc).isoformat(),
         },
         **kwargs
+    )
+
+
+def batch_settlement_failed(
+        terminal_id: str,
+        reason: str,
+        recon_diff: Decimal = Decimal("0.00"),
+        failed_invariants: Optional[list[dict]] = None,
+        **kwargs
+) -> Event:
+    """BATCH_SETTLEMENT_FAILED: emitted alongside batch.submitted when the
+    close-day invariant gate reports one or more failures. The close
+    still proceeds (gate is logs-only in prod) but the ledger now
+    records the settlement mismatch as a first-class event so replayers
+    and audit reports can distinguish a clean close from a drifted one
+    without mining diagnostic events."""
+    payload = {
+        "reason": reason,
+        "recon_diff": money_round(recon_diff),
+    }
+    if failed_invariants:
+        payload["failed_invariants"] = failed_invariants
+    return create_event(
+        event_type=EventType.BATCH_SETTLEMENT_FAILED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
     )
 
 

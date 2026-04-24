@@ -289,8 +289,9 @@ _BATCH_NODES: list[dict[str, Any]] = [
     _node("LG-93", "batch", "batch.settled", "RENAMED", "HIGH",
           "Emitted as batch.submitted. Semantic ambiguity: submitted != settled. Failed settlements still show as batch.submitted with no failure counterpart.",
           site="orders.py:1728"),
-    _node("LG-94", "batch", "batch.settlement_failed", "MISSING", "HIGH",
-          "Fatal drop: a batch can fail at the processor and leave the ledger claiming success."),
+    _node("LG-94", "batch", "batch.settlement_failed", "IMPLEMENTED", "HIGH",
+          "Emitted in the _do_close_day append_batch alongside batch.submitted + day.closed whenever the close-day invariant gate reports one or more failures. Payload carries reason, recon_diff, and a list of failed_invariants so the ledger distinguishes a clean close from a drifted one.",
+          site="orders.py:_do_close_day"),
     _node("LG-95", "batch", "batch.reopened", "MISSING", "MEDIUM",
           "Reopened batches (next-day corrections) unaudited."),
 ]
