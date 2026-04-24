@@ -101,6 +101,7 @@ class EventType(str, Enum):
 
     # ── Post-authorization (LEDGER_CORE) ─────────────────────────────
     PAYMENT_REFUNDED = "payment.refunded"
+    SEAT_PAID = "seat.paid"
     TIP_ADJUSTED = "payment.tip_adjusted"
     CASH_TIPS_DECLARED = "payment.cash_tips_declared"
 
@@ -1368,6 +1369,29 @@ def cash_refund_due(
         },
         correlation_id=order_id,
         **kwargs
+    )
+
+
+def seat_paid(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        **kwargs
+) -> Event:
+    """SEAT_PAID: audit marker emitted when a seat's share of an order's
+    balance is fully settled. Currently emitted for every seat on the
+    order at auto-close (when the whole order's balance reaches zero);
+    a future per-seat-balance projection can emit progressively as
+    individual seats are paid off during split-check flows."""
+    return create_event(
+        event_type=EventType.SEAT_PAID,
+        terminal_id=terminal_id,
+        payload={
+            "order_id": order_id,
+            "seat_number": seat_number,
+        },
+        correlation_id=order_id,
+        **kwargs,
     )
 
 
