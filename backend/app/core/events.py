@@ -77,6 +77,10 @@ class EventType(str, Enum):
 
     # ── Printer lifecycle (LEDGER_OPERATIONAL / EPHEMERAL) ───────────
     PRINTER_REGISTERED = "printer.registered"              # LEDGER_OPERATIONAL
+    PRINTER_CONFIGURED = "printer.configured"              # LEDGER_OPERATIONAL
+    PRINTER_REMOVED = "printer.removed"                    # LEDGER_OPERATIONAL
+    PRINTER_ASSIGNMENT_CHANGED = "printer.assignment_changed"  # LEDGER_OPERATIONAL
+    PAYMENT_PROCESSOR_CONFIGURED = "payment.processor_configured"  # LEDGER_OPERATIONAL
     PRINTER_STATUS_CHANGED = "printer.status_changed"      # EPHEMERAL
     PRINTER_ERROR = "printer.error"                        # EPHEMERAL
     PRINTER_ROLE_CREATED = "printer.role_created"          # EPHEMERAL
@@ -1073,6 +1077,121 @@ def printer_registered(
             "discovered_via": discovered_via,
         },
         **kwargs
+    )
+
+
+def printer_configured(
+        terminal_id: str,
+        mac: str,
+        ip: str,
+        printer_type: str,
+        name: str,
+        categories: Optional[list[str]] = None,
+        configured_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """PRINTER_CONFIGURED: emitted when a new printer is saved through
+    the hardware-admin endpoint. Distinct from PRINTER_REGISTERED,
+    which is emitted by PrinterManager at startup when the device
+    already exists in hardware_config.db."""
+    payload = {
+        "mac": mac.upper(),
+        "ip": ip,
+        "printer_type": printer_type,
+        "name": name,
+    }
+    if categories:
+        payload["categories"] = list(categories)
+    if configured_by is not None:
+        payload["configured_by"] = configured_by
+    return create_event(
+        event_type=EventType.PRINTER_CONFIGURED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def printer_removed(
+        terminal_id: str,
+        mac: str,
+        name: Optional[str] = None,
+        printer_type: Optional[str] = None,
+        removed_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """PRINTER_REMOVED: emitted when a printer is deleted from
+    hardware_config.db via the hardware-admin endpoint."""
+    payload = {"mac": mac.upper()}
+    if name is not None:
+        payload["name"] = name
+    if printer_type is not None:
+        payload["printer_type"] = printer_type
+    if removed_by is not None:
+        payload["removed_by"] = removed_by
+    return create_event(
+        event_type=EventType.PRINTER_REMOVED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def printer_assignment_changed(
+        terminal_id: str,
+        mac: str,
+        previous_categories: list[str],
+        new_categories: list[str],
+        changed_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """PRINTER_ASSIGNMENT_CHANGED: emitted when a kitchen printer's
+    assigned category list changes, so routing changes ('why did this
+    ticket print at bar?') are auditable from the ledger alone."""
+    payload = {
+        "mac": mac.upper(),
+        "previous_categories": list(previous_categories),
+        "new_categories": list(new_categories),
+    }
+    if changed_by is not None:
+        payload["changed_by"] = changed_by
+    return create_event(
+        event_type=EventType.PRINTER_ASSIGNMENT_CHANGED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def payment_processor_configured(
+        terminal_id: str,
+        mac: str,
+        ip: str,
+        name: str,
+        register_id: str = "",
+        configured_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """PAYMENT_PROCESSOR_CONFIGURED: emitted when a card reader is
+    saved via the hardware-admin endpoint. Critical for PCI/SOX audit
+    -- processor credential changes (register_id, TPN, auth key)
+    previously landed in hardware_config.db only, invisible to the
+    event ledger. Payload deliberately excludes tpn and auth_key; the
+    event is an audit anchor, not a credential store."""
+    payload = {
+        "mac": mac.upper(),
+        "ip": ip,
+        "name": name,
+    }
+    if register_id:
+        payload["register_id"] = register_id
+    if configured_by is not None:
+        payload["configured_by"] = configured_by
+    return create_event(
+        event_type=EventType.PAYMENT_PROCESSOR_CONFIGURED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
     )
 
 
