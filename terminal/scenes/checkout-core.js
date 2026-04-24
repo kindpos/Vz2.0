@@ -791,15 +791,20 @@ defineScene({
       'display:flex;flex-direction:row;align-items:center;gap:14px;',
     ].join('');
 
-    // ── LEFT: gold-bordered info card ──
+    // ── LEFT: warning-accented info card ──
     // Sizes to content (no stretch). Everything inside centered.
-    var infoCard = document.createElement('div');
-    infoCard.style.cssText = [
-      'display:flex;flex-direction:column;align-items:center;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.warning + ';',
-      'padding:18px 22px;border-radius:12px;',
-      'width:240px;box-sizing:border-box;',
-    ].join('');
+    var infoShell = buildCard({
+      accent: T.warning,
+      bg: T.well,
+      padding: '18px 22px',
+    });
+    infoShell.card.style.display       = 'flex';
+    infoShell.card.style.flexDirection = 'column';
+    infoShell.card.style.alignItems    = 'center';
+    infoShell.card.style.gap           = '14px';
+    infoShell.card.style.width         = '240px';
+    infoShell.card.style.boxSizing     = 'border-box';
+    var infoCard = infoShell.card;
 
     var title = document.createElement('div');
     title.style.cssText = [
@@ -860,7 +865,7 @@ defineScene({
     hint.textContent = isEdit ? 'correct the tip amount' : 'enter tip amount';
     infoCard.appendChild(hint);
 
-    row.appendChild(infoCard);
+    row.appendChild(infoShell.wrap);
 
     // ── RIGHT: numpad ──
     var numpad = buildNumpad({
@@ -923,13 +928,17 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var panel = document.createElement('div');
-    panel.style.cssText = [
-      'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.green + ';',
-      'padding:22px;border-radius:12px;',
-      'width:320px;box-sizing:border-box;',
-    ].join('');
+    var shell = buildCard({
+      accent: T.green,
+      bg: T.well,
+      padding: '22px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.gap           = '14px';
+    shell.card.style.width         = '320px';
+    shell.card.style.boxSizing     = 'border-box';
+    var panel = shell.card;
 
     var title = document.createElement('div');
     title.style.cssText = [
@@ -1018,7 +1027,7 @@ defineScene({
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
 
-    container.appendChild(panel);
+    container.appendChild(shell.wrap);
   },
 });
 
@@ -1044,13 +1053,18 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var panel = document.createElement('div');
-    panel.style.cssText = [
-      'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.elec + ';',
-      'padding:22px;border-radius:12px;',
-      'width:640px;max-width:92vw;box-sizing:border-box;',
-    ].join('');
+    var shell = buildCard({
+      accent: T.elec,
+      bg: T.well,
+      padding: '22px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.gap           = '14px';
+    shell.card.style.width         = '640px';
+    shell.card.style.maxWidth      = '92vw';
+    shell.card.style.boxSizing     = 'border-box';
+    var panel = shell.card;
 
     // Header
     var hdrRow = document.createElement('div');
@@ -1153,7 +1167,7 @@ defineScene({
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
-    container.appendChild(panel);
+    container.appendChild(shell.wrap);
 
     // Fetch clocked-in servers + build tiles
     var selectedServer = null;
@@ -1278,13 +1292,18 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var panel = document.createElement('div');
-    panel.style.cssText = [
-      'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.elec + ';',
-      'padding:22px;border-radius:12px;',
-      'width:520px;max-width:92vw;box-sizing:border-box;',
-    ].join('');
+    var shell = buildCard({
+      accent: T.elec,
+      bg: T.well,
+      padding: '22px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.gap           = '14px';
+    shell.card.style.width         = '520px';
+    shell.card.style.maxWidth      = '92vw';
+    shell.card.style.boxSizing     = 'border-box';
+    var panel = shell.card;
 
     // Header
     var hdrRow = document.createElement('div');
@@ -1415,7 +1434,7 @@ defineScene({
     btnRow.appendChild(cancel);
     btnRow.appendChild(apply);
     panel.appendChild(btnRow);
-    container.appendChild(panel);
+    container.appendChild(shell.wrap);
   },
 });
 
@@ -1439,13 +1458,18 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var panel = document.createElement('div');
-    panel.style.cssText = [
-      'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.verm + ';',
-      'padding:22px;border-radius:12px;',
-      'width:420px;max-width:92vw;box-sizing:border-box;',
-    ].join('');
+    var shell = buildCard({
+      accent: T.verm,
+      bg: T.well,
+      padding: '22px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.gap           = '14px';
+    shell.card.style.width         = '420px';
+    shell.card.style.maxWidth      = '92vw';
+    shell.card.style.boxSizing     = 'border-box';
+    var panel = shell.card;
 
     // Header — verm-colored title signals destructive action
     var title = document.createElement('div');
@@ -1590,6 +1614,6 @@ defineScene({
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
-    container.appendChild(panel);
+    container.appendChild(shell.wrap);
   },
 });
