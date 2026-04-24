@@ -881,23 +881,6 @@ function showTimeEditModal(shift) {
     `;
     body.appendChild(notesWrap);
 
-    // Manager PIN
-    const pinWrap = document.createElement('div');
-    pinWrap.style.cssText = 'margin-bottom: 16px;';
-    pinWrap.innerHTML = `
-        <div style="font-size: 20px; color: ${C.mintFaded}; text-transform: uppercase; margin-bottom: 6px;">
-            MANAGER PIN *
-        </div>
-        <input type="password" id="edit-manager-pin" maxlength="6" placeholder="Enter manager PIN"
-               style="width: 200px; box-sizing: border-box;
-                      background: rgba(var(--color-mint-rgb), 0.06);
-                      border: 1px solid ${C.mintBorder}; color: ${C.mint};
-                      padding: 12px 14px; border-radius: 6px; font-size: 25px;
-                      font-family: var(--font-body, 'Sevastopol Interface', Arial, sans-serif);
-                      letter-spacing: 4px;" />
-    `;
-    body.appendChild(pinWrap);
-
     // Audit trail notice
     const notice = document.createElement('div');
     notice.style.cssText = `
@@ -936,13 +919,11 @@ function showTimeEditModal(shift) {
     `;
     saveBtn.addEventListener('click', () => {
         const reason = backdrop.querySelector('#edit-reason')?.value;
-        const pin = backdrop.querySelector('#edit-manager-pin')?.value;
         const newIn = backdrop.querySelector('#edit-clock-in')?.value;
         const newOut = backdrop.querySelector('#edit-clock-out')?.value;
         const notes = backdrop.querySelector('#edit-notes')?.value;
 
         if (!reason) { showToast('Please select a reason for this edit.', 'error'); return; }
-        if (!pin || pin.length < 4) { showToast('Manager PIN is required.', 'error'); return; }
 
         emitEvent('SHIFT_TIME_ADJUSTED', {
             shift_id: shift.shift_id,
