@@ -196,38 +196,39 @@ function fmtDate(d) {
 // ─── Logout flow ────────────────────────────────────────────────────
 import { getToken as _getAuthToken, clearToken as _clearAuthToken } from './auth-client.js';
 
+export function performLogout() {
+  console.log('[logout] firing');
+  const SM = window._SM;
+  // Prefer the persisted auth-client token (sessionStorage) over the old
+  // window._session shim that the codebase is migrating off of.
+  const token = _getAuthToken() || (window._session && window._session.token) || null;
+
+  // Clear client-side session state — both the new auth-client storage
+  // and the legacy window._session for any scene that still reads it.
+  _clearAuthToken();
+  window._session = null;
+
+  // Immediate UI response
+  if (SM) {
+    SM.openGate('login');
+  }
+
+  // Background API call to invalidate server session. Note: the fetch
+  // interceptor also attaches the header when a token is stored, but we
+  // just cleared it, so pass it explicitly here.
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  fetch('/api/v1/auth/logout', {
+    method: 'POST',
+    headers: headers
+  }).catch(err => console.warn('[logout] API background call failed:', err));
+}
+
 function triggerLogout() {
   console.log('[logout] fired');
   const SM = window._SM;
   if (!SM) return;
-  const onConfirm = () => {
-    console.log('[logout] confirmed, jumping to login');
-    const SM = window._SM;
-    // Prefer the persisted auth-client token (sessionStorage) over the old
-    // window._session shim that the codebase is migrating off of.
-    const token = _getAuthToken() || (window._session && window._session.token) || null;
-
-    // Clear client-side session state — both the new auth-client storage
-    // and the legacy window._session for any scene that still reads it.
-    _clearAuthToken();
-    window._session = null;
-
-    // Immediate UI response
-    if (SM) {
-      SM.openGate('login');
-    }
-
-    // Background API call to invalidate server session. Note: the fetch
-    // interceptor also attaches the header when a token is stored, but we
-    // just cleared it, so pass it explicitly here.
-    const headers = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    fetch('/api/v1/auth/logout', {
-      method: 'POST',
-      headers: headers
-    }).catch(err => console.warn('[logout] API background call failed:', err));
-  };
 
   // Prefer the tier-3 confirm interrupt, but only if a scene is actually
   // registered for it. `SM.interrupt` on an unregistered key just logs an
@@ -239,12 +240,12 @@ function triggerLogout() {
   if (canInterrupt) {
     SM.interrupt('confirm-logout', {
       message: 'Log out and return to PIN entry?',
-      onConfirm: onConfirm
+      onConfirm: performLogout
     });
   } else {
     // graceful fallback if the confirm-logout interrupt isn't wired yet
     if (window.confirm('Log out?')) {
-      onConfirm();
+      performLogout();
     }
   }
 }
