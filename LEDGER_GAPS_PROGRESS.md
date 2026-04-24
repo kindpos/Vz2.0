@@ -72,6 +72,28 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 4d: `batch.settlement_failed` now emitted in the
+  `_do_close_day` append_batch alongside `batch.submitted` + `day.closed`
+  whenever the close-day invariant gate reports failures. Payload
+  carries `reason`, `recon_diff`, and a list of `failed_invariants`
+  (capped at 8) so replayers can distinguish a clean close from a
+  drifted one without mining the diagnostic store. 2 new tests pin the
+  failure and happy paths. LG-94 flipped to IMPLEMENTED.
+- 2026-04-24 — Phase 4c: financial-accuracy cluster landed on
+  `claude/ledger-financial-accuracy-phase4c`.
+  - LG-13 `discount.voided` — new `POST /orders/{id}/discount/void`
+    route voids the most recent discount (or one by `discount_id`);
+    projection removes the matching entry from `order.discounts`.
+  - LG-34 `seat.overpayment_resolved` — emitted in the cash
+    auto-close batch when the request amount clamps down to balance
+    (`resolution="change"`) and in the credit route when the overage
+    was routed to tip (`resolution="tip"`).
+  - LG-35 `seat.tip_added` — emitted alongside
+    `payment.tip_adjusted` on first tip (when `previous_tip == 0`
+    and `tip_amount > 0`). Zero-amount settlement sweeps don't
+    re-fire.
+  - 4 new tests under `tests/test_phase4c_emissions.py`; 1200
+    backend tests green.
 - 2026-04-24 — Phase 1 kicked off on branch `claude/ledger-atomicity-phase1`;
   reconnaissance complete.
 - 2026-04-24 — LG-04 + LG-32: cash and credit routes in
@@ -142,6 +164,14 @@ the `/entomology` → Event Ledger Gaps tab.
   - LG-78 / LG-79: `/menu/86` and `/menu/restore` now emit
     `item.86ed` / `item.86_cleared` in one `append_batch` with the
     legacy `menu.item_86d` / `menu.item_restored`.
+- 2026-04-24 — Phase 4a: cash control ledgered. New route group
+  `/day/cash/float`, `/day/cash/drop`, `/day/cash/payout`, all
+  manager-gated via `require_manager`. Three new `EventType` entries
+  (`DAY_CASH_FLOAT_UPDATED`, `DAY_CASH_DROP`, `DAY_CASH_PAYOUT`) and
+  matching factories. Float route auto-derives `previous_float` from
+  the last float event since the previous `day.closed` so clients
+  don't have to track it. 4 new tests; LG-49 / LG-50 / LG-51 flipped
+  to IMPLEMENTED.
 - 2026-04-24 — Phase 3d: card reader admin flow now ledgered.
   `POST /hardware/devices` with `type="card_reader"` emits
   `payment.processor_configured` (LG-108, PCI/SOX audit anchor).

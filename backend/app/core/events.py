@@ -67,6 +67,7 @@ class EventType(str, Enum):
 
     # ── Discounts (LEDGER_CORE) ──────────────────────────────────────
     DISCOUNT_APPROVED = "discount.approved"
+    DISCOUNT_VOIDED = "discount.voided"
 
     # ── Printing (LEDGER_OPERATIONAL / EPHEMERAL) ────────────────────
     TICKET_PRINTED = "ticket.printed"               # LEDGER_OPERATIONAL
@@ -106,12 +107,18 @@ class EventType(str, Enum):
     # ── Post-authorization (LEDGER_CORE) ─────────────────────────────
     PAYMENT_REFUNDED = "payment.refunded"
     SEAT_PAID = "seat.paid"
+    SEAT_TIP_ADDED = "seat.tip_added"
+    SEAT_OVERPAYMENT_RESOLVED = "seat.overpayment_resolved"
     TIP_ADJUSTED = "payment.tip_adjusted"
     CASH_TIPS_DECLARED = "payment.cash_tips_declared"
 
     # ── Batch / Day (LEDGER_CORE) ────────────────────────────────────
     BATCH_SUBMITTED = "batch.submitted"
+    BATCH_SETTLEMENT_FAILED = "batch.settlement_failed"
     DAY_OPENED = "day.opened"
+    DAY_CASH_FLOAT_UPDATED = "day.cash_float_updated"
+    DAY_CASH_DROP = "day.cash_drop"
+    DAY_CASH_PAYOUT = "day.cash_payout"
     DAY_CLOSED = "day.closed"
 
     # ── Device (EPHEMERAL) ───────────────────────────────────────────
@@ -1524,6 +1531,96 @@ def seat_paid(
     )
 
 
+def seat_tip_added(
+        terminal_id: str,
+        order_id: str,
+        payment_id: str,
+        tip_amount: Decimal,
+        added_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_TIP_ADDED: first-tip marker emitted alongside the
+    tip_adjusted event when previous_tip == 0. Separating the initial
+    tip entry from subsequent adjustments lets reporting distinguish
+    "server entered the signed receipt tip" from "manager overrode
+    the tip later."
+    """
+    return create_event(
+        event_type=EventType.SEAT_TIP_ADDED,
+        terminal_id=terminal_id,
+        payload={
+            "order_id": order_id,
+            "payment_id": payment_id,
+            "tip_amount": money_round(tip_amount),
+            **({"added_by": added_by} if added_by is not None else {}),
+        },
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_overpayment_resolved(
+        terminal_id: str,
+        order_id: str,
+        amount: Decimal,
+        resolution: str,  # "change" | "tip" | "credit"
+        payment_id: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_OVERPAYMENT_RESOLVED: emitted when a payment's amount
+    exceeded the remaining balance and the excess was resolved one of
+    three ways: cash change back to the customer, an automatic tip on
+    a credit-card overage, or a house credit.
+    """
+    payload = {
+        "order_id": order_id,
+        "amount": money_round(amount),
+        "resolution": resolution,
+    }
+    if payment_id is not None:
+        payload["payment_id"] = payment_id
+    return create_event(
+        event_type=EventType.SEAT_OVERPAYMENT_RESOLVED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def discount_voided(
+        terminal_id: str,
+        order_id: str,
+        amount: Decimal,
+        voided_by: str,
+        discount_type: Optional[str] = None,
+        discount_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DISCOUNT_VOIDED: emitted when a previously-applied discount is
+    removed from an order. Amount is the (positive) dollar value
+    being reversed; the projection re-adds it to order.total."""
+    payload = {
+        "order_id": order_id,
+        "amount": money_round(amount),
+        "voided_by": voided_by,
+    }
+    if discount_type is not None:
+        payload["discount_type"] = discount_type
+    if discount_id is not None:
+        payload["discount_id"] = discount_id
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.DISCOUNT_VOIDED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
 def cash_tips_declared(
         terminal_id: str,
         server_id: str,
@@ -1585,6 +1682,33 @@ def batch_submitted(
     )
 
 
+def batch_settlement_failed(
+        terminal_id: str,
+        reason: str,
+        recon_diff: Decimal = Decimal("0.00"),
+        failed_invariants: Optional[list[dict]] = None,
+        **kwargs
+) -> Event:
+    """BATCH_SETTLEMENT_FAILED: emitted alongside batch.submitted when the
+    close-day invariant gate reports one or more failures. The close
+    still proceeds (gate is logs-only in prod) but the ledger now
+    records the settlement mismatch as a first-class event so replayers
+    and audit reports can distinguish a clean close from a drifted one
+    without mining diagnostic events."""
+    payload = {
+        "reason": reason,
+        "recon_diff": money_round(recon_diff),
+    }
+    if failed_invariants:
+        payload["failed_invariants"] = failed_invariants
+    return create_event(
+        event_type=EventType.BATCH_SETTLEMENT_FAILED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
 def day_opened(
         terminal_id: str,
         date: str,
@@ -1597,6 +1721,89 @@ def day_opened(
         event_type=EventType.DAY_OPENED,
         terminal_id=terminal_id,
         payload={"date": date},
+        **kwargs,
+    )
+
+
+def day_cash_float_updated(
+        terminal_id: str,
+        amount: Decimal,
+        previous_float: Decimal = Decimal("0.00"),
+        set_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DAY_CASH_FLOAT_UPDATED: starting-cash / float adjustment on the
+    drawer. Emitted when a manager sets or changes the float so the
+    cash-variance calculation at day close has a stable lower bound."""
+    payload = {
+        "amount": money_round(amount),
+        "previous_float": money_round(previous_float),
+    }
+    if set_by is not None:
+        payload["set_by"] = set_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.DAY_CASH_FLOAT_UPDATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def day_cash_drop(
+        terminal_id: str,
+        amount: Decimal,
+        approved_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        deposit_ref: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DAY_CASH_DROP: cash removed from the drawer to safe. Payload
+    records amount, who approved, and an optional deposit reference
+    so manager-skim audits can reconcile ledger against safe log."""
+    payload = {"amount": money_round(amount)}
+    if approved_by is not None:
+        payload["approved_by"] = approved_by
+    if reason is not None:
+        payload["reason"] = reason
+    if deposit_ref is not None:
+        payload["deposit_ref"] = deposit_ref
+    return create_event(
+        event_type=EventType.DAY_CASH_DROP,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def day_cash_payout(
+        terminal_id: str,
+        amount: Decimal,
+        recipient: str,
+        approved_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        category: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DAY_CASH_PAYOUT: cash paid out of the drawer to a vendor,
+    employee tip-out, or other operational payee. Recipient + category
+    are required for reporting; approved_by anchors accountability."""
+    payload = {
+        "amount": money_round(amount),
+        "recipient": recipient,
+    }
+    if approved_by is not None:
+        payload["approved_by"] = approved_by
+    if reason is not None:
+        payload["reason"] = reason
+    if category is not None:
+        payload["category"] = category
+    return create_event(
+        event_type=EventType.DAY_CASH_PAYOUT,
+        terminal_id=terminal_id,
+        payload=payload,
         **kwargs,
     )
 
