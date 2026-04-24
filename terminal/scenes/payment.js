@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════
 //  KINDpos Terminal — Payment Scene (Vz2.0)
-//  2-column: Denominations + Numpad (left recap is persistent OrderSummary)
+//  3-column: Order Recap | Tender (toggle + denoms + actions) | Amount + Numpad
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
@@ -8,7 +8,10 @@ import { T } from '../../common/tokens.js';
 import { fetchWithTimeout } from '../net.js';
 import { buildButton, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
-import { buildPillButton, buildWell, buildNumpadChassis, buildHeroNumber, hexToRgba } from '../theme-manager.js';
+import {
+  buildPillButton, buildWell, buildNumpadChassis, buildHeroNumber, hexToRgba,
+  buildStaticCard, buildDivider, buildDataRow, lightenHex, darkenHex,
+} from '../theme-manager.js';
 import { OrderSummary } from '../order-summary.js';
 
 var PAD     = T.scenePad;
@@ -31,6 +34,17 @@ var dotTimer          = null;
 
 // DOM refs
 var _modeButtons      = {};
+var _chevronEl        = null;
+var _balanceValueEl   = null;
+var _checkNumEl       = null;
+var _denomTiles       = [];
+var _btn100           = null;
+var _heroEl           = null;
+var _subRow           = null;
+var _taxRow           = null;
+var _cardRow          = null;
+var _cashRow          = null;
+var _itemsScroll      = null;
 
 // Card processing overlay state
 var _procStatusEl     = null;
@@ -104,76 +118,46 @@ defineScene({
     numpadRef         = null;
     dotTimer          = null;
     _modeButtons      = {};
+    _chevronEl        = null;
+    _balanceValueEl   = null;
+    _checkNumEl       = null;
+    _denomTiles       = [];
+    _btn100           = null;
+    _heroEl           = null;
+    _subRow = _taxRow = _cardRow = _cashRow = null;
+    _itemsScroll      = null;
     _procStatusEl     = null;
     _procAnimTimer    = null;
 
     container.style.cssText = [
       'width:100%;height:100%;',
-      'display:flex;gap:' + GAP + 'px;',
-      'padding:8px ' + PAD + 'px ' + PAD + 'px ' + PAD + 'px;',
+      'display:flex;gap:12px;',
+      'padding:10px 24px 16px;',
       'box-sizing:border-box;overflow:hidden;',
       'background:' + T.bg + ';',
     ].join('');
 
+    container.appendChild(buildLeftColumn(params));
     container.appendChild(buildCenterColumn(params));
     container.appendChild(buildRightColumn(params));
 
-    // ── Left recap + baseTotal source-of-truth ──
-    // Payment is a working scene (replaces check-overview). Fetch the order
-    // once: populate the OrderSummary recap on the left AND ensure baseTotal
-    // is the authoritative backend value (check-overview doesn't always
-    // pass cardTotal in params, so we can't trust params.cardTotal alone).
-    if (params.orderId) {
+    // Paint active mode now that toggle buttons and denom tiles both exist.
+    setPaymentMode(paymentMode);
+    updateSplitDisplay();
+
+    // Prefer the authoritative data from check-overview: it already knows
+    // which seats we're paying for, applied effectivePrice (modifiers /
+    // discounts), and pre-computed totals that match what the operator
+    // just saw on the overview. Only fetch the raw order when seats
+    // aren't passed — e.g., direct/legacy mounts.
+    if (Array.isArray(params.seats) && params.seats.length) {
+      populateLeftCardFromSeats(params.seats, params);
+    } else if (params.orderId) {
       fetch('/api/v1/orders/' + encodeURIComponent(params.orderId))
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(order) {
           if (!order) return;
-          var items = [];
-          var subtotal = 0;
-          if (Array.isArray(order.items)) {
-            order.items.forEach(function(it) {
-              if (it.voided) return;
-              var qty   = it.qty || 1;
-              var price = (typeof it.price === 'number' ? it.price : 0);
-              var line  = qty * price;
-              subtotal += line;
-              items.push({
-                name:  it.name || it.menu_item_name || 'Item',
-                qty:   qty,
-                price: line,
-              });
-            });
-          }
-          var tax       = (typeof order.tax === 'number') ? order.tax : 0;
-          var cardTotal = (typeof order.balance_due === 'number')
-            ? order.balance_due : (subtotal + tax);
-          var cashPrice = cardTotal; // cash-discount logic lives upstream; pass through
-
-          // Trust params.cardTotal when the caller pre-seeded it: the caller
-          // (check-overview) knows exactly which seats it's paying for, while
-          // order.balance_due here is the whole-check remaining — which would
-          // over-state the total for a partial-seat pay. Only fall back to
-          // the backend value when no cardTotal was passed at mount.
-          if (!baseTotal) {
-            baseTotal = cardTotal;
-            updateSplitDisplay();
-          }
-
-          OrderSummary.show({
-            checkLabel:   order.check_number || order.order_id || 'ORDER',
-            customerName: order.customer_name || '',
-            items:        items,
-            subtotal:     subtotal,
-            tax:          tax,
-            cardTotal:    cardTotal,
-            cashPrice:    cashPrice,
-            // BACK is live only while no money has been taken yet. Once the
-            // first payment lands (see handleConfirm) we hide it via
-            // OrderSummary.showBack(false) so a mid-split back-tap can't
-            // strand the recorded payments.
-            showBack:     totalPaid <= 0,
-            onBack:       function() { _returnToParent(sceneData); },
-          });
+          populateLeftCard(order);
         })
         .catch(function() { /* silently skip — scene still works */ });
     }
@@ -599,183 +583,363 @@ defineScene({
 
 
 // ═══════════════════════════════════════════════════
-//  CENTER COLUMN — Denominations + Actions + Toggle
+//  LEFT COLUMN — Order Recap
+// ═══════════════════════════════════════════════════
+
+function buildLeftColumn(params) {
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'width:210px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;';
+
+  var card = buildStaticCard({ accent: T.green, width: '210px' });
+  card.style.flex          = '1';
+  card.style.display       = 'flex';
+  card.style.flexDirection = 'column';
+  card.style.minHeight     = '0';
+  card.style.padding       = '14px 14px 14px 18px';
+
+  // Header row — chevron + label
+  var header = document.createElement('div');
+  header.style.cssText = 'flex-shrink:0;display:flex;align-items:center;gap:10px;margin-bottom:10px;';
+
+  _chevronEl = document.createElement('div');
+  _chevronEl.textContent         = '◄';
+  _chevronEl.style.fontFamily    = T.fh;
+  _chevronEl.style.fontSize      = T.fsB2;
+  _chevronEl.style.color         = T.green;
+  _chevronEl.style.cursor        = 'pointer';
+  _chevronEl.style.userSelect    = 'none';
+  _chevronEl.style.touchAction   = 'manipulation';
+  _chevronEl.style.padding       = '2px 6px';
+  _chevronEl.addEventListener('pointerup', function() { _returnToParent(sceneData); });
+  header.appendChild(_chevronEl);
+
+  var title = document.createElement('div');
+  title.textContent         = 'ORDER RECAP';
+  title.style.fontFamily    = T.fh;
+  title.style.fontSize      = T.fsB3;
+  title.style.fontWeight    = T.fwBold;
+  title.style.color         = T.green;
+  title.style.letterSpacing = '0.2em';
+  title.style.textTransform = 'uppercase';
+  header.appendChild(title);
+
+  card.appendChild(header);
+
+  // Items scroll
+  _itemsScroll = document.createElement('div');
+  _itemsScroll.style.cssText = 'flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;';
+  card.appendChild(_itemsScroll);
+
+  // Totals block
+  card.appendChild(buildDivider('10px 0'));
+  _subRow = buildDataRow('SUBTOTAL', '$0.00', T.gold);
+  _taxRow = buildDataRow('TAX',      '$0.00', T.gold);
+  card.appendChild(_subRow);
+  card.appendChild(_taxRow);
+
+  card.appendChild(buildDivider('10px 0'));
+  _cardRow = buildDataRow('CARD PRICE', '$0.00', T.elec);
+  _cashRow = buildDataRow('CASH PRICE', '$0.00', T.greenWarm);
+  card.appendChild(_cardRow);
+  card.appendChild(_cashRow);
+
+  wrap.appendChild(card);
+
+  if (totalPaid > 0 && _chevronEl) _chevronEl.style.display = 'none';
+  return wrap;
+}
+
+// Render { qty, name, price: lineTotal } rows into the scrollable recap.
+function _renderItemRows(items) {
+  if (!_itemsScroll) return;
+  _itemsScroll.innerHTML = '';
+  items.forEach(function(it) {
+    var row = document.createElement('div');
+    row.style.cssText = [
+      'display:flex;align-items:baseline;justify-content:space-between;',
+      'padding:6px 0;',
+      'border-bottom:1px solid rgba(90,95,102,0.25);',
+      'gap:8px;',
+    ].join('');
+
+    var left = document.createElement('span');
+    left.textContent         = it.qty + '  ' + it.name;
+    left.style.fontFamily    = T.fb;
+    left.style.fontSize      = T.fsB3;
+    left.style.color         = T.text;
+    left.style.overflow      = 'hidden';
+    left.style.textOverflow  = 'ellipsis';
+    left.style.whiteSpace    = 'nowrap';
+    row.appendChild(left);
+
+    var right = document.createElement('span');
+    right.textContent      = '$' + it.price.toFixed(2);
+    right.style.fontFamily = T.fb;
+    right.style.fontSize   = T.fsB2;
+    right.style.fontWeight = T.fwBold;
+    right.style.color      = T.gold;
+    right.style.flexShrink = '0';
+    row.appendChild(right);
+
+    _itemsScroll.appendChild(row);
+  });
+}
+
+// Selection-aware recap — rendered from the seat summary that
+// check-overview hands off in params. Pulls only the selected seats'
+// items and honors effectivePrice so modifier-adjusted lines display
+// the same value the operator saw on the overview.
+function populateLeftCardFromSeats(seats, params) {
+  var items    = [];
+  var subtotal = 0;
+  seats.forEach(function(seat) {
+    if (!seat || !Array.isArray(seat.items)) return;
+    seat.items.forEach(function(it) {
+      if (it.voided) return;
+      var qty  = it.qty || 1;
+      var unit = (it.effectivePrice != null) ? it.effectivePrice : (it.price || 0);
+      var line = qty * unit;
+      subtotal += line;
+      items.push({
+        name:  it.name || it.menu_item_name || 'Item',
+        qty:   qty,
+        price: line,
+      });
+    });
+  });
+
+  // Prefer the caller's pre-computed totals — they reflect exactly the
+  // seats being paid (selection-aware) and match what the operator just
+  // saw on check-overview. Fall back to the line-total sum when absent.
+  var useSubtotal = (typeof params.subtotal  === 'number') ? params.subtotal  : subtotal;
+  var tax         = (typeof params.tax       === 'number') ? params.tax       : 0;
+  var cardTotal   = (typeof params.cardTotal === 'number') ? params.cardTotal : (useSubtotal + tax);
+  var cashPrice   = (typeof params.cashPrice === 'number') ? params.cashPrice : cardTotal;
+
+  if (!baseTotal) baseTotal = cardTotal;
+
+  _renderItemRows(items);
+  if (_subRow)  _subRow.setValue('$' + useSubtotal.toFixed(2));
+  if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
+  if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
+  if (_cashRow) _cashRow.setValue('$' + cashPrice.toFixed(2));
+  if (_checkNumEl && !_checkNumEl.textContent && params.orderId) {
+    _checkNumEl.textContent = '#' + String(params.orderId).slice(0, 6);
+  }
+
+  updateSplitDisplay();
+}
+
+// Fallback for direct mounts without seat data — fetches the whole
+// order and renders every non-voided line. Not selection-aware.
+function populateLeftCard(order) {
+  var items    = [];
+  var subtotal = 0;
+  if (Array.isArray(order.items)) {
+    order.items.forEach(function(it) {
+      if (it.voided) return;
+      var qty  = it.qty || 1;
+      var unit = (typeof it.effective_price === 'number')
+        ? it.effective_price
+        : (typeof it.price === 'number' ? it.price : 0);
+      var line = qty * unit;
+      subtotal += line;
+      items.push({
+        name:  it.name || it.menu_item_name || 'Item',
+        qty:   qty,
+        price: line,
+      });
+    });
+  }
+  var tax       = (typeof order.tax === 'number') ? order.tax : 0;
+  var cardTotal = (typeof order.balance_due === 'number') ? order.balance_due : (subtotal + tax);
+  var cashPrice = cardTotal;
+
+  if (!baseTotal) baseTotal = cardTotal;
+
+  _renderItemRows(items);
+  if (_subRow)  _subRow.setValue('$' + subtotal.toFixed(2));
+  if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
+  if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
+  if (_cashRow) _cashRow.setValue('$' + cashPrice.toFixed(2));
+  if (_checkNumEl) _checkNumEl.textContent = order.check_number || order.order_id || '';
+
+  updateSplitDisplay();
+}
+
+
+// ═══════════════════════════════════════════════════
+//  CENTER COLUMN — Tender Toggle | Balance | Denoms | Actions
 // ═══════════════════════════════════════════════════
 
 function buildCenterColumn(params) {
   var col = document.createElement('div');
-  col.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:10px;overflow:hidden;justify-content:center;padding:8px 0;';
+  col.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:10px;overflow:hidden;min-width:0;';
 
-  // ── Denomination grid (2 cols × 2 rows, fixed rows) ──
-  // 2x2 squares for $5/$10/$20/$50 — tall enough to feel tappable but
-  // not stretching to fill the whole column.
+  col.appendChild(buildTenderToggle());
+  col.appendChild(buildBalanceStrip());
+
   var grid = document.createElement('div');
   grid.style.cssText = [
     'display:grid;',
     'grid-template-columns:1fr 1fr;',
     'grid-template-rows:1fr 1fr;',
-    'gap:10px;flex-grow:1;',
+    'gap:10px;flex:1;min-height:0;',
   ].join('');
-
-  grid.appendChild(buildDenomBtn(5));
-  grid.appendChild(buildDenomBtn(10));
-  grid.appendChild(buildDenomBtn(20));
-  grid.appendChild(buildDenomBtn(50));
+  grid.appendChild(buildDenomTile(5));
+  grid.appendChild(buildDenomTile(10));
+  grid.appendChild(buildDenomTile(20));
+  grid.appendChild(buildDenomTile(50));
   col.appendChild(grid);
 
-  // ── $100 (full-width, same bevel/style as denoms but smaller row) ──
-  var btn100 = buildDenomBtn(100);
-  btn100.style.height = '70px';
-  btn100.style.flexShrink = '0';
-  btn100.style.marginTop = '10px';
-  col.appendChild(btn100);
+  _btn100 = buildDenomTile(100, { fullWidth: true });
+  col.appendChild(_btn100);
 
-  // ── Exact + Split row (two buttons, equal width) ──
-  var actionRow = document.createElement('div');
-  actionRow.style.cssText = 'flex-shrink:0;display:flex;gap:10px;';
-
-  actionRow.appendChild(buildPaymentActionBtn({
-    label:   'EXACT',
-    color:   T.gold,
-    radius:  '12px 6px 6px 12px',
-    onClick: handleExact,
-  }));
-  actionRow.appendChild(buildPaymentActionBtn({
-    label:   'SPLIT',
-    color:   T.elec,
-    radius:  '6px 12px 12px 6px',
-    onClick: _onSplitTap,
-  }));
-
-  col.appendChild(actionRow);
-
-  // ── Method toggle: Cash | Card | GC — bigger pill buttons ──
-  var toggle = document.createElement('div');
-  toggle.style.cssText = 'flex-shrink:0;display:flex;gap:12px;padding-top:8px;';
-
-  toggle.appendChild(buildModeBtn('Cash', 'cash', T.green));
-  toggle.appendChild(buildModeBtn('Card', 'card', T.elec));
-  toggle.appendChild(buildModeBtn('GC',   'gc',   T.gold));
-
-  col.appendChild(toggle);
-
-  setTimeout(function() { setPaymentMode(paymentMode); }, 0);
+  col.appendChild(buildActionRow());
 
   return col;
 }
 
+function buildTenderToggle() {
+  var row = document.createElement('div');
+  row.style.cssText = 'flex-shrink:0;display:flex;gap:8px;';
+  row.appendChild(buildModeToggle('cash', 'CASH', T.greenWarm, T.greenWarmDk));
+  row.appendChild(buildModeToggle('card', 'CARD', T.elec,      T.elecDk));
+  row.appendChild(buildModeToggle('gc',   'GIFT', '#e040fb',   '#7b0099'));
+  return row;
+}
 
-function buildDenomBtn(val) {
-  // Plain div (not a pill) so we control the press state and the text
-  // never flips to dark on hover/press. Matches the mode-toggle approach.
-  var btn = document.createElement('div');
-  btn.style.cssText = [
-    'width:100%;height:100%;',
+function buildModeToggle(mode, label, color, dkColor) {
+  var btn = buildPillButton({
+    label:   label,
+    color:   color,
+    onClick: function() { setPaymentMode(mode); },
+  });
+  btn.style.flex   = '1';
+  btn.style.height = '44px';
+  _modeButtons[mode] = { el: btn, color: color, dk: dkColor };
+  return btn;
+}
+
+function buildBalanceStrip() {
+  var card = buildStaticCard({ accent: T.gold });
+  card.style.flexShrink = '0';
+  card.style.height     = '36px';
+  card.style.padding    = '0 14px 0 20px';
+  card.style.display    = 'flex';
+  card.style.alignItems = 'center';
+  card.style.justifyContent = 'space-between';
+
+  var label = document.createElement('span');
+  label.textContent         = 'REMAINING';
+  label.style.fontFamily    = T.fb;
+  label.style.fontSize      = T.fsB3;
+  label.style.color         = T.moon;
+  label.style.letterSpacing = '0.18em';
+  label.style.textTransform = 'uppercase';
+  card.appendChild(label);
+
+  _checkNumEl = document.createElement('span');
+  _checkNumEl.style.fontFamily    = T.fb;
+  _checkNumEl.style.fontSize      = T.fsB3;
+  _checkNumEl.style.color         = T.moon;
+  _checkNumEl.style.letterSpacing = '0.12em';
+  _checkNumEl.textContent = sceneData.checkLabel
+    || (sceneData.orderId ? '#' + String(sceneData.orderId).slice(0, 6) : '');
+  card.appendChild(_checkNumEl);
+
+  _balanceValueEl = document.createElement('span');
+  _balanceValueEl.style.fontFamily = T.fh;
+  _balanceValueEl.style.fontSize   = T.fsB2;
+  _balanceValueEl.style.fontWeight = T.fwBold;
+  _balanceValueEl.style.color      = T.gold;
+  _balanceValueEl.style.textShadow = '0 0 8px ' + hexToRgba(T.gold, 0.35);
+  _balanceValueEl.textContent      = '$' + getRemainingBalance().toFixed(2);
+  card.appendChild(_balanceValueEl);
+
+  return card;
+}
+
+function buildDenomTile(val, opts) {
+  opts = opts || {};
+  var tile = document.createElement('div');
+  var beveLight = lightenHex(T.bg, 0.08);
+  var beveDark  = darkenHex(T.bg, 0.2);
+  tile.style.cssText = [
+    (opts.fullWidth ? 'width:100%;height:60px;flex-shrink:0;' : 'width:100%;height:100%;'),
     'display:flex;align-items:center;justify-content:center;',
     'background:' + T.card + ';',
-    'border:2px solid ' + T.border + ';',
-    'border-radius:' + T.chamferCard + 'px;',
+    'border-top:2px solid '    + beveLight + ';',
+    'border-left:2px solid '   + beveLight + ';',
+    'border-bottom:2px solid ' + beveDark  + ';',
+    'border-right:2px solid '  + beveDark  + ';',
+    'border-radius:10px;',
     'font-family:' + T.fh + ';',
-    'font-size:' + T.fsDenom + ';',
+    'font-size:' + T.fsH2 + ';',
     'font-weight:' + T.fwBold + ';',
     'color:' + T.green + ';',
-    'letter-spacing:0.06em;',
+    'letter-spacing:0.04em;',
     'cursor:pointer;user-select:none;',
     'pointer-events:auto;touch-action:manipulation;',
-    'box-shadow:0 6px 0 ' + T.well + ';',
-    'transition:background 140ms, transform 80ms, box-shadow 80ms;',
+    'box-shadow:0 5px 0 ' + T.well + ';',
+    'transition:background 140ms, color 140ms, transform 80ms, box-shadow 80ms;',
   ].join('');
-  btn.textContent = '$' + val;
+  tile.textContent = '$' + val;
 
-  // Subtle depress on press — text stays mint the whole time.
-  btn.addEventListener('pointerdown', function() {
-    btn.style.transform = 'translateY(3px)';
-    btn.style.boxShadow = '0 3px 0 ' + T.well;
+  tile.addEventListener('pointerdown', function() {
+    tile.style.transform = 'translateY(3px)';
+    tile.style.boxShadow = '0 2px 0 ' + T.well;
   });
   function resetPress() {
-    btn.style.transform = '';
-    btn.style.boxShadow = '0 6px 0 ' + T.well;
+    tile.style.transform = '';
+    tile.style.boxShadow = '0 5px 0 ' + T.well;
   }
-  btn.addEventListener('pointerup',     resetPress);
-  btn.addEventListener('pointercancel', resetPress);
-  btn.addEventListener('pointerleave',  resetPress);
+  tile.addEventListener('pointercancel', resetPress);
+  tile.addEventListener('pointerleave',  resetPress);
 
-  // Tap: brief confirmation flash (bg flips to mint, text goes dark for
-  // 180ms so the user sees the denomination was accepted), then back.
-  // Fires on pointerup — see note in buildExactBtn.
-  btn.addEventListener('pointerup', function() {
+  tile.addEventListener('pointerup', function() {
+    resetPress();
     handleDenomination(val);
-    btn.style.background = T.green;
-    btn.style.color      = T.well;
+    tile.style.background = T.green;
+    tile.style.color      = T.well;
     setTimeout(function() {
-      btn.style.background = T.card;
-      btn.style.color      = T.green;
+      tile.style.background = T.card;
+      tile.style.color      = T.green;
     }, 180);
   });
 
-  return btn;
+  if (!opts.fullWidth) _denomTiles.push(tile);
+  return tile;
 }
 
-function buildModeBtn(label, mode, activeColor) {
-  var btn = buildPaymentActionBtn({
-    label:   label,
-    color:   activeColor,
-    onClick: function() { setPaymentMode(mode); },
+function buildActionRow() {
+  var row = document.createElement('div');
+  row.style.cssText = 'flex-shrink:0;display:flex;gap:10px;height:52px;';
+
+  var exact = buildPillButton({
+    label:     'EXACT',
+    color:     T.gold,
+    textColor: T.well,
+    onClick:   handleExact,
   });
-  _modeButtons[mode] = { wrap: btn, color: activeColor };
-  return btn;
-}
+  exact.style.flex   = '1';
+  exact.style.height = '52px';
+  row.appendChild(exact);
 
-// Vz2.0 "outlined chip" for payment actions and toggles:
-// resting   = T.moon fill, accent-color border + text
-// active    = filled with the accent color, label flips to T.moonText
-// buildPillButton uses a saturated darkBg press-state which reads too loud
-// next to the denomination tiles; this helper keeps the column calm.
-function buildPaymentActionBtn(opts) {
-  opts = opts || {};
-  var color   = opts.color || T.green;
-  var radius  = opts.radius || '12px';
-  var height  = opts.height || '80px';
+  var split = buildPillButton({
+    label:     'SPLIT',
+    color:     T.card,
+    textColor: T.elec,
+    onClick:   _onSplitTap,
+  });
+  split.style.flex       = '1';
+  split.style.height     = '52px';
+  split.style.background = 'transparent';
+  split.style.border     = '2px solid ' + T.elec;
+  split.style.boxShadow  = '0 4px 0 ' + T.elecDk;
+  row.appendChild(split);
 
-  var btn = document.createElement('button');
-  btn.textContent = opts.label || '';
-  btn.style.cssText = [
-    'flex:1;',
-    'height:' + height + ';',
-    'background:' + T.moon + ';',
-    'color:' + color + ';',
-    'border:2px solid ' + color + ';',
-    'border-radius:' + radius + ';',
-    'font-family:' + T.fh + ';',
-    'font-size:' + (opts.fontSize || '20px') + ';',
-    'font-weight:' + T.fwBold + ';',
-    'letter-spacing:0.08em;',
-    'text-transform:uppercase;',
-    'cursor:pointer;user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'transition:background 120ms, color 120ms;',
-    'outline:none;',
-  ].join('');
-
-  function paint(active) {
-    btn.style.background = active ? color   : T.moon;
-    btn.style.color      = active ? T.moonText : color;
-  }
-
-  btn._setActive = function(active) {
-    btn._locked = !!active;
-    paint(active);
-  };
-
-  btn.addEventListener('pointerdown', function() { paint(true); });
-  function release() { if (!btn._locked) paint(false); }
-  btn.addEventListener('pointerup',     release);
-  btn.addEventListener('pointercancel', release);
-  btn.addEventListener('pointerleave',  release);
-
-  if (opts.onClick) btn.addEventListener('click', opts.onClick);
-
-  return btn;
+  return row;
 }
 
 
@@ -806,52 +970,67 @@ function handleKey(label) {
 
 function buildRightColumn() {
   var col = document.createElement('div');
-  col.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:16px;';
+  col.style.cssText = 'width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;min-height:0;';
 
-  var dispWell = buildWell({ padding: '20px' });
-  dispWell.style.height         = '68px';
+  // Amount well — TENDERING label + hero number
+  var dispWell = buildWell({ padding: '8px 16px' });
+  dispWell.style.height         = '76px';
+  dispWell.style.flexShrink     = '0';
   dispWell.style.display        = 'flex';
+  dispWell.style.flexDirection  = 'column';
   dispWell.style.alignItems     = 'center';
   dispWell.style.justifyContent = 'center';
+  dispWell.style.gap            = '2px';
   dispWell.style.background     = T.well;
 
-  var hero = buildHeroNumber('$0.00', T.gold);
-  dispWell.appendChild(hero);
+  var tenderLbl = document.createElement('div');
+  tenderLbl.textContent         = 'TENDERING';
+  tenderLbl.style.fontFamily    = T.fb;
+  tenderLbl.style.fontSize      = T.fsB4;
+  tenderLbl.style.color         = T.moon;
+  tenderLbl.style.letterSpacing = '0.2em';
+  tenderLbl.style.textTransform = 'uppercase';
+  dispWell.appendChild(tenderLbl);
+
+  _heroEl = buildHeroNumber('$0.00', T.gold);
+  dispWell.appendChild(_heroEl);
   col.appendChild(dispWell);
 
-  const pad = buildNumpadChassis({
-    onKey: (label) => handleKey(label),
+  // Numpad — do not rebuild key-by-key; use the shared chassis builder.
+  var pad = buildNumpadChassis({
+    onKey: function(label) { handleKey(label); },
   });
+  pad.style.flex = '1';
   col.appendChild(pad);
 
-  // Re-expose numpadRef interface for handleDenomination/handleExact/etc.
+  // numpadRef wrapper — owned by payment.js. Backed by the hero display.
   numpadRef = {
     setPin: function(digits) {
       numpadStr = digits || '';
       updateDisplay();
     },
     setHint: function(msg, color) {
-      hero.textContent = msg;
-      hero.style.color = color || T.gold;
+      if (!_heroEl) return;
+      _heroEl.textContent = msg;
+      _heroEl.style.color = color || T.gold;
     },
     clear: function() {
       numpadStr = '';
       updateDisplay();
-    }
+    },
   };
 
   function updateDisplay() {
+    if (!_heroEl) return;
     if (numpadStr.length > 0) {
       var n = parseInt(numpadStr, 10) || 0;
-      hero.textContent = '$' + (n / 100).toFixed(2);
-      hero.style.color = T.gold;
+      _heroEl.textContent = '$' + (n / 100).toFixed(2);
     } else if (denomAccum > 0) {
-      hero.textContent = '$' + denomAccum.toFixed(2);
-      hero.style.color = T.gold;
+      _heroEl.textContent = '$' + denomAccum.toFixed(2);
     } else {
-      hero.textContent = '$0.00';
-      hero.style.color = T.gold;
+      _heroEl.textContent = '$0.00';
     }
+    _heroEl.style.color = T.gold;
   }
 
   updateDisplay();
@@ -865,11 +1044,34 @@ function buildRightColumn() {
 
 function setPaymentMode(mode) {
   paymentMode = mode;
+
+  // Paint each tender toggle: active = filled + glow, inactive = ghost.
   Object.keys(_modeButtons).forEach(function(m) {
     var b = _modeButtons[m];
-    if (b && b.wrap && b.wrap._setActive) {
-      b.wrap._setActive(m === mode);
+    if (!b || !b.el) return;
+    var isActive = (m === mode);
+    var el = b.el;
+    if (isActive) {
+      el.style.background = b.color;
+      el.style.color      = T.well;
+      el.style.border     = 'none';
+      el.style.boxShadow  = '0 4px 0 ' + b.dk + ', 0 0 16px ' + hexToRgba(b.color, 0.4);
+    } else {
+      el.style.background = T.card;
+      el.style.color      = b.color;
+      el.style.border     = '2px solid ' + b.color;
+      el.style.boxShadow  = 'none';
     }
+  });
+
+  // Denom tiles + $100 tile: live only in cash mode.
+  var enabled = (mode === 'cash');
+  var tiles = _denomTiles.slice();
+  if (_btn100) tiles.push(_btn100);
+  tiles.forEach(function(t) {
+    if (!t) return;
+    t.style.opacity       = enabled ? '1'    : '0.35';
+    t.style.pointerEvents = enabled ? 'auto' : 'none';
   });
 }
 
@@ -918,8 +1120,8 @@ function getRemainingBalance() {
 }
 
 function updateSplitDisplay() {
-  if (OrderSummary && OrderSummary.updateSplit) {
-    OrderSummary.updateSplit({ totalPaid: totalPaid, remaining: getRemainingBalance() });
+  if (_balanceValueEl) {
+    _balanceValueEl.textContent = '$' + getRemainingBalance().toFixed(2);
   }
 }
 
@@ -1023,9 +1225,9 @@ async function handleConfirm() {
     payments.push({ method: paymentMode, amount: paymentAmount });
     totalPaid += paymentAmount;
 
-    // Lock the OrderSummary BACK chevron now that money has been taken —
-    // a back-to-check-overview here would orphan the recorded payment.
-    if (OrderSummary && OrderSummary.showBack) OrderSummary.showBack(false);
+    // Hide the back chevron now that money has been taken — a
+    // back-to-check-overview here would orphan the recorded payment.
+    if (_chevronEl) _chevronEl.style.display = 'none';
 
     var newRemaining = getRemainingBalance();
     confirmProcessing = false;
@@ -1070,30 +1272,19 @@ function queueReceipt(copyType) {
 
 function activateResult(change) {
   var lastPayment = payments[payments.length - 1] || {};
-  var isCash = lastPayment.method === 'cash';
   var remaining = getRemainingBalance();
   var isFullyPaid = remaining < 0.005;
 
   SceneManager.closeAllTransactional();
   SceneManager.emit('payment:complete', { orderId: sceneData.orderId });
 
-  // Show change due toast if applicable (cash only, any flow).
-  if (isCash && change > 0) {
-    showToast('Change: $' + change.toFixed(2), { bg: T.gold, duration: 4000 });
-  }
-
   if (isFullyPaid) {
-    // Whole check settled → return to landing page. Determine which
-    // landing from the returnParams bundle passed in.
-    var landing = sceneData.returnLanding
-      || (sceneData.returnParams && sceneData.returnParams.returnLanding)
-      || 'server-landing';
-    SceneManager.mountWorking(landing, {
-      emp: sceneData.employeeId ? {
-        id:   sceneData.employeeId,
-        name: sceneData.employeeName,
-        pin:  sceneData.pin,
-      } : null,
+    // Whole check settled → hand off to the change-due transactional,
+    // which owns the NEW ORDER / LOGOUT routing via its own doReturn.
+    SceneManager.openTransactional('pc-change-due', {
+      paymentMode: lastPayment.method,
+      change:      change,
+      total:       baseTotal,
     });
   } else {
     // Partial payment (more seats / amount remaining) → return to
@@ -1118,7 +1309,8 @@ function showSplitPopup() {
       denomAccum = 0;
       enteredAmount = amount;
       numpadStr = '';
-      if (numpadRef && numpadRef.clear) numpadRef.clear();
+      if (numpadRef) numpadRef.setHint('$' + amount.toFixed(2), T.gold);
+      updateSplitDisplay();
     },
   });
 }
