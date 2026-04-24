@@ -596,9 +596,14 @@ defineScene({
         var bottomBar = document.createElement('div');
         bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
 
+        // Button hierarchy (Nostalgia):
+        //   CANCEL      — ghost (secondary exit)
+        //   SELECT ALL  — ghost (secondary helper)
+        //   CONFIRM     — ghost (disabled) → mint primary when all assigned
         var cancelBtn = buildPillButton({
           label: 'CANCEL',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'ghost',
+          fontSize: T.fsB2,
           onClick: function() { params.onCancel(); },
         });
         cancelBtn.style.flex = '1';
@@ -607,7 +612,8 @@ defineScene({
 
         var selectAllBtn = buildPillButton({
           label: 'SELECT ALL',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'ghost',
+          fontSize: T.fsB2,
           onClick: function() {
             for (var ai = 0; ai < items.length; ai++) {
               assignments[items[ai].id] = seatNumbers.slice();
@@ -623,7 +629,8 @@ defineScene({
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'ghost',
+          fontSize: T.fsB2,
           onClick: function() {
             // Only proceed if all items have at least one seat
             var ready = true;
@@ -634,20 +641,28 @@ defineScene({
             params.onConfirm(assignments);
           },
         });
-        confirmBtn.style.color = hexToRgba(T.text, 0.45);
         confirmBtn.style.flex = '1';
         confirmBtn.style.height = '48px';
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
         container.appendChild(shell.wrap);
 
+        // CONFIRM promotes from ghost (disabled) to mint primary (ready).
         function updateConfirmState() {
           var allAssigned = true;
           for (var k = 0; k < items.length; k++) {
             if (!assignments[items[k].id] || assignments[items[k].id].length === 0) { allAssigned = false; break; }
           }
-          confirmBtn.style.color = allAssigned ? T.green : hexToRgba(T.text, 0.45);
-          confirmBtn.style.borderColor = allAssigned ? T.green : T.card;
+          if (allAssigned) {
+            confirmBtn.setColor(T.green, T.greenDk, T.well);
+            confirmBtn.style.border = 'none';
+            confirmBtn.style.boxShadow = '0 6px 0 ' + T.greenDk;
+          } else {
+            confirmBtn.setColor('transparent', 'rgba(255,255,255,0.1)', T.text);
+            confirmBtn.style.color = hexToRgba(T.text, 0.45);
+            confirmBtn.style.border = '1px solid ' + T.border;
+            confirmBtn.style.boxShadow = 'none';
+          }
         }
         updateConfirmState();
 
