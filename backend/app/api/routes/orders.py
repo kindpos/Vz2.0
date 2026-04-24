@@ -874,9 +874,23 @@ async def add_item(
         # lookup doesn't block a live service.
         pass
 
+    # Pre-flight idempotency check. Previously the dedup lived inside
+    # ledger.append(item_added) and we early-returned on a duplicate —
+    # but a crash between the item append and the modifier appends
+    # could leave inline modifiers permanently lost on the retry
+    # (item blocked as dup; modifiers never re-emitted). Checking
+    # upfront lets us emit item + all modifiers in one append_batch,
+    # so either everything lands or nothing does.
+    if idem_key:
+        existing = await ledger.get_event_by_idempotency_key(idem_key)
+        if existing is not None:
+            _logger.warning("BLOCKED duplicate item POST (idempotency_key=%s)", idem_key)
+            order = await get_order_or_404(ledger, order_id)
+            return OrderResponse.from_order(order)
+
     item_id = f"item_{uuid.uuid4().hex[:8]}"
 
-    event = item_added(
+    batch_events: list = [item_added(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         item_id=item_id,
@@ -893,22 +907,10 @@ async def add_item(
         allergens=request.allergens,
         allergen_note=request.allergen_note,
         included_removals=request.included_removals,
-    )
-    result = await ledger.append(event)
-    if result is None:
-        # Duplicate blocked by ledger — return current order state.
-        # IMPORTANT: don't emit the inline MODIFIER_APPLIED events either.
-        # The generated item_id is fresh on each retry, so those modifiers
-        # would attach to an item_id that has no ITEM_ADDED event — the
-        # projection discards them as no-ops but they pollute the ledger,
-        # the audit trail, and print context rebuilds.
-        _logger.warning("BLOCKED duplicate item POST (idempotency_key=%s)", idem_key)
-        order = await get_order_or_404(ledger, order_id)
-        return OrderResponse.from_order(order)
+    )]
 
-    # Emit MODIFIER_APPLIED events for inline modifiers from the frontend
     for mod in (request.modifiers or []):
-        mod_event = modifier_applied(
+        batch_events.append(modifier_applied(
             terminal_id=settings.terminal_id,
             order_id=order_id,
             item_id=item_id,
@@ -918,8 +920,9 @@ async def add_item(
             action="add",
             prefix=mod.prefix,
             half_price=mod.half_price,
-        )
-        await ledger.append(mod_event)
+        ))
+
+    await ledger.append_batch(batch_events)
 
     # Return updated order
     order = await get_order_or_404(ledger, order_id)

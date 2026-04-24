@@ -36,7 +36,7 @@ Contract (verified via `event_ledger.py:249-321`):
 | LG-14 | Check merge target / items + modifiers + `check.merged` | `orders.py:1358-1482` | one big `append_batch` for the whole merge | **DONE** |
 | LG-15 | Check absorb (source side of merge) | `orders.py:1419-1469` | same batch as LG-14 (source `check.merged` + `order.voided` interleaved with items) | **DONE** |
 | LG-16 | Check split / child create + items + parent remove + splits | `orders.py:1963-2097` | structural batching (per-seat) | pending |
-| LG-22 | Seat item add / `item.added` + `modifier.applied × N` | `orders.py:824-926` | batch; consolidate idempotency gate | pending |
+| LG-22 | Seat item add / `item.added` + `modifier.applied × N` | `orders.py:824-926` | pre-flight idempotency check, then whole thing as one `append_batch` | **DONE** |
 | LG-32 | `payment.confirmed` + `order.closed` (credit sale path) | `payment_routes.py:212-349` | straight `append_batch` swap (partial — LG-32 deep fix deferred to Phase 2) | **DONE** |
 | LG-53 | Day close / per-order closes + `batch.submitted` + `day.closed` | `orders.py:1766-1952` | conservative: batch the boundary pair only | **DONE** |
 
@@ -98,3 +98,9 @@ the `/entomology` → Event Ledger Gaps tab.
   (502 on failure, no ledger writes) and then emits `cash_refund_due`
   per confirmed cash payment plus `order.voided` as one
   `append_batch`. Partial-refund ghosts on crash are eliminated.
+- 2026-04-24 — LG-22: `add_item` does a pre-flight
+  `ledger.get_event_by_idempotency_key` dedup check, then emits
+  `item.added` plus every inline `modifier.applied` as one
+  `append_batch`. Closes the "crash between item and modifier append
+  permanently loses modifiers on retry" hole in the previous
+  split-append model. 77 mutation / extended-api tests green.
