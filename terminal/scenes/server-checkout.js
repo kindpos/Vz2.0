@@ -259,7 +259,7 @@ function renderCheckPreview(paper, checks, allOrders) {
     // Meta row (only for single — collapsed on multi to save space)
     if (!isMulti) {
       var metaRow = document.createElement('div');
-      metaRow.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';margin-bottom:4px;';
+      metaRow.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';margin-bottom:4px;';
       var mL = document.createElement('span');
       mL.textContent = chk.guests ? (chk.guests + ' guest' + (chk.guests > 1 ? 's' : '')) : '\u00A0';
       var mR = document.createElement('span');
@@ -273,7 +273,7 @@ function renderCheckPreview(paper, checks, allOrders) {
 
     if (items.length === 0) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';font-style:italic;padding:6px 0;';
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;padding:6px 0;';
       empty.textContent = isMulti ? 'no items' : 'no items on this check';
       paper.appendChild(empty);
     } else {
@@ -298,7 +298,7 @@ function renderCheckPreview(paper, checks, allOrders) {
       });
       if (items.length > showCap) {
         var more = document.createElement('div');
-        more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.mutedText + ';padding-top:2px;opacity:0.6;';
+        more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + hexToRgba(T.text, 0.6) + ';padding-top:2px;opacity:0.6;';
         more.textContent = '+ ' + (items.length - showCap) + ' more';
         paper.appendChild(more);
       }
@@ -315,7 +315,7 @@ function renderCheckPreview(paper, checks, allOrders) {
         r.style.cssText = [
           'display:flex;justify-content:space-between;padding:2px 0;',
           'font-family:' + T.fb + ';font-size:' + (emphasis ? '12px' : '11px') + ';',
-          'color:' + (emphasis ? T.text : T.mutedText) + ';',
+          'color:' + (emphasis ? T.text : hexToRgba(T.text, 0.6)) + ';',
           emphasis ? 'font-weight:700;' : '',
         ].join('');
         var rL = document.createElement('span');
@@ -368,7 +368,7 @@ function buildReceiptCol(state, handlers, selectedChecks) {
   if (showingPreview) {
     var dismiss = document.createElement('span');
     dismiss.style.cssText = [
-      'font-family:' + T.fb + ';font-size:16px;color:' + T.mutedText + ';',
+      'font-family:' + T.fb + ';font-size:16px;color:' + hexToRgba(T.text, 0.6) + ';',
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'padding:0 4px;line-height:1;',
@@ -380,7 +380,7 @@ function buildReceiptCol(state, handlers, selectedChecks) {
     hdr.appendChild(dismiss);
   } else {
     var hdrStatus = document.createElement('span');
-    hdrStatus.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';';
+    hdrStatus.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';';
     hdrStatus.textContent = blocked ? 'pending' : 'READY';
     hdr.appendChild(hdrStatus);
   }
@@ -390,7 +390,7 @@ function buildReceiptCol(state, handlers, selectedChecks) {
   paper.style.cssText = [
     'flex:1;background:' + T.well + ';border-radius:4px;',
     'padding:16px 12px;overflow-y:auto;',
-    'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';',
+    'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';',
     'display:flex;flex-direction:column;gap:4px;',
     'touch-action:pan-y;overscroll-behavior:contain;',
   ].join('');
@@ -505,7 +505,7 @@ function buildReceiptCol(state, handlers, selectedChecks) {
     };
     var addRule = function() {
       var r = document.createElement('div');
-      r.style.cssText = 'text-align:center;color:' + T.mutedText + ';';
+      r.style.cssText = 'text-align:center;color:' + hexToRgba(T.text, 0.6) + ';';
       r.textContent = '\u2500'.repeat(24);
       paper.appendChild(r);
     };
@@ -576,17 +576,17 @@ function buildSalesSummaryCard(state, blocked) {
   var hdr = document.createElement('div');
   hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
   var title = document.createElement('span');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.mutedText + ';letter-spacing:1.8px;';
+  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1.8px;';
   title.textContent = 'SALES SUMMARY';
   var hint = document.createElement('span');
-  hint.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.mutedText + ';';
+  hint.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
   hint.textContent = '';
   hdr.appendChild(title);
   hdr.appendChild(hint);
   card.appendChild(hdr);
 
   var line = document.createElement('div');
-  line.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.mutedText + ';';
+  line.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
   line.textContent = fmt(state.netSales) + ' \u2022 ' + state.checksClosed + ' checks';
   card.appendChild(line);
 
@@ -613,7 +613,7 @@ function buildOpenChecksCard(state, handlers, selectedCheckIds) {
   title.style.cssText = 'flex:1;font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.verm + ';letter-spacing:1.8px;';
   title.textContent = 'OPEN CHECKS \u2022 ' + state.openChecks.length;
   var hint = document.createElement('span');
-  hint.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';';
+  hint.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';';
   hint.textContent = 'must close or transfer';
   hdr.appendChild(icon);
   hdr.appendChild(title);
@@ -653,7 +653,7 @@ function buildOpenCheckRow(chk, handlers, isSelected) {
   var top = document.createElement('div');
   top.style.cssText = 'display:flex;gap:8px;align-items:baseline;';
   var label = document.createElement('span');
-  label.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.mutedText + ';letter-spacing:1.4px;';
+  label.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1.4px;';
   label.textContent = (chk.tableLabel ? chk.tableLabel.toUpperCase() + ' \u2022 ' : '') + 'CHECK ' + (chk.checkLabel || chk.checkId || '').toUpperCase();
   top.appendChild(label);
 
@@ -662,7 +662,7 @@ function buildOpenCheckRow(chk, handlers, isSelected) {
   amt.textContent = fmt(chk.amount || 0);
 
   var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';';
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';';
   meta.textContent = (chk.guests ? chk.guests + ' guest' + (chk.guests > 1 ? 's' : '') + ' \u2022 ' : '') + 'opened ' + (chk.time || 'recently');
 
   info.appendChild(top);
@@ -683,7 +683,7 @@ function buildOpenCheckRow(chk, handlers, isSelected) {
     'font-family:' + T.fb + ';font-size:15px;font-weight:700;',
     isSelected
       ? 'background:' + T.elec + ';color:' + T.well + ';'
-      : 'background:' + hexToRgba(T.text, 0.08) + ';color:' + T.mutedText + ';border:1px solid ' + hexToRgba(T.text, 0.12) + ';',
+      : 'background:' + hexToRgba(T.text, 0.08) + ';color:' + hexToRgba(T.text, 0.6) + ';border:1px solid ' + hexToRgba(T.text, 0.12) + ';',
   ].join('');
   selMark.textContent = isSelected ? '\u2713' : '';
 
@@ -698,7 +698,7 @@ function buildOpenCheckRow(chk, handlers, isSelected) {
 // gold review card so the server can fix typos by tapping EDIT on any row.
 function buildTipsCard(state, handlers, tipFilter) {
   var hasUnadj = state.unadjustedChecks.length > 0;
-  var accentColor = hasUnadj ? T.yellow : T.gold;
+  var accentColor = hasUnadj ? T.warning : T.gold;
 
   var card = buildBaseCard({ accent: accentColor, stroke: accentColor });
   card.dataset.cardKey = 'unadjusted-tips';
@@ -767,7 +767,7 @@ function buildTipFilterTabs(activeFilter, unadjCount, adjCount, handlers) {
       'pointer-events:auto;touch-action:manipulation;',
       active
         ? 'background:' + activeColor + ';color:' + T.well + ';'
-        : 'background:transparent;color:' + T.mutedText + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
+        : 'background:transparent;color:' + hexToRgba(T.text, 0.6) + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
     ].join('');
     pill.textContent = label + ' ' + count;
     pill.addEventListener('pointerup', function(e) {
@@ -777,7 +777,7 @@ function buildTipFilterTabs(activeFilter, unadjCount, adjCount, handlers) {
     return pill;
   };
 
-  wrap.appendChild(makeTab('unadjusted', 'UNADJ', unadjCount, T.yellow));
+  wrap.appendChild(makeTab('unadjusted', 'UNADJ', unadjCount, T.warning));
   wrap.appendChild(makeTab('adjusted',   'ADJ',   adjCount,   T.gold));
   return wrap;
 }
@@ -796,7 +796,7 @@ function buildTipRow(chk, mode, handlers) {
   label.style.cssText = 'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + T.text + ';';
   label.textContent = (chk.tableLabel ? chk.tableLabel + ' \u2022 ' : '') + 'Check ' + (chk.checkLabel || chk.checkId);
   var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';';
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';';
   meta.textContent = 'closed ' + (chk.time || '') + (chk.cardBrand ? ' \u2022 ' + chk.cardBrand : '');
   info.appendChild(label);
   info.appendChild(meta);
@@ -804,17 +804,17 @@ function buildTipRow(chk, mode, handlers) {
   var amtCol = document.createElement('div');
   amtCol.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px;';
   var sub = document.createElement('div');
-  sub.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.mutedText + ';';
-  sub.innerHTML = '<span style="color:' + T.mutedText + ';margin-right:8px;">subtotal</span><span style="font-weight:700;color:' + T.gold + ';">' + fmt(chk.amount || 0) + '</span>';
+  sub.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
+  sub.innerHTML = '<span style="color:' + hexToRgba(T.text, 0.6) + ';margin-right:8px;">subtotal</span><span style="font-weight:700;color:' + T.gold + ';">' + fmt(chk.amount || 0) + '</span>';
   var tip = document.createElement('div');
 
   if (mode === 'adjusted') {
     // Show the actual tip amount already entered
     tip.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.green + ';';
-    tip.innerHTML = '<span style="color:' + T.mutedText + ';margin-right:8px;">tip</span><span style="font-weight:700;color:' + T.green + ';">' + fmt(chk.tip || 0) + '</span>';
+    tip.innerHTML = '<span style="color:' + hexToRgba(T.text, 0.6) + ';margin-right:8px;">tip</span><span style="font-weight:700;color:' + T.green + ';">' + fmt(chk.tip || 0) + '</span>';
   } else {
-    tip.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.yellow + ';';
-    tip.innerHTML = '<span style="color:' + T.yellow + ';margin-right:8px;">tip</span><span style="font-weight:700;">\u2014 pending</span>';
+    tip.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.warning + ';';
+    tip.innerHTML = '<span style="color:' + T.warning + ';margin-right:8px;">tip</span><span style="font-weight:700;">\u2014 pending</span>';
   }
 
   amtCol.appendChild(sub);
@@ -848,7 +848,7 @@ function buildRowPill(opts) {
   var variant = opts.variant || 'elec';
   var bg, fg, stroke = null;
   if (variant === 'elec')     { bg = T.elec;   fg = T.well; }
-  else if (variant === 'yellow')  { bg = T.yellow; fg = T.well; }
+  else if (variant === 'yellow')  { bg = T.warning; fg = T.well; }
   else if (variant === 'verm')    { bg = T.verm;   fg = T.text; }
   else if (variant === 'outline') { bg = T.bg;     fg = T.text; stroke = hexToRgba(T.text, 0.2); }
   else                            { bg = T.elec;   fg = T.well; }
@@ -880,17 +880,17 @@ function buildCollapsedSummaryLine() {
   var hdr = document.createElement('div');
   hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
   var title = document.createElement('span');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.mutedText + ';letter-spacing:1.8px;';
+  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1.8px;';
   title.textContent = 'TIP-OUT \u2022 TAKE-HOME \u2022 CASH EXPECTED';
   var lock = document.createElement('span');
-  lock.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.mutedText + ';';
+  lock.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
   lock.textContent = '';
   hdr.appendChild(title);
   hdr.appendChild(lock);
   card.appendChild(hdr);
 
   var line = document.createElement('div');
-  line.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.mutedText + ';';
+  line.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
   line.textContent = 'available once blockers resolved';
   card.appendChild(line);
 
@@ -936,7 +936,7 @@ function buildTakeHomeCard(state) {
   card.appendChild(hero);
 
   var formula = document.createElement('div');
-  formula.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';text-align:center;';
+  formula.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
   formula.textContent = 'tips \u2212 tipout + cash';
   card.appendChild(formula);
 
@@ -958,7 +958,7 @@ function buildCashExpectedCard(state) {
   card.appendChild(hero);
 
   var formula = document.createElement('div');
-  formula.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';text-align:center;';
+  formula.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
   formula.textContent = 'cash sales \u2212 card tips';
   card.appendChild(formula);
 
@@ -1073,7 +1073,7 @@ function buildActionsCol(state, handlers, startTime) {
   if (blocked) {
     finalizeBtn.style.opacity = '0.5';
     var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';margin-top:2px;font-weight:normal;letter-spacing:0;text-transform:none;';
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';margin-top:2px;font-weight:normal;letter-spacing:0;text-transform:none;';
     sub.textContent = 'resolve ' + (state.openChecks.length + state.unadjustedChecks.length) + ' blockers first';
     finalizeBtn.appendChild(sub);
     finalizeBtn.style.flexDirection = 'column';
@@ -1109,7 +1109,7 @@ function buildActionPill(opts) {
     stroke = hexToRgba(T.text, 0.2);
   } else if (variant === 'disabled') {
     bg = T.well;
-    fg = T.mutedText;
+    fg = hexToRgba(T.text, 0.6);
     stroke = hexToRgba(T.text, 0.1);
     opacity = 0.4;
   } else {
@@ -1139,7 +1139,7 @@ function buildActionPill(opts) {
 function buildFinalizePill(opts) {
   var blocked = !!opts.blocked;
   var bg = blocked ? T.well : T.green;
-  var fg = blocked ? T.mutedText : T.well;
+  var fg = blocked ? hexToRgba(T.text, 0.6) : T.well;
   var stroke = blocked ? hexToRgba(T.text, 0.1) : null;
   var opacity = blocked ? 0.5 : 1;
 
@@ -1164,7 +1164,7 @@ function buildFinalizePill(opts) {
 
   if (blocked) {
     var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';';
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';';
     sub.textContent = 'resolve ' + opts.blockerCount + ' blocker' + (opts.blockerCount > 1 ? 's' : '') + ' first';
     wrap.appendChild(sub);
   }
@@ -1201,7 +1201,7 @@ function buildBlockerQueue(state, handlers) {
 
   if (state.unadjustedChecks.length > 0) {
     wrap.appendChild(buildBlockerQueueRow({
-      accent: T.yellow,
+      accent: T.warning,
       kind: 'TIPS PENDING',
       detail: state.unadjustedChecks.length + ' CC txn' + (state.unadjustedChecks.length > 1 ? 's' : ''),
       cardKey: 'unadjusted-tips',
@@ -1256,7 +1256,7 @@ function buildTimerFooter(startTime) {
   wrap.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:4px;padding:8px 0 0;border-top:1px solid ' + hexToRgba(T.text, 0.08) + ';';
 
   var row = document.createElement('div');
-  row.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';';
+  row.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';';
   var rowL = document.createElement('span'); rowL.textContent = 'elapsed';
   var rowR = document.createElement('span');
   rowR.style.color = T.green;
@@ -1368,7 +1368,7 @@ defineScene({
         m.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';line-height:1.5;';
         m.textContent = 'Your session is missing an employee ID. Log out and log back in to refresh it.';
         var d = document.createElement('div');
-        d.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';font-style:italic;margin-top:6px;';
+        d.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;margin-top:6px;';
         d.textContent = (err && err.message) || '';
         errCard.appendChild(t);
         errCard.appendChild(m);
@@ -1413,7 +1413,7 @@ defineScene({
             if (r.ok) {
               showToast('Slip printed', { bg: T.greenWarm });
             } else if (r.status === 404) {
-              showToast('Print endpoint pending \u2014 server_checkout.py template needed', { bg: T.yellow });
+              showToast('Print endpoint pending \u2014 server_checkout.py template needed', { bg: T.warning });
             } else {
               showToast('Print failed (' + r.status + ') \u2014 check printer', { bg: T.verm });
             }
@@ -1462,7 +1462,7 @@ defineScene({
                         });
                       } else if (r.status === 404) {
                         // Endpoint not yet implemented on the backend.
-                        showToast('Finalize endpoint pending — backend work needed', { bg: T.yellow });
+                        showToast('Finalize endpoint pending — backend work needed', { bg: T.warning });
                       } else {
                         showToast('Finalize failed (' + r.status + ') — try again', { bg: T.verm });
                       }
@@ -1544,7 +1544,7 @@ defineScene({
                 } else if (ok.length > 0 && failed.length > 0) {
                   showToast(
                     ok.length + ' transferred, ' + failed.length + ' failed',
-                    { bg: T.yellow }
+                    { bg: T.warning }
                   );
                 } else {
                   // All failed — likely the endpoint doesn't exist yet.
@@ -1610,7 +1610,7 @@ defineScene({
             if (ok.length > 0 && failed.length === 0) {
               showToast('Printed ' + ok.length + (ok.length === 1 ? ' check' : ' checks'), { bg: T.greenWarm });
             } else if (ok.length > 0 && failed.length > 0) {
-              showToast(ok.length + ' printed, ' + failed.length + ' failed', { bg: T.yellow });
+              showToast(ok.length + ' printed, ' + failed.length + ' failed', { bg: T.warning });
             } else {
               var code = failed[0] && failed[0].status;
               showToast(
@@ -1661,7 +1661,7 @@ defineScene({
                       if (ok.length > 0 && failed.length === 0) {
                         showToast(discLabel + ' applied to ' + ok.length + (ok.length === 1 ? ' check' : ' checks'), { bg: T.elec });
                       } else if (ok.length > 0 && failed.length > 0) {
-                        showToast(ok.length + ' discounted, ' + failed.length + ' failed', { bg: T.yellow });
+                        showToast(ok.length + ' discounted, ' + failed.length + ' failed', { bg: T.warning });
                       } else {
                         var code = failed[0] && failed[0].status;
                         showToast(
@@ -1721,7 +1721,7 @@ defineScene({
                       if (ok.length > 0 && failed.length === 0) {
                         showToast('Voided ' + ok.length + (ok.length === 1 ? ' check' : ' checks'), { bg: T.verm });
                       } else if (ok.length > 0 && failed.length > 0) {
-                        showToast(ok.length + ' voided, ' + failed.length + ' failed', { bg: T.yellow });
+                        showToast(ok.length + ' voided, ' + failed.length + ' failed', { bg: T.warning });
                       } else {
                         var code = failed[0] && failed[0].status;
                         showToast(
