@@ -75,6 +75,10 @@ class EventType(str, Enum):
     # ── Discounts (LEDGER_CORE) ──────────────────────────────────────
     DISCOUNT_APPROVED = "discount.approved"
     DISCOUNT_VOIDED = "discount.voided"
+    DISCOUNT_CREATED = "discount.created"
+    DISCOUNT_UPDATED = "discount.updated"
+    DISCOUNT_DEACTIVATED = "discount.deactivated"
+    DISCOUNT_REACTIVATED = "discount.reactivated"
     SEAT_DISCOUNT_APPLIED = "seat.discount_applied"
     SEAT_DISCOUNT_VOIDED = "seat.discount_voided"
     SEAT_COMPED = "seat.comped"
@@ -1690,6 +1694,97 @@ def discount_voided(
         terminal_id=terminal_id,
         payload=payload,
         correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def discount_created(
+        terminal_id: str,
+        discount_id: str,
+        name: str,
+        discount_type: str,
+        amount: Decimal,
+        applies_to: str,
+        created_by: str,
+        requires_approval: bool = False,
+        auto_apply: bool = False,
+        **kwargs
+) -> Event:
+    """DISCOUNT_CREATED: new discount definition added to the catalog.
+
+    discount_type: 'percentage' | 'flat_dollar' | etc.
+    applies_to:   'check' | 'item' | 'seat'
+    """
+    return create_event(
+        event_type=EventType.DISCOUNT_CREATED,
+        terminal_id=terminal_id,
+        payload={
+            "discount_id": discount_id,
+            "name": name,
+            "discount_type": discount_type,
+            "amount": str(money_round(amount)),
+            "applies_to": applies_to,
+            "created_by": created_by,
+            "requires_approval": requires_approval,
+            "auto_apply": auto_apply,
+        },
+        **kwargs,
+    )
+
+
+def discount_updated(
+        terminal_id: str,
+        discount_id: str,
+        fields_changed: dict,
+        updated_by: str,
+        **kwargs
+) -> Event:
+    """DISCOUNT_UPDATED: non-price edit to an existing discount definition."""
+    return create_event(
+        event_type=EventType.DISCOUNT_UPDATED,
+        terminal_id=terminal_id,
+        payload={
+            "discount_id": discount_id,
+            "fields_changed": fields_changed,
+            "updated_by": updated_by,
+        },
+        **kwargs,
+    )
+
+
+def discount_deactivated(
+        terminal_id: str,
+        discount_id: str,
+        deactivated_by: str,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DISCOUNT_DEACTIVATED: soft-delete; existing applied discounts remain valid."""
+    payload: dict = {"discount_id": discount_id, "deactivated_by": deactivated_by}
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.DISCOUNT_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def discount_reactivated(
+        terminal_id: str,
+        discount_id: str,
+        reactivated_by: str,
+        **kwargs
+) -> Event:
+    """DISCOUNT_REACTIVATED: undo of discount.deactivated."""
+    return create_event(
+        event_type=EventType.DISCOUNT_REACTIVATED,
+        terminal_id=terminal_id,
+        payload={
+            "discount_id": discount_id,
+            "reactivated_by": reactivated_by,
+        },
         **kwargs,
     )
 

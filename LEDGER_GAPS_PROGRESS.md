@@ -4,21 +4,21 @@ Tracks the LG-## gap clusters across phased work. Source of truth for node
 inventory is `backend/app/services/ledger_gap_report.py` (surfaced in the
 `/entomology` Event Ledger Gaps tab).
 
-## Final state (all phases merged to main)
+## Current state
 
 | Status | Count | % | Notes |
 | --- | --- | --- | --- |
-| IMPLEMENTED | 88 | 75% | Emission wired in routes and/or via `/config/push` |
+| IMPLEMENTED | 91 | 77% | Emission wired in routes and/or via `/config/push` |
 | RENAMED | 18 | 15% | Code emits under a different name than the spec (audit-equivalent) |
 | PARTIAL | 4 | 3% | Covered but with a known caveat (see per-node `drop_risk`) |
 | FACTORY-ONLY | 3 | 3% | Enum + factory live; no emission path yet (dark-ship) |
-| **MISSING** | **5** | **4%** | See list below |
+| **MISSING** | **2** | **2%** | See list below |
 | **Total** | **118** | | |
 
-Events in `EventType` enum: **~178** (from ~63 at start).
-Backend tests: **1247 passing** (from 1188 at start).
+Events in `EventType` enum: **~182** (from ~63 at start).
+Backend tests: **1273 passing** (from 1247 at start).
 
-## Phases shipped (all on `main`)
+## Phases shipped
 
 | Phase | Theme | Events touched | Status |
 | --- | --- | --- | --- |
@@ -40,18 +40,44 @@ Backend tests: **1247 passing** (from 1188 at start).
 | 7 | Day + batch lifecycle | 7 `check.day_locked` / `day.locked/reopened` / `batch.opened/settlement_initiated/reopened` events | **DONE** |
 | 8 | Seat financial + tipout pipeline | `seat.discount_*`, `seat.comped`, `seat.payment_voided`, `tipout.calculated/adjusted/distributed` | **DONE** |
 | 9 | Seat-transfer family (dark-ship) | 12 per-seat / cross-check / whole-seat / split-merge / reopen events | **DONE** |
+| 10 | Discount catalog CRUD | `discount.created` / `updated` / `deactivated` / `reactivated` (closes LG-87/88/89) | **DONE** |
 
-## Still MISSING (5 nodes)
+## Still MISSING (2 nodes)
 
 | LG | Event | Severity | Why |
 | --- | --- | --- | --- |
 | LG-64 | `break.started` | HIGH | User-deferred during Phase 4 scoping (labor-compliance only, non-blocking) |
 | LG-65 | `break.ended` | HIGH | Mirror of LG-64 |
-| LG-87 | `discount.created` | MEDIUM | Discount-catalog CRUD; no overseer route yet |
-| LG-88 | `discount.updated` | MEDIUM | Same |
-| LG-89 | `discount.deactivated_or_reactivated` | MEDIUM | Same |
 
 Every other event is either emitted, renamed from the spec but audit-equivalent, or dark-shipped (enum + factory + `/config/push` round-trip test) ready to go live the moment a producer sends it.
+
+---
+
+## Phase 10 — Discount catalog CRUD (branch `claude/ledger-discount-catalog-phase10`)
+
+**Date**: 2026-04-24  
+**Closes**: LG-87 (`discount.created`), LG-88 (`discount.updated`), LG-89 (`discount.deactivated` + `discount.reactivated`)  
+**MISSING → IMPLEMENTED**: 3 nodes (LG-89 maps to 2 events; 4 new EventType entries total)
+
+### What shipped
+
+| Event | EventType | Site |
+| --- | --- | --- |
+| `discount.created` | `DISCOUNT_CREATED` | `events.py:discount_created, config.py:push_changes` |
+| `discount.updated` | `DISCOUNT_UPDATED` | `events.py:discount_updated, config.py:push_changes` |
+| `discount.deactivated` | `DISCOUNT_DEACTIVATED` | `events.py:discount_deactivated, config.py:push_changes` |
+| `discount.reactivated` | `DISCOUNT_REACTIVATED` | `events.py:discount_reactivated, config.py:push_changes` |
+
+### Key decisions
+
+- Distinct `discount.deactivated` and `discount.reactivated` events (following the established `category.*` / `item.*` pattern) instead of a single combined event.
+- All four events route through `/config/push`; added `discount.*` → `"discounts"` section inference in `push_changes`.
+- Factory payloads: `discount_created` carries `discount_id`, `name`, `discount_type`, `amount`, `applies_to`, `created_by`, `requires_approval`, `auto_apply`. Distinct from order-level `discount.approved` which tracks applications, not catalog definitions.
+- `push_changes` is a raw pass-through (no factory defaults applied server-side) — optional fields like `requires_approval` are absent when not sent, consistent with all other dark-shipped events.
+
+### Test file
+
+`tests/test_phase10_discount_catalog.py` — 9 tests, all passing.
 
 ---
 
