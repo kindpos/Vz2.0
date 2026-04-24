@@ -51,7 +51,7 @@
 //                                        window.confirm() when the
 //                                        interrupt scene isn't registered.
 
-import { T } from './tokens.js';
+import { T } from '../common/tokens.js';
 import { buildPillButton } from './theme-manager.js';
 // ^ adjust import path/names if buildPillButton lives elsewhere
 

@@ -5,7 +5,7 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T } from './tokens.js';
+import { T } from '../common/tokens.js';
 import { buildPillButton, hexToRgba, darkenHex } from './theme-manager.js';
 import { SceneManager } from './scene-manager.js';
 import { PREFIXES as UNI_PREFIXES } from './menu-data/universal-modifiers.js';

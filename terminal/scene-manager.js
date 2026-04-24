@@ -20,7 +20,7 @@
 //    SceneManager.openGate('login');
 // ═══════════════════════════════════════════════════
 
-import { T, onThemeChange } from './tokens.js';
+import { T, onThemeChange } from '../common/tokens.js';
 import { entReport }         from './entomology-client.js';
 
 // ── Scene Registry ────────────────────────────────

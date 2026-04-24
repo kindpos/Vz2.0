@@ -4,7 +4,7 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T, chamfer } from './tokens.js';
+import { T, chamfer } from '../common/tokens.js';
 import { lightenHex, darkenHex, hexToRgba } from './theme-manager.js';
 
 // ── Numpad dimensions ─────────────────────────────

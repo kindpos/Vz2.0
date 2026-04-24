@@ -34,7 +34,7 @@
 // ═══════════════════════════════════════════════════
 
 import { SceneManager, defineScene } from '../scene-manager.js';
-import { T } from '../tokens.js';
+import { T } from '../../common/tokens.js';
 import {
   buildWell,
   buildCard,

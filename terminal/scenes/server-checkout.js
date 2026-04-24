@@ -8,7 +8,7 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T } from '../tokens.js';
+import { T } from '../../common/tokens.js';
 import { showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { OrderSummary } from '../order-summary.js';

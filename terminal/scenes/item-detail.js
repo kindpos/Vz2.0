@@ -2,7 +2,7 @@
 // Read-only view of item modifiers. (UI-023)
 
 import { SceneManager, defineScene } from '../scene-manager.js';
-import { T } from '../tokens.js';
+import { T } from '../../common/tokens.js';
 import { buildPillButton, hexToRgba } from '../theme-manager.js';
 
 defineScene({

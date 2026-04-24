@@ -12,7 +12,7 @@
 import './auth-client.js';
 
 import { SceneManager } from './scene-manager.js';
-import { T, applyStoreTheme } from './tokens.js';
+import { T, applyStoreTheme } from '../common/tokens.js';
 
 // ── Scene imports ─────────────────────────────────
 import './scenes/login.js';

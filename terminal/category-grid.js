@@ -4,7 +4,7 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T } from './tokens.js';
+import { T } from '../common/tokens.js';
 import { hexToRgba } from './theme-manager.js';
 
 // Shrink label font until it fits the tile. Allows natural multi-word

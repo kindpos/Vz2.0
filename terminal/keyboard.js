@@ -9,7 +9,7 @@
 //  TODO: Replace with a proper Vz2.0 on-screen QWERTY component.
 // ═══════════════════════════════════════════════════
 
-import { T } from './tokens.js';
+import { T } from '../common/tokens.js';
 import { buildPillButton, darkenHex } from './theme-manager.js';
 
 var _root = null;

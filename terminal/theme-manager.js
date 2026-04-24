@@ -18,7 +18,7 @@
 //   3. buildCard() returns { wrap, card } — append wrap to DOM.
 // ═══════════════════════════════════════════════════
 
-import { T, chamfer } from './tokens.js';
+import { T, chamfer } from '../common/tokens.js';
 export { T };
 
 // ═══════════════════════════════════════════════════

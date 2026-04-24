@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════
 
 import { defineScene, SceneManager } from '../scene-manager.js';
-import { T }                          from '../tokens.js';
+import { T }                          from '../../common/tokens.js';
 import { entReport }                  from '../entomology-client.js';
 import {
   buildStaticCard,

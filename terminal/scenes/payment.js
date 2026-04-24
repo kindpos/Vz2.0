@@ -4,7 +4,7 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T } from '../tokens.js';
+import { T } from '../../common/tokens.js';
 import { fetchWithTimeout } from '../net.js';
 import { buildButton, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';

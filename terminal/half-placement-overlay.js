@@ -6,7 +6,7 @@
  * scene-manager.js.
  */
 
-import { T } from './tokens.js';
+import { T } from '../common/tokens.js';
 import { buildPillButton, darkenHex, hexToRgba } from './theme-manager.js';
 import { SceneManager } from './scene-manager.js';
 

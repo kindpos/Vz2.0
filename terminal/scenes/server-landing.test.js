@@ -40,7 +40,7 @@ vi.mock('../scene-manager.js', () => ({
   defineScene: (def) => { registeredScenes.push(def); return def; },
 }));
 
-vi.mock('../tokens.js', () => {
+vi.mock('../../common/tokens.js', () => {
   const T = {
     bg: '#383c42', card: '#2e3236', well: '#22252a',
     green: '#86efac', greenDk: '#4ade80', gold: '#f5a623', goldDk: '#e09010',
