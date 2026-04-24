@@ -17,9 +17,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import get_diagnostic_collector
+from app.api.dependencies import get_diagnostic_collector, get_ledger
 from app.api.routes.auth import get_current_session
 from app.config import settings
+from app.core.event_ledger import EventLedger
+from app.core.events import EventType
 from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 from app.services.diagnostic_collector import DiagnosticCollector
 from app.services.entomology_report import (
@@ -139,6 +141,28 @@ async def get_ledger_gaps(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "nodes": LEDGER_GAP_NODES,
         "summary": aggregate_summary(LEDGER_GAP_NODES),
+    }
+
+
+@router.get("/settlement-drift")
+async def get_settlement_drift(
+    session: dict = Depends(get_current_session),
+    ledger: EventLedger = Depends(get_ledger),
+) -> dict:
+    """List all batch.settlement_failed events for operator review."""
+    events = await ledger.get_events_by_type(EventType.BATCH_SETTLEMENT_FAILED)
+    return {
+        "count": len(events),
+        "failures": [
+            {
+                "sequence": ev.sequence_number,
+                "timestamp": ev.timestamp.isoformat() if ev.timestamp else None,
+                "reason": ev.payload.get("reason"),
+                "recon_diff": ev.payload.get("recon_diff"),
+                "failed_invariants": ev.payload.get("failed_invariants", []),
+            }
+            for ev in sorted(events, key=lambda e: e.sequence_number or 0, reverse=True)
+        ],
     }
 
 
