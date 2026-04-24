@@ -58,6 +58,7 @@ class EventType(str, Enum):
     CHECK_SPLIT = "check.split"
     CHECK_MERGED = "check.merged"
     CHECK_TABLE_CHANGED = "check.table_changed"
+    CHECK_DAY_LOCKED = "check.day_locked"
 
     # ── Item management (LEDGER_CORE) ────────────────────────────────
     ITEM_ADDED = "item.added"
@@ -114,13 +115,19 @@ class EventType(str, Enum):
     CASH_TIPS_DECLARED = "payment.cash_tips_declared"
 
     # ── Batch / Day (LEDGER_CORE) ────────────────────────────────────
+    BATCH_OPENED = "batch.opened"
+    BATCH_SETTLEMENT_INITIATED = "batch.settlement_initiated"
     BATCH_SUBMITTED = "batch.submitted"
     BATCH_SETTLEMENT_FAILED = "batch.settlement_failed"
+    BATCH_REOPENED = "batch.reopened"
     DAY_OPENED = "day.opened"
     DAY_CASH_FLOAT_UPDATED = "day.cash_float_updated"
     DAY_CASH_DROP = "day.cash_drop"
     DAY_CASH_PAYOUT = "day.cash_payout"
+    DAY_FLASH_REPORT_GENERATED = "day.flash_report_generated"
     DAY_CLOSED = "day.closed"
+    DAY_LOCKED = "day.locked"
+    DAY_REOPENED = "day.reopened"
 
     # ── Device (EPHEMERAL) ───────────────────────────────────────────
     DEVICE_STATUS_CHANGED = "device.status_changed"
@@ -2635,6 +2642,173 @@ def security_setting_updated(
         event_type=EventType.SECURITY_SETTING_UPDATED,
         terminal_id=terminal_id,
         payload=payload,
+        **kwargs,
+    )
+
+
+def check_day_locked(
+        terminal_id: str,
+        order_id: str,
+        locked_by_event: str = "day.closed",
+        **kwargs
+) -> Event:
+    """CHECK_DAY_LOCKED: audit marker on each order that was part of
+    the day-close snapshot, so late edits arriving after the close
+    can be flagged as post-lock mutations. Typically emitted in the
+    close-day append_batch, one per order_id that participated."""
+    return create_event(
+        event_type=EventType.CHECK_DAY_LOCKED,
+        terminal_id=terminal_id,
+        payload={
+            "order_id": order_id,
+            "locked_by_event": locked_by_event,
+        },
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def day_flash_report_generated(
+        terminal_id: str,
+        report_id: str,
+        window_start: str,
+        window_end: str,
+        total_sales: Decimal = Decimal("0.00"),
+        generated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DAY_FLASH_REPORT_GENERATED: midday snapshot so managers can
+    reconcile drawer / tips / sales without closing the day. Payload
+    carries the window and a top-line total; full report lives
+    elsewhere."""
+    payload = {
+        "report_id": report_id,
+        "window_start": window_start,
+        "window_end": window_end,
+        "total_sales": money_round(total_sales),
+    }
+    if generated_by is not None:
+        payload["generated_by"] = generated_by
+    return create_event(
+        event_type=EventType.DAY_FLASH_REPORT_GENERATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def day_locked(
+        terminal_id: str,
+        date: str,
+        locked_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DAY_LOCKED: emitted after DAY_CLOSED when the day is fully
+    locked against further edits. Typically the terminal calls this
+    once it has confirmed no post-close projections are in flight;
+    DAY_LOCKED is the authoritative freeze marker."""
+    payload = {"date": date}
+    if locked_by is not None:
+        payload["locked_by"] = locked_by
+    return create_event(
+        event_type=EventType.DAY_LOCKED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def day_reopened(
+        terminal_id: str,
+        date: str,
+        reopened_by: str,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DAY_REOPENED: reverses a DAY_LOCKED. High-friction operation --
+    requires manager approval -- because it lets late edits land in
+    what was previously a closed window."""
+    payload = {
+        "date": date,
+        "reopened_by": reopened_by,
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.DAY_REOPENED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def batch_opened(
+        terminal_id: str,
+        batch_id: str,
+        opened_at: str,
+        expected_close_at: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """BATCH_OPENED: a settlement batch begins accepting transactions.
+    Lets replay queries bin payments into their originating batch
+    without relying on timestamp windows."""
+    payload = {
+        "batch_id": batch_id,
+        "opened_at": opened_at,
+    }
+    if expected_close_at is not None:
+        payload["expected_close_at"] = expected_close_at
+    return create_event(
+        event_type=EventType.BATCH_OPENED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=batch_id,
+        **kwargs,
+    )
+
+
+def batch_settlement_initiated(
+        terminal_id: str,
+        batch_id: str,
+        initiated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """BATCH_SETTLEMENT_INITIATED: the processor call started -- the
+    batch is no longer accepting new transactions but the settlement
+    result (success/failure) has not yet landed."""
+    payload = {"batch_id": batch_id}
+    if initiated_by is not None:
+        payload["initiated_by"] = initiated_by
+    return create_event(
+        event_type=EventType.BATCH_SETTLEMENT_INITIATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=batch_id,
+        **kwargs,
+    )
+
+
+def batch_reopened(
+        terminal_id: str,
+        batch_id: str,
+        reopened_by: str,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """BATCH_REOPENED: emitted when a previously-settled batch is
+    reopened (e.g. for a next-day correction). Same high-friction
+    rules as DAY_REOPENED."""
+    payload = {
+        "batch_id": batch_id,
+        "reopened_by": reopened_by,
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.BATCH_REOPENED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=batch_id,
         **kwargs,
     )
 
