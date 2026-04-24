@@ -61,9 +61,18 @@ vi.mock('../numpad.js', () => ({
 
 vi.mock('../theme-manager.js', () => ({
   buildCard:       () => document.createElement('div'),
-  buildPillButton: ({ label } = {}) => {
+  buildPillButton: (opts = {}) => {
     const el = document.createElement('button');
-    el.textContent = label || '';
+    el.textContent = opts.label || '';
+    if (opts.onClick) el.addEventListener('pointerup', opts.onClick);
+    el._disabled = !!opts.disabled;
+    el.style.cursor = opts.disabled ? 'not-allowed' : 'pointer';
+    el.setDisabled = (d) => {
+      el._disabled = !!d;
+      el.style.cursor = d ? 'not-allowed' : 'pointer';
+      el.style.pointerEvents = d ? 'none' : 'auto';
+    };
+    el.setColor = (_c, _d, _t) => {};
     return el;
   },
   hexToRgba:  (c) => c,

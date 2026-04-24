@@ -1400,7 +1400,7 @@ defineScene({
     var panel = document.createElement('div');
     panel.style.cssText = [
       'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.verm + ';',
+      'background:' + T.well + ';border:3px solid ' + T.verm + ';',
       'padding:22px;border-radius:12px;',
       'width:420px;max-width:92vw;box-sizing:border-box;',
     ].join('');
@@ -1415,7 +1415,7 @@ defineScene({
     panel.appendChild(title);
 
     var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';text-align:center;';
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
     sub.textContent = 'this cannot be undone';
     panel.appendChild(sub);
 
@@ -1439,7 +1439,7 @@ defineScene({
 
     // Reason picker — radio-button list
     var reasonLabel = document.createElement('div');
-    reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;';
+    reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;';
     reasonLabel.textContent = 'reason';
     panel.appendChild(reasonLabel);
 
@@ -1508,42 +1508,35 @@ defineScene({
 
     panel.appendChild(reasonList);
 
-    // Action buttons
+    // Action buttons — canonical pills. VOID stays disabled until a reason
+    // is selected (no default — the user must pick one).
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
 
-    var cancel = document.createElement('div');
-    cancel.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    cancel.textContent = 'CANCEL';
-    cancel.addEventListener('pointerup', function() { if (params.onCancel) params.onCancel(); });
-
-    var confirm = document.createElement('div');
-    var confirmEnabled = false;
-    var updateConfirmStyle = function() {
-      confirmEnabled = !!selectedReason;
-      confirm.style.cssText = [
-        'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-        'background:' + (confirmEnabled ? T.verm : hexToRgba(T.verm, 0.3)) + ';',
-        'border-radius:999px;',
-        'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
-        'color:' + (confirmEnabled ? T.text : hexToRgba(T.text, 0.5)) + ';letter-spacing:1.2px;',
-        'cursor:' + (confirmEnabled ? 'pointer' : 'not-allowed') + ';user-select:none;-webkit-user-select:none;',
-        'pointer-events:auto;touch-action:manipulation;',
-        confirmEnabled ? 'box-shadow:0 3px 0 rgba(0,0,0,0.3);' : '',
-      ].join('');
-    };
-    updateConfirmStyle();
-    confirm.textContent = 'VOID';
-    confirm.addEventListener('pointerup', function() {
-      if (confirmEnabled && params.onConfirm) params.onConfirm(selectedReason);
+    var cancel = buildPillButton({
+      label: 'CANCEL',
+      variant: 'ghost',
+      fontSize: T.fsB3,
+      onClick: function() { if (params.onCancel) params.onCancel(); },
     });
+    cancel.style.flex = '1';
+    cancel.style.height = '48px';
+
+    var confirm = buildPillButton({
+      label: 'VOID',
+      variant: 'verm',
+      fontSize: T.fsB3,
+      disabled: true,
+      onClick: function() {
+        if (selectedReason && params.onConfirm) params.onConfirm(selectedReason);
+      },
+    });
+    confirm.style.flex = '1';
+    confirm.style.height = '48px';
+
+    var updateConfirmStyle = function() {
+      confirm.setDisabled(!selectedReason);
+    };
 
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
