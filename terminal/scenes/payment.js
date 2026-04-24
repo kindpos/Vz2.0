@@ -809,13 +809,15 @@ function buildCenterColumn(params) {
 
   col.appendChild(buildTenderToggle());
 
-  // Denom grid — capped so it can't squeeze the action row off-screen.
+  // Denom grid — flexes to fill the available vertical space so the
+  // tiles grow with the viewport instead of leaving dead space above
+  // the balance strip.
   var grid = document.createElement('div');
   grid.style.cssText = [
     'display:grid;',
     'grid-template-columns:1fr 1fr;',
     'grid-template-rows:1fr 1fr;',
-    'gap:8px;flex-shrink:0;height:210px;',
+    'gap:10px;flex:1;min-height:0;',
   ].join('');
   grid.appendChild(buildDenomTile(5));
   grid.appendChild(buildDenomTile(10));
@@ -824,16 +826,11 @@ function buildCenterColumn(params) {
   col.appendChild(grid);
 
   _btn100 = buildDenomTile(100, { fullWidth: true });
-  _btn100.style.height = '48px';
+  _btn100.style.height = '64px';
   col.appendChild(_btn100);
 
   col.appendChild(buildActionRow());
-
-  // Balance strip pinned at the bottom via margin-top:auto — any extra
-  // vertical space in the column becomes a gap above the strip.
-  var balance = buildBalanceStrip();
-  balance.style.marginTop = 'auto';
-  col.appendChild(balance);
+  col.appendChild(buildBalanceStrip());
 
   return col;
 }
@@ -910,9 +907,9 @@ function buildDenomTile(val, opts) {
     onClick: function() { handleDenomination(val); },
   });
   tile.style.cssText += [
-    (opts.fullWidth ? 'width:100%;height:60px;flex-shrink:0;' : 'width:100%;height:100%;'),
+    (opts.fullWidth ? 'width:100%;flex-shrink:0;' : 'width:100%;height:100%;'),
     'display:flex;align-items:center;justify-content:center;',
-    'padding:0;',
+    'padding:' + (opts.fullWidth ? '8px 20px 6px 24px' : '18px 20px 16px 24px') + ';',
   ].join('');
 
   var label = document.createElement('div');
@@ -1042,8 +1039,8 @@ function setPaymentMode(mode) {
       el.style.boxShadow  = '0 4px 0 ' + b.dk + ', 0 0 16px ' + hexToRgba(b.color, 0.4);
     } else {
       el.style.background = T.moon;
-      el.style.color      = b.color;
-      el.style.border     = '2px solid ' + b.color;
+      el.style.color      = T.moonText;
+      el.style.border     = '4px solid ' + b.color;
       el.style.boxShadow  = 'none';
     }
   });
