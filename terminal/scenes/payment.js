@@ -920,15 +920,19 @@ function buildActionRow() {
   row.style.cssText = 'flex-shrink:0;display:flex;gap:10px;height:52px;';
 
   // EXACT / SPLIT mirror check-overview's PAY / ADD-ITEMS theme — solid
-  // filled pills with color + darkBg shadow, no outlined ghost variants.
+  // filled pills with color + darkBg shadow, 14px rounding, 20px label.
   var exact = buildPillButton({
     label:   'EXACT',
     color:   T.gold,
     darkBg:  T.goldDk,
     onClick: handleExact,
   });
-  exact.style.flex   = '1';
-  exact.style.height = '52px';
+  Object.assign(exact.style, {
+    flex:         '1',
+    height:       '52px',
+    borderRadius: '14px',
+    fontSize:     '20px',
+  });
   row.appendChild(exact);
 
   var split = buildPillButton({
@@ -937,8 +941,12 @@ function buildActionRow() {
     darkBg:  T.elecDk,
     onClick: _onSplitTap,
   });
-  split.style.flex   = '1';
-  split.style.height = '52px';
+  Object.assign(split.style, {
+    flex:         '1',
+    height:       '52px',
+    borderRadius: '14px',
+    fontSize:     '20px',
+  });
   row.appendChild(split);
 
   return row;
@@ -1009,7 +1017,7 @@ function setPaymentMode(mode) {
       el.style.border     = 'none';
       el.style.boxShadow  = '0 4px 0 ' + b.dk + ', 0 0 16px ' + hexToRgba(b.color, 0.4);
     } else {
-      el.style.background = T.card;
+      el.style.background = T.moon;
       el.style.color      = b.color;
       el.style.border     = '2px solid ' + b.color;
       el.style.boxShadow  = 'none';
