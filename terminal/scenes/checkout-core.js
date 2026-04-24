@@ -529,43 +529,58 @@ defineScene({
   render: function(container, params) {
     container.style.cssText = 'display:flex;align-items:center;justify-content:center;';
 
-    // Nostalgia card shell — verm accent marks destructive intent.
-    var shell = buildCard({
-      accent: RED,
-      bg: T.well,
-      padding: '8px ' + T.scenePad + 'px ' + T.scenePad + 'px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.alignItems    = 'center';
-    shell.card.style.gap           = '10px';
-    shell.card.style.minWidth      = '280px';
+    // Nostalgia landing-page card shell — verm accent marks
+    // destructive intent.
+    var shell = buildStaticCard({ accent: RED });
+    shell.style.padding = '20px ' + T.scenePad + 'px ' + T.scenePad + 'px';
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.alignItems    = 'center';
+    shell.style.gap           = '10px';
+    shell.style.minWidth      = '280px';
 
     var lbl = document.createElement('div');
     lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;';
     lbl.textContent = '// ZERO ALL TIPS //';
-    shell.card.appendChild(lbl);
+    shell.appendChild(lbl);
 
     var msg = document.createElement('div');
     msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';text-align:center;';
     msg.textContent = 'Set ' + (params.count || 0) + ' unadjusted tip(s) to $0.00?';
-    shell.card.appendChild(msg);
+    shell.appendChild(msg);
 
-    var confirmBtn = buildButton('CONFIRM', {
-      fill: T.card, color: RED, fontSize: T.fsB3, height: 44,
-      onTap: function() { params.onConfirm(); },
+    // Destructive confirm — CONFIRM carries the verm (matches shell
+    // accent signaling destruction). CANCEL uses ghost so the eye goes
+    // to the destructive action first.
+    var confirmBtn = buildPillButton({
+      label:    'CONFIRM',
+      variant:  'verm',
+      fontSize: T.fsB2,
+      onClick:  function() { params.onConfirm(); },
     });
-    confirmBtn.style.width = '240px';
-    shell.card.appendChild(confirmBtn);
+    confirmBtn.style.width           = '240px';
+    confirmBtn.style.height          = '48px';
+    confirmBtn.style.borderRadius    = '14px';
+    confirmBtn.style.display         = 'flex';
+    confirmBtn.style.alignItems      = 'center';
+    confirmBtn.style.justifyContent  = 'center';
+    shell.appendChild(confirmBtn);
 
-    var cancelBtn = buildButton('CANCEL', {
-      fill: T.card, color: T.green, fontSize: T.fsB3, height: 40,
-      onTap: function() { params.onCancel(); },
+    var cancelBtn = buildPillButton({
+      label:    'CANCEL',
+      variant:  'ghost',
+      fontSize: T.fsB3,
+      onClick:  function() { params.onCancel(); },
     });
-    cancelBtn.style.width = '240px';
-    shell.card.appendChild(cancelBtn);
+    cancelBtn.style.width           = '240px';
+    cancelBtn.style.height          = '40px';
+    cancelBtn.style.borderRadius    = '14px';
+    cancelBtn.style.display         = 'flex';
+    cancelBtn.style.alignItems      = 'center';
+    cancelBtn.style.justifyContent  = 'center';
+    shell.appendChild(cancelBtn);
 
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
   },
 });
 
@@ -599,9 +614,10 @@ defineScene({
     });
     // Nostalgia card shell — chamfer + drop-shadow + gold accent bar.
     // Replaces the legacy bare-numpad look the framework used to impose.
-    var shell = buildCard({ accent: T.gold, padding: '20px 24px' });
-    shell.card.appendChild(numpad);
-    container.appendChild(shell.wrap);
+    var shell = buildStaticCard({ accent: T.gold });
+    shell.style.padding = '20px 24px';
+    shell.appendChild(numpad);
+    container.appendChild(shell);
   },
 });
 
@@ -928,17 +944,14 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildCard({
-      accent: T.green,
-      bg: T.well,
-      padding: '22px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.gap           = '14px';
-    shell.card.style.width         = '320px';
-    shell.card.style.boxSizing     = 'border-box';
-    var panel = shell.card;
+    var shell = buildStaticCard({ accent: T.green });
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.gap           = '14px';
+    shell.style.width         = '360px';
+    shell.style.padding       = '24px 28px 28px 32px';
+    shell.style.boxSizing     = 'border-box';
+    var panel = shell;
 
     var title = document.createElement('div');
     title.style.cssText = [
@@ -994,40 +1007,37 @@ defineScene({
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:10px;';
 
-    var cancel = document.createElement('div');
-    cancel.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    cancel.textContent = 'CANCEL';
-    cancel.addEventListener('pointerup', function() {
-      if (params.onCancel) params.onCancel();
+    var cancel = buildPillButton({
+      label:    'CANCEL',
+      variant:  'ghost',
+      fontSize: T.fsB2,
+      onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
+    cancel.style.flex            = '1';
+    cancel.style.height          = '48px';
+    cancel.style.borderRadius    = '14px';
+    cancel.style.display         = 'flex';
+    cancel.style.alignItems      = 'center';
+    cancel.style.justifyContent  = 'center';
 
-    var confirm = document.createElement('div');
-    confirm.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.green + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.well + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-      'box-shadow:0 3px 0 rgba(0,0,0,0.3);',
-    ].join('');
-    confirm.textContent = 'CONFIRM';
-    confirm.addEventListener('pointerup', function() {
-      if (params.onConfirm) params.onConfirm();
+    var confirm = buildPillButton({
+      label:    'CONFIRM',
+      variant:  'mint',
+      fontSize: T.fsB2,
+      onClick:  function() { if (params.onConfirm) params.onConfirm(); },
     });
+    confirm.style.flex           = '1';
+    confirm.style.height         = '48px';
+    confirm.style.borderRadius   = '14px';
+    confirm.style.display        = 'flex';
+    confirm.style.alignItems     = 'center';
+    confirm.style.justifyContent = 'center';
 
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
 
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
   },
 });
 
@@ -1053,18 +1063,15 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildCard({
-      accent: T.elec,
-      bg: T.well,
-      padding: '22px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.gap           = '14px';
-    shell.card.style.width         = '640px';
-    shell.card.style.maxWidth      = '92vw';
-    shell.card.style.boxSizing     = 'border-box';
-    var panel = shell.card;
+    var shell = buildStaticCard({ accent: T.elec });
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.gap           = '14px';
+    shell.style.width         = '640px';
+    shell.style.maxWidth      = '92vw';
+    shell.style.padding       = '24px 28px 28px 32px';
+    shell.style.boxSizing     = 'border-box';
+    var panel = shell;
 
     // Header
     var hdrRow = document.createElement('div');
@@ -1129,45 +1136,47 @@ defineScene({
     grid.appendChild(loading);
     panel.appendChild(grid);
 
-    // Action buttons — CONFIRM starts disabled until a server is picked
+    // Action buttons — CONFIRM starts disabled until a server is picked.
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
 
-    var cancel = document.createElement('div');
-    cancel.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    cancel.textContent = 'CANCEL';
-    cancel.addEventListener('pointerup', function() {
-      if (params.onCancel) params.onCancel();
+    var cancel = buildPillButton({
+      label:    'CANCEL',
+      variant:  'ghost',
+      fontSize: T.fsB2,
+      onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
+    cancel.style.flex            = '1';
+    cancel.style.height          = '48px';
+    cancel.style.borderRadius    = '14px';
+    cancel.style.display         = 'flex';
+    cancel.style.alignItems      = 'center';
+    cancel.style.justifyContent  = 'center';
 
-    var confirm = document.createElement('div');
-    var confirmEnabled = false;
-    var updateConfirmStyle = function() {
-      confirm.style.cssText = [
-        'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-        'background:' + (confirmEnabled ? T.elec : hexToRgba(T.elec, 0.3)) + ';',
-        'border-radius:999px;',
-        'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
-        'color:' + (confirmEnabled ? T.well : hexToRgba(T.well, 0.5)) + ';letter-spacing:1.2px;',
-        'cursor:' + (confirmEnabled ? 'pointer' : 'not-allowed') + ';user-select:none;-webkit-user-select:none;',
-        'pointer-events:auto;touch-action:manipulation;',
-        confirmEnabled ? 'box-shadow:0 3px 0 rgba(0,0,0,0.3);' : '',
-      ].join('');
-    };
-    updateConfirmStyle();
-    confirm.textContent = 'CONFIRM';
+    var confirm = buildPillButton({
+      label:    'CONFIRM',
+      variant:  'elec',
+      fontSize: T.fsB2,
+      onClick:  function() {
+        if (!selectedServer) return;
+        if (params.onConfirm) params.onConfirm(selectedServer);
+      },
+    });
+    confirm.style.flex           = '1';
+    confirm.style.height         = '48px';
+    confirm.style.borderRadius   = '14px';
+    confirm.style.display        = 'flex';
+    confirm.style.alignItems     = 'center';
+    confirm.style.justifyContent = 'center';
+    confirm.setDisabled(true);
+
+    // setDisabled on buildPillButton handles dim + not-allowed cursor.
+    var updateConfirmStyle = function() { confirm.setDisabled(!selectedServer); };
 
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
 
     // Fetch clocked-in servers + build tiles
     var selectedServer = null;
@@ -1246,7 +1255,6 @@ defineScene({
           isSel = true;
           applyStyle();
           selectedServer = srv;
-          confirmEnabled = true;
           updateConfirmStyle();
         });
 
@@ -1259,12 +1267,6 @@ defineScene({
 
         grid.appendChild(tile);
       });
-    });
-
-    // Confirm click handler (wired after update helper is defined)
-    confirm.addEventListener('pointerup', function() {
-      if (!confirmEnabled || !selectedServer) return;
-      if (params.onConfirm) params.onConfirm(selectedServer);
     });
   },
 });
@@ -1292,18 +1294,15 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildCard({
-      accent: T.elec,
-      bg: T.well,
-      padding: '22px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.gap           = '14px';
-    shell.card.style.width         = '520px';
-    shell.card.style.maxWidth      = '92vw';
-    shell.card.style.boxSizing     = 'border-box';
-    var panel = shell.card;
+    var shell = buildStaticCard({ accent: T.elec });
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.gap           = '14px';
+    shell.style.width         = '520px';
+    shell.style.maxWidth      = '92vw';
+    shell.style.padding       = '24px 28px 28px 32px';
+    shell.style.boxSizing     = 'border-box';
+    var panel = shell;
 
     // Header
     var hdrRow = document.createElement('div');
@@ -1394,47 +1393,46 @@ defineScene({
 
     panel.appendChild(grid);
 
-    // Action buttons
+    // Action buttons — APPLY disabled until a discount preset is picked.
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
 
-    var cancel = document.createElement('div');
-    cancel.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    cancel.textContent = 'CANCEL';
-    cancel.addEventListener('pointerup', function() { if (params.onCancel) params.onCancel(); });
-
-    var apply = document.createElement('div');
-    var applyEnabled = false;
-    var updateApplyStyle = function() {
-      applyEnabled = !!selectedDiscount;
-      apply.style.cssText = [
-        'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-        'background:' + (applyEnabled ? T.elec : hexToRgba(T.elec, 0.3)) + ';',
-        'border-radius:999px;',
-        'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
-        'color:' + (applyEnabled ? T.well : hexToRgba(T.well, 0.5)) + ';letter-spacing:1.2px;',
-        'cursor:' + (applyEnabled ? 'pointer' : 'not-allowed') + ';user-select:none;-webkit-user-select:none;',
-        'pointer-events:auto;touch-action:manipulation;',
-        applyEnabled ? 'box-shadow:0 3px 0 rgba(0,0,0,0.3);' : '',
-      ].join('');
-    };
-    updateApplyStyle();
-    apply.textContent = 'APPLY';
-    apply.addEventListener('pointerup', function() {
-      if (applyEnabled && params.onConfirm) params.onConfirm(selectedDiscount);
+    var cancel = buildPillButton({
+      label:    'CANCEL',
+      variant:  'ghost',
+      fontSize: T.fsB2,
+      onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
+    cancel.style.flex            = '1';
+    cancel.style.height          = '48px';
+    cancel.style.borderRadius    = '14px';
+    cancel.style.display         = 'flex';
+    cancel.style.alignItems      = 'center';
+    cancel.style.justifyContent  = 'center';
+
+    var apply = buildPillButton({
+      label:    'APPLY',
+      variant:  'elec',
+      fontSize: T.fsB2,
+      onClick:  function() {
+        if (!selectedDiscount) return;
+        if (params.onConfirm) params.onConfirm(selectedDiscount);
+      },
+    });
+    apply.style.flex           = '1';
+    apply.style.height         = '48px';
+    apply.style.borderRadius   = '14px';
+    apply.style.display        = 'flex';
+    apply.style.alignItems     = 'center';
+    apply.style.justifyContent = 'center';
+    apply.setDisabled(true);
+
+    var updateApplyStyle = function() { apply.setDisabled(!selectedDiscount); };
 
     btnRow.appendChild(cancel);
     btnRow.appendChild(apply);
     panel.appendChild(btnRow);
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
   },
 });
 
@@ -1458,18 +1456,15 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildCard({
-      accent: T.verm,
-      bg: T.well,
-      padding: '22px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.gap           = '14px';
-    shell.card.style.width         = '420px';
-    shell.card.style.maxWidth      = '92vw';
-    shell.card.style.boxSizing     = 'border-box';
-    var panel = shell.card;
+    var shell = buildStaticCard({ accent: T.verm });
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.gap           = '14px';
+    shell.style.width         = '420px';
+    shell.style.maxWidth      = '92vw';
+    shell.style.padding       = '24px 28px 28px 32px';
+    shell.style.boxSizing     = 'border-box';
+    var panel = shell;
 
     // Header — verm-colored title signals destructive action
     var title = document.createElement('div');
@@ -1574,46 +1569,46 @@ defineScene({
 
     panel.appendChild(reasonList);
 
-    // Action buttons
+    // Action buttons — VOID stays verm (destructive) and disabled until
+    // a reason is picked.
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
 
-    var cancel = document.createElement('div');
-    cancel.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    cancel.textContent = 'CANCEL';
-    cancel.addEventListener('pointerup', function() { if (params.onCancel) params.onCancel(); });
-
-    var confirm = document.createElement('div');
-    var confirmEnabled = false;
-    var updateConfirmStyle = function() {
-      confirmEnabled = !!selectedReason;
-      confirm.style.cssText = [
-        'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-        'background:' + (confirmEnabled ? T.verm : hexToRgba(T.verm, 0.3)) + ';',
-        'border-radius:999px;',
-        'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
-        'color:' + (confirmEnabled ? T.text : hexToRgba(T.text, 0.5)) + ';letter-spacing:1.2px;',
-        'cursor:' + (confirmEnabled ? 'pointer' : 'not-allowed') + ';user-select:none;-webkit-user-select:none;',
-        'pointer-events:auto;touch-action:manipulation;',
-        confirmEnabled ? 'box-shadow:0 3px 0 rgba(0,0,0,0.3);' : '',
-      ].join('');
-    };
-    updateConfirmStyle();
-    confirm.textContent = 'VOID';
-    confirm.addEventListener('pointerup', function() {
-      if (confirmEnabled && params.onConfirm) params.onConfirm(selectedReason);
+    var cancel = buildPillButton({
+      label:    'CANCEL',
+      variant:  'ghost',
+      fontSize: T.fsB2,
+      onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
+    cancel.style.flex            = '1';
+    cancel.style.height          = '48px';
+    cancel.style.borderRadius    = '14px';
+    cancel.style.display         = 'flex';
+    cancel.style.alignItems      = 'center';
+    cancel.style.justifyContent  = 'center';
+
+    var confirm = buildPillButton({
+      label:    'VOID',
+      variant:  'verm',
+      fontSize: T.fsB2,
+      onClick:  function() {
+        if (!selectedReason) return;
+        if (params.onConfirm) params.onConfirm(selectedReason);
+      },
+    });
+    confirm.style.flex           = '1';
+    confirm.style.height         = '48px';
+    confirm.style.borderRadius   = '14px';
+    confirm.style.display        = 'flex';
+    confirm.style.alignItems     = 'center';
+    confirm.style.justifyContent = 'center';
+    confirm.setDisabled(true);
+
+    var updateConfirmStyle = function() { confirm.setDisabled(!selectedReason); };
 
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
   },
 });

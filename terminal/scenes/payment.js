@@ -207,17 +207,17 @@ defineScene({
         params = params || {};
         var remaining = params.remaining || 0;
 
-        // Vz2.0 card: left accent bar + rounded corners + drop shadow
-        container.style.cssText = [
-          'display:flex;flex-direction:column;align-items:center;gap:18px;',
-          'padding:8px 44px 44px;',
-          'background:' + T.card + ';',
-          'border-left:4px solid ' + T.gold + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'box-shadow:0 10px 30px rgba(0,0,0,0.45);',
-          'min-width:420px;',
-          'pointer-events:auto;',
-        ].join('');
+        container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;pointer-events:auto;';
+
+        // Nostalgia landing-page card shell — gold accent for split
+        // affordance.
+        var shell = buildStaticCard({ accent: T.gold });
+        shell.style.display        = 'flex';
+        shell.style.flexDirection  = 'column';
+        shell.style.alignItems     = 'center';
+        shell.style.gap            = '18px';
+        shell.style.minWidth       = '420px';
+        shell.style.padding        = '24px 44px 28px 48px';
 
         var title = document.createElement('div');
         title.style.cssText = [
@@ -229,7 +229,7 @@ defineScene({
           'text-transform:uppercase;',
         ].join('');
         title.textContent = 'Split Payment';
-        container.appendChild(title);
+        shell.appendChild(title);
 
         var sub = document.createElement('div');
         sub.style.cssText = [
@@ -238,35 +238,76 @@ defineScene({
           'color:' + T.green + ';',
         ].join('');
         sub.textContent = 'Remaining: $' + remaining.toFixed(2);
-        container.appendChild(sub);
+        shell.appendChild(sub);
 
         var btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:14px;margin-top:4px;';
 
+        // Fraction tiles match the payment denomination presets: raised
+        // buildActionCard with green accent bar, "1/N" stacked over the
+        // dollar amount, mint flash on tap.
         [2, 3, 4].forEach(function(divisor) {
           var amt = Math.ceil(remaining / divisor * 100) / 100;
-          var btn = buildPillButton({
-            label: '1/' + divisor,
-            sub: '$' + amt.toFixed(2),
-            color: T.card,
-            onClick: function() { params.onConfirm(amt); }
+          var tile = buildActionCard({
+            accent:  T.green,
+            onClick: function() { params.onConfirm(amt); },
           });
-          btn.style.width = '120px';
-          btn.style.height = '88px';
-          btn.style.border = '2px solid ' + T.green;
-          btn.style.color = T.green;
-          btnRow.appendChild(btn);
+          tile.style.cssText += [
+            'width:120px;height:96px;flex-shrink:0;',
+            'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+            'gap:4px;padding:14px 14px 12px 20px;',
+          ].join('');
+
+          var label = document.createElement('div');
+          label.textContent         = '1/' + divisor;
+          label.style.fontFamily    = T.fh;
+          label.style.fontSize      = T.fsH2;
+          label.style.fontWeight    = T.fwBold;
+          label.style.color         = T.green;
+          label.style.letterSpacing = '0.04em';
+          label.style.pointerEvents = 'none';
+          tile.appendChild(label);
+
+          var subLabel = document.createElement('div');
+          subLabel.textContent         = '$' + amt.toFixed(2);
+          subLabel.style.fontFamily    = T.fb;
+          subLabel.style.fontSize      = T.fsB3;
+          subLabel.style.color         = hexToRgba(T.text, 0.7);
+          subLabel.style.letterSpacing = '0.04em';
+          subLabel.style.pointerEvents = 'none';
+          tile.appendChild(subLabel);
+
+          // Mint flash on tap — same feedback pattern as buildDenomTile.
+          tile.addEventListener('pointerup', function() {
+            tile.style.backgroundColor = T.green;
+            label.style.color          = T.well;
+            subLabel.style.color       = T.well;
+            setTimeout(function() {
+              tile.style.backgroundColor = T.card;
+              label.style.color          = T.green;
+              subLabel.style.color       = hexToRgba(T.text, 0.7);
+            }, 180);
+          });
+
+          btnRow.appendChild(tile);
         });
-        container.appendChild(btnRow);
+        shell.appendChild(btnRow);
 
         var cancel = buildPillButton({
           label: 'CANCEL',
-          color: T.verm,
+          variant: 'verm',
+          fontSize: T.fsB2,
           onClick: function() { params.onCancel(); }
         });
-        cancel.style.width = '160px';
-        cancel.style.height = '48px';
-        container.appendChild(cancel);
+        cancel.style.width           = '160px';
+        cancel.style.height          = '48px';
+        cancel.style.borderRadius    = '14px';
+        cancel.style.display         = 'flex';
+        cancel.style.alignItems      = 'center';
+        cancel.style.justifyContent  = 'center';
+        shell.appendChild(cancel);
+
+        container.appendChild(shell);
       },
     },
   },
@@ -615,9 +656,9 @@ defineScene({
 
 function buildLeftColumn(params) {
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'width:210px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;';
+  wrap.style.cssText = 'width:260px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;';
 
-  var card = buildStaticCard({ accent: T.green, width: '210px' });
+  var card = buildStaticCard({ accent: T.green, width: '260px' });
   card.style.flex          = '1';
   card.style.display       = 'flex';
   card.style.flexDirection = 'column';
@@ -809,13 +850,15 @@ function buildCenterColumn(params) {
 
   col.appendChild(buildTenderToggle());
 
-  // Denom grid — capped so it can't squeeze the action row off-screen.
+  // Denom grid — flexes to fill the available vertical space so the
+  // tiles grow with the viewport instead of leaving dead space above
+  // the balance strip.
   var grid = document.createElement('div');
   grid.style.cssText = [
     'display:grid;',
     'grid-template-columns:1fr 1fr;',
     'grid-template-rows:1fr 1fr;',
-    'gap:8px;flex-shrink:0;height:210px;',
+    'gap:10px;flex:1;min-height:0;',
   ].join('');
   grid.appendChild(buildDenomTile(5));
   grid.appendChild(buildDenomTile(10));
@@ -824,16 +867,11 @@ function buildCenterColumn(params) {
   col.appendChild(grid);
 
   _btn100 = buildDenomTile(100, { fullWidth: true });
-  _btn100.style.height = '48px';
+  _btn100.style.height = '64px';
   col.appendChild(_btn100);
 
   col.appendChild(buildActionRow());
-
-  // Balance strip pinned at the bottom via margin-top:auto — any extra
-  // vertical space in the column becomes a gap above the strip.
-  var balance = buildBalanceStrip();
-  balance.style.marginTop = 'auto';
-  col.appendChild(balance);
+  col.appendChild(buildBalanceStrip());
 
   return col;
 }
@@ -858,6 +896,16 @@ function buildModeToggle(mode, label, color, dkColor) {
   btn.style.flex   = '1';
   btn.style.height = '48px';
   _modeButtons[mode] = { el: btn, color: color, dk: dkColor };
+
+  // buildPillButton's pointerleave handler repaints the pill to its
+  // "default fill" — which on an inactive toggle wrongly reads as
+  // selected whenever the pointer just scrolls across it. Re-run
+  // setPaymentMode after every pointer event so our own active /
+  // inactive paint wins and only an actual tap changes the state.
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(function(ev) {
+    btn.addEventListener(ev, function() { setPaymentMode(paymentMode); });
+  });
+
   return btn;
 }
 
@@ -910,9 +958,9 @@ function buildDenomTile(val, opts) {
     onClick: function() { handleDenomination(val); },
   });
   tile.style.cssText += [
-    (opts.fullWidth ? 'width:100%;height:60px;flex-shrink:0;' : 'width:100%;height:100%;'),
+    (opts.fullWidth ? 'width:100%;flex-shrink:0;' : 'width:100%;height:100%;'),
     'display:flex;align-items:center;justify-content:center;',
-    'padding:0;',
+    'padding:' + (opts.fullWidth ? '8px 20px 6px 24px' : '18px 20px 16px 24px') + ';',
   ].join('');
 
   var label = document.createElement('div');
@@ -1042,8 +1090,8 @@ function setPaymentMode(mode) {
       el.style.boxShadow  = '0 4px 0 ' + b.dk + ', 0 0 16px ' + hexToRgba(b.color, 0.4);
     } else {
       el.style.background = T.moon;
-      el.style.color      = b.color;
-      el.style.border     = '2px solid ' + b.color;
+      el.style.color      = T.moonText;
+      el.style.border     = '4px solid ' + b.color;
       el.style.boxShadow  = 'none';
     }
   });

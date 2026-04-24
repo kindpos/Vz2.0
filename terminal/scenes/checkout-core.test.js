@@ -55,13 +55,30 @@ vi.mock('../theme-manager.js', () => ({
     wrap.appendChild(card);
     return { wrap: wrap, card: card };
   },
-  buildPillButton: ({ label } = {}) => {
+  buildStaticCard: () => document.createElement('div'),
+  buildPillButton: (opts = {}) => {
     const el = document.createElement('button');
-    el.textContent = label || '';
+    el.textContent = opts.label || '';
+    el._disabled  = false;
+    el.style.cursor = 'pointer';
+    el.setColor     = () => {};
+    el.setDisabled  = (d) => {
+      el._disabled = d;
+      el.style.cursor        = d ? 'not-allowed' : 'pointer';
+      el.style.pointerEvents = d ? 'none' : 'auto';
+      el.style.opacity       = d ? '0.4' : '1';
+    };
+    if (opts.onClick) {
+      el.addEventListener('pointerup', (e) => {
+        if (el._disabled) return;
+        opts.onClick(e);
+      });
+    }
     return el;
   },
   hexToRgba:  (c) => c,
   darkenHex:  (c) => c,
+  lightenHex: (c) => c,
 }));
 
 vi.mock('../entomology-client.js', () => ({

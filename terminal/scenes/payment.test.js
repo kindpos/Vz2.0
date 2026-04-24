@@ -87,11 +87,15 @@ function getSplitSelectRender(scenes) {
   return paymentDef.interrupts && paymentDef.interrupts['split-select'];
 }
 
-// The split-select options are rendered as real <button>s via buildPillButton.
-// Find by label ('1/2', '1/3', '1/4').
+// The split-select options are now rendered as buildActionCard tiles
+// (divs) with the fraction label in a child span/div. Find the
+// leaf element whose textContent equals the label, then return the
+// tile (its parent) so tests can still dispatch pointerup on the
+// tappable surface.
 function findOption(container, label) {
-  return Array.from(container.querySelectorAll('button'))
-    .find((btn) => btn.textContent === label);
+  const labelEl = Array.from(container.querySelectorAll('*'))
+    .find((el) => el.children.length === 0 && el.textContent === label);
+  return labelEl ? labelEl.parentElement : null;
 }
 
 // --- Tests ---
