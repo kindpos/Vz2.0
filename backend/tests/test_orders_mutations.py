@@ -159,6 +159,74 @@ class TestMergeOrders:
         assert res.subtotal == Decimal("6.00")
 
     @pytest.mark.asyncio
+    async def test_merge_emits_check_merged_on_target_and_sources(self, ledger):
+        """Merge emits one CHECK_MERGED per affected order (target + each source) with shared operation_id."""
+        await _open_order_with_items(ledger, order_id="oTmEvt",
+                                      items=[("T", Decimal("1.00"), 1)])
+        await _open_order_with_items(ledger, order_id="oS1Evt",
+                                      items=[("S1", Decimal("2.00"), 1)])
+        await _open_order_with_items(ledger, order_id="oS2Evt",
+                                      items=[("S2", Decimal("3.00"), 1)])
+
+        await orders_mod.merge_orders(
+            "oTmEvt",
+            orders_mod.MergeOrderRequest(
+                source_ids=["oS1Evt", "oS2Evt"], approved_by="mgrX",
+            ),
+            ledger=ledger,
+        )
+
+        # Target timeline: one CHECK_MERGED with role=target listing all sources.
+        target_events = await ledger.get_events_by_correlation("oTmEvt")
+        target_merged = [e for e in target_events if e.event_type == EventType.CHECK_MERGED]
+        assert len(target_merged) == 1
+        tp = target_merged[0].payload
+        assert tp["role"] == "target"
+        assert tp["target_order_id"] == "oTmEvt"
+        assert set(tp["source_order_ids"]) == {"oS1Evt", "oS2Evt"}
+        assert tp["approved_by"] == "mgrX"
+        operation_id = tp["operation_id"]
+
+        # Each source timeline: one CHECK_MERGED with role=source, same op id.
+        for src_id in ("oS1Evt", "oS2Evt"):
+            src_events = await ledger.get_events_by_correlation(src_id)
+            src_merged = [e for e in src_events if e.event_type == EventType.CHECK_MERGED]
+            assert len(src_merged) == 1, f"source {src_id} missing CHECK_MERGED"
+            sp = src_merged[0].payload
+            assert sp["role"] == "source"
+            assert sp["target_order_id"] == "oTmEvt"
+            assert set(sp["source_order_ids"]) == {"oS1Evt", "oS2Evt"}
+            assert sp["operation_id"] == operation_id
+
+    @pytest.mark.asyncio
+    async def test_merge_source_check_merged_precedes_void(self, ledger):
+        """Source timeline reads alive → merged → voided, not the other order."""
+        await _open_order_with_items(ledger, order_id="oTord",
+                                      items=[("T", Decimal("1.00"), 1)])
+        await _open_order_with_items(ledger, order_id="oSord",
+                                      items=[("S", Decimal("2.00"), 1)])
+
+        await orders_mod.merge_orders(
+            "oTord",
+            orders_mod.MergeOrderRequest(source_ids=["oSord"], approved_by="mgr"),
+            ledger=ledger,
+        )
+
+        src_events = sorted(
+            await ledger.get_events_by_correlation("oSord"),
+            key=lambda e: e.sequence_number or 0,
+        )
+        merged_idx = next(
+            i for i, e in enumerate(src_events)
+            if e.event_type == EventType.CHECK_MERGED
+        )
+        void_idx = next(
+            i for i, e in enumerate(src_events)
+            if e.event_type == EventType.ORDER_VOIDED
+        )
+        assert merged_idx < void_idx, "CHECK_MERGED must be appended before ORDER_VOIDED on the source"
+
+    @pytest.mark.asyncio
     async def test_merge_rejects_self(self, ledger):
         await _open_order_with_items(ledger, order_id="oSelf", items=[("X", Decimal("1.00"), 1)])
         with pytest.raises(HTTPException) as exc:
@@ -420,6 +488,63 @@ class TestSplitBySeat:
                 ledger=ledger,
             )
         assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_split_emits_check_split_on_parent_and_children(self, ledger):
+        """Split-by-seat emits one CHECK_SPLIT per affected order with a shared operation_id."""
+        await _open_order_with_items(
+            ledger, order_id="oPsplitEvt",
+            items=[("A", Decimal("7.00"), 1), ("B", Decimal("9.00"), 1)],
+            seats=[1, 2],
+        )
+        res = await orders_mod.split_by_seat(
+            "oPsplitEvt",
+            orders_mod.SplitBySeatRequest(seats=None),
+            ledger=ledger,
+        )
+        child_by_seat = {c["seat"]: c["order_id"] for c in res["child_orders"]}
+
+        # Parent timeline: one CHECK_SPLIT with role=parent listing all children.
+        parent_events = await ledger.get_events_by_correlation("oPsplitEvt")
+        parent_split = [e for e in parent_events if e.event_type == EventType.CHECK_SPLIT]
+        assert len(parent_split) == 1
+        p = parent_split[0].payload
+        assert p["role"] == "parent"
+        assert p["parent_order_id"] == "oPsplitEvt"
+        assert set(p["child_order_ids"]) == set(child_by_seat.values())
+        operation_id = p["operation_id"]
+
+        # Each child timeline: one CHECK_SPLIT with role=child, matching seat and shared op id.
+        for seat_num, child_id in child_by_seat.items():
+            child_events = await ledger.get_events_by_correlation(child_id)
+            child_split = [e for e in child_events if e.event_type == EventType.CHECK_SPLIT]
+            assert len(child_split) == 1, f"child {child_id} missing CHECK_SPLIT"
+            cp = child_split[0].payload
+            assert cp["role"] == "child"
+            assert cp["parent_order_id"] == "oPsplitEvt"
+            assert cp["seat"] == seat_num
+            assert cp["operation_id"] == operation_id
+
+    @pytest.mark.asyncio
+    async def test_check_split_does_not_affect_projection(self, ledger):
+        """CHECK_SPLIT is audit-only — replaying it must not change Order state."""
+        await _open_order_with_items(
+            ledger, order_id="oPsplitProj",
+            items=[("A", Decimal("5.00"), 1), ("B", Decimal("6.00"), 1)],
+            seats=[1, 2],
+        )
+        res = await orders_mod.split_by_seat(
+            "oPsplitProj",
+            orders_mod.SplitBySeatRequest(seats=None),
+            ledger=ledger,
+        )
+        # Projection must match the item-move semantics regardless of CHECK_SPLIT.
+        parent = project_order(await ledger.get_events_by_correlation("oPsplitProj"))
+        assert parent.subtotal == Decimal("0.00")
+        for c in res["child_orders"]:
+            child = project_order(await ledger.get_events_by_correlation(c["order_id"]))
+            expected = Decimal("5.00") if c["seat"] == 1 else Decimal("6.00")
+            assert child.subtotal == expected
 
     @pytest.mark.asyncio
     async def test_cannot_split_closed_order(self, ledger):

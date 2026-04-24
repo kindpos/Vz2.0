@@ -79,6 +79,8 @@ from app.core.events import (
     order_closed,
     order_reopened,
     order_voided,
+    check_split,
+    check_merged,
     tip_adjusted,
     cash_refund_due,
     ticket_printed,
@@ -1409,6 +1411,11 @@ async def merge_orders(
             detail=f"Target order was {target.status} by a concurrent request; retry the merge",
         )
 
+    # Shared across all CHECK_MERGED emissions for this operation so the
+    # full merge can be reassembled across target + source timelines.
+    operation_id = f"op_{uuid.uuid4().hex[:8]}"
+    source_ids = [s.order_id for s in sources]
+
     for src in sources:
         for item in src.items:
             new_item_id = f"item_{uuid.uuid4().hex[:8]}"
@@ -1439,6 +1446,19 @@ async def merge_orders(
                 )
                 await ledger.append(mod_evt)
 
+        # Source timeline: emit CHECK_MERGED BEFORE the ORDER_VOIDED so
+        # the source history reads alive → merged → voided, not
+        # alive → voided → (audit arrives after death).
+        await ledger.append(check_merged(
+            terminal_id=settings.terminal_id,
+            order_id=src.order_id,
+            operation_id=operation_id,
+            role="source",
+            target_order_id=order_id,
+            source_order_ids=source_ids,
+            approved_by=request.approved_by,
+        ))
+
         void_evt = order_voided(
             terminal_id=settings.terminal_id,
             order_id=src.order_id,
@@ -1446,6 +1466,17 @@ async def merge_orders(
             approved_by=request.approved_by,
         )
         await ledger.append(void_evt)
+
+    # Target timeline: single CHECK_MERGED summarizing the full operation.
+    await ledger.append(check_merged(
+        terminal_id=settings.terminal_id,
+        order_id=order_id,
+        operation_id=operation_id,
+        role="target",
+        target_order_id=order_id,
+        source_order_ids=source_ids,
+        approved_by=request.approved_by,
+    ))
 
     target = await get_order_or_404(ledger, order_id)
     return OrderResponse.from_order(target)
@@ -2033,6 +2064,31 @@ async def split_by_seat(
             "seat": seat_num,
             "item_count": len(items),
         })
+
+    # First-class audit event for the split operation. One emission per
+    # affected order (parent + each child) with a shared operation_id so
+    # each timeline is self-describing without forcing readers to infer
+    # the operation from ITEM_REMOVED "reason" strings.
+    operation_id = f"op_{uuid.uuid4().hex[:8]}"
+    child_ids = [c["order_id"] for c in child_orders]
+    await ledger.append(check_split(
+        terminal_id=settings.terminal_id,
+        order_id=order_id,
+        operation_id=operation_id,
+        role="parent",
+        parent_order_id=order_id,
+        child_order_ids=child_ids,
+    ))
+    for c in child_orders:
+        await ledger.append(check_split(
+            terminal_id=settings.terminal_id,
+            order_id=c["order_id"],
+            operation_id=operation_id,
+            role="child",
+            parent_order_id=order_id,
+            child_order_ids=child_ids,
+            seat=c["seat"],
+        ))
 
     return {
         "success": True,

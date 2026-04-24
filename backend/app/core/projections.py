@@ -429,6 +429,13 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                     "printed_at": event.timestamp,
                 })
 
+        elif event.event_type in (EventType.CHECK_SPLIT, EventType.CHECK_MERGED):
+            # Audit-only in v1 — the split/merge operations mutate state
+            # via ITEM_ADDED / ITEM_REMOVED / ORDER_VOIDED, which are
+            # already handled above. A future revision may project
+            # lineage fields (split_to, merged_from) from these payloads.
+            pass
+
     return order
 
 

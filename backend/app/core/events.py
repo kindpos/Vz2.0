@@ -54,6 +54,8 @@ class EventType(str, Enum):
     SEATS_UPDATED = "seats.updated"
     CHECK_NAMED = "check.named"
     CHECK_ABANDONED = "check.abandoned"
+    CHECK_SPLIT = "check.split"
+    CHECK_MERGED = "check.merged"
 
     # ── Item management (LEDGER_CORE) ────────────────────────────────
     ITEM_ADDED = "item.added"
@@ -775,6 +777,74 @@ def order_voided(
         },
         correlation_id=order_id,
         **kwargs
+    )
+
+
+def check_split(
+        terminal_id: str,
+        order_id: str,
+        *,
+        operation_id: str,
+        role: str,
+        parent_order_id: str,
+        child_order_ids: list[str],
+        seat: Optional[int] = None,
+        **kwargs,
+) -> Event:
+    """Create a CHECK_SPLIT audit event.
+
+    Emitted once per order involved in a split-by-seat operation: once on
+    the parent (role="parent") and once on each child (role="child"). All
+    emissions share the same operation_id so the full operation can be
+    reassembled across timelines.
+    """
+    payload = {
+        "operation_id": operation_id,
+        "role": role,
+        "parent_order_id": parent_order_id,
+        "child_order_ids": list(child_order_ids),
+    }
+    if seat is not None:
+        payload["seat"] = seat
+    return create_event(
+        event_type=EventType.CHECK_SPLIT,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def check_merged(
+        terminal_id: str,
+        order_id: str,
+        *,
+        operation_id: str,
+        role: str,
+        target_order_id: str,
+        source_order_ids: list[str],
+        approved_by: Optional[str] = None,
+        **kwargs,
+) -> Event:
+    """Create a CHECK_MERGED audit event.
+
+    Emitted once per order involved in a merge: once on the target
+    (role="target") and once on each source (role="source"). Sources emit
+    BEFORE the subsequent ORDER_VOIDED so each source timeline stays
+    monotone: alive → merged → voided.
+    """
+    return create_event(
+        event_type=EventType.CHECK_MERGED,
+        terminal_id=terminal_id,
+        payload={
+            "operation_id": operation_id,
+            "role": role,
+            "target_order_id": target_order_id,
+            "source_order_ids": list(source_order_ids),
+            "approved_by": approved_by,
+        },
+        correlation_id=order_id,
+        **kwargs,
     )
 
 
