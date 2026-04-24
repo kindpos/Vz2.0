@@ -48,6 +48,7 @@
     <nav class="main-tabs" id="main-tabs" role="tablist" aria-label="Dashboard sections">
       <button class="main-tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
       <button class="main-tab" data-tab="ledger-gaps" role="tab" aria-selected="false">Event Ledger Gaps</button>
+      <button class="main-tab" data-tab="settlement-drift" role="tab" aria-selected="false">Settlement Drift</button>
     </nav>
 
     <div id="tab-overview" class="tab-panel">
@@ -117,6 +118,17 @@
           <span id="gaps-count" class="muted"></span>
         </div>
         <div id="gaps-table-wrap"></div>
+      </section>
+    </div>
+
+    <div id="tab-settlement-drift" class="tab-panel hidden">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Settlement Drift</h2>
+          <span id="drift-updated" class="muted">—</span>
+        </div>
+        <div id="drift-summary" class="muted">Loading…</div>
+        <div id="drift-body"></div>
       </section>
     </div>
 

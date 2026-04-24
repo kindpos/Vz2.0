@@ -444,3 +444,6 @@ html, body {
 .gaps-table .gap-risk { max-width: 560px; line-height: 1.4; }
 .gaps-table .gap-site code,
 .gaps-table td code { font-size: 0.85rem; color: #d6cfc8; }
+
+/* Settlement Drift tab */
+.drift-invariants { margin: 0; padding-left: 1.2em; font-size: 0.82rem; color: var(--text-muted); }

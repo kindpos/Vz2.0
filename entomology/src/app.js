@@ -506,7 +506,9 @@ function wireMainTabs() {
     const target = t.dataset.tab;
     $("#tab-overview").classList.toggle("hidden", target !== "overview");
     $("#tab-ledger-gaps").classList.toggle("hidden", target !== "ledger-gaps");
+    $("#tab-settlement-drift").classList.toggle("hidden", target !== "settlement-drift");
     if (target === "ledger-gaps") loadLedgerGaps();
+    if (target === "settlement-drift") loadSettlementDrift();
   }
   tabs.forEach(t => t.addEventListener("click", () => activate(t)));
 
@@ -516,6 +518,67 @@ function wireMainTabs() {
   });
   const search = $("#gaps-search");
   if (search) search.addEventListener("input", filterAndRenderGaps);
+}
+
+// ── Settlement Drift tab ─────────────────────────────
+async function loadSettlementDrift() {
+  const summary = $("#drift-summary");
+  const body    = $("#drift-body");
+  summary.textContent = "Loading…";
+  body.innerHTML = "";
+  try {
+    const res = await authedFetch("/api/v1/entomology/settlement-drift");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    $("#drift-updated").textContent = `Loaded ${formatTs(new Date().toISOString())}`;
+    renderSettlementDrift(data);
+  } catch (err) {
+    if (err.message === "session_expired") return;
+    summary.textContent = `Failed to load: ${escapeHtml(err.message)}`;
+  }
+}
+
+function renderSettlementDrift(data) {
+  const summary = $("#drift-summary");
+  const body    = $("#drift-body");
+  const count   = data.count || 0;
+  const failures = data.failures || [];
+
+  if (count === 0) {
+    summary.innerHTML = `<span class="gap-chip gap-status-implemented">0 failures — settlement is clean</span>`;
+    body.innerHTML = "";
+    return;
+  }
+
+  summary.innerHTML = `<span class="gap-chip gap-severity-critical">${count} settlement failure${count !== 1 ? "s" : ""}</span>`;
+
+  const rows = failures.map(f => {
+    const invariants = (f.failed_invariants || [])
+      .map(inv => `<li>${escapeHtml(JSON.stringify(inv))}</li>`)
+      .join("");
+    return `
+      <tr>
+        <td class="gap-id">#${escapeHtml(String(f.sequence ?? "—"))}</td>
+        <td>${escapeHtml(f.timestamp ? formatTs(f.timestamp) : "—")}</td>
+        <td>${escapeHtml(f.reason || "—")}</td>
+        <td>${f.recon_diff != null ? escapeHtml(String(f.recon_diff)) : "—"}</td>
+        <td>${invariants ? `<ul class="drift-invariants">${invariants}</ul>` : "—"}</td>
+      </tr>`;
+  }).join("");
+
+  body.innerHTML = `
+    <table class="gaps-table">
+      <thead>
+        <tr>
+          <th>Seq</th>
+          <th>Time</th>
+          <th>Reason</th>
+          <th>Recon Δ</th>
+          <th>Failed invariants</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 
