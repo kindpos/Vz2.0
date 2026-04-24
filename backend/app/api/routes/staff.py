@@ -4,7 +4,13 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from app.api.dependencies import get_ledger
 from app.core.event_ledger import EventLedger
-from app.core.events import user_logged_in, user_logged_out, cash_tips_declared, EventType
+from app.core.events import (
+    user_logged_in,
+    user_logged_out,
+    cash_tips_declared,
+    create_event,
+    EventType,
+)
 from app.config import settings
 from app.services.overseer_config_service import OverseerConfigService
 
@@ -77,6 +83,10 @@ async def clock_in(request: ClockInRequest, ledger: EventLedger = Depends(get_le
     # burst submissions. Minute granularity is pragmatic — nobody
     # legitimately clocks in twice in 60 seconds.
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+    # user.logged_in remains the session-auth event the existing
+    # `_clocked_in_ids` replay relies on; clock.in is the spec-aligned
+    # labor event. Both emit atomically so a reader that filters on
+    # either sees the same set of clock-in moments.
     event = user_logged_in(
         terminal_id=settings.terminal_id,
         employee_id=request.employee_id,
@@ -85,7 +95,17 @@ async def clock_in(request: ClockInRequest, ledger: EventLedger = Depends(get_le
         pool_memberships=request.pool_memberships,
         idempotency_key=f"clock_in:{request.employee_id}:{stamp}",
     )
-    await ledger.append(event)
+    shift_evt = create_event(
+        event_type=EventType.CLOCK_IN,
+        terminal_id=settings.terminal_id,
+        payload={
+            "employee_id": request.employee_id,
+            "employee_name": request.employee_name,
+            "role": request.role or "",
+            "pool_memberships": request.pool_memberships,
+        },
+    )
+    await ledger.append_batch([event, shift_evt])
     return {
         "success": True,
         "employee_id": request.employee_id,
@@ -106,7 +126,15 @@ async def clock_out(request: ClockOutRequest, ledger: EventLedger = Depends(get_
         employee_name=request.employee_name,
         idempotency_key=f"clock_out:{request.employee_id}:{stamp}",
     )
-    await ledger.append(event)
+    shift_evt = create_event(
+        event_type=EventType.CLOCK_OUT,
+        terminal_id=settings.terminal_id,
+        payload={
+            "employee_id": request.employee_id,
+            "employee_name": request.employee_name,
+        },
+    )
+    await ledger.append_batch([event, shift_evt])
     return {
         "success": True,
         "employee_id": request.employee_id,

@@ -9,8 +9,9 @@ inventory is `backend/app/services/ledger_gap_report.py` (surfaced in the
 | Phase | Theme | Cluster | Nodes | Status |
 | --- | --- | --- | --- | --- |
 | 1 | CRITICAL atomicity | CHECK/SEAT/DAY multi-event ops | 8 | **DONE** |
-| 2 | Missing CRITICAL | `check.opened`, `seat.paid`, `day.opened`, real clock.in/out | ~6 | pending |
-| 3 | HIGH severity MISSING | Seat-granular events, compliance, batch lifecycle | ~60 | pending |
+| 2 | Missing CRITICAL | `check.opened`, `seat.paid`, `day.opened`, real clock.in/out | ~6 | **DONE** |
+| 3a | HIGH payload fixes + renames | item.86ed/cleared, tip adjusted_by, item.removed voided_by, discount.approved discount_id | 5 | **DONE** |
+| 3b | HIGH severity MISSING | Seat-granular events, compliance, batch lifecycle | ~55 | pending |
 | 4 | FACTORY-ONLY wiring | Emitters for declared factories | 13 | pending |
 | 5 | RENAMED consolidation | Align code ↔ spec names | 20 | pending |
 | 6 | PARTIAL payload fixes | Fill missing payload fields on implemented events | ~11 | pending |
@@ -49,16 +50,16 @@ Test files to extend (no new parallel suites):
 
 ---
 
-## Phase 2 — Missing CRITICAL events (pending)
+## Phase 2 — Missing CRITICAL events (branch `claude/ledger-missing-crit-phase2`)
 
-| ID | Event | Source |
-| --- | --- | --- |
-| LG-01 | `check.opened` | currently fused into `order.created` |
-| LG-37 | `seat.paid` | no per-seat paid marker |
-| LG-48 | `day.opened` | day begins implicitly on first order |
-| LG-62 | real `clock.in` (distinct from login) | `user.logged_in` today |
-| LG-63 | real `clock.out` | `user.logged_out` today |
-| LG-59 | `staff.pin_changed` | PCI/SOX audit gap |
+| ID | Event | Emission site | Status |
+| --- | --- | --- | --- |
+| LG-01 | `check.opened` | `orders.py:create_order, split_by_seat` (batched with `order.created`) | **DONE** |
+| LG-37 | `seat.paid` | `payment_routes.py` auto-close (cash + credit paths); one per seat | **DONE** |
+| LG-48 | `day.opened` | `orders.py:create_order` (first event of the day) | **DONE** |
+| LG-62 | `clock.in` | `staff.py:clock_in` (batched with `user.logged_in`) | **DONE** |
+| LG-63 | `clock.out` | `staff.py:clock_out` (batched with `user.logged_out`) | **DONE** |
+| LG-59 | `staff.pin_changed` | `config.py:create_employee` when a PIN is set (no hash in payload) | **DONE** |
 
 ---
 
@@ -111,3 +112,33 @@ the `/entomology` → Event Ledger Gaps tab.
   some items while the parent still owns them. 132 mutation / api /
   extended / pos-system tests green. Phase 1 atomicity cluster
   complete.
+- 2026-04-24 — Phase 2 kicked off on branch
+  `claude/ledger-missing-crit-phase2` with 6 new CRITICAL event types.
+- 2026-04-24 — LG-59 `staff.pin_changed` emitted on employee creation
+  with a PIN; payload carries no PIN material. 16 config-route tests
+  green (14 existing + 2 new).
+- 2026-04-24 — LG-01 `check.opened` added to EventType and wired into
+  `create_order` (batched with `order.created`) and `split_by_seat`
+  (per child order). Projection unchanged; audit-only. 132
+  mutation / api / extended / pos-system tests green.
+- 2026-04-24 — LG-48 `day.opened` emitted as the leading event of the
+  `create_order` batch when `get_events_since(last_day_close, 1)` is
+  empty, anchoring the business-day boundary atomically with the
+  first order.
+- 2026-04-24 — LG-62 / LG-63 `clock.in` / `clock.out` emitted in an
+  `append_batch` alongside `user.logged_in` / `user.logged_out` in
+  the staff clock routes.
+- 2026-04-24 — LG-37 `seat.paid` emitted once per seat in the
+  auto-close batch (both cash and credit paths); seat set is the
+  union of `order.seat_numbers` and distinct seat numbers on items.
+- 2026-04-24 — Phase 3a (payload fixes + renames) landed on
+  `claude/ledger-high-phase3a`:
+  - LG-36: `payment.tip_adjusted` payload now accepts optional
+    `adjusted_by`; `/tip-adjust` request schema extended.
+  - LG-23: `item.removed` payload accepts optional `voided_by`;
+    `/orders/{id}/items/{id}?voided_by=` supported.
+  - LG-90: `discount.approved` payload accepts optional
+    `discount_id`; catalog-scoped applications now survive renames.
+  - LG-78 / LG-79: `/menu/86` and `/menu/restore` now emit
+    `item.86ed` / `item.86_cleared` in one `append_batch` with the
+    legacy `menu.item_86d` / `menu.item_restored`.

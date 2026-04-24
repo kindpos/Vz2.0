@@ -20,7 +20,7 @@ from ...core.adapters.mock_payment import MockPaymentDevice
 from ...core.adapters.dejavoo_spin import DejavooSPInAdapter
 from ...core.events import (
     payment_initiated, payment_confirmed, order_closed, tip_adjusted,
-    create_event, EventType,
+    seat_paid, create_event, EventType,
 )
 from ...core.projections import project_order, project_orders
 from ...core.money import money_round
@@ -39,6 +39,18 @@ _validator: Optional[PaymentValidator] = None
 _devices_initialized = False
 
 HARDWARE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), 'hardware_config.db')
+
+
+def _collect_seats(order) -> list[int]:
+    """Union of order.seat_numbers and the distinct seat_number on any
+    item, sorted. Used when emitting seat.paid at auto-close so every
+    seat that carried items gets an audit record."""
+    seat_set = set(order.seat_numbers or [])
+    for item in order.items:
+        s = getattr(item, "seat_number", None)
+        if s is not None:
+            seat_set.add(s)
+    return sorted(seat_set)
 
 
 async def _ensure_devices(manager: PaymentManager):
@@ -347,6 +359,12 @@ async def process_sale(
                 order_id=request.order_id,
                 total=predicted_order.total,
             ))
+            for s in _collect_seats(predicted_order):
+                batch_events.append(seat_paid(
+                    terminal_id=settings.terminal_id,
+                    order_id=request.order_id,
+                    seat_number=s,
+                ))
 
         if batch_events:
             await ledger.append_batch(batch_events)
@@ -482,6 +500,12 @@ async def process_cash_payment(
             order_id=request.order_id,
             total=predicted_order.total,
         ))
+        for s in _collect_seats(predicted_order):
+            batch_events.append(seat_paid(
+                terminal_id=settings.terminal_id,
+                order_id=request.order_id,
+                seat_number=s,
+            ))
 
     await ledger.append_batch(batch_events)
 
@@ -501,6 +525,7 @@ class TipAdjustRequest(BaseModel):
     order_id: str
     payment_id: str
     tip_amount: Decimal
+    adjusted_by: Optional[str] = None
 
 
 @router.post("/tip-adjust")
@@ -573,6 +598,7 @@ async def adjust_tip(
         payment_id=request.payment_id,
         tip_amount=tip_amt,
         previous_tip=previous_tip,
+        adjusted_by=request.adjusted_by,
     )
     await ledger.append(evt)
 

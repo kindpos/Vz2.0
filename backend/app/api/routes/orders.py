@@ -64,6 +64,8 @@ from app.services.overseer_config_service import OverseerConfigService
 from app.core.adapters.base_payment import TransactionRequest as TxReq
 from app.core.events import (
     order_created,
+    check_opened,
+    day_opened,
     order_transferred,
     check_named,
     guest_count_updated,
@@ -419,10 +421,37 @@ async def create_order(
         seat_numbers=seat_numbers,
         idempotency_key=idem_key,
     )
-    # Set correlation_id for ORDER_CREATED
+    # Distinct check-timeline anchor. Batched with ORDER_CREATED so the
+    # two events land atomically and share the same ledger boundary —
+    # readers can filter on CHECK_OPENED to get check-lifecycle moments
+    # without pulling order-scoped events.
+    check_evt = check_opened(
+        terminal_id=settings.terminal_id,
+        order_id=order_id,
+        check_number=check_number,
+        table=request.table,
+        server_id=request.server_id,
+        server_name=request.server_name,
+        guest_count=guest_count,
+        seat_numbers=seat_numbers,
+    )
+    # Set correlation_id so both events are returned by per-order lookups.
     event = event.model_copy(update={"correlation_id": order_id})
+    check_evt = check_evt.model_copy(update={"correlation_id": order_id})
 
-    await ledger.append(event)
+    # If this is the first event of a new business day (nothing since
+    # the last DAY_CLOSED), emit DAY_OPENED as the leading event in the
+    # same batch so the day boundary is atomically anchored alongside
+    # the first order.
+    batch = [event, check_evt]
+    boundary = await ledger.get_last_day_close_sequence()
+    if not await ledger.get_events_since(boundary, limit=1):
+        batch.insert(0, day_opened(
+            terminal_id=settings.terminal_id,
+            date=datetime.now().strftime("%Y-%m-%d"),
+        ))
+
+    await ledger.append_batch(batch)
 
     # Notify diagnostic collector of order activity
     dc = get_diagnostic_collector()
@@ -934,6 +963,7 @@ async def remove_item(
         order_id: str,
         item_id: str,
         reason: Optional[str] = None,
+        voided_by: Optional[str] = None,
         ledger: EventLedger = Depends(get_ledger),
 ):
     """Remove an item from an order."""
@@ -957,6 +987,7 @@ async def remove_item(
         order_id=order_id,
         item_id=item_id,
         reason=reason,
+        voided_by=voided_by,
     )
     await ledger.append(event)
 
@@ -1500,6 +1531,7 @@ class ApplyDiscountRequest(BaseModel):
     reason: Optional[str] = None
     approved_by: Optional[str] = None
     item_ids: Optional[list[str]] = None  # specific items, or None for whole order
+    discount_id: Optional[str] = None  # catalog reference, if applied from a named discount
 
 @router.post("/{order_id}/discount", response_model=OrderResponse)
 async def apply_discount(
@@ -1524,18 +1556,21 @@ async def apply_discount(
         )
 
     _validate_2dp(request.amount, "amount")
+    discount_payload = {
+        "order_id": order_id,
+        "discount_type": request.discount_type,
+        "amount": money_round(request.amount),
+        "reason": request.reason or f"Manager discount: {request.discount_type}",
+        "approved_by": request.approved_by,
+        "item_ids": request.item_ids,
+    }
+    if request.discount_id is not None:
+        discount_payload["discount_id"] = request.discount_id
     event = create_event(
         event_type=EventType.DISCOUNT_APPROVED,
         terminal_id=settings.terminal_id,
         correlation_id=order_id,
-        payload={
-            "order_id": order_id,
-            "discount_type": request.discount_type,
-            "amount": money_round(request.amount),
-            "reason": request.reason or f"Manager discount: {request.discount_type}",
-            "approved_by": request.approved_by,
-            "item_ids": request.item_ids,
-        },
+        payload=discount_payload,
     )
     await ledger.append(event)
 
@@ -2027,6 +2062,17 @@ async def split_by_seat(
             server_name=order.server_name,
         )
         batch_events.append(create_evt.model_copy(update={"correlation_id": child_id}))
+        # Distinct check-timeline anchor for the newly split-off check.
+        child_open_evt = check_opened(
+            terminal_id=settings.terminal_id,
+            order_id=child_id,
+            table=order.table,
+            server_id=order.server_id,
+            server_name=order.server_name,
+            guest_count=1,
+            seat_numbers=[seat_num],
+        )
+        batch_events.append(child_open_evt.model_copy(update={"correlation_id": child_id}))
 
         for item in items:
             new_item_id = f"item_{uuid.uuid4().hex[:8]}"

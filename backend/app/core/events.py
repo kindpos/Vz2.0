@@ -52,6 +52,7 @@ class EventType(str, Enum):
     ORDER_TRANSFERRED = "order.transferred"
     GUEST_COUNT_UPDATED = "guest_count.updated"
     SEATS_UPDATED = "seats.updated"
+    CHECK_OPENED = "check.opened"
     CHECK_NAMED = "check.named"
     CHECK_ABANDONED = "check.abandoned"
     CHECK_SPLIT = "check.split"
@@ -100,11 +101,13 @@ class EventType(str, Enum):
 
     # ── Post-authorization (LEDGER_CORE) ─────────────────────────────
     PAYMENT_REFUNDED = "payment.refunded"
+    SEAT_PAID = "seat.paid"
     TIP_ADJUSTED = "payment.tip_adjusted"
     CASH_TIPS_DECLARED = "payment.cash_tips_declared"
 
     # ── Batch / Day (LEDGER_CORE) ────────────────────────────────────
     BATCH_SUBMITTED = "batch.submitted"
+    DAY_OPENED = "day.opened"
     DAY_CLOSED = "day.closed"
 
     # ── Device (EPHEMERAL) ───────────────────────────────────────────
@@ -131,6 +134,7 @@ class EventType(str, Enum):
     EMPLOYEE_CREATED = "employee.created"
     EMPLOYEE_UPDATED = "employee.updated"
     EMPLOYEE_DELETED = "employee.deleted"
+    STAFF_PIN_CHANGED = "staff.pin_changed"
     TIPOUT_RULE_CREATED = "tipout.rule_created"
     TIPOUT_RULE_UPDATED = "tipout.rule_updated"
     TIPOUT_RULE_DELETED = "tipout.rule_deleted"
@@ -147,6 +151,8 @@ class EventType(str, Enum):
     MENU_CATEGORY_DELETED = "menu.category_deleted"
     MENU_ITEM_86D = "menu.item_86d"
     MENU_ITEM_RESTORED = "menu.item_restored"
+    ITEM_86ED = "item.86ed"
+    ITEM_86_CLEARED = "item.86_cleared"
     MENU_ITEMS_REORDERED = "menu.items_reordered"
     MENU_CATEGORIES_REORDERED = "menu.categories_reordered"
     MODIFIER_GROUP_CREATED = "modifier.group_created"
@@ -173,6 +179,8 @@ class EventType(str, Enum):
     # ── System (LEDGER_OPERATIONAL) ──────────────────────────────────
     USER_LOGGED_IN = "user.logged_in"
     USER_LOGGED_OUT = "user.logged_out"
+    CLOCK_IN = "clock.in"
+    CLOCK_OUT = "clock.out"
 
     # ── Timecard (LEDGER_OPERATIONAL) ─────────────────────────────────
     # Admin-initiated clock-in/out correction. Applied over the raw
@@ -368,6 +376,39 @@ def order_created(
     )
 
 
+def check_opened(
+        terminal_id: str,
+        order_id: str,
+        check_number: Optional[str] = None,
+        table: str | int | None = None,
+        server_id: Optional[str] = None,
+        server_name: Optional[str] = None,
+        guest_count: int = 1,
+        seat_numbers: Optional[list[int]] = None,
+        **kwargs
+) -> Event:
+    """CHECK_OPENED: distinct anchor for the check timeline, emitted
+    alongside ORDER_CREATED so downstream replayers can separate
+    check-lifecycle moments (open / named / closed / voided) from the
+    underlying order-lifecycle moments."""
+    payload = {
+        "order_id": order_id,
+        "check_number": check_number,
+        "table": table,
+        "server_id": server_id,
+        "server_name": server_name,
+        "guest_count": guest_count,
+    }
+    if seat_numbers is not None:
+        payload["seat_numbers"] = list(seat_numbers)
+    return create_event(
+        event_type=EventType.CHECK_OPENED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
 def order_transferred(
         terminal_id: str,
         order_id: str,
@@ -534,17 +575,21 @@ def item_removed(
         order_id: str,
         item_id: str,
         reason: Optional[str] = None,
+        voided_by: Optional[str] = None,
         **kwargs
 ) -> Event:
     """Create an ITEM_REMOVED event."""
+    payload = {
+        "order_id": order_id,
+        "item_id": item_id,
+        "reason": reason,
+    }
+    if voided_by is not None:
+        payload["voided_by"] = voided_by
     return create_event(
         event_type=EventType.ITEM_REMOVED,
         terminal_id=terminal_id,
-        payload={
-            "order_id": order_id,
-            "item_id": item_id,
-            "reason": reason,
-        },
+        payload=payload,
         correlation_id=order_id,
         **kwargs
     )
@@ -1292,18 +1337,22 @@ def tip_adjusted(
         payment_id: str,
         tip_amount: Decimal,
         previous_tip: Decimal = Decimal("0.00"),
+        adjusted_by: Optional[str] = None,
         **kwargs
 ) -> Event:
     """Create a TIP_ADJUSTED event for post-payment tip adjustment."""
+    payload = {
+        "order_id": order_id,
+        "payment_id": payment_id,
+        "tip_amount": money_round(tip_amount),
+        "previous_tip": money_round(previous_tip),
+    }
+    if adjusted_by is not None:
+        payload["adjusted_by"] = adjusted_by
     return create_event(
         event_type=EventType.TIP_ADJUSTED,
         terminal_id=terminal_id,
-        payload={
-            "order_id": order_id,
-            "payment_id": payment_id,
-            "tip_amount": money_round(tip_amount),
-            "previous_tip": money_round(previous_tip),
-        },
+        payload=payload,
         correlation_id=order_id,
         **kwargs
     )
@@ -1330,6 +1379,29 @@ def cash_refund_due(
         },
         correlation_id=order_id,
         **kwargs
+    )
+
+
+def seat_paid(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        **kwargs
+) -> Event:
+    """SEAT_PAID: audit marker emitted when a seat's share of an order's
+    balance is fully settled. Currently emitted for every seat on the
+    order at auto-close (when the whole order's balance reaches zero);
+    a future per-seat-balance projection can emit progressively as
+    individual seats are paid off during split-check flows."""
+    return create_event(
+        event_type=EventType.SEAT_PAID,
+        terminal_id=terminal_id,
+        payload={
+            "order_id": order_id,
+            "seat_number": seat_number,
+        },
+        correlation_id=order_id,
+        **kwargs,
     )
 
 
@@ -1391,6 +1463,22 @@ def batch_submitted(
             "submitted_at": datetime.now(timezone.utc).isoformat(),
         },
         **kwargs
+    )
+
+
+def day_opened(
+        terminal_id: str,
+        date: str,
+        **kwargs
+) -> Event:
+    """DAY_OPENED: anchors the start of a business day. Emitted exactly
+    once per day as the first ledger write after the previous
+    DAY_CLOSED (or on a cold ledger)."""
+    return create_event(
+        event_type=EventType.DAY_OPENED,
+        terminal_id=terminal_id,
+        payload={"date": date},
+        **kwargs,
     )
 
 
