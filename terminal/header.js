@@ -44,9 +44,12 @@
 //
 //   Expects global SceneManager (window._SM) with:
 //     .back()                          — called by BACK pill if no onBack override
-//     .goTo('login')                   — target of logout flow
+//     .openGate('login')               — target of logout flow
 //     .interrupt(key, opts)            — Tier 3 confirm for logout
-//   Falls back to window.confirm() if .interrupt() is missing.
+//     .hasScene(name)                  — used to gate the confirm-logout
+//                                        interrupt; falls back to
+//                                        window.confirm() when the
+//                                        interrupt scene isn't registered.
 
 import { T } from './tokens.js';
 import { buildPillButton } from './theme-manager.js';
@@ -211,7 +214,7 @@ function triggerLogout() {
 
     // Immediate UI response
     if (SM) {
-      SM.goTo('login');
+      SM.openGate('login');
     }
 
     // Background API call to invalidate server session. Note: the fetch
@@ -226,13 +229,20 @@ function triggerLogout() {
     }).catch(err => console.warn('[logout] API background call failed:', err));
   };
 
-  if (typeof SM.interrupt === 'function') {
+  // Prefer the tier-3 confirm interrupt, but only if a scene is actually
+  // registered for it. `SM.interrupt` on an unregistered key just logs an
+  // error and returns, so without this probe the window.confirm fallback
+  // below would never run and LOGOUT would silently do nothing.
+  var canInterrupt = typeof SM.interrupt === 'function'
+    && typeof SM.hasScene === 'function'
+    && SM.hasScene('confirm-logout');
+  if (canInterrupt) {
     SM.interrupt('confirm-logout', {
       message: 'Log out and return to PIN entry?',
       onConfirm: onConfirm
     });
   } else {
-    // graceful fallback if interrupt not yet wired
+    // graceful fallback if the confirm-logout interrupt isn't wired yet
     if (window.confirm('Log out?')) {
       onConfirm();
     }
