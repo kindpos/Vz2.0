@@ -10,7 +10,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../common/tokens.js';
-import { buildCard, buildPillButton, darkenHex } from './theme-manager.js';
+import { buildCard, buildPillButton } from './theme-manager.js';
 
 var _root = null;
 var _visible = false;
@@ -127,27 +127,33 @@ function _buildIfNeeded() {
   var btnRow = document.createElement('div');
   btnRow.style.cssText = 'display:flex;gap:12px;justify-content:space-between;';
 
+  // Button hierarchy: CANCEL (verm destructive) + DONE (mint primary).
   var cancelBtn = buildPillButton({
     label:    'CANCEL',
-    color:    T.card,
-    darkBg:   darkenHex(T.card, 0.4),
+    variant:  'verm',
     fontSize: T.fsB2,
     onClick:  function() {
       if (_opts.onDismiss) _opts.onDismiss();
       hideKeyboard();
     },
   });
-  cancelBtn.style.flex  = '1';
-  cancelBtn.style.color = T.text;
+  cancelBtn.style.flex           = '1';
+  cancelBtn.style.borderRadius   = '14px';
+  cancelBtn.style.display        = 'flex';
+  cancelBtn.style.alignItems     = 'center';
+  cancelBtn.style.justifyContent = 'center';
 
   var doneBtn = buildPillButton({
     label:    'DONE',
-    color:    T.green,
-    darkBg:   T.greenDk,
+    variant:  'mint',
     fontSize: T.fsB2,
     onClick:  _handleDone,
   });
-  doneBtn.style.flex = '1';
+  doneBtn.style.flex           = '1';
+  doneBtn.style.borderRadius   = '14px';
+  doneBtn.style.display        = 'flex';
+  doneBtn.style.alignItems     = 'center';
+  doneBtn.style.justifyContent = 'center';
 
   btnRow.appendChild(cancelBtn);
   btnRow.appendChild(doneBtn);

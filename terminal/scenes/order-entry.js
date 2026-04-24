@@ -750,13 +750,16 @@ defineScene({
         var stepper = document.createElement('div');
         stepper.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:16px;margin:6px 0 4px;';
 
+        // Stepper −/+: neutral elec cyan so they don't blend with the
+        // card bg and don't claim primary-action color.
         var minusBtn = buildPillButton({
           label: '−',
-          color: T.card,
+          variant: 'elec',
           fontSize: T.fsB1,
         });
         minusBtn.style.width  = '64px';
         minusBtn.style.height = '56px';
+        minusBtn.style.borderRadius = '14px';
         minusBtn.style.flexShrink = '0';
 
         var qtyReadout = document.createElement('div');
@@ -769,11 +772,12 @@ defineScene({
 
         var plusBtn = buildPillButton({
           label: '+',
-          color: T.card,
+          variant: 'elec',
           fontSize: T.fsB1,
         });
         plusBtn.style.width  = '64px';
         plusBtn.style.height = '56px';
+        plusBtn.style.borderRadius = '14px';
         plusBtn.style.flexShrink = '0';
 
         stepper.appendChild(minusBtn);
@@ -781,21 +785,29 @@ defineScene({
         stepper.appendChild(plusBtn);
         panel.appendChild(stepper);
 
-        // Bottom bar
+        // Button hierarchy: CANCEL (verm destructive) + CONFIRM (mint
+        // primary). Matching 14px radius + flex-centered text so the
+        // pair reads as one family with the check-overview action bar.
         var bottomBar = document.createElement('div');
         bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
 
         var cancelBtn = buildPillButton({
           label: 'CANCEL',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'verm',
+          fontSize: T.fsB2,
           onClick: function() { params.onCancel(); },
         });
         cancelBtn.style.flex = '1';
         cancelBtn.style.height = '48px';
+        cancelBtn.style.borderRadius = '14px';
+        cancelBtn.style.display = 'flex';
+        cancelBtn.style.alignItems = 'center';
+        cancelBtn.style.justifyContent = 'center';
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'mint',
+          fontSize: T.fsB2,
           onClick: function() {
             if (qty === startQty) return;
             params.onConfirm(qty);
@@ -803,6 +815,10 @@ defineScene({
         });
         confirmBtn.style.flex = '1';
         confirmBtn.style.height = '48px';
+        confirmBtn.style.borderRadius = '14px';
+        confirmBtn.style.display = 'flex';
+        confirmBtn.style.alignItems = 'center';
+        confirmBtn.style.justifyContent = 'center';
 
         bottomBar.appendChild(cancelBtn);
         bottomBar.appendChild(confirmBtn);

@@ -582,33 +582,51 @@ defineScene({
         lbl.textContent = title;
         panel.appendChild(lbl);
 
+        // Option pills — scene passes a semantic opt.color (T.green,
+        // T.verm, T.gold…). Unset options fall back to ghost so they
+        // don't blend into the T.card shell.
         for (var oi = 0; oi < options.length; oi++) {
           (function(opt) {
-            var btn = buildPillButton({
-              label:    opt.label,
-              color:    opt.color || T.card,
-              darkBg:   darkenHex(opt.color || T.card, 0.4),
-              fontSize: T.fsB2,
-              onClick:  function() { params.onConfirm(opt.id); },
-            });
-            btn.style.width = '100%';
-            if ((opt.color || T.card) === T.card) btn.style.color = T.text;
-            else                                  btn.style.color = T.well;
-            if (opt.color === T.verm) btn.style.color = '#fff';
+            var btn;
+            if (opt.color) {
+              btn = buildPillButton({
+                label:    opt.label,
+                color:    opt.color,
+                darkBg:   darkenHex(opt.color, 0.4),
+                fontSize: T.fsB2,
+                onClick:  function() { params.onConfirm(opt.id); },
+              });
+              btn.style.color = (opt.color === T.verm) ? '#fff' : T.well;
+            } else {
+              btn = buildPillButton({
+                label:    opt.label,
+                variant:  'ghost',
+                fontSize: T.fsB2,
+                onClick:  function() { params.onConfirm(opt.id); },
+              });
+            }
+            btn.style.width         = '100%';
+            btn.style.borderRadius  = '14px';
+            btn.style.display       = 'flex';
+            btn.style.alignItems    = 'center';
+            btn.style.justifyContent = 'center';
             panel.appendChild(btn);
           })(options[oi]);
         }
 
+        // CANCEL — destructive exit.
         var cancelBtn = buildPillButton({
           label:    'CANCEL',
-          color:    T.card,
-          darkBg:   darkenHex(T.card, 0.4),
+          variant:  'verm',
           fontSize: T.fsB2,
           onClick:  function() { params.onCancel(); },
         });
-        cancelBtn.style.width     = '100%';
-        cancelBtn.style.color     = T.text;
-        cancelBtn.style.marginTop = '6px';
+        cancelBtn.style.width          = '100%';
+        cancelBtn.style.marginTop      = '6px';
+        cancelBtn.style.borderRadius   = '14px';
+        cancelBtn.style.display        = 'flex';
+        cancelBtn.style.alignItems     = 'center';
+        cancelBtn.style.justifyContent = 'center';
         panel.appendChild(cancelBtn);
         container.appendChild(shell.wrap);
 
@@ -831,20 +849,26 @@ defineScene({
             fontSize: T.fsB2,
             onClick:  function() { params.onConfirm(opt); },
           });
-          btn.style.width = '240px';
+          btn.style.width          = '240px';
+          btn.style.borderRadius   = '14px';
+          btn.style.display        = 'flex';
+          btn.style.alignItems     = 'center';
+          btn.style.justifyContent = 'center';
           panel.appendChild(btn);
         });
 
         var cancelBtn = buildPillButton({
           label:    'CANCEL',
-          color:    T.card,
-          darkBg:   darkenHex(T.card, 0.4),
+          variant:  'verm',
           fontSize: T.fsB2,
           onClick:  function() { params.onCancel(); },
         });
-        cancelBtn.style.width     = '240px';
-        cancelBtn.style.color     = T.text;
-        cancelBtn.style.marginTop = '6px';
+        cancelBtn.style.width          = '240px';
+        cancelBtn.style.marginTop      = '6px';
+        cancelBtn.style.borderRadius   = '14px';
+        cancelBtn.style.display        = 'flex';
+        cancelBtn.style.alignItems     = 'center';
+        cancelBtn.style.justifyContent = 'center';
         panel.appendChild(cancelBtn);
         container.appendChild(shell.wrap);
       },
@@ -957,14 +981,16 @@ defineScene({
 
         var cancelBtn = buildPillButton({
           label:    'CANCEL',
-          color:    T.card,
-          darkBg:   darkenHex(T.card, 0.4),
+          variant:  'verm',
           fontSize: T.fsB2,
           onClick:  function() { params.onCancel(); },
         });
-        cancelBtn.style.width     = '100%';
-        cancelBtn.style.color     = T.text;
-        cancelBtn.style.marginTop = '4px';
+        cancelBtn.style.width          = '100%';
+        cancelBtn.style.marginTop      = '4px';
+        cancelBtn.style.borderRadius   = '14px';
+        cancelBtn.style.display        = 'flex';
+        cancelBtn.style.alignItems     = 'center';
+        cancelBtn.style.justifyContent = 'center';
         panel.appendChild(cancelBtn);
         container.appendChild(shell.wrap);
 
