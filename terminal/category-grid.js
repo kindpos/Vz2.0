@@ -6,7 +6,6 @@
 
 import { T } from './tokens.js';
 import { hexToRgba } from './theme-manager.js';
-import { applyCardBevel, chamfer } from './sm2-shim.js';
 
 // Shrink label font until it fits the tile. Allows natural multi-word
 // wrapping; shrinks when a single long word overflows width, or when
@@ -115,7 +114,7 @@ export function CategoryGrid(container, opts) {
   //   mode: 'border' (idle cat/subcat) or 'solid' (parent back tile)
   function buildTile(cfg) {
     var mode   = cfg.mode || 'border';
-    var color  = cfg.color || T.mint;
+    var color  = cfg.color || T.green;
     var label  = cfg.label || '';
     var price  = cfg.price;
     var isBack = !!cfg.back;
@@ -123,30 +122,26 @@ export function CategoryGrid(container, opts) {
 
     var tile = document.createElement('div');
 
-    var baseBg   = mode === 'solid' ? color    : T.bgDark;
-    var labelClr = mode === 'solid' ? T.bgDark : color;
+    var baseBg   = mode === 'solid' ? color  : T.well;
+    var labelClr = mode === 'solid' ? T.well : color;
 
     tile.style.cssText = [
       'position:relative;box-sizing:border-box;',
       'display:flex;flex-direction:column;align-items:center;justify-content:center;',
       'min-height:120px;padding:14px 10px;',
       'background:' + baseBg + ';',
-      'border-radius:0;',
-      'clip-path:' + chamfer(8) + ';',
+      'border-left:' + T.accentBarW + ' solid ' + T.green + ';',
+      'border-radius:' + T.chamferCard + 'px;',
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'transition:transform 60ms, filter 60ms;',
     ].join('');
 
-    // Style D bevel derived from the category color — light top/left,
-    // dark bottom/right — same helper used by the rest of the chassis.
-    applyCardBevel(tile, color, 7);
-
     if (mode === 'border') {
       tile.style.boxShadow = '0 0 8px ' + hexToRgba(color, 0.33);
     } else {
-      tile.style.boxShadow = 'inset 0 2px 0 ' + hexToRgba(T.bgLight, 0.5)
-        + ', inset 0 -2px 0 ' + hexToRgba(T.bgEdge, 0.6);
+      tile.style.boxShadow = 'inset 0 2px 0 ' + hexToRgba(T.card, 0.5)
+        + ', inset 0 -2px 0 ' + hexToRgba(T.border, 0.6);
     }
 
     // Label — natural wrapping; _fitLabel shrinks font on overflow.
@@ -182,7 +177,7 @@ export function CategoryGrid(container, opts) {
         'position:absolute;left:0;right:0;bottom:8px;',
         'font-family:' + T.fh + ';',
         'font-weight:bold;font-size:16px;letter-spacing:2px;',
-        'color:' + T.bgDark + ';',
+        'color:' + T.well + ';',
         'text-align:center;pointer-events:none;',
       ].join('');
       back.textContent = '\u2190 BACK';
@@ -247,7 +242,7 @@ export function CategoryGrid(container, opts) {
     sortChildren(data).forEach(function(cat) {
       root.appendChild(buildTile({
         mode:  'border',
-        color: cat.color || T.mint,
+        color: cat.color || T.green,
         label: cat.label || cat.name || '',
         onTap: function() { drillInto(cat); },
       }));
@@ -256,7 +251,7 @@ export function CategoryGrid(container, opts) {
 
   function renderStateB() {
     var parent      = path[path.length - 1];
-    var parentColor = parent.color || T.mint;
+    var parentColor = parent.color || T.green;
     var children    = sortChildren(childrenOf(parent));
 
     root.appendChild(buildTile({
@@ -350,7 +345,7 @@ export function CategoryGrid(container, opts) {
   function _modColor() {
     return (path[0] && path[0].color)
         || (modState.item && modState.item.color)
-        || T.mint;
+        || T.green;
   }
 
   function renderModGroups() {
@@ -388,7 +383,7 @@ export function CategoryGrid(container, opts) {
     if (allDone) {
       root.appendChild(buildTile({
         mode:  'solid',
-        color: T.goGreen,
+        color: T.greenWarm,
         label: 'DONE',
         onTap: function() { finalizeMods(); },
       }));
@@ -475,7 +470,7 @@ export function CategoryGrid(container, opts) {
     path = [{
       id:        'pick-' + (label || '').toLowerCase(),
       label:     label || '',
-      color:     color || T.mint,
+      color:     color || T.green,
       textColor: textColor,
       items:     items || [],
     }];
