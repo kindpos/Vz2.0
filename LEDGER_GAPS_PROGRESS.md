@@ -72,6 +72,15 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 4g: micromod.* dark-shipped. 9 new EventType
+  entries (`micromod.created` / `updated` / `price_changed` /
+  `deactivated` / `reactivated` / `assigned_to_modifier` /
+  `unassigned_from_modifier` / `86ed` / `86_cleared`) plus matching
+  factories. Events flow through `/config/push` (no new endpoint
+  surface). The product does not surface micromods yet -- this lands
+  the schema so the overseer rollout can emit without a follow-up
+  events-table migration. 5 round-trip tests pin emission + payload
+  shape. LG-85 flipped to IMPLEMENTED.
 - 2026-04-24 — Phase 4d: `batch.settlement_failed` now emitted in the
   `_do_close_day` append_batch alongside `batch.submitted` + `day.closed`
   whenever the close-day invariant gate reports failures. Payload
