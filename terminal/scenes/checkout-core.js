@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../../common/tokens.js';
-import { buildButton, buildGap, showToast } from '../components.js';
+import { showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { buildNumpad } from '../numpad.js';
 import {

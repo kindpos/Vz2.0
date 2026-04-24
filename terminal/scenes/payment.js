@@ -6,7 +6,7 @@
 
 import { T } from '../../common/tokens.js';
 import { fetchWithTimeout } from '../net.js';
-import { buildButton, showToast } from '../components.js';
+import { showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import {
   buildPillButton, hexToRgba,

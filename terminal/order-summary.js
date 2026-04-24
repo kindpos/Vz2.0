@@ -5,7 +5,6 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../common/tokens.js';
-import { buildButton } from './components.js';
 import { SceneManager } from './scene-manager.js';
 import { hexToRgba, buildCard, buildSectionLabel, buildDataRow, buildDivider } from './theme-manager.js';
 
