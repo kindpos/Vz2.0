@@ -37,8 +37,11 @@
     }
 
     /* ── Header bar ─────────────────────────────── */
+    /* height + layer top must match T.headerH in common/tokens.js.
+       Scene-manager overrides these at runtime from the token, but
+       pre-JS paint relies on these literals to avoid layout flash. */
     #header {
-      height: 36px;
+      height: 52px;
       display: none;
     }
 
@@ -49,7 +52,7 @@
     #layer-gate,
     #order-summary {
       position: absolute;
-      top: 36px;
+      top: 52px;
       left: 0;
       right: 0;
       bottom: 0;

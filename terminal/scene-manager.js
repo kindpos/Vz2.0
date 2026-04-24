@@ -88,7 +88,7 @@ function init() {
 }
 
 function _applyLayerGeometry() {
-  var hH       = '36px';
+  var hH       = T.headerH + 'px';
   var bodyH    = 'calc(100% - ' + hH + ')';
   var summaryW = T.pcLeftW;
   var sceneLeft = _summaryVisible ? (summaryW + T.colGapSm) + 'px' : '0';

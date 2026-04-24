@@ -40,7 +40,7 @@ async function boot() {
   if (appRoot) {
     var placeholderHeader = document.createElement('div');
     placeholderHeader.style.cssText = [
-      'width:100%;height:36px;min-height:36px;',
+      'width:100%;height:' + T.headerH + 'px;min-height:' + T.headerH + 'px;',
       'background:' + T.card + ';',
       'border-bottom:1px solid ' + T.border + ';',
       'display:flex;align-items:center;justify-content:flex-end;',
