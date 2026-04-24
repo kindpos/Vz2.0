@@ -1177,8 +1177,8 @@ function renderActionBar(state) {
   // DISC
   var discBtn = buildPillButton({
     label: 'DISC',
-    color: T.lavender,
-    darkBg: darkenHex(T.lavender, 0.4),
+    color: T.groups.actionBar.disc,
+    darkBg: darkenHex(T.groups.actionBar.disc, 0.4),
     onClick: function() { handleDiscount(state); }
   });
   discBtn.style.flex = '1';
@@ -1206,7 +1206,7 @@ function renderActionBar(state) {
 
   var voidBtn = buildPillButton({
     label: voidLabel,
-    color: T.verm,
+    color: T.groups.actionBar.void,
     darkBg: T.vermDk,
     onClick: function() { handleVoid(state); }
   });
@@ -1217,14 +1217,14 @@ function renderActionBar(state) {
   // PAY
   var payBtn = buildPillButton({
     label: 'PAY',
-    color: T.gold,
+    color: T.groups.actionBar.pay,
     darkBg: T.goldDk,
     width: '220px',
     onClick: function() { handlePay(state, state._params || {}); }
   });
   Object.assign(payBtn.style, {
     alignSelf: 'stretch',
-    borderRadius: '14px',
+    borderRadius: T.groups.actionBar.radius,
     fontSize: '20px',
     flexShrink: '0',
   });
@@ -1233,14 +1233,14 @@ function renderActionBar(state) {
   // ADD ITEMS
   var addBtn = buildPillButton({
     label: 'ADD ITEMS',
-    color: T.greenWarm,
+    color: T.groups.actionBar.addItems,
     darkBg: T.greenWarmDk,
     width: '220px',
     onClick: function() { handleAddItems(state, state._params || {}); }
   });
   Object.assign(addBtn.style, {
     alignSelf: 'stretch',
-    borderRadius: '14px',
+    borderRadius: T.groups.actionBar.radius,
     fontSize: '20px',
     flexShrink: '0',
   });
@@ -1260,7 +1260,7 @@ function renderActionBar(state) {
   // EDIT SEATS
   var editBtn = buildPillButton({
     label: 'EDIT SEATS',
-    color: T.moon,
+    color: T.groups.actionBar.editSeats,
     darkBg: T.moonDk,
     onClick: function() { openEditSeats(state); }
   });
@@ -1271,7 +1271,7 @@ function renderActionBar(state) {
   // PRINT
   var printBtn = buildPillButton({
     label: 'PRINT',
-    color: T.elec,
+    color: T.groups.actionBar.print,
     darkBg: T.elecDk,
     onClick: function() { handlePrint(state); }
   });
