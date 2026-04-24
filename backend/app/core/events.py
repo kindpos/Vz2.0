@@ -58,6 +58,11 @@ class EventType(str, Enum):
     CHECK_SPLIT = "check.split"
     CHECK_MERGED = "check.merged"
     CHECK_TABLE_CHANGED = "check.table_changed"
+    CHECK_SEAT_ADDED = "check.seat_added"
+    CHECK_SEAT_REMOVED = "check.seat_removed"
+    CHECK_SEAT_RELABELED = "check.seat_relabeled"
+    CHECK_SEAT_SENT_OUT = "check.seat_sent_out"
+    CHECK_SEAT_RECEIVED = "check.seat_received"
 
     # ── Item management (LEDGER_CORE) ────────────────────────────────
     ITEM_ADDED = "item.added"
@@ -110,6 +115,13 @@ class EventType(str, Enum):
     SEAT_PAID = "seat.paid"
     SEAT_TIP_ADDED = "seat.tip_added"
     SEAT_OVERPAYMENT_RESOLVED = "seat.overpayment_resolved"
+    SEAT_ITEM_TRANSFERRED_OUT = "seat.item_transferred_out"
+    SEAT_ITEM_RECEIVED = "seat.item_received"
+    SEAT_TRANSFERRED_OUT = "seat.transferred_out"
+    SEAT_TRANSFERRED_IN = "seat.transferred_in"
+    SEAT_SPLIT_FROM = "seat.split_from"
+    SEAT_MERGED_INTO = "seat.merged_into"
+    SEAT_REOPENED = "seat.reopened"
     TIP_ADJUSTED = "payment.tip_adjusted"
     CASH_TIPS_DECLARED = "payment.cash_tips_declared"
 
@@ -2635,6 +2647,323 @@ def security_setting_updated(
         event_type=EventType.SECURITY_SETTING_UPDATED,
         terminal_id=terminal_id,
         payload=payload,
+        **kwargs,
+    )
+
+
+def check_seat_added(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        seat_label: Optional[str] = None,
+        added_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """CHECK_SEAT_ADDED: per-seat add on an open check. Distinct from
+    the coarse seats.updated event so replayers can reconstruct
+    per-seat identity over the life of the check."""
+    payload = {"order_id": order_id, "seat_number": seat_number}
+    if seat_label is not None:
+        payload["seat_label"] = seat_label
+    if added_by is not None:
+        payload["added_by"] = added_by
+    return create_event(
+        event_type=EventType.CHECK_SEAT_ADDED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def check_seat_removed(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        removed_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """CHECK_SEAT_REMOVED: per-seat remove on an open check."""
+    payload = {"order_id": order_id, "seat_number": seat_number}
+    if removed_by is not None:
+        payload["removed_by"] = removed_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.CHECK_SEAT_REMOVED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def check_seat_relabeled(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        previous_label: Optional[str] = None,
+        new_label: Optional[str] = None,
+        relabeled_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """CHECK_SEAT_RELABELED: server renames a seat ('VIP', 'Kid 1')."""
+    payload = {"order_id": order_id, "seat_number": seat_number}
+    if previous_label is not None:
+        payload["previous_label"] = previous_label
+    if new_label is not None:
+        payload["new_label"] = new_label
+    if relabeled_by is not None:
+        payload["relabeled_by"] = relabeled_by
+    return create_event(
+        event_type=EventType.CHECK_SEAT_RELABELED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def check_seat_sent_out(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        target_order_id: str,
+        sent_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """CHECK_SEAT_SENT_OUT: the 'send this seat to another check'
+    half of a cross-check seat transfer. target_order_id names the
+    destination check."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "target_order_id": target_order_id,
+    }
+    if sent_by is not None:
+        payload["sent_by"] = sent_by
+    return create_event(
+        event_type=EventType.CHECK_SEAT_SENT_OUT,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def check_seat_received(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        source_order_id: str,
+        received_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """CHECK_SEAT_RECEIVED: mirror of CHECK_SEAT_SENT_OUT on the
+    destination check."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "source_order_id": source_order_id,
+    }
+    if received_by is not None:
+        payload["received_by"] = received_by
+    return create_event(
+        event_type=EventType.CHECK_SEAT_RECEIVED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_item_transferred_out(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        item_id: str,
+        target_seat_number: int,
+        target_order_id: Optional[str] = None,
+        transferred_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_ITEM_TRANSFERRED_OUT: item leaves a seat. target_order_id
+    stays None for same-check moves; set for cross-check moves."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "item_id": item_id,
+        "target_seat_number": target_seat_number,
+    }
+    if target_order_id is not None:
+        payload["target_order_id"] = target_order_id
+    if transferred_by is not None:
+        payload["transferred_by"] = transferred_by
+    return create_event(
+        event_type=EventType.SEAT_ITEM_TRANSFERRED_OUT,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_item_received(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        item_id: str,
+        source_seat_number: int,
+        source_order_id: Optional[str] = None,
+        received_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_ITEM_RECEIVED: mirror of SEAT_ITEM_TRANSFERRED_OUT."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "item_id": item_id,
+        "source_seat_number": source_seat_number,
+    }
+    if source_order_id is not None:
+        payload["source_order_id"] = source_order_id
+    if received_by is not None:
+        payload["received_by"] = received_by
+    return create_event(
+        event_type=EventType.SEAT_ITEM_RECEIVED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_transferred_out(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        target_order_id: str,
+        transferred_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_TRANSFERRED_OUT: whole-seat move from one check to another
+    (all items + payments + tips, treated as a unit)."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "target_order_id": target_order_id,
+    }
+    if transferred_by is not None:
+        payload["transferred_by"] = transferred_by
+    return create_event(
+        event_type=EventType.SEAT_TRANSFERRED_OUT,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_transferred_in(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        source_order_id: str,
+        received_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_TRANSFERRED_IN: mirror of SEAT_TRANSFERRED_OUT."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "source_order_id": source_order_id,
+    }
+    if received_by is not None:
+        payload["received_by"] = received_by
+    return create_event(
+        event_type=EventType.SEAT_TRANSFERRED_IN,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_split_from(
+        terminal_id: str,
+        order_id: str,
+        parent_seat_number: int,
+        child_seat_number: int,
+        split_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_SPLIT_FROM: one seat splits into two (a single diner's
+    tab is divided, e.g. 'split the wine bill')."""
+    payload = {
+        "order_id": order_id,
+        "parent_seat_number": parent_seat_number,
+        "child_seat_number": child_seat_number,
+    }
+    if split_by is not None:
+        payload["split_by"] = split_by
+    return create_event(
+        event_type=EventType.SEAT_SPLIT_FROM,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_merged_into(
+        terminal_id: str,
+        order_id: str,
+        source_seat_number: int,
+        target_seat_number: int,
+        merged_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_MERGED_INTO: two seats combine into one."""
+    payload = {
+        "order_id": order_id,
+        "source_seat_number": source_seat_number,
+        "target_seat_number": target_seat_number,
+    }
+    if merged_by is not None:
+        payload["merged_by"] = merged_by
+    return create_event(
+        event_type=EventType.SEAT_MERGED_INTO,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_reopened(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        reopened_by: str,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_REOPENED: undoes a seat.paid / seat.closed so post-close
+    additions (forgot a drink, late dessert) can land without reopening
+    the whole check."""
+    payload = {
+        "order_id": order_id,
+        "seat_number": seat_number,
+        "reopened_by": reopened_by,
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.SEAT_REOPENED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
         **kwargs,
     )
 

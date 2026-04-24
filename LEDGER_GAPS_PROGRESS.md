@@ -72,6 +72,27 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 9: seat-transfer family dark-shipped. Twelve
+  new `EventType` entries with matching factories, all emittable
+  via `/config/push`:
+  - `check.seat_added` / `check.seat_removed` / `check.seat_relabeled`
+    (LG-06 / 07 / 08) -- per-seat identity on a check, distinct from
+    the coarse `seats.updated`.
+  - `check.seat_sent_out` / `check.seat_received` (LG-17 / 18) --
+    cross-check seat transfer, correlation via `source_order_id` /
+    `target_order_id`.
+  - `seat.item_transferred_out` / `seat.item_received` (LG-24 / 25) --
+    item-level seat-to-seat moves; target_order_id is optional so the
+    same factories cover intra-check and cross-check moves.
+  - `seat.transferred_out` / `seat.transferred_in` (LG-38 / 39) --
+    whole-seat moves (all items + payments + tips as a unit).
+  - `seat.split_from` / `seat.merged_into` (LG-40 / 41) -- per-seat
+    splits and merges so 'split the wine bill' is replayable.
+  - `seat.reopened` (LG-42) -- undo for seat.paid without reopening
+    the whole check.
+  The underlying product features are coming later; this phase lands
+  the schema so the rollout doesn't require a follow-up events-table
+  migration. 6 round-trip tests cover every event.
 - 2026-04-24 — Phase 6: staff + config dark-ship completeness.
   Eleven new `EventType` entries plus factories, all emittable
   via `/config/push`:
