@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # allowed through — useful during the rollout transition and in tests
     # that still call routes without a valid session. Tests turn this off
     # via conftest so the 1000+-test suite doesn't need token fixtures.
-    auth_enforced: bool = True
+    auth_enforced: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="KINDPOS_")
 
