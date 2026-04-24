@@ -151,6 +151,8 @@ class EventType(str, Enum):
     MENU_CATEGORY_DELETED = "menu.category_deleted"
     MENU_ITEM_86D = "menu.item_86d"
     MENU_ITEM_RESTORED = "menu.item_restored"
+    ITEM_86ED = "item.86ed"
+    ITEM_86_CLEARED = "item.86_cleared"
     MENU_ITEMS_REORDERED = "menu.items_reordered"
     MENU_CATEGORIES_REORDERED = "menu.categories_reordered"
     MODIFIER_GROUP_CREATED = "modifier.group_created"
@@ -573,17 +575,21 @@ def item_removed(
         order_id: str,
         item_id: str,
         reason: Optional[str] = None,
+        voided_by: Optional[str] = None,
         **kwargs
 ) -> Event:
     """Create an ITEM_REMOVED event."""
+    payload = {
+        "order_id": order_id,
+        "item_id": item_id,
+        "reason": reason,
+    }
+    if voided_by is not None:
+        payload["voided_by"] = voided_by
     return create_event(
         event_type=EventType.ITEM_REMOVED,
         terminal_id=terminal_id,
-        payload={
-            "order_id": order_id,
-            "item_id": item_id,
-            "reason": reason,
-        },
+        payload=payload,
         correlation_id=order_id,
         **kwargs
     )
@@ -1331,18 +1337,22 @@ def tip_adjusted(
         payment_id: str,
         tip_amount: Decimal,
         previous_tip: Decimal = Decimal("0.00"),
+        adjusted_by: Optional[str] = None,
         **kwargs
 ) -> Event:
     """Create a TIP_ADJUSTED event for post-payment tip adjustment."""
+    payload = {
+        "order_id": order_id,
+        "payment_id": payment_id,
+        "tip_amount": money_round(tip_amount),
+        "previous_tip": money_round(previous_tip),
+    }
+    if adjusted_by is not None:
+        payload["adjusted_by"] = adjusted_by
     return create_event(
         event_type=EventType.TIP_ADJUSTED,
         terminal_id=terminal_id,
-        payload={
-            "order_id": order_id,
-            "payment_id": payment_id,
-            "tip_amount": money_round(tip_amount),
-            "previous_tip": money_round(previous_tip),
-        },
+        payload=payload,
         correlation_id=order_id,
         **kwargs
     )

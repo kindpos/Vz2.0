@@ -340,24 +340,39 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
 
 @router.post("/menu/86", dependencies=[Depends(require_manager)])
 async def item_86(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
+    # Emit the legacy menu.item_86d alongside the spec-aligned item.86ed
+    # so existing projections keep seeing the old name while replayers
+    # that follow the spec vocabulary have a canonical 86 event.
     event = create_event(
         event_type=EventType.MENU_ITEM_86D,
         terminal_id="OVERSEER",
         payload={"item_id": item_id}
     )
-    await ledger.append(event)
+    spec_event = create_event(
+        event_type=EventType.ITEM_86ED,
+        terminal_id="OVERSEER",
+        payload={"item_id": item_id},
+    )
+    await ledger.append_batch([event, spec_event])
     background_tasks.add_task(broadcast_config_update, ["menu"])
     return {"status": "ok", "event_id": event.sequence_number}
 
 
 @router.post("/menu/restore", dependencies=[Depends(require_manager)])
 async def item_restore(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
+    # Mirror the 86 route: emit legacy menu.item_restored alongside the
+    # spec-aligned item.86_cleared in one atomic append_batch.
     event = create_event(
         event_type=EventType.MENU_ITEM_RESTORED,
         terminal_id="OVERSEER",
         payload={"item_id": item_id}
     )
-    await ledger.append(event)
+    spec_event = create_event(
+        event_type=EventType.ITEM_86_CLEARED,
+        terminal_id="OVERSEER",
+        payload={"item_id": item_id},
+    )
+    await ledger.append_batch([event, spec_event])
     background_tasks.add_task(broadcast_config_update, ["menu"])
     return {"status": "ok", "event_id": event.sequence_number}
 

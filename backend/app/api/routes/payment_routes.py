@@ -525,6 +525,7 @@ class TipAdjustRequest(BaseModel):
     order_id: str
     payment_id: str
     tip_amount: Decimal
+    adjusted_by: Optional[str] = None
 
 
 @router.post("/tip-adjust")
@@ -597,6 +598,7 @@ async def adjust_tip(
         payment_id=request.payment_id,
         tip_amount=tip_amt,
         previous_tip=previous_tip,
+        adjusted_by=request.adjusted_by,
     )
     await ledger.append(evt)
 

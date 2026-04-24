@@ -10,7 +10,8 @@ inventory is `backend/app/services/ledger_gap_report.py` (surfaced in the
 | --- | --- | --- | --- | --- |
 | 1 | CRITICAL atomicity | CHECK/SEAT/DAY multi-event ops | 8 | **DONE** |
 | 2 | Missing CRITICAL | `check.opened`, `seat.paid`, `day.opened`, real clock.in/out | ~6 | **DONE** |
-| 3 | HIGH severity MISSING | Seat-granular events, compliance, batch lifecycle | ~60 | pending |
+| 3a | HIGH payload fixes + renames | item.86ed/cleared, tip adjusted_by, item.removed voided_by, discount.approved discount_id | 5 | **DONE** |
+| 3b | HIGH severity MISSING | Seat-granular events, compliance, batch lifecycle | ~55 | pending |
 | 4 | FACTORY-ONLY wiring | Emitters for declared factories | 13 | pending |
 | 5 | RENAMED consolidation | Align code ↔ spec names | 20 | pending |
 | 6 | PARTIAL payload fixes | Fill missing payload fields on implemented events | ~11 | pending |
@@ -130,3 +131,14 @@ the `/entomology` → Event Ledger Gaps tab.
 - 2026-04-24 — LG-37 `seat.paid` emitted once per seat in the
   auto-close batch (both cash and credit paths); seat set is the
   union of `order.seat_numbers` and distinct seat numbers on items.
+- 2026-04-24 — Phase 3a (payload fixes + renames) landed on
+  `claude/ledger-high-phase3a`:
+  - LG-36: `payment.tip_adjusted` payload now accepts optional
+    `adjusted_by`; `/tip-adjust` request schema extended.
+  - LG-23: `item.removed` payload accepts optional `voided_by`;
+    `/orders/{id}/items/{id}?voided_by=` supported.
+  - LG-90: `discount.approved` payload accepts optional
+    `discount_id`; catalog-scoped applications now survive renames.
+  - LG-78 / LG-79: `/menu/86` and `/menu/restore` now emit
+    `item.86ed` / `item.86_cleared` in one `append_batch` with the
+    legacy `menu.item_86d` / `menu.item_restored`.

@@ -963,6 +963,7 @@ async def remove_item(
         order_id: str,
         item_id: str,
         reason: Optional[str] = None,
+        voided_by: Optional[str] = None,
         ledger: EventLedger = Depends(get_ledger),
 ):
     """Remove an item from an order."""
@@ -986,6 +987,7 @@ async def remove_item(
         order_id=order_id,
         item_id=item_id,
         reason=reason,
+        voided_by=voided_by,
     )
     await ledger.append(event)
 
@@ -1529,6 +1531,7 @@ class ApplyDiscountRequest(BaseModel):
     reason: Optional[str] = None
     approved_by: Optional[str] = None
     item_ids: Optional[list[str]] = None  # specific items, or None for whole order
+    discount_id: Optional[str] = None  # catalog reference, if applied from a named discount
 
 @router.post("/{order_id}/discount", response_model=OrderResponse)
 async def apply_discount(
@@ -1553,18 +1556,21 @@ async def apply_discount(
         )
 
     _validate_2dp(request.amount, "amount")
+    discount_payload = {
+        "order_id": order_id,
+        "discount_type": request.discount_type,
+        "amount": money_round(request.amount),
+        "reason": request.reason or f"Manager discount: {request.discount_type}",
+        "approved_by": request.approved_by,
+        "item_ids": request.item_ids,
+    }
+    if request.discount_id is not None:
+        discount_payload["discount_id"] = request.discount_id
     event = create_event(
         event_type=EventType.DISCOUNT_APPROVED,
         terminal_id=settings.terminal_id,
         correlation_id=order_id,
-        payload={
-            "order_id": order_id,
-            "discount_type": request.discount_type,
-            "amount": money_round(request.amount),
-            "reason": request.reason or f"Manager discount: {request.discount_type}",
-            "approved_by": request.approved_by,
-            "item_ids": request.item_ids,
-        },
+        payload=discount_payload,
     )
     await ledger.append(event)
 
