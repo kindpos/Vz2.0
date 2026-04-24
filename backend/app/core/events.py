@@ -131,6 +131,7 @@ class EventType(str, Enum):
     EMPLOYEE_CREATED = "employee.created"
     EMPLOYEE_UPDATED = "employee.updated"
     EMPLOYEE_DELETED = "employee.deleted"
+    STAFF_PIN_CHANGED = "staff.pin_changed"
     TIPOUT_RULE_CREATED = "tipout.rule_created"
     TIPOUT_RULE_UPDATED = "tipout.rule_updated"
     TIPOUT_RULE_DELETED = "tipout.rule_deleted"

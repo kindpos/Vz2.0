@@ -276,6 +276,38 @@ class TestEmployeeRoute:
         # "15.5" and "15.50" are treated the same.
         assert _D(str(payload["hourly_rate"])) == _D("15.5")
 
+    @pytest.mark.asyncio
+    async def test_create_employee_with_pin_also_emits_staff_pin_changed(self, ledger, bg):
+        emp = Employee(
+            employee_id="emp_pin",
+            first_name="Pin",
+            last_name="Setter",
+            display_name="Pin Setter",
+            role_ids=["r_server"],
+            pin="1357",
+            active=True,
+        )
+        await cfg.create_employee(employee=emp, background_tasks=bg, ledger=ledger)
+        pin_changed = await ledger.get_events_by_type(EventType.STAFF_PIN_CHANGED)
+        assert len(pin_changed) == 1
+        p = pin_changed[0].payload
+        assert p["employee_id"] == "emp_pin"
+        assert "pin" not in p, "STAFF_PIN_CHANGED payload must never carry PIN material"
+        assert p.get("change_reason")
+
+    @pytest.mark.asyncio
+    async def test_create_employee_without_pin_does_not_emit_staff_pin_changed(self, ledger, bg):
+        emp = Employee(
+            employee_id="emp_no_pin",
+            first_name="No",
+            last_name="Pin",
+            display_name="No Pin",
+            role_ids=["r_server"],
+            active=True,
+        )
+        await cfg.create_employee(employee=emp, background_tasks=bg, ledger=ledger)
+        assert await ledger.get_events_by_type(EventType.STAFF_PIN_CHANGED) == []
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PIN hashing on the batch push path (manager PIN-reset flow)

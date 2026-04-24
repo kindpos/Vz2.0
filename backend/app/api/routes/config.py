@@ -409,14 +409,35 @@ async def create_employee(employee: Employee, background_tasks: BackgroundTasks,
     # hits disk, the audit trail, or any future sync-replay consumer.
     # `ensure_hashed_pin` is idempotent — if caller already hashed, it's
     # a no-op.
-    if payload.get("pin"):
+    had_pin = bool(payload.get("pin"))
+    if had_pin:
         payload["pin"] = ensure_hashed_pin(payload["pin"])
     event = create_event(
         event_type=EventType.EMPLOYEE_CREATED,
         terminal_id="OVERSEER",
         payload=payload,
     )
-    await ledger.append(event)
+
+    # Emit a distinct STAFF_PIN_CHANGED audit record when an initial PIN
+    # is set. The payload carries only metadata (no hash, no plaintext)
+    # so the security audit trail is safe to replay anywhere. Batched
+    # with EMPLOYEE_CREATED so the two events land atomically.
+    batch = [event]
+    if had_pin:
+        batch.append(create_event(
+            event_type=EventType.STAFF_PIN_CHANGED,
+            terminal_id="OVERSEER",
+            payload={
+                "employee_id": payload.get("employee_id"),
+                "employee_name": (
+                    payload.get("display_name")
+                    or payload.get("name")
+                    or payload.get("employee_id")
+                ),
+                "change_reason": "Employee created with PIN",
+            },
+        ))
+    await ledger.append_batch(batch)
     background_tasks.add_task(broadcast_config_update, ["employees"])
     return {"status": "ok", "event_id": event.sequence_number}
 
