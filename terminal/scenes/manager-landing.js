@@ -24,6 +24,12 @@ import {
   buildCOBCard,
 } from '../charts.js';
 
+// ── Input-ignore window ───────────────────────────
+// Suppress bleed-through taps on the next scene or on the freshly rendered
+// tile grid after a scene push. Scene pushes set this to Date.now()+200;
+// handlers bail while the flag is in the future.
+var _inputIgnoreUntil = 0;
+
 // ── Helpers ───────────────────────────────────────
 function fmt(n) {
   n = n || 0;
@@ -188,7 +194,7 @@ function _wireServerColors(state, staffResult) {
 // ── Check tile ────────────────────────────────────
 function _buildCheckTile(order, isSelected, srvColor, onClick, onLongPress, filterColor) {
   var tile = buildActionCard({
-    accent: isSelected ? T.green : (filterColor || srvColor || T.border)
+    accent: isSelected ? T.gold : (filterColor || srvColor || T.moon)
   });
   tile.style.width          = '140px';
   tile.style.height         = '120px';
@@ -200,11 +206,13 @@ function _buildCheckTile(order, isSelected, srvColor, onClick, onLongPress, filt
   tile.style.gap            = '4px';
   tile.style.padding        = '10px 12px';
   tile.style.textAlign      = 'center';
-  tile.style.background     = isSelected ? hexToRgba(T.green, 0.12) : T.card;
+  tile.style.background     = isSelected ? hexToRgba(T.gold, 0.12) : T.card;
+  tile.style.pointerEvents  = 'auto';
+  tile.style.touchAction    = 'manipulation';
 
   var idEl = document.createElement('div');
   idEl.textContent   = checkNum(order);
-  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:18px;font-weight:700;color:' + (isSelected ? T.green : T.text) + ';letter-spacing:0.06em;';
+  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:18px;font-weight:700;color:' + (isSelected ? T.gold : T.text) + ';letter-spacing:0.06em;';
 
   var srvEl = document.createElement('div');
   var srvName = (order.server_name || order.server_id || '').split(' ')[0].toUpperCase();
@@ -224,28 +232,47 @@ function _buildCheckTile(order, isSelected, srvColor, onClick, onLongPress, filt
   tile.appendChild(cvrEl);
   tile.appendChild(amtEl);
 
-  // Tap = select/deselect (via onClick). Long-press (550ms) = rename.
-  var lpTimer = null;
+  // Tap unselected → select. Tap already-selected → onClick (opens overview).
+  // Long-press (550ms) → ensure selected, then onLongPress (opens edit panel).
+  var lpTimer      = null;
   var didLongPress = false;
-  tile.addEventListener('pointerdown', function() {
+  var armed        = false;
+
+  tile.addEventListener('pointerdown', function(e) {
+    if (_inputIgnoreUntil > Date.now()) return;   // scene-push bleed-through guard
+    armed        = true;
     didLongPress = false;
-    if (!onLongPress) return;
-    lpTimer = setTimeout(function() {
+    lpTimer = window.setTimeout(function() {
+      if (!armed) return;
       didLongPress = true;
-      onLongPress(order);
+      lpTimer      = null;
+      if (e && e.preventDefault) e.preventDefault();  // suppress synthetic click
+      if (onLongPress) onLongPress(order);
     }, 550);
   });
-  tile.addEventListener('pointerup', function() {
+
+  tile.addEventListener('pointerup', function(e) {
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
-    if (didLongPress) { didLongPress = false; return; }
+    var wasLong = didLongPress;
+    armed        = false;
+    didLongPress = false;
+    if (wasLong) {
+      // Consume touchend so no ghost tap fires on the next scene
+      if (e && e.preventDefault)  e.preventDefault();
+      if (e && e.stopPropagation) e.stopPropagation();
+      return;
+    }
     if (onClick) onClick();
   });
+
   tile.addEventListener('pointerleave', function() {
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+    armed        = false;
     didLongPress = false;
   });
   tile.addEventListener('pointercancel', function() {
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
+    armed        = false;
     didLongPress = false;
   });
 
@@ -392,6 +419,11 @@ defineScene({
   render: function(container, params, state) {
     state.emp = params.staff || params.emp || params || {};
     state.el  = container;
+
+    // Suppress any tap that lands in the first 200ms of this scene —
+    // the previous scene's touchend can fall through onto a freshly rendered
+    // tile and fire onClick before the user sees the new screen.
+    _inputIgnoreUntil = Date.now() + 200;
 
     // ── Root grid ──────────────────────────────────
     var root = document.createElement('div');
@@ -875,27 +907,18 @@ defineScene({
         var srvColor = state.serverColorMap[order.server_id] || T.elec;
         var _fc = STATUS_COLORS[state.filter] || {};
 
-        var onClick, onLongPress;
-        if (state.filter === 'OPEN') {
-          onClick = function() {
-            var idx = state.selectedIds.indexOf(id);
-            if (idx === -1) state.selectedIds.push(id);
-            else state.selectedIds.splice(idx, 1);
+        // Tap unselected → add to selection.
+        // Tap already-selected → push check-overview for that check.
+        // Long-press → ensure selection contains the tile, then open edit panel.
+        var onClick = function() {
+          if (_inputIgnoreUntil > Date.now()) return;
+          var idx = state.selectedIds.indexOf(id);
+          if (idx === -1) {
+            state.selectedIds.push(id);
             renderTiles();
             renderPreview();
-          };
-          onLongPress = function(ord) {
-            SceneManager.mountWorking('check-overview', {
-              checkId:       ord.order_id,
-              returnLanding: 'manager-landing',
-              employeeId:    state.emp ? state.emp.id   : null,
-              employeeName:  state.emp ? state.emp.name : null,
-              pin:           state.emp ? state.emp.pin  : null,
-            });
-          };
-        } else {
-          // CLOSED or VOID
-          onClick = function() {
+          } else {
+            _inputIgnoreUntil = Date.now() + 200;
             SceneManager.mountWorking('check-overview', {
               checkId:       order.order_id,
               returnLanding: 'manager-landing',
@@ -903,9 +926,16 @@ defineScene({
               employeeName:  state.emp ? state.emp.name : null,
               pin:           state.emp ? state.emp.pin  : null,
             });
-          };
-          onLongPress = null;
-        }
+          }
+        };
+        var onLongPress = function(ord) {
+          if (state.selectedIds.indexOf(ord.order_id) === -1) {
+            state.selectedIds.push(ord.order_id);
+          }
+          renderTiles();
+          renderPreview();
+          _openEditPanel();
+        };
 
         r.tileGrid.appendChild(_buildCheckTile(order, selected, srvColor, onClick, onLongPress, _fc.color));
       });
@@ -923,9 +953,14 @@ defineScene({
         plus.style.cssText = 'font-family:' + T.fh + ';font-size:36px;color:' + hexToRgba(T.green, 0.6) + ';pointer-events:none;';
         plus.textContent = '+';
         newTile.appendChild(plus);
-        newTile.addEventListener('pointerdown',  function() { newTile.style.background = hexToRgba(T.green, 0.08); });
+        newTile.addEventListener('pointerdown',  function() {
+          if (_inputIgnoreUntil > Date.now()) return;
+          newTile.style.background = hexToRgba(T.green, 0.08);
+        });
         newTile.addEventListener('pointerup',    function() {
+          if (_inputIgnoreUntil > Date.now()) return;
           newTile.style.background = 'transparent';
+          _inputIgnoreUntil = Date.now() + 200;
           SceneManager.mountWorking('check-overview', {
             checkId:       null,
             returnLanding: 'manager-landing',
@@ -1070,21 +1105,41 @@ defineScene({
       }
     }
 
-    // Edit button — toggles action panel
+    // Edit panel — open/close helpers. Both the OPTIONS button and the
+    // long-press path on a check tile call _openEditPanel so the UI is
+    // defined exactly once.
     var _editPanelOpen = false;
+    function _openEditPanel() {
+      if (state.selectedIds.length === 0) return;
+      _editPanelOpen = true;
+      var r = state._refs;
+      r.editPanel.style.transform     = 'translateY(0)';
+      editBtn.textContent             = 'CLOSE';
+      editBtn.setColor(T.verm, T.vermDk);
+      salesOuter.style.opacity        = '0.25';
+      salesOuter.style.pointerEvents  = 'none';
+      r.serverBtn.style.opacity       = '0.3';
+      r.filterBtn.style.opacity       = '0.3';
+      r.serverBtn.style.pointerEvents = 'none';
+      r.filterBtn.style.pointerEvents = 'none';
+    }
+    function _closeEditPanel() {
+      _editPanelOpen = false;
+      var r = state._refs;
+      r.editPanel.style.transform     = 'translateY(110%)';
+      editBtn.textContent             = 'OPTIONS';
+      editBtn.setColor(T.green, T.greenDk);
+      salesOuter.style.opacity        = '1';
+      salesOuter.style.pointerEvents  = 'auto';
+      r.serverBtn.style.opacity       = '1';
+      r.filterBtn.style.opacity       = '1';
+      r.serverBtn.style.pointerEvents = 'auto';
+      r.filterBtn.style.pointerEvents = 'auto';
+    }
     editBtn.addEventListener('pointerup', function() {
       if (state.selectedIds.length === 0) return;
-      _editPanelOpen = !_editPanelOpen;
-      var r = state._refs;
-      r.editPanel.style.transform = _editPanelOpen ? 'translateY(0)' : 'translateY(110%)';
-      editBtn.textContent         = _editPanelOpen ? 'CLOSE' : 'OPTIONS';
-      editBtn.setColor(_editPanelOpen ? T.verm : T.green, _editPanelOpen ? T.vermDk : T.greenDk);
-      salesOuter.style.opacity        = _editPanelOpen ? '0.25' : '1';
-      salesOuter.style.pointerEvents  = _editPanelOpen ? 'none' : 'auto';
-      r.serverBtn.style.opacity   = _editPanelOpen ? '0.3' : '1';
-      r.filterBtn.style.opacity   = _editPanelOpen ? '0.3' : '1';
-      r.serverBtn.style.pointerEvents = _editPanelOpen ? 'none' : 'auto';
-      r.filterBtn.style.pointerEvents = _editPanelOpen ? 'none' : 'auto';
+      if (_editPanelOpen) _closeEditPanel();
+      else                _openEditPanel();
     });
 
     // ─────────────────────────────────────────────
