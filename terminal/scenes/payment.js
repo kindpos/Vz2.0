@@ -945,8 +945,8 @@ async function handleConfirm() {
 
   try {
     // Resolve seat_numbers for the backend. Two param shapes are supported:
-    //  1) Legacy SM2: sceneData.seatNumbers = [1, 2, 3]
-    //  2) Vz2.0 check-overview: sceneData.seats = [{seatId, number, items}, ...]
+    //  1) sceneData.seatNumbers = [1, 2, 3]             (order-entry, transitions)
+    //  2) sceneData.seats = [{seatId, number, items}]   (check-overview)
     // Without seat_numbers the backend can't tag the payment to specific
     // seats, so check-overview wouldn't render them as paid (gold) on return.
     var seatNumbers = null;

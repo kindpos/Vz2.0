@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-//  KINDpos Terminal — Server Checkout Scene (SM2)
+//  KINDpos Terminal — Server Checkout Scene
 //  Three-column layout per locked mockup:
 //    LEFT    Receipt Preview (260px, dimmed while blocked)
 //    MIDDLE  Card stack — blockers expanded, non-blockers dim-collapsed

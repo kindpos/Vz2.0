@@ -3,12 +3,6 @@
 //  showToast, buildButton, buildGap, buildRoleButton
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
-//
-//  Ported from SM2 version. Reskinned to Nostalgia theme:
-//    - Pill-style buttons instead of Style D bevel
-//    - border-radius instead of chamfer clip-path
-//    - New token names (T.green, T.card, T.verm, T.text)
-// ═══════════════════════════════════════════════════
 
 import { T } from './tokens.js';
 import {

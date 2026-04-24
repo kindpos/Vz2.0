@@ -1,6 +1,5 @@
 // ═══════════════════════════════════════════════════
 //  KINDpos Terminal — Manager Landing  (Vz2.0)
-//  Ported from manager-landing-sm2.js — new theme, new layout
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 

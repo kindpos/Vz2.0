@@ -471,8 +471,6 @@ defineScene({
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
         // Nostalgia-themed modal panel — matches co-item-menu's shape.
-        // Replaces the SM2-era clip-path:polygon chamfer with the theme's
-        // rounded card look.
         var panel = document.createElement('div');
         panel.style.cssText = [
           'display:flex;flex-direction:column;gap:10px;',

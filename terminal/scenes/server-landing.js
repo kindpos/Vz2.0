@@ -1,6 +1,5 @@
 // ═══════════════════════════════════════════════════
 //  KINDpos Terminal — Server Landing  (Vz2.0)
-//  Ported from server-landing-sm2.js — correct APIs, new theme
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 

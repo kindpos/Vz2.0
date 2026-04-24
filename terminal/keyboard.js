@@ -1,13 +1,12 @@
 // ═══════════════════════════════════════════════════
 //  KINDpos Terminal — Keyboard STUB  (Vz2.0)
-//  Temporary replacement for the SM2 on-screen QWERTY keyboard.
-//  Same public API (showKeyboard / hideKeyboard / isKeyboardVisible)
-//  so callers don't need to change. Uses a simple modal with a
-//  native <input> — the OS on-screen keyboard (touch devices) or
-//  physical keyboard (desktop) handles the actual typing.
+//  Temporary replacement for a proper on-screen QWERTY keyboard.
+//  Public API: showKeyboard / hideKeyboard / isKeyboardVisible.
+//  Uses a simple modal with a native <input> — the OS on-screen
+//  keyboard (touch devices) or physical keyboard (desktop) handles
+//  the actual typing.
 //
-//  TODO: Replace with a proper Vz2.0 on-screen QWERTY component
-//  when the real keyboard is ported.
+//  TODO: Replace with a proper Vz2.0 on-screen QWERTY component.
 // ═══════════════════════════════════════════════════
 
 import { T } from './tokens.js';

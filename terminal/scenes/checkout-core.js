@@ -518,7 +518,7 @@ export function buildTipAdjustInline(opts) {
 }
 
 // ═══════════════════════════════════════════════════
-//  SHARED SUB-SCENES (SM2)
+//  CO SUB-SCENES — zero-confirm, manager-pin, tip numpads
 // ═══════════════════════════════════════════════════
 
 // ── Zero-confirm interrupt ───────────────────────
