@@ -249,7 +249,7 @@ defineScene({
         [2, 3, 4].forEach(function(divisor) {
           var amt = Math.ceil(remaining / divisor * 100) / 100;
           var tile = buildActionCard({
-            accent:  T.green,
+            accent:  T.groups.paymentPreset.tileAccent,
             onClick: function() { params.onConfirm(amt); },
           });
           tile.style.cssText += [
@@ -263,7 +263,7 @@ defineScene({
           label.style.fontFamily    = T.fh;
           label.style.fontSize      = T.fsH2;
           label.style.fontWeight    = T.fwBold;
-          label.style.color         = T.green;
+          label.style.color         = T.groups.paymentPreset.tileAccent;
           label.style.letterSpacing = '0.04em';
           label.style.pointerEvents = 'none';
           tile.appendChild(label);
@@ -277,14 +277,13 @@ defineScene({
           subLabel.style.pointerEvents = 'none';
           tile.appendChild(subLabel);
 
-          // Mint flash on tap — same feedback pattern as buildDenomTile.
           tile.addEventListener('pointerup', function() {
-            tile.style.backgroundColor = T.green;
-            label.style.color          = T.well;
-            subLabel.style.color       = T.well;
+            tile.style.backgroundColor = T.groups.paymentPreset.tapFlashFill;
+            label.style.color          = T.groups.paymentPreset.tapFlashLabel;
+            subLabel.style.color       = T.groups.paymentPreset.tapFlashLabel;
             setTimeout(function() {
               tile.style.backgroundColor = T.card;
-              label.style.color          = T.green;
+              label.style.color          = T.groups.paymentPreset.tileAccent;
               subLabel.style.color       = hexToRgba(T.text, 0.7);
             }, 180);
           });
@@ -954,7 +953,7 @@ function buildDenomTile(val, opts) {
   // green accent bar with glow, raised card shadow, press animation, and
   // proper touch-action so taps register on touch devices.
   var tile = buildActionCard({
-    accent:  T.green,
+    accent:  T.groups.paymentPreset.tileAccent,
     onClick: function() { handleDenomination(val); },
   });
   tile.style.cssText += [
@@ -968,18 +967,17 @@ function buildDenomTile(val, opts) {
   label.style.fontFamily    = T.fh;
   label.style.fontSize      = T.fsH2;
   label.style.fontWeight    = T.fwBold;
-  label.style.color         = T.green;
+  label.style.color         = T.groups.paymentPreset.tileAccent;
   label.style.letterSpacing = '0.04em';
   label.style.pointerEvents = 'none';
   tile.appendChild(label);
 
-  // Brief mint-flash on tap so the operator sees the denom was accepted.
   tile.addEventListener('pointerup', function() {
-    tile.style.backgroundColor = T.green;
-    label.style.color          = T.well;
+    tile.style.backgroundColor = T.groups.paymentPreset.tapFlashFill;
+    label.style.color          = T.groups.paymentPreset.tapFlashLabel;
     setTimeout(function() {
       tile.style.backgroundColor = T.card;
-      label.style.color          = T.green;
+      label.style.color          = T.groups.paymentPreset.tileAccent;
     }, 180);
   });
 
