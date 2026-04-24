@@ -9,6 +9,7 @@ import { buildButton, buildGap, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { buildNumpad } from '../numpad.js';
 import {
+  buildCard,
   buildStaticCard,
   buildNavCard,
   buildActionCard,
@@ -584,7 +585,11 @@ defineScene({
       },
       onCancel: function() { params.onCancel(); },
     });
-    container.appendChild(numpad);
+    // Nostalgia card shell — chamfer + drop-shadow + gold accent bar.
+    // Replaces the legacy bare-numpad look the framework used to impose.
+    var shell = buildCard({ accent: T.gold, padding: '20px 24px' });
+    shell.card.appendChild(numpad);
+    container.appendChild(shell.wrap);
   },
 });
 
