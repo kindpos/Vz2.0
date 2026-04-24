@@ -4,8 +4,7 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T, chamfer } from '../tokens.js';
-import { buildStyledButton, applySunkenStyle, hexToRgba } from '../sm2-shim.js';
+import { T } from '../tokens.js';
 import { buildButton, buildGap, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { buildNumpad } from '../numpad.js';
@@ -13,6 +12,8 @@ import {
   buildStaticCard,
   buildNavCard,
   buildActionCard,
+  buildPillButton,
+  hexToRgba,
 } from '../theme-manager.js';
 
 // Resolved at call time — captured default would never re-theme.
@@ -27,7 +28,7 @@ export var BEVEL     = 4;
 export var CHAM      = 8;
 export var COL_GAP   = 20;
 export var SCENE_PAD = 13;
-export var RED       = T.vermillion;
+export var RED       = T.verm;
 
 // ─────────────────────────────────────────────────
 //  HELPERS
@@ -43,7 +44,7 @@ export function detailRow(label, value, valueColor) {
   var row = document.createElement('div');
   row.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-family:' + T.fb + ';padding:2px 0;';
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.mint + ';';
+  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.green + ';';
   lbl.textContent = label;
   var val = document.createElement('span');
   val.style.cssText = 'font-size:' + T.fsB1 + ';color:' + (valueColor || T.gold) + ';font-weight:bold;';
@@ -61,15 +62,15 @@ export function detailDivider() {
 
 export function buildMixBar(cashPct, cardPct) {
   var bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;height:16px;margin-top:8px;clip-path:' + chamfer(4) + ';overflow:hidden;';
+  bar.style.cssText = 'display:flex;height:16px;margin-top:8px;border-radius:4px;overflow:hidden;';
   var cashSeg = document.createElement('div');
-  cashSeg.style.cssText = 'width:' + cashPct + '%;background:' + T.mint + ';';
+  cashSeg.style.cssText = 'width:' + cashPct + '%;background:' + T.green + ';';
   var cardSeg = document.createElement('div');
-  cardSeg.style.cssText = 'width:' + cardPct + '%;background:' + T.cyan + ';';
+  cardSeg.style.cssText = 'width:' + cardPct + '%;background:' + T.elec + ';';
   bar.appendChild(cashSeg);
   bar.appendChild(cardSeg);
   var labels = document.createElement('div');
-  labels.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + T.mint + ';margin-top:2px;';
+  labels.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + T.green + ';margin-top:2px;';
   labels.innerHTML = '<span>Cash ' + cashPct + '%</span><span>Card ' + cardPct + '%</span>';
   var wrap = document.createElement('div');
   wrap.appendChild(bar);
@@ -91,7 +92,7 @@ export function buildCardTile(def, idx, opts) {
       if (opts && opts.onExpand) opts.onExpand(idx);
     }
   });
-  card.style.background = T.bgDark;
+  card.style.background = T.well;
   card.style.padding    = '0';
   card.style.height     = '100%';
   card.style.display    = 'flex';
@@ -103,7 +104,7 @@ export function buildCardTile(def, idx, opts) {
   var hdr = document.createElement('div');
   hdr.style.cssText = 'background:' + CHROME() + ';padding:3px 8px;flex-shrink:0;';
   var hdrTxt = document.createElement('div');
-  hdrTxt.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + (T.headerText || T.bgDark) + ';letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;';
+  hdrTxt.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + (T.headerText || T.well) + ';letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;';
   hdrTxt.textContent = def.title;
   hdr.appendChild(hdrTxt);
   card.appendChild(hdr);
@@ -118,12 +119,12 @@ export function buildCardTile(def, idx, opts) {
   body.appendChild(hero);
 
   var sub = document.createElement('div');
-  sub.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.mint + ';text-align:center;';
+  sub.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.green + ';text-align:center;';
   sub.textContent = def.subtitle;
   body.appendChild(sub);
 
   var hint = document.createElement('div');
-  hint.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.mint + ';text-align:center;margin-top:1px;';
+  hint.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.green + ';text-align:center;margin-top:1px;';
   hint.textContent = '\u25B8';
   body.appendChild(hint);
 
@@ -131,7 +132,7 @@ export function buildCardTile(def, idx, opts) {
 
   // Status dot
   var dot = document.createElement('div');
-  dot.style.cssText = 'position:absolute;bottom:8px;right:8px;width:8px;height:8px;clip-path:circle(50%);background:' + (def.statusColor || T.cyan) + ';opacity:' + (def.statusColor ? '1' : '0.4') + ';';
+  dot.style.cssText = 'position:absolute;bottom:8px;right:8px;width:8px;height:8px;clip-path:circle(50%);background:' + (def.statusColor || T.elec) + ';opacity:' + (def.statusColor ? '1' : '0.4') + ';';
   card.appendChild(dot);
 
   // Shortcut buttons below body
@@ -154,20 +155,20 @@ export function buildCardStrip(def, idx, opts) {
     'height:' + STRIP_H + 'px;',
     'display:flex;align-items:center;justify-content:space-between;',
     'padding:0 12px;cursor:pointer;',
-    'background:' + T.bgDark + ';',
+    'background:' + T.well + ';',
     'border:1px solid ' + T.border + ';',
-    'clip-path:' + chamfer(4) + ';',
+    'border-radius:4px;',
     'font-family:' + T.fb + ';',
     'user-select:none;-webkit-user-select:none;',
   ].join('');
 
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.mint + ';';
+  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.green + ';';
   lbl.textContent = def.title;
   strip.appendChild(lbl);
 
   var val = document.createElement('span');
-  val.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.cyan + ';';
+  val.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.elec + ';';
   val.textContent = def.hero;
   strip.appendChild(val);
 
@@ -218,7 +219,7 @@ export function buildExpandedCard(defs, idx, opts) {
   }
 
   var card = buildStaticCard({ accent: T.green });
-  card.style.background = T.bgDark;
+  card.style.background = T.well;
   card.style.padding    = '0';
   card.style.display    = 'flex';
   card.style.flexDirection = 'column';
@@ -233,10 +234,10 @@ export function buildExpandedCard(defs, idx, opts) {
     'cursor:pointer;user-select:none;-webkit-user-select:none;',
   ].join('');
   var hTitle = document.createElement('span');
-  hTitle.style.cssText = 'font-family:' + T.fh + ';font-size:16px;color:' + (T.headerText || T.bgDark) + ';letter-spacing:1px;';
+  hTitle.style.cssText = 'font-family:' + T.fh + ';font-size:16px;color:' + (T.headerText || T.well) + ';letter-spacing:1px;';
   hTitle.textContent = defs[idx].title;
   var hHint = document.createElement('span');
-  hHint.style.cssText = 'font-family:' + T.fh + ';font-size:16px;color:' + (T.headerText || T.bgDark) + ';';
+  hHint.style.cssText = 'font-family:' + T.fh + ';font-size:16px;color:' + (T.headerText || T.well) + ';';
   hHint.textContent = '\u25BE';
   hdr.appendChild(hTitle);
   hdr.appendChild(hHint);
@@ -270,7 +271,7 @@ export function buildBlockerBanner(messages) {
     'flex-shrink:0;height:' + BANNER_H + 'px;',
     'display:flex;align-items:center;justify-content:center;',
     'font-family:' + T.fb + ';font-size:' + T.fsB1 + ';',
-    'clip-path:' + chamfer(4) + ';',
+    'border-radius:4px;',
   ].join('');
 
   if (messages && messages.length > 0) {
@@ -280,8 +281,8 @@ export function buildBlockerBanner(messages) {
     el.textContent = '\u26A0 RESOLVE: ' + messages.join(' + ');
   } else {
     el.style.background = 'rgba(51,255,255,0.08)';
-    el.style.border = '1px solid ' + T.cyan;
-    el.style.color = T.cyan;
+    el.style.border = '1px solid ' + T.elec;
+    el.style.color = T.elec;
     el.textContent = '\u2713 ALL CLEAR \u2014 ready to finalize';
   }
 
@@ -331,13 +332,13 @@ export function buildTipAdjustInline(opts) {
   headerRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0 0 8px;flex-shrink:0;';
 
   var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.yellow + ';letter-spacing:0.1em;font-weight:700;';
+  title.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.warning + ';letter-spacing:0.1em;font-weight:700;';
   title.textContent = 'UNADJUSTED';
 
-  var zeroBtn = buildStyledButton({
+  var zeroBtn = buildPillButton({
     label: '$0 ALL',
-    variant: 'vermillion',
-    size: 'sm',
+    variant: 'verm',
+    fontSize: T.fsB3,
     onClick: function() {
       var remaining = _checks.filter(function(c) { return c.tip_amount == null; }).length;
       if (remaining === 0) return;
@@ -363,14 +364,12 @@ export function buildTipAdjustInline(opts) {
       });
     },
   });
-  zeroBtn.wrap.style.cssText += 'height:28px;flex-shrink:0;';
-  zeroBtn.inner.style.fontSize   = '11px';
-  zeroBtn.inner.style.padding    = '0 14px';
-  zeroBtn.wrap.style.pointerEvents = 'auto';
-  zeroBtn.wrap.style.touchAction   = 'manipulation';
+  zeroBtn.style.cssText += 'height:28px;flex-shrink:0;';
+  zeroBtn.style.fontSize = '11px';
+  zeroBtn.style.padding  = '0 14px';
 
   headerRow.appendChild(title);
-  headerRow.appendChild(zeroBtn.wrap);
+  headerRow.appendChild(zeroBtn);
   leftCol.appendChild(headerRow);
 
   var listEl = document.createElement('div');
@@ -384,7 +383,7 @@ export function buildTipAdjustInline(opts) {
   rightCol.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;';
 
   var hintEl = document.createElement('div');
-  hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';text-align:center;min-height:16px;letter-spacing:0.06em;';
+  hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;min-height:16px;letter-spacing:0.06em;';
   hintEl.textContent = 'Tap a check to adjust';
   rightCol.appendChild(hintEl);
 
@@ -411,7 +410,7 @@ export function buildTipAdjustInline(opts) {
         }),
       }).then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
-        showToast('Tip adjusted', { bg: T.goGreen });
+        showToast('Tip adjusted', { bg: T.greenWarm });
         adjusting.tip_amount = tipAmount;
         _selected = null;
         numpad.clear();
@@ -448,7 +447,7 @@ export function buildTipAdjustInline(opts) {
 
     if (unadj.length === 0) {
       var done = document.createElement('div');
-      done.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.goGreen + ';text-align:center;padding:24px 8px;letter-spacing:0.08em;';
+      done.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.greenWarm + ';text-align:center;padding:24px 8px;letter-spacing:0.08em;';
       done.textContent = '\u2713 All tips adjusted';
       listEl.appendChild(done);
       return;
@@ -460,8 +459,8 @@ export function buildTipAdjustInline(opts) {
       row.style.cssText = [
         'display:flex;justify-content:space-between;align-items:center;',
         'padding:10px 12px;cursor:pointer;',
-        'background:' + (isActive ? hexToRgba(T.yellow, 0.14) : T.well) + ';',
-        'border:1.5px solid ' + (isActive ? T.yellow : T.border) + ';',
+        'background:' + (isActive ? hexToRgba(T.warning, 0.14) : T.well) + ';',
+        'border:1.5px solid ' + (isActive ? T.warning : T.border) + ';',
         'border-radius:6px;',
         'transition:background 0.1s, border-color 0.1s;',
         // Custom tappable div — must explicitly claim pointer events.
@@ -470,7 +469,7 @@ export function buildTipAdjustInline(opts) {
       ].join('');
 
       var label = document.createElement('span');
-      label.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mint + ';letter-spacing:0.06em;pointer-events:none;';
+      label.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.green + ';letter-spacing:0.06em;pointer-events:none;';
       label.textContent = check.check_num || 'CHK';
 
       var amt = document.createElement('span');
@@ -529,27 +528,27 @@ defineScene({
   name: 'co-zero-confirm',
   render: function(container, params) {
     var panel = document.createElement('div');
-    panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;background:' + T.bgDark + ';border:4px solid ' + RED + ';padding:8px ' + T.scenePad + 'px ' + T.scenePad + 'px ' + T.scenePad + 'px;min-width:280px;';
+    panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;background:' + T.well + ';border:4px solid ' + RED + ';padding:8px ' + T.scenePad + 'px ' + T.scenePad + 'px ' + T.scenePad + 'px;min-width:280px;';
 
     var lbl = document.createElement('div');
-    lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsMed + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;';
+    lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;';
     lbl.textContent = '// ZERO ALL TIPS //';
     panel.appendChild(lbl);
 
     var msg = document.createElement('div');
-    msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsSmall + ';color:' + T.mint + ';text-align:center;';
+    msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';text-align:center;';
     msg.textContent = 'Set ' + (params.count || 0) + ' unadjusted tip(s) to $0.00?';
     panel.appendChild(msg);
 
     var confirmBtn = buildButton('CONFIRM', {
-      fill: T.darkBtn, color: RED, fontSize: T.fsBtnSm, height: 44,
+      fill: T.card, color: RED, fontSize: T.fsB3, height: 44,
       onTap: function() { params.onConfirm(); },
     });
     confirmBtn.style.width = '240px';
     panel.appendChild(confirmBtn);
 
     var cancelBtn = buildButton('CANCEL', {
-      fill: T.darkBtn, color: T.mint, fontSize: T.fsSmall, height: 40,
+      fill: T.card, color: T.green, fontSize: T.fsB3, height: 40,
       onTap: function() { params.onCancel(); },
     });
     cancelBtn.style.width = '240px';
@@ -621,7 +620,7 @@ defineScene({
     rightCol.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;';
 
     var hintEl = document.createElement('div');
-    hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsSmall + ';color:' + T.mutedText + ';margin-bottom:8px;text-align:center;';
+    hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';margin-bottom:8px;text-align:center;';
     hintEl.textContent = 'Tap a check to adjust';
     rightCol.appendChild(hintEl);
 
@@ -643,16 +642,16 @@ defineScene({
           body: JSON.stringify({ order_id: _selected.check_id, payment_id: _selected.payment_id, tip_amount: tipAmount }),
         }).then(function(r) {
           if (r.ok) {
-            showToast('Tip adjusted', { bg: T.goGreen });
+            showToast('Tip adjusted', { bg: T.greenWarm });
             _selected.tip_amount = tipAmount;
             _selected = null;
             hintEl.textContent = 'Tap a check to adjust';
             numpad.clear();
             renderList();
           } else {
-            showToast('Tip adjust failed', { bg: T.red });
+            showToast('Tip adjust failed', { bg: T.verm });
           }
-        }).catch(function() { showToast('Tip adjust failed', { bg: T.red }); });
+        }).catch(function() { showToast('Tip adjust failed', { bg: T.verm }); });
       },
       onCancel: function() {
         SceneManager.closeTransactional('co-tip-adjust');
@@ -667,7 +666,7 @@ defineScene({
       var unadj = _checks.filter(function(c) { return c.tip_amount == null; });
       if (unadj.length === 0) {
         var done = document.createElement('div');
-        done.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.mint + ';text-align:center;padding:20px;';
+        done.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.green + ';text-align:center;padding:20px;';
         done.textContent = '\u2713 All tips adjusted';
         _listEl.appendChild(done);
         return;
@@ -676,11 +675,14 @@ defineScene({
         (function(check) {
           var row = document.createElement('div');
           var isActive = _selected === check;
-          row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 12px;cursor:pointer;background:' + (isActive ? T.bg3 : T.bgDark) + ';border:2px solid ' + (isActive ? T.gold : T.border) + ';';
-          applySunkenStyle(row);
+          row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 12px;cursor:pointer;background:' + (isActive ? T.bg3 : T.well) + ';border:2px solid ' + (isActive ? T.gold : T.border) + ';';
+          row.style.background   = T.well;
+          row.style.border       = '1px solid ' + T.border;
+          row.style.borderRadius = '6px';
+          row.style.boxShadow    = 'inset 0 2px 4px rgba(0,0,0,0.35)';
 
           var label = document.createElement('span');
-          label.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.mint + ';';
+          label.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.green + ';';
           label.textContent = check.check_num || 'CHK';
 
           var amt = document.createElement('span');
@@ -718,7 +720,7 @@ defineScene({
     }).catch(function() {
       _listEl.innerHTML = '';
       var err = document.createElement('div');
-      err.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.red + ';padding:20px;text-align:center;';
+      err.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.verm + ';padding:20px;text-align:center;';
       err.textContent = 'Failed to load checks';
       _listEl.appendChild(err);
     });
@@ -778,7 +780,7 @@ defineScene({
     var infoCard = document.createElement('div');
     infoCard.style.cssText = [
       'display:flex;flex-direction:column;align-items:center;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.yellow + ';',
+      'background:' + T.well + ';border:3px solid ' + T.warning + ';',
       'padding:18px 22px;border-radius:12px;',
       'width:240px;box-sizing:border-box;',
     ].join('');
@@ -786,7 +788,7 @@ defineScene({
     var title = document.createElement('div');
     title.style.cssText = [
       'font-family:' + T.fh + ';font-size:14px;font-weight:700;',
-      'color:' + T.yellow + ';letter-spacing:2px;text-align:center;',
+      'color:' + T.warning + ';letter-spacing:2px;text-align:center;',
     ].join('');
     title.textContent = isEdit ? 'EDIT TIP' : 'ADJUST TIP';
     infoCard.appendChild(title);
@@ -811,7 +813,7 @@ defineScene({
 
     if (cardBrand) {
       var brand = document.createElement('div');
-      brand.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';text-align:center;';
+      brand.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
       brand.textContent = cardBrand;
       info.appendChild(brand);
     }
@@ -825,7 +827,7 @@ defineScene({
         'font-family:' + T.fb + ';font-size:12px;',
       ].join('');
       var cLbl = document.createElement('span');
-      cLbl.style.color = T.mutedText;
+      cLbl.style.color = hexToRgba(T.text, 0.6);
       cLbl.textContent = 'current tip';
       var cAmt = document.createElement('span');
       cAmt.style.cssText = 'color:' + T.green + ';font-weight:700;';
@@ -838,7 +840,7 @@ defineScene({
     infoCard.appendChild(info);
 
     var hint = document.createElement('div');
-    hint.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';letter-spacing:0.5px;text-align:center;';
+    hint.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:0.5px;text-align:center;';
     hint.textContent = isEdit ? 'correct the tip amount' : 'enter tip amount';
     infoCard.appendChild(hint);
 
@@ -865,7 +867,7 @@ defineScene({
           }),
         }).then(function(r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);
-          showToast('Tip adjusted', { bg: T.goGreen });
+          showToast('Tip adjusted', { bg: T.greenWarm });
           SceneManager.closeTransactional('co-adjust-single');
           if (params.onDone) params.onDone();
         }).catch(function() {
@@ -908,7 +910,7 @@ defineScene({
     var panel = document.createElement('div');
     panel.style.cssText = [
       'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.green + ';',
+      'background:' + T.well + ';border:3px solid ' + T.green + ';',
       'padding:22px;border-radius:12px;',
       'width:320px;box-sizing:border-box;',
     ].join('');
@@ -922,7 +924,7 @@ defineScene({
     panel.appendChild(title);
 
     var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';text-align:center;';
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
     sub.textContent = 'confirm these totals — this is final';
     panel.appendChild(sub);
 
@@ -936,7 +938,7 @@ defineScene({
     var takeRow = document.createElement('div');
     takeRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
     var takeL = document.createElement('span');
-    takeL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';letter-spacing:1px;';
+    takeL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;';
     takeL.textContent = 'TAKE-HOME';
     var takeR = document.createElement('span');
     takeR.style.cssText = 'font-family:' + T.fb + ';font-size:20px;font-weight:700;color:' + T.green + ';';
@@ -952,7 +954,7 @@ defineScene({
     var cashRow = document.createElement('div');
     cashRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
     var cashL = document.createElement('span');
-    cashL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';letter-spacing:1px;';
+    cashL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;';
     cashL.textContent = 'CASH EXPECTED';
     var cashR = document.createElement('span');
     cashR.style.cssText = 'font-family:' + T.fb + ';font-size:20px;font-weight:700;color:' + T.gold + ';';
@@ -1029,7 +1031,7 @@ defineScene({
     var panel = document.createElement('div');
     panel.style.cssText = [
       'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.elec + ';',
+      'background:' + T.well + ';border:3px solid ' + T.elec + ';',
       'padding:22px;border-radius:12px;',
       'width:640px;max-width:92vw;box-sizing:border-box;',
     ].join('');
@@ -1047,7 +1049,7 @@ defineScene({
 
     var dismissX = document.createElement('span');
     dismissX.style.cssText = [
-      'font-family:' + T.fb + ';font-size:20px;color:' + T.mutedText + ';',
+      'font-family:' + T.fb + ';font-size:20px;color:' + hexToRgba(T.text, 0.6) + ';',
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'padding:0 4px;line-height:1;',
@@ -1090,7 +1092,7 @@ defineScene({
 
     var loading = document.createElement('div');
     loading.style.cssText = [
-      'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';',
+      'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';',
       'grid-column:1 / -1;text-align:center;padding:40px 0;',
     ].join('');
     loading.textContent = 'loading servers\u2026';
@@ -1155,7 +1157,7 @@ defineScene({
       if (candidates.length === 0) {
         var empty = document.createElement('div');
         empty.style.cssText = [
-          'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';font-style:italic;',
+          'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;',
           'grid-column:1 / -1;text-align:center;padding:30px 0;',
         ].join('');
         empty.textContent = 'no other servers clocked in';
@@ -1186,7 +1188,7 @@ defineScene({
         badge.style.cssText = [
           'width:40px;height:40px;border-radius:999px;',
           'display:flex;align-items:center;justify-content:center;',
-          'background:' + T.bgDark + ';color:' + T.elec + ';',
+          'background:' + T.well + ';color:' + T.elec + ';',
           'font-family:' + T.fh + ';font-size:14px;font-weight:700;letter-spacing:1px;',
         ].join('');
         badge.textContent = initials;
@@ -1196,7 +1198,7 @@ defineScene({
         name.textContent = srv.name || '(unnamed)';
 
         var role = document.createElement('div');
-        role.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';letter-spacing:0.5px;text-transform:uppercase;';
+        role.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:0.5px;text-transform:uppercase;';
         role.textContent = srv.role || 'server';
 
         tile.appendChild(badge);
@@ -1263,7 +1265,7 @@ defineScene({
     var panel = document.createElement('div');
     panel.style.cssText = [
       'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.elec + ';',
+      'background:' + T.well + ';border:3px solid ' + T.elec + ';',
       'padding:22px;border-radius:12px;',
       'width:520px;max-width:92vw;box-sizing:border-box;',
     ].join('');
@@ -1276,7 +1278,7 @@ defineScene({
     title.textContent = 'APPLY DISCOUNT';
     var dismissX = document.createElement('span');
     dismissX.style.cssText = [
-      'font-family:' + T.fb + ';font-size:20px;color:' + T.mutedText + ';',
+      'font-family:' + T.fb + ';font-size:20px;color:' + hexToRgba(T.text, 0.6) + ';',
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;padding:0 4px;line-height:1;',
     ].join('');
@@ -1424,7 +1426,7 @@ defineScene({
     var panel = document.createElement('div');
     panel.style.cssText = [
       'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.verm + ';',
+      'background:' + T.well + ';border:3px solid ' + T.verm + ';',
       'padding:22px;border-radius:12px;',
       'width:420px;max-width:92vw;box-sizing:border-box;',
     ].join('');
@@ -1439,7 +1441,7 @@ defineScene({
     panel.appendChild(title);
 
     var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';text-align:center;';
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
     sub.textContent = 'this cannot be undone';
     panel.appendChild(sub);
 
@@ -1463,7 +1465,7 @@ defineScene({
 
     // Reason picker — radio-button list
     var reasonLabel = document.createElement('div');
-    reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.mutedText + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;';
+    reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;';
     reasonLabel.textContent = 'reason';
     panel.appendChild(reasonLabel);
 
