@@ -52,6 +52,7 @@ class EventType(str, Enum):
     ORDER_TRANSFERRED = "order.transferred"
     GUEST_COUNT_UPDATED = "guest_count.updated"
     SEATS_UPDATED = "seats.updated"
+    CHECK_OPENED = "check.opened"
     CHECK_NAMED = "check.named"
     CHECK_ABANDONED = "check.abandoned"
     CHECK_SPLIT = "check.split"
@@ -100,11 +101,13 @@ class EventType(str, Enum):
 
     # ── Post-authorization (LEDGER_CORE) ─────────────────────────────
     PAYMENT_REFUNDED = "payment.refunded"
+    SEAT_PAID = "seat.paid"
     TIP_ADJUSTED = "payment.tip_adjusted"
     CASH_TIPS_DECLARED = "payment.cash_tips_declared"
 
     # ── Batch / Day (LEDGER_CORE) ────────────────────────────────────
     BATCH_SUBMITTED = "batch.submitted"
+    DAY_OPENED = "day.opened"
     DAY_CLOSED = "day.closed"
 
     # ── Device (EPHEMERAL) ───────────────────────────────────────────
@@ -131,6 +134,7 @@ class EventType(str, Enum):
     EMPLOYEE_CREATED = "employee.created"
     EMPLOYEE_UPDATED = "employee.updated"
     EMPLOYEE_DELETED = "employee.deleted"
+    STAFF_PIN_CHANGED = "staff.pin_changed"
     TIPOUT_RULE_CREATED = "tipout.rule_created"
     TIPOUT_RULE_UPDATED = "tipout.rule_updated"
     TIPOUT_RULE_DELETED = "tipout.rule_deleted"
@@ -173,6 +177,8 @@ class EventType(str, Enum):
     # ── System (LEDGER_OPERATIONAL) ──────────────────────────────────
     USER_LOGGED_IN = "user.logged_in"
     USER_LOGGED_OUT = "user.logged_out"
+    CLOCK_IN = "clock.in"
+    CLOCK_OUT = "clock.out"
 
     # ── Timecard (LEDGER_OPERATIONAL) ─────────────────────────────────
     # Admin-initiated clock-in/out correction. Applied over the raw
@@ -365,6 +371,39 @@ def order_created(
         terminal_id=terminal_id,
         payload=payload,
         **kwargs
+    )
+
+
+def check_opened(
+        terminal_id: str,
+        order_id: str,
+        check_number: Optional[str] = None,
+        table: str | int | None = None,
+        server_id: Optional[str] = None,
+        server_name: Optional[str] = None,
+        guest_count: int = 1,
+        seat_numbers: Optional[list[int]] = None,
+        **kwargs
+) -> Event:
+    """CHECK_OPENED: distinct anchor for the check timeline, emitted
+    alongside ORDER_CREATED so downstream replayers can separate
+    check-lifecycle moments (open / named / closed / voided) from the
+    underlying order-lifecycle moments."""
+    payload = {
+        "order_id": order_id,
+        "check_number": check_number,
+        "table": table,
+        "server_id": server_id,
+        "server_name": server_name,
+        "guest_count": guest_count,
+    }
+    if seat_numbers is not None:
+        payload["seat_numbers"] = list(seat_numbers)
+    return create_event(
+        event_type=EventType.CHECK_OPENED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
     )
 
 
@@ -1333,6 +1372,29 @@ def cash_refund_due(
     )
 
 
+def seat_paid(
+        terminal_id: str,
+        order_id: str,
+        seat_number: int,
+        **kwargs
+) -> Event:
+    """SEAT_PAID: audit marker emitted when a seat's share of an order's
+    balance is fully settled. Currently emitted for every seat on the
+    order at auto-close (when the whole order's balance reaches zero);
+    a future per-seat-balance projection can emit progressively as
+    individual seats are paid off during split-check flows."""
+    return create_event(
+        event_type=EventType.SEAT_PAID,
+        terminal_id=terminal_id,
+        payload={
+            "order_id": order_id,
+            "seat_number": seat_number,
+        },
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
 def cash_tips_declared(
         terminal_id: str,
         server_id: str,
@@ -1391,6 +1453,22 @@ def batch_submitted(
             "submitted_at": datetime.now(timezone.utc).isoformat(),
         },
         **kwargs
+    )
+
+
+def day_opened(
+        terminal_id: str,
+        date: str,
+        **kwargs
+) -> Event:
+    """DAY_OPENED: anchors the start of a business day. Emitted exactly
+    once per day as the first ledger write after the previous
+    DAY_CLOSED (or on a cold ledger)."""
+    return create_event(
+        event_type=EventType.DAY_OPENED,
+        terminal_id=terminal_id,
+        payload={"date": date},
+        **kwargs,
     )
 
 
