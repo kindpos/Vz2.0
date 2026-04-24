@@ -108,6 +108,16 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 13: Cash variance projection at day close.
+  New `GET /day/cash/variance` endpoint in `day_cash.py` reads
+  DAY_CASH_FLOAT_UPDATED, DAY_CASH_DROP, DAY_CASH_PAYOUT, and
+  cash-method PAYMENT_CONFIRMED / PAYMENT_REFUNDED events since the
+  last `day.closed` boundary to compute expected cash in the drawer.
+  Returns `float`, `cash_sales`, `cash_refunds`, `drops`, `payouts`,
+  and `expected_in_drawer`. 8 new tests in
+  `tests/test_phase13_cash_variance.py`. Branch:
+  `claude/ledger-cash-variance-phase13`.
+
 - 2026-04-24 — Phase 9: seat-transfer family dark-shipped. Twelve
   new `EventType` entries with matching factories, all emittable
   via `/config/push`:
