@@ -555,15 +555,19 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'display:flex;flex-direction:column;align-items:stretch;gap:8px;',
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.green + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'padding:8px 22px 22px;min-width:300px;max-width:420px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-        ].join('');
+        var shell = buildCard({
+          accent: T.green,
+          bg: T.card,
+          padding: '8px 22px 22px',
+        });
+        shell.card.style.display       = 'flex';
+        shell.card.style.flexDirection = 'column';
+        shell.card.style.alignItems    = 'stretch';
+        shell.card.style.gap           = '8px';
+        shell.card.style.minWidth      = '300px';
+        shell.card.style.maxWidth      = '420px';
+        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
+        var panel = shell.card;
 
         var lbl = document.createElement('div');
         lbl.style.cssText = [
@@ -606,7 +610,7 @@ defineScene({
         cancelBtn.style.color     = T.text;
         cancelBtn.style.marginTop = '6px';
         panel.appendChild(cancelBtn);
-        container.appendChild(panel);
+        container.appendChild(shell.wrap);
 
         // Tap-outside-to-cancel, gated so the opening long-press release
         // doesn't self-dismiss the modal.
@@ -629,16 +633,19 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.green + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'padding:8px 18px 18px;',
-          'min-width:320px;max-width:440px;max-height:460px;',
-          'display:flex;flex-direction:column;gap:10px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-        ].join('');
+        var shell = buildCard({
+          accent: T.green,
+          bg: T.card,
+          padding: '8px 18px 18px',
+        });
+        shell.card.style.display       = 'flex';
+        shell.card.style.flexDirection = 'column';
+        shell.card.style.gap           = '10px';
+        shell.card.style.minWidth      = '320px';
+        shell.card.style.maxWidth      = '440px';
+        shell.card.style.maxHeight     = '460px';
+        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
+        var panel = shell.card;
 
         var title = document.createElement('div');
         title.style.cssText = [
@@ -677,7 +684,7 @@ defineScene({
         });
         cancelBtn.style.alignSelf = 'center';
         panel.appendChild(cancelBtn);
-        container.appendChild(panel);
+        container.appendChild(shell.wrap);
 
         fetch('/api/v1/servers/clocked-in')
           .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
@@ -733,15 +740,17 @@ defineScene({
       render: function(container, params) {
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'display:flex;flex-direction:column;align-items:center;gap:14px;',
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.gold + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'padding:22px 24px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-        ].join('');
+        var shell = buildCard({
+          accent: T.gold,
+          bg: T.card,
+          padding: '22px 24px',
+        });
+        shell.card.style.display       = 'flex';
+        shell.card.style.flexDirection = 'column';
+        shell.card.style.alignItems    = 'center';
+        shell.card.style.gap           = '14px';
+        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
+        var panel = shell.card;
 
         var lbl = document.createElement('div');
         lbl.style.cssText = [
@@ -775,7 +784,7 @@ defineScene({
           onCancel: function() { params.onCancel(); },
         });
         panel.appendChild(numpad);
-        container.appendChild(panel);
+        container.appendChild(shell.wrap);
 
         container.addEventListener('pointerup', function(e) {
           if (e.target === container) { params.onCancel(); }
@@ -788,15 +797,18 @@ defineScene({
       render: function(container, params) {
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'display:flex;flex-direction:column;align-items:center;gap:10px;',
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.gold + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'padding:22px 24px;min-width:300px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-        ].join('');
+        var shell = buildCard({
+          accent: T.gold,
+          bg: T.card,
+          padding: '22px 24px',
+        });
+        shell.card.style.display       = 'flex';
+        shell.card.style.flexDirection = 'column';
+        shell.card.style.alignItems    = 'center';
+        shell.card.style.gap           = '10px';
+        shell.card.style.minWidth      = '300px';
+        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
+        var panel = shell.card;
 
         var lbl = document.createElement('div');
         lbl.style.cssText = [
@@ -834,7 +846,7 @@ defineScene({
         cancelBtn.style.color     = T.text;
         cancelBtn.style.marginTop = '6px';
         panel.appendChild(cancelBtn);
-        container.appendChild(panel);
+        container.appendChild(shell.wrap);
       },
       unmount: function() {},
     },
@@ -854,7 +866,11 @@ defineScene({
           },
           onCancel: function() { params.onCancel(); },
         });
-        container.appendChild(numpad);
+
+        // Nostalgia card shell around the numpad — matches co-manager-pin.
+        var shell = buildCard({ accent: T.gold, padding: '20px 24px' });
+        shell.card.appendChild(numpad);
+        container.appendChild(shell.wrap);
 
         container.addEventListener('pointerup', function(e) {
           if (e.target === container) params.onCancel();
@@ -871,15 +887,19 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'display:flex;flex-direction:column;align-items:stretch;gap:10px;',
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.gold + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'padding:22px 24px;min-width:320px;max-width:440px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-        ].join('');
+        var shell = buildCard({
+          accent: T.gold,
+          bg: T.card,
+          padding: '22px 24px',
+        });
+        shell.card.style.display       = 'flex';
+        shell.card.style.flexDirection = 'column';
+        shell.card.style.alignItems    = 'stretch';
+        shell.card.style.gap           = '10px';
+        shell.card.style.minWidth      = '320px';
+        shell.card.style.maxWidth      = '440px';
+        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
+        var panel = shell.card;
 
         var title = document.createElement('div');
         title.style.cssText = [
@@ -946,7 +966,7 @@ defineScene({
         cancelBtn.style.color     = T.text;
         cancelBtn.style.marginTop = '4px';
         panel.appendChild(cancelBtn);
-        container.appendChild(panel);
+        container.appendChild(shell.wrap);
 
         var _downInside = false;
         container.addEventListener('pointerdown', function(e) {
