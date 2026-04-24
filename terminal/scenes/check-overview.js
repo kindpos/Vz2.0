@@ -3011,10 +3011,19 @@ function handlePay(state, params) {
     });
   }
 
+  // Pre-seed totals so payment's baseTotal isn't 0 until the /api/v1/orders reconcile returns.
+  var order     = state.order || {};
+  var discount  = getCashDiscount();
+  var cardTotal = order.total || 0;
+
   SceneManager.mountWorking('payment', {
     orderId:      state.orderId,
     seatIds:      selectedIds,
     seats:        seatSummary,
+    cardTotal:    cardTotal,
+    cashPrice:    Math.round(cardTotal * (1 - discount) * 100) / 100,
+    subtotal:     order.subtotal || 0,
+    tax:          order.tax || 0,
     returnTo:     'check-overview',
     returnParams: {
       checkId:       state.orderId,
