@@ -33,8 +33,8 @@ Contract (verified via `event_ledger.py:249-321`):
 | --- | --- | --- | --- | --- |
 | LG-04 | Check close / `payment.confirmed` + `order.closed` | `payment_routes.py:363-486` | straight `append_batch` swap | **DONE** |
 | LG-05 | Check void / refunds + `order.voided` | `orders.py:1266-1345` | reorder device-side-effects first, then batch | pending |
-| LG-14 | Check merge target / items + modifiers + `check.merged` | `orders.py:1358-1482` | batch per-source + final target batch | pending |
-| LG-15 | Check absorb (source side of merge) | `orders.py:1419-1469` | batch `[check.merged_src, order.voided]` per source | pending |
+| LG-14 | Check merge target / items + modifiers + `check.merged` | `orders.py:1358-1482` | one big `append_batch` for the whole merge | **DONE** |
+| LG-15 | Check absorb (source side of merge) | `orders.py:1419-1469` | same batch as LG-14 (source `check.merged` + `order.voided` interleaved with items) | **DONE** |
 | LG-16 | Check split / child create + items + parent remove + splits | `orders.py:1963-2097` | structural batching (per-seat) | pending |
 | LG-22 | Seat item add / `item.added` + `modifier.applied × N` | `orders.py:824-926` | batch; consolidate idempotency gate | pending |
 | LG-32 | `payment.confirmed` + `order.closed` (credit sale path) | `payment_routes.py:212-349` | straight `append_batch` swap (partial — LG-32 deep fix deferred to Phase 2) | **DONE** |
@@ -87,3 +87,10 @@ the `/entomology` → Event Ledger Gaps tab.
   close/void loop left as independent appends (each is idempotent via
   projection; loop-mid-crash only leaves some orders open for the next
   close attempt). 4 day-close tests green.
+- 2026-04-24 — LG-14 + LG-15: `merge_orders` in
+  `backend/app/api/routes/orders.py` now collects every event
+  (target `item.added`/`modifier.applied`, source `check.merged`,
+  source `order.voided`, target `check.merged`) into a single
+  `append_batch`. Items can no longer be copied to the target while
+  sources stay alive on crash. 68 order mutation / api route tests
+  green.

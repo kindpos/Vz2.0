@@ -1416,10 +1416,16 @@ async def merge_orders(
     operation_id = f"op_{uuid.uuid4().hex[:8]}"
     source_ids = [s.order_id for s in sources]
 
+    # Collect every event into one batch so the full merge commits
+    # atomically. A mid-flow crash under the previous per-append model
+    # could leave items copied into the target while the source was
+    # still alive (double-count), or sources voided without the matching
+    # target audit event.
+    batch_events: list = []
     for src in sources:
         for item in src.items:
             new_item_id = f"item_{uuid.uuid4().hex[:8]}"
-            evt = item_added(
+            batch_events.append(item_added(
                 terminal_id=settings.terminal_id,
                 order_id=order_id,
                 item_id=new_item_id,
@@ -1430,10 +1436,9 @@ async def merge_orders(
                 category=item.category,
                 notes=item.notes,
                 seat_number=item.seat_number,
-            )
-            await ledger.append(evt)
+            ))
             for mod in item.modifiers or []:
-                mod_evt = modifier_applied(
+                batch_events.append(modifier_applied(
                     terminal_id=settings.terminal_id,
                     order_id=order_id,
                     item_id=new_item_id,
@@ -1443,13 +1448,12 @@ async def merge_orders(
                     action="add",
                     prefix=mod.get("prefix"),
                     half_price=mod.get("half_price"),
-                )
-                await ledger.append(mod_evt)
+                ))
 
         # Source timeline: emit CHECK_MERGED BEFORE the ORDER_VOIDED so
         # the source history reads alive → merged → voided, not
         # alive → voided → (audit arrives after death).
-        await ledger.append(check_merged(
+        batch_events.append(check_merged(
             terminal_id=settings.terminal_id,
             order_id=src.order_id,
             operation_id=operation_id,
@@ -1458,17 +1462,15 @@ async def merge_orders(
             source_order_ids=source_ids,
             approved_by=request.approved_by,
         ))
-
-        void_evt = order_voided(
+        batch_events.append(order_voided(
             terminal_id=settings.terminal_id,
             order_id=src.order_id,
             reason=f"Merged into {order_id}",
             approved_by=request.approved_by,
-        )
-        await ledger.append(void_evt)
+        ))
 
     # Target timeline: single CHECK_MERGED summarizing the full operation.
-    await ledger.append(check_merged(
+    batch_events.append(check_merged(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         operation_id=operation_id,
@@ -1477,6 +1479,8 @@ async def merge_orders(
         source_order_ids=source_ids,
         approved_by=request.approved_by,
     ))
+
+    await ledger.append_batch(batch_events)
 
     target = await get_order_or_404(ledger, order_id)
     return OrderResponse.from_order(target)
