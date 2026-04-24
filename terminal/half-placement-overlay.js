@@ -7,7 +7,7 @@
  */
 
 import { T } from './tokens.js';
-import { buildStyledButton } from './sm2-shim.js';
+import { buildPillButton, darkenHex, hexToRgba } from './theme-manager.js';
 import { SceneManager } from './scene-manager.js';
 
 /**
@@ -44,7 +44,7 @@ function _buildOverlay(el, itemName, modName, modPrice, halfPrice, currentMods, 
     'width:90%;max-width:900px;',
     'background:' + T.bg + ';',
     'border:3px solid ' + T.border + ';',
-    'clip-path:polygon(8px 0%,calc(100% - 8px) 0%,100% 8px,100% calc(100% - 8px),calc(100% - 8px) 100%,8px 100%,0% calc(100% - 8px),0% 8px);',
+    'border-radius:' + T.chamferCard + 'px;',
     'display:flex;flex-direction:column;',
     'font-family:' + T.fb + ';',
     'overflow:hidden;',
@@ -55,26 +55,28 @@ function _buildOverlay(el, itemName, modName, modPrice, halfPrice, currentMods, 
   header.style.cssText = [
     'display:flex;align-items:center;justify-content:space-between;',
     'padding:10px 16px;',
-    'background:' + T.bgDark + ';',
+    'background:' + T.well + ';',
     'border-bottom:2px solid ' + T.border + ';',
   ].join('');
 
   var titleSpan = document.createElement('span');
-  titleSpan.style.cssText = 'color:' + T.gold + ';font-size:' + T.fsBtnSm + ';font-family:' + T.fb + ';';
+  titleSpan.style.cssText = 'color:' + T.gold + ';font-size:' + T.fsB3 + ';font-family:' + T.fb + ';';
   titleSpan.textContent = itemName + '  \u2014  ' + modName;
   header.appendChild(titleSpan);
 
-  // CANCEL button (Style D dark)
-  var cancelPair = buildStyledButton(T.darkBtn);
-  cancelPair.wrap.style.cssText += 'width:100px;height:40px;';
-  cancelPair.inner.textContent = 'CANCEL';
-  cancelPair.inner.style.color = T.mint;
-  cancelPair.inner.style.fontSize = T.fsSmall;
-  cancelPair.inner.style.fontFamily = T.fb;
-  cancelPair.wrap.addEventListener('pointerup', function() {
-    onCancel();
+  // CANCEL button
+  var cancelBtn = buildPillButton({
+    label: 'CANCEL',
+    color: T.card,
+    darkBg: darkenHex(T.card, 0.4),
+    textColor: T.green,
+    fontSize: T.fsB3,
+    onClick: function() { onCancel(); },
   });
-  header.appendChild(cancelPair.wrap);
+  cancelBtn.style.width = '100px';
+  cancelBtn.style.height = '40px';
+  cancelBtn.style.fontFamily = T.fb;
+  header.appendChild(cancelBtn);
   panel.appendChild(header);
 
   // ── Body: two columns with vertical wall ──
@@ -100,7 +102,7 @@ function _buildOverlay(el, itemName, modName, modPrice, halfPrice, currentMods, 
   var wall = document.createElement('div');
   wall.style.cssText = [
     'width:7px;',
-    'background:' + T.bgDark + ';',
+    'background:' + T.well + ';',
     'flex-shrink:0;',
   ].join('');
   body.appendChild(wall);
@@ -121,27 +123,32 @@ function _buildColumn(label, mods, wholeNames, onTap) {
     'flex:1;display:flex;flex-direction:column;padding:12px;',
   ].join('');
 
-  // Side button (Style D dark with mint shadow)
-  var btnPair = buildStyledButton(T.darkBtn);
-  btnPair.wrap.style.cssText += 'width:100%;height:56px;margin-bottom:12px;';
-  btnPair.inner.textContent = label;
-  btnPair.inner.style.color = T.mint;
-  btnPair.inner.style.fontSize = T.fsBtn;
-  btnPair.inner.style.fontFamily = T.fb;
-  btnPair.wrap.addEventListener('pointerup', onTap);
-  col.appendChild(btnPair.wrap);
+  // Side button
+  var sideBtn = buildPillButton({
+    label: label,
+    color: T.card,
+    darkBg: darkenHex(T.card, 0.4),
+    textColor: T.green,
+    fontSize: T.fsB2,
+    onClick: onTap,
+  });
+  sideBtn.style.width = '100%';
+  sideBtn.style.height = '56px';
+  sideBtn.style.marginBottom = '12px';
+  sideBtn.style.fontFamily = T.fb;
+  col.appendChild(sideBtn);
 
   // Live modifier list
   var list = document.createElement('div');
   list.style.cssText = [
     'flex:1;overflow-y:auto;',
     'font-family:' + T.fb + ';',
-    'font-size:' + T.fsSmall + ';',
+    'font-size:' + T.fsB3 + ';',
   ].join('');
 
   if (mods.length === 0) {
     var placeholder = document.createElement('div');
-    placeholder.style.cssText = 'color:' + T.dimText + ';padding:4px 0;';
+    placeholder.style.cssText = 'color:' + hexToRgba(T.text, 0.45) + ';padding:4px 0;';
     placeholder.textContent = 'Nothing on ' + label.toLowerCase();
     list.appendChild(placeholder);
   } else {
@@ -155,7 +162,7 @@ function _buildColumn(label, mods, wholeNames, onTap) {
         nameSpan.style.color = T.gold;
         nameSpan.textContent = '\u2022 Xtra ' + m.name;
       } else {
-        nameSpan.style.color = T.mint;
+        nameSpan.style.color = T.green;
         nameSpan.textContent = '\u2022 ' + m.name;
       }
       row.appendChild(nameSpan);
