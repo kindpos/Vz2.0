@@ -145,10 +145,14 @@ defineScene({
     setPaymentMode(paymentMode);
     updateSplitDisplay();
 
-    // ── Order fetch — populate left recap + authoritative baseTotal ──
-    // check-overview doesn't always pass cardTotal in params, so fall back
-    // to the backend's balance_due when no cardTotal was pre-seeded.
-    if (params.orderId) {
+    // Prefer the authoritative data from check-overview: it already knows
+    // which seats we're paying for, applied effectivePrice (modifiers /
+    // discounts), and pre-computed totals that match what the operator
+    // just saw on the overview. Only fetch the raw order when seats
+    // aren't passed — e.g., direct/legacy mounts.
+    if (Array.isArray(params.seats) && params.seats.length) {
+      populateLeftCardFromSeats(params.seats, params);
+    } else if (params.orderId) {
       fetch('/api/v1/orders/' + encodeURIComponent(params.orderId))
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(order) {
@@ -645,19 +649,105 @@ function buildLeftColumn(params) {
   return wrap;
 }
 
+// Render { qty, name, price: lineTotal } rows into the scrollable recap.
+function _renderItemRows(items) {
+  if (!_itemsScroll) return;
+  _itemsScroll.innerHTML = '';
+  items.forEach(function(it) {
+    var row = document.createElement('div');
+    row.style.cssText = [
+      'display:flex;align-items:baseline;justify-content:space-between;',
+      'padding:6px 0;',
+      'border-bottom:1px solid rgba(90,95,102,0.25);',
+      'gap:8px;',
+    ].join('');
+
+    var left = document.createElement('span');
+    left.textContent         = it.qty + '  ' + it.name;
+    left.style.fontFamily    = T.fb;
+    left.style.fontSize      = T.fsB3;
+    left.style.color         = T.text;
+    left.style.overflow      = 'hidden';
+    left.style.textOverflow  = 'ellipsis';
+    left.style.whiteSpace    = 'nowrap';
+    row.appendChild(left);
+
+    var right = document.createElement('span');
+    right.textContent      = '$' + it.price.toFixed(2);
+    right.style.fontFamily = T.fb;
+    right.style.fontSize   = T.fsB2;
+    right.style.fontWeight = T.fwBold;
+    right.style.color      = T.gold;
+    right.style.flexShrink = '0';
+    row.appendChild(right);
+
+    _itemsScroll.appendChild(row);
+  });
+}
+
+// Selection-aware recap — rendered from the seat summary that
+// check-overview hands off in params. Pulls only the selected seats'
+// items and honors effectivePrice so modifier-adjusted lines display
+// the same value the operator saw on the overview.
+function populateLeftCardFromSeats(seats, params) {
+  var items    = [];
+  var subtotal = 0;
+  seats.forEach(function(seat) {
+    if (!seat || !Array.isArray(seat.items)) return;
+    seat.items.forEach(function(it) {
+      if (it.voided) return;
+      var qty  = it.qty || 1;
+      var unit = (it.effectivePrice != null) ? it.effectivePrice : (it.price || 0);
+      var line = qty * unit;
+      subtotal += line;
+      items.push({
+        name:  it.name || it.menu_item_name || 'Item',
+        qty:   qty,
+        price: line,
+      });
+    });
+  });
+
+  // Prefer the caller's pre-computed totals — they reflect exactly the
+  // seats being paid (selection-aware) and match what the operator just
+  // saw on check-overview. Fall back to the line-total sum when absent.
+  var useSubtotal = (typeof params.subtotal  === 'number') ? params.subtotal  : subtotal;
+  var tax         = (typeof params.tax       === 'number') ? params.tax       : 0;
+  var cardTotal   = (typeof params.cardTotal === 'number') ? params.cardTotal : (useSubtotal + tax);
+  var cashPrice   = (typeof params.cashPrice === 'number') ? params.cashPrice : cardTotal;
+
+  if (!baseTotal) baseTotal = cardTotal;
+
+  _renderItemRows(items);
+  if (_subRow)  _subRow.setValue('$' + useSubtotal.toFixed(2));
+  if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
+  if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
+  if (_cashRow) _cashRow.setValue('$' + cashPrice.toFixed(2));
+  if (_checkNumEl && !_checkNumEl.textContent && params.orderId) {
+    _checkNumEl.textContent = '#' + String(params.orderId).slice(0, 6);
+  }
+
+  updateSplitDisplay();
+}
+
+// Fallback for direct mounts without seat data — fetches the whole
+// order and renders every non-voided line. Not selection-aware.
 function populateLeftCard(order) {
   var items    = [];
   var subtotal = 0;
   if (Array.isArray(order.items)) {
     order.items.forEach(function(it) {
       if (it.voided) return;
-      var qty   = it.qty || 1;
-      var price = (typeof it.price === 'number' ? it.price : 0);
-      subtotal += qty * price;
+      var qty  = it.qty || 1;
+      var unit = (typeof it.effective_price === 'number')
+        ? it.effective_price
+        : (typeof it.price === 'number' ? it.price : 0);
+      var line = qty * unit;
+      subtotal += line;
       items.push({
         name:  it.name || it.menu_item_name || 'Item',
         qty:   qty,
-        price: qty * price,
+        price: line,
       });
     });
   }
@@ -665,44 +755,9 @@ function populateLeftCard(order) {
   var cardTotal = (typeof order.balance_due === 'number') ? order.balance_due : (subtotal + tax);
   var cashPrice = cardTotal;
 
-  // Trust params.cardTotal when pre-seeded; only fall back to the backend's
-  // whole-check balance_due when no cardTotal was passed at mount.
   if (!baseTotal) baseTotal = cardTotal;
 
-  if (_itemsScroll) {
-    _itemsScroll.innerHTML = '';
-    items.forEach(function(it) {
-      var row = document.createElement('div');
-      row.style.cssText = [
-        'display:flex;align-items:baseline;justify-content:space-between;',
-        'padding:6px 0;',
-        'border-bottom:1px solid rgba(90,95,102,0.25);',
-        'gap:8px;',
-      ].join('');
-
-      var left = document.createElement('span');
-      left.textContent         = it.qty + '  ' + it.name;
-      left.style.fontFamily    = T.fb;
-      left.style.fontSize      = T.fsB3;
-      left.style.color         = T.text;
-      left.style.overflow      = 'hidden';
-      left.style.textOverflow  = 'ellipsis';
-      left.style.whiteSpace    = 'nowrap';
-      row.appendChild(left);
-
-      var right = document.createElement('span');
-      right.textContent      = '$' + it.price.toFixed(2);
-      right.style.fontFamily = T.fb;
-      right.style.fontSize   = T.fsB2;
-      right.style.fontWeight = T.fwBold;
-      right.style.color      = T.gold;
-      right.style.flexShrink = '0';
-      row.appendChild(right);
-
-      _itemsScroll.appendChild(row);
-    });
-  }
-
+  _renderItemRows(items);
   if (_subRow)  _subRow.setValue('$' + subtotal.toFixed(2));
   if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
   if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
