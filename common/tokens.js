@@ -131,8 +131,6 @@ export const T = {
 
   // ── Frame colors (tier borders) ───────────────────
   frameTransactional:     '#86efac',   // green — overlay frame
-  frameInterruptDecision: '#e8c84e',   // gold — decision interrupt
-  frameInterruptCritical: '#e8472a',   // verm — critical interrupt
 
   // ── Layer z-indexes ───────────────────────────────
   zWorking:       10,
