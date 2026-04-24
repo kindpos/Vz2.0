@@ -30,6 +30,14 @@ data/diagnostic_boot.db
 data/diagnostic_boot.db-shm
 data/diagnostic_boot.db-wal
 
+# Runtime ephemeral/print-queue DBs — pure in-process state.
+backend/data/ephemeral_log.db
+backend/data/ephemeral_log.db-shm
+backend/data/ephemeral_log.db-wal
+backend/data/print_queue.db
+backend/data/print_queue.db-shm
+backend/data/print_queue.db-wal
+
 # pytest-cov artifacts
 backend/.coverage
 backend/htmlcov/
