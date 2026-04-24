@@ -621,7 +621,7 @@ defineScene({
     rightCol.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;';
 
     var hintEl = document.createElement('div');
-    hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsSmall + ';color:' + T.mutedText + ';margin-bottom:8px;text-align:center;';
+    hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';margin-bottom:8px;text-align:center;';
     hintEl.textContent = 'Tap a check to adjust';
     rightCol.appendChild(hintEl);
 
@@ -643,16 +643,16 @@ defineScene({
           body: JSON.stringify({ order_id: _selected.check_id, payment_id: _selected.payment_id, tip_amount: tipAmount }),
         }).then(function(r) {
           if (r.ok) {
-            showToast('Tip adjusted', { bg: T.goGreen });
+            showToast('Tip adjusted', { bg: T.greenWarm });
             _selected.tip_amount = tipAmount;
             _selected = null;
             hintEl.textContent = 'Tap a check to adjust';
             numpad.clear();
             renderList();
           } else {
-            showToast('Tip adjust failed', { bg: T.red });
+            showToast('Tip adjust failed', { bg: T.verm });
           }
-        }).catch(function() { showToast('Tip adjust failed', { bg: T.red }); });
+        }).catch(function() { showToast('Tip adjust failed', { bg: T.verm }); });
       },
       onCancel: function() {
         SceneManager.closeTransactional('co-tip-adjust');
@@ -667,7 +667,7 @@ defineScene({
       var unadj = _checks.filter(function(c) { return c.tip_amount == null; });
       if (unadj.length === 0) {
         var done = document.createElement('div');
-        done.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.mint + ';text-align:center;padding:20px;';
+        done.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.green + ';text-align:center;padding:20px;';
         done.textContent = '\u2713 All tips adjusted';
         _listEl.appendChild(done);
         return;
@@ -676,11 +676,14 @@ defineScene({
         (function(check) {
           var row = document.createElement('div');
           var isActive = _selected === check;
-          row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 12px;cursor:pointer;background:' + (isActive ? T.bg3 : T.bgDark) + ';border:2px solid ' + (isActive ? T.gold : T.border) + ';';
-          applySunkenStyle(row);
+          // Sunken-well look (inlined from the retired applySunkenStyle shim).
+          // Active rows lighten to T.card so selection reads at a glance; the
+          // former T.bg3 alias was never defined, so the active bg silently
+          // fell back to the browser default \u2014 selection feedback was dead.
+          row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 12px;cursor:pointer;background:' + (isActive ? T.card : T.well) + ';border:2px solid ' + (isActive ? T.gold : T.border) + ';border-radius:6px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.35);';
 
           var label = document.createElement('span');
-          label.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.mint + ';';
+          label.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.green + ';';
           label.textContent = check.check_num || 'CHK';
 
           var amt = document.createElement('span');
@@ -718,7 +721,7 @@ defineScene({
     }).catch(function() {
       _listEl.innerHTML = '';
       var err = document.createElement('div');
-      err.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.red + ';padding:20px;text-align:center;';
+      err.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.verm + ';padding:20px;text-align:center;';
       err.textContent = 'Failed to load checks';
       _listEl.appendChild(err);
     });
