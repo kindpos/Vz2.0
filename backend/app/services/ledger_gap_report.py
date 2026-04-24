@@ -273,8 +273,9 @@ _MENU_NODES: list[dict[str, Any]] = [
     _node("LG-84", "menu", "modifier.86ed_or_86_cleared", "IMPLEMENTED", "HIGH",
           "modifier.86ed marks temporary out-of-stock; modifier.86_cleared restores. Distinct from deactivated/reactivated which is a permanent catalog change.",
           site="events.py:modifier_86ed/86_cleared, config.py:push_changes"),
-    _node("LG-85", "menu", "micromod.*", "MISSING", "MEDIUM",
-          "Entire micromod concept absent from codebase. If forthcoming, must land with ledger support from day 1."),
+    _node("LG-85", "menu", "micromod.*", "IMPLEMENTED", "MEDIUM",
+          "Dark-shipped: 9 enum entries (micromod.created / updated / price_changed / deactivated / reactivated / assigned_to_modifier / unassigned_from_modifier / 86ed / 86_cleared) plus factories exist and are emittable via /config/push. The overseer micromod feature can land without an events-table schema change; emission flips to active use when the UI starts pushing.",
+          site="events.py:micromod_* factories, config.py:push_changes"),
     _node("LG-86", "menu", "special.*", "MISSING", "MEDIUM",
           "No specials audit trail; happy-hour windows not replayable."),
 ]

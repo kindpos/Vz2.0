@@ -177,6 +177,22 @@ class EventType(str, Enum):
     MODIFIER_86ED = "modifier.86ed"
     MODIFIER_86_CLEARED = "modifier.86_cleared"
 
+    # ── Micromods (LEDGER_OPERATIONAL, dark-shipped) ─────────────────
+    # A micromod is a sub-selection on a modifier (e.g. the modifier
+    # "Sauce on the side" offers micromods "Ranch", "BBQ", etc.). The
+    # product does not carry micromods yet; these enum entries exist so
+    # when overseer lands the feature, /config/push can emit them
+    # without a follow-up schema migration of the events table.
+    MICROMOD_CREATED = "micromod.created"
+    MICROMOD_UPDATED = "micromod.updated"
+    MICROMOD_PRICE_CHANGED = "micromod.price_changed"
+    MICROMOD_DEACTIVATED = "micromod.deactivated"
+    MICROMOD_REACTIVATED = "micromod.reactivated"
+    MICROMOD_ASSIGNED_TO_MODIFIER = "micromod.assigned_to_modifier"
+    MICROMOD_UNASSIGNED_FROM_MODIFIER = "micromod.unassigned_from_modifier"
+    MICROMOD_86ED = "micromod.86ed"
+    MICROMOD_86_CLEARED = "micromod.86_cleared"
+
     # ── Batch setup (LEDGER_OPERATIONAL) ─────────────────────────────
     RESTAURANT_CONFIGURED = "restaurant.configured"
     TAX_RULES_BATCH_CREATED = "tax_rules.batch_created"
@@ -1872,6 +1888,210 @@ def modifier_86_cleared(
         payload=payload,
         **kwargs,
     )
+
+
+def micromod_created(
+        terminal_id: str,
+        micromod_id: str,
+        name: str,
+        price: Decimal = Decimal("0.00"),
+        modifier_id: Optional[str] = None,
+        created_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_CREATED: a sub-selection on a modifier joins the catalog.
+    Dark-shipped -- the product does not surface micromods yet; this
+    factory exists so the overseer-side feature rollout has a stable
+    emission point."""
+    payload = {
+        "micromod_id": micromod_id,
+        "name": name,
+        "price": money_round(price),
+    }
+    if modifier_id is not None:
+        payload["modifier_id"] = modifier_id
+    if created_by is not None:
+        payload["created_by"] = created_by
+    return create_event(
+        event_type=EventType.MICROMOD_CREATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_updated(
+        terminal_id: str,
+        micromod_id: str,
+        fields_changed: list[str],
+        updated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_UPDATED: non-price changes. Price deltas emit
+    MICROMOD_PRICE_CHANGED instead."""
+    payload = {
+        "micromod_id": micromod_id,
+        "fields_changed": list(fields_changed),
+    }
+    if updated_by is not None:
+        payload["updated_by"] = updated_by
+    return create_event(
+        event_type=EventType.MICROMOD_UPDATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_price_changed(
+        terminal_id: str,
+        micromod_id: str,
+        previous_price: Decimal,
+        new_price: Decimal,
+        changed_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_PRICE_CHANGED: dedicated price-delta event so
+    historical-pricing replay survives without re-projecting the full
+    micromod catalog."""
+    payload = {
+        "micromod_id": micromod_id,
+        "previous_price": money_round(previous_price),
+        "new_price": money_round(new_price),
+    }
+    if changed_by is not None:
+        payload["changed_by"] = changed_by
+    return create_event(
+        event_type=EventType.MICROMOD_PRICE_CHANGED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_deactivated(
+        terminal_id: str,
+        micromod_id: str,
+        deactivated_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_DEACTIVATED: soft-delete."""
+    payload = {"micromod_id": micromod_id}
+    if deactivated_by is not None:
+        payload["deactivated_by"] = deactivated_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.MICROMOD_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_reactivated(
+        terminal_id: str,
+        micromod_id: str,
+        reactivated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_REACTIVATED: undo for micromod_deactivated."""
+    payload = {"micromod_id": micromod_id}
+    if reactivated_by is not None:
+        payload["reactivated_by"] = reactivated_by
+    return create_event(
+        event_type=EventType.MICROMOD_REACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_assigned_to_modifier(
+        terminal_id: str,
+        micromod_id: str,
+        modifier_id: str,
+        assigned_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_ASSIGNED_TO_MODIFIER: attach a micromod to a modifier
+    (e.g. "Ranch" attaches to "Sauce on the side")."""
+    payload = {
+        "micromod_id": micromod_id,
+        "modifier_id": modifier_id,
+    }
+    if assigned_by is not None:
+        payload["assigned_by"] = assigned_by
+    return create_event(
+        event_type=EventType.MICROMOD_ASSIGNED_TO_MODIFIER,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_unassigned_from_modifier(
+        terminal_id: str,
+        micromod_id: str,
+        modifier_id: str,
+        unassigned_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_UNASSIGNED_FROM_MODIFIER: detach a micromod from a
+    modifier."""
+    payload = {
+        "micromod_id": micromod_id,
+        "modifier_id": modifier_id,
+    }
+    if unassigned_by is not None:
+        payload["unassigned_by"] = unassigned_by
+    return create_event(
+        event_type=EventType.MICROMOD_UNASSIGNED_FROM_MODIFIER,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_86ed(
+        terminal_id: str,
+        micromod_id: str,
+        reason: Optional[str] = None,
+        expected_return_at: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_86ED: temporarily out-of-stock."""
+    payload = {"micromod_id": micromod_id}
+    if reason is not None:
+        payload["reason"] = reason
+    if expected_return_at is not None:
+        payload["expected_return_at"] = expected_return_at
+    return create_event(
+        event_type=EventType.MICROMOD_86ED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def micromod_86_cleared(
+        terminal_id: str,
+        micromod_id: str,
+        cleared_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """MICROMOD_86_CLEARED: undo for micromod_86ed."""
+    payload = {"micromod_id": micromod_id}
+    if cleared_by is not None:
+        payload["cleared_by"] = cleared_by
+    return create_event(
+        event_type=EventType.MICROMOD_86_CLEARED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
 
 
 def day_opened(
