@@ -162,10 +162,23 @@ defineScene({
     // Prefer the authoritative data from check-overview: it already knows
     // which seats we're paying for, applied effectivePrice (modifiers /
     // discounts), and pre-computed totals that match what the operator
-    // just saw on the overview. Only fetch the raw order when seats
-    // aren't passed — e.g., direct/legacy mounts.
+    // just saw on the overview. Fall back to the raw order fetch for
+    // direct / legacy mounts without a seat summary.
     if (Array.isArray(params.seats) && params.seats.length) {
       populateLeftCardFromSeats(params.seats, params);
+      // Still hit the order endpoint for the real check_number —
+      // check-overview doesn't forward it in params, and the UUID tail
+      // ("#15DB75") isn't a real check identifier.
+      if (params.orderId) {
+        fetch('/api/v1/orders/' + encodeURIComponent(params.orderId))
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(order) {
+            if (order && order.check_number && _checkNumEl) {
+              _checkNumEl.textContent = 'CHECK #' + order.check_number;
+            }
+          })
+          .catch(function() { /* keep the derived fallback */ });
+      }
     } else if (params.orderId) {
       fetch('/api/v1/orders/' + encodeURIComponent(params.orderId))
         .then(function(r) { return r.ok ? r.json() : null; })
@@ -776,7 +789,11 @@ function populateLeftCard(order) {
   if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
   if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
   if (_cashRow) _cashRow.setValue('$' + cashPrice.toFixed(2));
-  if (_checkNumEl) _checkNumEl.textContent = order.check_number || order.order_id || '';
+  if (_checkNumEl) {
+    _checkNumEl.textContent = order.check_number
+      ? 'CHECK #' + order.check_number
+      : _deriveCheckLabel({ orderId: order.order_id });
+  }
 
   updateSplitDisplay();
 }
@@ -788,17 +805,17 @@ function populateLeftCard(order) {
 
 function buildCenterColumn(params) {
   var col = document.createElement('div');
-  col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;overflow:hidden;';
+  col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;overflow:hidden;';
 
   col.appendChild(buildTenderToggle());
-  col.appendChild(buildBalanceStrip());
 
+  // Denom grid — capped so it can't squeeze the action row off-screen.
   var grid = document.createElement('div');
   grid.style.cssText = [
     'display:grid;',
     'grid-template-columns:1fr 1fr;',
     'grid-template-rows:1fr 1fr;',
-    'gap:10px;flex:1;min-height:0;',
+    'gap:8px;flex-shrink:0;height:210px;',
   ].join('');
   grid.appendChild(buildDenomTile(5));
   grid.appendChild(buildDenomTile(10));
@@ -807,9 +824,16 @@ function buildCenterColumn(params) {
   col.appendChild(grid);
 
   _btn100 = buildDenomTile(100, { fullWidth: true });
+  _btn100.style.height = '48px';
   col.appendChild(_btn100);
 
   col.appendChild(buildActionRow());
+
+  // Balance strip pinned at the bottom via margin-top:auto — any extra
+  // vertical space in the column becomes a gap above the strip.
+  var balance = buildBalanceStrip();
+  balance.style.marginTop = 'auto';
+  col.appendChild(balance);
 
   return col;
 }
@@ -827,12 +851,12 @@ function buildModeToggle(mode, label, color, dkColor) {
   var btn = buildPillButton({
     label:    label,
     color:    color,
-    padding:  '6px 14px',
-    fontSize: T.fsB3,
+    padding:  '10px 14px',
+    fontSize: T.fsB2,
     onClick:  function() { setPaymentMode(mode); },
   });
   btn.style.flex   = '1';
-  btn.style.height = '34px';
+  btn.style.height = '48px';
   _modeButtons[mode] = { el: btn, color: color, dk: dkColor };
   return btn;
 }
@@ -917,7 +941,7 @@ function buildDenomTile(val, opts) {
 
 function buildActionRow() {
   var row = document.createElement('div');
-  row.style.cssText = 'flex-shrink:0;display:flex;gap:10px;height:52px;';
+  row.style.cssText = 'flex-shrink:0;display:flex;gap:10px;height:60px;';
 
   // EXACT / SPLIT mirror check-overview's PAY / ADD-ITEMS theme — solid
   // filled pills with color + darkBg shadow, 14px rounding, 20px label.
@@ -929,7 +953,7 @@ function buildActionRow() {
   });
   Object.assign(exact.style, {
     flex:         '1',
-    height:       '52px',
+    height:       '60px',
     borderRadius: '14px',
     fontSize:     '20px',
   });
@@ -943,7 +967,7 @@ function buildActionRow() {
   });
   Object.assign(split.style, {
     flex:         '1',
-    height:       '52px',
+    height:       '60px',
     borderRadius: '14px',
     fontSize:     '20px',
   });
