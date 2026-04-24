@@ -10,7 +10,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../common/tokens.js';
-import { buildPillButton, darkenHex } from './theme-manager.js';
+import { buildCard, buildPillButton, darkenHex } from './theme-manager.js';
 
 var _root = null;
 var _visible = false;
@@ -72,16 +72,18 @@ function _buildIfNeeded() {
     }
   });
 
-  var panel = document.createElement('div');
-  panel.style.cssText = [
-    'min-width:360px;max-width:480px;',
-    'padding:24px;',
-    'background:' + T.card + ';',
-    'border:3px solid ' + T.green + ';',
-    'border-radius:' + T.chamferCard + 'px;',
-    'box-shadow:0 12px 40px rgba(0,0,0,0.55);',
-    'display:flex;flex-direction:column;gap:14px;',
-  ].join('');
+  var shell = buildCard({
+    accent: T.green,
+    bg: T.card,
+    padding: '24px',
+  });
+  shell.card.style.display       = 'flex';
+  shell.card.style.flexDirection = 'column';
+  shell.card.style.gap           = '14px';
+  shell.card.style.minWidth      = '360px';
+  shell.card.style.maxWidth      = '480px';
+  shell.card.style.boxShadow     = '0 12px 40px rgba(0,0,0,0.55)';
+  var panel = shell.card;
 
   var label = document.createElement('div');
   label.style.cssText = [
@@ -151,7 +153,7 @@ function _buildIfNeeded() {
   btnRow.appendChild(doneBtn);
   panel.appendChild(btnRow);
 
-  _root.appendChild(panel);
+  _root.appendChild(shell.wrap);
 }
 
 function _handleDone() {
