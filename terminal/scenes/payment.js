@@ -4,7 +4,7 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T } from '../tokens.js';
+import { T } from '../../common/tokens.js';
 import { fetchWithTimeout } from '../net.js';
 import { buildButton, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
@@ -774,7 +774,7 @@ function populateLeftCard(order) {
 
 function buildCenterColumn(params) {
   var col = document.createElement('div');
-  col.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:10px;overflow:hidden;min-width:0;';
+  col.style.cssText = 'width:230px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;overflow:hidden;min-width:0;';
 
   col.appendChild(buildTenderToggle());
   col.appendChild(buildBalanceStrip());
@@ -811,12 +811,14 @@ function buildTenderToggle() {
 
 function buildModeToggle(mode, label, color, dkColor) {
   var btn = buildPillButton({
-    label:   label,
-    color:   color,
-    onClick: function() { setPaymentMode(mode); },
+    label:    label,
+    color:    color,
+    padding:  '6px 14px',
+    fontSize: T.fsB3,
+    onClick:  function() { setPaymentMode(mode); },
   });
   btn.style.flex   = '1';
-  btn.style.height = '44px';
+  btn.style.height = '34px';
   _modeButtons[mode] = { el: btn, color: color, dk: dkColor };
   return btn;
 }
@@ -970,7 +972,7 @@ function handleKey(label) {
 
 function buildRightColumn() {
   var col = document.createElement('div');
-  col.style.cssText = 'width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:12px;min-height:0;';
+  col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;min-height:0;';
 
   // Amount well — TENDERING label + hero number
   var dispWell = buildWell({ padding: '8px 16px' });
@@ -1147,8 +1149,8 @@ async function handleConfirm() {
 
   try {
     // Resolve seat_numbers for the backend. Two param shapes are supported:
-    //  1) Legacy SM2: sceneData.seatNumbers = [1, 2, 3]
-    //  2) Vz2.0 check-overview: sceneData.seats = [{seatId, number, items}, ...]
+    //  1) sceneData.seatNumbers = [1, 2, 3]             (order-entry, transitions)
+    //  2) sceneData.seats = [{seatId, number, items}]   (check-overview)
     // Without seat_numbers the backend can't tag the payment to specific
     // seats, so check-overview wouldn't render them as paid (gold) on return.
     var seatNumbers = null;

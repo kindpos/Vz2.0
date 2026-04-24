@@ -271,6 +271,13 @@ if os.path.exists(entomology_path):
 else:
     print(f'WARNING: Entomology not found at: {entomology_path}')
 
+common_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'common')
+if os.path.exists(common_path):
+    print(f'Serving Common from: {common_path}')
+    app.mount('/common', StaticFiles(directory=common_path), name='common')
+else:
+    print(f'WARNING: Common not found at: {common_path}')
+
 if os.path.exists(frontend_path):
     print(f'Serving frontend from: {frontend_path}')
     app.mount('/', StaticFiles(directory=frontend_path, html=True), name='frontend')

@@ -20,7 +20,7 @@
 //    SceneManager.openGate('login');
 // ═══════════════════════════════════════════════════
 
-import { T, onThemeChange } from './tokens.js';
+import { T, onThemeChange } from '../common/tokens.js';
 import { entReport }         from './entomology-client.js';
 
 // ── Scene Registry ────────────────────────────────
@@ -88,7 +88,7 @@ function init() {
 }
 
 function _applyLayerGeometry() {
-  var hH       = '36px';
+  var hH       = T.headerH + 'px';
   var bodyH    = 'calc(100% - ' + hH + ')';
   var summaryW = T.pcLeftW;
   var sceneLeft = _summaryVisible ? (summaryW + T.colGapSm) + 'px' : '0';
@@ -341,9 +341,12 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
   scrim.style.cssText = 'position:absolute;inset:0;background:' + T.scrimInterrupt + ';';
   _layerInterrupt.appendChild(scrim);
 
+  // Frame is a transparent full-layer surface — captures input while an
+  // interrupt is open. Legacy 2px rectangular border removed; the card
+  // chrome is the scene's responsibility (see buildCard / co-manager-pin).
   var frame = document.createElement('div');
   frame.className = 'layer-frame layer-frame-interrupt';
-  frame.style.cssText = 'position:absolute;inset:0;border:2px solid ' + T.frameInterruptDecision + ';';
+  frame.style.cssText = 'position:absolute;inset:0;';
   _layerInterrupt.appendChild(frame);
 
   var container = document.createElement('div');

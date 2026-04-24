@@ -1,10 +1,7 @@
 // ═══════════════════════════════════════════════════
 //  KINDpos Terminal — column-editor  (Vz2.0)
-//  Transactional overlay: multi-column item editor
-//  Works for seats within a check or checks within a selection
-//
-//  Ported from SM2 version — logic preserved, visuals reskinned
-//  to Nostalgia theme (pill buttons, left accent bars, border-radius).
+//  Transactional overlay: multi-column item editor.
+//  Works for seats within a check or checks within a selection.
 //
 //  SceneManager.openTransactional('column-editor', {
 //    columns: [{ id, label, items: [{ name, qty, price }] }],
@@ -14,7 +11,7 @@
 // ═══════════════════════════════════════════════════
 
 import { SceneManager, defineScene } from '../scene-manager.js';
-import { T } from '../tokens.js';
+import { T } from '../../common/tokens.js';
 import {
   buildPillButton,
   hexToRgba,
@@ -39,7 +36,7 @@ function colTotal(col) {
   return t;
 }
 
-// Color assignments per operation (replaces SM2 variants)
+// Color assignments per operation.
 function _opColors(label) {
   switch (label) {
     case 'MERGE':    return { color: T.green,     dark: T.greenDk     };

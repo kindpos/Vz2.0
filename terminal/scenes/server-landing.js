@@ -1,11 +1,10 @@
 // ═══════════════════════════════════════════════════
 //  KINDpos Terminal — Server Landing  (Vz2.0)
-//  Ported from server-landing-sm2.js — correct APIs, new theme
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
 import { defineScene, SceneManager } from '../scene-manager.js';
-import { T }                          from '../tokens.js';
+import { T }                          from '../../common/tokens.js';
 import {
   buildStaticCard,
   buildNavCard,

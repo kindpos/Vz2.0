@@ -49,7 +49,12 @@ vi.mock('../numpad.js', () => ({
 }));
 
 vi.mock('../theme-manager.js', () => ({
-  buildCard:       () => document.createElement('div'),
+  buildCard: () => {
+    const wrap = document.createElement('div');
+    const card = document.createElement('div');
+    wrap.appendChild(card);
+    return { wrap: wrap, card: card };
+  },
   buildPillButton: ({ label } = {}) => {
     const el = document.createElement('button');
     el.textContent = label || '';

@@ -29,7 +29,7 @@
 // ═══════════════════════════════════════════════════
 
 import { defineScene, SceneManager }  from '../scene-manager.js';
-import { T }                          from '../tokens.js';
+import { T }                          from '../../common/tokens.js';
 import {
   buildStaticCard,
   buildNavCard,
@@ -47,7 +47,6 @@ import { showToast }                   from '../components.js';
 
 var LEFT_W   = 260;
 var RIGHT_W  = 236;
-var COL_GAP  = 12;
 var PAD      = 14;
 var PAD_TOP  = 8;    // reduce top padding per UI audit
 
@@ -1932,7 +1931,7 @@ defineScene({
 
     container.style.cssText = [
       'width:100%;height:100%;',
-      'display:flex;flex-direction:column;gap:' + COL_GAP + 'px;',
+      'display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
       'padding:' + PAD_TOP + 'px ' + PAD + 'px ' + PAD + 'px ' + PAD + 'px;',
       'box-sizing:border-box;overflow:hidden;',
       'background:' + T.bg + ';',
@@ -1969,7 +1968,7 @@ defineScene({
 
       // 3-col row
       var body = document.createElement('div');
-      body.style.cssText = 'flex:1;display:flex;gap:' + COL_GAP + 'px;min-height:0;overflow:hidden;';
+      body.style.cssText = 'flex:1;display:flex;gap:' + T.colGapSm + 'px;min-height:0;overflow:hidden;';
 
       // Stale-cleanup on selection (check got paid elsewhere, etc.)
       state.selectedCheckIds = state.selectedCheckIds.filter(function(id) {

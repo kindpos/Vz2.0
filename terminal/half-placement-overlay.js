@@ -6,7 +6,7 @@
  * scene-manager.js.
  */
 
-import { T } from './tokens.js';
+import { T } from '../common/tokens.js';
 import { buildPillButton, darkenHex, hexToRgba } from './theme-manager.js';
 import { SceneManager } from './scene-manager.js';
 
@@ -43,8 +43,9 @@ function _buildOverlay(el, itemName, modName, modPrice, halfPrice, currentMods, 
   panel.style.cssText = [
     'width:90%;max-width:900px;',
     'background:' + T.bg + ';',
-    'border:3px solid ' + T.border + ';',
+    'border-left:8px solid ' + T.green + ';',
     'border-radius:' + T.chamferCard + 'px;',
+    'box-shadow:0 12px 48px rgba(0,0,0,0.6);',
     'display:flex;flex-direction:column;',
     'font-family:' + T.fb + ';',
     'overflow:hidden;',

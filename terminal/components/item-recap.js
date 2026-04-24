@@ -29,7 +29,7 @@
 //  All colors flow from tokens.js — no hardcoded hex.
 // ═══════════════════════════════════════════════════
 
-import { T } from '../tokens.js';
+import { T } from '../../common/tokens.js';
 
 // ── Local hex → rgba helper ─────────────────────────
 // Keeps every color derivation flowing from tokens.js instead of

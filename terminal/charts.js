@@ -18,7 +18,7 @@
 //   4. Gold = money always. Lavender = last week / comparison always.
 // ═══════════════════════════════════════════════════
 
-import { T }                    from './tokens.js';
+import { T }                    from '../common/tokens.js';
 import { hexToRgba, darkenHex } from './theme-manager.js';
 
 // ── Internal: SVG namespace shorthand ────────────

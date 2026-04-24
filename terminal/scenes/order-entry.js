@@ -36,8 +36,8 @@
  */
 
 import { SceneManager, defineScene } from '../scene-manager.js';
-import { T } from '../tokens.js';
-import { buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
+import { T } from '../../common/tokens.js';
+import { buildCard, buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
 import { buildButton, showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
@@ -470,19 +470,21 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        // Nostalgia-themed modal panel — matches co-item-menu's shape.
-        // Replaces the SM2-era clip-path:polygon chamfer with the theme's
-        // rounded card look.
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'display:flex;flex-direction:column;gap:10px;',
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.green + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-          'padding:8px 24px 24px;min-width:500px;max-width:620px;',
-          'max-height:520px;overflow:hidden;',
-        ].join('');
+        // Nostalgia card shell — green accent bar, chamfered corners,
+        // modal-depth drop-shadow.
+        var shell = buildCard({
+          accent: T.green,
+          bg: T.card,
+          padding: '8px 24px 24px',
+        });
+        shell.card.style.display       = 'flex';
+        shell.card.style.flexDirection = 'column';
+        shell.card.style.gap           = '10px';
+        shell.card.style.minWidth      = '500px';
+        shell.card.style.maxWidth      = '620px';
+        shell.card.style.maxHeight     = '520px';
+        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
+        var panel = shell.card;
 
         // Title
         var title = document.createElement('div');
@@ -594,9 +596,14 @@ defineScene({
         var bottomBar = document.createElement('div');
         bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
 
+        // Button hierarchy (Nostalgia):
+        //   CANCEL      — ghost (secondary exit)
+        //   SELECT ALL  — ghost (secondary helper)
+        //   CONFIRM     — ghost (disabled) → mint primary when all assigned
         var cancelBtn = buildPillButton({
           label: 'CANCEL',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'ghost',
+          fontSize: T.fsB2,
           onClick: function() { params.onCancel(); },
         });
         cancelBtn.style.flex = '1';
@@ -605,7 +612,8 @@ defineScene({
 
         var selectAllBtn = buildPillButton({
           label: 'SELECT ALL',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'ghost',
+          fontSize: T.fsB2,
           onClick: function() {
             for (var ai = 0; ai < items.length; ai++) {
               assignments[items[ai].id] = seatNumbers.slice();
@@ -621,7 +629,8 @@ defineScene({
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          color: T.card, fontSize: T.fsB2,
+          variant: 'ghost',
+          fontSize: T.fsB2,
           onClick: function() {
             // Only proceed if all items have at least one seat
             var ready = true;
@@ -632,20 +641,28 @@ defineScene({
             params.onConfirm(assignments);
           },
         });
-        confirmBtn.style.color = hexToRgba(T.text, 0.45);
         confirmBtn.style.flex = '1';
         confirmBtn.style.height = '48px';
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
-        container.appendChild(panel);
+        container.appendChild(shell.wrap);
 
+        // CONFIRM promotes from ghost (disabled) to mint primary (ready).
         function updateConfirmState() {
           var allAssigned = true;
           for (var k = 0; k < items.length; k++) {
             if (!assignments[items[k].id] || assignments[items[k].id].length === 0) { allAssigned = false; break; }
           }
-          confirmBtn.style.color = allAssigned ? T.green : hexToRgba(T.text, 0.45);
-          confirmBtn.style.borderColor = allAssigned ? T.green : T.card;
+          if (allAssigned) {
+            confirmBtn.setColor(T.green, T.greenDk, T.well);
+            confirmBtn.style.border = 'none';
+            confirmBtn.style.boxShadow = '0 6px 0 ' + T.greenDk;
+          } else {
+            confirmBtn.setColor('transparent', 'rgba(255,255,255,0.1)', T.text);
+            confirmBtn.style.color = hexToRgba(T.text, 0.45);
+            confirmBtn.style.border = '1px solid ' + T.border;
+            confirmBtn.style.boxShadow = 'none';
+          }
         }
         updateConfirmState();
 
@@ -665,15 +682,18 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var panel = document.createElement('div');
-        panel.style.cssText = [
-          'display:flex;flex-direction:column;gap:14px;',
-          'background:' + T.card + ';',
-          'border:3px solid ' + T.green + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'box-shadow:0 8px 32px rgba(0,0,0,0.5);',
-          'padding:16px 28px 24px;min-width:420px;max-width:520px;',
-        ].join('');
+        var shell = buildCard({
+          accent: T.green,
+          bg: T.card,
+          padding: '16px 28px 24px',
+        });
+        shell.card.style.display       = 'flex';
+        shell.card.style.flexDirection = 'column';
+        shell.card.style.gap           = '14px';
+        shell.card.style.minWidth      = '420px';
+        shell.card.style.maxWidth      = '520px';
+        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
+        var panel = shell.card;
 
         var title = document.createElement('div');
         title.style.cssText = [
@@ -760,7 +780,7 @@ defineScene({
         bottomBar.appendChild(cancelBtn);
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
-        container.appendChild(panel);
+        container.appendChild(shell.wrap);
 
         function paint() {
           qtyReadout.textContent = String(qty);

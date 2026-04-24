@@ -4,11 +4,12 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T } from '../tokens.js';
+import { T } from '../../common/tokens.js';
 import { buildButton, buildGap, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { buildNumpad } from '../numpad.js';
 import {
+  buildCard,
   buildStaticCard,
   buildNavCard,
   buildActionCard,
@@ -26,7 +27,6 @@ export var ACTION_H  = 48;
 export var BANNER_H  = 36;
 export var BEVEL     = 4;
 export var CHAM      = 8;
-export var COL_GAP   = 20;
 export var SCENE_PAD = 13;
 export var RED       = T.verm;
 
@@ -518,7 +518,7 @@ export function buildTipAdjustInline(opts) {
 }
 
 // ═══════════════════════════════════════════════════
-//  SHARED SUB-SCENES (SM2)
+//  CO SUB-SCENES — zero-confirm, manager-pin, tip numpads
 // ═══════════════════════════════════════════════════
 
 // ── Zero-confirm interrupt ───────────────────────
@@ -527,33 +527,45 @@ export function buildTipAdjustInline(opts) {
 defineScene({
   name: 'co-zero-confirm',
   render: function(container, params) {
-    var panel = document.createElement('div');
-    panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;background:' + T.well + ';border:4px solid ' + RED + ';padding:8px ' + T.scenePad + 'px ' + T.scenePad + 'px ' + T.scenePad + 'px;min-width:280px;';
+    container.style.cssText = 'display:flex;align-items:center;justify-content:center;';
+
+    // Nostalgia card shell — verm accent marks destructive intent.
+    var shell = buildCard({
+      accent: RED,
+      bg: T.well,
+      padding: '8px ' + T.scenePad + 'px ' + T.scenePad + 'px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.alignItems    = 'center';
+    shell.card.style.gap           = '10px';
+    shell.card.style.minWidth      = '280px';
 
     var lbl = document.createElement('div');
     lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;';
     lbl.textContent = '// ZERO ALL TIPS //';
-    panel.appendChild(lbl);
+    shell.card.appendChild(lbl);
 
     var msg = document.createElement('div');
     msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';text-align:center;';
     msg.textContent = 'Set ' + (params.count || 0) + ' unadjusted tip(s) to $0.00?';
-    panel.appendChild(msg);
+    shell.card.appendChild(msg);
 
     var confirmBtn = buildButton('CONFIRM', {
       fill: T.card, color: RED, fontSize: T.fsB3, height: 44,
       onTap: function() { params.onConfirm(); },
     });
     confirmBtn.style.width = '240px';
-    panel.appendChild(confirmBtn);
+    shell.card.appendChild(confirmBtn);
 
     var cancelBtn = buildButton('CANCEL', {
       fill: T.card, color: T.green, fontSize: T.fsB3, height: 40,
       onTap: function() { params.onCancel(); },
     });
     cancelBtn.style.width = '240px';
-    panel.appendChild(cancelBtn);
-    container.appendChild(panel);
+    shell.card.appendChild(cancelBtn);
+
+    container.appendChild(shell.wrap);
   },
 });
 
@@ -585,7 +597,11 @@ defineScene({
       },
       onCancel: function() { params.onCancel(); },
     });
-    container.appendChild(numpad);
+    // Nostalgia card shell — chamfer + drop-shadow + gold accent bar.
+    // Replaces the legacy bare-numpad look the framework used to impose.
+    var shell = buildCard({ accent: T.gold, padding: '20px 24px' });
+    shell.card.appendChild(numpad);
+    container.appendChild(shell.wrap);
   },
 });
 
@@ -599,7 +615,7 @@ defineScene({
     var _checks = [];
     var _listEl = null;
 
-    container.style.cssText = 'width:100%;height:100%;display:flex;gap:' + COL_GAP + 'px;padding:8px ' + SCENE_PAD + 'px ' + SCENE_PAD + 'px;box-sizing:border-box;';
+    container.style.cssText = 'width:100%;height:100%;display:flex;gap:' + T.colGap + 'px;padding:8px ' + SCENE_PAD + 'px ' + SCENE_PAD + 'px;box-sizing:border-box;';
 
     // Left: check list
     var leftCol = document.createElement('div');
@@ -775,15 +791,20 @@ defineScene({
       'display:flex;flex-direction:row;align-items:center;gap:14px;',
     ].join('');
 
-    // ── LEFT: gold-bordered info card ──
+    // ── LEFT: warning-accented info card ──
     // Sizes to content (no stretch). Everything inside centered.
-    var infoCard = document.createElement('div');
-    infoCard.style.cssText = [
-      'display:flex;flex-direction:column;align-items:center;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.warning + ';',
-      'padding:18px 22px;border-radius:12px;',
-      'width:240px;box-sizing:border-box;',
-    ].join('');
+    var infoShell = buildCard({
+      accent: T.warning,
+      bg: T.well,
+      padding: '18px 22px',
+    });
+    infoShell.card.style.display       = 'flex';
+    infoShell.card.style.flexDirection = 'column';
+    infoShell.card.style.alignItems    = 'center';
+    infoShell.card.style.gap           = '14px';
+    infoShell.card.style.width         = '240px';
+    infoShell.card.style.boxSizing     = 'border-box';
+    var infoCard = infoShell.card;
 
     var title = document.createElement('div');
     title.style.cssText = [
@@ -844,7 +865,7 @@ defineScene({
     hint.textContent = isEdit ? 'correct the tip amount' : 'enter tip amount';
     infoCard.appendChild(hint);
 
-    row.appendChild(infoCard);
+    row.appendChild(infoShell.wrap);
 
     // ── RIGHT: numpad ──
     var numpad = buildNumpad({
@@ -907,13 +928,17 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var panel = document.createElement('div');
-    panel.style.cssText = [
-      'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.green + ';',
-      'padding:22px;border-radius:12px;',
-      'width:320px;box-sizing:border-box;',
-    ].join('');
+    var shell = buildCard({
+      accent: T.green,
+      bg: T.well,
+      padding: '22px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.gap           = '14px';
+    shell.card.style.width         = '320px';
+    shell.card.style.boxSizing     = 'border-box';
+    var panel = shell.card;
 
     var title = document.createElement('div');
     title.style.cssText = [
@@ -1002,7 +1027,7 @@ defineScene({
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
 
-    container.appendChild(panel);
+    container.appendChild(shell.wrap);
   },
 });
 
@@ -1028,13 +1053,18 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var panel = document.createElement('div');
-    panel.style.cssText = [
-      'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.elec + ';',
-      'padding:22px;border-radius:12px;',
-      'width:640px;max-width:92vw;box-sizing:border-box;',
-    ].join('');
+    var shell = buildCard({
+      accent: T.elec,
+      bg: T.well,
+      padding: '22px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.gap           = '14px';
+    shell.card.style.width         = '640px';
+    shell.card.style.maxWidth      = '92vw';
+    shell.card.style.boxSizing     = 'border-box';
+    var panel = shell.card;
 
     // Header
     var hdrRow = document.createElement('div');
@@ -1137,7 +1167,7 @@ defineScene({
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
-    container.appendChild(panel);
+    container.appendChild(shell.wrap);
 
     // Fetch clocked-in servers + build tiles
     var selectedServer = null;
@@ -1262,13 +1292,18 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var panel = document.createElement('div');
-    panel.style.cssText = [
-      'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.elec + ';',
-      'padding:22px;border-radius:12px;',
-      'width:520px;max-width:92vw;box-sizing:border-box;',
-    ].join('');
+    var shell = buildCard({
+      accent: T.elec,
+      bg: T.well,
+      padding: '22px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.gap           = '14px';
+    shell.card.style.width         = '520px';
+    shell.card.style.maxWidth      = '92vw';
+    shell.card.style.boxSizing     = 'border-box';
+    var panel = shell.card;
 
     // Header
     var hdrRow = document.createElement('div');
@@ -1399,7 +1434,7 @@ defineScene({
     btnRow.appendChild(cancel);
     btnRow.appendChild(apply);
     panel.appendChild(btnRow);
-    container.appendChild(panel);
+    container.appendChild(shell.wrap);
   },
 });
 
@@ -1423,13 +1458,18 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var panel = document.createElement('div');
-    panel.style.cssText = [
-      'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.well + ';border:3px solid ' + T.verm + ';',
-      'padding:22px;border-radius:12px;',
-      'width:420px;max-width:92vw;box-sizing:border-box;',
-    ].join('');
+    var shell = buildCard({
+      accent: T.verm,
+      bg: T.well,
+      padding: '22px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.gap           = '14px';
+    shell.card.style.width         = '420px';
+    shell.card.style.maxWidth      = '92vw';
+    shell.card.style.boxSizing     = 'border-box';
+    var panel = shell.card;
 
     // Header — verm-colored title signals destructive action
     var title = document.createElement('div');
@@ -1574,6 +1614,6 @@ defineScene({
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
-    container.appendChild(panel);
+    container.appendChild(shell.wrap);
   },
 });

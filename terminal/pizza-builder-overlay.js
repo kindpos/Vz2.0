@@ -5,7 +5,7 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-import { T } from './tokens.js';
+import { T } from '../common/tokens.js';
 import { buildPillButton, hexToRgba, darkenHex } from './theme-manager.js';
 import { SceneManager } from './scene-manager.js';
 import { PREFIXES as UNI_PREFIXES } from './menu-data/universal-modifiers.js';
@@ -84,7 +84,9 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
   panel.style.cssText = [
     'width:98%;max-width:1100px;height:95%;',
     'background:' + T.bg + ';',
-    'border:4px solid ' + T.catColor('PIZZA') + ';',
+    'border-left:8px solid ' + T.catColor('PIZZA') + ';',
+    'border-radius:' + T.chamferCard + 'px;',
+    'box-shadow:0 12px 48px rgba(0,0,0,0.6);',
     'display:flex;flex-direction:column;',
     'font-family:' + T.fb + ';',
     'overflow:hidden;',
