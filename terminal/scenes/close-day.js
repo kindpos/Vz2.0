@@ -40,6 +40,7 @@ import {
   darkenHex,
 }                                      from '../theme-manager.js';
 import { showToast }                   from '../components.js';
+import { computeCashExpected, computeCashVariance } from './close-day-calc.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS — matched to server-checkout
@@ -297,8 +298,8 @@ function fetchCloseDayState(params) {
       batchTransactions: d.card_count || 0,
       batchTotal:        d.card_total || 0,
 
-      // Cash drawer
-      cashExpected:     (d.cash_total || 0) - (d.cash_tips || 0),
+      // Cash drawer: cash collected minus CC tips paid out to servers from drawer
+      cashExpected:     computeCashExpected(d),
 
       // Full order records — receipt preview looks up items/subtotal/tax
       // here. Matches server-checkout's pattern at renderCheckPreview.
@@ -1531,8 +1532,7 @@ function buildCashFull(state, handlers, sceneState) {
 }
 
 function cashVariance(state, sceneState) {
-  if (sceneState.cashCounted == null || sceneState.cashCounted === 'bypass') return 0;
-  return parseFloat((sceneState.cashCounted - state.cashExpected).toFixed(2));
+  return computeCashVariance(state.cashExpected, sceneState.cashCounted);
 }
 
 function cashStatusLabel(sceneState) {
