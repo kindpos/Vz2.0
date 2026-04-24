@@ -324,10 +324,16 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
         # call on a value that might already be hashed.
         if change.event_type.startswith("employee.") and payload.get("pin"):
             payload["pin"] = ensure_hashed_pin(payload["pin"])
+        # Auto-wire order_id from payload as correlation_id so that
+        # order-scoped events (seat.*, check.seat_*, seat.transferred_*)
+        # are retrievable via get_events_by_correlation(order_id). Non-order
+        # events (staff.*, category.*, etc.) don't have order_id in their
+        # payload, so payload.get("order_id") returns None and is a no-op.
         event = create_event(
             event_type=parse_event_type(change.event_type),
             terminal_id="OVERSEER",
             payload=payload,
+            correlation_id=payload.get("order_id") or None,
         )
         events.append(event)
 

@@ -110,6 +110,29 @@ The `TIPOUT_RULE_CREATED` and `TIPOUT_RULE_UPDATED` enum entries have existed si
 
 ---
 
+## Phase 12 — Per-seat balance projection (branch `claude/ledger-seat-balance-phase12`)
+
+**Date**: 2026-04-24  
+**Track 2 — Consumes events**: ITEM_ADDED, ITEM_REMOVED, SEAT_DISCOUNT_APPLIED, SEAT_DISCOUNT_VOIDED, SEAT_COMPED, PAYMENT_CONFIRMED (seat_numbers), SEAT_PAYMENT_VOIDED, SEAT_PAID
+
+### What shipped
+
+**New dataclass** `SeatBalance` in `projections.py`: tracks `items`, `discounts`, `seat_payments`, `is_paid`, `is_comped` per seat. Computes `item_subtotal`, `discount_total`, `amount_paid`, `balance_due`.
+
+**Extended `Order` dataclass**: `seat_balances: dict[int, SeatBalance]` populated by `project_order()` as seat-scoped events are replayed.
+
+**New endpoint** `GET /orders/{order_id}/seats`: returns per-seat breakdown for split-check audits — item subtotal, discounts, payment slices, balance due, comped/paid flags.
+
+**Bugfix in `push_changes`**: seat-scoped events pushed via `/config/push` now have `correlation_id` auto-wired from `payload.order_id`. Previously these events were stored with `correlation_id=None` and invisible to `get_events_by_correlation(order_id)`.
+
+**Payment distribution**: `PAYMENT_CONFIRMED` with `seat_numbers` distributes a pro-rated slice to each seat's `seat_payments` (equal split across seats covered by the payment).
+
+### Test file
+
+`tests/test_phase12_seat_balance.py` — 11 tests, all passing.
+
+---
+
 ## Phase 1 — CRITICAL atomicity (branch `claude/ledger-atomicity-phase1`)
 
 Goal: route every multi-event operation through `EventLedger.append_batch`

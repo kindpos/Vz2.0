@@ -779,6 +779,51 @@ async def get_order(
     return OrderResponse.from_order(order)
 
 
+@router.get("/{order_id}/seats")
+async def get_seat_balances(
+        order_id: str,
+        ledger: EventLedger = Depends(get_ledger),
+):
+    """Per-seat financial breakdown for split-check audit.
+
+    Returns the item subtotal, discount total, amount paid, and balance due
+    for each seat on the order. Useful for resolving split-check disputes
+    by replaying exactly which items, discounts, and payment slices belong
+    to each seat.
+    """
+    order = await get_order_or_404(ledger, order_id)
+    seats = sorted(order.seat_balances.values(), key=lambda s: s.seat_number)
+    return {
+        "order_id": order_id,
+        "order_status": order.status,
+        "seats": [
+            {
+                "seat_number": sb.seat_number,
+                "item_subtotal": str(sb.item_subtotal),
+                "discount_total": str(sb.discount_total),
+                "amount_paid": str(sb.amount_paid),
+                "balance_due": str(sb.balance_due),
+                "is_paid": sb.is_paid,
+                "is_comped": sb.is_comped,
+                "comp_category": sb.comp_category,
+                "items": [
+                    {
+                        "item_id": i.item_id,
+                        "name": i.name,
+                        "quantity": i.quantity,
+                        "price": str(i.price),
+                        "subtotal": str(i.subtotal),
+                    }
+                    for i in sb.items
+                ],
+                "discounts": sb.discounts,
+                "seat_payments": sb.seat_payments,
+            }
+            for sb in seats
+        ],
+    }
+
+
 class PatchOrderRequest(BaseModel):
     """Request to update order-level fields (e.g. server transfer, check name)."""
     server_id: Optional[str] = None
