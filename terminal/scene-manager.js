@@ -341,9 +341,12 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
   scrim.style.cssText = 'position:absolute;inset:0;background:' + T.scrimInterrupt + ';';
   _layerInterrupt.appendChild(scrim);
 
+  // Frame is a transparent full-layer surface — captures input while an
+  // interrupt is open. Legacy 2px rectangular border removed; the card
+  // chrome is the scene's responsibility (see buildCard / co-manager-pin).
   var frame = document.createElement('div');
   frame.className = 'layer-frame layer-frame-interrupt';
-  frame.style.cssText = 'position:absolute;inset:0;border:2px solid ' + T.frameInterruptDecision + ';';
+  frame.style.cssText = 'position:absolute;inset:0;';
   _layerInterrupt.appendChild(frame);
 
   var container = document.createElement('div');
