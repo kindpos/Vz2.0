@@ -72,6 +72,24 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 5: menu-catalog completeness + table-change
+  audit. New event types:
+  - `check.table_changed` (HIGH-value quick win) wired into PATCH
+    `/orders/{id}` when the `table` field differs from the current
+    value; emitted inside the same `append_batch` as any other
+    simultaneous field patches. Same-table PATCH is a no-op.
+  - `item.price_changed` (HIGH) -- dedicated price-delta event with
+    previous_price + new_price so historical-pricing replay survives
+    without re-projecting the full menu catalog.
+  - `item.deactivated` / `item.reactivated` (MEDIUM) -- soft-delete
+    lifecycle for menu items.
+  - `special.created` / `special.updated` / `special.activated` /
+    `special.deactivated` (MEDIUM) -- four new events so
+    happy-hour / daily-special windows are replayable.
+  All dark-shipped events flow via `/config/push`; the table-change
+  event wires into the existing orders route. 5 new tests. 1224
+  backend tests green. LG-10 / 75 / 76 / 77 / 86 flipped to
+  IMPLEMENTED.
 - 2026-04-24 — Phase 4e: menu-import lifecycle wired around
   `/config/push`. Any batch containing `menu.*`, `category.*`,
   `modifier.*`, `restaurant.configured`, or `*_batch_created` events

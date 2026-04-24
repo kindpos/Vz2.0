@@ -57,6 +57,7 @@ class EventType(str, Enum):
     CHECK_ABANDONED = "check.abandoned"
     CHECK_SPLIT = "check.split"
     CHECK_MERGED = "check.merged"
+    CHECK_TABLE_CHANGED = "check.table_changed"
 
     # ── Item management (LEDGER_CORE) ────────────────────────────────
     ITEM_ADDED = "item.added"
@@ -164,6 +165,13 @@ class EventType(str, Enum):
     MENU_ITEM_RESTORED = "menu.item_restored"
     ITEM_86ED = "item.86ed"
     ITEM_86_CLEARED = "item.86_cleared"
+    ITEM_PRICE_CHANGED = "item.price_changed"
+    ITEM_DEACTIVATED = "item.deactivated"
+    ITEM_REACTIVATED = "item.reactivated"
+    SPECIAL_CREATED = "special.created"
+    SPECIAL_UPDATED = "special.updated"
+    SPECIAL_ACTIVATED = "special.activated"
+    SPECIAL_DEACTIVATED = "special.deactivated"
     MENU_ITEMS_REORDERED = "menu.items_reordered"
     MENU_CATEGORIES_REORDERED = "menu.categories_reordered"
     MODIFIER_GROUP_CREATED = "modifier.group_created"
@@ -2200,6 +2208,187 @@ def menu_import_rolled_back(
         **kwargs,
     )
 
+
+
+def check_table_changed(
+        terminal_id: str,
+        order_id: str,
+        previous_table: str | int | None,
+        new_table: str | int | None,
+        changed_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """CHECK_TABLE_CHANGED: emitted when an open check is moved from
+    one table to another. Lets revenue-by-table reports replay
+    accurately even when servers reseat parties mid-service."""
+    payload = {
+        "order_id": order_id,
+        "previous_table": previous_table,
+        "new_table": new_table,
+    }
+    if changed_by is not None:
+        payload["changed_by"] = changed_by
+    return create_event(
+        event_type=EventType.CHECK_TABLE_CHANGED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def item_price_changed(
+        terminal_id: str,
+        item_id: str,
+        previous_price: Decimal,
+        new_price: Decimal,
+        changed_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """ITEM_PRICE_CHANGED: dedicated event for menu-item price deltas
+    so historical-pricing replay survives without re-projecting the
+    full menu catalog."""
+    payload = {
+        "item_id": item_id,
+        "previous_price": money_round(previous_price),
+        "new_price": money_round(new_price),
+    }
+    if changed_by is not None:
+        payload["changed_by"] = changed_by
+    return create_event(
+        event_type=EventType.ITEM_PRICE_CHANGED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def item_deactivated(
+        terminal_id: str,
+        item_id: str,
+        deactivated_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """ITEM_DEACTIVATED: soft-delete -- item is hidden from new orders
+    but historical references remain valid."""
+    payload = {"item_id": item_id}
+    if deactivated_by is not None:
+        payload["deactivated_by"] = deactivated_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.ITEM_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def item_reactivated(
+        terminal_id: str,
+        item_id: str,
+        reactivated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """ITEM_REACTIVATED: undo for item_deactivated."""
+    payload = {"item_id": item_id}
+    if reactivated_by is not None:
+        payload["reactivated_by"] = reactivated_by
+    return create_event(
+        event_type=EventType.ITEM_REACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def special_created(
+        terminal_id: str,
+        special_id: str,
+        name: str,
+        price: Decimal = Decimal("0.00"),
+        active: bool = True,
+        created_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SPECIAL_CREATED: a daily/weekly special joins the menu catalog."""
+    payload = {
+        "special_id": special_id,
+        "name": name,
+        "price": money_round(price),
+        "active": active,
+    }
+    if created_by is not None:
+        payload["created_by"] = created_by
+    return create_event(
+        event_type=EventType.SPECIAL_CREATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def special_updated(
+        terminal_id: str,
+        special_id: str,
+        fields_changed: list[str],
+        updated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SPECIAL_UPDATED: catalog-level edit (name, price, schedule)."""
+    payload = {
+        "special_id": special_id,
+        "fields_changed": list(fields_changed),
+    }
+    if updated_by is not None:
+        payload["updated_by"] = updated_by
+    return create_event(
+        event_type=EventType.SPECIAL_UPDATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def special_activated(
+        terminal_id: str,
+        special_id: str,
+        activated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SPECIAL_ACTIVATED: special becomes orderable. Emitted when a
+    scheduled special's window opens or a manager toggles it on."""
+    payload = {"special_id": special_id}
+    if activated_by is not None:
+        payload["activated_by"] = activated_by
+    return create_event(
+        event_type=EventType.SPECIAL_ACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def special_deactivated(
+        terminal_id: str,
+        special_id: str,
+        deactivated_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SPECIAL_DEACTIVATED: special is no longer orderable."""
+    payload = {"special_id": special_id}
+    if deactivated_by is not None:
+        payload["deactivated_by"] = deactivated_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.SPECIAL_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
 
 
 def day_opened(

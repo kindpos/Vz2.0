@@ -83,6 +83,7 @@ from app.core.events import (
     order_voided,
     check_split,
     check_merged,
+    check_table_changed,
     discount_voided,
     tip_adjusted,
     cash_refund_due,
@@ -784,6 +785,8 @@ class PatchOrderRequest(BaseModel):
     server_name: Optional[str] = None
     guest_count: Optional[int] = None
     customer_name: Optional[str] = None
+    table: str | int | None = None
+    changed_by: Optional[str] = None
 
 
 @router.patch("/{order_id}", response_model=OrderResponse)
@@ -792,7 +795,8 @@ async def patch_order(
         request: PatchOrderRequest,
         ledger: EventLedger = Depends(get_ledger),
 ):
-    """Update order fields. Supports server transfer and check naming."""
+    """Update order fields. Supports server transfer, check naming,
+    guest-count edit, and table changes."""
     order = await get_order_or_404(ledger, order_id)
 
     # Collect every field change and write them as one batch so a failure
@@ -817,6 +821,14 @@ async def patch_order(
             terminal_id=settings.terminal_id,
             order_id=order_id,
             guest_count=request.guest_count,
+        ))
+    if request.table is not None and request.table != order.table:
+        batch.append(check_table_changed(
+            terminal_id=settings.terminal_id,
+            order_id=order_id,
+            previous_table=order.table,
+            new_table=request.table,
+            changed_by=request.changed_by,
         ))
     if batch:
         await ledger.append_batch(batch)
