@@ -695,18 +695,14 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var shell = buildCard({
-          accent: T.green,
-          bg: T.card,
-          padding: '16px 28px 24px',
-        });
-        shell.card.style.display       = 'flex';
-        shell.card.style.flexDirection = 'column';
-        shell.card.style.gap           = '14px';
-        shell.card.style.minWidth      = '420px';
-        shell.card.style.maxWidth      = '520px';
-        shell.card.style.boxShadow     = '0 8px 32px rgba(0,0,0,0.5)';
-        var panel = shell.card;
+        var shell = buildStaticCard({ accent: T.green });
+        shell.style.display       = 'flex';
+        shell.style.flexDirection = 'column';
+        shell.style.gap           = '14px';
+        shell.style.minWidth      = '420px';
+        shell.style.maxWidth      = '520px';
+        shell.style.padding       = '20px 28px 28px 32px';
+        var panel = shell;
 
         var title = document.createElement('div');
         title.style.cssText = [
@@ -809,7 +805,7 @@ defineScene({
         bottomBar.appendChild(cancelBtn);
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
-        container.appendChild(shell.wrap);
+        container.appendChild(shell);
 
         function paint() {
           qtyReadout.textContent = String(qty);

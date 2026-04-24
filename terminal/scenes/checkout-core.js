@@ -529,43 +529,41 @@ defineScene({
   render: function(container, params) {
     container.style.cssText = 'display:flex;align-items:center;justify-content:center;';
 
-    // Nostalgia card shell — verm accent marks destructive intent.
-    var shell = buildCard({
-      accent: RED,
-      bg: T.well,
-      padding: '8px ' + T.scenePad + 'px ' + T.scenePad + 'px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.alignItems    = 'center';
-    shell.card.style.gap           = '10px';
-    shell.card.style.minWidth      = '280px';
+    // Nostalgia landing-page card shell — verm accent marks
+    // destructive intent.
+    var shell = buildStaticCard({ accent: RED });
+    shell.style.padding = '20px ' + T.scenePad + 'px ' + T.scenePad + 'px';
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.alignItems    = 'center';
+    shell.style.gap           = '10px';
+    shell.style.minWidth      = '280px';
 
     var lbl = document.createElement('div');
     lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;';
     lbl.textContent = '// ZERO ALL TIPS //';
-    shell.card.appendChild(lbl);
+    shell.appendChild(lbl);
 
     var msg = document.createElement('div');
     msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';text-align:center;';
     msg.textContent = 'Set ' + (params.count || 0) + ' unadjusted tip(s) to $0.00?';
-    shell.card.appendChild(msg);
+    shell.appendChild(msg);
 
     var confirmBtn = buildButton('CONFIRM', {
       fill: T.card, color: RED, fontSize: T.fsB3, height: 44,
       onTap: function() { params.onConfirm(); },
     });
     confirmBtn.style.width = '240px';
-    shell.card.appendChild(confirmBtn);
+    shell.appendChild(confirmBtn);
 
     var cancelBtn = buildButton('CANCEL', {
       fill: T.card, color: T.green, fontSize: T.fsB3, height: 40,
       onTap: function() { params.onCancel(); },
     });
     cancelBtn.style.width = '240px';
-    shell.card.appendChild(cancelBtn);
+    shell.appendChild(cancelBtn);
 
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
   },
 });
 
@@ -599,9 +597,10 @@ defineScene({
     });
     // Nostalgia card shell — chamfer + drop-shadow + gold accent bar.
     // Replaces the legacy bare-numpad look the framework used to impose.
-    var shell = buildCard({ accent: T.gold, padding: '20px 24px' });
-    shell.card.appendChild(numpad);
-    container.appendChild(shell.wrap);
+    var shell = buildStaticCard({ accent: T.gold });
+    shell.style.padding = '20px 24px';
+    shell.appendChild(numpad);
+    container.appendChild(shell);
   },
 });
 
@@ -928,17 +927,14 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildCard({
-      accent: T.green,
-      bg: T.well,
-      padding: '22px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.gap           = '14px';
-    shell.card.style.width         = '320px';
-    shell.card.style.boxSizing     = 'border-box';
-    var panel = shell.card;
+    var shell = buildStaticCard({ accent: T.green });
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.gap           = '14px';
+    shell.style.width         = '360px';
+    shell.style.padding       = '24px 28px 28px 32px';
+    shell.style.boxSizing     = 'border-box';
+    var panel = shell;
 
     var title = document.createElement('div');
     title.style.cssText = [
@@ -1027,7 +1023,7 @@ defineScene({
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
 
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
   },
 });
 
@@ -1053,18 +1049,15 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildCard({
-      accent: T.elec,
-      bg: T.well,
-      padding: '22px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.gap           = '14px';
-    shell.card.style.width         = '640px';
-    shell.card.style.maxWidth      = '92vw';
-    shell.card.style.boxSizing     = 'border-box';
-    var panel = shell.card;
+    var shell = buildStaticCard({ accent: T.elec });
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.gap           = '14px';
+    shell.style.width         = '640px';
+    shell.style.maxWidth      = '92vw';
+    shell.style.padding       = '24px 28px 28px 32px';
+    shell.style.boxSizing     = 'border-box';
+    var panel = shell;
 
     // Header
     var hdrRow = document.createElement('div');
@@ -1167,7 +1160,7 @@ defineScene({
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
 
     // Fetch clocked-in servers + build tiles
     var selectedServer = null;
@@ -1292,18 +1285,15 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildCard({
-      accent: T.elec,
-      bg: T.well,
-      padding: '22px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.gap           = '14px';
-    shell.card.style.width         = '520px';
-    shell.card.style.maxWidth      = '92vw';
-    shell.card.style.boxSizing     = 'border-box';
-    var panel = shell.card;
+    var shell = buildStaticCard({ accent: T.elec });
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.gap           = '14px';
+    shell.style.width         = '520px';
+    shell.style.maxWidth      = '92vw';
+    shell.style.padding       = '24px 28px 28px 32px';
+    shell.style.boxSizing     = 'border-box';
+    var panel = shell;
 
     // Header
     var hdrRow = document.createElement('div');
@@ -1434,7 +1424,7 @@ defineScene({
     btnRow.appendChild(cancel);
     btnRow.appendChild(apply);
     panel.appendChild(btnRow);
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
   },
 });
 
@@ -1458,18 +1448,15 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildCard({
-      accent: T.verm,
-      bg: T.well,
-      padding: '22px',
-    });
-    shell.card.style.display       = 'flex';
-    shell.card.style.flexDirection = 'column';
-    shell.card.style.gap           = '14px';
-    shell.card.style.width         = '420px';
-    shell.card.style.maxWidth      = '92vw';
-    shell.card.style.boxSizing     = 'border-box';
-    var panel = shell.card;
+    var shell = buildStaticCard({ accent: T.verm });
+    shell.style.display       = 'flex';
+    shell.style.flexDirection = 'column';
+    shell.style.gap           = '14px';
+    shell.style.width         = '420px';
+    shell.style.maxWidth      = '92vw';
+    shell.style.padding       = '24px 28px 28px 32px';
+    shell.style.boxSizing     = 'border-box';
+    var panel = shell;
 
     // Header — verm-colored title signals destructive action
     var title = document.createElement('div');
@@ -1614,6 +1601,6 @@ defineScene({
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
     panel.appendChild(btnRow);
-    container.appendChild(shell.wrap);
+    container.appendChild(shell);
   },
 });

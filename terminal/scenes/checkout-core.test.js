@@ -55,13 +55,17 @@ vi.mock('../theme-manager.js', () => ({
     wrap.appendChild(card);
     return { wrap: wrap, card: card };
   },
+  buildStaticCard: () => document.createElement('div'),
   buildPillButton: ({ label } = {}) => {
     const el = document.createElement('button');
     el.textContent = label || '';
+    el.setColor = () => {};
+    el.setDisabled = () => {};
     return el;
   },
   hexToRgba:  (c) => c,
   darkenHex:  (c) => c,
+  lightenHex: (c) => c,
 }));
 
 vi.mock('../entomology-client.js', () => ({

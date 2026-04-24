@@ -194,17 +194,17 @@ defineScene({
         params = params || {};
         var remaining = params.remaining || 0;
 
-        // Vz2.0 card: left accent bar + rounded corners + drop shadow
-        container.style.cssText = [
-          'display:flex;flex-direction:column;align-items:center;gap:18px;',
-          'padding:8px 44px 44px;',
-          'background:' + T.card + ';',
-          'border-left:4px solid ' + T.gold + ';',
-          'border-radius:' + T.chamferCard + 'px;',
-          'box-shadow:0 10px 30px rgba(0,0,0,0.45);',
-          'min-width:420px;',
-          'pointer-events:auto;',
-        ].join('');
+        container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;pointer-events:auto;';
+
+        // Nostalgia landing-page card shell — gold accent for split
+        // affordance.
+        var shell = buildStaticCard({ accent: T.gold });
+        shell.style.display        = 'flex';
+        shell.style.flexDirection  = 'column';
+        shell.style.alignItems     = 'center';
+        shell.style.gap            = '18px';
+        shell.style.minWidth       = '420px';
+        shell.style.padding        = '24px 44px 28px 48px';
 
         var title = document.createElement('div');
         title.style.cssText = [
@@ -216,7 +216,7 @@ defineScene({
           'text-transform:uppercase;',
         ].join('');
         title.textContent = 'Split Payment';
-        container.appendChild(title);
+        shell.appendChild(title);
 
         var sub = document.createElement('div');
         sub.style.cssText = [
@@ -225,7 +225,7 @@ defineScene({
           'color:' + T.green + ';',
         ].join('');
         sub.textContent = 'Remaining: $' + remaining.toFixed(2);
-        container.appendChild(sub);
+        shell.appendChild(sub);
 
         var btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:14px;margin-top:4px;';
@@ -238,22 +238,33 @@ defineScene({
             color: T.card,
             onClick: function() { params.onConfirm(amt); }
           });
-          btn.style.width = '120px';
-          btn.style.height = '88px';
-          btn.style.border = '2px solid ' + T.green;
-          btn.style.color = T.green;
+          btn.style.width           = '120px';
+          btn.style.height          = '88px';
+          btn.style.border          = '2px solid ' + T.green;
+          btn.style.color           = T.green;
+          btn.style.borderRadius    = '14px';
+          btn.style.display         = 'flex';
+          btn.style.alignItems      = 'center';
+          btn.style.justifyContent  = 'center';
           btnRow.appendChild(btn);
         });
-        container.appendChild(btnRow);
+        shell.appendChild(btnRow);
 
         var cancel = buildPillButton({
           label: 'CANCEL',
-          color: T.verm,
+          variant: 'verm',
+          fontSize: T.fsB2,
           onClick: function() { params.onCancel(); }
         });
-        cancel.style.width = '160px';
-        cancel.style.height = '48px';
-        container.appendChild(cancel);
+        cancel.style.width           = '160px';
+        cancel.style.height          = '48px';
+        cancel.style.borderRadius    = '14px';
+        cancel.style.display         = 'flex';
+        cancel.style.alignItems      = 'center';
+        cancel.style.justifyContent  = 'center';
+        shell.appendChild(cancel);
+
+        container.appendChild(shell);
       },
     },
   },
