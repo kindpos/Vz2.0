@@ -1033,7 +1033,7 @@ defineScene({
     var panel = document.createElement('div');
     panel.style.cssText = [
       'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.elec + ';',
+      'background:' + T.well + ';border:3px solid ' + T.elec + ';',
       'padding:22px;border-radius:12px;',
       'width:640px;max-width:92vw;box-sizing:border-box;',
     ].join('');
@@ -1051,7 +1051,7 @@ defineScene({
 
     var dismissX = document.createElement('span');
     dismissX.style.cssText = [
-      'font-family:' + T.fb + ';font-size:20px;color:' + T.mutedText + ';',
+      'font-family:' + T.fb + ';font-size:20px;color:' + hexToRgba(T.text, 0.6) + ';',
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'padding:0 4px;line-height:1;',
@@ -1094,7 +1094,7 @@ defineScene({
 
     var loading = document.createElement('div');
     loading.style.cssText = [
-      'font-family:' + T.fb + ';font-size:13px;color:' + T.mutedText + ';',
+      'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';',
       'grid-column:1 / -1;text-align:center;padding:40px 0;',
     ].join('');
     loading.textContent = 'loading servers\u2026';
@@ -1105,36 +1105,32 @@ defineScene({
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
 
-    var cancel = document.createElement('div');
-    cancel.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    cancel.textContent = 'CANCEL';
-    cancel.addEventListener('pointerup', function() {
-      if (params.onCancel) params.onCancel();
+    // Canonical pills. CONFIRM stays disabled via setDisabled() until a
+    // server tile is picked.
+    var cancel = buildPillButton({
+      label: 'CANCEL',
+      variant: 'ghost',
+      fontSize: T.fsB3,
+      onClick: function() { if (params.onCancel) params.onCancel(); },
     });
+    cancel.style.flex = '1';
+    cancel.style.height = '48px';
 
-    var confirm = document.createElement('div');
-    var confirmEnabled = false;
+    var confirm = buildPillButton({
+      label: 'CONFIRM',
+      variant: 'elec',
+      fontSize: T.fsB3,
+      disabled: true,
+      onClick: function() {
+        if (selectedServer && params.onConfirm) params.onConfirm(selectedServer);
+      },
+    });
+    confirm.style.flex = '1';
+    confirm.style.height = '48px';
+
     var updateConfirmStyle = function() {
-      confirm.style.cssText = [
-        'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-        'background:' + (confirmEnabled ? T.elec : hexToRgba(T.elec, 0.3)) + ';',
-        'border-radius:999px;',
-        'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
-        'color:' + (confirmEnabled ? T.well : hexToRgba(T.well, 0.5)) + ';letter-spacing:1.2px;',
-        'cursor:' + (confirmEnabled ? 'pointer' : 'not-allowed') + ';user-select:none;-webkit-user-select:none;',
-        'pointer-events:auto;touch-action:manipulation;',
-        confirmEnabled ? 'box-shadow:0 3px 0 rgba(0,0,0,0.3);' : '',
-      ].join('');
+      confirm.setDisabled(!selectedServer);
     };
-    updateConfirmStyle();
-    confirm.textContent = 'CONFIRM';
 
     btnRow.appendChild(cancel);
     btnRow.appendChild(confirm);
@@ -1200,7 +1196,7 @@ defineScene({
         name.textContent = srv.name || '(unnamed)';
 
         var role = document.createElement('div');
-        role.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';letter-spacing:0.5px;text-transform:uppercase;';
+        role.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:0.5px;text-transform:uppercase;';
         role.textContent = srv.role || 'server';
 
         tile.appendChild(badge);
@@ -1218,7 +1214,6 @@ defineScene({
           isSel = true;
           applyStyle();
           selectedServer = srv;
-          confirmEnabled = true;
           updateConfirmStyle();
         });
 
@@ -1231,12 +1226,6 @@ defineScene({
 
         grid.appendChild(tile);
       });
-    });
-
-    // Confirm click handler (wired after update helper is defined)
-    confirm.addEventListener('pointerup', function() {
-      if (!confirmEnabled || !selectedServer) return;
-      if (params.onConfirm) params.onConfirm(selectedServer);
     });
   },
 });
