@@ -197,6 +197,80 @@ T.catColor = function(category) {
   return T.categoryPalette[key] || T.categoryPalette[category] || T.green;
 };
 
+// ── Group semantic tokens (Layer 2) ──────────────────
+// Per-family edit points. Defaults map to current primitives — no visual change.
+// Change a group token to retune one family; change the primitive to cascade everywhere.
+T.groups = {
+
+  // manager-landing + server-landing
+  landing: {
+    tileAccent:        T.green,       // check-tile left accent bar
+    infoAccent:        T.green,       // sales overview / tips card accent
+    srvChipAccent:     'srvPalette',  // dynamic sentinel — rotates per server
+    newCheckBorder:    T.green,       // dashed new-check tile outline
+  },
+
+  // co-zero-confirm, co-void-confirm, co-finalize-confirm
+  confirmation: {
+    shellAccentDanger: T.verm,        // zero / void shell accent
+    shellAccentOk:     T.green,       // finalize shell accent
+    cancel:            'ghost',       // CANCEL pill variant
+    confirmAffirm:     'mint',        // OK-style CONFIRM variant
+    confirmDelete:     'verm',        // destructive CONFIRM variant
+  },
+
+  // co-transfer-picker, co-discount-picker, disc-select, server-picker, co-item-menu
+  picker: {
+    shellAccent:       T.elec,        // neutral-action shell accent
+    shellAccentAuth:   T.gold,        // auth-flavor pickers (disc-select)
+    cancel:            'ghost',
+    apply:             'elec',
+    optionDefault:     'ghost',       // option pills — no semantic color
+    optionSelected:    T.elec,        // selected-tile border color
+  },
+
+  // co-manager-pin, disc-pin, seat-count
+  auth: {
+    shellAccent:       T.gold,        // decision / auth flavor
+  },
+
+  // seat-assign, qty-edit
+  composite: {
+    shellAccent:       T.green,
+    selectAll:         'elec',        // helper variant
+    cancel:            'verm',        // destructive exit
+    confirm:           'mint',        // primary CTA variant
+    stepper:           'elec',        // qty-edit -/+ variant
+  },
+
+  // buildDenomTile, split-select fraction tiles
+  paymentPreset: {
+    tileAccent:        T.green,       // buildActionCard accent bar
+    tapFlashFill:      T.green,       // bg during the pointerup flash
+    tapFlashLabel:     T.well,        // label color during the flash
+  },
+
+  // check-overview main bottom action bar
+  actionBar: {
+    disc:              T.lavender,
+    void:              T.verm,
+    pay:               T.gold,
+    addItems:          T.green,
+    editSeats:         T.moon,
+    print:             T.elec,
+    radius:            '14px',
+  },
+
+  // seat tiles — seat-assign rows, check-overview picker grid
+  selectionGrid: {
+    unselectedBg:      T.moon,
+    unselectedFg:      'seatPalette', // dynamic sentinel — seatPalette[(sn-1)%8]
+    selectedBg:        'seatPalette', // dynamic sentinel — same index
+    selectedFg:        T.moonText,
+    radius:            '14px',
+  },
+};
+
 // ── Chamfer clip-path generator ───────────────────
 export function chamfer(px) {
   var c = (px != null ? px : T.chamferCard);
