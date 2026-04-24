@@ -531,7 +531,7 @@ defineScene({
 
     // Nostalgia landing-page card shell — verm accent marks
     // destructive intent.
-    var shell = buildStaticCard({ accent: RED });
+    var shell = buildStaticCard({ accent: T.groups.confirmation.shellAccentDanger });
     shell.style.padding = '20px ' + T.scenePad + 'px ' + T.scenePad + 'px';
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
@@ -554,7 +554,7 @@ defineScene({
     // to the destructive action first.
     var confirmBtn = buildPillButton({
       label:    'CONFIRM',
-      variant:  'verm',
+      variant:  T.groups.confirmation.confirmDelete,
       fontSize: T.fsB2,
       onClick:  function() { params.onConfirm(); },
     });
@@ -568,7 +568,7 @@ defineScene({
 
     var cancelBtn = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.confirmation.cancel,
       fontSize: T.fsB3,
       onClick:  function() { params.onCancel(); },
     });
@@ -944,7 +944,7 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildStaticCard({ accent: T.green });
+    var shell = buildStaticCard({ accent: T.groups.confirmation.shellAccentOk });
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
     shell.style.gap           = '14px';
@@ -1009,7 +1009,7 @@ defineScene({
 
     var cancel = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.confirmation.cancel,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
@@ -1022,7 +1022,7 @@ defineScene({
 
     var confirm = buildPillButton({
       label:    'CONFIRM',
-      variant:  'mint',
+      variant:  T.groups.confirmation.confirmAffirm,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onConfirm) params.onConfirm(); },
     });
@@ -1456,7 +1456,7 @@ defineScene({
       'display:flex;align-items:center;justify-content:center;',
     ].join('');
 
-    var shell = buildStaticCard({ accent: T.verm });
+    var shell = buildStaticCard({ accent: T.groups.confirmation.shellAccentDanger });
     shell.style.display       = 'flex';
     shell.style.flexDirection = 'column';
     shell.style.gap           = '14px';
@@ -1576,7 +1576,7 @@ defineScene({
 
     var cancel = buildPillButton({
       label:    'CANCEL',
-      variant:  'ghost',
+      variant:  T.groups.confirmation.cancel,
       fontSize: T.fsB2,
       onClick:  function() { if (params.onCancel) params.onCancel(); },
     });
@@ -1589,7 +1589,7 @@ defineScene({
 
     var confirm = buildPillButton({
       label:    'VOID',
-      variant:  'verm',
+      variant:  T.groups.confirmation.confirmDelete,
       fontSize: T.fsB2,
       onClick:  function() {
         if (!selectedReason) return;
