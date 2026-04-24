@@ -67,6 +67,7 @@ class EventType(str, Enum):
 
     # ── Discounts (LEDGER_CORE) ──────────────────────────────────────
     DISCOUNT_APPROVED = "discount.approved"
+    DISCOUNT_VOIDED = "discount.voided"
 
     # ── Printing (LEDGER_OPERATIONAL / EPHEMERAL) ────────────────────
     TICKET_PRINTED = "ticket.printed"               # LEDGER_OPERATIONAL
@@ -106,6 +107,8 @@ class EventType(str, Enum):
     # ── Post-authorization (LEDGER_CORE) ─────────────────────────────
     PAYMENT_REFUNDED = "payment.refunded"
     SEAT_PAID = "seat.paid"
+    SEAT_TIP_ADDED = "seat.tip_added"
+    SEAT_OVERPAYMENT_RESOLVED = "seat.overpayment_resolved"
     TIP_ADJUSTED = "payment.tip_adjusted"
     CASH_TIPS_DECLARED = "payment.cash_tips_declared"
 
@@ -1519,6 +1522,96 @@ def seat_paid(
             "order_id": order_id,
             "seat_number": seat_number,
         },
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_tip_added(
+        terminal_id: str,
+        order_id: str,
+        payment_id: str,
+        tip_amount: Decimal,
+        added_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_TIP_ADDED: first-tip marker emitted alongside the
+    tip_adjusted event when previous_tip == 0. Separating the initial
+    tip entry from subsequent adjustments lets reporting distinguish
+    "server entered the signed receipt tip" from "manager overrode
+    the tip later."
+    """
+    return create_event(
+        event_type=EventType.SEAT_TIP_ADDED,
+        terminal_id=terminal_id,
+        payload={
+            "order_id": order_id,
+            "payment_id": payment_id,
+            "tip_amount": money_round(tip_amount),
+            **({"added_by": added_by} if added_by is not None else {}),
+        },
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def seat_overpayment_resolved(
+        terminal_id: str,
+        order_id: str,
+        amount: Decimal,
+        resolution: str,  # "change" | "tip" | "credit"
+        payment_id: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SEAT_OVERPAYMENT_RESOLVED: emitted when a payment's amount
+    exceeded the remaining balance and the excess was resolved one of
+    three ways: cash change back to the customer, an automatic tip on
+    a credit-card overage, or a house credit.
+    """
+    payload = {
+        "order_id": order_id,
+        "amount": money_round(amount),
+        "resolution": resolution,
+    }
+    if payment_id is not None:
+        payload["payment_id"] = payment_id
+    return create_event(
+        event_type=EventType.SEAT_OVERPAYMENT_RESOLVED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs,
+    )
+
+
+def discount_voided(
+        terminal_id: str,
+        order_id: str,
+        amount: Decimal,
+        voided_by: str,
+        discount_type: Optional[str] = None,
+        discount_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """DISCOUNT_VOIDED: emitted when a previously-applied discount is
+    removed from an order. Amount is the (positive) dollar value
+    being reversed; the projection re-adds it to order.total."""
+    payload = {
+        "order_id": order_id,
+        "amount": money_round(amount),
+        "voided_by": voided_by,
+    }
+    if discount_type is not None:
+        payload["discount_type"] = discount_type
+    if discount_id is not None:
+        payload["discount_id"] = discount_id
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.DISCOUNT_VOIDED,
+        terminal_id=terminal_id,
+        payload=payload,
         correlation_id=order_id,
         **kwargs,
     )

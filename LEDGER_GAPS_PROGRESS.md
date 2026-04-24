@@ -72,6 +72,21 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 4c: financial-accuracy cluster landed on
+  `claude/ledger-financial-accuracy-phase4c`.
+  - LG-13 `discount.voided` — new `POST /orders/{id}/discount/void`
+    route voids the most recent discount (or one by `discount_id`);
+    projection removes the matching entry from `order.discounts`.
+  - LG-34 `seat.overpayment_resolved` — emitted in the cash
+    auto-close batch when the request amount clamps down to balance
+    (`resolution="change"`) and in the credit route when the overage
+    was routed to tip (`resolution="tip"`).
+  - LG-35 `seat.tip_added` — emitted alongside
+    `payment.tip_adjusted` on first tip (when `previous_tip == 0`
+    and `tip_amount > 0`). Zero-amount settlement sweeps don't
+    re-fire.
+  - 4 new tests under `tests/test_phase4c_emissions.py`; 1200
+    backend tests green.
 - 2026-04-24 — Phase 1 kicked off on branch `claude/ledger-atomicity-phase1`;
   reconnaissance complete.
 - 2026-04-24 — LG-04 + LG-32: cash and credit routes in

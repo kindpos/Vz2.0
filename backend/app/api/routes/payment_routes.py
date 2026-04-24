@@ -20,7 +20,8 @@ from ...core.adapters.mock_payment import MockPaymentDevice
 from ...core.adapters.dejavoo_spin import DejavooSPInAdapter
 from ...core.events import (
     payment_initiated, payment_confirmed, order_closed, tip_adjusted,
-    seat_paid, create_event, EventType,
+    seat_paid, seat_tip_added, seat_overpayment_resolved,
+    create_event, EventType,
 )
 from ...core.projections import project_order, project_orders
 from ...core.money import money_round
@@ -345,6 +346,17 @@ async def process_sale(
                 payment_id=request.transaction_id,
                 tip_amount=_overage_as_tip,
             ))
+            # Distinct audit trail for the overpayment itself -- FIN-005
+            # only records a diagnostic; without this, a reader of the
+            # ledger sees only "server added a tip" and misses that the
+            # customer overpaid.
+            batch_events.append(seat_overpayment_resolved(
+                terminal_id=settings.terminal_id,
+                order_id=request.order_id,
+                amount=_overage_as_tip,
+                resolution="tip",
+                payment_id=request.transaction_id,
+            ))
 
         events = await ledger.get_events_by_correlation(request.order_id)
         last_seq = max((e.sequence_number or 0 for e in events), default=0)
@@ -451,12 +463,14 @@ async def process_cash_payment(
     # clock-out, not per-payment).
     balance = order.balance_due
     req_amount = Decimal(str(request.amount))
+    _cash_change_due = Decimal("0.00")
     if req_amount > balance + Decimal("0.005"):
+        _cash_change_due = money_round(req_amount - balance)
         logging.getLogger("kindpos.payment").warning(
             "Cash amount $%s exceeded balance_due $%s on %s — "
             "clamping sale to balance_due; overage $%s is customer change.",
             str(req_amount), str(balance), request.order_id,
-            str(money_round(req_amount - balance)),
+            str(_cash_change_due),
         )
         sale_amount = money_round(balance)
     else:
@@ -506,6 +520,18 @@ async def process_cash_payment(
                 order_id=request.order_id,
                 seat_number=s,
             ))
+
+    # Cash overpayment -> change back to customer. Audit anchor so the
+    # variance at day-close can reconcile drawer cash against ledger
+    # sales+change, not "trust the server didn't pocket it".
+    if _cash_change_due > Decimal("0.00"):
+        batch_events.append(seat_overpayment_resolved(
+            terminal_id=settings.terminal_id,
+            order_id=request.order_id,
+            amount=_cash_change_due,
+            resolution="change",
+            payment_id=payment_id,
+        ))
 
     await ledger.append_batch(batch_events)
 
@@ -600,7 +626,23 @@ async def adjust_tip(
         previous_tip=previous_tip,
         adjusted_by=request.adjusted_by,
     )
-    await ledger.append(evt)
+    # First tip write -> also emit seat.tip_added so reporting can
+    # distinguish "server entered the signed receipt tip" from "manager
+    # overrode the tip later". Zero-amount writes (the settled-no-tip
+    # batch sweeper) don't count as a first-tip event.
+    batch_to_append: list = [evt]
+    if previous_tip == Decimal("0.00") and tip_amt > Decimal("0.00"):
+        batch_to_append.append(seat_tip_added(
+            terminal_id=settings.terminal_id,
+            order_id=request.order_id,
+            payment_id=request.payment_id,
+            tip_amount=tip_amt,
+            added_by=request.adjusted_by,
+        ))
+    if len(batch_to_append) > 1:
+        await ledger.append_batch(batch_to_append)
+    else:
+        await ledger.append(evt)
 
     # Send tip adjust to payment device so it's included in batch settlement
     device_adjusted = False
