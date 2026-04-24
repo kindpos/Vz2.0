@@ -258,20 +258,6 @@ defineScene({
     configBtn.style.width = 'fit-content'; configBtn.style.alignSelf = 'center'; configBtn.style.padding = '18px 32px'; configBtn.style.marginBottom = '8px';
     leftWrap.appendChild(configBtn);
 
-    // Version stamp — bottom right of full screen
-    var version = document.createElement('div');
-    version.textContent  = 'KINDpos/lite_Vz1.5';
-    version.style.cssText = [
-      'position:absolute;bottom:16px;right:24px;',
-      'font-family:' + T.fb + ';',
-      'font-size:' + T.fsB2 + ';',
-      'color:' + T.text + ';',
-      'letter-spacing:0.12em;',
-      'opacity:0.6;',
-      'z-index:1;',
-    ].join('');
-    root.appendChild(version);
-
     // ── Right panel — PIN entry ────────────────────
     var rightWrap = document.createElement('div');
     rightWrap.style.cssText = [
