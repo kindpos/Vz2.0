@@ -324,12 +324,15 @@ _MENU_NODES: list[dict[str, Any]] = [
 
 
 _DISCOUNT_NODES: list[dict[str, Any]] = [
-    _node("LG-87", "discount", "discount.created", "MISSING", "MEDIUM",
-          "No CRUD events; discount.approved captures applications, not definitions. Catalog history unrecoverable."),
-    _node("LG-88", "discount", "discount.updated", "MISSING", "MEDIUM",
-          "Same as LG-87."),
-    _node("LG-89", "discount", "discount.deactivated_or_reactivated", "MISSING", "MEDIUM",
-          "Same as LG-87."),
+    _node("LG-87", "discount", "discount.created", "IMPLEMENTED", "MEDIUM",
+          "Catalog anchor event with discount_id, name, discount_type, amount, applies_to, created_by, requires_approval, auto_apply. Emittable via /config/push.",
+          site="events.py:discount_created, config.py:push_changes"),
+    _node("LG-88", "discount", "discount.updated", "IMPLEMENTED", "MEDIUM",
+          "Non-price edit to a discount definition; carries fields_changed dict and updated_by. Emittable via /config/push.",
+          site="events.py:discount_updated, config.py:push_changes"),
+    _node("LG-89", "discount", "discount.deactivated_or_reactivated", "IMPLEMENTED", "MEDIUM",
+          "discount.deactivated soft-deletes a catalog entry (existing applied discounts remain valid); discount.reactivated undoes it. Both emittable via /config/push.",
+          site="events.py:discount_deactivated/discount_reactivated, config.py:push_changes"),
     _node("LG-90", "discount", "discount.approved", "IMPLEMENTED", "HIGH",
           "Payload now accepts optional discount_id so catalog references survive catalog renames; callers that only pass discount_type still get the audit record.",
           site="orders.py:apply_discount", related_ids=["LG-12"]),

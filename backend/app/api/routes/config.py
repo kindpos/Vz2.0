@@ -346,6 +346,8 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
             sections.add("menu")
         elif etype.startswith("modifier."):
             sections.add("modifiers")
+        elif etype.startswith("discount."):
+            sections.add("discounts")
         elif etype.startswith("floorplan."):
             sections.add("floor_plan")
         elif etype.startswith("terminal.") or etype.startswith("routing."):
