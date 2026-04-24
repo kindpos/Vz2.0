@@ -369,6 +369,8 @@ defineScene({
     get handleAddItems() { return handleAddItems; },
     get handleResend()   { return handleResend; },
     get _commitManageSplit() { return _commitManageSplit; },
+    get _persistSeats()  { return persistSeats; },
+    get _addSeat()       { return addSeat; },
   },
 
   state: {
@@ -2689,105 +2691,37 @@ function deleteSeat(state, seatId) {
 }
 
 // Push the current seat layout to the backend. Creates the order on first
-// call (no orderId yet) and replaces the seat list thereafter. Seats live
-// in the backend as a first-class list, so they survive scene unmount,
-// logout, and lack-of-items.
-function _idemKey() {
-  // 16 hex chars of randomness. Good enough to dedupe at the backend.
-  return 'co-' + Math.random().toString(16).slice(2, 10) + Date.now().toString(16);
-}
-
+// call only on an existing order. Seat layout on a brand-new check is
+// local-only; order-entry creates the order on the first SEND so no
+// empty order.created event lands in the ledger when a server walks away
+// without adding any items.
 function persistSeats(state) {
-  // Serialize requests via a per-state promise chain. Rapid taps on "+"
-  // used to race: each call would see orderId=null and POST its own
-  // /orders, creating duplicate C-### checks. The chain guarantees the
-  // first tap completes (POSTing and capturing orderId) before any
-  // follow-up runs as a PUT against that same orderId.
+  // Nothing to do until an order exists. The seat numbers travel to
+  // order-entry via buildOrderEntryParams → seatNumbers and are written
+  // to the ledger there, alongside the first item.
+  if (!state.orderId) return Promise.resolve();
+
+  // Serialize PUTs via a per-state promise chain so rapid seat additions
+  // on an existing check don't send overlapping requests.
   var _prevChain = state._seatsChain || Promise.resolve();
   var myChain = _prevChain.then(function() {
     var nums = state.seats.map(function(s) { return s.number; });
     if (nums.length === 0) return;
-
-    if (state.orderId) {
-      return fetchWithTimeout('/api/v1/orders/' + state.orderId + '/seats', {
-        method:  'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ seat_numbers: nums }),
-      }, 15000)
-        .then(function() {
-          SceneManager.emit('order:updated', { orderId: state.orderId });
-        })
-        .catch(function(err) {
-          console.warn('[KINDpos] Seat update failed:', err);
-          entReport({
-            code: 'UI-009', level: 'WARNING',
-            source: 'check-overview.persistSeats',
-            message: 'PUT /seats failed',
-            ctx: { orderId: state.orderId, error: String(err && err.message || err).slice(0, 200) },
-          });
-        });
-    }
-
-    // First POST — create the order with the seats attached. Caller
-    // params captured at mount time carry the employee identity.
-    //
-    // Idempotency-Key is stable per-mount: if the first POST times out
-    // (request reached the server but the response was lost) and the
-    // user taps "+ Add Seat" again, this retry hits the backend with the
-    // same key and the ledger returns the original order instead of
-    // minting a duplicate C-###. Verified by the pytest
-    // test_create_order_is_idempotent added earlier in this branch.
-    state._createOrderIdemKey = state._createOrderIdemKey || _idemKey();
-    var params = state._mountParams || {};
-    return fetchWithTimeout('/api/v1/orders', {
-      method:  'POST',
-      headers: {
-        'Content-Type':    'application/json',
-        'Idempotency-Key': state._createOrderIdemKey,
-      },
-      body:    JSON.stringify({
-        server_id:    params.employeeId || null,
-        server_name:  params.employeeName || null,
-        seat_numbers: nums,
-      }),
+    return fetchWithTimeout('/api/v1/orders/' + state.orderId + '/seats', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ seat_numbers: nums }),
     }, 15000)
-      .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(order) {
-        if (!order) {
-          entReport({
-            code: 'UI-009', level: 'WARNING',
-            source: 'check-overview.persistSeats',
-            message: 'POST /orders returned empty or non-OK response',
-            ctx: { seatNumbers: nums },
-          });
-          return;
-        }
-        var newId = order.order_id || order.id;
-        if (!newId) {
-          // Backend returned 200 with no order_id. state.orderId stays
-          // null, which would send the next persistSeats tap back into
-          // the POST branch — the Idempotency-Key above is what prevents
-          // the duplicate from landing in the ledger. Still surface it
-          // so the malformed response is visible in entomology.
-          entReport({
-            code: 'UI-009', level: 'ERROR',
-            source: 'check-overview.persistSeats',
-            message: 'POST /orders response missing order_id',
-            ctx: { keys: Object.keys(order).slice(0, 20) },
-          });
-          return;
-        }
-        state.orderId     = newId;
-        state.checkNumber = order.check_number || '';
+      .then(function() {
         SceneManager.emit('order:updated', { orderId: state.orderId });
       })
       .catch(function(err) {
-        console.warn('[KINDpos] Order create-with-seats failed:', err);
+        console.warn('[KINDpos] Seat update failed:', err);
         entReport({
           code: 'UI-009', level: 'WARNING',
           source: 'check-overview.persistSeats',
-          message: 'POST /orders rejected',
-          ctx: { error: String(err && err.message || err).slice(0, 200) },
+          message: 'PUT /seats failed',
+          ctx: { orderId: state.orderId, error: String(err && err.message || err).slice(0, 200) },
         });
       });
   });

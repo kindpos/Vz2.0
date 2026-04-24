@@ -374,3 +374,51 @@ describe('terminal/scenes/check-overview — split flow', () => {
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('failed'), expect.objectContaining({ bg: expect.anything() }));
   });
 });
+
+describe('terminal/scenes/check-overview — persistSeats', () => {
+  let sceneDef;
+  let fetchWithTimeout;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const netMod     = await import('../net.js');
+    fetchWithTimeout = netMod.fetchWithTimeout;
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  it('does NOT call fetch when orderId is null — empty check leaves no ledger event', async () => {
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: null };
+    state.seats = [
+      { id: 'S-001', number: 1, items: [] },
+      { id: 'S-002', number: 2, items: [] },
+    ];
+    await sceneDef.__handlers._persistSeats(state);
+    expect(fetchWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it('PUTs seat layout when orderId is set', async () => {
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'order-abc' };
+    state.seats = [
+      { id: 'S-001', number: 1, items: [] },
+      { id: 'S-002', number: 2, items: [] },
+    ];
+    await sceneDef.__handlers._persistSeats(state);
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      '/api/v1/orders/order-abc/seats',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ seat_numbers: [1, 2] }) }),
+      expect.any(Number),
+    );
+  });
+
+  it('addSeat on a brand-new check does not trigger any fetch', async () => {
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: null };
+    state.seats  = [{ id: 'S-001', number: 1, items: [] }];
+    state.topAreaEl = document.createElement('div');
+    await sceneDef.__handlers._addSeat(state);
+    expect(state.seats).toHaveLength(2);
+    expect(fetchWithTimeout).not.toHaveBeenCalled();
+  });
+});
