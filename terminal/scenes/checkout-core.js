@@ -527,33 +527,45 @@ export function buildTipAdjustInline(opts) {
 defineScene({
   name: 'co-zero-confirm',
   render: function(container, params) {
-    var panel = document.createElement('div');
-    panel.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;background:' + T.well + ';border:4px solid ' + RED + ';padding:8px ' + T.scenePad + 'px ' + T.scenePad + 'px ' + T.scenePad + 'px;min-width:280px;';
+    container.style.cssText = 'display:flex;align-items:center;justify-content:center;';
+
+    // Nostalgia card shell — verm accent marks destructive intent.
+    var shell = buildCard({
+      accent: RED,
+      bg: T.well,
+      padding: '8px ' + T.scenePad + 'px ' + T.scenePad + 'px',
+    });
+    shell.card.style.display       = 'flex';
+    shell.card.style.flexDirection = 'column';
+    shell.card.style.alignItems    = 'center';
+    shell.card.style.gap           = '10px';
+    shell.card.style.minWidth      = '280px';
 
     var lbl = document.createElement('div');
     lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;';
     lbl.textContent = '// ZERO ALL TIPS //';
-    panel.appendChild(lbl);
+    shell.card.appendChild(lbl);
 
     var msg = document.createElement('div');
     msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';text-align:center;';
     msg.textContent = 'Set ' + (params.count || 0) + ' unadjusted tip(s) to $0.00?';
-    panel.appendChild(msg);
+    shell.card.appendChild(msg);
 
     var confirmBtn = buildButton('CONFIRM', {
       fill: T.card, color: RED, fontSize: T.fsB3, height: 44,
       onTap: function() { params.onConfirm(); },
     });
     confirmBtn.style.width = '240px';
-    panel.appendChild(confirmBtn);
+    shell.card.appendChild(confirmBtn);
 
     var cancelBtn = buildButton('CANCEL', {
       fill: T.card, color: T.green, fontSize: T.fsB3, height: 40,
       onTap: function() { params.onCancel(); },
     });
     cancelBtn.style.width = '240px';
-    panel.appendChild(cancelBtn);
-    container.appendChild(panel);
+    shell.card.appendChild(cancelBtn);
+
+    container.appendChild(shell.wrap);
   },
 });
 
