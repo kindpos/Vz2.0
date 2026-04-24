@@ -25,7 +25,7 @@ function darkenHex(hex, pct) {
 import { buildNumpad } from '../numpad.js';
 import { showToast }   from '../components.js';
 import { setToken, clearToken } from '../auth-client.js';
-import { fetchWithTimeout }     from '../sm2-shim.js';
+import { fetchWithTimeout }     from '../net.js';
 
 // ── Constants ─────────────────────────────────────
 const PIN_LENGTH = 4;

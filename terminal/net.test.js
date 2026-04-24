@@ -1,17 +1,12 @@
-// Tests for terminal/sm2-shim.js fetchWithTimeout — pins the abort-on-timeout
+// Tests for terminal/net.js fetchWithTimeout — pins the abort-on-timeout
 // guard that keeps a stalled backend from leaving spinners spinning until the
 // browser default network timeout (~120s). Added in df3877d alongside the
 // scene-manager teardown fix; this test keeps it honest.
-//
-// NOTE: sm2-shim.js has a side-effectful patchT() at import time that mutates
-// the shared T token object. That's fine for test purposes — the mutations
-// are additive and idempotent — but means we don't resetModules the shim
-// between tests.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { fetchWithTimeout } from './sm2-shim.js';
+import { fetchWithTimeout } from './net.js';
 
-describe('terminal/sm2-shim fetchWithTimeout', () => {
+describe('terminal/net fetchWithTimeout', () => {
   let originalFetch;
 
   beforeEach(() => {

@@ -65,7 +65,7 @@ vi.mock('../theme-manager.js', () => ({
   },
 }));
 
-vi.mock('../sm2-shim.js', () => ({
+vi.mock('../net.js', () => ({
   hexToRgba:        (c) => c,
   fetchWithTimeout: vi.fn(() => Promise.resolve({
     ok: true, json: () => Promise.resolve({}),
@@ -174,10 +174,10 @@ describe('terminal/scenes/check-overview — discount flow', () => {
     SceneManagerMock.interrupt.mockClear();
 
     const components = await import('../components.js');
-    const smShim     = await import('../sm2-shim.js');
+    const netMod     = await import('../net.js');
     const entomology = await import('../entomology-client.js');
     showToast        = components.showToast;
-    fetchWithTimeout = smShim.fetchWithTimeout;
+    fetchWithTimeout = netMod.fetchWithTimeout;
     entReport        = entomology.entReport;
 
     await import('./check-overview.js');
@@ -311,9 +311,9 @@ describe('terminal/scenes/check-overview — split flow', () => {
     registeredScenes.length = 0;
     
     const components = await import('../components.js');
-    const smShim     = await import('../sm2-shim.js');
+    const netMod     = await import('../net.js');
     showToast        = components.showToast;
-    fetchWithTimeout = smShim.fetchWithTimeout;
+    fetchWithTimeout = netMod.fetchWithTimeout;
 
     await import('./check-overview.js');
     sceneDef = registeredScenes.find((s) => s.name === 'check-overview');

@@ -50,7 +50,7 @@ import { showToast } from '../components.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
 import { getTaxRate, getCashDiscount } from '../pricing.js';
 import { buildItemRecap, buildItemRecapTotals } from '../components/item-recap.js';
-import { fetchWithTimeout } from '../sm2-shim.js';
+import { fetchWithTimeout } from '../net.js';
 import { entReport } from '../entomology-client.js';
 import { computeDiscountAmount, extractItemIds, buildDiscountBody } from '../discount.js';
 import { buildOrderEntryParams } from './transitions.js';

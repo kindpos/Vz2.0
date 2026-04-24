@@ -45,7 +45,7 @@ import { showHalfPlacementOverlay } from '../half-placement-overlay.js';
 import { showPizzaBuilderOverlay } from '../pizza-builder-overlay.js';
 import { PREFIXES as UNI_PREFIXES, getModHexData, hasPizzaCategory, PIZZA_PLACEMENTS, MOD_COLORS } from '../menu-data/universal-modifiers.js';
 import { computeTotals } from '../pricing.js';
-import { fetchWithTimeout } from '../sm2-shim.js';
+import { fetchWithTimeout } from '../net.js';
 import { entReport } from '../entomology-client.js';
 import { formatModifierLabel } from '../modifier-label.js';
 import { buildCheckOverviewParams } from './transitions.js';

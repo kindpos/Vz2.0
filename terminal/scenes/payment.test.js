@@ -36,14 +36,7 @@ vi.mock('../scene-manager.js', () => ({
   defineScene: (def) => { registeredScenes.push(def); return def; },
 }));
 
-vi.mock('../sm2-shim.js', () => ({
-  hexToRgba:         (c) => c,
-  chamfer:           () => '',
-  applySunkenStyle:  () => {},
-  buildStyledButton: () => {
-    const el = document.createElement('div');
-    return { wrap: el, inner: el };
-  },
+vi.mock('../net.js', () => ({
   fetchWithTimeout: vi.fn(() => Promise.resolve({
     ok: true,
     json: () => Promise.resolve({}),

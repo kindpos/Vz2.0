@@ -29,17 +29,6 @@ vi.mock('../scene-manager.js', () => ({
   defineScene: (def) => { registeredScenes.push(def); return def; },
 }));
 
-vi.mock('../sm2-shim.js', () => ({
-  hexToRgba:        (color, _alpha) => color,
-  chamfer:          () => '',
-  buildStyledButton: () => {
-    const el = document.createElement('button');
-    return { wrap: el, inner: el };
-  },
-  applySunkenStyle: () => {},
-  fetchWithTimeout: vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })),
-}));
-
 vi.mock('../components.js', () => ({
   buildButton: (label, opts) => {
     const el = document.createElement('button');

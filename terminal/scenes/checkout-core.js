@@ -17,7 +17,7 @@ import {
 } from '../theme-manager.js';
 
 // Resolved at call time — captured default would never re-theme.
-function CHROME() { return T.headerBg || T.numpadChassis; }
+function CHROME() { return T.headerBg || T.green; }
 
 // ── Layout constants ─────────────────────────────
 export var CARD_GAP  = 8;

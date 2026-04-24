@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../tokens.js';
-import { fetchWithTimeout } from '../sm2-shim.js';
+import { fetchWithTimeout } from '../net.js';
 import { buildButton, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { buildPillButton, buildWell, buildNumpadChassis, buildHeroNumber, hexToRgba } from '../theme-manager.js';
