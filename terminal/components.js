@@ -153,7 +153,7 @@ export function buildRoleButton(roleName, roleColor, onSelect) {
   wrap.style.cssText = [
     'width:100%;height:100%;min-height:72px;',
     'background:' + T.card + ';',
-    'border:3px solid ' + roleColor + ';',
+    'border-left:8px solid ' + roleColor + ';',
     'border-radius:14px;',
     'display:flex;align-items:center;justify-content:center;',
     'box-sizing:border-box;padding:10px 18px;',
@@ -173,19 +173,19 @@ export function buildRoleButton(roleName, roleColor, onSelect) {
   wrap._selected = false;
 
   function _applyDefault() {
-    wrap.style.background = T.card;
-    wrap.style.color      = T.text;
-    wrap.style.border     = '3px solid ' + roleColor;
-    wrap.style.boxShadow  = '0 0 14px ' + hexToRgba(roleColor, 0.35);
-    wrap.style.transform  = '';
+    wrap.style.background  = T.card;
+    wrap.style.color       = T.text;
+    wrap.style.borderLeft  = '8px solid ' + roleColor;
+    wrap.style.boxShadow   = '0 0 14px ' + hexToRgba(roleColor, 0.35);
+    wrap.style.transform   = '';
   }
 
   function _applySelected() {
-    wrap.style.background = roleColor;
-    wrap.style.color      = T.well;
-    wrap.style.border     = '3px solid ' + lightenHex(roleColor, 0.3);
-    wrap.style.boxShadow  = '0 0 22px ' + hexToRgba(roleColor, 0.85);
-    wrap.style.transform  = '';
+    wrap.style.background  = roleColor;
+    wrap.style.color       = T.well;
+    wrap.style.borderLeft  = '8px solid ' + lightenHex(roleColor, 0.3);
+    wrap.style.boxShadow   = '0 0 22px ' + hexToRgba(roleColor, 0.85);
+    wrap.style.transform   = '';
   }
 
   wrap._resetVisual = function() {
