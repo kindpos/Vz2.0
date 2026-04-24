@@ -5,10 +5,10 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../tokens.js';
-import { hexToRgba, fetchWithTimeout } from '../sm2-shim.js';
+import { fetchWithTimeout } from '../sm2-shim.js';
 import { buildButton, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
-import { buildPillButton, buildWell, buildNumpadChassis, buildHeroNumber } from '../theme-manager.js';
+import { buildPillButton, buildWell, buildNumpadChassis, buildHeroNumber, hexToRgba } from '../theme-manager.js';
 import { OrderSummary } from '../order-summary.js';
 
 var PAD     = T.scenePad;
@@ -371,7 +371,7 @@ defineScene({
         hint.style.cssText = [
           'font-family:' + T.fb + ';',
           'font-size:' + T.fsB3 + ';',
-          'color:' + T.mutedText + ';',
+          'color:' + hexToRgba(T.text, 0.6) + ';',
           'text-align:center;',
           'letter-spacing:0.05em;',
         ].join('');
@@ -486,7 +486,7 @@ defineScene({
         chargedLine.style.cssText = [
           'font-family:' + T.fb + ';',
           'font-size:' + T.fsB2 + ';',
-          'color:' + T.mutedText + ';',
+          'color:' + hexToRgba(T.text, 0.6) + ';',
           'margin-top:14px;',
           'letter-spacing:0.06em;',
         ].join('');
@@ -497,7 +497,7 @@ defineScene({
         printLine.style.cssText = [
           'font-family:' + T.fb + ';',
           'font-size:' + T.fsB3 + ';',
-          'color:' + T.mutedText + ';',
+          'color:' + hexToRgba(T.text, 0.6) + ';',
           'letter-spacing:0.14em;',
           'margin-top:18px;',
           'text-transform:uppercase;',
@@ -538,7 +538,7 @@ defineScene({
           autoHint.style.cssText = [
             'font-family:' + T.fb + ';',
             'font-size:' + T.fsB3 + ';',
-            'color:' + T.mutedText + ';',
+            'color:' + hexToRgba(T.text, 0.6) + ';',
             'letter-spacing:0.12em;',
             'margin-top:4px;',
           ].join('');
@@ -635,7 +635,7 @@ function buildCenterColumn(params) {
 
   actionRow.appendChild(buildPillButton({
     label: 'EXACT',
-    color: T.yellow,
+    color: T.warning,
     onClick: handleExact
   }));
   actionRow.appendChild(buildPillButton({
