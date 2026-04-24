@@ -3325,6 +3325,21 @@ function handlePay(state, params) {
     });
   }
 
+  // Guard: all selected seats already paid — nothing to charge.
+  if (seatSummary.length === 0) {
+    showToast('Selected seat(s) already paid', { bg: T.gold });
+    return;
+  }
+
+  // Detect whether this payment covers every remaining unpaid seat so the
+  // result screen can auto-navigate to landing instead of showing OVERVIEW.
+  var totalUnpaidWithItems = 0;
+  for (var ui = 0; ui < state.seats.length; ui++) {
+    if (!state.paidSeats[state.seats[ui].id] && state.seats[ui].items.length > 0)
+      totalUnpaidWithItems++;
+  }
+  var isLastPayment = seatSummary.length >= totalUnpaidWithItems;
+
   // Pre-seed totals from the seats we're about to pay — not state.order.total.
   // state.order.total is the whole-check total and can be stale or zero when
   // the user pays a subset of seats; this mirrors renderActionBar's own
@@ -3348,14 +3363,15 @@ function handlePay(state, params) {
   var cashPrice = Math.round(cardTotal * (1 - discount) * 100) / 100;
 
   SceneManager.mountWorking('payment', {
-    orderId:      state.orderId,
-    seatIds:      selectedIds,
-    seats:        seatSummary,
-    cardTotal:    cardTotal,
-    cashPrice:    cashPrice,
-    subtotal:     subtotal,
-    tax:          tax,
-    returnTo:     'check-overview',
+    orderId:       state.orderId,
+    seatIds:       selectedIds,
+    seats:         seatSummary,
+    cardTotal:     cardTotal,
+    cashPrice:     cashPrice,
+    subtotal:      subtotal,
+    tax:           tax,
+    isLastPayment: isLastPayment,
+    returnTo:      'check-overview',
     returnParams: {
       checkId:       state.orderId,
       returnLanding: params.returnLanding,

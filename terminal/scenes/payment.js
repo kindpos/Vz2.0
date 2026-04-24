@@ -570,9 +570,9 @@ defineScene({
         btnRow.style.cssText = 'display:flex;gap:20px;';
 
         var newOrderBtn = buildPillButton({
-          label: 'NEW ORDER',
-          color: T.green,
-          onClick: function() { doReturn('order-entry'); }
+          label: 'OVERVIEW',
+          color: T.elec,
+          onClick: function() { doReturn('check-overview'); }
         });
         newOrderBtn.style.flex = '0 0 auto';
         newOrderBtn.style.width  = '240px';
@@ -615,6 +615,30 @@ defineScene({
               autoHint.textContent = 'auto-logout in ' + countdown + 's...';
             }
           }, 1000);
+        } else if (params.isLastPayment) {
+          // Final seat paid — auto-return to landing after a short flash.
+          var landingHint = document.createElement('div');
+          landingHint.style.cssText = [
+            'font-family:' + T.fb + ';',
+            'font-size:' + T.fsB3 + ';',
+            'color:' + hexToRgba(T.text, 0.6) + ';',
+            'letter-spacing:0.12em;',
+            'margin-top:4px;',
+          ].join('');
+          landingHint.textContent = 'returning to landing in 3s...';
+          container.appendChild(landingHint);
+
+          var lcount = 3;
+          _changeDueTimer = setInterval(function() {
+            lcount--;
+            if (lcount <= 0) {
+              clearInterval(_changeDueTimer);
+              _changeDueTimer = null;
+              doReturn('landing');
+            } else {
+              landingHint.textContent = 'returning to landing in ' + lcount + 's...';
+            }
+          }, 1000);
         }
 
         function doReturn(target) {
@@ -627,15 +651,34 @@ defineScene({
             OrderSummary.hide();
             SceneManager.unmountWorking(activeScene);
             SceneManager.openGate('login');
+          } else if (target === 'check-overview') {
+            OrderSummary.hide();
+            SceneManager.mountWorking('check-overview', {
+              checkId:       sceneData.orderId,
+              returnLanding: sceneData.returnLanding
+                || (sceneData.returnParams && sceneData.returnParams.returnLanding)
+                || null,
+              employeeId:    sceneData.employeeId,
+              employeeName:  sceneData.employeeName,
+              pin:           sceneData.pin,
+            });
+          } else if (target === 'landing') {
+            OrderSummary.hide();
+            SceneManager.unmountWorking(activeScene);
+            var landingScene = sceneData.returnLanding
+              || (sceneData.returnParams && sceneData.returnParams.returnLanding)
+              || 'server-landing';
+            SceneManager.mountWorking(landingScene, {
+              emp: {
+                id:   sceneData.employeeId,
+                name: sceneData.employeeName,
+                pin:  sceneData.pin,
+              },
+            });
           } else if (activeScene === 'check-overview') {
             SceneManager.emit('payment:complete');
           } else {
-            // NEW ORDER path (quick-service flow). Start a fresh check,
-            // but thread the employee context so order-entry can POST
-            // /orders with the right server_id / server_name instead of
-            // nulls. `{}` here used to lose identity + returnLanding,
-            // which meant the BACK button from order-entry fell through
-            // to a default landing rather than the employee's own.
+            // Quick-service flow — start a fresh check for the same server.
             OrderSummary.hide();
             SceneManager.mountWorking('order-entry', {
               employeeId:   sceneData.employeeId,
@@ -1312,9 +1355,10 @@ function activateResult(change) {
     // Whole check settled → hand off to the change-due transactional,
     // which owns the NEW ORDER / LOGOUT routing via its own doReturn.
     SceneManager.openTransactional('pc-change-due', {
-      paymentMode: lastPayment.method,
-      change:      change,
-      total:       baseTotal,
+      paymentMode:   lastPayment.method,
+      change:        change,
+      total:         baseTotal,
+      isLastPayment: sceneData.isLastPayment,
     });
   } else {
     // Partial payment (more seats / amount remaining) → return to
