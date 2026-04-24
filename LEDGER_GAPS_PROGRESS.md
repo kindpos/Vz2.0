@@ -142,6 +142,14 @@ the `/entomology` → Event Ledger Gaps tab.
   - LG-78 / LG-79: `/menu/86` and `/menu/restore` now emit
     `item.86ed` / `item.86_cleared` in one `append_batch` with the
     legacy `menu.item_86d` / `menu.item_restored`.
+- 2026-04-24 — Phase 3c: printer admin flow now ledgered. `POST
+  /hardware/devices` emits `printer.configured` (new MAC) or
+  `printer.assignment_changed` (existing MAC, category list changed);
+  `DELETE /hardware/devices/{mac}` emits `printer.removed` with the
+  device's pre-delete name/type. New factories + enum entries added;
+  5 hardware-ledger tests cover all three paths plus the
+  no-change-no-event case. LG-105 / LG-106 / LG-107 flipped to
+  IMPLEMENTED.
 - 2026-04-24 — Phase 3b (dataset audit correction). A thorough
   reconnaissance against `backend/app/core/adapters/printer_manager.py`
   and `backend/app/api/routes/orders.py` revealed eight nodes

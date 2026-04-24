@@ -20,11 +20,18 @@ from typing import List, Optional
 
 import aiosqlite
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from ...api.dependencies import get_ledger
 from ...config import settings
+from ...core.event_ledger import EventLedger
+from ...core.events import (
+    printer_assignment_changed,
+    printer_configured,
+    printer_removed,
+)
 
 logger = logging.getLogger("kindpos.hardware")
 
@@ -462,12 +469,33 @@ async def list_devices():
             return [dict(row) async for row in cur]
 
 
+def _parse_categories(raw: str) -> list[str]:
+    return [c.strip() for c in (raw or "").split(",") if c.strip()]
+
+
 @router.post("/devices")
-async def save_device(device: DeviceRecord):
-    """Insert or update a device by MAC address."""
+async def save_device(
+    device: DeviceRecord,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Insert or update a device by MAC address.
+
+    Emits a ledger event after the DB write: printer.configured on a
+    brand-new MAC, or printer.assignment_changed when an existing
+    kitchen printer's category list changes. Card readers only ever
+    emit printer.configured (they don't carry categories).
+    """
     await _ensure_db()
+    mac = device.mac.upper()
     now = datetime.utcnow().isoformat()
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT categories FROM devices WHERE mac = ?", (mac,)
+        ) as cur:
+            existing = await cur.fetchone()
+        previous_categories = _parse_categories(existing["categories"]) if existing else []
+
         await db.execute("""
             INSERT INTO devices (mac, ip, type, name, port, register_id, tpn, auth_key, categories, saved_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -481,21 +509,61 @@ async def save_device(device: DeviceRecord):
                 auth_key    = excluded.auth_key,
                 categories  = excluded.categories,
                 saved_at    = excluded.saved_at
-        """, (device.mac.upper(), device.ip, device.type,
+        """, (mac, device.ip, device.type,
               device.name, device.port, device.register_id, device.tpn, device.auth_key,
               device.categories, now))
         await db.commit()
-    return {**device.model_dump(), 'mac': device.mac.upper(), 'saved_at': now}
+
+    new_categories = _parse_categories(device.categories)
+    events = []
+    if existing is None:
+        events.append(printer_configured(
+            terminal_id=settings.terminal_id,
+            mac=mac,
+            ip=device.ip,
+            printer_type=device.type,
+            name=device.name,
+            categories=new_categories or None,
+        ))
+    elif new_categories != previous_categories:
+        events.append(printer_assignment_changed(
+            terminal_id=settings.terminal_id,
+            mac=mac,
+            previous_categories=previous_categories,
+            new_categories=new_categories,
+        ))
+    if events:
+        await ledger.append_batch(events) if len(events) > 1 else await ledger.append(events[0])
+
+    return {**device.model_dump(), 'mac': mac, 'saved_at': now}
 
 
 @router.delete("/devices/{mac}")
-async def delete_device(mac: str):
-    """Remove a saved device by MAC."""
+async def delete_device(
+    mac: str,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Remove a saved device by MAC. Emits printer.removed with the
+    device's pre-delete name/type so the audit record survives the
+    DB row disappearing."""
     await _ensure_db()
     mac = mac.upper()
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT name, type FROM devices WHERE mac = ?", (mac,)
+        ) as cur:
+            existing = await cur.fetchone()
         await db.execute("DELETE FROM devices WHERE mac = ?", (mac,))
         await db.commit()
+
+    if existing is not None:
+        await ledger.append(printer_removed(
+            terminal_id=settings.terminal_id,
+            mac=mac,
+            name=existing["name"],
+            printer_type=existing["type"],
+        ))
     return {"deleted": mac}
 
 @router.get("/kitchen-printers")
