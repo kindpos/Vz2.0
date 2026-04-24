@@ -507,25 +507,30 @@ defineScene({
 
         var seatBtnRefs = {}; // { itemId: [ { btn, paint, seatNum } ] }
 
-        // Nostalgia pill-styled seat tile. Compact size, drop-shadow like
-        // the main bottom-bar buttons, toggles between T.card (unselected)
-        // and T.green (selected).
+        // Nostalgia seat tile. Per-seat palette (T.seatPalette) drives
+        // both states:
+        //   UNSELECTED  moon bg    + seat-color label
+        //   SELECTED    seat fill  + dark (moonText) label
+        // Same convention the item-recap and check-overview picker grid
+        // already use — keep them in lockstep.
         function makeSeatTile(sn) {
+          var seatColor = T.seatPalette[(sn - 1) % T.seatPalette.length];
           var btn = buildPillButton({
             label: 'S' + sn,
-            color: T.card,
-            darkBg: T.well,
+            color: T.moon,
+            darkBg: T.moonDk,
+            textColor: seatColor,
             fontSize: T.fsB3,
           });
           btn.style.width = '64px';
           btn.style.height = '48px';
           btn.style.flexShrink = '0';
-          
+
           function paint(selected) {
             btn.setColor(
-              selected ? T.green : T.card,
-              selected ? T.greenDk : T.well,
-              selected ? T.well : T.text
+              selected ? seatColor : T.moon,
+              selected ? darkenHex(seatColor, 0.2) : T.moonDk,
+              selected ? T.moonText : seatColor
             );
           }
           return { btn: btn, paint: paint };
@@ -592,28 +597,36 @@ defineScene({
           }
         }
 
-        // Bottom bar: select-all + confirm + cancel
+        // Bottom bar — check-overview hierarchy.
+        //   Left column  : SELECT ALL (elec/cyan) stacked on top of
+        //                  CANCEL (verm — destructive exit).
+        //   Right column : CONFIRM, full-height primary CTA (green
+        //                  when every item has a seat, dimmed ghost
+        //                  while any row is empty).
         var bottomBar = document.createElement('div');
-        bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
+        bottomBar.style.cssText = [
+          'display:flex;gap:10px;margin-top:8px;',
+          'align-items:stretch;',
+        ].join('');
 
-        // Button hierarchy (Nostalgia):
-        //   CANCEL      — ghost (secondary exit)
-        //   SELECT ALL  — ghost (secondary helper)
-        //   CONFIRM     — ghost (disabled) → mint primary when all assigned
-        var cancelBtn = buildPillButton({
-          label: 'CANCEL',
-          variant: 'ghost',
-          fontSize: T.fsB2,
-          onClick: function() { params.onCancel(); },
-        });
-        cancelBtn.style.flex = '1';
-        cancelBtn.style.height = '48px';
-        bottomBar.appendChild(cancelBtn);
+        var leftCol = document.createElement('div');
+        leftCol.style.cssText = [
+          'flex:1;display:flex;flex-direction:column;gap:8px;',
+        ].join('');
+
+        // Match check-overview's action-bar button chrome: 14px border
+        // radius + flex-centered text so the whole family reads as one.
+        function shapeAction(btn) {
+          btn.style.borderRadius   = '14px';
+          btn.style.display        = 'flex';
+          btn.style.alignItems     = 'center';
+          btn.style.justifyContent = 'center';
+        }
 
         var selectAllBtn = buildPillButton({
           label: 'SELECT ALL',
-          variant: 'ghost',
-          fontSize: T.fsB2,
+          variant: 'elec',
+          fontSize: T.fsB3,
           onClick: function() {
             for (var ai = 0; ai < items.length; ai++) {
               assignments[items[ai].id] = seatNumbers.slice();
@@ -622,10 +635,23 @@ defineScene({
             updateConfirmState();
           },
         });
-        selectAllBtn.style.color = T.gold;
-        selectAllBtn.style.flex = '1';
-        selectAllBtn.style.height = '48px';
-        bottomBar.appendChild(selectAllBtn);
+        selectAllBtn.style.height = '36px';
+        selectAllBtn.style.padding = '0 18px';
+        shapeAction(selectAllBtn);
+        leftCol.appendChild(selectAllBtn);
+
+        var cancelBtn = buildPillButton({
+          label: 'CANCEL',
+          variant: 'verm',
+          fontSize: T.fsB3,
+          onClick: function() { params.onCancel(); },
+        });
+        cancelBtn.style.height = '36px';
+        cancelBtn.style.padding = '0 18px';
+        shapeAction(cancelBtn);
+        leftCol.appendChild(cancelBtn);
+
+        bottomBar.appendChild(leftCol);
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
@@ -642,7 +668,8 @@ defineScene({
           },
         });
         confirmBtn.style.flex = '1';
-        confirmBtn.style.height = '48px';
+        confirmBtn.style.minHeight = '80px';
+        shapeAction(confirmBtn);
         bottomBar.appendChild(confirmBtn);
         panel.appendChild(bottomBar);
         container.appendChild(shell.wrap);

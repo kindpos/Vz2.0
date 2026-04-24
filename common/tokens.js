@@ -65,6 +65,23 @@ export const T = {
     '#4ade80', // green
   ],
 
+  // ── Seat identity palette ─────────────────────────
+  // Per-seat accent color — seat tiles, check-overview seat rows, the
+  // seat-assign interrupt's S1/S2/S3 buttons. Distinct from the
+  // action-bar palette (gold, greenWarm, verm, elec, lavender, moon) so
+  // a selected seat never looks like a PAY / ADD ITEMS / VOID / PRINT /
+  // DISC / EDIT button. Rotates modulo length for larger parties.
+  seatPalette: [
+    '#38bdf8', // sky
+    '#fb923c', // peach
+    '#f472b6', // pink
+    '#34d399', // emerald
+    '#facc15', // yellow
+    '#e879f9', // fuchsia
+    '#818cf8', // indigo
+    '#fb7185', // rose
+  ],
+
   // ── Chart structure ───────────────────────────────
   chartWell:  '#1e2124',   // Chart container background (deeper than well)
   gridLine:   '#2a2d32',   // Chart grid lines

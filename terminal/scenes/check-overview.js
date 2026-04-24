@@ -2041,22 +2041,10 @@ function renderSeatsGrid(state, container, mode) {
   }
 }
 
-// Per-seat accent color. Distinct from the action-bar palette (gold,
-// greenWarm, verm, elec, lavender, moon) so a selected seat never
-// looks like a PAY / ADD ITEMS / VOID / PRINT / DISC / EDIT button.
-// Rotates mod-length so large parties still get distinct accents.
-var SEAT_PALETTE = [
-  '#38bdf8', // sky
-  '#fb923c', // peach
-  '#f472b6', // pink
-  '#34d399', // emerald
-  '#facc15', // yellow
-  '#e879f9', // fuchsia
-  '#818cf8', // indigo
-  '#fb7185', // rose
-];
+// Per-seat accent — canonical palette lives in common/tokens.js as
+// T.seatPalette so seat-assign and item-recap stay in lockstep.
 function seatAccent(seatIdx) {
-  return SEAT_PALETTE[seatIdx % SEAT_PALETTE.length];
+  return T.seatPalette[seatIdx % T.seatPalette.length];
 }
 
 function buildSeatCard(state, seatIdx) {
