@@ -28,6 +28,7 @@ from ...api.dependencies import get_ledger
 from ...config import settings
 from ...core.event_ledger import EventLedger
 from ...core.events import (
+    payment_processor_configured,
     printer_assignment_changed,
     printer_configured,
     printer_removed,
@@ -517,14 +518,25 @@ async def save_device(
     new_categories = _parse_categories(device.categories)
     events = []
     if existing is None:
-        events.append(printer_configured(
-            terminal_id=settings.terminal_id,
-            mac=mac,
-            ip=device.ip,
-            printer_type=device.type,
-            name=device.name,
-            categories=new_categories or None,
-        ))
+        # Card readers land under the payment.processor_configured audit
+        # (PCI/SOX), printers under printer.configured.
+        if device.type == "card_reader":
+            events.append(payment_processor_configured(
+                terminal_id=settings.terminal_id,
+                mac=mac,
+                ip=device.ip,
+                name=device.name,
+                register_id=device.register_id,
+            ))
+        else:
+            events.append(printer_configured(
+                terminal_id=settings.terminal_id,
+                mac=mac,
+                ip=device.ip,
+                printer_type=device.type,
+                name=device.name,
+                categories=new_categories or None,
+            ))
     elif new_categories != previous_categories:
         events.append(printer_assignment_changed(
             terminal_id=settings.terminal_id,

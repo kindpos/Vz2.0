@@ -80,6 +80,7 @@ class EventType(str, Enum):
     PRINTER_CONFIGURED = "printer.configured"              # LEDGER_OPERATIONAL
     PRINTER_REMOVED = "printer.removed"                    # LEDGER_OPERATIONAL
     PRINTER_ASSIGNMENT_CHANGED = "printer.assignment_changed"  # LEDGER_OPERATIONAL
+    PAYMENT_PROCESSOR_CONFIGURED = "payment.processor_configured"  # LEDGER_OPERATIONAL
     PRINTER_STATUS_CHANGED = "printer.status_changed"      # EPHEMERAL
     PRINTER_ERROR = "printer.error"                        # EPHEMERAL
     PRINTER_ROLE_CREATED = "printer.role_created"          # EPHEMERAL
@@ -1156,6 +1157,38 @@ def printer_assignment_changed(
         payload["changed_by"] = changed_by
     return create_event(
         event_type=EventType.PRINTER_ASSIGNMENT_CHANGED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def payment_processor_configured(
+        terminal_id: str,
+        mac: str,
+        ip: str,
+        name: str,
+        register_id: str = "",
+        configured_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """PAYMENT_PROCESSOR_CONFIGURED: emitted when a card reader is
+    saved via the hardware-admin endpoint. Critical for PCI/SOX audit
+    -- processor credential changes (register_id, TPN, auth key)
+    previously landed in hardware_config.db only, invisible to the
+    event ledger. Payload deliberately excludes tpn and auth_key; the
+    event is an audit anchor, not a credential store."""
+    payload = {
+        "mac": mac.upper(),
+        "ip": ip,
+        "name": name,
+    }
+    if register_id:
+        payload["register_id"] = register_id
+    if configured_by is not None:
+        payload["configured_by"] = configured_by
+    return create_event(
+        event_type=EventType.PAYMENT_PROCESSOR_CONFIGURED,
         terminal_id=terminal_id,
         payload=payload,
         **kwargs,
