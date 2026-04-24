@@ -474,7 +474,7 @@ defineScene({
         // T.well bg, inset + 3D drop shadow). Taller min-height so the
         // card has presence even with one item; more interior padding
         // below so action bar breathes away from the list.
-        var shell = buildStaticCard({ accent: T.green });
+        var shell = buildStaticCard({ accent: T.groups.composite.shellAccent });
         shell.style.display       = 'flex';
         shell.style.flexDirection = 'column';
         shell.style.gap           = '10px';
@@ -629,7 +629,7 @@ defineScene({
 
         var selectAllBtn = buildPillButton({
           label: 'SELECT ALL',
-          variant: 'elec',
+          variant: T.groups.composite.selectAll,
           fontSize: T.fsB3,
           onClick: function() {
             for (var ai = 0; ai < items.length; ai++) {
@@ -646,7 +646,7 @@ defineScene({
 
         var cancelBtn = buildPillButton({
           label: 'CANCEL',
-          variant: 'verm',
+          variant: T.groups.composite.cancel,
           fontSize: T.fsB3,
           onClick: function() { params.onCancel(); },
         });
@@ -659,7 +659,7 @@ defineScene({
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          variant: 'mint',
+          variant: T.groups.composite.confirm,
           fontSize: T.fsB2,
           onClick: function() { params.onConfirm(assignments); },
         });
@@ -695,7 +695,7 @@ defineScene({
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var shell = buildStaticCard({ accent: T.green });
+        var shell = buildStaticCard({ accent: T.groups.composite.shellAccent });
         shell.style.display       = 'flex';
         shell.style.flexDirection = 'column';
         shell.style.gap           = '14px';
@@ -736,7 +736,7 @@ defineScene({
         // card bg and don't claim primary-action color.
         var minusBtn = buildPillButton({
           label: '−',
-          variant: 'elec',
+          variant: T.groups.composite.stepper,
           fontSize: T.fsB1,
         });
         minusBtn.style.width  = '64px';
@@ -754,7 +754,7 @@ defineScene({
 
         var plusBtn = buildPillButton({
           label: '+',
-          variant: 'elec',
+          variant: T.groups.composite.stepper,
           fontSize: T.fsB1,
         });
         plusBtn.style.width  = '64px';
@@ -775,7 +775,7 @@ defineScene({
 
         var cancelBtn = buildPillButton({
           label: 'CANCEL',
-          variant: 'verm',
+          variant: T.groups.composite.cancel,
           fontSize: T.fsB2,
           onClick: function() { params.onCancel(); },
         });
@@ -788,7 +788,7 @@ defineScene({
 
         var confirmBtn = buildPillButton({
           label: 'CONFIRM',
-          variant: 'mint',
+          variant: T.groups.composite.confirm,
           fontSize: T.fsB2,
           onClick: function() {
             if (qty === startQty) return;
