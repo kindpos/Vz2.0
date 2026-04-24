@@ -12,6 +12,7 @@
 import './auth-client.js';
 
 import { SceneManager } from './scene-manager.js';
+import { performLogout } from './header.js';
 import { T, applyStoreTheme } from '../common/tokens.js';
 
 // ── Scene imports ─────────────────────────────────
@@ -59,6 +60,7 @@ async function boot() {
       'pointer-events:auto;touch-action:manipulation;',
     ].join('');
     exitBtn.textContent = '×';
+    exitBtn.addEventListener('click', performLogout);
     placeholderHeader.appendChild(exitBtn);
 
     window._header = placeholderHeader;
