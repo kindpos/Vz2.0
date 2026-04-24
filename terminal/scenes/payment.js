@@ -227,24 +227,27 @@ defineScene({
 
         [2, 3, 4].forEach(function(divisor) {
           var amt = Math.ceil(remaining / divisor * 100) / 100;
+          // Dark card with green accent — textColor passes through opts
+          // instead of being mutated after build; the green border is still
+          // post-set because buildPillButton doesn't own button borders.
           var btn = buildPillButton({
             label: '1/' + divisor,
-            sub: '$' + amt.toFixed(2),
-            color: T.card,
-            onClick: function() { params.onConfirm(amt); }
+            color:    T.card,
+            darkBg:   T.well,
+            textColor: T.green,
+            onClick:  function() { params.onConfirm(amt); },
           });
           btn.style.width = '120px';
           btn.style.height = '88px';
           btn.style.border = '2px solid ' + T.green;
-          btn.style.color = T.green;
           btnRow.appendChild(btn);
         });
         container.appendChild(btnRow);
 
         var cancel = buildPillButton({
           label: 'CANCEL',
-          color: T.verm,
-          onClick: function() { params.onCancel(); }
+          variant: 'verm',
+          onClick: function() { params.onCancel(); },
         });
         cancel.style.width = '160px';
         cancel.style.height = '48px';
