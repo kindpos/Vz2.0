@@ -108,6 +108,14 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 14: Settlement drift alert in /entomology.
+  New `GET /entomology/settlement-drift` endpoint reads all
+  `batch.settlement_failed` events from the ledger and returns them
+  newest-first with `sequence`, `timestamp`, `reason`, `recon_diff`,
+  and `failed_invariants`. 4 new tests in
+  `tests/test_phase14_settlement_drift.py`. Branch:
+  `claude/ledger-settlement-drift-phase14`.
+
 - 2026-04-24 — Phase 9: seat-transfer family dark-shipped. Twelve
   new `EventType` entries with matching factories, all emittable
   via `/config/push`:
