@@ -347,7 +347,27 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                     "reason": payload.get("reason"),
                     "approved_by": payload.get("approved_by"),
                     "approved_at": event.timestamp,
+                    "discount_id": payload.get("discount_id"),
                 })
+
+        elif event.event_type == EventType.DISCOUNT_VOIDED:
+            if order and order.discounts:
+                # Remove the discount that matches by (discount_id) first,
+                # else by (type + amount). The total re-inflates naturally
+                # because order.total reads the current discounts list.
+                target_id = payload.get("discount_id")
+                target_type = payload.get("discount_type")
+                target_amt = Decimal(str(payload.get("amount", 0)))
+                for i, d in enumerate(order.discounts):
+                    if target_id and d.get("discount_id") == target_id:
+                        order.discounts.pop(i)
+                        break
+                else:
+                    for i, d in enumerate(order.discounts):
+                        if (d.get("type") == target_type
+                                and d.get("amount") == target_amt):
+                            order.discounts.pop(i)
+                            break
 
         # --- PAYMENTS ---
 
