@@ -137,6 +137,7 @@ class EventType(str, Enum):
     STORE_OPERATING_HOURS_UPDATED = "store.operating_hours_updated"
     STORE_ORDER_TYPES_UPDATED = "store.order_types_updated"
     STORE_AUTO_GRATUITY_UPDATED = "store.auto_gratuity_updated"
+    SECURITY_SETTING_UPDATED = "security.setting_updated"
 
     # ── Employee & Roles (LEDGER_OPERATIONAL) ────────────────────────
     EMPLOYEE_ROLE_CREATED = "employee.role_created"
@@ -146,9 +147,16 @@ class EventType(str, Enum):
     EMPLOYEE_UPDATED = "employee.updated"
     EMPLOYEE_DELETED = "employee.deleted"
     STAFF_PIN_CHANGED = "staff.pin_changed"
+    STAFF_UPDATED = "staff.updated"
+    STAFF_ROLE_CHANGED = "staff.role_changed"
+    STAFF_DEACTIVATED = "staff.deactivated"
+    STAFF_REACTIVATED = "staff.reactivated"
+    CLOCK_EDIT = "clock.edit"
+    SHIFT_DELETED = "shift.deleted"
     TIPOUT_RULE_CREATED = "tipout.rule_created"
     TIPOUT_RULE_UPDATED = "tipout.rule_updated"
     TIPOUT_RULE_DELETED = "tipout.rule_deleted"
+    TIPOUT_RULE_DEACTIVATED = "tipout.rule_deactivated"
     TIPOUT_POOL_CREATED = "tipout.pool_created"
     TIPOUT_POOL_UPDATED = "tipout.pool_updated"
     TIPOUT_POOL_DELETED = "tipout.pool_deleted"
@@ -160,6 +168,8 @@ class EventType(str, Enum):
     MENU_CATEGORY_CREATED = "menu.category_created"
     MENU_CATEGORY_UPDATED = "menu.category_updated"
     MENU_CATEGORY_DELETED = "menu.category_deleted"
+    CATEGORY_DEACTIVATED = "category.deactivated"
+    CATEGORY_REACTIVATED = "category.reactivated"
     MENU_ITEM_86D = "menu.item_86d"
     MENU_ITEM_RESTORED = "menu.item_restored"
     ITEM_86ED = "item.86ed"
@@ -2200,6 +2210,244 @@ def menu_import_rolled_back(
         **kwargs,
     )
 
+
+
+def staff_updated(
+        terminal_id: str,
+        employee_id: str,
+        fields_changed: list[str],
+        updated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """STAFF_UPDATED: non-PIN profile edits (name, email, hourly rate,
+    etc.). PIN rotations emit STAFF_PIN_CHANGED; role changes emit
+    STAFF_ROLE_CHANGED. Payload never carries the PIN material."""
+    payload = {
+        "employee_id": employee_id,
+        "fields_changed": list(fields_changed),
+    }
+    if updated_by is not None:
+        payload["updated_by"] = updated_by
+    return create_event(
+        event_type=EventType.STAFF_UPDATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def staff_role_changed(
+        terminal_id: str,
+        employee_id: str,
+        previous_role_ids: list[str],
+        new_role_ids: list[str],
+        changed_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """STAFF_ROLE_CHANGED: permission-escalation audit anchor."""
+    payload = {
+        "employee_id": employee_id,
+        "previous_role_ids": list(previous_role_ids),
+        "new_role_ids": list(new_role_ids),
+    }
+    if changed_by is not None:
+        payload["changed_by"] = changed_by
+    return create_event(
+        event_type=EventType.STAFF_ROLE_CHANGED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def staff_deactivated(
+        terminal_id: str,
+        employee_id: str,
+        deactivated_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """STAFF_DEACTIVATED: soft-delete -- employee cannot clock in or
+    log in, but their historical shift / sales records are preserved.
+    Distinct from EMPLOYEE_DELETED which is a hard catalog removal."""
+    payload = {"employee_id": employee_id}
+    if deactivated_by is not None:
+        payload["deactivated_by"] = deactivated_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.STAFF_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def staff_reactivated(
+        terminal_id: str,
+        employee_id: str,
+        reactivated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """STAFF_REACTIVATED: rehire audit anchor."""
+    payload = {"employee_id": employee_id}
+    if reactivated_by is not None:
+        payload["reactivated_by"] = reactivated_by
+    return create_event(
+        event_type=EventType.STAFF_REACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def clock_edit(
+        terminal_id: str,
+        employee_id: str,
+        shift_id: str,
+        field: str,
+        previous_value: Optional[str] = None,
+        new_value: Optional[str] = None,
+        edited_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """CLOCK_EDIT: manager timecard correction. Payload carries field
+    (e.g. 'clock_in', 'clock_out'), the previous/new values, and who
+    made the edit so wage-dispute audits can replay the full history."""
+    payload = {
+        "employee_id": employee_id,
+        "shift_id": shift_id,
+        "field": field,
+    }
+    if previous_value is not None:
+        payload["previous_value"] = previous_value
+    if new_value is not None:
+        payload["new_value"] = new_value
+    if edited_by is not None:
+        payload["edited_by"] = edited_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.CLOCK_EDIT,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def shift_deleted(
+        terminal_id: str,
+        employee_id: str,
+        shift_id: str,
+        deleted_by: str,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SHIFT_DELETED: full-shift removal (error correction). Audit
+    record so deleted shifts are not untraceable."""
+    payload = {
+        "employee_id": employee_id,
+        "shift_id": shift_id,
+        "deleted_by": deleted_by,
+    }
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.SHIFT_DELETED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def category_deactivated(
+        terminal_id: str,
+        category_id: str,
+        deactivated_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """CATEGORY_DEACTIVATED: soft-delete -- category is hidden from
+    new orders but historical references stay valid. Distinct from
+    MENU_CATEGORY_DELETED which is a hard catalog removal."""
+    payload = {"category_id": category_id}
+    if deactivated_by is not None:
+        payload["deactivated_by"] = deactivated_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.CATEGORY_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def category_reactivated(
+        terminal_id: str,
+        category_id: str,
+        reactivated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """CATEGORY_REACTIVATED: undo for category_deactivated."""
+    payload = {"category_id": category_id}
+    if reactivated_by is not None:
+        payload["reactivated_by"] = reactivated_by
+    return create_event(
+        event_type=EventType.CATEGORY_REACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def tipout_rule_deactivated(
+        terminal_id: str,
+        rule_id: str,
+        deactivated_by: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """TIPOUT_RULE_DEACTIVATED: soft-delete for a tipout rule."""
+    payload = {"rule_id": rule_id}
+    if deactivated_by is not None:
+        payload["deactivated_by"] = deactivated_by
+    if reason is not None:
+        payload["reason"] = reason
+    return create_event(
+        event_type=EventType.TIPOUT_RULE_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def security_setting_updated(
+        terminal_id: str,
+        setting_key: str,
+        previous_value: Optional[str] = None,
+        new_value: Optional[str] = None,
+        updated_by: Optional[str] = None,
+        **kwargs
+) -> Event:
+    """SECURITY_SETTING_UPDATED: PCI/SOX audit anchor for security-
+    policy changes (session TTL, lockout thresholds, 2FA toggles,
+    etc.). Payload deliberately carries setting key + values as
+    strings so secrets never land on the ledger."""
+    payload = {"setting_key": setting_key}
+    if previous_value is not None:
+        payload["previous_value"] = previous_value
+    if new_value is not None:
+        payload["new_value"] = new_value
+    if updated_by is not None:
+        payload["updated_by"] = updated_by
+    return create_event(
+        event_type=EventType.SECURITY_SETTING_UPDATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
 
 
 def day_opened(
