@@ -310,21 +310,10 @@ async def process_sale(
 
     result = await manager.initiate_sale(request, tax=order_tax)
 
-    # Emit the overage-as-tip TIP_ADJUSTED only on successful approval.
-    if (
-        _overage_as_tip > 0
-        and hasattr(result, "status")
-        and result.status == TransactionStatus.APPROVED
-    ):
-        tip_evt = tip_adjusted(
-            terminal_id=settings.terminal_id,
-            order_id=request.order_id,
-            payment_id=request.transaction_id,
-            tip_amount=_overage_as_tip,
-        )
-        await ledger.append(tip_evt)
-
-    # Return HTTP error if the transaction was not approved
+    # Return HTTP error if the transaction was not approved. Checking
+    # non-APPROVED before emitting the tip/close batch lets us keep the
+    # overage-tip + order-close pair atomic under a single APPROVED-only
+    # append_batch.
     if hasattr(result, 'status'):
         if result.status == TransactionStatus.DECLINED:
             raise HTTPException(status_code=402, detail=result.processor_message or "Declined")
@@ -334,17 +323,33 @@ async def process_sale(
             msg = result.processor_message or (result.error.message if result.error else "Transaction error")
             raise HTTPException(status_code=502, detail=msg)
 
-    # 4. Auto-close order if fully paid (same as cash route)
+    # 4. Emit overage-as-tip and auto-close atomically if fully paid.
     if hasattr(result, 'status') and result.status == TransactionStatus.APPROVED:
-        events = await ledger.get_events_by_correlation(request.order_id)
-        order = project_order(events)
-        if order and order.is_fully_paid and order.status != "closed":
-            close_evt = order_closed(
+        batch_events: list = []
+        if _overage_as_tip > 0:
+            batch_events.append(tip_adjusted(
                 terminal_id=settings.terminal_id,
                 order_id=request.order_id,
-                total=order.total,
-            )
-            await ledger.append(close_evt)
+                payment_id=request.transaction_id,
+                tip_amount=_overage_as_tip,
+            ))
+
+        events = await ledger.get_events_by_correlation(request.order_id)
+        last_seq = max((e.sequence_number or 0 for e in events), default=0)
+        synthetic_for_project = [
+            ev.model_copy(update={"sequence_number": last_seq + i + 1})
+            for i, ev in enumerate(batch_events)
+        ]
+        predicted_order = project_order([*events, *synthetic_for_project])
+        if predicted_order and predicted_order.is_fully_paid and predicted_order.status != "closed":
+            batch_events.append(order_closed(
+                terminal_id=settings.terminal_id,
+                order_id=request.order_id,
+                total=predicted_order.total,
+            ))
+
+        if batch_events:
+            await ledger.append_batch(batch_events)
 
     return result
 
@@ -439,7 +444,10 @@ async def process_cash_payment(
     else:
         sale_amount = money_round(req_amount)
 
-    # Emit PAYMENT_INITIATED (sale amount only — tip tracked via TIP_ADJUSTED)
+    # Build init + confirm + (conditional) close as one atomic batch so a
+    # mid-flow crash cannot leave a phantom pending payment or a
+    # paid-but-open ghost order. Close decision is predicted by projecting
+    # the synthetic post-batch state before any append lands.
     init_evt = payment_initiated(
         terminal_id=settings.terminal_id,
         order_id=request.order_id,
@@ -448,9 +456,6 @@ async def process_cash_payment(
         method="cash",
         seat_numbers=request.seat_numbers,
     )
-    await ledger.append(init_evt)
-
-    # Cash is immediately confirmed
     confirm_evt = payment_confirmed(
         terminal_id=settings.terminal_id,
         order_id=request.order_id,
@@ -460,23 +465,25 @@ async def process_cash_payment(
         tax=order.tax,
         seat_numbers=request.seat_numbers,
     )
-    await ledger.append(confirm_evt)
 
-    # No TIP_ADJUSTED emission on cash: cash tips are declared once at
-    # clock-out, and only credit-card tips get adjusted per-payment.
-
-    # Re-project to check if fully paid
-    events = await ledger.get_events_by_correlation(request.order_id)
-    order = project_order(events)
-
-    # Auto-close if fully paid
-    if order and order.is_fully_paid and order.status != "closed":
-        close_evt = order_closed(
+    batch_events = [init_evt, confirm_evt]
+    # project_order sorts by sequence_number; Event is frozen, so use
+    # model_copy with provisional tail seqs for the prediction only.
+    # append_batch assigns real sequence numbers on insert.
+    last_seq = max((e.sequence_number or 0 for e in events), default=0)
+    synthetic_for_project = [
+        ev.model_copy(update={"sequence_number": last_seq + i + 1})
+        for i, ev in enumerate(batch_events)
+    ]
+    predicted_order = project_order([*events, *synthetic_for_project])
+    if predicted_order and predicted_order.is_fully_paid and predicted_order.status != "closed":
+        batch_events.append(order_closed(
             terminal_id=settings.terminal_id,
             order_id=request.order_id,
-            total=order.total,
-        )
-        await ledger.append(close_evt)
+            total=predicted_order.total,
+        ))
+
+    await ledger.append_batch(batch_events)
 
     return {
         "success": True,
