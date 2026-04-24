@@ -4,18 +4,54 @@ Tracks the LG-## gap clusters across phased work. Source of truth for node
 inventory is `backend/app/services/ledger_gap_report.py` (surfaced in the
 `/entomology` Event Ledger Gaps tab).
 
-## Snapshot
+## Final state (all phases merged to main)
 
-| Phase | Theme | Cluster | Nodes | Status |
-| --- | --- | --- | --- | --- |
-| 1 | CRITICAL atomicity | CHECK/SEAT/DAY multi-event ops | 8 | **DONE** |
-| 2 | Missing CRITICAL | `check.opened`, `seat.paid`, `day.opened`, real clock.in/out | ~6 | **DONE** |
-| 3a | HIGH payload fixes + renames | item.86ed/cleared, tip adjusted_by, item.removed voided_by, discount.approved discount_id | 5 | **DONE** |
-| 3b | HIGH severity MISSING | Seat-granular events, compliance, batch lifecycle | ~55 | pending |
-| 4 | FACTORY-ONLY wiring | Emitters for declared factories | 13 → 5 | audit-corrected in 3b; remaining 5 need new endpoints |
-| 5 | RENAMED consolidation | Align code ↔ spec names | 20 | pending |
-| 6 | PARTIAL payload fixes | Fill missing payload fields on implemented events | ~11 | pending |
-| 7 | MEDIUM / LOW severity | Remaining nodes | ~41 | pending |
+| Status | Count | % | Notes |
+| --- | --- | --- | --- |
+| IMPLEMENTED | 88 | 75% | Emission wired in routes and/or via `/config/push` |
+| RENAMED | 18 | 15% | Code emits under a different name than the spec (audit-equivalent) |
+| PARTIAL | 4 | 3% | Covered but with a known caveat (see per-node `drop_risk`) |
+| FACTORY-ONLY | 3 | 3% | Enum + factory live; no emission path yet (dark-ship) |
+| **MISSING** | **5** | **4%** | See list below |
+| **Total** | **118** | | |
+
+Events in `EventType` enum: **~178** (from ~63 at start).
+Backend tests: **1247 passing** (from 1188 at start).
+
+## Phases shipped (all on `main`)
+
+| Phase | Theme | Events touched | Status |
+| --- | --- | --- | --- |
+| 1 | CRITICAL atomicity | 8 multi-event flows routed through `append_batch` | **DONE** |
+| 2 | Missing CRITICAL events | `check.opened`, `seat.paid`, `day.opened`, real `clock.in/out`, `staff.pin_changed` | **DONE** |
+| 3a | HIGH payload fixes + spec-rename emissions | `item.86ed`/`86_cleared`, `tip adjusted_by`, `item.removed voided_by`, `discount.approved discount_id` | **DONE** |
+| 3b | Dataset audit correction | 8 nodes flipped `FACTORY-ONLY → IMPLEMENTED` | **DONE** |
+| 3c | Printer admin flow | `printer.configured` / `removed` / `assignment_changed` | **DONE** |
+| 3d | Card-reader admin | `payment.processor_configured` (PCI anchor) | **DONE** |
+| 3e | PARTIAL-node cleanup | LG-14/15/16 merge+split re-classified IMPLEMENTED | **DONE** |
+| 4a | Cash control | `/day/cash/float`, `/drop`, `/payout` routes | **DONE** |
+| 4c | Financial accuracy | `discount.voided`, `seat.overpayment_resolved`, `seat.tip_added` | **DONE** |
+| 4d | Settlement failure | `batch.settlement_failed` on invariant drift | **DONE** |
+| 4e | Menu import | `menu.import_started` / `completed` / `failed` envelope on `/config/push` | **DONE** |
+| 4f | Modifier CRUD | 7 new `modifier.*` events | **DONE** |
+| 4g | Micromods | 9 new `micromod.*` events (dark-ship) | **DONE** |
+| 5 | Catalog completeness + table change | `check.table_changed`, `item.price_changed`, `item.deactivated/reactivated`, `special.*` | **DONE** |
+| 6 | Staff + config completeness | 11 `staff.*` / `clock.edit` / `shift.deleted` / `category.*` / `security.setting_updated` events | **DONE** |
+| 7 | Day + batch lifecycle | 7 `check.day_locked` / `day.locked/reopened` / `batch.opened/settlement_initiated/reopened` events | **DONE** |
+| 8 | Seat financial + tipout pipeline | `seat.discount_*`, `seat.comped`, `seat.payment_voided`, `tipout.calculated/adjusted/distributed` | **DONE** |
+| 9 | Seat-transfer family (dark-ship) | 12 per-seat / cross-check / whole-seat / split-merge / reopen events | **DONE** |
+
+## Still MISSING (5 nodes)
+
+| LG | Event | Severity | Why |
+| --- | --- | --- | --- |
+| LG-64 | `break.started` | HIGH | User-deferred during Phase 4 scoping (labor-compliance only, non-blocking) |
+| LG-65 | `break.ended` | HIGH | Mirror of LG-64 |
+| LG-87 | `discount.created` | MEDIUM | Discount-catalog CRUD; no overseer route yet |
+| LG-88 | `discount.updated` | MEDIUM | Same |
+| LG-89 | `discount.deactivated_or_reactivated` | MEDIUM | Same |
+
+Every other event is either emitted, renamed from the spec but audit-equivalent, or dark-shipped (enum + factory + `/config/push` round-trip test) ready to go live the moment a producer sends it.
 
 ---
 
