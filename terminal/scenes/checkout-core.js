@@ -781,7 +781,7 @@ defineScene({
     var infoCard = document.createElement('div');
     infoCard.style.cssText = [
       'display:flex;flex-direction:column;align-items:center;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.yellow + ';',
+      'background:' + T.well + ';border:3px solid ' + T.warning + ';',
       'padding:18px 22px;border-radius:12px;',
       'width:240px;box-sizing:border-box;',
     ].join('');
@@ -789,7 +789,7 @@ defineScene({
     var title = document.createElement('div');
     title.style.cssText = [
       'font-family:' + T.fh + ';font-size:14px;font-weight:700;',
-      'color:' + T.yellow + ';letter-spacing:2px;text-align:center;',
+      'color:' + T.warning + ';letter-spacing:2px;text-align:center;',
     ].join('');
     title.textContent = isEdit ? 'EDIT TIP' : 'ADJUST TIP';
     infoCard.appendChild(title);
@@ -814,7 +814,7 @@ defineScene({
 
     if (cardBrand) {
       var brand = document.createElement('div');
-      brand.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';text-align:center;';
+      brand.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
       brand.textContent = cardBrand;
       info.appendChild(brand);
     }
@@ -828,7 +828,7 @@ defineScene({
         'font-family:' + T.fb + ';font-size:12px;',
       ].join('');
       var cLbl = document.createElement('span');
-      cLbl.style.color = T.mutedText;
+      cLbl.style.color = hexToRgba(T.text, 0.6);
       cLbl.textContent = 'current tip';
       var cAmt = document.createElement('span');
       cAmt.style.cssText = 'color:' + T.green + ';font-weight:700;';
@@ -841,7 +841,7 @@ defineScene({
     infoCard.appendChild(info);
 
     var hint = document.createElement('div');
-    hint.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.mutedText + ';letter-spacing:0.5px;text-align:center;';
+    hint.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:0.5px;text-align:center;';
     hint.textContent = isEdit ? 'correct the tip amount' : 'enter tip amount';
     infoCard.appendChild(hint);
 
@@ -868,7 +868,7 @@ defineScene({
           }),
         }).then(function(r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);
-          showToast('Tip adjusted', { bg: T.goGreen });
+          showToast('Tip adjusted', { bg: T.greenWarm });
           SceneManager.closeTransactional('co-adjust-single');
           if (params.onDone) params.onDone();
         }).catch(function() {
