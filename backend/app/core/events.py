@@ -176,6 +176,8 @@ class EventType(str, Enum):
     # ── System (LEDGER_OPERATIONAL) ──────────────────────────────────
     USER_LOGGED_IN = "user.logged_in"
     USER_LOGGED_OUT = "user.logged_out"
+    CLOCK_IN = "clock.in"
+    CLOCK_OUT = "clock.out"
 
     # ── Timecard (LEDGER_OPERATIONAL) ─────────────────────────────────
     # Admin-initiated clock-in/out correction. Applied over the raw
