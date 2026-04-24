@@ -10,7 +10,7 @@ import { buildButton, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import {
   buildPillButton, hexToRgba,
-  buildStaticCard, buildDivider, buildDataRow, lightenHex, darkenHex,
+  buildStaticCard, buildActionCard, buildDivider, buildDataRow, lightenHex, darkenHex,
 } from '../theme-manager.js';
 import { buildNumpad } from '../numpad.js';
 import { OrderSummary } from '../order-summary.js';
@@ -55,6 +55,21 @@ var _changeDueTimer   = null;
 
 // Split tap handler (bound to event bus)
 function _onSplitTap() { showSplitPopup(); }
+
+// Pick a human-readable check label from whatever the caller passed.
+// Prefers an explicit checkLabel/checkNumber; otherwise strips the
+// "order_" prefix from an orderId like "order_abc123" and uses the
+// last 4-6 chars so the strip reads "#ABC123" instead of "#order_".
+function _deriveCheckLabel(src) {
+  if (!src) return '';
+  if (src.checkLabel)  return src.checkLabel;
+  if (src.checkNumber) return '#' + src.checkNumber;
+  var oid = src.orderId || src.checkId;
+  if (!oid) return '';
+  var stripped = String(oid).replace(/^order[_-]?/i, '');
+  var slice    = stripped.slice(-6) || stripped.slice(0, 6);
+  return slice ? '#' + slice.toUpperCase() : '';
+}
 
 
 // ═══════════════════════════════════════════════════
@@ -722,8 +737,8 @@ function populateLeftCardFromSeats(seats, params) {
   if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
   if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
   if (_cashRow) _cashRow.setValue('$' + cashPrice.toFixed(2));
-  if (_checkNumEl && !_checkNumEl.textContent && params.orderId) {
-    _checkNumEl.textContent = '#' + String(params.orderId).slice(0, 6);
+  if (_checkNumEl && !_checkNumEl.textContent) {
+    _checkNumEl.textContent = _deriveCheckLabel(params);
   }
 
   updateSplitDisplay();
@@ -845,8 +860,7 @@ function buildBalanceStrip() {
   _checkNumEl.style.fontSize      = T.fsB3;
   _checkNumEl.style.color         = T.moon;
   _checkNumEl.style.letterSpacing = '0.12em';
-  _checkNumEl.textContent = sceneData.checkLabel
-    || (sceneData.orderId ? '#' + String(sceneData.orderId).slice(0, 6) : '');
+  _checkNumEl.textContent = _deriveCheckLabel(sceneData);
   card.appendChild(_checkNumEl);
 
   _balanceValueEl = document.createElement('span');
@@ -863,49 +877,37 @@ function buildBalanceStrip() {
 
 function buildDenomTile(val, opts) {
   opts = opts || {};
-  var tile = document.createElement('div');
-  var beveLight = lightenHex(T.bg, 0.08);
-  var beveDark  = darkenHex(T.bg, 0.2);
-  tile.style.cssText = [
+
+  // Same buildActionCard chrome the check-overview seat/check tiles use:
+  // green accent bar with glow, raised card shadow, press animation, and
+  // proper touch-action so taps register on touch devices.
+  var tile = buildActionCard({
+    accent:  T.green,
+    onClick: function() { handleDenomination(val); },
+  });
+  tile.style.cssText += [
     (opts.fullWidth ? 'width:100%;height:60px;flex-shrink:0;' : 'width:100%;height:100%;'),
     'display:flex;align-items:center;justify-content:center;',
-    'background:' + T.card + ';',
-    'border-top:2px solid '    + beveLight + ';',
-    'border-left:2px solid '   + beveLight + ';',
-    'border-bottom:2px solid ' + beveDark  + ';',
-    'border-right:2px solid '  + beveDark  + ';',
-    'border-radius:10px;',
-    'font-family:' + T.fh + ';',
-    'font-size:' + T.fsH2 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.green + ';',
-    'letter-spacing:0.04em;',
-    'cursor:pointer;user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'box-shadow:0 5px 0 ' + T.well + ';',
-    'transition:background 140ms, color 140ms, transform 80ms, box-shadow 80ms;',
+    'padding:0;',
   ].join('');
-  tile.textContent = '$' + val;
 
-  tile.addEventListener('pointerdown', function() {
-    tile.style.transform = 'translateY(3px)';
-    tile.style.boxShadow = '0 2px 0 ' + T.well;
-  });
-  function resetPress() {
-    tile.style.transform = '';
-    tile.style.boxShadow = '0 5px 0 ' + T.well;
-  }
-  tile.addEventListener('pointercancel', resetPress);
-  tile.addEventListener('pointerleave',  resetPress);
+  var label = document.createElement('div');
+  label.textContent         = '$' + val;
+  label.style.fontFamily    = T.fh;
+  label.style.fontSize      = T.fsH2;
+  label.style.fontWeight    = T.fwBold;
+  label.style.color         = T.green;
+  label.style.letterSpacing = '0.04em';
+  label.style.pointerEvents = 'none';
+  tile.appendChild(label);
 
+  // Brief mint-flash on tap so the operator sees the denom was accepted.
   tile.addEventListener('pointerup', function() {
-    resetPress();
-    handleDenomination(val);
-    tile.style.background = T.green;
-    tile.style.color      = T.well;
+    tile.style.backgroundColor = T.green;
+    label.style.color          = T.well;
     setTimeout(function() {
-      tile.style.background = T.card;
-      tile.style.color      = T.green;
+      tile.style.backgroundColor = T.card;
+      label.style.color          = T.green;
     }, 180);
   });
 
@@ -917,27 +919,34 @@ function buildActionRow() {
   var row = document.createElement('div');
   row.style.cssText = 'flex-shrink:0;display:flex;gap:10px;height:52px;';
 
+  // EXACT / SPLIT mirror check-overview's PAY / ADD-ITEMS theme — solid
+  // filled pills with color + darkBg shadow, 14px rounding, 20px label.
   var exact = buildPillButton({
-    label:     'EXACT',
-    color:     T.gold,
-    textColor: T.well,
-    onClick:   handleExact,
+    label:   'EXACT',
+    color:   T.gold,
+    darkBg:  T.goldDk,
+    onClick: handleExact,
   });
-  exact.style.flex   = '1';
-  exact.style.height = '52px';
+  Object.assign(exact.style, {
+    flex:         '1',
+    height:       '52px',
+    borderRadius: '14px',
+    fontSize:     '20px',
+  });
   row.appendChild(exact);
 
   var split = buildPillButton({
-    label:     'SPLIT',
-    color:     T.card,
-    textColor: T.elec,
-    onClick:   _onSplitTap,
+    label:   'SPLIT',
+    color:   T.elec,
+    darkBg:  T.elecDk,
+    onClick: _onSplitTap,
   });
-  split.style.flex       = '1';
-  split.style.height     = '52px';
-  split.style.background = 'transparent';
-  split.style.border     = '2px solid ' + T.elec;
-  split.style.boxShadow  = '0 4px 0 ' + T.elecDk;
+  Object.assign(split.style, {
+    flex:         '1',
+    height:       '52px',
+    borderRadius: '14px',
+    fontSize:     '20px',
+  });
   row.appendChild(split);
 
   return row;
@@ -1008,22 +1017,15 @@ function setPaymentMode(mode) {
       el.style.border     = 'none';
       el.style.boxShadow  = '0 4px 0 ' + b.dk + ', 0 0 16px ' + hexToRgba(b.color, 0.4);
     } else {
-      el.style.background = T.card;
+      el.style.background = T.moon;
       el.style.color      = b.color;
       el.style.border     = '2px solid ' + b.color;
       el.style.boxShadow  = 'none';
     }
   });
 
-  // Denom tiles + $100 tile: live only in cash mode.
-  var enabled = (mode === 'cash');
-  var tiles = _denomTiles.slice();
-  if (_btn100) tiles.push(_btn100);
-  tiles.forEach(function(t) {
-    if (!t) return;
-    t.style.opacity       = enabled ? '1'    : '0.35';
-    t.style.pointerEvents = enabled ? 'auto' : 'none';
-  });
+  // Denom tiles stay live in every mode — they're quick-tender presets for
+  // card/gift/split flows as much as for cash, so we don't gate them.
 }
 
 
