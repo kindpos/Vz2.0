@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from './tokens.js';
-import { buildStyledButton, applySunkenStyle } from './sm2-shim.js';
+import { buildPillButton, hexToRgba, darkenHex } from './theme-manager.js';
 import { SceneManager } from './scene-manager.js';
 import { PREFIXES as UNI_PREFIXES } from './menu-data/universal-modifiers.js';
 
@@ -38,13 +38,44 @@ HexNav.prototype.destroy = function() {
 var PIZZA_BUILDER_DATA = [];
 
 // ── Prefix definitions (mirrors order-entry) ─────
+// Active buttons paint their color on the bg with T.well text; inactive
+// buttons show T.card bg with the color as text + border. One color per
+// prefix — no hardcoded text hex needed.
 var PREFIXES = [
-  { id: 'add',     label: 'Add',     color: T.goGreen,  textColor: '#1a2a1a' },
-  { id: 'no',      label: 'No',      color: T.red,      textColor: '#fff'    },
-  { id: 'on-side', label: 'On Side', color: T.gold,     textColor: '#1a1000' },
-  { id: 'extra',   label: 'Extra',   color: T.cyan,     textColor: '#001a1a' },
-  { id: 'sub',     label: 'Sub',     color: T.lavender, textColor: '#1a0030' },
+  { id: 'add',     label: 'Add',     color: T.greenWarm },
+  { id: 'no',      label: 'No',      color: T.verm      },
+  { id: 'on-side', label: 'On Side', color: T.gold      },
+  { id: 'extra',   label: 'Extra',   color: T.elec      },
+  { id: 'sub',     label: 'Sub',     color: T.elec      },
 ];
+
+// Build a toggle-style segment button via buildPillButton. `active` flips
+// between bright-fill (color bg, dark text) and ghost (T.card bg, colored
+// text). The border stays constant so the segment's identity reads at a
+// glance regardless of state.
+function _buildToggle(label, color, active) {
+  var btn = buildPillButton({
+    label: label,
+    color:    active ? color  : T.card,
+    darkBg:   active ? darkenHex(color, 0.3) : T.well,
+    textColor: active ? T.well : color,
+    fontSize: T.fsB2,
+    shape:    'chamfer',
+  });
+  btn.style.border    = '2px solid ' + color;
+  btn.style.boxShadow = 'none';
+  btn.style.padding   = '0';
+  btn._toggleColor = color;
+  btn._setActive = function(isActive) {
+    btn.setColor(
+      isActive ? color  : T.card,
+      isActive ? darkenHex(color, 0.3) : T.well,
+      isActive ? T.well : color
+    );
+    btn.style.boxShadow = 'none';
+  };
+  return btn;
+}
 
 
 /**
@@ -57,10 +88,14 @@ var PREFIXES = [
 export function showPizzaBuilderOverlay(sizeItem, builderData) {
   var data = (builderData && builderData.length > 0) ? builderData : PIZZA_BUILDER_DATA;
   return new Promise(function(resolve, reject) {
+    // Flat params at the top level — scene-manager.interrupt spreads them
+    // onto mount()'s params arg. (Same class of nesting bug as the one
+    // called out in scenes/order-entry.js:1315-1320.)
     SceneManager.interrupt('pizza-builder', {
+      sizeItem: sizeItem,
+      builderData: data,
       onConfirm: function(result) { resolve(result); },
       onCancel: function() { reject(new Error('Interrupt cancelled')); },
-      params: { sizeItem: sizeItem, builderData: data },
     });
   });
 }
@@ -85,6 +120,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     'width:98%;max-width:1100px;height:95%;',
     'background:' + T.bg + ';',
     'border:4px solid ' + T.catColor('PIZZA') + ';',
+    'border-radius:' + T.chamferCard + 'px;',
     'display:flex;flex-direction:column;',
     'font-family:' + T.fb + ';',
     'overflow:hidden;',
@@ -95,10 +131,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
 
   function refreshPrefixes() {
     PREFIXES.forEach(function(p) {
-      var btn = prefixBtns[p.id];
-      var isActive = activePrefix === p.id;
-      btn.style.background = isActive ? p.color : T.darkBtn;
-      btn.style.color = isActive ? p.textColor : p.color;
+      prefixBtns[p.id]._setActive(activePrefix === p.id);
     });
   }
 
@@ -114,17 +147,21 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
   var rightPanel = document.createElement('div');
   rightPanel.style.cssText = [
     'width:200px;flex-shrink:0;display:flex;flex-direction:column;',
-    'background:' + T.bgDark + ';',
+    'background:' + T.well + ';',
     'border-left:2px solid ' + T.border + ';',
   ].join('');
 
-  // Applied mods log
+  // Applied mods log — sunken-well look inlined from the retired
+  // applySunkenStyle() shim helper.
   var logWrap = document.createElement('div');
   logWrap.style.cssText = [
     'flex:1;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none;',
     'padding:6px 8px;',
+    'background:' + T.well + ';',
+    'border:1px solid ' + T.border + ';',
+    'border-radius:6px;',
+    'box-shadow:inset 0 2px 4px rgba(0,0,0,0.35);',
   ].join('');
-  applySunkenStyle(logWrap);
   renderLog();
   rightPanel.appendChild(logWrap);
 
@@ -138,10 +175,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
 
   function refreshPlacement() {
     placeSegments.forEach(function(seg) {
-      var btn = placeBtns[seg.id];
-      var isActive = activePlacement === seg.id;
-      btn.style.background = isActive ? pizzaColor : T.darkBtn;
-      btn.style.color = isActive ? '#1a0a0a' : pizzaColor;
+      placeBtns[seg.id]._setActive(activePlacement === seg.id);
     });
   }
 
@@ -151,7 +185,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
   // ═══ BOTTOM AREA: prefix row + action row ═══
   var bottomArea = document.createElement('div');
   bottomArea.style.cssText = [
-    'flex-shrink:0;background:' + T.bgDark + ';',
+    'flex-shrink:0;background:' + T.well + ';',
     'border-top:2px solid ' + T.catColor('PIZZA') + ';',
     'display:flex;flex-direction:column;gap:2px;padding:2px 4px;',
   ].join('');
@@ -160,17 +194,11 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
   var prefixRow = document.createElement('div');
   prefixRow.style.cssText = 'display:flex;gap:4px;';
   PREFIXES.forEach(function(p) {
-    var isActive = activePrefix === p.id;
-    var btn = document.createElement('div');
-    btn.style.cssText = [
-      'flex:1;height:30px;display:flex;align-items:center;justify-content:center;',
-      'font-family:' + T.fh + ';font-size:20px;cursor:pointer;',
-      'background:' + (isActive ? p.color : T.darkBtn) + ';',
-      'color:' + (isActive ? p.textColor : p.color) + ';',
-      'border:2px solid ' + p.color + ';',
-      'transition:background 80ms,color 80ms;',
-    ].join('');
-    btn.textContent = p.label;
+    var btn = _buildToggle(p.label, p.color, activePrefix === p.id);
+    btn.style.flex = '1';
+    btn.style.height = '30px';
+    btn.dataset.role = 'prefix';
+    btn.dataset.prefixId = p.id;
     btn.addEventListener('pointerup', function(e) {
       e.stopPropagation();
       activePrefix = p.id;
@@ -185,88 +213,86 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
   var bottomBar = document.createElement('div');
   bottomBar.style.cssText = 'display:flex;gap:4px;';
 
-  // CANCEL
-  var cancelPair = buildStyledButton(T.darkBtn);
-  cancelPair.wrap.style.cssText += 'flex:1;height:34px;';
-  cancelPair.inner.textContent = 'CANCEL';
-  cancelPair.inner.style.color = T.mint;
-  cancelPair.inner.style.fontSize = T.fsSmall;
-  cancelPair.inner.style.fontFamily = T.fb;
-  cancelPair.wrap.addEventListener('pointerup', function() {
-    if (builderNav) builderNav.destroy();
-    onCancel();
+  var cancelBtn = buildPillButton({
+    label: 'CANCEL',
+    color: T.card,
+    darkBg: T.well,
+    textColor: T.green,
+    fontSize: T.fsB3,
+    shape: 'chamfer',
+    onClick: function() {
+      if (builderNav) builderNav.destroy();
+      onCancel();
+    },
   });
-  bottomBar.appendChild(cancelPair.wrap);
+  cancelBtn.dataset.role = 'cancel';
+  cancelBtn.style.flex = '1';
+  cancelBtn.style.height = '34px';
+  cancelBtn.style.padding = '0';
+  bottomBar.appendChild(cancelBtn);
 
-  // UNDO
-  var undoPair = buildStyledButton(T.darkBtn);
-  undoPair.wrap.style.cssText += 'flex:1;height:34px;';
-  undoPair.inner.textContent = 'UNDO';
-  undoPair.inner.style.color = T.red;
-  undoPair.inner.style.fontSize = T.fsSmall;
-  undoPair.inner.style.fontFamily = T.fb;
-  undoPair.wrap.addEventListener('pointerup', function() {
-    if (appliedMods.length === 0) return;
-    appliedMods.pop();
-    renderLog();
+  var undoBtn = buildPillButton({
+    label: 'UNDO',
+    color: T.card,
+    darkBg: T.well,
+    textColor: T.verm,
+    fontSize: T.fsB3,
+    shape: 'chamfer',
+    onClick: function() {
+      if (appliedMods.length === 0) return;
+      appliedMods.pop();
+      renderLog();
+    },
   });
-  bottomBar.appendChild(undoPair.wrap);
+  undoBtn.dataset.role = 'undo';
+  undoBtn.style.flex = '1';
+  undoBtn.style.height = '34px';
+  undoBtn.style.padding = '0';
+  bottomBar.appendChild(undoBtn);
 
-  // ADD TO ORDER
-  var addPair = buildStyledButton(T.darkBtn);
-  addPair.wrap.style.cssText += 'flex:2;height:34px;';
-  addPair.inner.textContent = 'ADD';
-  addPair.inner.style.color = T.mint;
-  addPair.inner.style.fontSize = T.fsSmall;
-  addPair.inner.style.fontFamily = T.fh;
-  addPair.wrap.addEventListener('pointerup', function() {
-    if (builderNav) builderNav.destroy();
-    // Build the result
-    var mods = appliedMods.map(function(m) {
-      var modName = m.prefixLabel + ' ' + m.modLabel;
-      var halfSide = null;
-      if (m.placement === '1st-half') halfSide = 'Left';
-      else if (m.placement === '2nd-half') halfSide = 'Right';
-      return {
-        name: modName,
-        price: m.price || 0,
-        charged: (m.price || 0) > 0,
-        prefix: halfSide,
-      };
-    });
-    onConfirm({
-      name: sizeItem.label,
-      unitPrice: sizeItem.price,
-      mods: mods,
-      category: 'pizza',
-    });
+  var addBtn = buildPillButton({
+    label: 'ADD',
+    variant: 'mint',
+    fontSize: T.fsB3,
+    shape: 'chamfer',
+    onClick: function() {
+      if (builderNav) builderNav.destroy();
+      var mods = appliedMods.map(function(m) {
+        var modName = m.prefixLabel + ' ' + m.modLabel;
+        var halfSide = null;
+        if (m.placement === '1st-half') halfSide = 'Left';
+        else if (m.placement === '2nd-half') halfSide = 'Right';
+        return {
+          name: modName,
+          price: m.price || 0,
+          charged: (m.price || 0) > 0,
+          prefix: halfSide,
+        };
+      });
+      onConfirm({
+        name: sizeItem.label,
+        unitPrice: sizeItem.price,
+        mods: mods,
+        category: 'pizza',
+      });
+    },
   });
-  bottomBar.appendChild(addPair.wrap);
+  addBtn.dataset.role = 'add';
+  addBtn.style.flex = '2';
+  addBtn.style.height = '34px';
+  addBtn.style.padding = '0';
+  bottomBar.appendChild(addBtn);
 
   // Placement bar (bottom-right)
   var placeBar = document.createElement('div');
-  placeBar.style.cssText = 'display:flex;align-items:center;gap:0;flex:2;';
+  placeBar.style.cssText = 'display:flex;align-items:center;gap:4px;flex:2;';
 
-  placeSegments.forEach(function(seg, i) {
-    if (i > 0) {
-      var divider = document.createElement('div');
-      divider.style.cssText = 'width:2px;height:28px;background:' + pizzaColor + ';flex-shrink:0;';
-      placeBar.appendChild(divider);
-    }
-    var isActive = activePlacement === seg.id;
-    var btn = document.createElement('div');
-    btn.style.cssText = [
-      'flex:1;height:34px;display:flex;align-items:center;justify-content:center;',
-      'font-family:' + T.fh + ';font-size:20px;cursor:pointer;',
-      'background:' + (isActive ? pizzaColor : T.darkBtn) + ';',
-      'color:' + (isActive ? '#1a0a0a' : pizzaColor) + ';',
-      'border-top:2px solid ' + pizzaColor + ';',
-      'border-bottom:2px solid ' + pizzaColor + ';',
-      'transition:background 80ms,color 80ms;',
-    ].join('');
-    if (i === 0) btn.style.borderLeft = '2px solid ' + pizzaColor;
-    if (i === placeSegments.length - 1) btn.style.borderRight = '2px solid ' + pizzaColor;
-    btn.textContent = seg.label;
+  placeSegments.forEach(function(seg) {
+    var btn = _buildToggle(seg.label, pizzaColor, activePlacement === seg.id);
+    btn.style.flex = '1';
+    btn.style.height = '34px';
+    btn.dataset.role = 'placement';
+    btn.dataset.placementId = seg.id;
     btn.addEventListener('pointerup', function(e) {
       e.stopPropagation();
       activePlacement = seg.id;
@@ -321,7 +347,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     logWrap.innerHTML = '';
     if (appliedMods.length === 0) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:26px;color:' + T.mutedText + ';text-align:center;padding:2px 0;';
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:26px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:2px 0;';
       empty.textContent = 'Tap a topping or special to build your pizza';
       logWrap.appendChild(empty);
       return;
@@ -343,8 +369,8 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
         row.appendChild(priceSpan);
       }
       var removeSpan = document.createElement('span');
-      removeSpan.textContent = '\u2715';
-      removeSpan.style.cssText = 'color:' + T.red + ';flex-shrink:0;font-size:24px;padding:0 2px;';
+      removeSpan.textContent = '✕';
+      removeSpan.style.cssText = 'color:' + T.verm + ';flex-shrink:0;font-size:24px;padding:0 2px;';
       row.appendChild(removeSpan);
       row.addEventListener('pointerup', (function(i) {
         return function() {
@@ -355,16 +381,22 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
       logWrap.appendChild(row);
     });
 
-    // RESET button
     if (appliedMods.length > 1) {
-      var resetRow = document.createElement('div');
-      resetRow.style.cssText = 'margin-top:4px;padding:3px 0;text-align:center;font-family:' + T.fh + ';font-size:22px;color:' + T.red + ';cursor:pointer;border:2px solid ' + T.red + ';background:' + T.darkBtn + ';';
-      resetRow.textContent = 'RESET ALL';
-      resetRow.addEventListener('pointerup', function() {
-        appliedMods.length = 0;
-        renderLog();
+      var resetBtn = buildPillButton({
+        label: 'RESET ALL',
+        variant: 'verm',
+        fontSize: T.fsB3,
+        shape: 'chamfer',
+        onClick: function() {
+          appliedMods.length = 0;
+          renderLog();
+        },
       });
-      logWrap.appendChild(resetRow);
+      resetBtn.dataset.role = 'reset-all';
+      resetBtn.style.width = '100%';
+      resetBtn.style.marginTop = '4px';
+      resetBtn.style.padding = '3px 0';
+      logWrap.appendChild(resetBtn);
     }
     logWrap.scrollTop = logWrap.scrollHeight;
   }
