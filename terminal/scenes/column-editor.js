@@ -135,7 +135,7 @@ defineScene({
       fontSize:       T.fsB3,
       fontWeight:     T.fwBold,
       letterSpacing:  '0.2em',
-      color:          T.well,
+      color:          T.green,
       textTransform:  'uppercase',
     });
     opsH.textContent = 'OPERATIONS';
@@ -371,7 +371,7 @@ defineScene({
           }
         }
         if (isSelected) {
-          row.style.background = T.gold;
+          row.style.background = T.elec;
           row.style.color      = T.well;
         }
 
@@ -552,13 +552,11 @@ defineScene({
         state.selectedItems.splice(found, 1);
         rowEl.style.background = '';
         rowEl.style.color = T.text;
-        // Also reset the price cell color — need to re-query since we don't
-        // have a direct reference.
         var priceCell = rowEl.lastChild;
         if (priceCell) priceCell.style.color = T.gold;
       } else {
         state.selectedItems.push({ colIdx: colIdx, itemIdx: itemIdx });
-        rowEl.style.background = T.gold;
+        rowEl.style.background = T.elec;
         rowEl.style.color = T.well;
         var priceCell2 = rowEl.lastChild;
         if (priceCell2) priceCell2.style.color = T.well;
@@ -625,12 +623,22 @@ defineScene({
 
     function toggleSplitTarget(colIdx) {
       var found = state.splitTargets.indexOf(colIdx);
+      var refs = state.colEls[colIdx];
       if (found >= 0) {
         state.splitTargets.splice(found, 1);
-        if (state.colEls[colIdx]) state.colEls[colIdx].hdr.style.background = T.green;
+        if (refs) {
+          refs.hdr.style.background  = T.well;
+          refs.hdr.style.color       = T.green;
+          refs.hdrTotal.style.color  = T.gold;
+        }
       } else {
         state.splitTargets.push(colIdx);
-        if (state.colEls[colIdx]) state.colEls[colIdx].hdr.style.background = T.gold;
+        if (refs) {
+          var accent = T.seatPalette[colIdx % T.seatPalette.length];
+          refs.hdr.style.background  = accent;
+          refs.hdr.style.color       = T.moonText;
+          refs.hdrTotal.style.color  = T.moonText;
+        }
       }
       setStatus('Select items, tap the checks to split across, then tap DONE  (' + state.splitTargets.length + ' targets)');
     }
