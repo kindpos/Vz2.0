@@ -9,9 +9,10 @@ import { fetchWithTimeout } from '../net.js';
 import { buildButton, showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import {
-  buildPillButton, buildWell, buildNumpadChassis, buildHeroNumber, hexToRgba,
+  buildPillButton, hexToRgba,
   buildStaticCard, buildDivider, buildDataRow, lightenHex, darkenHex,
 } from '../theme-manager.js';
+import { buildNumpad } from '../numpad.js';
 import { OrderSummary } from '../order-summary.js';
 
 var PAD     = T.scenePad;
@@ -39,7 +40,6 @@ var _balanceValueEl   = null;
 var _checkNumEl       = null;
 var _denomTiles       = [];
 var _btn100           = null;
-var _heroEl           = null;
 var _subRow           = null;
 var _taxRow           = null;
 var _cardRow          = null;
@@ -123,7 +123,6 @@ defineScene({
     _checkNumEl       = null;
     _denomTiles       = [];
     _btn100           = null;
-    _heroEl           = null;
     _subRow = _taxRow = _cardRow = _cashRow = null;
     _itemsScroll      = null;
     _procStatusEl     = null;
@@ -774,7 +773,7 @@ function populateLeftCard(order) {
 
 function buildCenterColumn(params) {
   var col = document.createElement('div');
-  col.style.cssText = 'width:230px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;overflow:hidden;min-width:0;';
+  col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;overflow:hidden;';
 
   col.appendChild(buildTenderToggle());
   col.appendChild(buildBalanceStrip());
@@ -949,42 +948,11 @@ function buildActionRow() {
 //  RIGHT COLUMN — Numpad
 // ═══════════════════════════════════════════════════
 
-function handleKey(label) {
-  if (label === 'CLR') {
-    numpadStr = '';
-    enteredAmount = 0;
-    denomAccum = 0;
-    if (numpadRef) numpadRef.clear();
-    updateSplitDisplay();
-  } else if (label === 'ENT') {
-    handleConfirm();
-  } else {
-    // Digit
-    if (numpadStr.length < 7) {
-      denomAccum = 0;
-      numpadStr += label;
-      enteredAmount = (parseInt(numpadStr, 10) || 0) / 100;
-      if (numpadRef) numpadRef.setPin(numpadStr);
-      updateSplitDisplay();
-    }
-  }
-}
-
 function buildRightColumn() {
   var col = document.createElement('div');
-  col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;min-height:0;';
+  col.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:6px;align-items:center;';
 
-  // Amount well — TENDERING label + hero number
-  var dispWell = buildWell({ padding: '8px 16px' });
-  dispWell.style.height         = '76px';
-  dispWell.style.flexShrink     = '0';
-  dispWell.style.display        = 'flex';
-  dispWell.style.flexDirection  = 'column';
-  dispWell.style.alignItems     = 'center';
-  dispWell.style.justifyContent = 'center';
-  dispWell.style.gap            = '2px';
-  dispWell.style.background     = T.well;
-
+  // TENDERING label — sits above the numpad's built-in display.
   var tenderLbl = document.createElement('div');
   tenderLbl.textContent         = 'TENDERING';
   tenderLbl.style.fontFamily    = T.fb;
@@ -992,50 +960,31 @@ function buildRightColumn() {
   tenderLbl.style.color         = T.moon;
   tenderLbl.style.letterSpacing = '0.2em';
   tenderLbl.style.textTransform = 'uppercase';
-  dispWell.appendChild(tenderLbl);
+  col.appendChild(tenderLbl);
 
-  _heroEl = buildHeroNumber('$0.00', T.gold);
-  dispWell.appendChild(_heroEl);
-  col.appendChild(dispWell);
-
-  // Numpad — do not rebuild key-by-key; use the shared chassis builder.
-  var pad = buildNumpadChassis({
-    onKey: function(label) { handleKey(label); },
+  // Canonical KINDpos numpad — mint-filled keys, integrated dollar display,
+  // vermillion CLR (tap = backspace, long-press = clear all), warm-green ENT.
+  var pad = buildNumpad({
+    masked:        false,
+    maxDigits:     7,
+    submitLabel:   'ent',
+    displayColor:  T.gold,
+    displayFormat: function(digits) {
+      var n = parseInt(digits || '0', 10) || 0;
+      return '$' + (n / 100).toFixed(2);
+    },
+    canSubmit: function() { return enteredAmount > 0; },
+    onChange:  function(pin) {
+      numpadStr     = pin;
+      denomAccum    = 0;
+      enteredAmount = (parseInt(pin || '0', 10) || 0) / 100;
+      updateSplitDisplay();
+    },
+    onSubmit: function() { handleConfirm(); },
   });
-  pad.style.flex = '1';
+
+  numpadRef = pad;
   col.appendChild(pad);
-
-  // numpadRef wrapper — owned by payment.js. Backed by the hero display.
-  numpadRef = {
-    setPin: function(digits) {
-      numpadStr = digits || '';
-      updateDisplay();
-    },
-    setHint: function(msg, color) {
-      if (!_heroEl) return;
-      _heroEl.textContent = msg;
-      _heroEl.style.color = color || T.gold;
-    },
-    clear: function() {
-      numpadStr = '';
-      updateDisplay();
-    },
-  };
-
-  function updateDisplay() {
-    if (!_heroEl) return;
-    if (numpadStr.length > 0) {
-      var n = parseInt(numpadStr, 10) || 0;
-      _heroEl.textContent = '$' + (n / 100).toFixed(2);
-    } else if (denomAccum > 0) {
-      _heroEl.textContent = '$' + denomAccum.toFixed(2);
-    } else {
-      _heroEl.textContent = '$0.00';
-    }
-    _heroEl.style.color = T.gold;
-  }
-
-  updateDisplay();
   return col;
 }
 
