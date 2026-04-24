@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from './tokens.js';
-import { buildStyledButton, applySunkenStyle } from './sm2-shim.js';
+import { buildPillButton, hexToRgba, darkenHex } from './theme-manager.js';
 import { SceneManager } from './scene-manager.js';
 import { PREFIXES as UNI_PREFIXES } from './menu-data/universal-modifiers.js';
 
@@ -39,10 +39,10 @@ var PIZZA_BUILDER_DATA = [];
 
 // ── Prefix definitions (mirrors order-entry) ─────
 var PREFIXES = [
-  { id: 'add',     label: 'Add',     color: T.goGreen,  textColor: '#1a2a1a' },
-  { id: 'no',      label: 'No',      color: T.red,      textColor: '#fff'    },
+  { id: 'add',     label: 'Add',     color: T.greenWarm,  textColor: '#1a2a1a' },
+  { id: 'no',      label: 'No',      color: T.verm,      textColor: '#fff'    },
   { id: 'on-side', label: 'On Side', color: T.gold,     textColor: '#1a1000' },
-  { id: 'extra',   label: 'Extra',   color: T.cyan,     textColor: '#001a1a' },
+  { id: 'extra',   label: 'Extra',   color: T.elec,     textColor: '#001a1a' },
   { id: 'sub',     label: 'Sub',     color: T.lavender, textColor: '#1a0030' },
 ];
 
@@ -97,7 +97,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     PREFIXES.forEach(function(p) {
       var btn = prefixBtns[p.id];
       var isActive = activePrefix === p.id;
-      btn.style.background = isActive ? p.color : T.darkBtn;
+      btn.style.background = isActive ? p.color : T.card;
       btn.style.color = isActive ? p.textColor : p.color;
     });
   }
@@ -114,7 +114,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
   var rightPanel = document.createElement('div');
   rightPanel.style.cssText = [
     'width:200px;flex-shrink:0;display:flex;flex-direction:column;',
-    'background:' + T.bgDark + ';',
+    'background:' + T.well + ';',
     'border-left:2px solid ' + T.border + ';',
   ].join('');
 
@@ -123,8 +123,9 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
   logWrap.style.cssText = [
     'flex:1;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none;',
     'padding:6px 8px;',
+    'background:' + T.well + ';border:1px solid ' + T.border + ';',
+    'border-radius:6px;box-shadow:inset 0 2px 4px rgba(0,0,0,0.35);',
   ].join('');
-  applySunkenStyle(logWrap);
   renderLog();
   rightPanel.appendChild(logWrap);
 
@@ -140,7 +141,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     placeSegments.forEach(function(seg) {
       var btn = placeBtns[seg.id];
       var isActive = activePlacement === seg.id;
-      btn.style.background = isActive ? pizzaColor : T.darkBtn;
+      btn.style.background = isActive ? pizzaColor : T.card;
       btn.style.color = isActive ? '#1a0a0a' : pizzaColor;
     });
   }
@@ -151,7 +152,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
   // ═══ BOTTOM AREA: prefix row + action row ═══
   var bottomArea = document.createElement('div');
   bottomArea.style.cssText = [
-    'flex-shrink:0;background:' + T.bgDark + ';',
+    'flex-shrink:0;background:' + T.well + ';',
     'border-top:2px solid ' + T.catColor('PIZZA') + ';',
     'display:flex;flex-direction:column;gap:2px;padding:2px 4px;',
   ].join('');
@@ -165,7 +166,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     btn.style.cssText = [
       'flex:1;height:30px;display:flex;align-items:center;justify-content:center;',
       'font-family:' + T.fh + ';font-size:20px;cursor:pointer;',
-      'background:' + (isActive ? p.color : T.darkBtn) + ';',
+      'background:' + (isActive ? p.color : T.card) + ';',
       'color:' + (isActive ? p.textColor : p.color) + ';',
       'border:2px solid ' + p.color + ';',
       'transition:background 80ms,color 80ms;',
@@ -186,62 +187,73 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
   bottomBar.style.cssText = 'display:flex;gap:4px;';
 
   // CANCEL
-  var cancelPair = buildStyledButton(T.darkBtn);
-  cancelPair.wrap.style.cssText += 'flex:1;height:34px;';
-  cancelPair.inner.textContent = 'CANCEL';
-  cancelPair.inner.style.color = T.mint;
-  cancelPair.inner.style.fontSize = T.fsSmall;
-  cancelPair.inner.style.fontFamily = T.fb;
-  cancelPair.wrap.addEventListener('pointerup', function() {
-    if (builderNav) builderNav.destroy();
-    onCancel();
+  var cancelBtn = buildPillButton({
+    label: 'CANCEL',
+    color: T.card,
+    darkBg: darkenHex(T.card, 0.4),
+    textColor: T.green,
+    fontSize: T.fsB3,
+    onClick: function() {
+      if (builderNav) builderNav.destroy();
+      onCancel();
+    },
   });
-  bottomBar.appendChild(cancelPair.wrap);
+  cancelBtn.style.flex = '1';
+  cancelBtn.style.height = '34px';
+  cancelBtn.style.fontFamily = T.fb;
+  bottomBar.appendChild(cancelBtn);
 
   // UNDO
-  var undoPair = buildStyledButton(T.darkBtn);
-  undoPair.wrap.style.cssText += 'flex:1;height:34px;';
-  undoPair.inner.textContent = 'UNDO';
-  undoPair.inner.style.color = T.red;
-  undoPair.inner.style.fontSize = T.fsSmall;
-  undoPair.inner.style.fontFamily = T.fb;
-  undoPair.wrap.addEventListener('pointerup', function() {
-    if (appliedMods.length === 0) return;
-    appliedMods.pop();
-    renderLog();
+  var undoBtn = buildPillButton({
+    label: 'UNDO',
+    color: T.card,
+    darkBg: darkenHex(T.card, 0.4),
+    textColor: T.verm,
+    fontSize: T.fsB3,
+    onClick: function() {
+      if (appliedMods.length === 0) return;
+      appliedMods.pop();
+      renderLog();
+    },
   });
-  bottomBar.appendChild(undoPair.wrap);
+  undoBtn.style.flex = '1';
+  undoBtn.style.height = '34px';
+  undoBtn.style.fontFamily = T.fb;
+  bottomBar.appendChild(undoBtn);
 
   // ADD TO ORDER
-  var addPair = buildStyledButton(T.darkBtn);
-  addPair.wrap.style.cssText += 'flex:2;height:34px;';
-  addPair.inner.textContent = 'ADD';
-  addPair.inner.style.color = T.mint;
-  addPair.inner.style.fontSize = T.fsSmall;
-  addPair.inner.style.fontFamily = T.fh;
-  addPair.wrap.addEventListener('pointerup', function() {
-    if (builderNav) builderNav.destroy();
-    // Build the result
-    var mods = appliedMods.map(function(m) {
-      var modName = m.prefixLabel + ' ' + m.modLabel;
-      var halfSide = null;
-      if (m.placement === '1st-half') halfSide = 'Left';
-      else if (m.placement === '2nd-half') halfSide = 'Right';
-      return {
-        name: modName,
-        price: m.price || 0,
-        charged: (m.price || 0) > 0,
-        prefix: halfSide,
-      };
-    });
-    onConfirm({
-      name: sizeItem.label,
-      unitPrice: sizeItem.price,
-      mods: mods,
-      category: 'pizza',
-    });
+  var addBtn = buildPillButton({
+    label: 'ADD',
+    color: T.card,
+    darkBg: darkenHex(T.card, 0.4),
+    textColor: T.green,
+    fontSize: T.fsB3,
+    onClick: function() {
+      if (builderNav) builderNav.destroy();
+      // Build the result
+      var mods = appliedMods.map(function(m) {
+        var modName = m.prefixLabel + ' ' + m.modLabel;
+        var halfSide = null;
+        if (m.placement === '1st-half') halfSide = 'Left';
+        else if (m.placement === '2nd-half') halfSide = 'Right';
+        return {
+          name: modName,
+          price: m.price || 0,
+          charged: (m.price || 0) > 0,
+          prefix: halfSide,
+        };
+      });
+      onConfirm({
+        name: sizeItem.label,
+        unitPrice: sizeItem.price,
+        mods: mods,
+        category: 'pizza',
+      });
+    },
   });
-  bottomBar.appendChild(addPair.wrap);
+  addBtn.style.flex = '2';
+  addBtn.style.height = '34px';
+  bottomBar.appendChild(addBtn);
 
   // Placement bar (bottom-right)
   var placeBar = document.createElement('div');
@@ -258,7 +270,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     btn.style.cssText = [
       'flex:1;height:34px;display:flex;align-items:center;justify-content:center;',
       'font-family:' + T.fh + ';font-size:20px;cursor:pointer;',
-      'background:' + (isActive ? pizzaColor : T.darkBtn) + ';',
+      'background:' + (isActive ? pizzaColor : T.card) + ';',
       'color:' + (isActive ? '#1a0a0a' : pizzaColor) + ';',
       'border-top:2px solid ' + pizzaColor + ';',
       'border-bottom:2px solid ' + pizzaColor + ';',
@@ -321,7 +333,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     logWrap.innerHTML = '';
     if (appliedMods.length === 0) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:26px;color:' + T.mutedText + ';text-align:center;padding:2px 0;';
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:26px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:2px 0;';
       empty.textContent = 'Tap a topping or special to build your pizza';
       logWrap.appendChild(empty);
       return;
@@ -344,7 +356,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
       }
       var removeSpan = document.createElement('span');
       removeSpan.textContent = '\u2715';
-      removeSpan.style.cssText = 'color:' + T.red + ';flex-shrink:0;font-size:24px;padding:0 2px;';
+      removeSpan.style.cssText = 'color:' + T.verm + ';flex-shrink:0;font-size:24px;padding:0 2px;';
       row.appendChild(removeSpan);
       row.addEventListener('pointerup', (function(i) {
         return function() {
@@ -358,7 +370,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     // RESET button
     if (appliedMods.length > 1) {
       var resetRow = document.createElement('div');
-      resetRow.style.cssText = 'margin-top:4px;padding:3px 0;text-align:center;font-family:' + T.fh + ';font-size:22px;color:' + T.red + ';cursor:pointer;border:2px solid ' + T.red + ';background:' + T.darkBtn + ';';
+      resetRow.style.cssText = 'margin-top:4px;padding:3px 0;text-align:center;font-family:' + T.fh + ';font-size:22px;color:' + T.verm + ';cursor:pointer;border:2px solid ' + T.verm + ';background:' + T.card + ';';
       resetRow.textContent = 'RESET ALL';
       resetRow.addEventListener('pointerup', function() {
         appliedMods.length = 0;
