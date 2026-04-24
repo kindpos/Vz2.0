@@ -2638,6 +2638,58 @@ def tipout_rule_deactivated(
     )
 
 
+def tipout_rule_created(
+        terminal_id: str,
+        rule_id: str,
+        name: str,
+        pool_id: str,
+        role_ids: list,
+        percentage: Decimal,
+        effective_date: str,
+        created_by: str,
+        **kwargs
+) -> Event:
+    """TIPOUT_RULE_CREATED: new tipout distribution rule added to the ruleset.
+
+    effective_date is ISO-8601 date string (e.g. "2026-05-01").
+    percentage is stored as a string Decimal to avoid float drift.
+    """
+    return create_event(
+        event_type=EventType.TIPOUT_RULE_CREATED,
+        terminal_id=terminal_id,
+        payload={
+            "rule_id": rule_id,
+            "name": name,
+            "pool_id": pool_id,
+            "role_ids": list(role_ids),
+            "percentage": str(money_round(percentage)),
+            "effective_date": effective_date,
+            "created_by": created_by,
+        },
+        **kwargs,
+    )
+
+
+def tipout_rule_updated(
+        terminal_id: str,
+        rule_id: str,
+        fields_changed: dict,
+        updated_by: str,
+        **kwargs
+) -> Event:
+    """TIPOUT_RULE_UPDATED: change to an existing tipout rule's parameters."""
+    return create_event(
+        event_type=EventType.TIPOUT_RULE_UPDATED,
+        terminal_id=terminal_id,
+        payload={
+            "rule_id": rule_id,
+            "fields_changed": fields_changed,
+            "updated_by": updated_by,
+        },
+        **kwargs,
+    )
+
+
 def security_setting_updated(
         terminal_id: str,
         setting_key: str,
