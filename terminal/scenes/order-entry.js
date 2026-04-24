@@ -38,7 +38,7 @@
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
 import { buildCard, buildStaticCard, buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
-import { buildButton, showToast } from '../components.js';
+import { showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
 import { showHalfPlacementOverlay } from '../half-placement-overlay.js';
@@ -1409,107 +1409,17 @@ function assignSeatsIfNeeded(callback) {
   });
 }
 
-// ── BOTTOM BAR — Three States ────────────────────
+// ── BOTTOM BAR — SAVE / SEND ────────────────────
+// Only the default SAVE/SEND pair surfaces in the current UI. The
+// modifier-session (CANCEL/UNDO/DONE) and item-selected (DESELECT/
+// MODIFY/SEND) branches were removed; their underlying state
+// plumbing remains in place for future resurfacing.
 function rebuildBottomBar() {
   if (!_bottomBar) return;
   _bottomBar.innerHTML = '';
   _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:4px;';
 
   var hasUnsent = ticket.some(function(i) { return !i.sent; });
-
-  // ── Active modifier session: CANCEL / UNDO / DONE ──
-  if (modifierSession.active) {
-    _bottomBar.style.display = 'grid';
-    var cancelBtn = buildPillButton({
-      label: 'CANCEL',
-      color: T.card, fontSize: '26px',
-      onClick: function() { cancelSession(); },
-    });
-    cancelBtn.style.color = T.verm;
-    cancelBtn.style.fontFamily = T.fh;
-
-    var undoBtn = buildPillButton({
-      label: 'UNDO',
-      color: T.card, fontSize: '26px',
-      onClick: function() {
-        if (modifierSession.appliedMods.length === 0) return;
-        var last = modifierSession.appliedMods.pop();
-        last.modRefs.forEach(function(ref) {
-          var idx = ref.inst.mods.indexOf(ref.mod);
-          if (idx !== -1) ref.inst.mods.splice(idx, 1);
-        });
-        renderTicket();
-        refreshModifierPanel();
-      },
-    });
-    undoBtn.style.color = T.gold;
-    undoBtn.style.fontFamily = T.fh;
-
-    var doneBtn = buildPillButton({
-      label: 'DONE',
-      color: T.card, fontSize: '26px',
-      onClick: function() { finalizeSession(); },
-    });
-    doneBtn.style.color = T.greenWarm;
-    doneBtn.style.fontFamily = T.fh;
-
-    cancelBtn.style.gridColumn = '1 / 2'; cancelBtn.style.gridRow = '1'; cancelBtn.style.height = '100%';
-    undoBtn.style.gridColumn = '2 / 4'; undoBtn.style.gridRow = '1'; undoBtn.style.height = '100%';
-    doneBtn.style.gridColumn = '4 / 6'; doneBtn.style.gridRow = '1'; doneBtn.style.height = '100%';
-    _bottomBar.appendChild(cancelBtn);
-    _bottomBar.appendChild(undoBtn);
-    _bottomBar.appendChild(doneBtn);
-    return;
-  }
-
-  // ── Items selected (not in session): DESELECT / MODIFY / SEND ──
-  var hasSelected = modifierSession.selectedItems.length > 0;
-  if (hasSelected) {
-    _bottomBar.style.display = 'grid';
-    var deselectBtn = buildPillButton({
-      label: 'DESELECT',
-      color: T.card, fontSize: '22px',
-      onClick: function() { clearModifierSelection(); },
-    });
-    deselectBtn.style.color = hexToRgba(T.text, 0.45);
-    deselectBtn.style.fontFamily = T.fh;
-
-    var modifyBtn = buildPillButton({
-      label: 'MODIFY',
-      color: T.card, fontSize: '26px',
-      onClick: function() { openModifierSession(); },
-    });
-    modifyBtn.style.color = T.gold;
-    modifyBtn.style.fontFamily = T.fh;
-    modifyBtn.style.outline = '3px solid ' + T.gold;
-    modifyBtn.style.outlineOffset = '-1px';
-
-    var sendBtn2 = buildPillButton({
-      label: 'SEND',
-      color: T.card, fontSize: '26px',
-      onClick: function() {
-        clearModifierSelection();
-        if (!hasUnsent) { handleClose(); return; }
-        assignSeatsIfNeeded(async function() {
-          try { await handleSend(); } catch (e) { return; }
-          handleClose();
-        });
-      },
-    });
-    sendBtn2.style.color = T.green;
-    sendBtn2.style.fontFamily = T.fh;
-
-    deselectBtn.style.gridColumn = '1 / 2'; deselectBtn.style.gridRow = '1'; deselectBtn.style.height = '100%';
-    modifyBtn.style.gridColumn = '2 / 4'; modifyBtn.style.gridRow = '1'; modifyBtn.style.height = '100%';
-    sendBtn2.style.gridColumn = '4 / 6'; sendBtn2.style.gridRow = '1'; sendBtn2.style.height = '100%';
-    _bottomBar.appendChild(deselectBtn);
-    _bottomBar.appendChild(modifyBtn);
-    _bottomBar.appendChild(sendBtn2);
-    return;
-  }
-
-  // ── Default: SAVE / SEND ──
-  _bottomBar.style.display = 'grid';
 
   var saveLabel = isSending ? 'SAVING…' : 'SAVE';
   var sendLabel = isSending ? 'SENDING…' : 'SEND';

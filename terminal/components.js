@@ -1,60 +1,11 @@
 // ═══════════════════════════════════════════════════
 //  KINDpos Terminal — Shared Components  (Vz2.0)
-//  showToast, buildButton, buildGap, buildRoleButton
+//  showToast, buildRoleButton
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
 import { T } from '../common/tokens.js';
-import {
-  buildPillButton,
-  lightenHex,
-  darkenHex,
-  hexToRgba,
-} from './theme-manager.js';
-
-// ═══════════════════════════════════════════════════
-//  buildButton — generic pill-style button
-//  Wraps buildPillButton with the shape older scenes expect:
-//  a single element with textContent, width/height/color overrides,
-//  and an onTap callback.
-// ═══════════════════════════════════════════════════
-
-export function buildButton(label, opts) {
-  var o = opts || {};
-  var fill       = o.fill       || T.card;
-  var color      = o.color      || T.green;
-  var fontSize   = o.fontSize   || T.fsB2;
-  var fontFamily = o.fontFamily || T.fb;
-  var width      = o.width;
-  var height     = o.height;
-  var onTap      = o.onTap      || null;
-  var lineH      = o.lineHeight || '1.05';
-
-  var btn = buildPillButton({
-    label:    label,
-    color:    fill,
-    darkBg:   darkenHex(fill, 0.4),
-    fontSize: fontSize,
-  });
-
-  // Override default pill styling to match old buildButton contract:
-  // color override → text color; fontFamily → override font; label text
-  // respects line-height and pre-line (for multi-line button labels).
-  btn.style.color       = color;
-  btn.style.fontFamily  = fontFamily;
-  btn.style.lineHeight  = lineH;
-  btn.style.whiteSpace  = 'pre-line';
-  btn.style.padding     = '10px 18px';
-  btn.style.textTransform = 'none';
-  btn.style.letterSpacing = '0.04em';
-
-  if (width)  btn.style.width  = width + 'px';
-  if (height) btn.style.height = height + 'px';
-
-  if (onTap) btn.addEventListener('pointerup', onTap);
-
-  return btn;
-}
+import { lightenHex, hexToRgba } from './theme-manager.js';
 
 // ═══════════════════════════════════════════════════
 //  showToast — transient message pill, bottom-center
@@ -126,17 +77,6 @@ function _toastTextColor(bg) {
   var b = parseInt(bg.slice(5, 7), 16);
   var lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return lum > 0.55 ? T.well : T.text;
-}
-
-// ═══════════════════════════════════════════════════
-//  buildGap — spacer element
-// ═══════════════════════════════════════════════════
-
-export function buildGap(px) {
-  var gap = document.createElement('div');
-  gap.style.height     = px + 'px';
-  gap.style.flexShrink = '0';
-  return gap;
 }
 
 // ═══════════════════════════════════════════════════
