@@ -14,6 +14,7 @@ import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
 import {
   buildPillButton,
+  buildStaticCard,
   hexToRgba,
   darkenHex,
 } from '../theme-manager.js';
@@ -254,26 +255,26 @@ defineScene({
         colsArea.appendChild(buildColumn(ci));
       }
 
-      // Fixed "+" column on the right
-      var addCol = document.createElement('div');
+      // Fixed "+" column on the right — matches buildAddTile in check-overview
+      var addCol = buildStaticCard({ accent: T.green });
       Object.assign(addCol.style, {
         minWidth:       '200px',
-        borderRadius:   T.chamferCard + 'px',
-        border:         '2px dashed ' + hexToRgba(T.green, 0.55),
+        flexShrink:     '0',
         display:        'flex',
         alignItems:     'center',
         justifyContent: 'center',
         cursor:         'pointer',
         userSelect:     'none',
-        flexShrink:     '0',
-        boxSizing:      'border-box',
       });
       var addPlus = document.createElement('div');
       Object.assign(addPlus.style, {
-        fontFamily: T.fh,
-        fontSize:   '56px',
-        fontWeight: T.fwBold,
-        color:      hexToRgba(T.green, 0.65),
+        fontFamily:  T.fh,
+        fontSize:    '48px',
+        fontWeight:  T.fwBold,
+        color:       T.green,
+        lineHeight:  '1',
+        userSelect:  'none',
+        pointerEvents: 'none',
       });
       addPlus.textContent = '+';
       addCol.appendChild(addPlus);
