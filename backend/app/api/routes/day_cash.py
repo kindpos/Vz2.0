@@ -22,6 +22,7 @@ from app.core.events import (
     day_cash_float_updated,
     day_cash_payout,
 )
+from app.core.money import money_round
 
 
 router = APIRouter(prefix="/day/cash", tags=["day", "cash"])
@@ -46,6 +47,43 @@ class CashPayoutRequest(BaseModel):
     approved_by: Optional[str] = None
     reason: Optional[str] = None
     category: Optional[str] = None
+
+
+async def _compute_cash_variance(ledger: EventLedger) -> dict:
+    """Sum cash flows since last day.closed boundary."""
+    since = await ledger.get_last_day_close_sequence()
+    events = await ledger.get_events_since(since, limit=10000)
+
+    float_amount = Decimal("0.00")
+    drops = Decimal("0.00")
+    payouts = Decimal("0.00")
+    cash_sales = Decimal("0.00")
+    cash_refunds = Decimal("0.00")
+
+    for ev in events:
+        p = ev.payload
+        if ev.event_type == EventType.DAY_CASH_FLOAT_UPDATED:
+            float_amount = Decimal(str(p.get("amount", 0)))
+        elif ev.event_type == EventType.DAY_CASH_DROP:
+            drops += Decimal(str(p.get("amount", 0)))
+        elif ev.event_type == EventType.DAY_CASH_PAYOUT:
+            payouts += Decimal(str(p.get("amount", 0)))
+        elif ev.event_type == EventType.PAYMENT_CONFIRMED:
+            if p.get("method") == "cash":
+                cash_sales += Decimal(str(p.get("amount", 0)))
+        elif ev.event_type == EventType.PAYMENT_REFUNDED:
+            if p.get("method") == "cash":
+                cash_refunds += Decimal(str(p.get("amount", 0)))
+
+    expected = float_amount + cash_sales - cash_refunds - drops - payouts
+    return {
+        "float": str(float_amount),
+        "cash_sales": str(cash_sales),
+        "cash_refunds": str(cash_refunds),
+        "drops": str(drops),
+        "payouts": str(payouts),
+        "expected_in_drawer": str(money_round(expected)),
+    }
 
 
 async def _current_float(ledger: EventLedger) -> Decimal:
@@ -123,3 +161,9 @@ async def record_cash_payout(
         "amount": str(request.amount),
         "recipient": request.recipient.strip(),
     }
+
+
+@router.get("/variance")
+async def get_cash_variance(ledger: EventLedger = Depends(get_ledger)):
+    """Compute expected cash in drawer from event history since last day close."""
+    return await _compute_cash_variance(ledger)
