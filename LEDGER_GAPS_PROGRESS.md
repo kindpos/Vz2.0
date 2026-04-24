@@ -72,6 +72,13 @@ the `/entomology` → Event Ledger Gaps tab.
 
 ## Changelog
 
+- 2026-04-24 — Phase 4d: `batch.settlement_failed` now emitted in the
+  `_do_close_day` append_batch alongside `batch.submitted` + `day.closed`
+  whenever the close-day invariant gate reports failures. Payload
+  carries `reason`, `recon_diff`, and a list of `failed_invariants`
+  (capped at 8) so replayers can distinguish a clean close from a
+  drifted one without mining the diagnostic store. 2 new tests pin the
+  failure and happy paths. LG-94 flipped to IMPLEMENTED.
 - 2026-04-24 — Phase 4c: financial-accuracy cluster landed on
   `claude/ledger-financial-accuracy-phase4c`.
   - LG-13 `discount.voided` — new `POST /orders/{id}/discount/void`
