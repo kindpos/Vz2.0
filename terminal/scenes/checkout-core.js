@@ -13,6 +13,7 @@ import {
   buildStaticCard,
   buildNavCard,
   buildActionCard,
+  buildPillButton,
 } from '../theme-manager.js';
 
 // Resolved at call time — captured default would never re-theme.
@@ -1266,7 +1267,7 @@ defineScene({
     var panel = document.createElement('div');
     panel.style.cssText = [
       'display:flex;flex-direction:column;gap:14px;',
-      'background:' + T.bgDark + ';border:3px solid ' + T.elec + ';',
+      'background:' + T.well + ';border:3px solid ' + T.elec + ';',
       'padding:22px;border-radius:12px;',
       'width:520px;max-width:92vw;box-sizing:border-box;',
     ].join('');
@@ -1279,7 +1280,7 @@ defineScene({
     title.textContent = 'APPLY DISCOUNT';
     var dismissX = document.createElement('span');
     dismissX.style.cssText = [
-      'font-family:' + T.fb + ';font-size:20px;color:' + T.mutedText + ';',
+      'font-family:' + T.fb + ';font-size:20px;color:' + hexToRgba(T.text, 0.6) + ';',
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;padding:0 4px;line-height:1;',
     ].join('');
@@ -1360,42 +1361,36 @@ defineScene({
 
     panel.appendChild(grid);
 
-    // Action buttons
+    // Action buttons — canonical pills, APPLY disables while no preset
+    // is selected. Replacing the prior raw <div> pair that hand-painted
+    // pill-like styling via cssText and tracked its own enabled flag.
     var btnRow = document.createElement('div');
     btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
 
-    var cancel = document.createElement('div');
-    cancel.style.cssText = [
-      'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-      'background:' + T.well + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
-      'border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    cancel.textContent = 'CANCEL';
-    cancel.addEventListener('pointerup', function() { if (params.onCancel) params.onCancel(); });
-
-    var apply = document.createElement('div');
-    var applyEnabled = false;
-    var updateApplyStyle = function() {
-      applyEnabled = !!selectedDiscount;
-      apply.style.cssText = [
-        'flex:1;height:48px;display:flex;align-items:center;justify-content:center;',
-        'background:' + (applyEnabled ? T.elec : hexToRgba(T.elec, 0.3)) + ';',
-        'border-radius:999px;',
-        'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
-        'color:' + (applyEnabled ? T.well : hexToRgba(T.well, 0.5)) + ';letter-spacing:1.2px;',
-        'cursor:' + (applyEnabled ? 'pointer' : 'not-allowed') + ';user-select:none;-webkit-user-select:none;',
-        'pointer-events:auto;touch-action:manipulation;',
-        applyEnabled ? 'box-shadow:0 3px 0 rgba(0,0,0,0.3);' : '',
-      ].join('');
-    };
-    updateApplyStyle();
-    apply.textContent = 'APPLY';
-    apply.addEventListener('pointerup', function() {
-      if (applyEnabled && params.onConfirm) params.onConfirm(selectedDiscount);
+    var cancel = buildPillButton({
+      label: 'CANCEL',
+      variant: 'ghost',
+      fontSize: T.fsB3,
+      onClick: function() { if (params.onCancel) params.onCancel(); },
     });
+    cancel.style.flex = '1';
+    cancel.style.height = '48px';
+
+    var apply = buildPillButton({
+      label: 'APPLY',
+      variant: 'elec',
+      fontSize: T.fsB3,
+      disabled: true,
+      onClick: function() {
+        if (selectedDiscount && params.onConfirm) params.onConfirm(selectedDiscount);
+      },
+    });
+    apply.style.flex = '1';
+    apply.style.height = '48px';
+
+    var updateApplyStyle = function() {
+      apply.setDisabled(!selectedDiscount);
+    };
 
     btnRow.appendChild(cancel);
     btnRow.appendChild(apply);
