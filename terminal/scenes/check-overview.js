@@ -3504,9 +3504,10 @@ function openEditSeats(state) {
     });
   }
   SceneManager.openTransactional('column-editor', {
-    columns:    columns,
-    operations: ['MERGE', 'MOVE', 'SPLIT'],
-    orderId:    state.orderId,
+    columns:     columns,
+    operations:  ['MERGE', 'MOVE', 'SPLIT'],
+    initialMode: 'move',
+    orderId:     state.orderId,
     onSave: function(newColumns) {
       // Rebuild seats from columns
       var newSeats = [];

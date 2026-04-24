@@ -326,7 +326,8 @@ defineScene({
 
       var hdrTotal = document.createElement('span');
       hdrTotal.style.color = isSplitTarget ? T.moonText : T.gold;
-      hdrTotal.textContent = fmt(colTotal(col));
+      var showPreview = state.mode === 'split' && state.selectedItems.length > 0;
+      hdrTotal.textContent = showPreview ? ('~' + fmt(projectedColTotal(colIdx))) : fmt(colTotal(col));
       hdr.appendChild(hdrTotal);
 
       track(hdr, 'pointerup', (function(idx) {
@@ -562,6 +563,7 @@ defineScene({
         var priceCell2 = rowEl.lastChild;
         if (priceCell2) priceCell2.style.color = T.well;
       }
+      if (state.mode === 'split') updatePreviewTotals();
     }
 
     function handleColumnTap(colIdx) {
@@ -642,6 +644,7 @@ defineScene({
         }
       }
       setStatus('Select items, tap the checks to split across, then tap DONE  (' + state.splitTargets.length + ' targets)');
+      updatePreviewTotals();
     }
 
     function doSplit() {
@@ -672,12 +675,14 @@ defineScene({
         var item = extracted[i].item;
         var source = extracted[i].source;
 
-        // Destination set = this item's source column ∪ any tapped targets.
+        // Destination set = any tapped targets. Source is NOT forced in so the
+        // user can route an item fully away from its origin seat. Safety: if no
+        // targets were selected, fall back to source (no-op).
         var destSet = {};
-        destSet[source] = true;
         for (var tt = 0; tt < state.splitTargets.length; tt++) {
           destSet[state.splitTargets[tt]] = true;
         }
+        if (Object.keys(destSet).length === 0) destSet[source] = true;
         var targets = Object.keys(destSet).map(Number);
         var targetCount = targets.length;
 
@@ -747,8 +752,57 @@ defineScene({
       });
     }
 
+    // Compute projected total for colIdx given current selections + targets.
+    // Mirrors doSplit() math exactly (Fix 3: source is not forced into destSet).
+    function projectedColTotal(colIdx) {
+      var col = state.columns[colIdx];
+      var total = 0;
+      for (var ii = 0; ii < col.items.length; ii++) {
+        var isSel = false;
+        for (var si = 0; si < state.selectedItems.length; si++) {
+          if (state.selectedItems[si].colIdx === colIdx && state.selectedItems[si].itemIdx === ii) {
+            isSel = true; break;
+          }
+        }
+        if (!isSel) total += col.items[ii].qty * col.items[ii].price;
+      }
+      for (var si2 = 0; si2 < state.selectedItems.length; si2++) {
+        var sel = state.selectedItems[si2];
+        var srcItem = state.columns[sel.colIdx].items[sel.itemIdx];
+        var dSet = {};
+        for (var tt = 0; tt < state.splitTargets.length; tt++) dSet[state.splitTargets[tt]] = true;
+        if (Object.keys(dSet).length === 0) dSet[sel.colIdx] = true;
+        var tgts = Object.keys(dSet).map(Number);
+        var myIdx = tgts.indexOf(colIdx);
+        if (myIdx < 0) continue;
+        var modTotal = Array.isArray(srcItem.mods)
+          ? srcItem.mods.reduce(function(s, m) { return s + (m.price || 0); }, 0) : 0;
+        var effective = (srcItem.price || 0) + modTotal;
+        var splitPrice = Math.round(effective / tgts.length * 100) / 100;
+        var remainder  = Math.round((effective - splitPrice * tgts.length) * 100) / 100;
+        total += splitPrice + (myIdx === 0 ? remainder : 0);
+      }
+      return total;
+    }
+
+    // Refresh header totals in-place without a full re-render.
+    function updatePreviewTotals() {
+      if (state.mode !== 'split') return;
+      for (var ci = 0; ci < state.colEls.length; ci++) {
+        var refs = state.colEls[ci];
+        if (!refs) continue;
+        if (state.selectedItems.length === 0) {
+          refs.hdrTotal.textContent = fmt(colTotal(state.columns[ci]));
+        } else {
+          refs.hdrTotal.textContent = '~' + fmt(projectedColTotal(ci));
+        }
+      }
+    }
+
     // Initial render
     renderColumns();
+    // Auto-enter the requested mode (e.g. 'move' when launched from check-overview).
+    if (params.initialMode) handleOp(params.initialMode.toUpperCase());
   },
 
   unmount: function(state) {
