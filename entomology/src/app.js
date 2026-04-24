@@ -378,6 +378,147 @@ function escapeHtml(s) {
     .replace(/'/g, "&#39;");
 }
 
+// ── Event Ledger Gaps tab ────────────────────────────
+const SEVERITY_RANK = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+let ledgerGapsCache = null;
+
+async function loadLedgerGaps() {
+  if (ledgerGapsCache) {
+    renderLedgerGaps(ledgerGapsCache);
+    return;
+  }
+  const wrap = $("#gaps-table-wrap");
+  wrap.innerHTML = `<div class="muted">Loading…</div>`;
+  try {
+    const res = await authedFetch("/api/v1/entomology/ledger-gaps");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    ledgerGapsCache = await res.json();
+    renderLedgerGaps(ledgerGapsCache);
+  } catch (err) {
+    if (err.message === "session_expired") return;
+    wrap.innerHTML = `<div class="muted">Failed to load: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderLedgerGaps(data) {
+  const summary = data.summary || {};
+  const nodes = data.nodes || [];
+
+  $("#gaps-updated").textContent = data.generated_at
+    ? `Generated ${formatTs(data.generated_at)}`
+    : "";
+
+  const sev = summary.by_severity || {};
+  const stat = summary.by_status || {};
+  $("#gaps-summary").innerHTML = [
+    `<strong>${summary.total || nodes.length}</strong> nodes`,
+    `<span class="gap-chip gap-severity-critical">${sev.CRITICAL || 0} critical</span>`,
+    `<span class="gap-chip gap-severity-high">${sev.HIGH || 0} high</span>`,
+    `<span class="gap-chip gap-severity-medium">${sev.MEDIUM || 0} medium</span>`,
+    `<span class="gap-chip gap-severity-low">${sev.LOW || 0} low</span>`,
+    `&middot;`,
+    `<span class="gap-chip gap-status-missing">${stat.MISSING || 0} missing</span>`,
+    `<span class="gap-chip gap-status-renamed">${stat.RENAMED || 0} renamed</span>`,
+    `<span class="gap-chip gap-status-partial">${stat.PARTIAL || 0} partial</span>`,
+    `<span class="gap-chip gap-status-factory-only">${stat["FACTORY-ONLY"] || 0} factory-only</span>`,
+    `<span class="gap-chip gap-status-implemented">${stat.IMPLEMENTED || 0} implemented</span>`,
+  ].join(" ");
+
+  const aggSelect = $("#gaps-aggregate");
+  const existing = new Set(Array.from(aggSelect.options).map(o => o.value));
+  (summary.aggregates || []).forEach(a => {
+    if (!existing.has(a.name)) {
+      const opt = document.createElement("option");
+      opt.value = a.name;
+      opt.textContent = `${a.name} (${a.total})`;
+      aggSelect.appendChild(opt);
+    }
+  });
+
+  filterAndRenderGaps();
+}
+
+function filterAndRenderGaps() {
+  if (!ledgerGapsCache) return;
+  const agg = $("#gaps-aggregate").value;
+  const status = $("#gaps-status").value;
+  const severity = $("#gaps-severity").value;
+  const q = ($("#gaps-search").value || "").toLowerCase().trim();
+
+  let rows = ledgerGapsCache.nodes.slice();
+  if (agg) rows = rows.filter(n => n.aggregate === agg);
+  if (status) rows = rows.filter(n => n.status === status);
+  if (severity) rows = rows.filter(n => n.severity === severity);
+  if (q) rows = rows.filter(n =>
+    n.event.toLowerCase().includes(q) ||
+    (n.drop_risk || "").toLowerCase().includes(q) ||
+    n.id.toLowerCase().includes(q)
+  );
+
+  rows.sort((a, b) => {
+    const s = (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9);
+    return s !== 0 ? s : a.id.localeCompare(b.id, undefined, { numeric: true });
+  });
+
+  $("#gaps-count").textContent = `${rows.length} shown`;
+
+  if (rows.length === 0) {
+    $("#gaps-table-wrap").innerHTML = `<div class="muted">No nodes match.</div>`;
+    return;
+  }
+
+  const body = rows.map(n => `
+    <tr>
+      <td class="gap-id">${escapeHtml(n.id)}</td>
+      <td><code>${escapeHtml(n.event)}</code><div class="muted gap-agg">${escapeHtml(n.aggregate)}</div></td>
+      <td><span class="gap-chip gap-status-${escapeHtml(n.status.toLowerCase().replace(/[^a-z0-9]/g, "-"))}">${escapeHtml(n.status)}</span></td>
+      <td><span class="gap-chip gap-severity-${escapeHtml(n.severity.toLowerCase())}">${escapeHtml(n.severity)}</span></td>
+      <td class="gap-risk">${escapeHtml(n.drop_risk || "")}</td>
+      <td class="gap-site"><code>${escapeHtml(n.site || "—")}</code></td>
+    </tr>
+  `).join("");
+
+  $("#gaps-table-wrap").innerHTML = `
+    <table class="gaps-table">
+      <thead>
+        <tr>
+          <th>LG-ID</th>
+          <th>Event / Aggregate</th>
+          <th>Status</th>
+          <th>Severity</th>
+          <th>Drop risk / inconsistency</th>
+          <th>Site</th>
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>
+  `;
+}
+
+function wireMainTabs() {
+  const tabs = Array.from($$(".main-tab"));
+  function activate(t) {
+    tabs.forEach(b => {
+      const on = b === t;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    const target = t.dataset.tab;
+    $("#tab-overview").classList.toggle("hidden", target !== "overview");
+    $("#tab-ledger-gaps").classList.toggle("hidden", target !== "ledger-gaps");
+    if (target === "ledger-gaps") loadLedgerGaps();
+  }
+  tabs.forEach(t => t.addEventListener("click", () => activate(t)));
+
+  ["gaps-aggregate", "gaps-status", "gaps-severity"].forEach(id => {
+    const el = $(`#${id}`);
+    if (el) el.addEventListener("change", filterAndRenderGaps);
+  });
+  const search = $("#gaps-search");
+  if (search) search.addEventListener("input", filterAndRenderGaps);
+}
+
+
 // ── Boot ─────────────────────────────────────────────
 function boot() {
   wirePinPad();
@@ -412,6 +553,8 @@ function boot() {
   });
   const refreshBtn = $("#btn-refresh-issues");
   if (refreshBtn) refreshBtn.addEventListener("click", () => refreshIssues({ initial: true }));
+
+  wireMainTabs();
 
   if (getToken()) {
     showDashboard();

@@ -341,3 +341,106 @@ html, body {
 }
 .btn-primary:hover { filter: brightness(1.05); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Main tabs (top-level nav) ────────────────────── */
+.main-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #3a3634;
+  margin: 8px 0 16px 0;
+}
+.main-tab {
+  appearance: none;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 18px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.main-tab:hover { color: #d6cfc8; }
+.main-tab.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+.main-tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.tab-panel.hidden { display: none; }
+
+/* ── Event Ledger Gaps ────────────────────────────── */
+.gaps-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0 12px 0;
+  font-size: 0.95rem;
+}
+.gaps-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0 14px 0;
+}
+.gaps-filter-row select,
+.gaps-filter-row input[type="search"] {
+  background: var(--bg-raised);
+  color: #e8e1d9;
+  border: 1px solid #3a3634;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+}
+.gaps-filter-row input[type="search"] { min-width: 220px; flex: 1; }
+
+.gap-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--bg-raised);
+  color: #e8e1d9;
+  border: 1px solid #3a3634;
+  white-space: nowrap;
+}
+.gap-severity-critical { background: #4a1e1a; color: #ffb3a8; border-color: #7a2d25; }
+.gap-severity-high     { background: #4a3a12; color: #ffd38a; border-color: #7a5a1a; }
+.gap-severity-medium   { background: #2e3a4a; color: #a8c8ff; border-color: #3e5a7a; }
+.gap-severity-low      { background: #2a3a2a; color: #a8e8b0; border-color: #3a5a3a; }
+
+.gap-status-missing       { background: #4a1e1a; color: #ffb3a8; border-color: #7a2d25; }
+.gap-status-renamed       { background: #3a3a1e; color: #e8e0a0; border-color: #5a5a2a; }
+.gap-status-partial       { background: #4a3a12; color: #ffd38a; border-color: #7a5a1a; }
+.gap-status-factory-only  { background: #2e3a4a; color: #a8c8ff; border-color: #3e5a7a; }
+.gap-status-implemented   { background: #2a3a2a; color: #a8e8b0; border-color: #3a5a3a; }
+
+.gaps-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.gaps-table th,
+.gaps-table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #3a3634;
+}
+.gaps-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+.gaps-table tr:hover td { background: rgba(245, 166, 35, 0.05); }
+.gaps-table .gap-id { font-weight: 700; color: var(--gold); white-space: nowrap; }
+.gaps-table .gap-agg { font-size: 0.75rem; margin-top: 2px; }
+.gaps-table .gap-risk { max-width: 560px; line-height: 1.4; }
+.gaps-table .gap-site code,
+.gaps-table td code { font-size: 0.85rem; color: #d6cfc8; }

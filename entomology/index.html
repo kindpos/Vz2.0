@@ -45,37 +45,80 @@
       </div>
     </header>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Current Snapshot</h2>
-        <span id="snapshot-updated" class="muted">—</span>
-      </div>
-      <div id="snapshot-metrics" class="metrics-row"></div>
-      <div id="snapshot-probes" class="probe-grid"></div>
-    </section>
+    <nav class="main-tabs" id="main-tabs" role="tablist" aria-label="Dashboard sections">
+      <button class="main-tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
+      <button class="main-tab" data-tab="ledger-gaps" role="tab" aria-selected="false">Event Ledger Gaps</button>
+    </nav>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>Recent Issues</h2>
-        <div class="controls">
-          <span id="issues-updated" class="muted">—</span>
-          <label for="days-select" class="muted">Window:</label>
-          <select id="days-select">
-            <option value="1">1 day</option>
-            <option value="7" selected>7 days</option>
-            <option value="30">30 days</option>
-          </select>
-          <button id="btn-refresh-issues" class="btn-ghost">Refresh</button>
+    <div id="tab-overview" class="tab-panel">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Current Snapshot</h2>
+          <span id="snapshot-updated" class="muted">—</span>
         </div>
-      </div>
-      <div class="sev-tabs" id="severity-tabs" role="tablist" aria-label="Severity filter">
-        <button class="sev-tab" data-sev="INFO"     role="tab">All</button>
-        <button class="sev-tab active" data-sev="WARNING" role="tab" aria-selected="true">Warnings+</button>
-        <button class="sev-tab" data-sev="ERROR"    role="tab">Errors+</button>
-        <button class="sev-tab" data-sev="CRITICAL" role="tab">Critical</button>
-      </div>
-      <div id="issues-body"></div>
-    </section>
+        <div id="snapshot-metrics" class="metrics-row"></div>
+        <div id="snapshot-probes" class="probe-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Recent Issues</h2>
+          <div class="controls">
+            <span id="issues-updated" class="muted">—</span>
+            <label for="days-select" class="muted">Window:</label>
+            <select id="days-select">
+              <option value="1">1 day</option>
+              <option value="7" selected>7 days</option>
+              <option value="30">30 days</option>
+            </select>
+            <button id="btn-refresh-issues" class="btn-ghost">Refresh</button>
+          </div>
+        </div>
+        <div class="sev-tabs" id="severity-tabs" role="tablist" aria-label="Severity filter">
+          <button class="sev-tab" data-sev="INFO"     role="tab">All</button>
+          <button class="sev-tab active" data-sev="WARNING" role="tab" aria-selected="true">Warnings+</button>
+          <button class="sev-tab" data-sev="ERROR"    role="tab">Errors+</button>
+          <button class="sev-tab" data-sev="CRITICAL" role="tab">Critical</button>
+        </div>
+        <div id="issues-body"></div>
+      </section>
+    </div>
+
+    <div id="tab-ledger-gaps" class="tab-panel hidden">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Event Ledger Gaps</h2>
+          <span id="gaps-updated" class="muted">—</span>
+        </div>
+        <div id="gaps-summary" class="gaps-summary muted">Loading…</div>
+        <div class="gaps-filter-row">
+          <label for="gaps-aggregate" class="muted">Aggregate:</label>
+          <select id="gaps-aggregate">
+            <option value="" selected>All</option>
+          </select>
+          <label for="gaps-status" class="muted">Status:</label>
+          <select id="gaps-status">
+            <option value="" selected>All</option>
+            <option value="MISSING">Missing</option>
+            <option value="RENAMED">Renamed</option>
+            <option value="PARTIAL">Partial</option>
+            <option value="FACTORY-ONLY">Factory-only</option>
+            <option value="IMPLEMENTED">Implemented</option>
+          </select>
+          <label for="gaps-severity" class="muted">Severity:</label>
+          <select id="gaps-severity">
+            <option value="" selected>All</option>
+            <option value="CRITICAL">Critical</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+          </select>
+          <input id="gaps-search" type="search" placeholder="Search event / drop risk" />
+          <span id="gaps-count" class="muted"></span>
+        </div>
+        <div id="gaps-table-wrap"></div>
+      </section>
+    </div>
 
     <footer class="bottom-bar">
       <button id="btn-download" class="btn-primary">
