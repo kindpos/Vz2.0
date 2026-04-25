@@ -189,7 +189,7 @@ async function boot() {
         storeSecondaryDk:config.secondary_dark  || null,
         storeTertiary:   config.tertiary_color  || null,
         storeTertiaryDk: config.tertiary_dark   || null,
-        storeLogoUrl:    config.logo_url        || null,
+        storeLogoUrl:    (config.branding && config.branding.logo_url) || null,
       });
     }
   } catch (e) {
