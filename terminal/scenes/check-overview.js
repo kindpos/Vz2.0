@@ -1812,9 +1812,6 @@ function renderManageToolbar(state) {
   _wireLongPress(resetBtn, function() { _resetManageSession(state); });
   zone.appendChild(resetBtn);
 
-  var doneBtn = _makeUtilPill('DONE', T.well, { bg: T.greenWarm });
-  doneBtn.addEventListener('click', function() { exitManageMode(state); });
-  zone.appendChild(doneBtn);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1925,6 +1922,14 @@ function buildSeatsContainer(state) {
     boxSizing:     'border-box',
   });
   root.appendChild(body);
+
+  body.addEventListener('pointerup', function(e) {
+    if (e.target === body && state._manageMode) {
+      state.selected = {};
+      state.selectedItems = {};
+      exitManageMode(state);
+    }
+  });
 
   return { root: root, body: body, mode: mode };
 }
@@ -2957,6 +2962,10 @@ function toggleSeat(state, seatId) {
   if (seat.items.length === 0) {
     if (state.selected[seatId]) delete state.selected[seatId];
     else                         state.selected[seatId] = true;
+    if (state._manageMode && Object.keys(state.selected).length === 0 && Object.keys(state.selectedItems || {}).length === 0) {
+      exitManageMode(state);
+      return;
+    }
     rerenderTopArea(state);
     return;
   }
@@ -2971,6 +2980,10 @@ function toggleSeat(state, seatId) {
     else             state.selectedItems[key] = true;
   }
   _syncSelectedFromItems(state);
+  if (state._manageMode && Object.keys(state.selected).length === 0 && Object.keys(state.selectedItems || {}).length === 0) {
+    exitManageMode(state);
+    return;
+  }
   rerenderTopArea(state);
 }
 

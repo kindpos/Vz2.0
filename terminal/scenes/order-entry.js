@@ -1146,6 +1146,7 @@ function buildItemTile(item, catColor, isFav) {
 function renderSnakeGrid() {
   if (!_gridEl) return;
   _gridEl.innerHTML = '';
+  var frag = document.createDocumentFragment();
 
   var view   = snakeState.view;
   var crumbs = snakeState.crumbs;
@@ -1226,8 +1227,9 @@ function renderSnakeGrid() {
     var isFav = favorites.indexOf(item.id) >= 0;
     var tile = buildItemTile(item, menuCat.color, isFav);
     _bindItemTile(tile, item, menuCat);
-    _gridEl.appendChild(tile);
+    frag.appendChild(tile);
   });
+  _gridEl.appendChild(frag);
 }
 
 function _bindItemTile(tile, item, menuCat) {
@@ -1957,6 +1959,7 @@ function renderModButtonGrid(panel) {
         'color:' + catText + ';',
         'border:2px solid ' + catColor + ';',
         'transition:background 80ms;',
+        'touch-action:manipulation;pointer-events:auto;',
       ].join('');
       btn.textContent = item.label;
 
@@ -2000,7 +2003,7 @@ function renderAppliedModsLog(panel) {
     row.appendChild(label);
     var removeBtn = document.createElement('span');
     removeBtn.textContent = '\u2715';
-    removeBtn.style.cssText = 'color:' + T.verm + ';cursor:pointer;padding:0 4px;font-size:28px;flex-shrink:0;';
+    removeBtn.style.cssText = 'color:' + T.verm + ';cursor:pointer;padding:0 4px;font-size:28px;flex-shrink:0;touch-action:manipulation;pointer-events:auto;';
     removeBtn.addEventListener('pointerup', (function(i) {
       return function(e) {
         e.stopPropagation();
@@ -2162,6 +2165,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   doneBtn.style.width = '100%';
   doneBtn.style.fontSize = '16px';
   doneBtn.addEventListener('pointerup', function() { callbacks.onSend(_buildActiveItem()); });
+  doneBtn.disabled = mandatoryGroups.some(function(g) { return !mandState[g.key]; });
   doneWrap.appendChild(doneBtn);
   ov.appendChild(doneWrap);
 
@@ -2312,6 +2316,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
   // ── Render content sections ──────────────────────────
   function renderContent() {
+    var savedTop = scroll.scrollTop;
     scroll.innerHTML = '';
 
     // ── SNAKE BREADCRUMB CARD — matches grid tile style ──
@@ -2362,14 +2367,26 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
     // ── MANDATORY GROUPS ──
     mandatoryGroups.forEach(function(g) {
-      scroll.appendChild(sectionLabel('REQUIRED — ' + g.label, T.verm));
+      var mandHdr = sectionLabel('REQUIRED — ' + g.label, T.verm);
+      mandHdr.dataset.mandkey = g.key;
+      scroll.appendChild(mandHdr);
       var wrap = pillWrap();
       (g.options || []).forEach(function(opt) {
         var sel = mandState[g.key] && mandState[g.key].key === (opt.key || opt.id);
         var p = pill(opt.label, T.verm, sel, function() {
           if (sel) { delete mandState[g.key]; }
           else { mandState[g.key] = { key: opt.key || opt.id, label: opt.label, price: opt.price || 0 }; }
+          doneBtn.disabled = mandatoryGroups.some(function(g) { return !mandState[g.key]; });
           renderContent();
+          var nextUnsatisfied = mandatoryGroups.find(function(g) { return !mandState[g.key]; });
+          if (nextUnsatisfied) {
+            var nextEl = scroll.querySelector('[data-mandkey="' + nextUnsatisfied.key + '"]');
+            if (nextEl) {
+              requestAnimationFrame(function() {
+                nextEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              });
+            }
+          }
         });
         wrap.appendChild(p);
       });
@@ -2378,19 +2395,34 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
     // ── INCLUDED ──
     if (includedItems.length > 0) {
-      scroll.appendChild(sectionLabel('INCLUDED — TAP TO REMOVE OR SIDE', hexToRgba(T.text, 0.6)));
-      var inclWrap = pillWrap();
+      scroll.appendChild(sectionLabel('INCLUDED', hexToRgba(T.text, 0.6)));
+      var inclWrap = document.createElement('div');
+      inclWrap.style.cssText = 'display:flex;flex-direction:column;gap:7px;margin-bottom:12px;';
       includedItems.forEach(function(inc) {
         var state = inclState[inc.id] || null;
-        var bg    = state === 'NO' ? T.verm : state === 'ON SIDE' ? T.gold : T.card;
-        var lbl   = state ? '[' + state + '] ' + inc.label : inc.label;
-        var p = pill(lbl, bg, !!state, function() {
-          var cycle = ['NO', 'ON SIDE', null];
-          var next  = cycle[(cycle.indexOf(inclState[inc.id] || null) + 1) % cycle.length];
-          if (next === null) delete inclState[inc.id]; else inclState[inc.id] = next;
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+        var lbl = document.createElement('span');
+        lbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';white-space:nowrap;flex:1 0 auto;';
+        lbl.textContent = inc.label;
+        row.appendChild(lbl);
+        var noActive = state === 'NO';
+        var noBtn = pill('NO', T.verm, noActive, function() {
+          if (inclState[inc.id] === 'NO') delete inclState[inc.id]; else inclState[inc.id] = 'NO';
           renderContent();
         });
-        inclWrap.appendChild(p);
+        noBtn.style.touchAction = 'manipulation';
+        noBtn.style.pointerEvents = 'auto';
+        row.appendChild(noBtn);
+        var sideActive = state === 'ON SIDE';
+        var sideBtn = pill('ON SIDE', T.gold, sideActive, function() {
+          if (inclState[inc.id] === 'ON SIDE') delete inclState[inc.id]; else inclState[inc.id] = 'ON SIDE';
+          renderContent();
+        });
+        sideBtn.style.touchAction = 'manipulation';
+        sideBtn.style.pointerEvents = 'auto';
+        row.appendChild(sideBtn);
+        inclWrap.appendChild(row);
       });
       scroll.appendChild(inclWrap);
     }
@@ -2489,6 +2521,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       scroll.appendChild(msg2);
     }
 
+    requestAnimationFrame(function() { scroll.scrollTop = savedTop; });
     _buildActiveItem();
   }
 
@@ -2983,6 +3016,7 @@ function renderTicket() {
   var list = document.getElementById('ticket-list');
   if (!list) return;
   list.innerHTML = '';
+  var frag = document.createDocumentFragment();
 
   // In check-overview mode, only show newly added (unsent) items
   var displayTicket = ticket;
@@ -2992,7 +3026,8 @@ function renderTicket() {
       var hint = document.createElement('div');
       hint.style.cssText = 'padding:20px 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
       hint.textContent = 'Tap items to add';
-      list.appendChild(hint);
+      frag.appendChild(hint);
+      list.appendChild(frag);
       return;
     }
   }
@@ -3018,7 +3053,8 @@ function renderTicket() {
       var seatHdr = document.createElement('div');
       seatHdr.style.cssText = 'padding:4px 8px 2px;font-family:' + T.fh + ';font-size:' + T.fsB2 + ';color:' + T.green + ';letter-spacing:2px;border-bottom:1px solid ' + T.border + ';margin-bottom:2px;';
       seatHdr.textContent = 'S-' + String(sn).padStart(3, '0');
-      list.appendChild(seatHdr);
+      frag.appendChild(seatHdr);
+      list.appendChild(frag);
 
       // Render items for this seat using the same group logic below
       var seatTicket = seatItems[sn];
@@ -3032,6 +3068,7 @@ function renderTicket() {
   _renderTicketGroup(list, displayTicket);
   _appendModPreview(list);
   _updateTicketTotals();
+  list.appendChild(frag);
 }
 
 function _appendModPreview(list) {
@@ -3342,9 +3379,11 @@ function _renderTicketGroup(list, displayTicket) {
       });
       gc.addEventListener('pointerleave', function() {
         clearTimeout(_qtyHoldTimer);
+        _qtyDidHold = false;
       });
       gc.addEventListener('pointercancel', function() {
         clearTimeout(_qtyHoldTimer);
+        _qtyDidHold = false;
       });
 
       list.appendChild(gc);
