@@ -176,9 +176,16 @@ defineScene({
         fontSize: T.fsB2,
         onClick:  function() { handleOp(label); },
       });
-      // "Dark" operation buttons (MOVE, SPLIT) need light text since the
-      // pill default dark-text-on-color assumes a light fill.
-      if (c.color === T.card) btn.style.color = T.text;
+      // MOVE and SPLIT use T.card as their background, so the pill's internal
+      // handlers (which set text to `color` on press and `T.well` on release)
+      // produce dark-on-dark text. Override all pointer states to keep T.text.
+      if (c.color === T.card) {
+        btn.style.color = T.text;
+        btn.addEventListener('pointerdown',   function() { btn.style.color = T.text; });
+        btn.addEventListener('pointerup',     function() { btn.style.color = T.text; });
+        btn.addEventListener('pointerleave',  function() { btn.style.color = T.text; });
+        btn.addEventListener('pointercancel', function() { btn.style.color = T.text; });
+      }
       return btn;
     }
 
