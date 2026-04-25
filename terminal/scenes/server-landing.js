@@ -19,6 +19,7 @@ import {
   buildStatCard,
   buildTipSparkBg,
 } from '../charts.js';
+import { buildNumpad } from '../numpad.js';
 
 // ── Filter cycle ──────────────────────────────────
 var FILTER_CYCLE  = { OPEN: 'CLOSED', CLOSED: 'VOID', VOID: 'OPEN' };
@@ -264,9 +265,10 @@ defineScene({
     var tipSparkBg = buildTipSparkBg({ data: [0] });
     tipResult.insertBefore(tipSparkBg.el, tipResult.firstChild);
 
-    var tipFilter      = 'UNADJ';
-    var activeCheckId  = null;
-    var tipNumpadPanel = null;
+    var tipFilter     = 'UNADJ';
+    var activeCheckId = null;
+    var tipScrim      = null;
+    var tipNumpadCard = null;
 
     // Tips header
     var tipHdr = document.createElement('div');
@@ -299,15 +301,10 @@ defineScene({
     tipHdr.appendChild(tipsTotal);
     tipResult.appendChild(tipHdr);
 
-    // Body: list + optional inline numpad
-    var tipBody = document.createElement('div');
-    tipBody.style.cssText = 'flex:1;display:flex;flex-direction:row;min-height:0;overflow:hidden;';
-    tipResult.appendChild(tipBody);
-
     // Scrollable tip rows
     var tipList = document.createElement('div');
     tipList.style.cssText = 'flex:1;overflow-y:auto;min-height:0;padding:6px 10px;display:flex;flex-direction:column;gap:2px;';
-    tipBody.appendChild(tipList);
+    tipResult.appendChild(tipList);
 
     // Checkout pill — always enabled, greenWarm variant
     var checkoutBtn = buildPillButton({ label: 'CHECKOUT', color: T.greenWarm, darkBg: T.greenWarmDk });
@@ -501,108 +498,115 @@ defineScene({
     }
 
     // ─────────────────────────────────────────────
-    //  INLINE TIP NUMPAD
+    //  FLOATING TIP NUMPAD
     // ─────────────────────────────────────────────
     function closeTipNumpad() {
-      if (tipNumpadPanel && tipNumpadPanel.parentNode) {
-        tipNumpadPanel.parentNode.removeChild(tipNumpadPanel);
-      }
-      tipNumpadPanel = null;
+      if (tipScrim     && tipScrim.parentNode)      tipScrim.parentNode.removeChild(tipScrim);
+      if (tipNumpadCard && tipNumpadCard.parentNode) tipNumpadCard.parentNode.removeChild(tipNumpadCard);
+      tipScrim      = null;
+      tipNumpadCard = null;
+      activeCheckId = null;
     }
 
     function openTipNumpad(chk) {
       if (activeCheckId === chk.checkId) {
-        activeCheckId = null;
         closeTipNumpad();
         renderTipQueue();
         return;
       }
 
-      activeCheckId = chk.checkId;
       closeTipNumpad();
+      activeCheckId = chk.checkId;
       renderTipQueue();
 
-      var startVal = (tipFilter === 'ADJ' && chk.adjusted && chk.tip) ? chk.tip : 0;
-      var digits   = startVal > 0 ? String(parseFloat(startVal).toFixed(2)) : '0';
-
-      var panel = document.createElement('div');
-      panel.style.cssText = [
-        'width:130px;flex-shrink:0;display:flex;flex-direction:column;',
-        'border-left:1px solid ' + hexToRgba(T.border, 0.3) + ';',
-        'padding:6px 8px;gap:4px;box-sizing:border-box;',
+      // Scrim
+      var scrim = document.createElement('div');
+      scrim.style.cssText = [
+        'position:fixed;inset:0;',
+        'background:' + T.scrimWorking + ';',
+        'z-index:' + T.zWorking + ';',
       ].join('');
-      tipNumpadPanel = panel;
-      tipBody.appendChild(panel);
-
-      var display = document.createElement('div');
-      display.style.cssText = [
-        'font-family:' + T.fh + ';font-size:18px;font-weight:700;',
-        'color:' + T.gold + ';text-align:right;',
-        'padding:4px 2px 6px;flex-shrink:0;letter-spacing:0.02em;',
-        'border-bottom:1px solid ' + hexToRgba(T.border, 0.3) + ';',
-      ].join('');
-      panel.appendChild(display);
-
-      function updateDisplay() {
-        var v = parseFloat(digits) || 0;
-        display.textContent = '$' + v.toFixed(2);
-      }
-      updateDisplay();
-
-      var grid = document.createElement('div');
-      grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;flex:1;min-height:0;';
-      panel.appendChild(grid);
-
-      ['7','8','9','4','5','6','1','2','3','.','0','⌫'].forEach(function(k) {
-        var btn = document.createElement('div');
-        btn.textContent = k;
-        btn.style.cssText = [
-          'font-family:' + T.fb + ';font-size:15px;color:' + T.text + ';',
-          'display:flex;align-items:center;justify-content:center;',
-          'border-radius:5px;min-height:30px;cursor:pointer;',
-          'background:' + hexToRgba(T.border, 0.12) + ';',
-          'touch-action:manipulation;pointer-events:auto;user-select:none;',
-        ].join('');
-        btn.addEventListener('pointerdown',  function() { btn.style.background = hexToRgba(T.elec, 0.25); });
-        btn.addEventListener('pointerleave', function() { btn.style.background = hexToRgba(T.border, 0.12); });
-        btn.addEventListener('pointerup',    function() {
-          btn.style.background = hexToRgba(T.border, 0.12);
-          if (k === '⌫') {
-            digits = digits.length > 1 ? digits.slice(0, -1) : '0';
-          } else if (k === '.') {
-            if (digits.indexOf('.') === -1) digits += '.';
-          } else {
-            digits = (digits === '0') ? k : digits + k;
-          }
-          updateDisplay();
-        });
-        grid.appendChild(btn);
-      });
-
-      var confirmBtn = buildPillButton({ label: 'SAVE', color: T.elec, darkBg: darkenHex(T.elec, 0.3) });
-      confirmBtn.style.flexShrink = '0';
-      confirmBtn.style.marginTop  = '4px';
-      panel.appendChild(confirmBtn);
-
-      confirmBtn.addEventListener('pointerup', function() {
-        var tipVal = parseFloat(digits) || 0;
-        var checks = state.salesData.checks || [];
-        for (var i = 0; i < checks.length; i++) {
-          if (checks[i].checkId === chk.checkId || checks[i].id === chk.checkId) {
-            checks[i].tip      = tipVal;
-            checks[i].adjusted = true;
-            break;
-          }
-        }
-        fetch('/api/v1/checks/' + chk.checkId + '/tip', {
-          method:  'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ tip: tipVal, adjusted: true }),
-        }).catch(function() {});
-        activeCheckId = null;
+      scrim.addEventListener('pointerup', function() {
         closeTipNumpad();
         renderTipQueue();
       });
+      document.body.appendChild(scrim);
+      tipScrim = scrim;
+
+      // Floating card
+      var card = document.createElement('div');
+      card.style.cssText = [
+        'position:fixed;',
+        'left:' + T.pcLeftW + 'px;',
+        'width:260px;',
+        'top:50%;transform:translateY(-50%);',
+        'z-index:' + T.zTransactional + ';',
+        'background:' + T.card + ';',
+        'border-radius:10px;',
+        'border-left:3px solid ' + T.elec + ';',
+        'padding:12px;',
+        'box-sizing:border-box;',
+        'display:flex;flex-direction:column;gap:8px;',
+      ].join('');
+      document.body.appendChild(card);
+      tipNumpadCard = card;
+
+      // Check label
+      var checkLbl = document.createElement('div');
+      checkLbl.textContent   = chk.checkLabel || checkNum({ order_id: chk.checkId }) || 'CHK';
+      checkLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.moon + ';letter-spacing:0.1em;text-align:center;';
+      card.appendChild(checkLbl);
+
+      // Pre-populate cents string for ADJ tab
+      var startCents = (tipFilter === 'ADJ' && chk.adjusted && chk.tip)
+        ? String(Math.round(chk.tip * 100)) : '';
+
+      // buildNumpad — keys sized to fit 233px inner width
+      // keyW=67: 67×3 + 8×2 + 8×2 + 5×2 = 233px
+      var numpad = buildNumpad({
+        masked:        false,
+        displayColor:  T.gold,
+        digitColor:    T.green,
+        clearColor:    T.verm,
+        submitColor:   T.greenWarm,
+        submitLabel:   'ENT',
+        maxDigits:     6,
+        displayH:      55,
+        keyW:          67,
+        keyH:          65,
+        keyGap:        8,
+        cardPad:       8,
+        gap:           10,
+        displayFormat: function(p) {
+          return '$' + (parseInt(p || '0', 10) / 100).toFixed(2);
+        },
+        canSubmit: function() { return true; },
+        onSubmit: function(pin) {
+          var tipVal = parseInt(pin || '0', 10) / 100;
+          var checks = state.salesData.checks || [];
+          for (var i = 0; i < checks.length; i++) {
+            if (checks[i].checkId === chk.checkId || checks[i].id === chk.checkId) {
+              checks[i].tip      = tipVal;
+              checks[i].adjusted = true;
+              break;
+            }
+          }
+          fetch('/api/v1/checks/' + chk.checkId + '/tip', {
+            method:  'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ tip: tipVal, adjusted: true }),
+          }).catch(function() {});
+          closeTipNumpad();
+          renderTipQueue();
+        },
+        onCancel: function() {
+          closeTipNumpad();
+          renderTipQueue();
+        },
+      });
+
+      if (startCents) numpad.setPin(startCents);
+      card.appendChild(numpad);
     }
 
     // ─────────────────────────────────────────────
