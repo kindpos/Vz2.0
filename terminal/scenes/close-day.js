@@ -752,82 +752,47 @@ function renderCheckPreview(paper, checks, allOrders) {
 //  MIDDLE COLUMN — Adaptive card stack
 // ─────────────────────────────────────────────────
 
-function buildMiddleCol(data, handlers, state, rebuild) {
+function buildMiddleCol(data, handlers, state) {
   var col = document.createElement('div');
-  col.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:10px;min-height:0;overflow:hidden;';
+  col.style.cssText = [
+    'flex:1;display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
+    'min-width:0;min-height:0;',
+    'overflow-y:auto;overflow-x:hidden;',
+    'touch-action:pan-y;',
+    '-webkit-overflow-scrolling:touch;',
+    'overscroll-behavior:contain;',
+  ].join('');
 
-  var hasOpen  = data.openChecks.length > 0;
   var hasUnadj = data.unadjustedChecks.length > 0;
-  var blocked  = hasOpen || hasUnadj;
-
-  function addToggleHandler(card, cardKey) {
-    // skip the accent bar (first child)
-    var header = card.children[1] || card.firstChild;
-    if (!header) return;
-    header.style.cursor = 'pointer';
-    header.style.userSelect = 'none';
-    header.style.webkitUserSelect = 'none';
-    header.style.pointerEvents = 'auto';
-    header.style.touchAction = 'manipulation';
-    header.addEventListener('pointerup', function(e) {
-      e.stopPropagation();
-      state.expandedCard = (state.expandedCard === cardKey) ? null : cardKey;
-      rebuild();
-    });
-  }
-
-  function wrapCard(card, cardKey) {
-    var isExpanded = (state.expandedCard === cardKey);
-    var wrapper = document.createElement('div');
-    if (isExpanded) {
-      wrapper.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;';
-      card.style.flex = '1';
-      card.style.minHeight = '0';
-    } else {
-      wrapper.style.cssText = 'flex-shrink:0;';
-    }
-    addToggleHandler(card, cardKey);
-    wrapper.appendChild(card);
-    return wrapper;
-  }
+  var blocked  = data.openChecks.length > 0 || hasUnadj;
 
   // Sales — always present, compact
   col.appendChild(buildSalesCard(data, blocked));
 
-  // Open Checks — always renders
-  var isExpanded = (state.expandedCard === 'open-checks');
-  col.appendChild(wrapCard(
-    isExpanded
-      ? buildOpenChecksCard(data, handlers, state.selectedCheckIds)
-      : buildOpenChecksCollapsed(data, handlers),
-    'open-checks'
-  ));
+  // Open Checks blocker — only when open checks exist
+  if (data.openChecks.length > 0) {
+    col.appendChild(buildOpenChecksCard(data, handlers, state.selectedCheckIds));
+  }
 
   // Tips — always present whenever there are closed card checks. Yellow
   // blocker when unadj > 0, otherwise a gold review card (EDIT rows).
   if (data.closedCardChecks.length > 0) {
-    var isExpanded = (state.expandedCard === 'tips');
-    col.appendChild(wrapCard(
-      isExpanded
-        ? buildTipsCard(data, handlers, state.tipFilter)
-        : buildTipsCollapsed(data),
-      'tips'
-    ));
+    col.appendChild(buildTipsCard(data, handlers, state.tipFilter));
   }
 
-  // Cash — full when clear, collapsed one-liner when blocked
-  var isExpanded = (state.expandedCard === 'cash');
-  var cashCard = isExpanded
-    ? (blocked ? buildCashCollapsed(data, state) : buildCashFull(data, handlers, state))
-    : buildCashCardCollapsed(data, state);
-  col.appendChild(wrapCard(cashCard, 'cash'));
+  // Cash — full when clear, blocked one-liner when blocked
+  if (blocked) {
+    col.appendChild(buildCashCollapsed(data, state));
+  } else {
+    col.appendChild(buildCashFull(data, handlers, state));
+  }
 
   // CC Batch — full when tips clear, collapsed "BLOCKED" when unadjusted tips
-  var isExpanded = (state.expandedCard === 'cc-batch');
-  var batchCard = isExpanded
-    ? ((blocked && hasUnadj) ? buildCCBatchCollapsed(data, 'BLOCKED', 'resolve tips first') : buildCCBatchFull(data, handlers, state))
-    : buildCCBatchCardCollapsed(data, state);
-  col.appendChild(wrapCard(batchCard, 'cc-batch'));
+  if (blocked && hasUnadj) {
+    col.appendChild(buildCCBatchCollapsed(data, 'BLOCKED', 'resolve tips first'));
+  } else {
+    col.appendChild(buildCCBatchFull(data, handlers, state));
+  }
 
   // Delivery — always collapsed placeholder in lite
   col.appendChild(buildDeliveryCard());
@@ -1921,8 +1886,6 @@ defineScene({
     batchSettled:      false,
     selectedCheckIds:  [],
     startTime:         null,
-    expandedCard:      undefined,
-    _defaultSet:       false,
   },
 
   render: function(container, params, state) {
@@ -1958,17 +1921,6 @@ defineScene({
     function refreshScene() {
       fetchCloseDayState(params).then(function(newData) {
         state.data = newData;
-        if (!state._defaultSet) {
-          state._defaultSet = true;
-          if (newData.openChecks.length > 0)
-            state.expandedCard = 'open-checks';
-          else if (newData.unadjustedChecks.length > 0)
-            state.expandedCard = 'tips';
-          else if (!state.batchSettled)
-            state.expandedCard = 'cc-batch';
-          else
-            state.expandedCard = null;
-        }
         rebuild();
       }).catch(function(err) {
         console.error('[close-day] fetch failed:', err);
@@ -1997,7 +1949,7 @@ defineScene({
       }).filter(Boolean);
 
       body.appendChild(buildReceiptCol(state.data, selectedChecks, state.data.allOrders, handlers));
-      body.appendChild(buildMiddleCol(state.data, handlers, state, rebuild));
+      body.appendChild(buildMiddleCol(state.data, handlers, state));
       body.appendChild(buildActionsCol(state.data, handlers, state));
 
       container.appendChild(body);
