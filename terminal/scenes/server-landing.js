@@ -429,9 +429,9 @@ defineScene({
         if (chk.adjusted) total += (chk.tip || 0);
         else unadj++;
         r.tipList.appendChild(buildTipRow(chk, function(c) {
-          SceneManager.openTransactional('tip-adjustment', {
+          SceneManager.openTransactional('co-adjust-single', {
             check: c,
-            onAdjusted: function() { refresh(); },
+            onDone: function() { refresh(); },
           });
         }));
       });

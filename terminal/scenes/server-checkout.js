@@ -1020,7 +1020,7 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds) {
 function buildActionsCol(state, handlers, startTime) {
   var blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
 
-  var col = buildStaticCard({ accent: T.lavender });
+  var col = buildStaticCard({ accent: T.green });
   col.style.cssText += [
     'flex-shrink:0;width:' + RIGHT_W + 'px;',
     'padding:14px 16px;box-sizing:border-box;',
@@ -1399,7 +1399,8 @@ defineScene({
       var handlers = {
         onBack: function() {
           OrderSummary.hide();
-          SceneManager.closeTransactional('server-checkout');
+          var target = state.fromManager ? 'manager-landing' : 'server-landing';
+          SceneManager.mountWorking(target, { staff: params.staff });
         },
         onPrint: function() {
           // Print the server's shift summary slip (the "server checkout"

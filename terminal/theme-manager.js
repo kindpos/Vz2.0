@@ -85,7 +85,10 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
   }
   if (!darkBg) darkBg = darkenHex(color, 0.2);
 
-  var textColor = o.textColor || ((color === T.verm || color === T.vermDk || o.variant === 'verm') ? '#fff' : T.well);
+  var textColor = o.textColor
+    || (o.variant === 'ghost' ? T.text
+      : (color === T.verm || color === T.vermDk || o.variant === 'verm') ? '#fff'
+      : T.well);
 
   var btn = document.createElement('button');
   btn.style.background    = color;
@@ -94,7 +97,7 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
     btn.style.borderRadius = '0';
     btn.style.clipPath     = chamfer(o.chamferSize || 6);
   } else {
-    btn.style.borderRadius = T.chamferBtn + 'px';
+    btn.style.borderRadius = T.pillRadius;
   }
   btn.style.cursor        = 'pointer';
   btn.style.padding       = o.padding || '14px 32px';
