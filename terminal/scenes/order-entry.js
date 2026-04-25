@@ -1957,6 +1957,7 @@ function renderModButtonGrid(panel) {
         'color:' + catText + ';',
         'border:2px solid ' + catColor + ';',
         'transition:background 80ms;',
+        'touch-action:manipulation;pointer-events:auto;',
       ].join('');
       btn.textContent = item.label;
 
@@ -2000,7 +2001,7 @@ function renderAppliedModsLog(panel) {
     row.appendChild(label);
     var removeBtn = document.createElement('span');
     removeBtn.textContent = '\u2715';
-    removeBtn.style.cssText = 'color:' + T.verm + ';cursor:pointer;padding:0 4px;font-size:28px;flex-shrink:0;';
+    removeBtn.style.cssText = 'color:' + T.verm + ';cursor:pointer;padding:0 4px;font-size:28px;flex-shrink:0;touch-action:manipulation;pointer-events:auto;';
     removeBtn.addEventListener('pointerup', (function(i) {
       return function(e) {
         e.stopPropagation();
