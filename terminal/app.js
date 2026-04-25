@@ -51,7 +51,7 @@ async function boot() {
     // ── Left: datetime widget ──
     var dtWidget = document.createElement('div');
     dtWidget.style.cssText = [
-      'display:flex;flex-direction:column;gap:3px;',
+      'display:flex;flex-direction:row;align-items:baseline;gap:10px;',
       'padding:7px 14px;',
       'background:' + T.well + ';',
       'border-radius:8px;',
@@ -61,12 +61,12 @@ async function boot() {
     var dtDateEl = document.createElement('div');
     dtDateEl.style.cssText = [
       'font-family:\'JetBrains Mono\',monospace;',
-      'font-size:9px;color:#fff;letter-spacing:1.8px;font-weight:500;',
+      'font-size:11px;color:#fff;letter-spacing:1.8px;font-weight:500;',
     ].join('');
     var dtTimeEl = document.createElement('div');
     dtTimeEl.style.cssText = [
       'font-family:\'JetBrains Mono\',monospace;',
-      'font-size:13px;color:#fff;letter-spacing:1px;font-weight:700;',
+      'font-size:16px;color:#fff;letter-spacing:1px;font-weight:700;',
     ].join('');
     dtWidget.append(dtDateEl, dtTimeEl);
     placeholderHeader.appendChild(dtWidget);
@@ -76,7 +76,7 @@ async function boot() {
     btnRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
 
     var btnBase = [
-      'height:24px;',
+      'height:30px;',
       'border-radius:4px;',
       'display:flex;align-items:center;justify-content:center;',
       'cursor:pointer;',
@@ -87,10 +87,10 @@ async function boot() {
     // Back button ("<<<") — hidden until a scene registers a handler
     var backBtn = document.createElement('div');
     backBtn.style.cssText = btnBase + [
-      'width:40px;font-size:11px;letter-spacing:0.5px;',
+      'width:48px;font-size:11px;letter-spacing:0.5px;',
       'background:' + T.moon + ';',
-      'color:' + T.verm + ';',
-      'border:1px solid ' + T.verm + ';',
+      'color:' + T.moonText + ';',
+      'border:2px solid ' + T.verm + ';',
       'display:none;',
     ].join('');
     backBtn.textContent = '<<<';
@@ -98,7 +98,7 @@ async function boot() {
     // Logout button ("×") — always visible
     var exitBtn = document.createElement('div');
     exitBtn.style.cssText = btnBase + [
-      'width:24px;font-size:14px;',
+      'width:30px;font-size:14px;',
       'background:' + T.verm + ';color:#fff;',
     ].join('');
     exitBtn.textContent = '×';
