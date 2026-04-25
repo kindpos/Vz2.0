@@ -21,6 +21,10 @@ import {
 } from '../charts.js';
 import { buildNumpad } from '../numpad.js';
 
+// ── Input guard + double-tap window ──────────────
+var _inputIgnoreUntil = 0;
+var DOUBLE_TAP_MS     = 1500;   // second tap must land within this window to open
+
 // ── Filter cycle ──────────────────────────────────
 var FILTER_CYCLE  = { OPEN: 'CLOSED', CLOSED: 'VOID', VOID: 'OPEN' };
 var FILTER_COLORS = {
@@ -95,10 +99,10 @@ function fetchAllData(state) {
 }
 
 // ── Check tile ────────────────────────────────────
-function buildCheckTile(order, onClick) {
+function buildCheckTile(order, isSelected, onClick) {
   var tile = buildActionCard({
-    accent: T.border,
-    onClick: onClick
+    accent:  isSelected ? T.gold : T.border,
+    onClick: onClick,
   });
   tile.style.width          = '110px';
   tile.style.height         = '90px';
@@ -107,10 +111,11 @@ function buildCheckTile(order, onClick) {
   tile.style.flexDirection  = 'column';
   tile.style.justifyContent = 'space-between';
   tile.style.padding        = '12px 14px';
+  if (isSelected) tile.style.background = hexToRgba(T.gold, 0.10);
 
   var idEl = document.createElement('div');
   idEl.textContent   = checkNum(order);
-  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.text + ';letter-spacing:0.06em;';
+  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + (isSelected ? T.gold : T.text) + ';letter-spacing:0.06em;';
 
   var guestEl = document.createElement('div');
   var guests = order.seat_count || order.guest_count || order.covers || 1;
@@ -215,6 +220,8 @@ defineScene({
     tableStats:  {},
     checkoutStatus: { openChecks: 0, unadjustedTips: 0 },
     tipoutRate:  0,
+    selectedIds: [],
+    selectedAt:  {},        // id → timestamp of when that id was first selected
     emp:         null,
     _refreshing: false,
     el:          null,
@@ -226,6 +233,7 @@ defineScene({
   render: function(container, params, state) {
     state.emp = params.staff || params.emp || params || {};
     state.el  = container;
+    _inputIgnoreUntil = Date.now() + 200;
 
     // ── Root grid ──────────────────────────────────
     var root = document.createElement('div');
@@ -398,14 +406,33 @@ defineScene({
       r.tileGrid.innerHTML = '';
       var visible = ordersByFilter(state.allOrders, state.filter);
       visible.forEach(function(order) {
-        r.tileGrid.appendChild(buildCheckTile(order, function() {
-          SceneManager.mountWorking('check-overview', {
-            checkId:       order.order_id,
-            returnLanding: 'server-landing',
-            employeeId:    state.emp ? state.emp.id   : null,
-            employeeName:  state.emp ? state.emp.name : null,
-            pin:           state.emp ? state.emp.pin  : null,
-          });
+        var id       = order.order_id;
+        var selected = state.selectedIds.indexOf(id) !== -1;
+        r.tileGrid.appendChild(buildCheckTile(order, selected, function() {
+          if (_inputIgnoreUntil > Date.now()) return;
+          var idx = state.selectedIds.indexOf(id);
+          if (idx === -1) {
+            state.selectedIds.push(id);
+            state.selectedAt[id] = Date.now();
+            renderTiles();
+          } else {
+            var tappedAt = state.selectedAt[id] || 0;
+            if (Date.now() - tappedAt > DOUBLE_TAP_MS) {
+              state.selectedIds.splice(idx, 1);
+              delete state.selectedAt[id];
+              renderTiles();
+            } else {
+              _inputIgnoreUntil = Date.now() + 200;
+              delete state.selectedAt[id];
+              SceneManager.mountWorking('check-overview', {
+                checkId:       order.order_id,
+                returnLanding: 'server-landing',
+                employeeId:    state.emp ? state.emp.id   : null,
+                employeeName:  state.emp ? state.emp.name : null,
+                pin:           state.emp ? state.emp.pin  : null,
+              });
+            }
+          }
         }));
       });
       if (state.filter === 'OPEN') {
@@ -614,6 +641,8 @@ defineScene({
     // ─────────────────────────────────────────────
     filterBtn.addEventListener('pointerup', function() {
       state.filter      = FILTER_CYCLE[state.filter];
+      state.selectedIds = [];
+      state.selectedAt  = {};
       var fc = FILTER_COLORS[state.filter];
       state._refs.filterBtn.textContent = state.filter;
       state._refs.filterBtn.setColor(fc.color, fc.dark);
@@ -663,6 +692,12 @@ defineScene({
       fetchAllData(state).then(function() {
         state._refreshing = false;
         if (!state.el) return;
+        var alive = {};
+        (state.allOrders || []).forEach(function(o) { alive[o.order_id] = true; });
+        state.selectedIds = (state.selectedIds || []).filter(function(id) { return alive[id]; });
+        Object.keys(state.selectedAt || {}).forEach(function(id) {
+          if (!alive[id]) delete state.selectedAt[id];
+        });
         try { renderTiles();    } catch(e) { console.warn('[sl] renderTiles threw:', e); }
         try { renderTipQueue(); } catch(e) { console.warn('[sl] renderTipQueue threw:', e); }
         try { renderStats(); } catch(e) { console.warn('[sl] renderStats threw:', e); }

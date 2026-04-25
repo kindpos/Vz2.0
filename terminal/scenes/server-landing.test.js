@@ -153,6 +153,7 @@ describe('terminal/scenes/server-landing', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   function mount(stateOverrides = {}) {
@@ -249,14 +250,8 @@ describe('terminal/scenes/server-landing', () => {
     await new Promise((r) => setTimeout(r, 0));
   }
 
-  it('check tile tap passes pin to check-overview mountWorking params', async () => {
-    // Serve TEST_ORDERS from the orders fetch so renderTiles paints real tiles.
-    global.fetch = vi.fn((url) => {
-      if (String(url).indexOf('/api/v1/orders?') === 0) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(TEST_ORDERS) });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
+  it('check tile double-tap passes pin to check-overview mountWorking params', async () => {
+    vi.useFakeTimers();
 
     const empWithPin = { id: 'srv-01', name: 'Mel Server', pin: '4321' };
     const container  = document.createElement('div');
@@ -265,11 +260,21 @@ describe('terminal/scenes/server-landing', () => {
       { _refs: {} },
     );
     sceneDef.render(container, empWithPin, state);
-    await flushPromises();
+
+    // Drain initial fetchAllData microtasks, then override allOrders.
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    state.allOrders = TEST_ORDERS;
+    vi.advanceTimersByTime(300);   // past 200ms _inputIgnoreUntil guard
+
+    // Force a synchronous renderTiles via filter cycle (OPEN→CLOSED→VOID→OPEN).
+    state._refs.filterBtn.dispatchEvent(new Event('pointerup'));
+    state._refs.filterBtn.dispatchEvent(new Event('pointerup'));
+    state._refs.filterBtn.dispatchEvent(new Event('pointerup'));
 
     const tile = state._refs.tileGrid.firstChild;
     expect(tile).toBeDefined();
-    tile.dispatchEvent(new Event('pointerup'));
+    tile.dispatchEvent(new Event('pointerup'));   // first tap — selects
+    tile.dispatchEvent(new Event('pointerup'));   // second tap within timeout — opens
 
     expect(SceneManagerMock.mountWorking).toHaveBeenCalledWith(
       'check-overview',
@@ -368,5 +373,61 @@ describe('terminal/scenes/server-landing', () => {
     // path? It can't be — the fetch never resolved before cleanup. Assert
     // no post-cleanup render fired.
     expect(state._refs.scGuests.setValue).not.toHaveBeenCalled();
+  });
+
+  // ── Double-tap timeout ──────────────────────────────────────────────
+
+  // Cycle the filter 3 times (OPEN→CLOSED→VOID→OPEN) to force a synchronous
+  // renderTiles() with whatever is currently in state.allOrders.
+  function renderTilesViaFilterCycle(state) {
+    const btn = state._refs.filterBtn;
+    btn.dispatchEvent(new Event('pointerup'));
+    btn.dispatchEvent(new Event('pointerup'));
+    btn.dispatchEvent(new Event('pointerup'));
+    return state._refs.tileGrid.children[0];
+  }
+
+  it('double-tap within timeout opens check-overview', async () => {
+    vi.useFakeTimers();
+    const { state } = mount();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    state.allOrders = TEST_ORDERS;
+    vi.advanceTimersByTime(300);   // past 200ms _inputIgnoreUntil guard
+
+    const tileA = renderTilesViaFilterCycle(state);
+    expect(tileA).toBeDefined();
+    SceneManagerMock.mountWorking.mockClear();
+
+    tileA.dispatchEvent(new Event('pointerup'));   // first tap — selects
+    expect(state.selectedIds).toContain('ord-1');
+
+    vi.advanceTimersByTime(800);   // still within DOUBLE_TAP_MS (1500ms)
+
+    tileA.dispatchEvent(new Event('pointerup'));   // second tap — opens
+    expect(SceneManagerMock.mountWorking).toHaveBeenCalledWith(
+      'check-overview',
+      expect.objectContaining({ checkId: 'ord-1' }),
+    );
+  });
+
+  it('double-tap after timeout deselects the tile instead of opening check-overview', async () => {
+    vi.useFakeTimers();
+    const { state } = mount();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    state.allOrders = TEST_ORDERS;
+    vi.advanceTimersByTime(300);   // past 200ms _inputIgnoreUntil guard
+
+    const tileA = renderTilesViaFilterCycle(state);
+    expect(tileA).toBeDefined();
+    SceneManagerMock.mountWorking.mockClear();
+
+    tileA.dispatchEvent(new Event('pointerup'));   // first tap — selects
+    expect(state.selectedIds).toContain('ord-1');
+
+    vi.advanceTimersByTime(1600);   // past DOUBLE_TAP_MS (1500ms)
+
+    tileA.dispatchEvent(new Event('pointerup'));   // second tap — deselects
+    expect(state.selectedIds).not.toContain('ord-1');
+    expect(SceneManagerMock.mountWorking).not.toHaveBeenCalled();
   });
 });

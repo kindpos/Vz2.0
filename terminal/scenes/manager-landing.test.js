@@ -541,4 +541,64 @@ describe('terminal/scenes/manager-landing', () => {
     );
     expect(state.selectedIds).toEqual([]);
   });
+
+  // ── Double-tap timeout ──────────────────────────────────────────────
+
+  // Cycle the filter 3 times (OPEN→CLOSED→VOID→OPEN) to force a synchronous
+  // renderTiles() with whatever is currently in state.allOrders.
+  // Returns the first tile child so callers can interact with it directly.
+  function renderTilesViaFilterCycle(state) {
+    const btn = state._refs.filterBtn;
+    btn.dispatchEvent(new Event('pointerup'));
+    btn.dispatchEvent(new Event('pointerup'));
+    btn.dispatchEvent(new Event('pointerup'));
+    return state._refs.tileGrid.children[0];
+  }
+
+  it('double-tap within timeout opens check-overview', async () => {
+    vi.useFakeTimers();
+    const { state } = mountFresh();
+    // Drain initial fetchAllData microtasks before overriding allOrders.
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    state.allOrders = TEST_ORDERS;
+    vi.advanceTimersByTime(300);   // past 200ms _inputIgnoreUntil guard
+
+    const tileA = renderTilesViaFilterCycle(state);
+    expect(tileA).toBeDefined();
+    const { SceneManager } = await import('../scene-manager.js');
+    SceneManager.mountWorking.mockClear();
+
+    tileA.dispatchEvent(new Event('pointerup'));   // first tap — selects
+    expect(state.selectedIds).toContain('order-a');
+
+    vi.advanceTimersByTime(800);   // still within DOUBLE_TAP_MS (1500ms)
+
+    tileA.dispatchEvent(new Event('pointerup'));   // second tap — opens
+    expect(SceneManager.mountWorking).toHaveBeenCalledWith(
+      'check-overview',
+      expect.objectContaining({ checkId: 'order-a' }),
+    );
+  });
+
+  it('double-tap after timeout deselects the tile instead of opening check-overview', async () => {
+    vi.useFakeTimers();
+    const { state } = mountFresh();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    state.allOrders = TEST_ORDERS;
+    vi.advanceTimersByTime(300);   // past 200ms _inputIgnoreUntil guard
+
+    const tileA = renderTilesViaFilterCycle(state);
+    expect(tileA).toBeDefined();
+    const { SceneManager } = await import('../scene-manager.js');
+    SceneManager.mountWorking.mockClear();
+
+    tileA.dispatchEvent(new Event('pointerup'));   // first tap — selects
+    expect(state.selectedIds).toContain('order-a');
+
+    vi.advanceTimersByTime(1600);   // past DOUBLE_TAP_MS (1500ms)
+
+    tileA.dispatchEvent(new Event('pointerup'));   // second tap — deselects
+    expect(state.selectedIds).not.toContain('order-a');
+    expect(SceneManager.mountWorking).not.toHaveBeenCalled();
+  });
 });

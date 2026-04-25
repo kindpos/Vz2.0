@@ -28,6 +28,7 @@ import {
 // tile grid after a scene push. Scene pushes set this to Date.now()+200;
 // handlers bail while the flag is in the future.
 var _inputIgnoreUntil = 0;
+var DOUBLE_TAP_MS     = 1500;   // second tap must land within this window to open
 
 // ── Helpers ───────────────────────────────────────
 function fmt(n) {
@@ -411,6 +412,7 @@ defineScene({
     filter:          'OPEN',
     filteredServer:  null,  // null = ALL SERVERS
     selectedIds:     [],
+    selectedAt:      {},        // id → timestamp of when that id was first selected
     _refreshing:     false,
     el:              null,
     _refs:           {},
@@ -737,6 +739,7 @@ defineScene({
                 { bg: vFailed === 0 ? T.green : T.gold, duration: 2000 }
               );
               st.selectedIds = [];
+              st.selectedAt  = {};
               refresh();
             }
           }).catch(function() { vFailed++; });
@@ -770,6 +773,7 @@ defineScene({
             if (r.ok) {
               showToast('Merged into ' + targetId, { bg: T.green, duration: 2000 });
               st.selectedIds = [];
+              st.selectedAt  = {};
               refresh();
             } else {
               showToast(data.detail || 'Merge failed', { bg: T.verm, duration: 2500 });
@@ -908,29 +912,41 @@ defineScene({
         var _fc = STATUS_COLORS[state.filter] || {};
 
         // Tap unselected → add to selection.
-        // Tap already-selected → push check-overview for that check.
+        // Tap already-selected within DOUBLE_TAP_MS → push check-overview.
+        // Tap already-selected after DOUBLE_TAP_MS → deselect.
         // Long-press → ensure selection contains the tile, then open edit panel.
         var onClick = function() {
           if (_inputIgnoreUntil > Date.now()) return;
           var idx = state.selectedIds.indexOf(id);
           if (idx === -1) {
             state.selectedIds.push(id);
+            state.selectedAt[id] = Date.now();
             renderTiles();
             renderPreview();
           } else {
-            _inputIgnoreUntil = Date.now() + 200;
-            SceneManager.mountWorking('check-overview', {
-              checkId:       order.order_id,
-              returnLanding: 'manager-landing',
-              employeeId:    state.emp ? state.emp.id   : null,
-              employeeName:  state.emp ? state.emp.name : null,
-              pin:           state.emp ? state.emp.pin  : null,
-            });
+            var tappedAt = state.selectedAt[id] || 0;
+            if (Date.now() - tappedAt > DOUBLE_TAP_MS) {
+              state.selectedIds.splice(idx, 1);
+              delete state.selectedAt[id];
+              renderTiles();
+              renderPreview();
+            } else {
+              _inputIgnoreUntil = Date.now() + 200;
+              delete state.selectedAt[id];
+              SceneManager.mountWorking('check-overview', {
+                checkId:       order.order_id,
+                returnLanding: 'manager-landing',
+                employeeId:    state.emp ? state.emp.id   : null,
+                employeeName:  state.emp ? state.emp.name : null,
+                pin:           state.emp ? state.emp.pin  : null,
+              });
+            }
           }
         };
         var onLongPress = function(ord) {
           if (state.selectedIds.indexOf(ord.order_id) === -1) {
             state.selectedIds.push(ord.order_id);
+            state.selectedAt[ord.order_id] = Date.now();
           }
           renderTiles();
           renderPreview();
@@ -1149,6 +1165,7 @@ defineScene({
     filterBtn.addEventListener('pointerup', function() {
       state.filter      = STATUS_CYCLE[state.filter];
       state.selectedIds = [];
+      state.selectedAt  = {};
       var fc = STATUS_COLORS[state.filter];
       state._refs.filterBtn.textContent = state.filter;
       state._refs.filterBtn.setColor(fc.color, fc.dark);
@@ -1165,6 +1182,7 @@ defineScene({
       var cur = ids.indexOf(state.filteredServer);
       state.filteredServer = ids[(cur + 1) % ids.length];
       state.selectedIds    = [];
+      state.selectedAt     = {};
       renderTiles();
       renderPreview();
       renderServerFilter();
@@ -1205,6 +1223,9 @@ defineScene({
         var alive = {};
         (state.allOrders || []).forEach(function(o) { alive[o.order_id] = true; });
         state.selectedIds = (state.selectedIds || []).filter(function(id) { return alive[id]; });
+        Object.keys(state.selectedAt || {}).forEach(function(id) {
+          if (!alive[id]) delete state.selectedAt[id];
+        });
         try { renderSales();        } catch(e) { console.warn('[ml] renderSales threw:', e); }
         try { renderGate();         } catch(e) { console.warn('[ml] renderGate threw:', e); }
         try { renderCOB();          } catch(e) { console.warn('[ml] renderCOB threw:', e); }
