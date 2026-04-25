@@ -2379,19 +2379,34 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
     // ── INCLUDED ──
     if (includedItems.length > 0) {
-      scroll.appendChild(sectionLabel('INCLUDED — TAP TO REMOVE OR SIDE', hexToRgba(T.text, 0.6)));
-      var inclWrap = pillWrap();
+      scroll.appendChild(sectionLabel('INCLUDED', hexToRgba(T.text, 0.6)));
+      var inclWrap = document.createElement('div');
+      inclWrap.style.cssText = 'display:flex;flex-direction:column;gap:7px;margin-bottom:12px;';
       includedItems.forEach(function(inc) {
         var state = inclState[inc.id] || null;
-        var bg    = state === 'NO' ? T.verm : state === 'ON SIDE' ? T.gold : T.card;
-        var lbl   = state ? '[' + state + '] ' + inc.label : inc.label;
-        var p = pill(lbl, bg, !!state, function() {
-          var cycle = ['NO', 'ON SIDE', null];
-          var next  = cycle[(cycle.indexOf(inclState[inc.id] || null) + 1) % cycle.length];
-          if (next === null) delete inclState[inc.id]; else inclState[inc.id] = next;
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+        var lbl = document.createElement('span');
+        lbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';white-space:nowrap;flex:1 0 auto;';
+        lbl.textContent = inc.label;
+        row.appendChild(lbl);
+        var noActive = state === 'NO';
+        var noBtn = pill('NO', T.verm, noActive, function() {
+          if (inclState[inc.id] === 'NO') delete inclState[inc.id]; else inclState[inc.id] = 'NO';
           renderContent();
         });
-        inclWrap.appendChild(p);
+        noBtn.style.touchAction = 'manipulation';
+        noBtn.style.pointerEvents = 'auto';
+        row.appendChild(noBtn);
+        var sideActive = state === 'ON SIDE';
+        var sideBtn = pill('ON SIDE', T.gold, sideActive, function() {
+          if (inclState[inc.id] === 'ON SIDE') delete inclState[inc.id]; else inclState[inc.id] = 'ON SIDE';
+          renderContent();
+        });
+        sideBtn.style.touchAction = 'manipulation';
+        sideBtn.style.pointerEvents = 'auto';
+        row.appendChild(sideBtn);
+        inclWrap.appendChild(row);
       });
       scroll.appendChild(inclWrap);
     }
