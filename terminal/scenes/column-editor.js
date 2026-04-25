@@ -91,7 +91,7 @@ defineScene({
           category:     it.category,
           mods:         it.mods,
           notes:        it.notes,
-          _splitGroup:  it._splitGroup || undefined,
+          _splitRef:    it._splitRef || undefined,
         });
       }
       state.columns.push({ id: sc.id, label: sc.label, items: items });
@@ -490,16 +490,16 @@ defineScene({
     // (independently ordered) pass through untouched.
     function _collapseSplitGroups(items) {
       var out = [];
-      var indexByGroup = {};
+      var indexByRef = {};
       for (var i = 0; i < items.length; i++) {
         var it = items[i];
-        var grp = it._splitGroup;
-        if (grp && indexByGroup[grp] !== undefined) {
-          var tgt = out[indexByGroup[grp]];
+        var ref = it._splitRef;
+        if (ref && indexByRef[ref] !== undefined) {
+          var tgt = out[indexByRef[ref]];
           tgt.price = Math.round((tgt.price + (it.price || 0)) * 100) / 100;
           if (!tgt.item_id && it.item_id) tgt.item_id = it.item_id;
         } else {
-          if (grp) indexByGroup[grp] = out.length;
+          if (ref) indexByRef[ref] = out.length;
           out.push({
             name:         it.name,
             qty:          it.qty,
@@ -509,6 +509,7 @@ defineScene({
             category:     it.category,
             mods:         it.mods,
             notes:        it.notes,
+            _splitRef:    ref || undefined,
           });
         }
       }
@@ -694,10 +695,10 @@ defineScene({
         var splitPrice = Math.round(effective / targetCount * 100) / 100;
         var remainder = Math.round((effective - splitPrice * targetCount) * 100) / 100;
 
-        // Unique tag shared by all copies of this split so doMerge can
-        // recombine them. Uses a counter + timestamp to avoid collisions
-        // when multiple items are split in one operation.
-        var splitGroup = 'sg-' + Date.now() + '-' + i;
+        // Tag shared by all copies so doMerge can recombine them.
+        // Uses the original item_id (survives backend round-trips) with a
+        // generated fallback for items not yet saved to the backend.
+        var splitRef = item.item_id || ('sr-' + Date.now() + '-' + i);
 
         for (var t = 0; t < targetCount; t++) {
           var tIdx = targets[t];
@@ -711,7 +712,7 @@ defineScene({
             category:     item.category,
             mods:         [],
             notes:        item.notes,
-            _splitGroup:  splitGroup,
+            _splitRef:    splitRef,
           };
           // First copy keeps item_id so onSave can DELETE that exact
           // backend record before POSTing the rebuilt line.
