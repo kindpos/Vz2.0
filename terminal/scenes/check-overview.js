@@ -533,10 +533,20 @@ defineScene({
     });
 
     state._backConfirmed = false;
+
+    if (window._header && window._header.setBackHandler) {
+      window._header.setBackHandler(state._landing ? function() {
+        SceneManager.mountWorking(state._landing, state._landingParams);
+      } : null);
+    }
+
     return function cleanup() { /* scene-level cleanup in unmount */ };
   },
 
   unmount: function(state) {
+    if (window._header && window._header.setBackHandler) {
+      window._header.setBackHandler(null);
+    }
     if (OrderSummary.unlockItemRender) OrderSummary.unlockItemRender();
     OrderSummary.hide();
     state._osActive = false;
