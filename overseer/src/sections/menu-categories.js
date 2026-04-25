@@ -61,6 +61,25 @@ let pendingChanges = {
     availability: {},           // { itemId: { available: bool, eightysixed_at: string|null } }
 };
 
+/* ─── DRAFT (localStorage) ───────────────────────────────────── */
+const DRAFT_KEY = 'kindpos.menu.draft';
+
+function saveDraft() {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(pendingChanges)); }
+    catch (e) { console.warn('[MenuDraft] save failed:', e); }
+}
+
+function loadDraft() {
+    try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+}
+
+function clearDraft() {
+    localStorage.removeItem(DRAFT_KEY);
+}
+
 let displayState = {
     searchTerm:        '',
     filterCategory:    'all',
@@ -345,14 +364,15 @@ export function registerMenuCategories(sceneManager) {
         async onEnter(container) {
             injectAnimations();
             menuData       = await fetchMenuData();
-            pendingChanges = { new: [], edited: [], deleted: [], itemOrderByCategory: {}, categoryOrder: null, availability: {} };
+            const _draft   = loadDraft();
+            pendingChanges = _draft || { new: [], edited: [], deleted: [], itemOrderByCategory: {}, categoryOrder: null, availability: {} };
             displayState   = { searchTerm: '', filterCategory: 'all', editMode: false, availabilityFilter: 'all', alphaSort: false, reorderMode: false };
 
             const { body, saveBar } = buildScenePage(container, {
                 title:     'Menu Categories & Items',
                 subtitle:  `${menuData.categories.length} categories · ${menuData.items.length} items`,
-                saveLabel: 'Save Changes',
-                onSave:    handleSaveChanges,
+                saveLabel: 'Publish Changes',
+                onSave:    handlePublish,
             });
             bodyMount      = body;
             currentSaveBar = saveBar;
@@ -1041,7 +1061,7 @@ function buildPendingFooter() {
     const discard = buildPillButton('Discard', 'ghost', () => {
         const n = getPendingCount();
         if (!n) return;
-        if (confirm(`Discard ${n} unsaved change${n === 1 ? '' : 's'}?`)) {
+        if (confirm(`Discard ${n} unpublished change${n === 1 ? '' : 's'}?`)) {
             pendingChanges = { new: [], edited: [], deleted: [], itemOrderByCategory: {}, categoryOrder: null, availability: {} };
             renderScene();
         }
@@ -1058,13 +1078,13 @@ function updateSaveBar() {
     if (footerMount) {
         footerMount.style.display = n === 0 ? 'none' : 'block';
         const m = document.getElementById('mc-pending-msg');
-        if (m) m.textContent = `⚠ ${n} unsaved change${n === 1 ? '' : 's'}`;
+        if (m) m.textContent = `⚠ ${n} unpublished change${n === 1 ? '' : 's'}`;
     }
-    if (currentSaveBar && currentSaveBar.el) {
-        currentSaveBar.el.disabled = n === 0;
-        currentSaveBar.el.style.opacity = n === 0 ? '0.5' : '1';
-        currentSaveBar.el.style.cursor  = n === 0 ? 'default' : 'pointer';
+    if (currentSaveBar) {
+        currentSaveBar.setLabel(n > 0 ? `Publish Changes (${n})` : 'Publish Changes');
+        currentSaveBar.setDisabled(n === 0);
     }
+    if (n === 0) clearDraft(); else saveDraft();
 }
 
 /* ─── BUTTONS ───────────────────────────────────────────────── */
@@ -2460,13 +2480,13 @@ function itemPayload(item, includeIdInRoot) {
 }
 
 /* ─── SAVE ──────────────────────────────────────────────────── */
-async function handleSaveChanges() {
+async function handlePublish() {
     const events = generateMenuEvents(pendingChanges);
     if (events.length === 0) return;
 
     const result = await pushChanges(events);
     if (!result.ok) {
-        showToast('Failed to save changes — try again', 'error');
+        showToast('Failed to publish — try again', 'error');
         return;
     }
 
@@ -2515,10 +2535,11 @@ async function handleSaveChanges() {
         if (it) it.active = !!av.available;
     });
 
+    clearDraft();
     const n = events.length;
     pendingChanges = { new: [], edited: [], deleted: [], itemOrderByCategory: {}, categoryOrder: null, availability: {} };
     renderScene();
-    showToast(`${n} change${n === 1 ? '' : 's'} saved`);
+    showToast(`${n} change${n === 1 ? '' : 's'} published to terminals`);
 }
 
 /* ─── ANIMATION ─────────────────────────────────────────────── */

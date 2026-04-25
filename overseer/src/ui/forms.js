@@ -169,12 +169,27 @@ function buildStickySaveBar({ label = 'Save Changes', onSave = null }) {
   btn.addEventListener('mouseleave', () => { btn.style.transform = ''; });
 
   let busy = false;
+  let currentLabel = label;
+
+  const setLabel = (l) => {
+    currentLabel = l;
+    if (!busy) btn.textContent = l;
+  };
+
+  const setDisabled = (d) => {
+    if (!busy) {
+      btn.disabled = d;
+      btn.style.opacity = d ? '0.45' : '1';
+      btn.style.cursor = d ? 'default' : 'pointer';
+    }
+  };
+
   const setBusy = (b) => {
     busy = b;
     btn.disabled = b;
     btn.style.opacity = b ? '0.6' : '1';
     btn.style.cursor = b ? 'default' : 'pointer';
-    btn.textContent = b ? 'Saving...' : label;
+    btn.textContent = b ? 'Publishing...' : currentLabel;
   };
 
   if (onSave) {
@@ -192,7 +207,7 @@ function buildStickySaveBar({ label = 'Save Changes', onSave = null }) {
     });
   }
 
-  return { el: btn, setBusy };
+  return { el: btn, setBusy, setLabel, setDisabled };
 }
 
 // ─── Section card ─────────────────────────────────────────────────
