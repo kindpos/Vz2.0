@@ -2162,6 +2162,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   doneBtn.style.width = '100%';
   doneBtn.style.fontSize = '16px';
   doneBtn.addEventListener('pointerup', function() { callbacks.onSend(_buildActiveItem()); });
+  doneBtn.disabled = mandatoryGroups.some(function(g) { return !mandState[g.key]; });
   doneWrap.appendChild(doneBtn);
   ov.appendChild(doneWrap);
 
@@ -2370,6 +2371,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
         var p = pill(opt.label, T.verm, sel, function() {
           if (sel) { delete mandState[g.key]; }
           else { mandState[g.key] = { key: opt.key || opt.id, label: opt.label, price: opt.price || 0 }; }
+          doneBtn.disabled = mandatoryGroups.some(function(g) { return !mandState[g.key]; });
           renderContent();
         });
         wrap.appendChild(p);
