@@ -3359,9 +3359,11 @@ function _renderTicketGroup(list, displayTicket) {
       });
       gc.addEventListener('pointerleave', function() {
         clearTimeout(_qtyHoldTimer);
+        _qtyDidHold = false;
       });
       gc.addEventListener('pointercancel', function() {
         clearTimeout(_qtyHoldTimer);
+        _qtyDidHold = false;
       });
 
       list.appendChild(gc);
