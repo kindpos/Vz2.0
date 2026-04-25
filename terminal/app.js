@@ -12,7 +12,7 @@
 import './auth-client.js';
 
 import { SceneManager } from './scene-manager.js';
-import { performLogout } from './header.js';
+import { performLogout, fmtTime, fmtDate } from './header.js';
 import { T, applyStoreTheme } from '../common/tokens.js';
 
 // ── Scene imports ─────────────────────────────────
@@ -44,49 +44,89 @@ async function boot() {
       'width:100%;height:' + T.headerH + 'px;min-height:' + T.headerH + 'px;',
       'background:' + T.card + ';',
       'border-bottom:1px solid ' + T.border + ';',
-      'display:flex;align-items:center;justify-content:flex-end;',
+      'display:flex;align-items:center;justify-content:space-between;',
       'padding:0 10px;box-sizing:border-box;flex-shrink:0;',
     ].join('');
 
-    var exitBtn = document.createElement('div');
-    var exitBtnBase = [
+    // ── Left: datetime widget ──
+    var dtWidget = document.createElement('div');
+    dtWidget.style.cssText = [
+      'display:flex;flex-direction:column;gap:3px;',
+      'padding:7px 14px;',
+      'background:' + T.well + ';',
+      'border-radius:8px;',
+      'border-left:3px solid ' + T.elec + ';',
+      'line-height:1;',
+    ].join('');
+    var dtDateEl = document.createElement('div');
+    dtDateEl.style.cssText = [
+      'font-family:\'JetBrains Mono\',monospace;',
+      'font-size:9px;color:#fff;letter-spacing:1.8px;font-weight:500;',
+    ].join('');
+    var dtTimeEl = document.createElement('div');
+    dtTimeEl.style.cssText = [
+      'font-family:\'JetBrains Mono\',monospace;',
+      'font-size:13px;color:#fff;letter-spacing:1px;font-weight:700;',
+    ].join('');
+    dtWidget.append(dtDateEl, dtTimeEl);
+    placeholderHeader.appendChild(dtWidget);
+
+    // ── Right: button row ──
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+    var btnBase = [
       'height:24px;',
       'border-radius:4px;',
       'display:flex;align-items:center;justify-content:center;',
       'cursor:pointer;',
       'font-family:' + T.fb + ';font-weight:700;',
-      'background:' + T.verm + ';color:#fff;',
       'pointer-events:auto;touch-action:manipulation;',
-    ];
-    function applyExitMode() {
-      exitBtn.style.cssText = exitBtnBase.concat([
-        'width:24px;', 'font-size:14px;',
-      ]).join('');
-      exitBtn.textContent = '×';
-    }
-    function applyBackMode() {
-      exitBtn.style.cssText = exitBtnBase.concat([
-        'width:40px;', 'font-size:11px;', 'letter-spacing:0.5px;',
-      ]).join('');
-      exitBtn.textContent = 'esc';
-    }
-    applyExitMode();
+    ].join('');
 
-    var _backHandler = null;
-    exitBtn.addEventListener('click', function() {
+    // Back button ("<<<") — hidden until a scene registers a handler
+    var backBtn = document.createElement('div');
+    backBtn.style.cssText = btnBase + [
+      'width:40px;font-size:11px;letter-spacing:0.5px;',
+      'background:' + T.moon + ';',
+      'color:' + T.verm + ';',
+      'border:1px solid ' + T.verm + ';',
+      'display:none;',
+    ].join('');
+    backBtn.textContent = '<<<';
+
+    // Logout button ("×") — always visible
+    var exitBtn = document.createElement('div');
+    exitBtn.style.cssText = btnBase + [
+      'width:24px;font-size:14px;',
+      'background:' + T.verm + ';color:#fff;',
+    ].join('');
+    exitBtn.textContent = '×';
+
+    backBtn.addEventListener('click', function() {
       if (_backHandler) _backHandler();
-      else performLogout();
     });
-    placeholderHeader.appendChild(exitBtn);
+    exitBtn.addEventListener('click', performLogout);
 
-    // Scenes that want a back affordance instead of logout call
-    // window._header.setBackHandler(fn) in their render; clear with (null)
-    // on unmount. The button switches between × (logout) and esc (back).
+    btnRow.append(backBtn, exitBtn);
+    placeholderHeader.appendChild(btnRow);
+
+    // Scenes that want a back affordance call window._header.setBackHandler(fn)
+    // in their render and clear with (null) on unmount.
+    var _backHandler = null;
     placeholderHeader.setBackHandler = function(fn) {
       _backHandler = (typeof fn === 'function') ? fn : null;
-      if (_backHandler) applyBackMode();
-      else applyExitMode();
+      backBtn.style.display = _backHandler ? 'flex' : 'none';
     };
+
+    // Tick datetime every second
+    function tickDt() {
+      var d = new Date();
+      dtDateEl.textContent = fmtDate(d);
+      dtTimeEl.textContent = fmtTime(d);
+    }
+    tickDt();
+    setInterval(tickDt, 1000);
 
     window._header = placeholderHeader;
     appRoot.insertBefore(placeholderHeader, appRoot.firstChild);

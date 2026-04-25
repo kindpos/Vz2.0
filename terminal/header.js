@@ -183,13 +183,13 @@ function greetingFor(h24) {
   if (h24 >= 12 && h24 < 17) return 'Good Afternoon';
   return 'Good Evening';
 }
-function fmtTime(d) {
+export function fmtTime(d) {
   const h24 = d.getHours();
   const m = String(d.getMinutes()).padStart(2, '0');
   const ampm = h24 >= 12 ? 'PM' : 'AM';
   return `${h24 % 12 || 12}:${m} ${ampm}`;
 }
-function fmtDate(d) {
+export function fmtDate(d) {
   return `${DAYS[d.getDay()]} · ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
