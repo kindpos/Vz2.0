@@ -1460,7 +1460,6 @@ defineScene({
                       if (r.ok) {
                         showToast('Checkout finalized', { bg: T.green });
                         OrderSummary.hide();
-                        SceneManager.closeTransactional('server-checkout');
                         SceneManager.mountWorking('server-landing', {
                           staff: {
                             id:   state.data.employeeId,
