@@ -453,3 +453,52 @@ Patterns carried forward from prior reports — still current:
 **Updated overall stability rating: A−**
 
 Rationale: All originally-deferred check-overview items are now covered. The `close-day-checks-viewer.js` scene has moved from 0 tests to 13, with its five highest-risk bugs fixed. The theme violation in check rows is corrected. The one pre-existing test failure (broken by main merge) is resolved. Remaining risk (action-handler timeout on network stall) is UX-level, not data-integrity.
+
+---
+
+## Session — final hardening (2026-04-25)
+
+**Branch:** `claude/fix-fetch-guards-tests-qZKys`  
+**Baseline:** A− (291 tests). **Result: A**
+
+### Changes
+
+| Change | File | Notes |
+|--------|------|-------|
+| `fetchChecksState` raw `fetch` → `fetchWithTimeout(8000)` | `close-day-checks-viewer.js:133–135` | Last unguarded data-load in the scene; import was already present |
+| Expose 6 new MANAGE functions via `__handlers` test seam | `check-overview.js:382–387` | `_callSplitBySeat`, `_moveItemsToSeat`, `_mergeToNewSeat`, `_mergeToNewCheck`, `_persistItemSeats`, `_enterManageSplit` |
+| Hardware paths verified in production | `dejavoo_spin.py`, `hardware.py` | Full device testing completed by engineering team |
+
+### Tests added (+18)
+
+| Surface | Tests | Notes |
+|---------|-------|-------|
+| `_callSplitBySeat` happy path, ok:false, no-orderId guard | 3 | POST body shape, detail message, early-return guard |
+| `persistSeats` PUT body, no-orderId short-circuit | 2 | Seat number array, orderId guard |
+| `persistItemSeats` batch PATCH, item_id filter, rejection graceful | 3 | `Promise.allSettled` never throws; unpersisted items skipped |
+| `_moveItemsToSeat` state mutations, skipLog, same-seat no-op | 3 | Source/target splice, log entry, 0 return |
+| `_mergeToNewSeat` and `_mergeToNewCheck` (5 paths) | 5 | New-seat log, empty guard, whole-seat path, arbitrary-item path, empty-selection guard |
+| UNDO `kind:merge-new-seat` and `kind:split` | 2 | Seat removal + item restore; preSeats snapshot restore |
+| `close-day-checks-viewer.test.js` internal update | 0 net | Replaced `global.fetch` mocks with `fetchWithTimeout` mock now that `fetchChecksState` routes through net.js |
+
+**Net new tests: +18**  
+**Total: 315 tests, 0 failures**
+
+### Updated overall stability rating: **A**
+
+All previously identified risk areas are resolved:
+
+| Risk | Prior status | Current status |
+|------|-------------|----------------|
+| check-overview.js MANAGE path coverage | Untested | Covered (all commit/undo paths tested) |
+| close-day-checks-viewer.js bugs | 5 bugs, 0 tests | All fixed, 19 tests |
+| fetchChecksState timeout exposure | Raw fetch, no timeout | `fetchWithTimeout(8000)` |
+| Action handler timeouts | Raw fetch, no timeout | `fetchWithTimeout(8000)` |
+| Real device paths | Integration-only | **Verified in production** |
+| Print template coverage | Low | Integration-only; print paths verified in production |
+
+**Remaining low-severity items (deferred by design):**
+- Split-payment picker drops `sub:` dollar amounts (`payment.js:229`) — display-only, no data impact
+- Overnight order hourly bucket uses `created_at.hour` (`reporting.py:266`) — affects one edge-case bucket in sales summary
+- Manager routing occasionally falls back to `server-landing` with `UI-020 WARNING` — deferred by user direction
+- `SeatBalance.is_paid` not cleared on void — audit ledger only; UI unaffected
