@@ -261,6 +261,8 @@ defineScene({
     var tipSparkBg = buildTipSparkBg({ data: [0] });
     tipResult.insertBefore(tipSparkBg.el, tipResult.firstChild);
 
+    var tipFilter = 'UNADJ';
+
     // Tips header
     var tipHdr = document.createElement('div');
     tipHdr.style.cssText = 'padding:12px 14px 8px;border-bottom:1px solid ' + hexToRgba(T.border, 0.4) + ';flex-shrink:0;';
@@ -268,10 +270,22 @@ defineScene({
     var tipHdrRow = document.createElement('div');
     tipHdrRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;';
     var tipHdrLabel = buildSectionLabel('Tip Queue', T.text);
-    var unadjBadge  = document.createElement('div');
-    unadjBadge.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.verm+ ';letter-spacing:0.1em;display:none;';
     tipHdrRow.appendChild(tipHdrLabel);
-    tipHdrRow.appendChild(unadjBadge);
+
+    var tipTabs = document.createElement('div');
+    tipTabs.style.cssText = 'display:flex;gap:10px;align-items:center;';
+
+    var tabUnadj = document.createElement('div');
+    tabUnadj.textContent = 'UNADJ';
+    tabUnadj.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';border-bottom:2px solid ' + T.green + ';touch-action:manipulation;pointer-events:auto;cursor:pointer;padding-bottom:2px;';
+
+    var tabAdj = document.createElement('div');
+    tabAdj.textContent = 'ADJ';
+    tabAdj.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.moon + ';border-bottom:2px solid transparent;touch-action:manipulation;pointer-events:auto;cursor:pointer;padding-bottom:2px;';
+
+    tipTabs.appendChild(tabUnadj);
+    tipTabs.appendChild(tabAdj);
+    tipHdrRow.appendChild(tipTabs);
     tipHdr.appendChild(tipHdrRow);
 
     var tipsTotal = document.createElement('div');
@@ -364,7 +378,7 @@ defineScene({
     // Store refs for live updates
     state._refs = {
       tileGrid,
-      tipList, tipsTotal, unadjBadge, tipResult, checkoutBtn, filterBtn,
+      tipList, tipsTotal, tipResult, checkoutBtn, filterBtn,
       tipSparkBg, scGuests, scAvg, scTables, scTurn, srvSalesOverview,
     };
 
@@ -407,8 +421,8 @@ defineScene({
     }
 
 
-    function renderTips() {
-      var r     = state._refs;
+    function renderTipQueue() {
+      var r      = state._refs;
       var checks = getClosedChecks(state.salesData);
       r.tipList.innerHTML = '';
 
@@ -418,16 +432,21 @@ defineScene({
         empty.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';text-align:center;padding:16px 0;letter-spacing:0.12em;';
         r.tipList.appendChild(empty);
         r.tipsTotal.textContent = '$0.00';
-        r.unadjBadge.style.display = 'none';
         updateCheckout(0, checks.length);
         return;
       }
 
-      var total  = 0;
-      var unadj  = 0;
+      var total    = 0;
+      var unadj    = 0;
+      var filtered = [];
       checks.forEach(function(chk) {
         if (chk.adjusted) total += (chk.tip || 0);
         else unadj++;
+        if (tipFilter === 'UNADJ' && !chk.adjusted) filtered.push(chk);
+        if (tipFilter === 'ADJ'   &&  chk.adjusted) filtered.push(chk);
+      });
+
+      filtered.forEach(function(chk) {
         r.tipList.appendChild(buildTipRow(chk, function(c) {
           SceneManager.openTransactional('co-adjust-single', {
             check: c,
@@ -436,10 +455,15 @@ defineScene({
         }));
       });
 
+      if (filtered.length === 0) {
+        var emptyFilter = document.createElement('div');
+        emptyFilter.textContent   = 'No ' + tipFilter.toLowerCase() + ' checks';
+        emptyFilter.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';text-align:center;padding:16px 0;letter-spacing:0.12em;';
+        r.tipList.appendChild(emptyFilter);
+      }
+
       r.tipsTotal.textContent = fmt(total);
       r.tipResult.setAccent(unadj > 0 ? T.verm : T.groups.landing.infoAccent);
-      r.unadjBadge.textContent   = unadj > 0 ? (unadj + ' unadj') : '';
-      r.unadjBadge.style.display = unadj > 0 ? 'block' : 'none';
 
       updateCheckout(unadj, state.checkoutStatus.openChecks || ordersByFilter(state.allOrders, 'OPEN').length);
     }
@@ -499,6 +523,27 @@ defineScene({
     });
 
     // ─────────────────────────────────────────────
+    //  TIP QUEUE TABS
+    // ─────────────────────────────────────────────
+    tabUnadj.addEventListener('pointerup', function() {
+      tipFilter = 'UNADJ';
+      tabUnadj.style.color        = T.green;
+      tabUnadj.style.borderBottom = '2px solid ' + T.green;
+      tabAdj.style.color          = T.moon;
+      tabAdj.style.borderBottom   = '2px solid transparent';
+      renderTipQueue();
+    });
+
+    tabAdj.addEventListener('pointerup', function() {
+      tipFilter = 'ADJ';
+      tabAdj.style.color          = T.green;
+      tabAdj.style.borderBottom   = '2px solid ' + T.green;
+      tabUnadj.style.color        = T.moon;
+      tabUnadj.style.borderBottom = '2px solid transparent';
+      renderTipQueue();
+    });
+
+    // ─────────────────────────────────────────────
     //  CHECKOUT
     //  The button label + color in updateCheckout() communicates blocker
     //  state ("N Unadj" / "Open Checks" / "Checkout"), but navigation is
@@ -520,8 +565,8 @@ defineScene({
       fetchAllData(state).then(function() {
         state._refreshing = false;
         if (!state.el) return;
-        try { renderTiles(); } catch(e) { console.warn('[sl] renderTiles threw:', e); }
-        try { renderTips();  } catch(e) { console.warn('[sl] renderTips threw:', e); }
+        try { renderTiles();    } catch(e) { console.warn('[sl] renderTiles threw:', e); }
+        try { renderTipQueue(); } catch(e) { console.warn('[sl] renderTipQueue threw:', e); }
         try { renderStats(); } catch(e) { console.warn('[sl] renderStats threw:', e); }
       }).catch(function() { state._refreshing = false; });
     }
