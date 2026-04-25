@@ -296,7 +296,7 @@ defineScene({
 
     // Scrollable tip rows
     var tipList = document.createElement('div');
-    tipList.style.cssText = 'flex:1;overflow-y:auto;padding:6px 10px;display:flex;flex-direction:column;gap:2px;';
+    tipList.style.cssText = 'flex:1;overflow-y:auto;min-height:0;padding:6px 10px;display:flex;flex-direction:column;gap:2px;';
     tipResult.appendChild(tipList);
 
     // Checkout pill — inside tip card footer, no float positioning
