@@ -185,6 +185,7 @@ class AddItemRequest(BaseModel):
     allergens: Optional[list[str]] = None
     allergen_note: Optional[str] = None
     included_removals: Optional[list[str]] = None
+    split_ref: Optional[str] = None
 
 
 class ModifyItemRequest(BaseModel):
@@ -995,6 +996,7 @@ async def add_item(
         allergens=request.allergens,
         allergen_note=request.allergen_note,
         included_removals=request.included_removals,
+        split_ref=request.split_ref or None,
     )]
 
     for mod in (request.modifiers or []):

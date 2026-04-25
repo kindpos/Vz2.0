@@ -597,6 +597,7 @@ def item_added(
         allergens: Optional[list[str]] = None,
         allergen_note: Optional[str] = None,
         included_removals: Optional[list[str]] = None,
+        split_ref: Optional[str] = None,
         **kwargs,
 ) -> Event:
     """Create an ITEM_ADDED event."""
@@ -620,6 +621,8 @@ def item_added(
         payload["allergen_note"] = allergen_note
     if included_removals is not None:
         payload["included_removals"] = list(included_removals)
+    if split_ref is not None:
+        payload["split_ref"] = split_ref
 
     return create_event(
         event_type=EventType.ITEM_ADDED,

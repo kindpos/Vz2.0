@@ -36,6 +36,7 @@ class OrderItem:
     added_at: Optional[datetime] = None
     sent: bool = False
     sent_at: Optional[datetime] = None
+    split_ref: Optional[str] = None
 
     @property
     def subtotal(self) -> Decimal:
@@ -324,6 +325,7 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                     notes=payload.get("notes"),
                     seat_number=payload.get("seat_number"),
                     added_at=event.timestamp,
+                    split_ref=payload.get("split_ref"),
                 )
                 order.items.append(item)
                 # Keep seat_numbers in sync for legacy events that never

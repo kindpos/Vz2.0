@@ -3954,7 +3954,44 @@ function openEditSeats(state) {
       state.selectedItems = {};
       state.selected = {};
       rerenderTopArea(state);
-      // TODO: diff against backend and POST new / PATCH changed / DELETE removed.
+
+      // ── Backend sync for split items ──
+      // For each item carrying a _splitRef: DELETE the original backend record
+      // (once per ref) then POST each split copy as a new item with split_ref.
+      // Other diffs (plain moves, merges of unsplit items) remain TODO.
+      var orderId = state.orderId;
+      if (orderId) {
+        var deletedRefs = {};
+        var API = '/api/v1';
+        for (var sc = 0; sc < newColumns.length; sc++) {
+          var seatNum = sc + 1;
+          for (var si = 0; si < newColumns[sc].items.length; si++) {
+            var it = newColumns[sc].items[si];
+            if (!it._splitRef) continue;
+            if (!deletedRefs[it._splitRef]) {
+              deletedRefs[it._splitRef] = true;
+              fetch(API + '/orders/' + orderId + '/items/' + it._splitRef, {
+                method: 'DELETE',
+              }).catch(function() {});
+            }
+            fetch(API + '/orders/' + orderId + '/items', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name:         it.name,
+                price:        it.price,
+                quantity:     it.qty,
+                menu_item_id: it.menu_item_id || '',
+                category:     it.category || '',
+                notes:        it.notes   || '',
+                seat_number:  seatNum,
+                modifiers:    [],
+                split_ref:    it._splitRef,
+              }),
+            }).catch(function() {});
+          }
+        }
+      }
     },
   });
 }

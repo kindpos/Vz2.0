@@ -19,6 +19,7 @@ import {
   darkenHex,
 } from '../theme-manager.js';
 import { showToast } from '../components.js';
+import { entReport } from '../entomology-client.js';
 
 // ── Inject invisible scrollbar styles ──
 (function() {
@@ -477,9 +478,30 @@ defineScene({
         }
       }
       // Recombine items that were previously split — identified by a shared
-      // _splitGroup tag stamped onto each copy during doSplit. Independently
-      // ordered items (no _splitGroup) are never touched.
+      // _splitRef tag stamped onto each copy during doSplit. Independently
+      // ordered items (no _splitRef) are never touched.
+      var allItems = target.items.slice();
       target.items = _collapseSplitGroups(target.items);
+
+      // Emit a diagnostic for each split group that was actually recombined.
+      var refsIn = {};
+      for (var ri = 0; ri < allItems.length; ri++) {
+        var ref = allItems[ri]._splitRef;
+        if (ref) refsIn[ref] = (refsIn[ref] || 0) + 1;
+      }
+      var refKeys = Object.keys(refsIn);
+      for (var rk = 0; rk < refKeys.length; rk++) {
+        if (refsIn[refKeys[rk]] > 1) {
+          entReport({
+            code:    'UI-013',
+            level:   'INFO',
+            source:  'column-editor.merge',
+            message: 'Split item recombined: ' + refKeys[rk],
+            ctx:     { split_ref: refKeys[rk], order_id: params.orderId || null, copies: refsIn[refKeys[rk]] },
+          });
+        }
+      }
+
       state.columns = [target];
       clearMode();
     }
@@ -721,6 +743,14 @@ defineScene({
           }
           state.columns[tIdx].items.push(splitItem);
         }
+
+        entReport({
+          code:    'UI-012',
+          level:   'INFO',
+          source:  'column-editor.split',
+          message: 'Item split across ' + targetCount + ' seat(s): ' + item.name,
+          ctx:     { split_ref: splitRef, order_id: params.orderId || null, item_name: item.name, seat_count: targetCount },
+        });
       }
 
       clearMode();
