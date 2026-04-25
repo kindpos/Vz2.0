@@ -12,7 +12,8 @@
 import './auth-client.js';
 
 import { SceneManager } from './scene-manager.js';
-import { performLogout, fmtTime, fmtDate } from './header.js';
+import { performLogout, fmtTime, fmtDate, greetingFor } from './header.js';
+import { getSession } from './auth-client.js';
 import { T, applyStoreTheme } from '../common/tokens.js';
 
 // ── Scene imports ─────────────────────────────────
@@ -48,7 +49,11 @@ async function boot() {
       'padding:0 10px;box-sizing:border-box;flex-shrink:0;',
     ].join('');
 
-    // ── Left: datetime widget ──
+    // ── Left group ──
+    var leftGroup = document.createElement('div');
+    leftGroup.style.cssText = 'display:flex;align-items:center;gap:14px;';
+
+    // Datetime chip
     var dtWidget = document.createElement('div');
     dtWidget.style.cssText = [
       'display:flex;flex-direction:row;align-items:baseline;gap:10px;',
@@ -69,7 +74,31 @@ async function boot() {
       'font-size:16px;color:#fff;letter-spacing:1px;font-weight:700;',
     ].join('');
     dtWidget.append(dtDateEl, dtTimeEl);
-    placeholderHeader.appendChild(dtWidget);
+
+    // Greeting — shown only when session is active
+    var greetingEl = document.createElement('div');
+    greetingEl.style.cssText = [
+      'font-family:\'Outfit\',sans-serif;font-weight:600;font-size:14px;',
+      'color:#fff;letter-spacing:0.3px;line-height:1;display:none;',
+    ].join('');
+
+    // Role chip — shown only when session is active
+    var roleEl = document.createElement('div');
+    roleEl.style.cssText = [
+      'display:none;align-items:center;gap:5px;',
+      'font-family:\'JetBrains Mono\',monospace;font-weight:500;',
+      'font-size:10px;color:' + T.green + ';letter-spacing:1.4px;',
+    ].join('');
+    var roleDot = document.createElement('span');
+    roleDot.style.cssText = [
+      'width:6px;height:6px;border-radius:999px;flex-shrink:0;',
+      'background:' + T.green + ';box-shadow:0 0 6px ' + T.green + ';',
+    ].join('');
+    var roleText = document.createElement('span');
+    roleEl.append(roleDot, roleText);
+
+    leftGroup.append(dtWidget, greetingEl, roleEl);
+    placeholderHeader.appendChild(leftGroup);
 
     // ── Right: button row ──
     var btnRow = document.createElement('div');
@@ -87,7 +116,7 @@ async function boot() {
     // Back button ("<<<") — hidden until a scene registers a handler
     var backBtn = document.createElement('div');
     backBtn.style.cssText = btnBase + [
-      'width:48px;font-size:11px;letter-spacing:0.5px;',
+      'width:52px;font-size:14px;letter-spacing:0.5px;',
       'background:' + T.moon + ';',
       'color:' + T.moonText + ';',
       'border:2px solid ' + T.verm + ';',
@@ -98,7 +127,7 @@ async function boot() {
     // Logout button ("×") — always visible
     var exitBtn = document.createElement('div');
     exitBtn.style.cssText = btnBase + [
-      'width:30px;font-size:14px;',
+      'width:30px;font-size:17px;',
       'background:' + T.verm + ';color:#fff;',
     ].join('');
     exitBtn.textContent = '×';
@@ -119,11 +148,22 @@ async function boot() {
       backBtn.style.display = _backHandler ? 'flex' : 'none';
     };
 
-    // Tick datetime every second
+    // Tick datetime + greeting every second
     function tickDt() {
       var d = new Date();
       dtDateEl.textContent = fmtDate(d);
       dtTimeEl.textContent = fmtTime(d);
+      var sess = getSession();
+      if (sess && sess.name) {
+        var firstName = sess.name.split(' ')[0];
+        greetingEl.textContent = greetingFor(d.getHours()) + ', ' + firstName + '!';
+        greetingEl.style.display = '';
+        roleText.textContent = (sess.roles && sess.roles[0] ? sess.roles[0].toUpperCase() : '');
+        roleEl.style.display = roleText.textContent ? 'flex' : 'none';
+      } else {
+        greetingEl.style.display = 'none';
+        roleEl.style.display = 'none';
+      }
     }
     tickDt();
     setInterval(tickDt, 1000);

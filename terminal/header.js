@@ -178,7 +178,7 @@ function injectStyles() {
 const DAYS   = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
-function greetingFor(h24) {
+export function greetingFor(h24) {
   if (h24 >= 5  && h24 < 12) return 'Good Morning';
   if (h24 >= 12 && h24 < 17) return 'Good Afternoon';
   return 'Good Evening';
