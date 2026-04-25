@@ -1146,6 +1146,7 @@ function buildItemTile(item, catColor, isFav) {
 function renderSnakeGrid() {
   if (!_gridEl) return;
   _gridEl.innerHTML = '';
+  var frag = document.createDocumentFragment();
 
   var view   = snakeState.view;
   var crumbs = snakeState.crumbs;
@@ -1226,8 +1227,9 @@ function renderSnakeGrid() {
     var isFav = favorites.indexOf(item.id) >= 0;
     var tile = buildItemTile(item, menuCat.color, isFav);
     _bindItemTile(tile, item, menuCat);
-    _gridEl.appendChild(tile);
+    frag.appendChild(tile);
   });
+  _gridEl.appendChild(frag);
 }
 
 function _bindItemTile(tile, item, menuCat) {
