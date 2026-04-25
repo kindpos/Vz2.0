@@ -280,6 +280,15 @@ function _ensureStyles() {
     +   '-webkit-tap-highlight-color:transparent;'
     + '}'
 
+    // ── Sent-to-kitchen state ──
+    // Items that have been dispatched to the kitchen use a warm-green
+    // top border (vs the category color) and muted text so the cashier
+    // can instantly distinguish "kitchen has it" from "still pending".
+    + '.ir-card.ir-sent{border-top-color:' + T.greenWarm + ';}'
+    + '.ir-card.ir-sent .ir-iname{color:' + textDim55 + ';}'
+    + '.ir-card.ir-sent .ir-iprice{color:' + textDim55 + ';}'
+    + '.ir-card.ir-sent .ir-chev{color:' + textDim50 + ';}'
+
     // ── Totals ──
     // Matches the seat-header card treatment: T.card dark bg + 6px
     // radius. Stands on its own when rendered outside the recap.
@@ -604,7 +613,7 @@ function _buildUpchargeStrip(rows) {
 // ── Item card (item row only; mods/halves appended by later chunks) ──
 function _buildItemCard(item, seatIdx, itemIdx, opts) {
   var card = document.createElement('div');
-  card.className = 'ir-card';
+  card.className = item.sent ? 'ir-card ir-sent' : 'ir-card';
   card.style.setProperty('--cat', item.categoryColor || T.green);
 
   var row = document.createElement('div');
@@ -630,7 +639,7 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
 
   var name = document.createElement('span');
   name.className = 'ir-iname';
-  name.textContent = item.name || '';
+  name.textContent = (item.sent ? '✓ ' : '') + (item.name || '');
   row.appendChild(name);
 
   var price = document.createElement('span');
