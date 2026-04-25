@@ -152,7 +152,7 @@ function _adaptItem(it) {
     qty:           it.qty || 1,
     price:         it.effectivePrice != null ? it.effectivePrice : (it.price || 0),
     categoryColor: T.catColor(it.category),
-    sent:          it.sent_at ? true : (it.sent === false ? false : true),
+    sent:          !!(it.sent_at || it.sent),
     mods:          mods,
     halves:        halves,
   };
@@ -406,6 +406,7 @@ defineScene({
     bottomBarEl:   null,
     seatEls:       {},
     _lpTimers:     [],
+    _voidTimers:   [],
     _mode:         null,
     _summaryItemMap:{},
     _osActive:     false,
@@ -445,6 +446,7 @@ defineScene({
     state._payingSeats       = [];
     state._backConfirmed= false;
     state._lpTimers     = [];
+    state._voidTimers   = [];
     state._mode         = null;
     state._osActive     = false;
     state._mountParams  = params;   // persistSeats() reads employee info
@@ -560,6 +562,8 @@ defineScene({
 
     for (var t = 0; t < state._lpTimers.length; t++) clearTimeout(state._lpTimers[t]);
     state._lpTimers = [];
+    for (var v = 0; v < state._voidTimers.length; v++) clearTimeout(state._voidTimers[v]);
+    state._voidTimers = [];
   },
 
   interrupts: {
@@ -3489,23 +3493,34 @@ function _voidItems(state, refs) {
   });
 
   var snapshot = [];
+  var allPreKitchen = true;
   for (var i = 0; i < refs.length; i++) {
     var r = refs[i];
-    snapshot.push({
-      seatIdx: r.seatIdx,
-      itemIdx: r.itemIdx,
-      item:    state.seats[r.seatIdx].items[r.itemIdx],
-    });
+    var item = state.seats[r.seatIdx].items[r.itemIdx];
+    if (item.sent_at) allPreKitchen = false;
+    snapshot.push({ seatIdx: r.seatIdx, itemIdx: r.itemIdx, item: item });
     state.seats[r.seatIdx].items.splice(r.itemIdx, 1);
   }
+
+  var actionWord = allPreKitchen ? 'Deleted' : 'Voided';
 
   state.selectedItems = {};
   rerenderTopArea(state);
 
-  showToast('Voided ' + refs.length + ' item(s) — tap to undo', {
+  // Hoisted so the undo handler (defined before the setTimeout) can cancel it.
+  var _voidTid = null;
+
+  showToast(actionWord + ' ' + refs.length + ' item(s) — tap to undo', {
     bg: T.verm,
     duration: 4000,
     onClick: function() {
+      // Cancel the pending backend DELETE — undo wins.
+      if (_voidTid !== null) {
+        clearTimeout(_voidTid);
+        var ti = state._voidTimers.indexOf(_voidTid);
+        if (ti !== -1) state._voidTimers.splice(ti, 1);
+        _voidTid = null;
+      }
       // Reinsert in ascending order
       snapshot.sort(function(a, b) {
         if (a.seatIdx !== b.seatIdx) return a.seatIdx - b.seatIdx;
@@ -3516,20 +3531,22 @@ function _voidItems(state, refs) {
         state.seats[s.seatIdx].items.splice(s.itemIdx, 0, s.item);
       }
       rerenderTopArea(state);
-      showToast('Void undone', { bg: T.greenWarm });
+      showToast(actionWord + ' undone', { bg: T.greenWarm });
     },
   });
 
-  // After the undo window, commit to backend. Timer tracked so unmount can cancel it.
+  // After the undo window, commit to backend. Stored in _voidTimers so unmount
+  // can cancel it, but rerenderTopArea (which only clears _lpTimers) won't
+  // accidentally abort it when the user interacts with the UI.
   if (state.orderId) {
-    var _voidTid = setTimeout(function() {
+    _voidTid = setTimeout(function() {
       for (var k = 0; k < snapshot.length; k++) {
         var iid = snapshot[k].item.item_id;
         if (!iid) continue;
         fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items/' + iid, { method: 'DELETE' }, 8000);
       }
     }, 4200);
-    state._lpTimers.push(_voidTid);
+    state._voidTimers.push(_voidTid);
   }
 }
 

@@ -454,7 +454,7 @@ describe('terminal/scenes/check-overview — Bug 1: void-item timer cancelled on
 
     sceneDef.__handlers.handleVoid(state);
 
-    // Unmount should cancel the pending timer via state._lpTimers
+    // Unmount should cancel the pending timer via state._voidTimers
     sceneDef.unmount(state);
 
     fetchWithTimeout.mockClear();
