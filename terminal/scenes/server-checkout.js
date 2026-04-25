@@ -1582,10 +1582,11 @@ defineScene({
           if (checks.length === 1) {
             var chk = checks[0];
             SceneManager.mountWorking('check-overview', {
-              checkId:     chk.checkId    || chk.check_id,
-              checkLabel:  chk.checkLabel || chk.check_label,
-              employeeId:  state.data.employeeId,
-              employeeName: state.data.employeeName,
+              checkId:       chk.checkId    || chk.check_id,
+              checkLabel:    chk.checkLabel || chk.check_label,
+              employeeId:    state.data.employeeId,
+              employeeName:  state.data.employeeName,
+              returnLanding: state.fromManager ? 'manager-landing' : 'server-landing',
             });
           } else {
             showToast('Combined payment for ' + checks.length + ' checks — Phase D', { bg: T.gold });
