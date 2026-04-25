@@ -309,8 +309,8 @@ defineScene({
     tipList.style.cssText = 'flex:1;overflow-y:auto;min-height:0;padding:6px 10px;display:flex;flex-direction:column;gap:2px;';
     tipBody.appendChild(tipList);
 
-    // Checkout pill — inside tip card footer, no float positioning
-    var checkoutBtn = buildPillButton({ label: 'CHECKOUT', color: T.green, darkBg: T.greenDk });
+    // Checkout pill — always enabled, greenWarm variant
+    var checkoutBtn = buildPillButton({ label: 'CHECKOUT', color: T.greenWarm, darkBg: T.greenWarmDk });
     checkoutBtn.style.marginTop = '10px';
     checkoutBtn.style.width     = '100%';
     tipResult.appendChild(checkoutBtn);
@@ -442,7 +442,6 @@ defineScene({
         empty.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';text-align:center;padding:16px 0;letter-spacing:0.12em;';
         r.tipList.appendChild(empty);
         r.tipsTotal.textContent = '$0.00';
-        updateCheckout(0, checks.length);
         return;
       }
 
@@ -471,23 +470,6 @@ defineScene({
 
       r.tipsTotal.textContent = fmt(total);
       r.tipResult.setAccent(unadj > 0 ? T.verm : T.groups.landing.infoAccent);
-
-      updateCheckout(unadj, state.checkoutStatus.openChecks || ordersByFilter(state.allOrders, 'OPEN').length);
-    }
-
-    function updateCheckout(unadj, openCount) {
-      var btn = state._refs.checkoutBtn;
-      var canGo = openCount === 0 && unadj === 0;
-      if (canGo) {
-        btn.setColor(T.green, T.greenDk);
-        btn.textContent = 'Checkout';
-      } else if (unadj > 0) {
-        btn.setColor(T.verm, T.vermDk);
-        btn.textContent = unadj + ' Unadj';
-      } else {
-        btn.setColor(T.border, darkenHex(T.border, 0.3));
-        btn.textContent = 'Open Checks';
-      }
     }
 
     function renderStats() {
