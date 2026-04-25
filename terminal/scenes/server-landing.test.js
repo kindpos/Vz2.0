@@ -320,10 +320,10 @@ describe('terminal/scenes/server-landing', () => {
     row.dispatchEvent(new Event('pointerup'));
 
     expect(SceneManagerMock.openTransactional).toHaveBeenCalledWith(
-      'tip-adjustment',
+      'co-adjust-single',
       expect.objectContaining({
         check: expect.objectContaining({ check_id: 'chk-1' }),
-        onAdjusted: expect.any(Function),
+        onDone: expect.any(Function),
       }),
     );
   });

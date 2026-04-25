@@ -390,3 +390,66 @@ Patterns carried forward from prior reports — still current:
 | MANAGE MOVE/MERGE/SPLIT backend commit paths untested | MEDIUM | `_commitManageMove` and `_commitManageMergeCheck` have no direct test coverage |
 | `openSeatPaymentInterrupt` void-payment flow | LOW | Raw `fetch` at lines ~3999, 4010; no `.ok` guards, no timeout |
 | `handlePay` routing guard paths | LOW | Not covered; relies on mocked `SceneManager.mountWorking` |
+
+---
+
+## Session — remaining-gaps probe (2026-04-25)
+
+**Branch:** `claude/fix-fetch-guards-tests-qZKys`  
+**Baseline:** B+ (29 tests across check-overview). **Result: A−**
+
+### Bugs found and fixed
+
+| # | Bug | File:line | Severity | Fix |
+|---|-----|-----------|----------|-----|
+| 1b | `openSeatPaymentInterrupt` — raw `fetch`, no `.catch()`, no timeout | `check-overview.js:4020` | LOW | Replaced with `fetchWithTimeout(..., 8000)`, added `.catch(() => showToast('Void failed'))` |
+| A | `fetchChecksState` — no `.ok` guard; HTTP errors used as data | `close-day-checks-viewer.js:131–133` | MEDIUM | Added `if (!r.ok) throw` before `.json()` in each of the three Promise.all fetches |
+| B | `adjusted` flag inverted — `(tip != null)` conflates "tip exists" with "tip was adjusted" | `close-day-checks-viewer.js:169` | MEDIUM | Fallback changed from `(tip != null)` to `false` |
+| D | No `_busy` lock on action handlers — double-tap fires competing requests | `close-day-checks-viewer.js:851,895,944` | MEDIUM | Added `state._busy` flag; each handler guards, sets on entry, clears on resolve/cancel |
+| E | `setTimeout` in `onVoidCheck` escapes unmount — 80 ms delay fires against dead scene | `close-day-checks-viewer.js:949` | MEDIUM | Timer tracked in `state._pendingTimer`; `unmount(state)` clears it |
+| F | `buildCheckRow` used `buildActionCard` (primary-CTA style) for a data-selection pattern | `close-day-checks-viewer.js:529` | LOW | Switched to `buildStaticCard`; accent reflects selection state; native beveled border restored; manual border override removed |
+| G | `server-landing.test.js` — stale assertion `'tip-adjustment'` / `onAdjusted` broken by main merge | `server-landing.test.js:322` | LOW | Updated to `'co-adjust-single'` / `onDone` to match code |
+
+**Non-finding — Target 1a:** `_commitManageMove` / `_commitManageMergeCheck` do not exist. MOVE and MERGE are pure local state mutations via `_moveItemsToSeat()` (no network calls). The prior session's deferred note was based on incorrect assumptions about function names.
+
+**Non-finding — Target 3:** `removeBeforeTransition` already implemented as disposer returned by `onBeforeTransition()` (`scene-manager.js:502–512`). Already tested at `scene-manager.test.js:173`. No changes needed.
+
+**Non-finding — Bug C (listener leaks):** `container.innerHTML = ''` on every rebuild discards all child DOM listeners. No `SceneManager.on()` or `window.addEventListener()` in the scene. Not a real leak.
+
+### Tests added
+
+| Surface | Tests | Notes |
+|---------|-------|-------|
+| `_enterManageMerge` empty-selection guard | 1 | Toast shown; `state._manageTool` not set to 'merge' |
+| `openSeatPaymentInterrupt` void ok:false | 1 | `fetchWithTimeout` → ok:false → "Void failed" toast |
+| `openSeatPaymentInterrupt` network rejection | 1 | `.catch` fires → "Void failed" toast |
+| `handlePay` — no orderId | 1 | "Save items first" toast; `mountWorking` not called |
+| `handlePay` — check already settled | 1 | "Check already settled" toast; `mountWorking` not called |
+| `handlePay` — no items to pay | 1 | "No items to pay" toast; `mountWorking` not called |
+| `handlePay` — all selected seats already paid | 1 | "already paid" toast; `mountWorking` not called |
+| `fetchChecksState` HTTP 500 fallback | 1 | Empty openChecks/closedChecks; no corrupt data |
+| `fetchChecksState` network rejection fallback | 1 | Empty arrays; no crash |
+| `fetchChecksState` ok:true regression lock | 1 | Data used correctly |
+| `adjusted` tip exists, no sum.adjusted | 1 | `adjusted: false` |
+| `adjusted` sum.adjusted=true | 1 | `adjusted: true` |
+| `adjusted` sum.adjusted=false | 1 | `adjusted: false` even with tip |
+| `adjusted` tip=null | 1 | `adjusted: false` |
+| `_busy` onTransferChecks double-tap ignored | 1 | Second call suppressed |
+| `_busy` onPrintCheck double-tap ignored | 1 | Fetch count unchanged on second call |
+| `_busy` onVoidCheck double-tap ignored | 1 | Interrupt not re-opened |
+| `_busy` cancel clears lock | 1 | onCancel resets `_busy` |
+| `onVoidCheck` timer cleared on unmount | 1 | `vi.useFakeTimers()`; co-void-confirm not opened after unmount |
+| `onVoidCheck` timer fires when scene stays mounted | 1 | co-void-confirm opened after 200ms |
+
+**Net new tests: +21** (7 in check-overview.test.js, 13 in new close-day-checks-viewer.test.js, 1 fix in server-landing.test.js)  
+**Total: 291 tests, 0 failures** (was 270 passing, 1 pre-existing failure)
+
+### Remaining risks, deferred
+
+> **Action handler fetches** (`onTransferChecks`, `onPrintCheck`, `onVoidCheck`) still use raw `fetch` without a timeout — they can hang indefinitely on network stall. Each already checks `r.ok` in results and has `.catch()`, so data integrity is safe; the risk is UX responsiveness only. Upgrading to `fetchWithTimeout` requires importing `net.js` and is deferred as a separate pass.
+>
+> **Backend pytest** environment not available in this session (`pytest` not installed). Backend test suite status assumed unchanged — no backend files were touched.
+
+**Updated overall stability rating: A−**
+
+Rationale: All originally-deferred check-overview items are now covered. The `close-day-checks-viewer.js` scene has moved from 0 tests to 13, with its five highest-risk bugs fixed. The theme violation in check rows is corrected. The one pre-existing test failure (broken by main merge) is resolved. Remaining risk (action-handler timeout on network stall) is UX-level, not data-integrity.

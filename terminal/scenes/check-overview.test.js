@@ -957,3 +957,170 @@ describe('terminal/scenes/check-overview — selection and refresh regression lo
     expect(state.selectedItems['1:0']).toBeUndefined(); // S-002 item skipped (paid)
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+//  Target 1a — _enterManageMerge guard
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — _enterManageMerge guard', () => {
+  let sceneDef;
+  let showToast;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const components = await import('../components.js');
+    showToast = components.showToast;
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('shows toast and does not enter merge mode when no items are selected', () => {
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'ord-1' };
+    state.topAreaEl  = document.createElement('div');
+    state.selectedItems = {};
+
+    sceneDef.__handlers._enterManageMerge(state);
+
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Select items'),
+      expect.anything(),
+    );
+    expect(state._manageTool).not.toBe('merge');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Target 1b — openSeatPaymentInterrupt void-payment fetch guard
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — openSeatPaymentInterrupt fetch guard', () => {
+  let sceneDef;
+  let showToast;
+  let fetchWithTimeout;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    interruptCalls.length = 0;
+    SceneManagerMock.interrupt.mockClear();
+    const components = await import('../components.js');
+    const netMod     = await import('../net.js');
+    showToast        = components.showToast;
+    fetchWithTimeout = netMod.fetchWithTimeout;
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('shows "Void failed" toast when void POST returns ok:false', async () => {
+    fetchWithTimeout.mockResolvedValueOnce({ ok: false, status: 422, json: () => Promise.resolve({}) });
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'ord-42' };
+    state.paidSeats    = { 'S-001': true };
+    state.seatPayments = { 'S-001': [{ id: 'pay-1' }] };
+
+    sceneDef.__handlers.openSeatPaymentInterrupt(state, 'S-001', [{ id: 'pay-1' }]);
+
+    const call = interruptCalls.find((c) => c.name === 'seat-payment');
+    expect(call).toBeDefined();
+    call.params.onConfirm('pay-1');
+    await Promise.resolve(); await Promise.resolve();
+
+    expect(showToast).toHaveBeenCalledWith('Void failed', expect.anything());
+    expect(state.paidSeats['S-001']).toBe(true);  // state unchanged on failure
+  });
+
+  it('shows "Void failed" toast on network rejection', async () => {
+    fetchWithTimeout.mockRejectedValueOnce(new Error('network timeout'));
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'ord-42' };
+    state.paidSeats    = { 'S-001': true };
+    state.seatPayments = { 'S-001': [{ id: 'pay-1' }] };
+
+    sceneDef.__handlers.openSeatPaymentInterrupt(state, 'S-001', [{ id: 'pay-1' }]);
+
+    const call = interruptCalls.find((c) => c.name === 'seat-payment');
+    call.params.onConfirm('pay-1');
+    await Promise.resolve(); await Promise.resolve();
+
+    expect(showToast).toHaveBeenCalledWith('Void failed', expect.anything());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Target 1c — handlePay early-return guards
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — handlePay guards', () => {
+  let sceneDef;
+  let showToast;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    SceneManagerMock.mountWorking.mockClear();
+    const components = await import('../components.js');
+    showToast = components.showToast;
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('shows toast and does not navigate when orderId is null', () => {
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: null };
+
+    sceneDef.__handlers.handlePay(state, {});
+
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Save items first'),
+      expect.anything(),
+    );
+    expect(SceneManagerMock.mountWorking).not.toHaveBeenCalled();
+  });
+
+  it('shows toast and does not navigate when check is already settled', () => {
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'ord-1' };
+    state.order = { status: 'closed' };
+
+    sceneDef.__handlers.handlePay(state, {});
+
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Check already settled'),
+      expect.anything(),
+    );
+    expect(SceneManagerMock.mountWorking).not.toHaveBeenCalled();
+  });
+
+  it('shows toast and does not navigate when no seats have items', () => {
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'ord-1' };
+    state.seats = [{ id: 'S-001', number: 1, items: [] }];
+    state.paidSeats = {};
+    state.selected  = {};
+
+    sceneDef.__handlers.handlePay(state, {});
+
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('No items to pay'),
+      expect.anything(),
+    );
+    expect(SceneManagerMock.mountWorking).not.toHaveBeenCalled();
+  });
+
+  it('shows toast and does not navigate when all selected seats are already paid', () => {
+    const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'ord-1' };
+    state.seats     = [{ id: 'S-001', number: 1, items: [{ name: 'Wine', price: 15 }] }];
+    state.paidSeats = { 'S-001': true };
+    state.selected  = { 'S-001': true };  // explicitly selected but already paid
+
+    sceneDef.__handlers.handlePay(state, {});
+
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('already paid'),
+      expect.anything(),
+    );
+    expect(SceneManagerMock.mountWorking).not.toHaveBeenCalled();
+  });
+});

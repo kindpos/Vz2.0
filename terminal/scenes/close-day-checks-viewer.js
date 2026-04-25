@@ -24,6 +24,7 @@ import { defineScene, SceneManager }  from '../scene-manager.js';
 import { T }                          from '../../common/tokens.js';
 import {
   buildPillButton,
+  buildStaticCard,
   hexToRgba,
 }                                      from '../theme-manager.js';
 import { showToast }                   from '../components.js';
@@ -128,9 +129,9 @@ function serverColor(server_id) {
 
 function fetchChecksState() {
   return Promise.all([
-    fetch('/api/v1/orders/day-summary').then(function(r) { return r.json(); }).catch(function() { return {}; }),
-    fetch('/api/v1/orders').then(function(r) { return r.json(); }).catch(function() { return []; }),
-    fetch('/api/v1/config/store').then(function(r) { return r.json(); }).catch(function() { return {}; }),
+    fetch('/api/v1/orders/day-summary').then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function() { return {}; }),
+    fetch('/api/v1/orders').then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function() { return []; }),
+    fetch('/api/v1/config/store').then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function() { return {}; }),
   ]).then(function(results) {
     var d         = results[0] || {};
     var rawOrders = Array.isArray(results[1]) ? results[1] : [];
@@ -166,7 +167,7 @@ function fetchChecksState() {
         method:        method,
         amount:        (sum.amount != null) ? sum.amount : (raw.total_amount || raw.total || 0),
         tip:           tip,
-        adjusted:      (sum.adjusted != null) ? sum.adjusted : (tip != null),
+        adjusted:      (sum.adjusted != null) ? sum.adjusted : false,
         server_id:     raw.server_id   || sum.server_id   || '',
         server_name:   raw.server_name || sum.server_name || '',
         guests:        raw.guest_count || raw.seat_count || raw.covers || sum.guests || sum.guest_count || 0,
@@ -525,19 +526,15 @@ function buildCheckRow(chk, handlers, sceneState) {
   var minutes  = minutesOpen(chk.rawCreatedAt);
   var srvCol   = serverColor(chk.server_id);
 
-  var card = buildActionCard({
-    accent: srvCol,
-    onClick: function() { if (handlers.onToggleCheck) handlers.onToggleCheck(chk); }
-  });
+  var card = buildStaticCard({ accent: selected ? T.elec : srvCol });
+  card._staticCardTappableAllowed = true;
+  card.addEventListener('pointerup', function() { if (handlers.onToggleCheck) handlers.onToggleCheck(chk); });
   card.style.flexShrink = '0';
   card.style.display = 'flex';
   card.style.alignItems = 'center';
   card.style.gap = '12px';
   card.style.padding = '12px 14px';
   card.style.minHeight = '88px';
-  card.style.background = T.well;
-  card.style.border = '2px solid ' + (selected ? T.elec : hexToRgba(T.border, 0.3));
-  card.style.transition = 'border-color 0.15s';
 
   // Selection checkbox — stays T.elec (selection is a UI state, not a server state)
   var check = document.createElement('div');
@@ -765,6 +762,8 @@ defineScene({
     data:              null,
     selectedCheckIds:  [],
     startTime:         null,
+    _busy:             false,
+    _pendingTimer:     null,
   },
 
   render: function(container, params, state) {
@@ -849,6 +848,8 @@ defineScene({
       },
 
       onTransferChecks: function(checks) {
+        if (state._busy) return;
+        state._busy = true;
         SceneManager.interrupt('co-transfer-picker', {
           checks: checks,
           currentEmpId: params.managerId,
@@ -880,14 +881,17 @@ defineScene({
                 );
               }
               state.selectedCheckIds = [];
+              state._busy = false;
               refreshData();
             });
           },
-          onCancel: function() { SceneManager.closeInterrupt('co-transfer-picker'); },
+          onCancel: function() { state._busy = false; SceneManager.closeInterrupt('co-transfer-picker'); },
         });
       },
 
       onPrintCheck: function(checks) {
+        if (state._busy) return;
+        state._busy = true;
         var label = checks.length > 1 ? checks.length + ' checks' : checkNumDisplay(checks[0]);
         showToast('Printing ' + label + '\u2026', { bg: T.greenWarm });
 
@@ -914,6 +918,7 @@ defineScene({
               { bg: T.verm }
             );
           }
+          state._busy = false;
         });
       },
 
@@ -934,11 +939,14 @@ defineScene({
       },
 
       onVoidCheck: function(checks) {
+        if (state._busy) return;
+        state._busy = true;
         // Destructive: manager PIN → reason-required confirm → POST per check.
         SceneManager.interrupt('co-manager-pin', {
           onConfirm: function() {
             SceneManager.closeInterrupt('co-manager-pin');
-            setTimeout(function() {
+            state._pendingTimer = setTimeout(function() {
+              state._pendingTimer = null;
               SceneManager.interrupt('co-void-confirm', {
                 checks: checks,
                 onConfirm: function(reason) {
@@ -969,22 +977,28 @@ defineScene({
                       );
                     }
                     state.selectedCheckIds = [];
+                    state._busy = false;
                     refreshData();
                   });
                 },
-                onCancel: function() { SceneManager.closeInterrupt('co-void-confirm'); },
+                onCancel: function() { state._busy = false; SceneManager.closeInterrupt('co-void-confirm'); },
               });
             }, 80);
           },
-          onCancel: function() { SceneManager.closeInterrupt('co-manager-pin'); },
+          onCancel: function() { state._busy = false; SceneManager.closeInterrupt('co-manager-pin'); },
         });
       },
     };
 
+    state.__testHandlers = handlers;  // test seam — production code never reads this
     refreshData();
   },
 
-  unmount: function() {
+  unmount: function(state) {
+    if (state && state._pendingTimer) {
+      clearTimeout(state._pendingTimer);
+      state._pendingTimer = null;
+    }
     if (window._header && window._header.setBackHandler) {
       window._header.setBackHandler(null);
     }

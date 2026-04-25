@@ -375,8 +375,10 @@ defineScene({
     get enterManageMode()    { return enterManageMode; },
     get exitManageMode()     { return exitManageMode; },
     get _resetManageSession(){ return _resetManageSession; },
-    get forceSelectAll()     { return forceSelectAll; },
-    get toggleSeat()         { return toggleSeat; },
+    get forceSelectAll()          { return forceSelectAll; },
+    get toggleSeat()              { return toggleSeat; },
+    get openSeatPaymentInterrupt(){ return openSeatPaymentInterrupt; },
+    get _enterManageMerge()       { return _enterManageMerge; },
   },
 
   state: {
@@ -4017,11 +4019,15 @@ function openSeatPaymentInterrupt(state, seatId, payments) {
     seatId:   seatId,
     payments: payments,
     onConfirm: function(paymentId) {
-      fetch('/api/v1/orders/' + state.orderId + '/payments/' + paymentId + '/void', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ reason: 'Voided from check overview' }),
-      }).then(function(r) {
+      fetchWithTimeout(
+        '/api/v1/orders/' + state.orderId + '/payments/' + paymentId + '/void',
+        {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ reason: 'Voided from check overview' }),
+        },
+        8000
+      ).then(function(r) {
         if (r.ok) {
           delete state.paidSeats[seatId];
           delete state.seatPayments[seatId];
@@ -4031,6 +4037,8 @@ function openSeatPaymentInterrupt(state, seatId, payments) {
         } else {
           showToast('Void failed', { bg: T.verm });
         }
+      }).catch(function() {
+        showToast('Void failed', { bg: T.verm });
       });
     },
     onCancel: function() {},
