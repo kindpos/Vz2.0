@@ -379,6 +379,12 @@ defineScene({
     get toggleSeat()              { return toggleSeat; },
     get openSeatPaymentInterrupt(){ return openSeatPaymentInterrupt; },
     get _enterManageMerge()       { return _enterManageMerge; },
+    get _callSplitBySeat()        { return _callSplitBySeat; },
+    get _moveItemsToSeat()        { return _moveItemsToSeat; },
+    get _mergeToNewSeat()         { return _mergeToNewSeat; },
+    get _mergeToNewCheck()        { return _mergeToNewCheck; },
+    get _persistItemSeats()       { return persistItemSeats; },
+    get _enterManageSplit()       { return _enterManageSplit; },
   },
 
   state: {

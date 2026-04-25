@@ -130,9 +130,9 @@ function serverColor(server_id) {
 
 function fetchChecksState() {
   return Promise.all([
-    fetch('/api/v1/orders/day-summary').then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function() { return {}; }),
-    fetch('/api/v1/orders').then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function() { return []; }),
-    fetch('/api/v1/config/store').then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function() { return {}; }),
+    fetchWithTimeout('/api/v1/orders/day-summary', {}, 8000).then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function() { return {}; }),
+    fetchWithTimeout('/api/v1/orders', {}, 8000).then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function() { return []; }),
+    fetchWithTimeout('/api/v1/config/store', {}, 8000).then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); }).catch(function() { return {}; }),
   ]).then(function(results) {
     var d         = results[0] || {};
     var rawOrders = Array.isArray(results[1]) ? results[1] : [];

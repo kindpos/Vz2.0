@@ -81,6 +81,7 @@ async function flush(n = 3) {
 describe('close-day-checks-viewer — Bug A: fetchChecksState .ok guard', () => {
   let sceneDef;
   let showToast;
+  let fetchWithTimeout;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -88,6 +89,8 @@ describe('close-day-checks-viewer — Bug A: fetchChecksState .ok guard', () => 
     SceneManagerMock.interrupt.mockClear();
     const components = await import('../components.js');
     showToast = components.showToast;
+    const net = await import('../net.js');
+    fetchWithTimeout = net.fetchWithTimeout;
     await import('./close-day-checks-viewer.js');
     sceneDef = registeredScenes.find((s) => s.name === 'close-day-checks-viewer');
     expect(sceneDef).toBeDefined();
@@ -96,7 +99,7 @@ describe('close-day-checks-viewer — Bug A: fetchChecksState .ok guard', () => 
   afterEach(() => { vi.restoreAllMocks(); });
 
   it('falls back to empty data when all three fetches return HTTP 500', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({ error: 'boom' }) });
+    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({ error: 'boom' }) });
 
     const state     = JSON.parse(JSON.stringify(sceneDef.state));
     const container = document.createElement('div');
@@ -114,7 +117,7 @@ describe('close-day-checks-viewer — Bug A: fetchChecksState .ok guard', () => 
     const orders  = [{ order_id: 'c-1', status: 'open', total_amount: 20 }];
     const store   = { info: { restaurant_name: 'Test Kitchen' } };
 
-    global.fetch = vi.fn()
+    fetchWithTimeout
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(summary) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(orders) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(store) });
@@ -130,7 +133,7 @@ describe('close-day-checks-viewer — Bug A: fetchChecksState .ok guard', () => 
   });
 
   it('falls back gracefully when fetch rejects (network error)', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('offline'));
+    fetchWithTimeout.mockRejectedValue(new Error('offline'));
 
     const state     = JSON.parse(JSON.stringify(sceneDef.state));
     const container = document.createElement('div');
@@ -160,7 +163,8 @@ describe('close-day-checks-viewer — Bug B: tip-adjusted flag', () => {
   async function getCheck(summaryCheck, rawOrder) {
     const summary = { checks: [summaryCheck] };
     const orders  = rawOrder ? [rawOrder] : [];
-    global.fetch = vi.fn()
+    const { fetchWithTimeout: ftMock } = await import('../net.js');
+    ftMock
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(summary) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(orders) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
@@ -218,9 +222,10 @@ describe('close-day-checks-viewer — Bug D: _busy guard', () => {
     registeredScenes.length = 0;
     SceneManagerMock.interrupt.mockClear();
     SceneManagerMock.mountWorking.mockClear();
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ checks: [] }) });
     await import('./close-day-checks-viewer.js');
     sceneDef = registeredScenes.find((s) => s.name === 'close-day-checks-viewer');
+    const { fetchWithTimeout: ft } = await import('../net.js');
+    ft.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
   });
 
   afterEach(() => { vi.restoreAllMocks(); });
@@ -300,9 +305,10 @@ describe('close-day-checks-viewer — Bug E: onVoidCheck setTimeout cleanup', ()
     vi.resetModules();
     registeredScenes.length = 0;
     SceneManagerMock.interrupt.mockClear();
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ checks: [] }) });
     await import('./close-day-checks-viewer.js');
     sceneDef = registeredScenes.find((s) => s.name === 'close-day-checks-viewer');
+    const { fetchWithTimeout: ft } = await import('../net.js');
+    ft.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
   });
 
   afterEach(() => {
@@ -371,9 +377,6 @@ describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () 
     SceneManagerMock.interrupt.mockClear();
     SceneManagerMock.closeInterrupt.mockClear();
 
-    // Data-load fetch (raw fetch in fetchChecksState) returns empty lists so render completes.
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ checks: [] }) });
-
     await import('./close-day-checks-viewer.js');
     sceneDef = registeredScenes.find((s) => s.name === 'close-day-checks-viewer');
 
@@ -383,6 +386,8 @@ describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () 
 
     const net = await import('../net.js');
     fetchWithTimeout = net.fetchWithTimeout;
+    // Default covers both data-load (needs .json()) and action handlers.
+    fetchWithTimeout.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
     fetchWithTimeout.mockClear();
   });
 
@@ -398,26 +403,25 @@ describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () 
   // ── onTransferChecks ───────────────────────────────────────────
 
   it('onTransferChecks ok:true — shows success toast and clears busy', async () => {
-    fetchWithTimeout.mockResolvedValue({ ok: true, status: 200 });
     const { state, handlers } = renderAndGetHandlers({ managerId: 'm-1' });
-    handlers.onTransferChecks([{ checkId: 'c-1', server_id: 's-1' }]);
+    fetchWithTimeout.mockClear();  // reset after data-load calls
 
+    handlers.onTransferChecks([{ checkId: 'c-1', server_id: 's-1' }]);
     const call = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-transfer-picker');
     call[1].onConfirm({ id: 's-2', name: 'Bob' });
     await flush(4);
 
-    expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
-    expect(fetchWithTimeout.mock.calls[0][0]).toContain('/transfer');
-    expect(fetchWithTimeout.mock.calls[0][2]).toBe(8000);
+    expect(fetchWithTimeout).toHaveBeenCalledWith(expect.stringContaining('/transfer'), expect.anything(), 8000);
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Transferred'), expect.anything());
     expect(state._busy).toBe(false);
   });
 
   it('onTransferChecks ok:false — shows error toast', async () => {
-    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500 });
     const { handlers } = renderAndGetHandlers({ managerId: 'm-1' });
-    handlers.onTransferChecks([{ checkId: 'c-1', server_id: 's-1' }]);
+    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500 });
+    fetchWithTimeout.mockClear();
 
+    handlers.onTransferChecks([{ checkId: 'c-1', server_id: 's-1' }]);
     const call = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-transfer-picker');
     call[1].onConfirm({ id: 's-2', name: 'Bob' });
     await flush(4);
@@ -428,21 +432,22 @@ describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () 
   // ── onPrintCheck ───────────────────────────────────────────────
 
   it('onPrintCheck ok:true — shows printed toast and clears busy', async () => {
-    fetchWithTimeout.mockResolvedValue({ ok: true, status: 200 });
     const { state, handlers } = renderAndGetHandlers();
+    fetchWithTimeout.mockClear();
+
     handlers.onPrintCheck([{ checkId: 'c-1' }]);
     await flush(4);
 
-    expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
-    expect(fetchWithTimeout.mock.calls[0][0]).toContain('/print');
-    expect(fetchWithTimeout.mock.calls[0][2]).toBe(8000);
+    expect(fetchWithTimeout).toHaveBeenCalledWith(expect.stringContaining('/print'), expect.anything(), 8000);
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Printed'), expect.anything());
     expect(state._busy).toBe(false);
   });
 
   it('onPrintCheck ok:false — shows error toast', async () => {
-    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500 });
     const { handlers } = renderAndGetHandlers();
+    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500 });
+    fetchWithTimeout.mockClear();
+
     handlers.onPrintCheck([{ checkId: 'c-1' }]);
     await flush(4);
 
@@ -453,10 +458,10 @@ describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () 
 
   it('onVoidCheck confirm path ok:true — shows voided toast and clears busy', async () => {
     vi.useFakeTimers();
-    fetchWithTimeout.mockResolvedValue({ ok: true, status: 200 });
     const { state, handlers } = renderAndGetHandlers();
-    handlers.onVoidCheck([{ checkId: 'c-1' }]);
+    fetchWithTimeout.mockClear();
 
+    handlers.onVoidCheck([{ checkId: 'c-1' }]);
     const pinCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-manager-pin');
     pinCall[1].onConfirm();
     vi.advanceTimersByTime(200);
@@ -465,9 +470,7 @@ describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () 
     voidCall[1].onConfirm('damaged goods');
     await flush(4);
 
-    expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
-    expect(fetchWithTimeout.mock.calls[0][0]).toContain('/void');
-    expect(fetchWithTimeout.mock.calls[0][2]).toBe(8000);
+    expect(fetchWithTimeout).toHaveBeenCalledWith(expect.stringContaining('/void'), expect.anything(), 8000);
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Voided'), expect.anything());
     expect(state._busy).toBe(false);
     vi.useRealTimers();
@@ -475,10 +478,11 @@ describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () 
 
   it('onVoidCheck confirm path ok:false — shows error toast', async () => {
     vi.useFakeTimers();
-    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500 });
     const { handlers } = renderAndGetHandlers();
-    handlers.onVoidCheck([{ checkId: 'c-1' }]);
+    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500 });
+    fetchWithTimeout.mockClear();
 
+    handlers.onVoidCheck([{ checkId: 'c-1' }]);
     const pinCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-manager-pin');
     pinCall[1].onConfirm();
     vi.advanceTimersByTime(200);

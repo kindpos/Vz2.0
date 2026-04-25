@@ -1124,3 +1124,396 @@ describe('terminal/scenes/check-overview — handlePay guards', () => {
     expect(SceneManagerMock.mountWorking).not.toHaveBeenCalled();
   });
 });
+
+// ── Shared MANAGE-mode state factory ───────────────────────────────────────
+//
+// Used by the six MANAGE-coverage describe blocks below. Each function is
+// called directly via sceneDef.__handlers — no DOM render needed except for
+// functions that call rerenderTopArea (those need state.topAreaEl set).
+
+function makeManageState(overrides) {
+  return Object.assign({
+    orderId:       'ord-1',
+    order:         { status: 'open' },
+    seats: [
+      { id: 'S-001', number: 1, items: [{ item_id: 'i-1', name: 'Burger', price: 10, seat_number: 1 }] },
+      { id: 'S-002', number: 2, items: [] },
+    ],
+    selected:      {},
+    selectedItems: {},
+    paidSeats:     {},
+    seatPayments:  {},
+    _manageMode:   true,
+    _manageLog:    [],
+    _manageSnapshot: null,
+    _seatsChain:   null,
+    _mountParams:  {},
+    topAreaEl:     document.createElement('div'),
+    _refreshInFlight: false,
+    _lpTimers:     [],
+  }, overrides);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MANAGE — _callSplitBySeat
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — _callSplitBySeat', () => {
+  let sceneDef;
+  let showToast;
+  let fetchWithTimeout;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const components = await import('../components.js');
+    const net        = await import('../net.js');
+    showToast        = components.showToast;
+    fetchWithTimeout = net.fetchWithTimeout;
+    fetchWithTimeout.mockClear();
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('happy path: POSTs to /split-by-seat and toasts child order id', async () => {
+    fetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, child_orders: [{ order_id: 'new-999' }] }),
+    });
+    const state = makeManageState();
+
+    sceneDef.__handlers._callSplitBySeat(state, [1]);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining('/split-by-seat'),
+      expect.objectContaining({ method: 'POST', body: expect.stringContaining('"seats":[1]') }),
+      15000,
+    );
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('new-999'), expect.anything());
+  });
+
+  it('error path: ok:false toasts the detail message', async () => {
+    fetchWithTimeout.mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({ detail: 'check is locked' }),
+    });
+    const state = makeManageState();
+
+    sceneDef.__handlers._callSplitBySeat(state, [1]);
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('check is locked'), expect.anything());
+  });
+
+  it('no orderId guard: toasts "Save items first", no fetch', () => {
+    const state = makeManageState({ orderId: null });
+
+    sceneDef.__handlers._callSplitBySeat(state, [1]);
+
+    expect(fetchWithTimeout).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Save items first'), expect.anything());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  MANAGE — persistSeats and persistItemSeats
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — persistSeats / persistItemSeats', () => {
+  let sceneDef;
+  let fetchWithTimeout;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const net = await import('../net.js');
+    fetchWithTimeout = net.fetchWithTimeout;
+    fetchWithTimeout.mockClear();
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('persistSeats PUTs seat numbers to /seats', async () => {
+    const state = makeManageState();
+
+    sceneDef.__handlers._persistSeats(state);
+    await Promise.resolve(); await Promise.resolve();
+
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining('/seats'),
+      expect.objectContaining({
+        method: 'PUT',
+        body: expect.stringContaining('"seat_numbers":[1,2]'),
+      }),
+      15000,
+    );
+  });
+
+  it('persistSeats does nothing when orderId is null', () => {
+    const state = makeManageState({ orderId: null });
+
+    sceneDef.__handlers._persistSeats(state);
+
+    expect(fetchWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it('persistItemSeats PATCHes each item that has item_id', async () => {
+    const state = makeManageState();
+    const items = [{ item_id: 'i-1', seat_number: 2 }, { item_id: 'i-2', seat_number: 2 }];
+
+    await sceneDef.__handlers._persistItemSeats(state, items);
+
+    expect(fetchWithTimeout).toHaveBeenCalledTimes(2);
+    expect(fetchWithTimeout.mock.calls[0][0]).toContain('/items/i-1');
+    expect(fetchWithTimeout.mock.calls[1][0]).toContain('/items/i-2');
+    expect(fetchWithTimeout.mock.calls[0][1].body).toContain('"seat_number":2');
+  });
+
+  it('persistItemSeats skips items without item_id', async () => {
+    const state = makeManageState();
+    const items = [{ name: 'Draft beer', seat_number: 2 }];  // no item_id
+
+    await sceneDef.__handlers._persistItemSeats(state, items);
+
+    expect(fetchWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it('persistItemSeats resolves even when a PATCH is rejected', async () => {
+    fetchWithTimeout.mockRejectedValue(new Error('network'));
+    const state = makeManageState();
+    const items = [{ item_id: 'i-1', seat_number: 2 }];
+
+    // Must not throw
+    await expect(sceneDef.__handlers._persistItemSeats(state, items)).resolves.toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  MANAGE — _moveItemsToSeat
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — _moveItemsToSeat', () => {
+  let sceneDef;
+  let showToast;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const components = await import('../components.js');
+    showToast = components.showToast;
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('moves item from S-001 to S-002: source loses it, target gains it, log pushed', () => {
+    const state = makeManageState();
+    // ref: seat 0, item 0
+    const refs = [{ seatIdx: 0, itemIdx: 0 }];
+
+    sceneDef.__handlers._moveItemsToSeat(state, refs, 'S-002');
+
+    expect(state.seats[0].items).toHaveLength(0);
+    expect(state.seats[1].items).toHaveLength(1);
+    expect(state.seats[1].items[0].seat_number).toBe(2);
+    expect(state._manageLog).toHaveLength(1);
+    expect(state._manageLog[0].kind).toBe('move');
+    expect(state._manageLog[0].targetSeatId).toBe('S-002');
+    expect(state.selectedItems).toEqual({});
+    expect(state.selected).toEqual({});
+  });
+
+  it('skipLog: true suppresses the log entry', () => {
+    const state = makeManageState();
+    const refs = [{ seatIdx: 0, itemIdx: 0 }];
+
+    sceneDef.__handlers._moveItemsToSeat(state, refs, 'S-002', { skipLog: true });
+
+    expect(state._manageLog).toHaveLength(0);
+    expect(state.seats[1].items).toHaveLength(1);
+  });
+
+  it('moving item to its own seat toasts "Already on" and returns 0', () => {
+    const state = makeManageState();
+    const refs = [{ seatIdx: 0, itemIdx: 0 }];
+
+    const result = sceneDef.__handlers._moveItemsToSeat(state, refs, 'S-001');
+
+    expect(result).toBe(0);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Already on'), expect.anything());
+    expect(state.seats[0].items).toHaveLength(1);  // unchanged
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  MANAGE — _mergeToNewSeat and _mergeToNewCheck
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — _mergeToNewSeat / _mergeToNewCheck', () => {
+  let sceneDef;
+  let showToast;
+  let fetchWithTimeout;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const components = await import('../components.js');
+    const net        = await import('../net.js');
+    showToast        = components.showToast;
+    fetchWithTimeout = net.fetchWithTimeout;
+    fetchWithTimeout.mockClear();
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('_mergeToNewSeat creates a new seat, moves selected item, logs merge-new-seat', () => {
+    // selectedItems key '0:0' → seatIdx:0, itemIdx:0 (via collectSelectedItemRefs mock)
+    const state = makeManageState({ selectedItems: { '0:0': true } });
+
+    sceneDef.__handlers._mergeToNewSeat(state);
+
+    expect(state.seats).toHaveLength(3);                        // new seat added
+    const newSeat = state.seats[2];
+    expect(newSeat.items).toHaveLength(1);                      // item moved there
+    expect(state.seats[0].items).toHaveLength(0);               // source emptied
+    // _moveItemsToSeat pushes 'move'; _mergeToNewSeat then pushes 'merge-new-seat'
+    expect(state._manageLog).toHaveLength(2);
+    expect(state._manageLog[0].kind).toBe('move');
+    expect(state._manageLog[1].kind).toBe('merge-new-seat');
+    expect(state._manageLog[1].newSeatId).toBe(newSeat.id);
+  });
+
+  it('_mergeToNewSeat with empty selectedItems toasts and does not add a seat', () => {
+    const state = makeManageState({ selectedItems: {} });
+
+    sceneDef.__handlers._mergeToNewSeat(state);
+
+    expect(state.seats).toHaveLength(2);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Nothing selected'), expect.anything());
+  });
+
+  it('_mergeToNewCheck whole-seat path: POSTs /split-by-seat with the seat number', async () => {
+    fetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, child_orders: [{ order_id: 'chk-2' }] }),
+    });
+    // Whole-seat selection: state.selected populated
+    const state = makeManageState({ selected: { 'S-001': true }, selectedItems: { '0:0': true } });
+
+    sceneDef.__handlers._mergeToNewCheck(state);
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining('/split-by-seat'),
+      expect.objectContaining({ body: expect.stringContaining('"seats":[1]') }),
+      15000,
+    );
+    expect(state._manageLog[0].kind).toBe('merge-new-check-seats');
+  });
+
+  it('_mergeToNewCheck arbitrary-item path: creates temp seat then POSTs /split-by-seat', async () => {
+    fetchWithTimeout.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, child_orders: [{ order_id: 'chk-3' }] }),
+    });
+    // Items selected but no whole-seat selected
+    const state = makeManageState({ selected: {}, selectedItems: { '0:0': true } });
+
+    sceneDef.__handlers._mergeToNewCheck(state);
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+
+    // A temp seat was created for the item
+    expect(state.seats).toHaveLength(3);
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining('/split-by-seat'),
+      expect.anything(),
+      15000,
+    );
+    expect(state._manageLog.some((p) => p.kind === 'merge-new-check-items')).toBe(true);
+  });
+
+  it('_mergeToNewCheck empty selection toasts and does no fetch', () => {
+    const state = makeManageState({ selected: {}, selectedItems: {} });
+
+    sceneDef.__handlers._mergeToNewCheck(state);
+
+    expect(fetchWithTimeout).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Select'), expect.anything());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  MANAGE — UNDO additional kinds (merge-new-seat, split)
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — UNDO additional kinds', () => {
+  let sceneDef;
+  let showToast;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const components = await import('../components.js');
+    showToast = components.showToast;
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('UNDO kind:merge-new-seat returns item to source and removes the new seat', () => {
+    const item = { item_id: 'i-1', name: 'Burger', price: 10, seat_number: 3 };
+    const state = makeManageState({
+      seats: [
+        { id: 'S-001', number: 1, items: [] },
+        { id: 'S-002', number: 2, items: [] },
+        { id: 'S-003', number: 3, items: [item] },
+      ],
+      _manageLog: [
+        {
+          kind:         'move',
+          targetSeatId: 'S-003',
+          patches:      [{ fromSeatId: 'S-001', fromItemIdx: 0, item }],
+        },
+        { kind: 'merge-new-seat', newSeatId: 'S-003' },
+      ],
+    });
+
+    sceneDef.__handlers._undoManage(state);
+
+    expect(state.seats).toHaveLength(2);             // S-003 removed
+    expect(state.seats[0].items).toHaveLength(1);    // item back on S-001
+    expect(state.seats[0].items[0]).toBe(item);
+    expect(state._manageLog).toHaveLength(0);
+    expect(showToast).toHaveBeenCalledWith('Undone', expect.anything());
+  });
+
+  it('UNDO kind:split restores state.seats from the preSeats snapshot', () => {
+    const preSeats = [
+      { id: 'S-001', number: 1, items: [{ item_id: 'i-1', name: 'Pizza', price: 10, seat_number: 1 }] },
+    ];
+    const state = makeManageState({
+      seats: [
+        { id: 'S-001', number: 1, items: [] },
+        { id: 'S-002', number: 2, items: [{ item_id: 'i-1a', name: 'Pizza 1/2', price: 5, seat_number: 2 }] },
+      ],
+      _manageLog: [{ kind: 'split', preSeats }],
+    });
+
+    sceneDef.__handlers._undoManage(state);
+
+    expect(state.seats).toHaveLength(1);
+    expect(state.seats[0].items).toHaveLength(1);
+    expect(state.seats[0].items[0].name).toBe('Pizza');
+    expect(state._manageLog).toHaveLength(0);
+    expect(showToast).toHaveBeenCalledWith('Undone', expect.anything());
+  });
+});
