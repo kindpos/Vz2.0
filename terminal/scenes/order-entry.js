@@ -2365,7 +2365,9 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
     // ── MANDATORY GROUPS ──
     mandatoryGroups.forEach(function(g) {
-      scroll.appendChild(sectionLabel('REQUIRED — ' + g.label, T.verm));
+      var mandHdr = sectionLabel('REQUIRED — ' + g.label, T.verm);
+      mandHdr.dataset.mandkey = g.key;
+      scroll.appendChild(mandHdr);
       var wrap = pillWrap();
       (g.options || []).forEach(function(opt) {
         var sel = mandState[g.key] && mandState[g.key].key === (opt.key || opt.id);
@@ -2374,6 +2376,15 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
           else { mandState[g.key] = { key: opt.key || opt.id, label: opt.label, price: opt.price || 0 }; }
           doneBtn.disabled = mandatoryGroups.some(function(g) { return !mandState[g.key]; });
           renderContent();
+          var nextUnsatisfied = mandatoryGroups.find(function(g) { return !mandState[g.key]; });
+          if (nextUnsatisfied) {
+            var nextEl = scroll.querySelector('[data-mandkey="' + nextUnsatisfied.key + '"]');
+            if (nextEl) {
+              requestAnimationFrame(function() {
+                nextEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              });
+            }
+          }
         });
         wrap.appendChild(p);
       });
