@@ -2312,6 +2312,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
   // ── Render content sections ──────────────────────────
   function renderContent() {
+    var savedTop = scroll.scrollTop;
     scroll.innerHTML = '';
 
     // ── SNAKE BREADCRUMB CARD — matches grid tile style ──
@@ -2489,6 +2490,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       scroll.appendChild(msg2);
     }
 
+    requestAnimationFrame(function() { scroll.scrollTop = savedTop; });
     _buildActiveItem();
   }
 
