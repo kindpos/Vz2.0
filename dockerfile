@@ -30,12 +30,13 @@ ENV PYTHONUNBUFFERED=1 \
 COPY backend/requirements.txt ./
 RUN pip install -r requirements.txt
 
-# Copy the app source. We copy backend/, terminal/, and overseer/ explicitly
-# so the image doesn't pick up node_modules, .venv, test fixtures, etc. Add
-# more dirs here if your backend references them (migrations/, scripts/, etc.).
-COPY backend/  ./backend/
-COPY terminal/ ./terminal/
-COPY overseer/ ./overseer/
+# Copy the app source. We copy each directory explicitly so the image doesn't
+# pick up node_modules, .venv, test fixtures, etc.
+COPY backend/    ./backend/
+COPY terminal/   ./terminal/
+COPY overseer/   ./overseer/
+COPY entomology/ ./entomology/
+COPY common/     ./common/
 
 # Fly's [http_service] routes to internal_port 8080. Must match.
 EXPOSE 8080
