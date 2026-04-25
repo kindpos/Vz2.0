@@ -3014,6 +3014,7 @@ function renderTicket() {
   var list = document.getElementById('ticket-list');
   if (!list) return;
   list.innerHTML = '';
+  var frag = document.createDocumentFragment();
 
   // In check-overview mode, only show newly added (unsent) items
   var displayTicket = ticket;
@@ -3023,7 +3024,8 @@ function renderTicket() {
       var hint = document.createElement('div');
       hint.style.cssText = 'padding:20px 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
       hint.textContent = 'Tap items to add';
-      list.appendChild(hint);
+      frag.appendChild(hint);
+      list.appendChild(frag);
       return;
     }
   }
@@ -3049,7 +3051,8 @@ function renderTicket() {
       var seatHdr = document.createElement('div');
       seatHdr.style.cssText = 'padding:4px 8px 2px;font-family:' + T.fh + ';font-size:' + T.fsB2 + ';color:' + T.green + ';letter-spacing:2px;border-bottom:1px solid ' + T.border + ';margin-bottom:2px;';
       seatHdr.textContent = 'S-' + String(sn).padStart(3, '0');
-      list.appendChild(seatHdr);
+      frag.appendChild(seatHdr);
+      list.appendChild(frag);
 
       // Render items for this seat using the same group logic below
       var seatTicket = seatItems[sn];
@@ -3063,6 +3066,7 @@ function renderTicket() {
   _renderTicketGroup(list, displayTicket);
   _appendModPreview(list);
   _updateTicketTotals();
+  list.appendChild(frag);
 }
 
 function _appendModPreview(list) {
