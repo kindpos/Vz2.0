@@ -43,10 +43,11 @@ HARDWARE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
 
 
 def _collect_seats(order) -> list[int]:
-    """Union of order.seat_numbers and the distinct seat_number on any
-    item, sorted. Used when emitting seat.paid at auto-close so every
-    seat that carried items gets an audit record."""
-    seat_set = set(order.seat_numbers or [])
+    """Seat numbers that carried items, sorted. Used when emitting seat.paid
+    at auto-close so only seats with actual items get an audit record.
+    Empty seats (in order.seat_numbers but with no items) are excluded so
+    the event ledger stays consistent with the frontend's paid-seat view."""
+    seat_set = set()
     for item in order.items:
         s = getattr(item, "seat_number", None)
         if s is not None:
