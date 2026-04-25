@@ -1715,7 +1715,7 @@ function buildActionsCol(state, handlers, sceneState) {
   var blocked = state.openChecks.length + state.unadjustedChecks.length > 0;
   var lockReady = !blocked && sceneState.batchSettled && sceneState.cashCounted != null;
 
-  var col = buildStaticCard({ accent: T.lavender });
+  var col = buildStaticCard({ accent: T.green });
   col.style.cssText += [
     'flex-shrink:0;width:' + RIGHT_W + 'px;',
     'padding:14px 16px;box-sizing:border-box;',
