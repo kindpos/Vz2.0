@@ -52,6 +52,10 @@ vi.mock('../components.js', () => ({
   buildGap:  () => document.createElement('div'),
 }));
 
+vi.mock('../net.js', () => ({
+  fetchWithTimeout: vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })),
+}));
+
 vi.mock('../../common/tokens.js', () => ({
   T: new Proxy({}, { get: (_t, k) => k === '__esModule' ? false : '#000' }),
 }));
@@ -242,20 +246,21 @@ describe('close-day-checks-viewer — Bug D: _busy guard', () => {
     expect(SceneManagerMock.interrupt).not.toHaveBeenCalled();
   });
 
-  it('onPrintCheck ignores a second call while busy', () => {
+  it('onPrintCheck ignores a second call while busy', async () => {
+    let fetchWithTimeout;
+    ({ fetchWithTimeout } = await import('../net.js'));
+    fetchWithTimeout.mockClear();
+
     const { state, handlers } = renderAndGetHandlers();
     const checks = [{ checkId: 'c-1' }];
 
     handlers.onPrintCheck(checks);
     expect(state._busy).toBe(true);
 
-    const callsBefore = SceneManagerMock.interrupt.mock.calls.length;
+    // fetch count should not increase on second call
+    const countAfterFirst = fetchWithTimeout.mock.calls.length;
     handlers.onPrintCheck(checks);
-
-    // fetch count should not have increased
-    const fetchCallsAfterSecond = global.fetch.mock.calls.length;
-    handlers.onPrintCheck(checks);
-    expect(global.fetch.mock.calls.length).toBe(fetchCallsAfterSecond);
+    expect(fetchWithTimeout.mock.calls.length).toBe(countAfterFirst);
   });
 
   it('onVoidCheck ignores a second call while busy', () => {
@@ -346,5 +351,143 @@ describe('close-day-checks-viewer — Bug E: onVoidCheck setTimeout cleanup', ()
 
     const voidConfirmCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-void-confirm');
     expect(voidConfirmCall).toBeDefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Action handler timeout regression-lock
+//  Confirms fetchWithTimeout is used (not raw fetch) and that
+//  ok:true / ok:false resolve paths produce the correct toasts.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () => {
+  let sceneDef;
+  let showToast;
+  let fetchWithTimeout;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    SceneManagerMock.interrupt.mockClear();
+    SceneManagerMock.closeInterrupt.mockClear();
+
+    // Data-load fetch (raw fetch in fetchChecksState) returns empty lists so render completes.
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ checks: [] }) });
+
+    await import('./close-day-checks-viewer.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'close-day-checks-viewer');
+
+    const comps = await import('../components.js');
+    showToast = comps.showToast;
+    showToast.mockClear();
+
+    const net = await import('../net.js');
+    fetchWithTimeout = net.fetchWithTimeout;
+    fetchWithTimeout.mockClear();
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  function renderAndGetHandlers(params) {
+    const state     = JSON.parse(JSON.stringify(sceneDef.state));
+    const container = document.createElement('div');
+    sceneDef.render(container, params || {}, state);
+    return { state, handlers: state.__testHandlers };
+  }
+
+  // ── onTransferChecks ───────────────────────────────────────────
+
+  it('onTransferChecks ok:true — shows success toast and clears busy', async () => {
+    fetchWithTimeout.mockResolvedValue({ ok: true, status: 200 });
+    const { state, handlers } = renderAndGetHandlers({ managerId: 'm-1' });
+    handlers.onTransferChecks([{ checkId: 'c-1', server_id: 's-1' }]);
+
+    const call = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-transfer-picker');
+    call[1].onConfirm({ id: 's-2', name: 'Bob' });
+    await flush(4);
+
+    expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
+    expect(fetchWithTimeout.mock.calls[0][0]).toContain('/transfer');
+    expect(fetchWithTimeout.mock.calls[0][2]).toBe(8000);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Transferred'), expect.anything());
+    expect(state._busy).toBe(false);
+  });
+
+  it('onTransferChecks ok:false — shows error toast', async () => {
+    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500 });
+    const { handlers } = renderAndGetHandlers({ managerId: 'm-1' });
+    handlers.onTransferChecks([{ checkId: 'c-1', server_id: 's-1' }]);
+
+    const call = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-transfer-picker');
+    call[1].onConfirm({ id: 's-2', name: 'Bob' });
+    await flush(4);
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('failed'), expect.anything());
+  });
+
+  // ── onPrintCheck ───────────────────────────────────────────────
+
+  it('onPrintCheck ok:true — shows printed toast and clears busy', async () => {
+    fetchWithTimeout.mockResolvedValue({ ok: true, status: 200 });
+    const { state, handlers } = renderAndGetHandlers();
+    handlers.onPrintCheck([{ checkId: 'c-1' }]);
+    await flush(4);
+
+    expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
+    expect(fetchWithTimeout.mock.calls[0][0]).toContain('/print');
+    expect(fetchWithTimeout.mock.calls[0][2]).toBe(8000);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Printed'), expect.anything());
+    expect(state._busy).toBe(false);
+  });
+
+  it('onPrintCheck ok:false — shows error toast', async () => {
+    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500 });
+    const { handlers } = renderAndGetHandlers();
+    handlers.onPrintCheck([{ checkId: 'c-1' }]);
+    await flush(4);
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('failed'), expect.anything());
+  });
+
+  // ── onVoidCheck confirm path ───────────────────────────────────
+
+  it('onVoidCheck confirm path ok:true — shows voided toast and clears busy', async () => {
+    vi.useFakeTimers();
+    fetchWithTimeout.mockResolvedValue({ ok: true, status: 200 });
+    const { state, handlers } = renderAndGetHandlers();
+    handlers.onVoidCheck([{ checkId: 'c-1' }]);
+
+    const pinCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-manager-pin');
+    pinCall[1].onConfirm();
+    vi.advanceTimersByTime(200);
+
+    const voidCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-void-confirm');
+    voidCall[1].onConfirm('damaged goods');
+    await flush(4);
+
+    expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
+    expect(fetchWithTimeout.mock.calls[0][0]).toContain('/void');
+    expect(fetchWithTimeout.mock.calls[0][2]).toBe(8000);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Voided'), expect.anything());
+    expect(state._busy).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('onVoidCheck confirm path ok:false — shows error toast', async () => {
+    vi.useFakeTimers();
+    fetchWithTimeout.mockResolvedValue({ ok: false, status: 500 });
+    const { handlers } = renderAndGetHandlers();
+    handlers.onVoidCheck([{ checkId: 'c-1' }]);
+
+    const pinCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-manager-pin');
+    pinCall[1].onConfirm();
+    vi.advanceTimersByTime(200);
+
+    const voidCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-void-confirm');
+    voidCall[1].onConfirm('damaged goods');
+    await flush(4);
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('failed'), expect.anything());
+    vi.useRealTimers();
   });
 });

@@ -28,6 +28,7 @@ import {
   hexToRgba,
 }                                      from '../theme-manager.js';
 import { showToast }                   from '../components.js';
+import { fetchWithTimeout }            from '../net.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS — matches close-day-checks-viewer.svg
@@ -856,15 +857,15 @@ defineScene({
           onConfirm: function(destServer) {
             SceneManager.closeInterrupt('co-transfer-picker');
             var transfers = checks.map(function(chk) {
-              return fetch('/api/v1/orders/' + chk.checkId + '/transfer', {
+              return fetchWithTimeout('/api/v1/orders/' + chk.checkId + '/transfer', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   to_server_id:   destServer.id,
                   from_server_id: chk.server_id || params.managerId,
                 }),
-              }).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
-                .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
+              }, 8000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
+                      .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
             });
             Promise.all(transfers).then(function(results) {
               var ok     = results.filter(function(r) { return  r.ok; });
@@ -896,12 +897,12 @@ defineScene({
         showToast('Printing ' + label + '\u2026', { bg: T.greenWarm });
 
         var prints = checks.map(function(chk) {
-          return fetch('/api/v1/checks/' + chk.checkId + '/print', {
+          return fetchWithTimeout('/api/v1/checks/' + chk.checkId + '/print', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ kind: 'guest' }),
-          }).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
-            .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
+          }, 8000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
+                  .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
         });
 
         Promise.all(prints).then(function(results) {
@@ -952,15 +953,15 @@ defineScene({
                 onConfirm: function(reason) {
                   SceneManager.closeInterrupt('co-void-confirm');
                   var voids = checks.map(function(chk) {
-                    return fetch('/api/v1/orders/' + chk.checkId + '/void', {
+                    return fetchWithTimeout('/api/v1/orders/' + chk.checkId + '/void', {
                       method:  'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         reason: reason,
                         manager_pin_verified: true,
                       }),
-                    }).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
-                      .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
+                    }, 8000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
+                            .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
                   });
                   Promise.all(voids).then(function(results) {
                     var ok     = results.filter(function(r) { return  r.ok; });
