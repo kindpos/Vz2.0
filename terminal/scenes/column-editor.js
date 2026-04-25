@@ -475,11 +475,6 @@ defineScene({
           target.items.push(state.columns[ci].items[ii]);
         }
       }
-      // Recombine lines that were previously split. Two lines with the
-      // same menu_item_id / name / modifier signature / notes are treated
-      // as one — prices sum and we keep the first one's item_id (the
-      // other's backend item gets DELETEd by check-overview's onSave).
-      target.items = _collapseDuplicates(target.items);
       state.columns = [target];
       clearMode();
     }
