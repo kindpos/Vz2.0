@@ -212,9 +212,11 @@ defineScene({
     function renderOps() {
       while (opsBody.firstChild) opsBody.removeChild(opsBody.firstChild);
       var list;
-      if (state.mode === 'split') list = ['CANCEL'];
-      else if (state.mode === 'move') list = ['CANCEL'];
-      else list = ops;
+      if (state.mode === 'move' || state.mode === 'split') {
+        list = ['CANCEL'];
+      } else {
+        list = ops;
+      }
       for (var ri = 0; ri < list.length; ri++) {
         opsBody.appendChild(buildOpBtn(list[ri]));
       }
@@ -801,8 +803,6 @@ defineScene({
 
     // Initial render
     renderColumns();
-    // Auto-enter the requested mode (e.g. 'move' when launched from check-overview).
-    if (params.initialMode) handleOp(params.initialMode.toUpperCase());
   },
 
   unmount: function(state) {
