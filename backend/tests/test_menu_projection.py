@@ -116,6 +116,31 @@ class TestMenuProjection:
         assert len(state.categories) == 1
         assert state.categories[0]['name'] == 'Appetizers'
 
+    def test_category_deleted(self):
+        e1 = _evt(EventType.MENU_CATEGORY_CREATED, {
+            'category_id': 'cat-1',
+            'name': 'Apps',
+            'label': 'Apps',
+            'display_order': 1,
+        })
+        e2 = _evt(EventType.MENU_CATEGORY_DELETED, {'category_id': 'cat-1'})
+        state = project_menu([e1, e2])
+        assert len(state.categories) == 0
+
+    def test_category_deleted_orphans_items_without_removing_them(self):
+        events = [
+            _evt(EventType.MENU_CATEGORY_CREATED, {
+                'category_id': 'cat-1', 'name': 'Apps', 'label': 'Apps', 'display_order': 1,
+            }),
+            _evt(EventType.MENU_ITEM_CREATED, {
+                'item_id': 'i1', 'name': 'Wings', 'price': 10.00, 'category_id': 'cat-1',
+            }),
+            _evt(EventType.MENU_CATEGORY_DELETED, {'category_id': 'cat-1'}),
+        ]
+        state = project_menu(events)
+        assert len(state.categories) == 0
+        assert len(state.items) == 1  # items are not auto-deleted with the category
+
     def test_items_by_category(self):
         events = [
             _evt(EventType.MENU_ITEM_CREATED, {
