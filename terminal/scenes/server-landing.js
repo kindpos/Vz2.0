@@ -151,12 +151,15 @@ function buildNewCheckTile(onClick) {
 
 
 // ── Tip row ───────────────────────────────────────
-function buildTipRow(chk, onTap) {
+function buildTipRow(chk, onTap, isActive) {
   var adjusted = chk.adjusted;
   var row = document.createElement('div');
   row.style.cssText = [
     'display:flex;align-items:center;gap:10px;',
     'padding:8px 6px;border-radius:6px;cursor:pointer;',
+    'touch-action:manipulation;pointer-events:auto;',
+    'border-left:3px solid ' + (isActive ? T.elec : 'transparent') + ';',
+    'box-sizing:border-box;',
     'background:' + (adjusted ? hexToRgba(T.green, 0.06) : 'transparent') + ';',
     'transition:background 0.12s;',
   ].join('');
@@ -261,7 +264,9 @@ defineScene({
     var tipSparkBg = buildTipSparkBg({ data: [0] });
     tipResult.insertBefore(tipSparkBg.el, tipResult.firstChild);
 
-    var tipFilter = 'UNADJ';
+    var tipFilter      = 'UNADJ';
+    var activeCheckId  = null;
+    var tipNumpadPanel = null;
 
     // Tips header
     var tipHdr = document.createElement('div');
@@ -294,10 +299,15 @@ defineScene({
     tipHdr.appendChild(tipsTotal);
     tipResult.appendChild(tipHdr);
 
+    // Body: list + optional inline numpad
+    var tipBody = document.createElement('div');
+    tipBody.style.cssText = 'flex:1;display:flex;flex-direction:row;min-height:0;overflow:hidden;';
+    tipResult.appendChild(tipBody);
+
     // Scrollable tip rows
     var tipList = document.createElement('div');
     tipList.style.cssText = 'flex:1;overflow-y:auto;min-height:0;padding:6px 10px;display:flex;flex-direction:column;gap:2px;';
-    tipResult.appendChild(tipList);
+    tipBody.appendChild(tipList);
 
     // Checkout pill — inside tip card footer, no float positioning
     var checkoutBtn = buildPillButton({ label: 'CHECKOUT', color: T.green, darkBg: T.greenDk });
@@ -448,11 +458,8 @@ defineScene({
 
       filtered.forEach(function(chk) {
         r.tipList.appendChild(buildTipRow(chk, function(c) {
-          SceneManager.openTransactional('co-adjust-single', {
-            check: c,
-            onDone: function() { refresh(); },
-          });
-        }));
+          openTipNumpad(c);
+        }, chk.checkId === activeCheckId));
       });
 
       if (filtered.length === 0) {
@@ -509,6 +516,111 @@ defineScene({
         closedChecks.forEach(function(c) { running += c.tip || 0; cumulative.push(running); });
         r.tipSparkBg.update(cumulative);
       }
+    }
+
+    // ─────────────────────────────────────────────
+    //  INLINE TIP NUMPAD
+    // ─────────────────────────────────────────────
+    function closeTipNumpad() {
+      if (tipNumpadPanel && tipNumpadPanel.parentNode) {
+        tipNumpadPanel.parentNode.removeChild(tipNumpadPanel);
+      }
+      tipNumpadPanel = null;
+    }
+
+    function openTipNumpad(chk) {
+      if (activeCheckId === chk.checkId) {
+        activeCheckId = null;
+        closeTipNumpad();
+        renderTipQueue();
+        return;
+      }
+
+      activeCheckId = chk.checkId;
+      closeTipNumpad();
+      renderTipQueue();
+
+      var startVal = (tipFilter === 'ADJ' && chk.adjusted && chk.tip) ? chk.tip : 0;
+      var digits   = startVal > 0 ? String(parseFloat(startVal).toFixed(2)) : '0';
+
+      var panel = document.createElement('div');
+      panel.style.cssText = [
+        'width:130px;flex-shrink:0;display:flex;flex-direction:column;',
+        'border-left:1px solid ' + hexToRgba(T.border, 0.3) + ';',
+        'padding:6px 8px;gap:4px;box-sizing:border-box;',
+      ].join('');
+      tipNumpadPanel = panel;
+      tipBody.appendChild(panel);
+
+      var display = document.createElement('div');
+      display.style.cssText = [
+        'font-family:' + T.fh + ';font-size:18px;font-weight:700;',
+        'color:' + T.gold + ';text-align:right;',
+        'padding:4px 2px 6px;flex-shrink:0;letter-spacing:0.02em;',
+        'border-bottom:1px solid ' + hexToRgba(T.border, 0.3) + ';',
+      ].join('');
+      panel.appendChild(display);
+
+      function updateDisplay() {
+        var v = parseFloat(digits) || 0;
+        display.textContent = '$' + v.toFixed(2);
+      }
+      updateDisplay();
+
+      var grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;flex:1;min-height:0;';
+      panel.appendChild(grid);
+
+      ['7','8','9','4','5','6','1','2','3','.','0','⌫'].forEach(function(k) {
+        var btn = document.createElement('div');
+        btn.textContent = k;
+        btn.style.cssText = [
+          'font-family:' + T.fb + ';font-size:15px;color:' + T.text + ';',
+          'display:flex;align-items:center;justify-content:center;',
+          'border-radius:5px;min-height:30px;cursor:pointer;',
+          'background:' + hexToRgba(T.border, 0.12) + ';',
+          'touch-action:manipulation;pointer-events:auto;user-select:none;',
+        ].join('');
+        btn.addEventListener('pointerdown',  function() { btn.style.background = hexToRgba(T.elec, 0.25); });
+        btn.addEventListener('pointerleave', function() { btn.style.background = hexToRgba(T.border, 0.12); });
+        btn.addEventListener('pointerup',    function() {
+          btn.style.background = hexToRgba(T.border, 0.12);
+          if (k === '⌫') {
+            digits = digits.length > 1 ? digits.slice(0, -1) : '0';
+          } else if (k === '.') {
+            if (digits.indexOf('.') === -1) digits += '.';
+          } else {
+            digits = (digits === '0') ? k : digits + k;
+          }
+          updateDisplay();
+        });
+        grid.appendChild(btn);
+      });
+
+      var confirmBtn = buildPillButton({ label: 'SAVE', color: T.elec, darkBg: darkenHex(T.elec, 0.3) });
+      confirmBtn.style.flexShrink = '0';
+      confirmBtn.style.marginTop  = '4px';
+      panel.appendChild(confirmBtn);
+
+      confirmBtn.addEventListener('pointerup', function() {
+        var tipVal = parseFloat(digits) || 0;
+        var checks = state.salesData.checks || [];
+        for (var i = 0; i < checks.length; i++) {
+          if (checks[i].checkId === chk.checkId || checks[i].id === chk.checkId) {
+            checks[i].tip      = tipVal;
+            checks[i].adjusted = true;
+            break;
+          }
+        }
+        fetch('/api/v1/checks/' + chk.checkId + '/tip', {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ tip: tipVal, adjusted: true }),
+        }).catch(function() {});
+        activeCheckId = null;
+        closeTipNumpad();
+        renderTipQueue();
+      });
     }
 
     // ─────────────────────────────────────────────
