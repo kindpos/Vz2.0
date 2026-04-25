@@ -67,8 +67,6 @@ import {
 } from './seats.js';
 import './column-editor.js';
 
-var _refreshInFlight = false;
-
 // ── Inject invisible scrollbar style ──
 (function() {
   if (document.getElementById('co-scroll-style')) return;
@@ -371,6 +369,14 @@ defineScene({
     get _commitManageSplit() { return _commitManageSplit; },
     get _persistSeats()  { return persistSeats; },
     get _addSeat()       { return addSeat; },
+    get openNameEditor()     { return openNameEditor; },
+    get refreshOrder()       { return refreshOrder; },
+    get _undoManage()        { return _undoManage; },
+    get enterManageMode()    { return enterManageMode; },
+    get exitManageMode()     { return exitManageMode; },
+    get _resetManageSession(){ return _resetManageSession; },
+    get forceSelectAll()     { return forceSelectAll; },
+    get toggleSeat()         { return toggleSeat; },
   },
 
   state: {
@@ -397,6 +403,7 @@ defineScene({
     _osActive:     false,
     _mountParams:  null,
     _seatsChain:   null,
+    _refreshInFlight: false,
     // MANAGE mode session state. _manageMode flips the action bar
     // and seats-container into the MANAGE toolbar + banner layout.
     // _manageSnapshot holds a deep copy of seats / paid / selection
@@ -1385,7 +1392,16 @@ function _undoManage(state) {
     showToast('Nothing to undo', { bg: T.gold });
     return;
   }
-  var patch = state._manageLog.pop();
+  // Peek before popping — un-undoable kinds must not be removed from the log.
+  var patch = state._manageLog[state._manageLog.length - 1];
+  if (patch.kind === 'merge-new-check-seats'
+      || patch.kind === 'merge-new-check-items') {
+    // The child check exists on the backend — no local undo.
+    showToast('Check split can’t be undone — hold RESET to revert the session',
+              { bg: T.verm, duration: 2500 });
+    return;
+  }
+  state._manageLog.pop();
   var undone = true;
 
   if (patch.kind === 'move') {
@@ -1398,19 +1414,13 @@ function _undoManage(state) {
     _removeSeatByIdIfEmpty(state, patch.newSeatId);
   } else if (patch.kind === 'split') {
     state.seats = _cloneSeats(patch.preSeats);
-  } else if (patch.kind === 'merge-new-check-seats'
-             || patch.kind === 'merge-new-check-items') {
-    // The child check exists on the backend — no local undo.
-    state._manageLog.push(patch);
-    showToast('Check split can’t be undone — hold RESET to revert the session',
-              { bg: T.verm, duration: 2500 });
-    return;
   } else {
     undone = false;
   }
 
   state.selected      = {};
   state.selectedItems = {};
+  _syncSelectedFromItems(state);
   rerenderTopArea(state);
   if (undone) showToast('Undone', { bg: T.greenWarm });
 }
@@ -3180,6 +3190,7 @@ function _buildDeleteSeatX(state, seatId) {
 // ═══════════════════════════════════════════════════
 
 function handlePrint(state) {
+  if (state._printing) return;
   if (!state.orderId) {
     entReport({
       code: 'UI-007', level: 'INFO',
@@ -3190,13 +3201,15 @@ function handlePrint(state) {
     showToast('Save items first', { bg: T.gold });
     return;
   }
+  state._printing = true;
   showToast('Printing receipt…', { bg: T.green });
-  fetch('/api/v1/orders/' + state.orderId + '/print/receipt', { method: 'POST' })
+  fetchWithTimeout('/api/v1/orders/' + state.orderId + '/print/receipt', { method: 'POST' }, 8000)
     .then(function(r) {
+      state._printing = false;
       if (r.ok) showToast('Receipt printed', { bg: T.greenWarm });
       else      showToast('Print failed', { bg: T.verm });
     })
-    .catch(function() { showToast('Print failed', { bg: T.verm }); });
+    .catch(function() { state._printing = false; showToast('Print failed', { bg: T.verm }); });
 }
 
 // ═══════════════════════════════════════════════════
@@ -3204,6 +3217,7 @@ function handlePrint(state) {
 // ═══════════════════════════════════════════════════
 
 function handleResend(state) {
+  if (state._resending) return;
   if (!state.orderId) {
     entReport({
       code: 'UI-007', level: 'INFO',
@@ -3214,13 +3228,15 @@ function handleResend(state) {
     showToast('Nothing to resend', { bg: T.gold });
     return;
   }
+  state._resending = true;
   showToast('Resending to kitchen…', { bg: T.green });
-  fetch('/api/v1/orders/' + state.orderId + '/resend', { method: 'POST' })
+  fetchWithTimeout('/api/v1/orders/' + state.orderId + '/resend', { method: 'POST' }, 8000)
     .then(function(r) {
+      state._resending = false;
       if (r.ok) showToast('Kitchen ticket sent', { bg: T.greenWarm });
       else      showToast('Resend failed', { bg: T.verm });
     })
-    .catch(function() { showToast('Resend failed', { bg: T.verm }); });
+    .catch(function() { state._resending = false; showToast('Resend failed', { bg: T.verm }); });
 }
 
 // ═══════════════════════════════════════════════════
@@ -3473,15 +3489,16 @@ function _voidItems(state, refs) {
     },
   });
 
-  // After the undo window, commit to backend
+  // After the undo window, commit to backend. Timer tracked so unmount can cancel it.
   if (state.orderId) {
-    setTimeout(function() {
+    var _voidTid = setTimeout(function() {
       for (var k = 0; k < snapshot.length; k++) {
         var iid = snapshot[k].item.item_id;
         if (!iid) continue;
-        fetch('/api/v1/orders/' + state.orderId + '/items/' + iid, { method: 'DELETE' });
+        fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items/' + iid, { method: 'DELETE' }, 8000);
       }
     }, 4200);
+    state._lpTimers.push(_voidTid);
   }
 }
 
@@ -3965,11 +3982,15 @@ function openNameEditor(state) {
     onConfirm:   function(name) {
       state.customerName = name;
       if (state.orderId) {
-        fetch('/api/v1/orders/' + state.orderId, {
+        fetchWithTimeout('/api/v1/orders/' + state.orderId, {
           method:  'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ customer_name: name }),
-        });
+        })
+          .then(function(r) {
+            if (!r.ok) showToast('Could not save name', { bg: T.verm });
+          })
+          .catch(function() { showToast('Could not save name', { bg: T.verm }); });
       }
       if (state._osActive) renderOrderSummary(state);
     },
@@ -4038,7 +4059,7 @@ function refreshOrder(state, params) {
   if (state._seatsChain) {
     return state._seatsChain.then(function() { return refreshOrder(state, params); });
   }
-  _refreshInFlight = true;
+  state._refreshInFlight = true;
 
   // 15s abort guard — matches order-entry's send/recall fetches so a hung
   // backend doesn't leave the refresh indicator silently pending. The
@@ -4047,7 +4068,7 @@ function refreshOrder(state, params) {
   state._refreshPromise = fetchWithTimeout('/api/v1/orders/' + state.orderId, { cache: 'no-store' }, 15000)
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(order) {
-      _refreshInFlight = false;
+      state._refreshInFlight = false;
       if (!order) return;
       state.order = order;
       state.checkNumber  = order.check_number || '';
@@ -4094,7 +4115,7 @@ function refreshOrder(state, params) {
       }
     })
     .catch(function() {
-      _refreshInFlight = false;
+      state._refreshInFlight = false;
     })
     .finally(function() {
       // Clear the per-state cache so a later tap on the same check
