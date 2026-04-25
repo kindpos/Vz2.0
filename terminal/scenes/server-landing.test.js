@@ -64,7 +64,11 @@ vi.mock('../../common/tokens.js', () => {
       selectionGrid: { unselectedBg: '#7e8896', unselectedFg: 'seatPalette', selectedBg: 'seatPalette', selectedFg: '#22252a', radius: '14px' },
     },
   };
-  return { T };
+  function chamfer(px) {
+    var c = px != null ? px : 10;
+    return 'polygon(' + c + 'px 0%, calc(100% - ' + c + 'px) 0%, 100% ' + c + 'px, 100% calc(100% - ' + c + 'px), calc(100% - ' + c + 'px) 100%, ' + c + 'px 100%, 0% calc(100% - ' + c + 'px), 0% ' + c + 'px)';
+  }
+  return { T, chamfer };
 });
 
 vi.mock('../theme-manager.js', () => {
@@ -307,7 +311,7 @@ describe('terminal/scenes/server-landing', () => {
     expect(state._refs.scGuests.setValue).toHaveBeenCalled();
   });
 
-  it('tip row pointerup opens tip-adjustment transactional with the check', async () => {
+  it('tip row pointerup opens inline tip-numpad (scrim + card appended to body)', async () => {
     const CHECK = { check_id: 'chk-1', status: 'closed', tip: 8.00, adjusted: false, total: 40.00 };
     global.fetch = vi.fn((url) => {
       if (String(url).indexOf('/api/v1/orders/day-summary') === 0) {
@@ -322,15 +326,12 @@ describe('terminal/scenes/server-landing', () => {
     expect(tipList).toBeDefined();
     const row = tipList.firstChild;
     expect(row).toBeDefined();
+
+    const bodyChildrenBefore = document.body.children.length;
     row.dispatchEvent(new Event('pointerup'));
 
-    expect(SceneManagerMock.openTransactional).toHaveBeenCalledWith(
-      'co-adjust-single',
-      expect.objectContaining({
-        check: expect.objectContaining({ check_id: 'chk-1' }),
-        onDone: expect.any(Function),
-      }),
-    );
+    // openTipNumpad appends a scrim + floating card to document.body
+    expect(document.body.children.length).toBe(bodyChildrenBefore + 2);
   });
 
   // ── Fetch rejection / refresh-guard release ─────────────────────────
