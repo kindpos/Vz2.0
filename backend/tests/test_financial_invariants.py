@@ -11,6 +11,7 @@ import pytest
 
 from app.core.financial_invariants import (
     DEFAULT_TOLERANCE,
+    InvariantResult,
     InvariantViolation,
     assert_all_2dp,
     assert_batch_settlement,
@@ -28,6 +29,8 @@ from app.core.financial_invariants import (
     check_pnl_identity,
     check_tender_reconciliation,
     check_tips_partition,
+    gate,
+    max_abs_diff,
 )
 
 
@@ -278,3 +281,90 @@ class TestDayClose:
             cash_expected=11.55,
         )
         assert all(r.ok for r in results), [r.message for r in results if not r.ok]
+
+
+# ── gate ────────────────────────────────────────────────────────────────────
+
+def _ok(name="pnl_identity"):
+    return InvariantResult(name=name, ok=True, diff=Decimal("0"), message="ok")
+
+def _fail(name="pnl_identity", diff="-15.00"):
+    return InvariantResult(name=name, ok=False, diff=Decimal(diff), message="identity drift")
+
+
+class TestGate:
+    def test_empty_input_returns_empty_list(self):
+        assert gate([]) == []
+
+    def test_all_passing_returns_results_unchanged(self):
+        r = gate([_ok("pnl_identity"), _ok("batch_settlement")])
+        assert len(r) == 2
+        assert all(x.ok for x in r)
+
+    def test_does_not_raise_when_strict_false(self):
+        r = gate([_fail()], strict=False)
+        assert len(r) == 1
+        assert not r[0].ok
+
+    def test_raises_first_failure_when_strict_true(self):
+        with pytest.raises(InvariantViolation) as exc:
+            gate([_fail("tender_reconciliation")], strict=True)
+        assert exc.value.name == "tender_reconciliation"
+
+    def test_raises_first_not_second_when_multiple_failures(self):
+        r1 = _fail("pnl_identity", "-15.00")
+        r2 = _fail("tender_reconciliation", "-55.00")
+        with pytest.raises(InvariantViolation) as exc:
+            gate([r1, r2], strict=True)
+        assert exc.value.name == "pnl_identity"
+
+    def test_context_string_does_not_suppress_raise(self):
+        with pytest.raises(InvariantViolation):
+            gate([_fail()], context="day_close", strict=True)
+
+    def test_mixed_returns_all_results(self):
+        r = gate([_ok("batch_settlement"), _fail("pnl_identity")], strict=False)
+        assert len(r) == 2
+        ok_names = {x.name for x in r if x.ok}
+        assert "batch_settlement" in ok_names
+
+    def test_passing_batch_in_strict_mode_does_not_raise(self):
+        results = gate(
+            [_ok("pnl_identity"), _ok("tender_reconciliation"), _ok("tips_partition")],
+            strict=True,
+        )
+        assert all(r.ok for r in results)
+
+
+# ── max_abs_diff ─────────────────────────────────────────────────────────────
+
+class TestMaxAbsDiff:
+    def test_empty_returns_zero(self):
+        assert max_abs_diff([]) == Decimal("0.00")
+
+    def test_all_passing_zero_diff_returns_zero(self):
+        assert max_abs_diff([_ok(), _ok()]) == Decimal("0")
+
+    def test_single_negative_diff(self):
+        assert max_abs_diff([_fail("pnl_identity", "-5.00")]) == Decimal("5.00")
+
+    def test_single_positive_diff(self):
+        r = InvariantResult(name="x", ok=False, diff=Decimal("12.50"), message="")
+        assert max_abs_diff([r]) == Decimal("12.50")
+
+    def test_returns_largest_of_several(self):
+        results = [
+            _fail("a", "-5.00"),
+            _fail("b", "15.00"),
+            _fail("c", "-3.00"),
+        ]
+        assert max_abs_diff(results) == Decimal("15.00")
+
+    def test_negative_larger_abs_than_positive(self):
+        r1 = InvariantResult(name="x", ok=False, diff=Decimal("10"), message="")
+        r2 = InvariantResult(name="y", ok=False, diff=Decimal("-20"), message="")
+        assert max_abs_diff([r1, r2]) == Decimal("20")
+
+    def test_mixed_passing_and_failing(self):
+        results = [_ok(), _fail("pnl_identity", "-7.00"), _ok()]
+        assert max_abs_diff(results) == Decimal("7.00")
