@@ -475,49 +475,39 @@ defineScene({
           target.items.push(state.columns[ci].items[ii]);
         }
       }
+      // Recombine items that were previously split — identified by a shared
+      // _splitGroup tag stamped onto each copy during doSplit. Independently
+      // ordered items (no _splitGroup) are never touched.
+      target.items = _collapseSplitGroups(target.items);
       state.columns = [target];
       clearMode();
     }
 
-    // Build a signature that's stable across split copies so MERGE can
-    // collapse them. Mods and notes are included so "Burger extra cheese"
-    // and "Burger no cheese" stay distinct.
-    function _itemSignature(it) {
-      var menuId = it.menu_item_id || '';
-      var name = it.name || '';
-      var notes = it.notes || '';
-      var modSig = '';
-      if (Array.isArray(it.mods) && it.mods.length) {
-        modSig = it.mods.map(function(m) {
-          return (m.prefix || '') + '|' + (m.name || '') + '|' + (m.price || 0);
-        }).sort().join(';');
-      }
-      return menuId + '::' + name + '::' + modSig + '::' + notes;
-    }
-
-    function _collapseDuplicates(items) {
+    // Recombine items that share a _splitGroup (stamped by doSplit).
+    // Prices are summed (restoring the original pre-split total) and the
+    // item_id from the first copy is kept. Items without a _splitGroup
+    // (independently ordered) pass through untouched.
+    function _collapseSplitGroups(items) {
       var out = [];
-      var indexBySig = {};
+      var indexByGroup = {};
       for (var i = 0; i < items.length; i++) {
         var it = items[i];
-        var sig = _itemSignature(it);
-        if (indexBySig[sig] !== undefined) {
-          var target = out[indexBySig[sig]];
-          target.price = Math.round((target.price + (it.price || 0)) * 100) / 100;
-          // Prefer an existing backend item_id so we PATCH instead of
-          // POST + orphan the old record.
-          if (!target.item_id && it.item_id) target.item_id = it.item_id;
+        var grp = it._splitGroup;
+        if (grp && indexByGroup[grp] !== undefined) {
+          var tgt = out[indexByGroup[grp]];
+          tgt.price = Math.round((tgt.price + (it.price || 0)) * 100) / 100;
+          if (!tgt.item_id && it.item_id) tgt.item_id = it.item_id;
         } else {
-          indexBySig[sig] = out.length;
+          if (grp) indexByGroup[grp] = out.length;
           out.push({
-            name: it.name,
-            qty: it.qty,
-            price: it.price,
-            item_id: it.item_id,
+            name:         it.name,
+            qty:          it.qty,
+            price:        it.price,
+            item_id:      it.item_id,
             menu_item_id: it.menu_item_id,
-            category: it.category,
-            mods: it.mods,
-            notes: it.notes,
+            category:     it.category,
+            mods:         it.mods,
+            notes:        it.notes,
           });
         }
       }
@@ -703,18 +693,24 @@ defineScene({
         var splitPrice = Math.round(effective / targetCount * 100) / 100;
         var remainder = Math.round((effective - splitPrice * targetCount) * 100) / 100;
 
+        // Unique tag shared by all copies of this split so doMerge can
+        // recombine them. Uses a counter + timestamp to avoid collisions
+        // when multiple items are split in one operation.
+        var splitGroup = 'sg-' + Date.now() + '-' + i;
+
         for (var t = 0; t < targetCount; t++) {
           var tIdx = targets[t];
           var price = splitPrice;
           if (t === 0) price = splitPrice + remainder; // first target absorbs rounding
           var splitItem = {
-            name: item.name,
-            qty: item.qty,
-            price: price,
+            name:         item.name,
+            qty:          item.qty,
+            price:        price,
             menu_item_id: item.menu_item_id,
-            category: item.category,
-            mods: [],
-            notes: item.notes,
+            category:     item.category,
+            mods:         [],
+            notes:        item.notes,
+            _splitGroup:  splitGroup,
           };
           // First copy keeps item_id so onSave can DELETE that exact
           // backend record before POSTing the rebuilt line.
