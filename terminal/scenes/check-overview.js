@@ -3286,6 +3286,11 @@ function handlePay(state, params) {
     return;
   }
 
+  if (state.order && state.order.status === 'closed') {
+    showToast('Check already settled', { bg: T.gold });
+    return;
+  }
+
   var selectedIds = getSelectedSeatIds(state);
   if (selectedIds.length === 0) {
     // No seats selected — default to "pay whole check" (all non-paid seats
@@ -3991,8 +3996,10 @@ function openSeatPaymentInterrupt(state, seatId, payments) {
     seatId:   seatId,
     payments: payments,
     onConfirm: function(paymentId) {
-      fetch('/api/v1/orders/' + state.orderId + '/payments/' + paymentId, {
-        method:  'DELETE',
+      fetch('/api/v1/orders/' + state.orderId + '/payments/' + paymentId + '/void', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ reason: 'Voided from check overview' }),
       }).then(function(r) {
         if (r.ok) {
           delete state.paidSeats[seatId];
@@ -4057,6 +4064,7 @@ function refreshOrder(state, params) {
       if (Array.isArray(order.payments)) {
         for (var p = 0; p < order.payments.length; p++) {
           var pmt = order.payments[p];
+          if (pmt.status !== 'confirmed') continue;
           var seatNums = pmt.seat_numbers || [];
           for (var si = 0; si < state.seats.length; si++) {
             if (seatNums.indexOf(state.seats[si].number) < 0) continue;

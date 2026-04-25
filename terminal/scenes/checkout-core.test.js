@@ -9,6 +9,10 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
+// --- Hoisted capture (available inside vi.mock factories) ---
+
+const numpadStore = vi.hoisted(() => ({ opts: null, el: null }));
+
 // --- Mocks (vi.mock is hoisted; these run before any import) ---
 
 const registeredScenes = [];
@@ -45,7 +49,14 @@ vi.mock('../app.js', () => ({
 }));
 
 vi.mock('../numpad.js', () => ({
-  buildNumpad: () => document.createElement('div'),
+  buildNumpad: (opts) => {
+    const el = document.createElement('div');
+    el.setError = vi.fn();
+    el.clear    = vi.fn();
+    numpadStore.opts = opts || {};
+    numpadStore.el   = el;
+    return el;
+  },
 }));
 
 vi.mock('../theme-manager.js', () => ({
@@ -181,5 +192,274 @@ describe('terminal/scenes/checkout-core — co-void-confirm interrupt', () => {
     triggerPointerUp(findByText(container, 'CANCEL'));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  fmt — currency formatter
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('terminal/scenes/checkout-core — fmt', () => {
+  let _fmt;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const mod = await import('./checkout-core.js');
+    _fmt = mod.fmt;
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('formats zero as $0.00', () => {
+    expect(_fmt(0)).toBe('$0.00');
+  });
+
+  it('formats a positive amount with two decimal places', () => {
+    expect(_fmt(45)).toBe('$45.00');
+  });
+
+  it('adds a thousands comma for large values', () => {
+    expect(_fmt(1000)).toBe('$1,000.00');
+  });
+
+  it('uses the minus sign (U+2212) for negative values', () => {
+    expect(_fmt(-5.50)).toBe('−$5.50');
+  });
+
+  it('treats null/undefined as zero', () => {
+    expect(_fmt(null)).toBe('$0.00');
+    expect(_fmt(undefined)).toBe('$0.00');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  buildBlockerBanner
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('terminal/scenes/checkout-core — buildBlockerBanner', () => {
+  let _buildBlockerBanner;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const mod = await import('./checkout-core.js');
+    _buildBlockerBanner = mod.buildBlockerBanner;
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('shows ALL CLEAR text when there are no messages', () => {
+    const el = _buildBlockerBanner([]);
+    expect(el.textContent).toContain('ALL CLEAR');
+  });
+
+  it('shows RESOLVE prefix when there are blocking messages', () => {
+    const el = _buildBlockerBanner(['Missing tips']);
+    expect(el.textContent).toContain('RESOLVE');
+    expect(el.textContent).toContain('Missing tips');
+  });
+
+  it('joins multiple messages with " + "', () => {
+    const el = _buildBlockerBanner(['Missing tips', 'Unadjusted checks']);
+    expect(el.textContent).toContain('Missing tips + Unadjusted checks');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  co-manager-pin interrupt
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('terminal/scenes/checkout-core — co-manager-pin interrupt', () => {
+  let sceneDef;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    await import('./checkout-core.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'co-manager-pin');
+    expect(sceneDef).toBeDefined();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  function mount(onConfirm, onCancel) {
+    const container = document.createElement('div');
+    sceneDef.render(container, {
+      onConfirm: onConfirm || vi.fn(),
+      onCancel:  onCancel  || vi.fn(),
+    });
+    return container;
+  }
+
+  it('renders a numpad into the container', () => {
+    const container = mount();
+    expect(container.children.length).toBeGreaterThan(0);
+    expect(numpadStore.el).not.toBeNull();
+  });
+
+  it('forwards onCancel to the numpad cancel callback', () => {
+    const onCancel = vi.fn();
+    mount(undefined, onCancel);
+    numpadStore.opts.onCancel();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onConfirm with the response data when the PIN is valid', async () => {
+    const onConfirm = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ valid: true, employee_id: 'mgr1', role: 'manager' }),
+    }));
+    mount(onConfirm);
+    numpadStore.opts.onSubmit('9999');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(onConfirm).toHaveBeenCalledWith({ valid: true, employee_id: 'mgr1', role: 'manager' });
+  });
+
+  it('calls numpad.setError when the PIN is invalid', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ valid: false }),
+    }));
+    mount();
+    numpadStore.opts.onSubmit('0000');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(numpadStore.el.setError).toHaveBeenCalledWith('Invalid PIN');
+  });
+
+  it('calls numpad.setError on network failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('Network error')));
+    mount();
+    numpadStore.opts.onSubmit('1234');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(numpadStore.el.setError).toHaveBeenCalledWith('PIN check failed');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  co-finalize-confirm interrupt
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('terminal/scenes/checkout-core — co-finalize-confirm interrupt', () => {
+  let sceneDef;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    await import('./checkout-core.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'co-finalize-confirm');
+    expect(sceneDef).toBeDefined();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  function mount(params) {
+    const container = document.createElement('div');
+    sceneDef.render(container, params || {});
+    return container;
+  }
+
+  it('displays the take-home amount formatted with fmt', () => {
+    const container = mount({ takeHome: 87.50, cashExpected: 32.00 });
+    expect(container.textContent).toContain('$87.50');
+  });
+
+  it('displays the cash-expected amount formatted with fmt', () => {
+    const container = mount({ takeHome: 87.50, cashExpected: 32.00 });
+    expect(container.textContent).toContain('$32.00');
+  });
+
+  it('CONFIRM button calls onConfirm', () => {
+    const onConfirm = vi.fn();
+    const container = mount({ takeHome: 50, cashExpected: 20, onConfirm });
+    const btn = Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent.trim().toUpperCase() === 'CONFIRM');
+    expect(btn).toBeDefined();
+    btn.dispatchEvent(new Event('pointerup'));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('CANCEL button calls onCancel', () => {
+    const onCancel = vi.fn();
+    const container = mount({ takeHome: 50, cashExpected: 20, onCancel });
+    const btn = Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent.trim().toUpperCase() === 'CANCEL');
+    expect(btn).toBeDefined();
+    btn.dispatchEvent(new Event('pointerup'));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  co-adjust-single transactional
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('terminal/scenes/checkout-core — co-adjust-single transactional', () => {
+  let sceneDef;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    await import('./checkout-core.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'co-adjust-single');
+    expect(sceneDef).toBeDefined();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  function mount(params) {
+    const container = document.createElement('div');
+    sceneDef.render(container, params || {});
+    return container;
+  }
+
+  it('shows "ADJUST TIP" title in default mode', () => {
+    const container = mount({ check: { check_id: 'c1', amount: 45.00 } });
+    expect(container.textContent).toContain('ADJUST TIP');
+  });
+
+  it('shows "EDIT TIP" title in edit mode', () => {
+    const container = mount({ check: { check_id: 'c1', amount: 45.00 }, mode: 'edit' });
+    expect(container.textContent).toContain('EDIT TIP');
+  });
+
+  it('shows the formatted check amount', () => {
+    const container = mount({ check: { check_id: 'c1', amount: 23.75 } });
+    expect(container.textContent).toContain('$23.75');
+  });
+
+  it('shows the table label and check label in the info block', () => {
+    const container = mount({
+      check: { check_id: 'c1', check_label: '042', table_label: 'T3', amount: 10.00 },
+    });
+    expect(container.textContent).toContain('T3');
+    expect(container.textContent).toContain('042');
+  });
+
+  it('shows the card brand when present', () => {
+    const container = mount({
+      check: { check_id: 'c1', amount: 10.00, card_brand: 'VISA' },
+    });
+    expect(container.textContent).toContain('VISA');
+  });
+
+  it('accepts camelCase check shape (checkId / checkLabel)', () => {
+    const container = mount({
+      check: { checkId: 'c99', checkLabel: '099', amount: 15.00 },
+    });
+    expect(container.textContent).toContain('099');
+  });
+
+  it('shows current tip row in edit mode when initialTip is provided', () => {
+    const container = mount({
+      check: { check_id: 'c1', amount: 50.00 },
+      mode: 'edit',
+      initialTip: 8.00,
+    });
+    expect(container.textContent).toContain('$8.00');
   });
 });
