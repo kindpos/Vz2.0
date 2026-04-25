@@ -240,7 +240,7 @@ function openTransactional(sceneName, params) {
 
   var scrim = document.createElement('div');
   scrim.className = 'layer-scrim layer-scrim-transactional';
-  scrim.style.cssText = 'position:absolute;inset:0;background:' + T.scrimWorking + ';';
+  scrim.style.cssText = 'position:absolute;inset:0;background:' + T.scrimInterrupt + ';';
   _layerTransactional.appendChild(scrim);
 
   var frame = document.createElement('div');
