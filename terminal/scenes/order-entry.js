@@ -421,6 +421,10 @@ defineScene({
       currentCheckNumber = params.recallCheckNumber || null;
       recallFromBackend(params.recallOrderId);
     }
+
+    if (window._header && window._header.setBackHandler) {
+      window._header.setBackHandler(handleClose);
+    }
   },
 
   unmount: function() {
@@ -434,7 +438,9 @@ defineScene({
       if (hasUnsent && !isSending) handleSaveOnly();
     } catch (_) { /* best-effort only */ }
 
-    // if (_header) { _header.destroy(); _header = null; }
+    if (window._header && window._header.setBackHandler) {
+      window._header.setBackHandler(null);
+    }
     OrderSummary.unlockItemRender();
     OrderSummary.hide();
     if (_modPanel) { _modPanel.destroy(); _modPanel = null; }
