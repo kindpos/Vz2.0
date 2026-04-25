@@ -83,14 +83,15 @@ defineScene({
       for (var ii = 0; ii < sc.items.length; ii++) {
         var it = sc.items[ii];
         items.push({
-          name: it.name,
-          qty: it.qty,
-          price: it.price,
-          item_id: it.item_id,
+          name:         it.name,
+          qty:          it.qty,
+          price:        it.price,
+          item_id:      it.item_id,
           menu_item_id: it.menu_item_id,
-          category: it.category,
-          mods: it.mods,
-          notes: it.notes,
+          category:     it.category,
+          mods:         it.mods,
+          notes:        it.notes,
+          _splitGroup:  it._splitGroup || undefined,
         });
       }
       state.columns.push({ id: sc.id, label: sc.label, items: items });

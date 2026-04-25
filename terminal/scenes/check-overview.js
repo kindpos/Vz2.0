@@ -3924,6 +3924,7 @@ function openEditSeats(state) {
           category:     it.category,
           mods:         it.mods,
           notes:        it.notes,
+          _splitGroup:  it._splitGroup || undefined,
         };
       }),
     });
