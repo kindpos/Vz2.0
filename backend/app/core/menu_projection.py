@@ -97,6 +97,11 @@ def project_menu(events: List[Event]) -> MenuState:
                 categories_map[cat_id].update(payload)
                 categories_map[cat_id].setdefault('universal_group_ids', [])
 
+        elif event.event_type == EventType.MENU_CATEGORY_DELETED:
+            cat_id = payload.get('category_id')
+            if cat_id in categories_map:
+                del categories_map[cat_id]
+
         elif event.event_type == EventType.MENU_ITEM_CREATED:
             item_id = payload.get('item_id')
             items_map[item_id] = payload

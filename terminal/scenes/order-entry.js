@@ -465,6 +465,7 @@ defineScene({
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
     _activeSeat    = 1;
+    _menuFetched   = false;
   },
 
   interrupts: {
