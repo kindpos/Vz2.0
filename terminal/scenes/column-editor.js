@@ -1,838 +1,913 @@
-// ═══════════════════════════════════════════════════
-//  KINDpos Terminal — column-editor  (Vz2.0)
-//  Transactional overlay: multi-column item editor.
-//  Works for seats within a check or checks within a selection.
-//
-//  SceneManager.openTransactional('column-editor', {
-//    columns: [{ id, label, items: [{ name, qty, price }] }],
-//    operations: ['MERGE', 'MOVE', 'SPLIT', 'TRANSFER'],
-//    onSave: function(columns) {},
-//  })
-// ═══════════════════════════════════════════════════
-
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
 import {
-  buildPillButton,
   buildStaticCard,
+  buildPillButton,
+  buildSectionLabel,
   hexToRgba,
   darkenHex,
 } from '../theme-manager.js';
 import { showToast } from '../components.js';
 import { entReport } from '../entomology-client.js';
+import '../styles.js';
 
-// ── Inject invisible scrollbar styles ──
-(function() {
-  if (document.getElementById('co-scroll-style')) return;
-  var s = document.createElement('style');
-  s.id = 'co-scroll-style';
-  s.textContent = '.co-scroll::-webkit-scrollbar{display:none}';
-  document.head.appendChild(s);
-})();
+function fmt(n) {
+  return '$' + (n || 0).toFixed(2);
+}
 
-function fmt(n) { return '$' + (n || 0).toFixed(2); }
+// ─────────────────────────────────────────────────────
+//  Utility helpers
+// ─────────────────────────────────────────────────────
 
-function colTotal(col) {
+function deepCopyColumns(columns) {
+  var copy = [];
+  for (var ci = 0; ci < columns.length; ci++) {
+    var sc = columns[ci];
+    var items = [];
+    for (var ii = 0; ii < sc.items.length; ii++) {
+      var it = sc.items[ii];
+      items.push({
+        name:         it.name,
+        qty:          it.qty,
+        price:        it.price,
+        item_id:      it.item_id,
+        menu_item_id: it.menu_item_id,
+        category:     it.category,
+        mods:         Array.isArray(it.mods) ? it.mods.slice() : [],
+        notes:        it.notes,
+        _splitRef:    it._splitRef,
+        isNewCheck:   it.isNewCheck,
+      });
+    }
+    copy.push({ id: sc.id, label: sc.label, items: items, isNewCheck: sc.isNewCheck });
+  }
+  return copy;
+}
+
+function sumColumn(colIdx, state) {
+  var col = state.columns[colIdx];
   var t = 0;
-  for (var i = 0; i < col.items.length; i++) t += col.items[i].qty * col.items[i].price;
+  for (var ii = 0; ii < col.items.length; ii++) t += col.items[ii].qty * col.items[ii].price;
   return t;
 }
 
-// Color assignments per operation.
-function _opColors(label) {
-  switch (label) {
-    case 'MERGE':    return { color: T.greenWarm, dark: T.greenWarmDk };
-    case 'CONFIRM':  return { color: T.greenWarm, dark: T.greenWarmDk };
-    case 'CANCEL':   return { color: T.verm,      dark: T.vermDk      };
-    case 'TRANSFER': return { color: T.gold,      dark: T.goldDk      };
-    case 'DONE':     return { color: T.greenWarm, dark: T.greenWarmDk };
-    default:         return { color: T.card,      dark: darkenHex(T.card, 0.4) };
+function projectedColTotal(colIdx, state) {
+  var col = state.columns[colIdx];
+  var total = 0;
+  for (var ii = 0; ii < col.items.length; ii++) {
+    var sel = false;
+    for (var si = 0; si < state.selectedItems.length; si++) {
+      if (state.selectedItems[si].colIdx === colIdx && state.selectedItems[si].itemIdx === ii) {
+        sel = true; break;
+      }
+    }
+    if (!sel) total += col.items[ii].qty * col.items[ii].price;
   }
+  for (var si2 = 0; si2 < state.selectedItems.length; si2++) {
+    var s = state.selectedItems[si2];
+    var src = state.columns[s.colIdx].items[s.itemIdx];
+    var dSet = {};
+    for (var tt = 0; tt < state.splitTargets.length; tt++) dSet[state.splitTargets[tt]] = true;
+    if (Object.keys(dSet).length === 0) dSet[s.colIdx] = true;
+    var tgts = Object.keys(dSet).map(Number);
+    var myIdx = tgts.indexOf(colIdx);
+    if (myIdx < 0) continue;
+    var modSum = Array.isArray(src.mods)
+      ? src.mods.reduce(function(a, m) { return a + (m.price || 0); }, 0) : 0;
+    var eff  = (src.price || 0) + modSum;
+    var sp   = Math.round(eff / tgts.length * 100) / 100;
+    var rem  = Math.round((eff - sp * tgts.length) * 100) / 100;
+    total += sp + (myIdx === 0 ? rem : 0);
+  }
+  return total;
+}
+
+function pushLog(label, state) {
+  state.actionLog.push({ label: label, columns: deepCopyColumns(state.columns) });
+}
+
+function clearMode(state) {
+  state.mode         = null;
+  state.selectedItems = [];
+  state.splitTargets  = [];
+  if (state.statusEl) state.statusEl.textContent = '';
+  renderOpsBar(state);
+  renderColumns(state);
+}
+
+function clearSelection(state) {
+  state.selectedItems = [];
+  state.splitTargets  = [];
+  renderColumns(state);
+}
+
+function updatePreviewTotals(state) {
+  if (state.mode !== 'split') return;
+  for (var ci = 0; ci < state.colEls.length; ci++) {
+    var refs = state.colEls[ci];
+    if (!refs) continue;
+    refs.hdrTotal.textContent = state.selectedItems.length === 0
+      ? fmt(sumColumn(ci, state))
+      : '~' + fmt(projectedColTotal(ci, state));
+  }
+}
+
+function _collapseSplitGroups(items) {
+  var out = [], byRef = {};
+  for (var i = 0; i < items.length; i++) {
+    var it  = items[i];
+    var ref = it._splitRef;
+    if (ref && byRef[ref] !== undefined) {
+      var tgt = out[byRef[ref]];
+      tgt.price = Math.round((tgt.price + (it.price || 0)) * 100) / 100;
+      if (!tgt.item_id && it.item_id) tgt.item_id = it.item_id;
+    } else {
+      if (ref) byRef[ref] = out.length;
+      out.push({
+        name: it.name, qty: it.qty, price: it.price,
+        item_id: it.item_id, menu_item_id: it.menu_item_id,
+        category: it.category, mods: it.mods, notes: it.notes,
+        _splitRef: ref || undefined,
+      });
+    }
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────────────
+//  Operation handlers
+// ─────────────────────────────────────────────────────
+
+function handleItemTap(colIdx, itemIdx, state) {
+  if (state.mode === 'merge') return;
+  var found = -1;
+  for (var i = 0; i < state.selectedItems.length; i++) {
+    if (state.selectedItems[i].colIdx === colIdx && state.selectedItems[i].itemIdx === itemIdx) {
+      found = i; break;
+    }
+  }
+  if (found >= 0) state.selectedItems.splice(found, 1);
+  else            state.selectedItems.push({ colIdx: colIdx, itemIdx: itemIdx });
+  if (state.mode === 'split') updatePreviewTotals(state);
+  renderColumns(state);
+}
+
+function handleColTap(colIdx, state) {
+  if (state.mode === 'split')                                    toggleSplitTarget(colIdx, state);
+  else if (state.mode === 'merge')                               doMerge(colIdx, state);
+  else if (state.selectedItems.length > 0)                      doMove(colIdx, state);
+}
+
+function toggleSplitTarget(colIdx, state) {
+  var found = state.splitTargets.indexOf(colIdx);
+  if (found >= 0) state.splitTargets.splice(found, 1);
+  else            state.splitTargets.push(colIdx);
+  if (state.statusEl)
+    state.statusEl.textContent =
+      'Select items · tap columns to target (' + state.splitTargets.length + ')';
+  updatePreviewTotals(state);
+  renderColumns(state);
+}
+
+function doMove(targetColIdx, state) {
+  pushLog('Moved to ' + state.columns[targetColIdx].label, state);
+  var sorted = state.selectedItems.slice().sort(function(a, b) {
+    return a.colIdx !== b.colIdx ? b.colIdx - a.colIdx : b.itemIdx - a.itemIdx;
+  });
+  var moved = [];
+  for (var i = 0; i < sorted.length; i++) {
+    moved.push(state.columns[sorted[i].colIdx].items.splice(sorted[i].itemIdx, 1)[0]);
+  }
+  moved.reverse();
+  for (var mi = 0; mi < moved.length; mi++) state.columns[targetColIdx].items.push(moved[mi]);
+  state.selectedItems = [];
+  renderColumns(state);
+}
+
+function doMerge(targetColIdx, state) {
+  pushLog('Merged into ' + state.columns[targetColIdx].label, state);
+  var target = state.columns[targetColIdx];
+  var allBefore = target.items.slice();
+  for (var ci = 0; ci < state.columns.length; ci++) {
+    if (ci === targetColIdx) continue;
+    for (var ii = 0; ii < state.columns[ci].items.length; ii++) {
+      target.items.push(state.columns[ci].items[ii]);
+    }
+  }
+  // Emit diagnostic for each split group recombined
+  var refsIn = {};
+  for (var ri = 0; ri < target.items.length; ri++) {
+    var ref = target.items[ri]._splitRef;
+    if (ref) refsIn[ref] = (refsIn[ref] || 0) + 1;
+  }
+  var refKeys = Object.keys(refsIn);
+  for (var rk = 0; rk < refKeys.length; rk++) {
+    if (refsIn[refKeys[rk]] > 1) {
+      entReport({ code: 'UI-013', level: 'INFO', source: 'column-editor.merge',
+        message: 'Split item recombined: ' + refKeys[rk],
+        ctx: { split_ref: refKeys[rk] } });
+    }
+  }
+  target.items = _collapseSplitGroups(target.items);
+  state.columns = [target];
+  clearMode(state);
+}
+
+function doSplit(state) {
+  if (state.selectedItems.length === 0) return;
+  pushLog('Split', state);
+  var bySource = {};
+  for (var si = 0; si < state.selectedItems.length; si++) {
+    var sel = state.selectedItems[si];
+    if (!bySource[sel.colIdx]) bySource[sel.colIdx] = [];
+    bySource[sel.colIdx].push(sel.itemIdx);
+  }
+  var extracted = [];
+  var srcKeys = Object.keys(bySource);
+  for (var k = 0; k < srcKeys.length; k++) {
+    var cidx = Number(srcKeys[k]);
+    var idxs = bySource[cidx].slice().sort(function(a, b) { return b - a; });
+    for (var ii = 0; ii < idxs.length; ii++) {
+      extracted.push({ item: state.columns[cidx].items.splice(idxs[ii], 1)[0], source: cidx });
+    }
+  }
+  for (var ei = 0; ei < extracted.length; ei++) {
+    var item   = extracted[ei].item;
+    var source = extracted[ei].source;
+    var dSet   = {};
+    for (var tt = 0; tt < state.splitTargets.length; tt++) dSet[state.splitTargets[tt]] = true;
+    if (Object.keys(dSet).length === 0) dSet[source] = true;
+    var targets = Object.keys(dSet).map(Number);
+    var n = targets.length;
+    var modSum  = Array.isArray(item.mods)
+      ? item.mods.reduce(function(a, m) { return a + (m.price || 0); }, 0) : 0;
+    var eff     = (item.price || 0) + modSum;
+    var sp      = Math.round(eff / n * 100) / 100;
+    var rem     = Math.round((eff - sp * n) * 100) / 100;
+    var splitRef = item.item_id || ('sr-' + Date.now() + '-' + ei);
+    for (var t = 0; t < n; t++) {
+      var splitItem = {
+        name: item.name, qty: item.qty,
+        price: sp + (t === 0 ? rem : 0),
+        menu_item_id: item.menu_item_id, category: item.category,
+        mods: [], notes: item.notes, _splitRef: splitRef,
+      };
+      if (t === 0 && item.item_id) splitItem.item_id = item.item_id;
+      state.columns[targets[t]].items.push(splitItem);
+    }
+    entReport({ code: 'UI-012', level: 'INFO', source: 'column-editor.split',
+      message: 'Item split across ' + n + ' seat(s): ' + item.name,
+      ctx: { split_ref: splitRef, item_name: item.name, seat_count: n } });
+  }
+  clearMode(state);
+}
+
+function handleAddSeat(state) {
+  var used = {};
+  for (var ci = 0; ci < state.columns.length; ci++) {
+    var m = state.columns[ci].label.match(/^S-?0*(\d+)$/i);
+    if (m) used[parseInt(m[1], 10)] = true;
+  }
+  var n = 1;
+  while (used[n]) n++;
+  var newCol = { id: 'NEW-' + n, label: 'S-' + String(n).padStart(3, '0'), items: [] };
+  state.columns.push(newCol);
+  if (state.mode === 'split') {
+    state.splitTargets.push(state.columns.length - 1);
+    if (state.statusEl)
+      state.statusEl.textContent =
+        'Select items · tap columns to target (' + state.splitTargets.length + ')';
+  }
+  showToast('Added ' + newCol.label, { bg: T.green });
+  renderColumns(state);
+}
+
+function handleAddCheck(state) {
+  if (state.selectedItems.length === 0) {
+    showToast('Select items first', { bg: T.gold });
+    return;
+  }
+  var n = state.columns.length + 1;
+  var label = 'CHK-' + String(n).padStart(3, '0');
+  pushLog('New check ' + label, state);
+  var sorted = state.selectedItems.slice().sort(function(a, b) {
+    return a.colIdx !== b.colIdx ? b.colIdx - a.colIdx : b.itemIdx - a.itemIdx;
+  });
+  var items = [];
+  for (var i = 0; i < sorted.length; i++) {
+    items.push(state.columns[sorted[i].colIdx].items.splice(sorted[i].itemIdx, 1)[0]);
+  }
+  items.reverse();
+  state.columns.push({ id: 'NEW-CHK-' + n, label: label, items: items, isNewCheck: true });
+  state.selectedItems = [];
+  showToast('Created ' + label, { bg: T.greenWarm });
+  renderColumns(state);
+}
+
+function handleUndo(state) {
+  if (state.actionLog.length === 0) return;
+  var entry = state.actionLog.pop();
+  state.columns      = entry.columns;
+  state.selectedItems = [];
+  state.splitTargets  = [];
+  state.mode          = null;
+  renderOpsBar(state);
+  renderColumns(state);
+}
+
+function handleUndoAll(state) {
+  if (!state.snapshot) return;
+  state.columns      = deepCopyColumns(state.snapshot);
+  state.actionLog    = [];
+  state.selectedItems = [];
+  state.splitTargets  = [];
+  state.mode          = null;
+  renderOpsBar(state);
+  renderColumns(state);
+}
+
+function handleConfirm(state) {
+  if (state.mode === 'split' && state.selectedItems.length > 0 && state.splitTargets.length > 0) {
+    doSplit(state);
+  }
+  if (state.onSave) state.onSave(state.columns);
+  SceneManager.closeTransactional('column-editor');
+}
+
+// ─────────────────────────────────────────────────────
+//  renderColumns(state)
+//
+//  Clears columnsArea and rebuilds every column card +
+//  the add card. Also re-wires all item / header taps.
+// ─────────────────────────────────────────────────────
+function renderColumns(state) {
+  var area = state.columnsArea;
+  while (area.firstChild) area.removeChild(area.firstChild);
+  state.colEls = [];
+  for (var ci = 0; ci < state.columns.length; ci++) {
+    area.appendChild(buildColumn(ci, state));
+  }
+  area.appendChild(buildAddCard(state));
+}
+
+// ─────────────────────────────────────────────────────
+//  buildColumn(colIdx, state) → card element
+//
+//  Renders one column card: header + scrollable item list.
+//  Registers the card refs in state.colEls[colIdx].
+//  Wires header tap (handleColTap) and item taps (handleItemTap).
+// ─────────────────────────────────────────────────────
+function buildColumn(colIdx, state) {
+  var col      = state.columns[colIdx];
+  var accent   = T.seatPalette[colIdx % T.seatPalette.length];
+  var isTarget = state.mode === 'split' && state.splitTargets.indexOf(colIdx) >= 0;
+  var nTargets = state.splitTargets.length;
+
+  // ── Card shell ────────────────────────────────────
+  var card = buildStaticCard({ accent: accent });
+  card.style.padding       = '0';
+  card.style.display       = 'flex';
+  card.style.flexDirection = 'column';
+  card.style.overflow      = 'hidden';
+  card.style.minWidth      = '220px';
+  card.style.maxWidth      = '300px';
+  card.style.flexShrink    = '0';
+
+  // ── Header ────────────────────────────────────────
+  var hdr = document.createElement('div');
+  hdr.style.background     = T.well;
+  hdr.style.height         = '32px';
+  hdr.style.display        = 'flex';
+  hdr.style.alignItems     = 'center';
+  hdr.style.justifyContent = 'space-between';
+  hdr.style.padding        = '0 14px';
+  hdr.style.flexShrink     = '0';
+  hdr.style.cursor         = 'pointer';
+  hdr.style.pointerEvents  = 'auto';
+  hdr.style.touchAction    = 'manipulation';
+
+  var hdrLabel = buildSectionLabel(col.label, T.green);
+  hdrLabel.style.flex = '1';
+  hdr.appendChild(hdrLabel);
+
+  var colTotal = col.items.reduce(function(s, it) { return s + it.qty * it.price; }, 0);
+  var hdrTotal = document.createElement('span');
+  hdrTotal.textContent      = fmt(colTotal);
+  hdrTotal.style.fontFamily = T.fb;
+  hdrTotal.style.fontSize   = T.fsB3;
+  hdrTotal.style.fontWeight = T.fwBold;
+  hdrTotal.style.color      = T.gold;
+  hdrTotal.style.flexShrink = '0';
+  hdr.appendChild(hdrTotal);
+
+  // Wire header tap
+  (function(idx) {
+    var h = function() { handleColTap(idx, state); };
+    hdr.addEventListener('pointerup', h);
+    state.listeners.push({ el: hdr, event: 'pointerup', handler: h });
+  })(colIdx);
+
+  card.appendChild(hdr);
+
+  // ── Item list ─────────────────────────────────────
+  var itemList = document.createElement('div');
+  itemList.className             = 'co-scroll';
+  itemList.style.flex            = '1';
+  itemList.style.minHeight       = '0';
+  itemList.style.overflowY       = 'auto';
+  itemList.style.scrollbarWidth  = 'none';
+  itemList.style.msOverflowStyle = 'none';
+  itemList.style.display         = 'flex';
+  itemList.style.flexDirection   = 'column';
+  itemList.style.padding         = '6px';
+
+  if (col.items.length === 0) {
+    var emptyEl = document.createElement('div');
+    emptyEl.textContent          = 'Empty';
+    emptyEl.style.flex           = '1';
+    emptyEl.style.display        = 'flex';
+    emptyEl.style.alignItems     = 'center';
+    emptyEl.style.justifyContent = 'center';
+    emptyEl.style.fontFamily     = T.fb;
+    emptyEl.style.fontSize       = T.fsB3;
+    emptyEl.style.color          = T.moon;
+    itemList.appendChild(emptyEl);
+  } else {
+    for (var ii = 0; ii < col.items.length; ii++) {
+      var item = col.items[ii];
+      var nameText = (item.qty > 1 ? item.qty + 'x ' : '') + item.name;
+
+      var isSelected = false;
+      for (var si = 0; si < state.selectedItems.length; si++) {
+        if (state.selectedItems[si].colIdx === colIdx && state.selectedItems[si].itemIdx === ii) {
+          isSelected = true;
+          break;
+        }
+      }
+
+      var row = document.createElement('div');
+      row.style.display       = 'flex';
+      row.style.alignItems    = 'center';
+      row.style.padding       = '6px 8px';
+      row.style.cursor        = 'pointer';
+      row.style.pointerEvents = 'auto';
+      row.style.touchAction   = 'manipulation';
+      row.style.userSelect    = 'none';
+
+      var nameSpan = document.createElement('span');
+      nameSpan.textContent    = nameText;
+      nameSpan.style.flex     = '1';
+      nameSpan.style.minWidth = '0';
+
+      var priceSpan = document.createElement('span');
+      priceSpan.textContent      = fmt(item.qty * item.price);
+      priceSpan.style.marginLeft = '8px';
+      priceSpan.style.flexShrink = '0';
+      priceSpan.style.fontFamily = T.fb;
+      priceSpan.style.fontSize   = T.fsB3;
+
+      if (isTarget) {
+        // Ghost row: column is a split destination
+        row.style.background   = hexToRgba(T.elec, 0.05);
+        row.style.borderBottom = '1px dashed ' + T.border;
+        nameSpan.style.color   = T.text;
+        priceSpan.style.color  = T.gold;
+
+        var badge = document.createElement('span');
+        badge.textContent      = '÷' + nTargets;
+        badge.style.fontFamily = T.fh;
+        badge.style.fontSize   = T.fsB4;
+        badge.style.fontWeight = T.fwBold;
+        badge.style.color      = T.elec;
+        badge.style.marginLeft = '6px';
+        badge.style.flexShrink = '0';
+
+        row.appendChild(nameSpan);
+        row.appendChild(badge);
+        row.appendChild(priceSpan);
+
+      } else if (isSelected) {
+        // Staged for move / split
+        row.style.opacity             = '0.45';
+        row.style.borderBottom        = '1px solid ' + T.border;
+        nameSpan.style.color          = T.text;
+        nameSpan.style.textDecoration = 'line-through';
+        priceSpan.style.color         = T.moon;
+
+        row.appendChild(nameSpan);
+        row.appendChild(priceSpan);
+
+      } else {
+        // Normal
+        row.style.borderBottom = '1px solid ' + T.border;
+        nameSpan.style.color   = T.text;
+        priceSpan.style.color  = T.gold;
+
+        row.appendChild(nameSpan);
+        row.appendChild(priceSpan);
+      }
+
+      // Wire item tap
+      (function(cIdx, iIdx) {
+        var h = function() { handleItemTap(cIdx, iIdx, state); };
+        row.addEventListener('pointerup', h);
+        state.listeners.push({ el: row, event: 'pointerup', handler: h });
+      })(colIdx, ii);
+
+      itemList.appendChild(row);
+    }
+  }
+
+  card.appendChild(itemList);
+
+  state.colEls.push({
+    el:       card,
+    hdr:      hdr,
+    hdrLabel: hdrLabel,
+    hdrTotal: hdrTotal,
+    itemList: itemList,
+  });
+
+  return card;
+}
+
+// ─────────────────────────────────────────────────────
+//  buildAddCard(state) → card element
+//
+//  72px narrow card pinned to the right of the columns
+//  area. Top half = + SEAT (T.green), bottom half =
+//  + CHECK (T.gold), divided by a dashed gradient line.
+// ─────────────────────────────────────────────────────
+function buildAddCard(state) {
+  // ── Card shell ────────────────────────────────────
+  var card = document.createElement('div');
+  card.style.width         = '72px';
+  card.style.flexShrink    = '0';
+  card.style.alignSelf     = 'stretch';
+  card.style.background    = T.card;
+  card.style.border        = '1px solid ' + T.border;
+  card.style.borderRadius  = T.chamferCard + 'px';
+  card.style.display       = 'flex';
+  card.style.flexDirection = 'column';
+  card.style.overflow      = 'hidden';
+
+  // ── Zone factory ──────────────────────────────────
+  function makeZone(plusColor, labelText, labelColor, onTap) {
+    var zone = document.createElement('div');
+    zone.style.flex           = '1';
+    zone.style.display        = 'flex';
+    zone.style.flexDirection  = 'column';
+    zone.style.alignItems     = 'center';
+    zone.style.justifyContent = 'center';
+    zone.style.gap            = '4px';
+    zone.style.cursor         = 'pointer';
+    zone.style.pointerEvents  = 'auto';
+    zone.style.touchAction    = 'manipulation';
+    zone.style.userSelect     = 'none';
+
+    zone.addEventListener('mouseenter', function() {
+      zone.style.background = 'rgba(255,255,255,0.05)';
+    });
+    zone.addEventListener('mouseleave', function() {
+      zone.style.background = '';
+    });
+
+    var plus = document.createElement('div');
+    plus.textContent         = '+';
+    plus.style.fontFamily    = T.fh;
+    plus.style.fontSize      = T.fsH4;   // 26px
+    plus.style.fontWeight    = T.fwBold;
+    plus.style.color         = plusColor;
+    plus.style.lineHeight    = '1';
+    plus.style.pointerEvents = 'none';
+
+    var lbl = document.createElement('div');
+    lbl.textContent         = labelText;
+    lbl.style.fontFamily    = T.fh;
+    lbl.style.fontSize      = '8px';
+    lbl.style.color         = labelColor;
+    lbl.style.textAlign     = 'center';
+    lbl.style.pointerEvents = 'none';
+
+    zone.appendChild(plus);
+    zone.appendChild(lbl);
+
+    zone.addEventListener('pointerup', onTap);
+    state.listeners.push({ el: zone, event: 'pointerup', handler: onTap });
+
+    return zone;
+  }
+
+  // ── Top zone — + SEAT ─────────────────────────────
+  card.appendChild(makeZone(
+    T.green,
+    'NEW SEAT',
+    hexToRgba(T.green, 0.6),
+    function() { handleAddSeat(state); }
+  ));
+
+  // ── Dashed divider ────────────────────────────────
+  var divider = document.createElement('div');
+  divider.style.height     = '1px';
+  divider.style.flexShrink = '0';
+  divider.style.background =
+    'repeating-linear-gradient(to right, ' +
+    T.border + ' 0, ' + T.border + ' 5px, ' +
+    'transparent 5px, transparent 10px)';
+  card.appendChild(divider);
+
+  // ── Bottom zone — + CHECK ─────────────────────────
+  card.appendChild(makeZone(
+    T.gold,
+    'NEW CHECK',
+    hexToRgba(T.gold, 0.6),
+    function() { handleAddCheck(state); }
+  ));
+
+  return card;
+}
+
+// ─────────────────────────────────────────────────────
+//  renderOpsBar(state)
+//
+//  Clears and rebuilds state.opsPanel with the correct
+//  pills for the current mode. Also (re)creates state.statusEl.
+// ─────────────────────────────────────────────────────
+function renderOpsBar(state) {
+  var panel = state.opsPanel;
+  while (panel.firstChild) panel.removeChild(panel.firstChild);
+
+  // SPLIT — hidden while in split mode
+  if (state.mode !== 'split') {
+    var splitBtn = buildPillButton({
+      label:    'SPLIT',
+      color:    T.elec,
+      darkBg:   T.elecDk,
+      fontSize: T.fsB2,
+    });
+    splitBtn.addEventListener('pointerup', function() {
+      state.mode          = 'split';
+      state.selectedItems = [];
+      state.splitTargets  = [];
+      if (state.statusEl) state.statusEl.textContent = 'Select items · tap columns to target';
+      renderOpsBar(state);
+      renderColumns(state);
+    });
+    panel.appendChild(splitBtn);
+  }
+
+  // MERGE — neutral bg normally; gold when mode === 'merge'
+  var mergeActive = state.mode === 'merge';
+  var mergeBtn = buildPillButton({
+    label:     'MERGE',
+    color:     mergeActive ? T.gold  : T.card,
+    darkBg:    mergeActive ? T.goldDk : darkenHex(T.card, 0.35),
+    textColor: mergeActive ? T.well  : T.text,
+    fontSize:  T.fsB2,
+  });
+  if (!mergeActive) mergeBtn.style.border = '1px solid ' + T.border;
+  mergeBtn.addEventListener('pointerup', function() {
+    state.mode = 'merge';
+    if (state.statusEl) state.statusEl.textContent = 'Tap a column to merge all into it';
+    renderOpsBar(state);
+  });
+  panel.appendChild(mergeBtn);
+
+  // CANCEL — visible only when a mode is active (mode !== null)
+  if (state.mode !== null) {
+    var cancelBtn = buildPillButton({
+      label:    'CANCEL',
+      color:    T.verm,
+      darkBg:   T.vermDk,
+      fontSize: T.fsB2,
+    });
+    cancelBtn.addEventListener('pointerup', function() { clearMode(state); });
+    panel.appendChild(cancelBtn);
+  }
+
+  // Status text — recreated each render; state.statusEl tracks the live node
+  var statusEl = document.createElement('span');
+  statusEl.style.fontFamily = T.fb;
+  statusEl.style.fontSize   = '10px';
+  statusEl.style.color      = hexToRgba(T.text, 0.6);
+  statusEl.style.flex       = '1';
+  statusEl.style.minWidth   = '0';
+  state.statusEl = statusEl;
+  panel.appendChild(statusEl);
+}
+
+// ─────────────────────────────────────────────────────
+//  renderBottomCluster(state) → cluster element
+//
+//  Builds the UNDO + CONFIRM pill cluster and wires the
+//  UNDO long-press (600 ms) fill animation + stubs.
+// ─────────────────────────────────────────────────────
+function renderBottomCluster(state) {
+  function track(el, event, handler) {
+    el.addEventListener(event, handler);
+    state.listeners.push({ el: el, event: event, handler: handler });
+  }
+
+  var cluster = document.createElement('div');
+  cluster.style.position = 'absolute';
+  cluster.style.bottom   = '14px';
+  cluster.style.right    = '14px';
+  cluster.style.display  = 'flex';
+  cluster.style.gap      = '8px';
+
+  // ── UNDO pill ─────────────────────────────────────
+  var undoBtn = buildPillButton({
+    label:     'UNDO',
+    color:     T.card,
+    darkBg:    darkenHex(T.card, 0.35),
+    textColor: T.text,
+    fontSize:  T.fsB2,
+  });
+  undoBtn.style.border   = '1px solid ' + T.border;
+  undoBtn.style.position = 'relative';
+  undoBtn.style.overflow = 'hidden';
+
+  // Wrap label text so it stacks above the fill layer
+  var undoLabel = document.createElement('span');
+  undoLabel.textContent    = 'UNDO';
+  undoLabel.style.position = 'relative';
+  undoLabel.style.zIndex   = '1';
+  undoBtn.textContent      = '';
+  undoBtn.appendChild(undoLabel);
+
+  // Step counter badge
+  if (state.actionLog.length > 0) {
+    var cntBadge = document.createElement('span');
+    cntBadge.textContent        = state.actionLog.length;
+    cntBadge.style.position     = 'absolute';
+    cntBadge.style.top          = '-6px';
+    cntBadge.style.right        = '-6px';
+    cntBadge.style.background   = T.elec;
+    cntBadge.style.color        = T.well;
+    cntBadge.style.borderRadius = T.pillRadius;
+    cntBadge.style.fontFamily   = T.fb;
+    cntBadge.style.fontSize     = T.fsB4;
+    cntBadge.style.fontWeight   = T.fwBold;
+    cntBadge.style.padding      = '1px 5px';
+    cntBadge.style.pointerEvents = 'none';
+    cntBadge.style.zIndex       = '2';
+    undoBtn.appendChild(cntBadge);
+  }
+
+  // Long-press fill layer (scaleX 0 → 1, T.verm)
+  var undoFill = document.createElement('div');
+  undoFill.style.position        = 'absolute';
+  undoFill.style.inset           = '0';
+  undoFill.style.background      = T.verm;
+  undoFill.style.transformOrigin = 'left center';
+  undoFill.style.transform       = 'scaleX(0)';
+  undoFill.style.transition      = 'none';
+  undoFill.style.borderRadius    = T.pillRadius;
+  undoFill.style.pointerEvents   = 'none';
+  undoFill.style.zIndex          = '0';
+  undoBtn.appendChild(undoFill);
+
+  if (state.actionLog.length === 0) undoBtn.setDisabled(true);
+
+  // Long-press interaction
+  var longPressTimer = null;
+
+  function _triggerUndoAll() {
+    undoFill.style.transition = 'transform 0.2s linear';
+    undoFill.style.transform  = 'scaleX(1)';
+    setTimeout(function() {
+      undoFill.style.transition = 'none';
+      undoFill.style.transform  = 'scaleX(0)';
+      handleUndoAll(state);
+    }, 200);
+  }
+
+  function _cancelFill() {
+    undoFill.style.transition = 'none';
+    undoFill.style.transform  = 'scaleX(0)';
+  }
+
+  track(undoBtn, 'pointerdown', function() {
+    if (undoBtn._disabled) return;
+    longPressTimer = setTimeout(function() {
+      longPressTimer = null;
+      _triggerUndoAll();
+    }, 600);
+  });
+
+  track(undoBtn, 'pointerup', function() {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+      handleUndo(state);
+    }
+  });
+
+  track(undoBtn, 'pointerleave', function() {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    _cancelFill();
+  });
+
+  track(undoBtn, 'pointercancel', function() {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    _cancelFill();
+  });
+
+  cluster.appendChild(undoBtn);
+
+  // ── CONFIRM pill ──────────────────────────────────
+  var confirmBtn = buildPillButton({
+    label:    'CONFIRM',
+    color:    T.greenWarm,
+    darkBg:   T.greenWarmDk,
+    fontSize: T.fsB2,
+  });
+  confirmBtn.addEventListener('pointerup', function() { handleConfirm(state); });
+  cluster.appendChild(confirmBtn);
+
+  return cluster;
 }
 
 defineScene({
   name: 'column-editor',
 
   state: {
-    listeners: [],
-    columns: [],
-    mode: null,          // null | 'move' | 'split'
-    selectedItems: [],   // [{ colIdx, itemIdx }]
-    splitTargets: [],    // [colIdx] for split destinations
-    colEls: [],          // DOM refs per column
-    opsPanel: null,
-    columnsArea: null,
-    statusEl: null,
-    onSave: null,
+    listeners:     [],
+    columns:       [],
+    mode:          null,
+    selectedItems: [],
+    splitTargets:  [],
+    colEls:        [],
+    opsPanel:      null,
+    columnsArea:   null,
+    statusEl:      null,
+    onSave:        null,
+    actionLog:     [],
+    snapshot:      null,
   },
 
   render: function(container, params, state) {
-    function track(el, event, handler) {
-      el.addEventListener(event, handler);
-      state.listeners.push({ el: el, event: event, handler: handler });
-    }
+    // ── Init state from params ────────────────────────
+    state.columns  = deepCopyColumns(params.columns || []);
+    state.snapshot = deepCopyColumns(params.columns || []);
+    state.onSave   = params.onSave || null;
 
-    // Deep copy columns so mutations don't affect caller. Preserve item
-    // metadata (item_id, menu_item_id, mods, …) so SPLIT can keep the
-    // original item_id on the first copy and the caller can PATCH
-    // existing backend items instead of POSTing duplicates.
-    state.columns = [];
-    var srcCols = params.columns || [];
-    for (var ci = 0; ci < srcCols.length; ci++) {
-      var sc = srcCols[ci];
-      var items = [];
-      for (var ii = 0; ii < sc.items.length; ii++) {
-        var it = sc.items[ii];
-        items.push({
-          name:         it.name,
-          qty:          it.qty,
-          price:        it.price,
-          item_id:      it.item_id,
-          menu_item_id: it.menu_item_id,
-          category:     it.category,
-          mods:         it.mods,
-          notes:        it.notes,
-          _splitRef:    it._splitRef || undefined,
-        });
-      }
-      state.columns.push({ id: sc.id, label: sc.label, items: items });
-    }
-    state.onSave = params.onSave || null;
-
+    // ── Root ──────────────────────────────────────────
     var root = document.createElement('div');
-    Object.assign(root.style, {
-      position:      'absolute',
-      inset:         '0',
-      background:    T.bg,
-      display:       'flex',
-      flexDirection: 'column',
-      overflow:      'hidden',
-    });
+    root.style.position      = 'absolute';
+    root.style.inset         = '0';
+    root.style.background    = T.bg;
+    root.style.display       = 'flex';
+    root.style.flexDirection = 'column';
+    root.style.overflow      = 'hidden';
     container.appendChild(root);
 
-    // ═══════════════════════════════════════════════════
-    //  Operations card (top bar)
-    // ═══════════════════════════════════════════════════
+    // ── Ops card ──────────────────────────────────────
+    var opsCard = buildStaticCard({ accent: T.green });
+    opsCard.style.margin        = '12px 12px 0';
+    opsCard.style.flexShrink    = '0';
+    opsCard.style.display       = 'flex';
+    opsCard.style.flexDirection = 'column';
 
-    var opsCard = document.createElement('div');
-    Object.assign(opsCard.style, {
-      margin:         '12px 12px 0',
-      borderRadius:   T.chamferCard + 'px',
-      background:     T.card,
-      borderLeft:     T.accentBarW + ' solid ' + T.green,
-      boxShadow:      '0 4px 16px rgba(0,0,0,0.28)',
-      display:        'flex',
-      flexDirection:  'column',
-      overflow:       'hidden',
-      flexShrink:     '0',
-    });
-
-    var opsH = document.createElement('div');
-    Object.assign(opsH.style, {
-      background:     T.well,
-      height:         '32px',
-      display:        'flex',
-      alignItems:     'center',
-      padding:        '0 14px',
-      fontFamily:     T.fh,
-      fontSize:       T.fsB3,
-      fontWeight:     T.fwBold,
-      letterSpacing:  '0.2em',
-      color:          T.green,
-      textTransform:  'uppercase',
-    });
-    opsH.textContent = 'OPERATIONS';
-    opsCard.appendChild(opsH);
+    opsCard.appendChild(buildSectionLabel('OPERATIONS', T.green));
 
     var opsBody = document.createElement('div');
-    Object.assign(opsBody.style, {
-      padding:    '10px 12px',
-      display:    'flex',
-      gap:        '10px',
-      alignItems: 'center',
-      flexWrap:   'wrap',
-    });
+    opsBody.style.display    = 'flex';
+    opsBody.style.gap        = '10px';
+    opsBody.style.alignItems = 'center';
+    opsBody.style.flexWrap   = 'wrap';
+    opsBody.style.marginTop  = '10px';
     state.opsPanel = opsBody;
 
-    // Status text (shows current mode instructions)
-    var statusEl = document.createElement('div');
-    Object.assign(statusEl.style, {
-      fontFamily: T.fb,
-      fontSize:   T.fsB3,
-      color:      hexToRgba(T.text, 0.75),
-      marginLeft: '8px',
-      flex:       '1',
-      minWidth:   '0',
-    });
-    state.statusEl = statusEl;
+    renderOpsBar(state);
 
-    // Operation buttons
-    var ops = params.operations || ['MERGE', 'MOVE', 'SPLIT', 'TRANSFER'];
-
-    function buildOpBtn(label) {
-      var c = _opColors(label);
-      var btn = buildPillButton({
-        label:    label,
-        color:    c.color,
-        darkBg:   c.dark,
-        fontSize: T.fsB2,
-        onClick:  function() { handleOp(label); },
-      });
-      // MOVE and SPLIT use T.card as their background, so the pill's internal
-      // handlers (which set text to `color` on press and `T.well` on release)
-      // produce dark-on-dark text. Override all pointer states to keep T.text.
-      if (c.color === T.card) {
-        btn.style.color = T.text;
-        btn.addEventListener('pointerdown',   function() { btn.style.color = T.text; });
-        btn.addEventListener('pointerup',     function() { btn.style.color = T.text; });
-        btn.addEventListener('pointerleave',  function() { btn.style.color = T.text; });
-        btn.addEventListener('pointercancel', function() { btn.style.color = T.text; });
-      }
-      return btn;
-    }
-
-    for (var oi = 0; oi < ops.length; oi++) {
-      opsBody.appendChild(buildOpBtn(ops[oi]));
-    }
-
-    // Done button (close overlay). In split mode, DONE first applies
-    // the staged split so the user doesn't need a separate CONFIRM step.
-    var doneBtn = buildPillButton({
-      label:    'DONE',
-      color:    T.greenWarm,
-      darkBg:   T.greenWarmDk,
-      fontSize: T.fsB2,
-      onClick:  function() {
-        if (state.mode === 'split' && state.selectedItems.length > 0 && state.splitTargets.length > 0) {
-          doSplit();
-        }
-        if (state.onSave) state.onSave(state.columns);
-        SceneManager.closeTransactional('column-editor');
-      },
-    });
-    opsBody.appendChild(doneBtn);
-
-    opsBody.appendChild(statusEl);
-
-    // Rebuild the ops panel for the current mode:
-    //  - split: CANCEL only — tapping DONE applies the split
-    //  - move:  CANCEL only (mode persists across moves)
-    //  - idle:  the full ops list
-    function renderOps() {
-      while (opsBody.firstChild) opsBody.removeChild(opsBody.firstChild);
-      var list;
-      if (state.mode === 'move' || state.mode === 'split') {
-        list = ['CANCEL'];
-      } else {
-        list = ops;
-      }
-      for (var ri = 0; ri < list.length; ri++) {
-        opsBody.appendChild(buildOpBtn(list[ri]));
-      }
-      opsBody.appendChild(doneBtn);
-      opsBody.appendChild(statusEl);
-    }
     opsCard.appendChild(opsBody);
     root.appendChild(opsCard);
 
-    // ═══════════════════════════════════════════════════
-    //  Columns area (horizontal scroll, each column vertical scroll)
-    // ═══════════════════════════════════════════════════
-
+    // ── Columns area ──────────────────────────────────
     var colsArea = document.createElement('div');
-    colsArea.className = 'ce-hscroll';
-    Object.assign(colsArea.style, {
-      flex:            '1',
-      margin:          '12px',
-      display:         'flex',
-      gap:             '10px',
-      overflowX:       'auto',
-      overflowY:       'hidden',
-      scrollbarWidth:  'none',
-      msOverflowStyle: 'none',
-    });
+    colsArea.style.flex            = '1';
+    colsArea.style.margin          = '12px';
+    colsArea.style.display         = 'flex';
+    colsArea.style.gap             = '10px';
+    colsArea.style.overflowX       = 'auto';
+    colsArea.style.overflowY       = 'hidden';
+    colsArea.style.scrollbarWidth  = 'none';
+    colsArea.style.msOverflowStyle = 'none';
     state.columnsArea = colsArea;
     root.appendChild(colsArea);
 
-    // ═══════════════════════════════════════════════════
-    //  Render columns
-    // ═══════════════════════════════════════════════════
+    // ── Bottom-right cluster ──────────────────────────
+    root.appendChild(renderBottomCluster(state));
 
-    function renderColumns() {
-      colsArea.innerHTML = '';
-      state.colEls = [];
-
-      for (var ci = 0; ci < state.columns.length; ci++) {
-        colsArea.appendChild(buildColumn(ci));
-      }
-
-      // Fixed "+" column on the right — matches buildAddTile in check-overview
-      var addCol = buildStaticCard({ accent: T.green });
-      Object.assign(addCol.style, {
-        minWidth:       '200px',
-        flexShrink:     '0',
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'center',
-        cursor:         'pointer',
-        userSelect:     'none',
-      });
-      var addPlus = document.createElement('div');
-      Object.assign(addPlus.style, {
-        fontFamily:  T.fh,
-        fontSize:    '48px',
-        fontWeight:  T.fwBold,
-        color:       T.green,
-        lineHeight:  '1',
-        userSelect:  'none',
-        pointerEvents: 'none',
-      });
-      addPlus.textContent = '+';
-      addCol.appendChild(addPlus);
-
-      track(addCol, 'pointerup', function() { handleAddColumn(); });
-      colsArea.appendChild(addCol);
-    }
-
-    function buildColumn(colIdx) {
-      var col = state.columns[colIdx];
-      var accent = T.seatPalette[colIdx % T.seatPalette.length];
-
-      var colEl = document.createElement('div');
-      Object.assign(colEl.style, {
-        minWidth:       '220px',
-        maxWidth:       '300px',
-        borderRadius:   T.chamferCard + 'px',
-        background:     T.card,
-        borderLeft:     T.accentBarW + ' solid ' + accent,
-        boxShadow:      '0 4px 16px rgba(0,0,0,0.28)',
-        display:        'flex',
-        flexDirection:  'column',
-        overflow:       'hidden',
-        flexShrink:     '0',
-      });
-
-      // Column header (tappable for split target)
-      var isSplitTarget = state.mode === 'split' && state.splitTargets.indexOf(colIdx) >= 0;
-      var hdr = document.createElement('div');
-      Object.assign(hdr.style, {
-        background:     isSplitTarget ? accent : T.well,
-        height:         '32px',
-        display:        'flex',
-        alignItems:     'center',
-        justifyContent: 'space-between',
-        padding:        '0 14px',
-        fontFamily:     T.fh,
-        fontSize:       T.fsB3,
-        fontWeight:     T.fwBold,
-        letterSpacing:  '0.2em',
-        color:          isSplitTarget ? T.moonText : T.green,
-        textTransform:  'uppercase',
-        cursor:         'pointer',
-      });
-
-      var hdrLabel = document.createElement('span');
-      hdrLabel.textContent = col.label;
-      hdr.appendChild(hdrLabel);
-
-      var hdrTotal = document.createElement('span');
-      hdrTotal.style.color = isSplitTarget ? T.moonText : T.gold;
-      var showPreview = state.mode === 'split' && state.selectedItems.length > 0;
-      hdrTotal.textContent = showPreview ? ('~' + fmt(projectedColTotal(colIdx))) : fmt(colTotal(col));
-      hdr.appendChild(hdrTotal);
-
-      track(hdr, 'pointerup', (function(idx) {
-        return function() { handleColumnTap(idx); };
-      })(colIdx));
-
-      colEl.appendChild(hdr);
-
-      // Item list (vertical scroll)
-      var itemList = document.createElement('div');
-      itemList.className = 'ce-scroll co-scroll';
-      Object.assign(itemList.style, {
-        flex:            '1',
-        minHeight:       '0',
-        overflowY:       'auto',
-        scrollbarWidth:  'none',
-        msOverflowStyle: 'none',
-        padding:         '6px',
-      });
-
-      for (var ii = 0; ii < col.items.length; ii++) {
-        var item = col.items[ii];
-        var row = document.createElement('div');
-        Object.assign(row.style, {
-          display:        'flex',
-          justifyContent: 'space-between',
-          padding:        '6px 8px',
-          fontFamily:     T.fb,
-          fontSize:       T.fsB3,
-          color:          T.text,
-          cursor:         'pointer',
-          borderBottom:   '1px solid ' + hexToRgba(T.border, 0.4),
-          borderRadius:   '4px',
-        });
-
-        // Reapply selection highlight if this item is still selected
-        // (selection survives re-renders during move/split).
-        var isSelected = false;
-        for (var si = 0; si < state.selectedItems.length; si++) {
-          if (state.selectedItems[si].colIdx === colIdx && state.selectedItems[si].itemIdx === ii) {
-            isSelected = true;
-            break;
-          }
-        }
-        if (isSelected) {
-          row.style.background = T.elec;
-          row.style.color      = T.well;
-        }
-
-        var nameEl = document.createElement('span');
-        nameEl.textContent = (item.qty > 1 ? item.qty + 'x ' : '') + item.name;
-        row.appendChild(nameEl);
-
-        var priceEl = document.createElement('span');
-        priceEl.style.color = isSelected ? T.well : T.gold;
-        priceEl.textContent = fmt(item.qty * item.price);
-        row.appendChild(priceEl);
-
-        // Item tap for move/split selection
-        (function(cIdx, iIdx, rowEl) {
-          track(rowEl, 'pointerup', function() {
-            handleItemTap(cIdx, iIdx, rowEl);
-          });
-        })(colIdx, ii, row);
-
-        itemList.appendChild(row);
-      }
-
-      if (col.items.length === 0) {
-        var emptyEl = document.createElement('div');
-        Object.assign(emptyEl.style, {
-          fontFamily: T.fb,
-          fontSize:   T.fsB3,
-          color:      hexToRgba(T.text, 0.55),
-          textAlign:  'center',
-          padding:    '16px 0',
-        });
-        emptyEl.textContent = 'Empty';
-        itemList.appendChild(emptyEl);
-      }
-
-      colEl.appendChild(itemList);
-
-      state.colEls.push({ el: colEl, hdr: hdr, hdrLabel: hdrLabel, hdrTotal: hdrTotal, itemList: itemList });
-      return colEl;
-    }
-
-    // ═══════════════════════════════════════════════════
-    //  Operation handlers
-    // ═══════════════════════════════════════════════════
-
-    function handleOp(op) {
-      if (op === 'MERGE') doMerge();
-      else if (op === 'MOVE') enterMoveMode();
-      else if (op === 'SPLIT') enterSplitMode();
-      else if (op === 'TRANSFER') doTransfer();
-      else if (op === 'CANCEL') cancelMode();
-      else if (op === 'CONFIRM') confirmAction();
-    }
-
-    function setStatus(text) {
-      state.statusEl.textContent = text;
-    }
-
-    function clearMode() {
-      state.mode = null;
-      state.selectedItems = [];
-      state.splitTargets = [];
-      setStatus('');
-      renderOps();
-      renderColumns();
-    }
-
-    // Clear pending selection/targets but keep the current mode active.
-    // Used so MOVE persists across moves until the user cancels.
-    function clearSelection() {
-      state.selectedItems = [];
-      state.splitTargets = [];
-      renderColumns();
-    }
-
-    function cancelMode() {
-      clearMode();
-    }
-
-    function confirmAction() {
-      if (state.mode === 'split') doSplit();
-    }
-
-    // ── MERGE ──
-    function doMerge() {
-      if (state.columns.length < 2) return;
-      var target = state.columns[0];
-      for (var ci = 1; ci < state.columns.length; ci++) {
-        for (var ii = 0; ii < state.columns[ci].items.length; ii++) {
-          target.items.push(state.columns[ci].items[ii]);
-        }
-      }
-      // Recombine items that were previously split — identified by a shared
-      // _splitRef tag stamped onto each copy during doSplit. Independently
-      // ordered items (no _splitRef) are never touched.
-      var allItems = target.items.slice();
-      target.items = _collapseSplitGroups(target.items);
-
-      // Emit a diagnostic for each split group that was actually recombined.
-      var refsIn = {};
-      for (var ri = 0; ri < allItems.length; ri++) {
-        var ref = allItems[ri]._splitRef;
-        if (ref) refsIn[ref] = (refsIn[ref] || 0) + 1;
-      }
-      var refKeys = Object.keys(refsIn);
-      for (var rk = 0; rk < refKeys.length; rk++) {
-        if (refsIn[refKeys[rk]] > 1) {
-          entReport({
-            code:    'UI-013',
-            level:   'INFO',
-            source:  'column-editor.merge',
-            message: 'Split item recombined: ' + refKeys[rk],
-            ctx:     { split_ref: refKeys[rk], order_id: params.orderId || null, copies: refsIn[refKeys[rk]] },
-          });
-        }
-      }
-
-      state.columns = [target];
-      clearMode();
-    }
-
-    // Recombine items that share a _splitGroup (stamped by doSplit).
-    // Prices are summed (restoring the original pre-split total) and the
-    // item_id from the first copy is kept. Items without a _splitGroup
-    // (independently ordered) pass through untouched.
-    function _collapseSplitGroups(items) {
-      var out = [];
-      var indexByRef = {};
-      for (var i = 0; i < items.length; i++) {
-        var it = items[i];
-        var ref = it._splitRef;
-        if (ref && indexByRef[ref] !== undefined) {
-          var tgt = out[indexByRef[ref]];
-          tgt.price = Math.round((tgt.price + (it.price || 0)) * 100) / 100;
-          if (!tgt.item_id && it.item_id) tgt.item_id = it.item_id;
-        } else {
-          if (ref) indexByRef[ref] = out.length;
-          out.push({
-            name:         it.name,
-            qty:          it.qty,
-            price:        it.price,
-            item_id:      it.item_id,
-            menu_item_id: it.menu_item_id,
-            category:     it.category,
-            mods:         it.mods,
-            notes:        it.notes,
-            _splitRef:    ref || undefined,
-          });
-        }
-      }
-      return out;
-    }
-
-    // ── MOVE ──
-    function enterMoveMode() {
-      state.mode = 'move';
-      state.selectedItems = [];
-      setStatus('Select items, then tap a column header or + (CANCEL to exit)');
-      renderOps();
-      renderColumns();
-    }
-
-    // ── SPLIT ──
-    function enterSplitMode() {
-      state.mode = 'split';
-      state.selectedItems = [];
-      state.splitTargets = [];
-      setStatus('Select items, tap the checks to split across. Tap DONE when ready.');
-      renderOps();
-      renderColumns();
-    }
-
-    function handleItemTap(colIdx, itemIdx, rowEl) {
-      if (state.mode !== 'move' && state.mode !== 'split') return;
-
-      var found = -1;
-      for (var i = 0; i < state.selectedItems.length; i++) {
-        if (state.selectedItems[i].colIdx === colIdx && state.selectedItems[i].itemIdx === itemIdx) {
-          found = i;
-          break;
-        }
-      }
-
-      if (found >= 0) {
-        state.selectedItems.splice(found, 1);
-        rowEl.style.background = '';
-        rowEl.style.color = T.text;
-        var priceCell = rowEl.lastChild;
-        if (priceCell) priceCell.style.color = T.gold;
-      } else {
-        state.selectedItems.push({ colIdx: colIdx, itemIdx: itemIdx });
-        rowEl.style.background = T.elec;
-        rowEl.style.color = T.well;
-        var priceCell2 = rowEl.lastChild;
-        if (priceCell2) priceCell2.style.color = T.well;
-      }
-      if (state.mode === 'split') updatePreviewTotals();
-    }
-
-    function handleColumnTap(colIdx) {
-      if (state.mode === 'move' && state.selectedItems.length > 0) {
-        doMove(colIdx);
-      } else if (state.mode === 'split') {
-        toggleSplitTarget(colIdx);
-      }
-    }
-
-    function handleAddColumn() {
-      var nextNum = state.columns.length + 1;
-      var newCol = { id: 'NEW-' + nextNum, label: 'S-' + String(nextNum).padStart(3, '0'), items: [] };
-
-      if (state.mode === 'move' && state.selectedItems.length > 0) {
-        // Move selected items into the new column; keep move mode active
-        // so the user can continue moving without re-tapping MOVE.
-        var moved = extractSelectedItems();
-        newCol.items = moved;
-        state.columns.push(newCol);
-        clearSelection();
-      } else if (state.mode === 'split') {
-        // Add new column as an extra split target; the split executes
-        // when the user taps DONE.
-        state.columns.push(newCol);
-        state.splitTargets.push(state.columns.length - 1);
-        setStatus('Select items, tap the checks to split across, then tap DONE  (' + state.splitTargets.length + ' targets)');
-        renderColumns();
-      } else {
-        state.columns.push(newCol);
-        renderColumns();
-      }
-    }
-
-    function extractSelectedItems() {
-      // Sort descending by itemIdx so splicing doesn't shift indices
-      var sorted = state.selectedItems.slice().sort(function(a, b) {
-        if (a.colIdx !== b.colIdx) return b.colIdx - a.colIdx;
-        return b.itemIdx - a.itemIdx;
-      });
-      var items = [];
-      for (var i = 0; i < sorted.length; i++) {
-        var s = sorted[i];
-        var removed = state.columns[s.colIdx].items.splice(s.itemIdx, 1)[0];
-        items.push(removed);
-      }
-      items.reverse();
-      return items;
-    }
-
-    function doMove(targetColIdx) {
-      var moved = extractSelectedItems();
-      for (var i = 0; i < moved.length; i++) {
-        state.columns[targetColIdx].items.push(moved[i]);
-      }
-      // Keep MOVE mode active so the user can move again without
-      // re-tapping MOVE. CANCEL exits.
-      clearSelection();
-    }
-
-    function toggleSplitTarget(colIdx) {
-      var found = state.splitTargets.indexOf(colIdx);
-      var refs = state.colEls[colIdx];
-      if (found >= 0) {
-        state.splitTargets.splice(found, 1);
-        if (refs) {
-          refs.hdr.style.background  = T.well;
-          refs.hdr.style.color       = T.green;
-          refs.hdrTotal.style.color  = T.gold;
-        }
-      } else {
-        state.splitTargets.push(colIdx);
-        if (refs) {
-          var accent = T.seatPalette[colIdx % T.seatPalette.length];
-          refs.hdr.style.background  = accent;
-          refs.hdr.style.color       = T.moonText;
-          refs.hdrTotal.style.color  = T.moonText;
-        }
-      }
-      setStatus('Select items, tap the checks to split across, then tap DONE  (' + state.splitTargets.length + ' targets)');
-      updatePreviewTotals();
-    }
-
-    function doSplit() {
-      if (state.selectedItems.length === 0) return;
-
-      // Group selections by source column so splicing doesn't shift indices
-      // within a column. Track each item's source so the split always
-      // includes the seat the item came from — tapping a single target seat
-      // should produce a 2-way split (source + target), not a move.
-      var bySource = {};
-      state.selectedItems.forEach(function(sel) {
-        if (!bySource[sel.colIdx]) bySource[sel.colIdx] = [];
-        bySource[sel.colIdx].push(sel.itemIdx);
-      });
-
-      var extracted = []; // [{ item, source }]
-      Object.keys(bySource).forEach(function(colIdxStr) {
-        var colIdx = Number(colIdxStr);
-        var idxs = bySource[colIdx].slice().sort(function(a, b) { return b - a; });
-        idxs.forEach(function(itemIdx) {
-          var item = state.columns[colIdx].items[itemIdx];
-          state.columns[colIdx].items.splice(itemIdx, 1);
-          extracted.push({ item: item, source: colIdx });
-        });
-      });
-
-      for (var i = 0; i < extracted.length; i++) {
-        var item = extracted[i].item;
-        var source = extracted[i].source;
-
-        // Destination set = any tapped targets. Source is NOT forced in so the
-        // user can route an item fully away from its origin seat. Safety: if no
-        // targets were selected, fall back to source (no-op).
-        var destSet = {};
-        for (var tt = 0; tt < state.splitTargets.length; tt++) {
-          destSet[state.splitTargets[tt]] = true;
-        }
-        if (Object.keys(destSet).length === 0) destSet[source] = true;
-        var targets = Object.keys(destSet).map(Number);
-        var targetCount = targets.length;
-
-        // Divide the EFFECTIVE price (base + modifier total) so the
-        // customer's total stays the same after a split. Mods are
-        // stripped from each split copy — their cost is rolled into
-        // the new base. onSave detects the mods changed vs. the
-        // original backend record and DELETE+POSTs instead of PATCHing,
-        // which is the only way to strip mods from an existing line.
-        var modTotal = Array.isArray(item.mods)
-          ? item.mods.reduce(function(s, m) { return s + (m.price || 0); }, 0)
-          : 0;
-        var effective = (item.price || 0) + modTotal;
-        var splitPrice = Math.round(effective / targetCount * 100) / 100;
-        var remainder = Math.round((effective - splitPrice * targetCount) * 100) / 100;
-
-        // Tag shared by all copies so doMerge can recombine them.
-        // Uses the original item_id (survives backend round-trips) with a
-        // generated fallback for items not yet saved to the backend.
-        var splitRef = item.item_id || ('sr-' + Date.now() + '-' + i);
-
-        for (var t = 0; t < targetCount; t++) {
-          var tIdx = targets[t];
-          var price = splitPrice;
-          if (t === 0) price = splitPrice + remainder; // first target absorbs rounding
-          var splitItem = {
-            name:         item.name,
-            qty:          item.qty,
-            price:        price,
-            menu_item_id: item.menu_item_id,
-            category:     item.category,
-            mods:         [],
-            notes:        item.notes,
-            _splitRef:    splitRef,
-          };
-          // First copy keeps item_id so onSave can DELETE that exact
-          // backend record before POSTing the rebuilt line.
-          if (t === 0 && item.item_id) {
-            splitItem.item_id = item.item_id;
-          }
-          state.columns[tIdx].items.push(splitItem);
-        }
-
-        entReport({
-          code:    'UI-012',
-          level:   'INFO',
-          source:  'column-editor.split',
-          message: 'Item split across ' + targetCount + ' seat(s): ' + item.name,
-          ctx:     { split_ref: splitRef, order_id: params.orderId || null, item_name: item.name, seat_count: targetCount },
-        });
-      }
-
-      clearMode();
-    }
-
-    // ── TRANSFER ──
-    function doTransfer() {
-      var orderId = params.orderId || null;
-      var currentServerId = params.serverId || null;
-      SceneManager.interrupt('server-picker', {
-        onConfirm: function(server) {
-          if (!orderId) {
-            showToast('Transfer: ' + server.employee_name + ' (no order to update)', { bg: T.gold });
-            return;
-          }
-          // Reassign the order to the selected server
-          fetch('/api/v1/orders/' + orderId, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              server_id: server.employee_id,
-              server_name: server.employee_name,
-            }),
-          }).then(function(r) {
-            if (r.ok) showToast('Transferred to ' + server.employee_name, { bg: T.greenWarm });
-            else showToast('Transfer failed', { bg: T.verm });
-          }).catch(function() { showToast('Transfer failed', { bg: T.verm }); });
-        },
-        onCancel: function() {},
-        params: { excludeId: currentServerId },
-      });
-    }
-
-    // Compute projected total for colIdx given current selections + targets.
-    // Mirrors doSplit() math exactly (Fix 3: source is not forced into destSet).
-    function projectedColTotal(colIdx) {
-      var col = state.columns[colIdx];
-      var total = 0;
-      for (var ii = 0; ii < col.items.length; ii++) {
-        var isSel = false;
-        for (var si = 0; si < state.selectedItems.length; si++) {
-          if (state.selectedItems[si].colIdx === colIdx && state.selectedItems[si].itemIdx === ii) {
-            isSel = true; break;
-          }
-        }
-        if (!isSel) total += col.items[ii].qty * col.items[ii].price;
-      }
-      for (var si2 = 0; si2 < state.selectedItems.length; si2++) {
-        var sel = state.selectedItems[si2];
-        var srcItem = state.columns[sel.colIdx].items[sel.itemIdx];
-        var dSet = {};
-        for (var tt = 0; tt < state.splitTargets.length; tt++) dSet[state.splitTargets[tt]] = true;
-        if (Object.keys(dSet).length === 0) dSet[sel.colIdx] = true;
-        var tgts = Object.keys(dSet).map(Number);
-        var myIdx = tgts.indexOf(colIdx);
-        if (myIdx < 0) continue;
-        var modTotal = Array.isArray(srcItem.mods)
-          ? srcItem.mods.reduce(function(s, m) { return s + (m.price || 0); }, 0) : 0;
-        var effective = (srcItem.price || 0) + modTotal;
-        var splitPrice = Math.round(effective / tgts.length * 100) / 100;
-        var remainder  = Math.round((effective - splitPrice * tgts.length) * 100) / 100;
-        total += splitPrice + (myIdx === 0 ? remainder : 0);
-      }
-      return total;
-    }
-
-    // Refresh header totals in-place without a full re-render.
-    function updatePreviewTotals() {
-      if (state.mode !== 'split') return;
-      for (var ci = 0; ci < state.colEls.length; ci++) {
-        var refs = state.colEls[ci];
-        if (!refs) continue;
-        if (state.selectedItems.length === 0) {
-          refs.hdrTotal.textContent = fmt(colTotal(state.columns[ci]));
-        } else {
-          refs.hdrTotal.textContent = '~' + fmt(projectedColTotal(ci));
-        }
-      }
-    }
-
-    // Initial render
-    renderColumns();
+    // ── Initial column render ─────────────────────────
+    renderColumns(state);
   },
 
   unmount: function(state) {
