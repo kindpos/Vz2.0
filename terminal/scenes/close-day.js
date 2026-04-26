@@ -623,12 +623,15 @@ function buildMiddleCol(data, handlers, state) {
     'overscroll-behavior:contain;',
   ].join('');
 
+  col.appendChild(buildChecksCard(data, handlers, state.activeTab, state.selectedCheckIds));
+
   if (data.closedCardChecks.length > 0) {
     col.appendChild(buildTipsCard(data, handlers, state.tipFilter));
   }
 
   return col;
 }
+
 
 
 // ── Base card shell ──
@@ -646,6 +649,250 @@ function buildBaseCard(opts) {
 
   return card;
 }
+// ── Checks card (Active / All tabs) ──
+function buildChecksCard(data, handlers, activeTab, selectedCheckIds) {
+  selectedCheckIds = selectedCheckIds || [];
+  if (!activeTab) {
+    activeTab = (data.openChecks && data.openChecks.length > 0) ? 'active' : 'all';
+  }
+
+  var hasOpen = data.openChecks.length > 0;
+  var accentColor = hasOpen ? T.verm : T.elec;
+  var allChecks = data.checks || [];
+
+  var card = buildBaseCard({ accent: accentColor });
+  card.style.padding = '12px 14px';
+  card.style.gap = '10px';
+
+  // Header row
+  var hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+
+  if (hasOpen) {
+    var icon = document.createElement('div');
+    icon.style.cssText = [
+      'width:18px;height:18px;border-radius:4px;flex-shrink:0;',
+      'background:' + hexToRgba(T.verm, 0.18) + ';',
+      'display:flex;align-items:center;justify-content:center;',
+      'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + T.verm + ';',
+    ].join('');
+    icon.textContent = '!';
+    hdr.appendChild(icon);
+  }
+
+  var titleEl = document.createElement('span');
+  titleEl.style.cssText = [
+    'font-family:' + T.fh + ';font-size:11px;font-weight:700;',
+    'letter-spacing:2px;text-transform:uppercase;',
+    'color:' + accentColor + ';',
+  ].join('');
+  titleEl.textContent = 'CHECKS';
+  hdr.appendChild(titleEl);
+
+  var tabBar = document.createElement('div');
+  tabBar.style.cssText = 'display:flex;gap:5px;flex-shrink:0;margin-left:auto;';
+  var makeTab = function(key, label, count, activeColor) {
+    var isActive = (activeTab === key);
+    var pill = document.createElement('div');
+    pill.style.cssText = [
+      'padding:3px 9px;border-radius:999px;',
+      'font-family:' + T.fh + ';font-size:10px;font-weight:700;letter-spacing:1px;',
+      'cursor:pointer;user-select:none;-webkit-user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;',
+      isActive
+        ? 'background:' + activeColor + ';color:' + T.well + ';'
+        : 'background:transparent;color:' + T.moon + ';border:1px solid rgba(255,255,255,0.15);',
+    ].join('');
+    pill.textContent = label + ' ' + count;
+    pill.addEventListener('pointerup', function(e) {
+      e.stopPropagation();
+      if (handlers.onTabChange) handlers.onTabChange(key);
+    });
+    return pill;
+  };
+  tabBar.appendChild(makeTab('active', 'Active', data.openChecks.length, T.elec));
+  tabBar.appendChild(makeTab('all', 'All', allChecks.length, T.moon));
+  hdr.appendChild(tabBar);
+  card.appendChild(hdr);
+
+  var list = document.createElement('div');
+  list.style.cssText = [
+    'display:flex;flex-direction:column;gap:6px;',
+    'max-height:280px;overflow-y:auto;',
+    'touch-action:pan-y;overscroll-behavior:contain;',
+  ].join('');
+
+  if (activeTab === 'active') {
+    data.openChecks.forEach(function(chk) {
+      var selected = selectedCheckIds.indexOf(chk.checkId) !== -1;
+      list.appendChild(_buildActiveCheckRow(chk, handlers, selected));
+    });
+  } else {
+    allChecks.forEach(function(chk) {
+      if (chk.status === 'closed') {
+        list.appendChild(_buildClosedCheckRow(chk, handlers));
+      } else {
+        var selected = selectedCheckIds.indexOf(chk.checkId) !== -1;
+        list.appendChild(_buildActiveCheckRow(chk, handlers, selected));
+      }
+    });
+  }
+
+  card.appendChild(list);
+  return card;
+}
+
+function _buildActiveCheckRow(chk, handlers, isSelected) {
+  var row = document.createElement('div');
+  row.style.cssText = [
+    'display:flex;gap:10px;align-items:center;',
+    'padding:10px 12px;border-radius:6px;',
+    isSelected
+      ? 'border:1.5px solid ' + T.elec + ';background:' + hexToRgba(T.elec, 0.07) + ';'
+      : 'border:1.5px solid transparent;background:' + T.well + ';',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'user-select:none;-webkit-user-select:none;',
+  ].join('');
+
+  var info = document.createElement('div');
+  info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;';
+
+  var top = document.createElement('div');
+  top.style.cssText = 'display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;';
+  var checkLbl = document.createElement('span');
+  checkLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.text + ';';
+  checkLbl.textContent = chk.checkLabel || ('Check ' + (chk.checkId || ''));
+  top.appendChild(checkLbl);
+  if (chk.tableLabel) {
+    var tableLbl = document.createElement('span');
+    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';';
+    tableLbl.textContent = chk.tableLabel;
+    top.appendChild(tableLbl);
+  }
+  info.appendChild(top);
+
+  var meta = document.createElement('div');
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  var metaParts = [];
+  if (chk.server_name) metaParts.push(chk.server_name);
+  if (chk.guests) metaParts.push(chk.guests + ' guest' + (chk.guests > 1 ? 's' : ''));
+  if (chk.time)  metaParts.push('opened ' + chk.time);
+  meta.textContent = metaParts.join(' · ');
+  info.appendChild(meta);
+
+  var amt = document.createElement('div');
+  amt.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + T.gold + ';flex-shrink:0;';
+  amt.textContent = fmt(chk.amount || 0);
+
+  row.appendChild(info);
+  row.appendChild(amt);
+  row.addEventListener('pointerup', function() {
+    if (handlers.onSelectCheck) handlers.onSelectCheck(chk);
+  });
+  return row;
+}
+
+function _buildClosedCheckRow(chk, handlers) {
+  var outer = document.createElement('div');
+  outer.style.cssText = [
+    'background:' + T.well + ';border-radius:6px;',
+    'padding:10px 12px;',
+    'display:flex;flex-direction:column;gap:6px;',
+  ].join('');
+
+  var topRow = document.createElement('div');
+  topRow.style.cssText = 'display:flex;gap:10px;align-items:center;';
+
+  var info = document.createElement('div');
+  info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;';
+
+  var top = document.createElement('div');
+  top.style.cssText = 'display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;';
+  var checkLbl = document.createElement('span');
+  checkLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.text + ';';
+  checkLbl.textContent = chk.checkLabel || ('Check ' + (chk.checkId || ''));
+  top.appendChild(checkLbl);
+  if (chk.tableLabel) {
+    var tableLbl = document.createElement('span');
+    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';';
+    tableLbl.textContent = chk.tableLabel;
+    top.appendChild(tableLbl);
+  }
+  info.appendChild(top);
+
+  var meta = document.createElement('div');
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  var metaParts = [];
+  if (chk.server_name) metaParts.push(chk.server_name);
+  if (chk.time)        metaParts.push('closed ' + chk.time);
+  if (chk.tip != null) metaParts.push('tip ' + fmt(chk.tip));
+  meta.textContent = metaParts.join(' · ');
+  info.appendChild(meta);
+
+  var isCard = chk.method !== 'cash';
+  var tag = document.createElement('div');
+  tag.style.cssText = [
+    'flex-shrink:0;font-size:10px;border-radius:3px;padding:1px 5px;',
+    'font-family:' + T.fb + ';',
+    isCard
+      ? 'background:' + hexToRgba(T.elec, 0.12) + ';color:' + T.elec + ';'
+      : 'background:' + hexToRgba(T.greenWarm, 0.12) + ';color:' + T.greenWarm + ';',
+  ].join('');
+  tag.textContent = isCard
+    ? (chk.cardBrand || 'Card') + (chk.cardLast4 ? ' ··· ' + chk.cardLast4 : '')
+    : 'Cash';
+
+  var amt = document.createElement('div');
+  amt.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + T.gold + ';flex-shrink:0;';
+  amt.textContent = fmt(chk.amount || 0);
+
+  topRow.appendChild(info);
+  topRow.appendChild(tag);
+  topRow.appendChild(amt);
+  outer.appendChild(topRow);
+
+  var actRow = document.createElement('div');
+  actRow.style.cssText = 'display:flex;gap:6px;';
+
+  var reprBtn = document.createElement('div');
+  reprBtn.style.cssText = [
+    'background:' + hexToRgba(T.greenWarm, 0.15) + ';',
+    'color:' + T.greenWarm + ';',
+    'border:1px solid ' + hexToRgba(T.greenWarm, 0.3) + ';',
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;letter-spacing:1px;',
+    'border-radius:999px;padding:4px 12px;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'user-select:none;-webkit-user-select:none;',
+  ].join('');
+  reprBtn.textContent = 'Reprint';
+  reprBtn.addEventListener('pointerup', function(e) {
+    e.stopPropagation();
+    if (handlers.onReprintCheck) handlers.onReprintCheck(chk);
+  });
+
+  var reopBtn = document.createElement('div');
+  reopBtn.style.cssText = [
+    'background:' + hexToRgba(T.verm, 0.12) + ';',
+    'color:' + T.verm + ';',
+    'border:1px solid ' + hexToRgba(T.verm, 0.3) + ';',
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;letter-spacing:1px;',
+    'border-radius:999px;padding:4px 12px;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'user-select:none;-webkit-user-select:none;',
+  ].join('');
+  reopBtn.textContent = 'Reopen';
+  reopBtn.addEventListener('pointerup', function(e) {
+    e.stopPropagation();
+    if (handlers.onReopenCheck) handlers.onReopenCheck(chk);
+  });
+
+  actRow.appendChild(reprBtn);
+  actRow.appendChild(reopBtn);
+  outer.appendChild(actRow);
+
+  return outer;
+}
+
 
 // ── Tips (filterable UNADJ / ADJ) ──
 function buildTipsCard(state, handlers, tipFilter) {
@@ -1119,6 +1366,7 @@ defineScene({
     cashCounted:       null,        // null | number | 'bypass'
     batchSettled:      false,
     selectedCheckIds:  [],
+    activeTab:          'active',
     startTime:         null,
   },
 
@@ -1212,6 +1460,37 @@ defineScene({
         if (idx !== -1) state.selectedCheckIds.splice(idx, 1);
         else            state.selectedCheckIds.push(id);
         rebuild();
+      },
+
+      onTabChange: function(tab) {
+        state.activeTab = tab;
+        rebuild();
+      },
+
+      onReprintCheck: function(chk) {
+        // Reprint via server-checkout's print flow (check passed directly)
+        if (!chk) return;
+        showToast('Reprinting…', { bg: T.greenWarm });
+        fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/receipt', { method: 'POST' })
+          .then(function(r) {
+            showToast(r.ok ? 'Reprinted' : 'Reprint failed', { bg: r.ok ? T.greenWarm : T.verm });
+          })
+          .catch(function() { showToast('Reprint unavailable', { bg: T.verm }); });
+      },
+
+      onReopenCheck: function(chk) {
+        SceneManager.interrupt('co-manager-pin', {
+          onConfirm: function() {
+            SceneManager.closeInterrupt('co-manager-pin');
+            fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/reopen', { method: 'POST' })
+              .then(function(r) {
+                showToast(r.ok ? 'Check reopened' : 'Reopen failed (' + r.status + ')', { bg: r.ok ? T.greenWarm : T.verm });
+                refreshScene();
+              })
+              .catch(function() { showToast('Reopen unavailable', { bg: T.verm }); });
+          },
+          onCancel: function() { SceneManager.closeInterrupt('co-manager-pin'); },
+        });
       },
 
       onTipFilterChange: function(filter) {
