@@ -366,25 +366,16 @@ defineScene({
     get handleVoid()     { return handleVoid; },
     get handleAddItems() { return handleAddItems; },
     get handleResend()   { return handleResend; },
-    get _commitManageSplit() { return _commitManageSplit; },
     get _persistSeats()  { return persistSeats; },
     get _addSeat()       { return addSeat; },
     get openNameEditor()     { return openNameEditor; },
     get refreshOrder()       { return refreshOrder; },
-    get _undoManage()        { return _undoManage; },
-    get enterManageMode()    { return enterManageMode; },
-    get exitManageMode()     { return exitManageMode; },
-    get _resetManageSession(){ return _resetManageSession; },
     get forceSelectAll()          { return forceSelectAll; },
     get toggleSeat()              { return toggleSeat; },
     get openSeatPaymentInterrupt(){ return openSeatPaymentInterrupt; },
-    get _enterManageMerge()       { return _enterManageMerge; },
     get _callSplitBySeat()        { return _callSplitBySeat; },
     get _moveItemsToSeat()        { return _moveItemsToSeat; },
-    get _mergeToNewSeat()         { return _mergeToNewSeat; },
-    get _mergeToNewCheck()        { return _mergeToNewCheck; },
     get _persistItemSeats()       { return persistItemSeats; },
-    get _enterManageSplit()       { return _enterManageSplit; },
   },
 
   state: {
@@ -413,15 +404,6 @@ defineScene({
     _mountParams:  null,
     _seatsChain:   null,
     _refreshInFlight: false,
-    // MANAGE mode session state. _manageMode flips the action bar
-    // and seats-container into the MANAGE toolbar + banner layout.
-    // _manageSnapshot holds a deep copy of seats / paid / selection
-    // state captured on enter so RESET can revert the whole session.
-    // _manageLog is a stack of reverse patches UNDO pops one at a time.
-    _manageMode:     false,
-    _manageTool:     'move',
-    _manageSnapshot: null,
-    _manageLog:      [],
   },
 
   render: function(container, params, state) {
@@ -1076,11 +1058,6 @@ function renderActionBar(state) {
   if (!barZone) return;
   barZone.innerHTML = '';
 
-  if (state._manageMode) {
-    renderManageToolbar(state);
-    return;
-  }
-
   // Container — Nostalgia card chassis so the action bar matches the
   // raised-bevel + accent treatment used by manager-landing / COB /
   // sales cards. buildStaticCard sets background, 4-edge bevel,
@@ -1292,9 +1269,9 @@ function renderActionBar(state) {
   });
   bar.appendChild(rightStack);
 
-  // EDIT SEATS
+  // MANAGE SEATS / MANAGE CHECK
   var editBtn = buildPillButton({
-    label: 'EDIT SEATS',
+    label: Object.keys(state.selected || {}).length > 0 ? 'MANAGE SEATS' : 'MANAGE CHECK',
     color: T.groups.actionBar.editSeats,
     darkBg: T.moonDk,
     onClick: function() { openEditSeats(state); }
@@ -1322,225 +1299,6 @@ function renderActionBar(state) {
   bar.appendChild(spacer);
 }
 
-// ═══════════════════════════════════════════════════
-//  MANAGE MODE — session state + toolbar
-//  enter / exit handle the snapshot bookkeeping; the toolbar itself
-//  is emitted by renderActionBar when state._manageMode is true.
-//  Tool mechanics (MOVE / SPLIT / MERGE / TRANSFER + UNDO / RESET)
-//  are wired in Steps 11-12.
-// ═══════════════════════════════════════════════════
-
-// TRANSFER is deliberately not on the MANAGE toolbar — the existing
-// long-press seat menu keeps routing through _openTransfer for
-// whole-check transfers, and selection-aware transfer is scoped out.
-var MANAGE_TOOLS = [
-  { id: 'move',  label: 'MOVE' },
-  { id: 'split', label: 'SPLIT' },
-  { id: 'merge', label: 'MERGE' },
-];
-
-function _cloneSeats(seats) {
-  // Deep clone via JSON round-trip — seats / items / mods contain only
-  // plain data (no Dates, functions, or DOM refs) so this is safe and
-  // keeps the snapshot independent of ongoing mutations.
-  return JSON.parse(JSON.stringify(seats || []));
-}
-
-function enterManageMode(state) {
-  if (!state.orderId) {
-    showToast('Save items before managing', { bg: T.gold });
-    return;
-  }
-  state._manageMode = true;
-  state._manageTool = 'move';
-  state._manageLog  = [];
-  state._manageSnapshot = {
-    seats:         _cloneSeats(state.seats),
-    paidSeats:     Object.assign({}, state.paidSeats),
-    selected:      Object.assign({}, state.selected),
-    selectedItems: Object.assign({}, state.selectedItems),
-  };
-  rerenderTopArea(state);
-}
-
-function exitManageMode(state) {
-  state._manageMode = false;
-  state._manageTool = 'move';
-  state._manageLog  = [];
-  state._manageSnapshot = null;
-  rerenderTopArea(state);
-}
-
-// ── UNDO replay ──
-// Each MANAGE op pushes a reverse-patch onto state._manageLog. UNDO
-// pops the last patch and replays the inverse. Shapes currently handled:
-//   { kind: 'move', targetSeatId, patches: [{fromSeatId, fromItemIdx,
-//     item}, ...] }  — pull each item off target, re-insert on source.
-//   { kind: 'merge-new-seat', newSeatId }  — consumes the preceding
-//     'move' patch too, then removes the (now-empty) new seat.
-//   { kind: 'split', preSeats }  — restore the whole seats array.
-//   { kind: 'merge-new-check-* }  — backend already spawned a child
-//     check so we can't locally revert. Push the patch back and
-//     nudge the cashier to RESET instead.
-
-function _undoMoveInverse(state, patch) {
-  var targetIdx = _seatIdxById(state, patch.targetSeatId);
-  var targetItems = targetIdx >= 0 ? state.seats[targetIdx].items : null;
-  for (var p = patch.patches.length - 1; p >= 0; p--) {
-    var pp = patch.patches[p];
-    // Pull the moved item off the target by identity — it's the same
-    // JS object reference that was pushed onto target.items.
-    if (targetItems) {
-      var at = targetItems.indexOf(pp.item);
-      if (at >= 0) targetItems.splice(at, 1);
-    }
-    var fromIdx = _seatIdxById(state, pp.fromSeatId);
-    if (fromIdx >= 0) {
-      var insertAt = Math.min(pp.fromItemIdx, state.seats[fromIdx].items.length);
-      state.seats[fromIdx].items.splice(insertAt, 0, pp.item);
-    }
-  }
-}
-
-function _removeSeatByIdIfEmpty(state, seatId) {
-  var idx = _seatIdxById(state, seatId);
-  if (idx < 0) return;
-  if (state.seats[idx].items.length > 0) return;  // safety
-  state.seats.splice(idx, 1);
-}
-
-function _undoManage(state) {
-  if (!state._manageLog || state._manageLog.length === 0) {
-    showToast('Nothing to undo', { bg: T.gold });
-    return;
-  }
-  // Peek before popping — un-undoable kinds must not be removed from the log.
-  var patch = state._manageLog[state._manageLog.length - 1];
-  if (patch.kind === 'merge-new-check-seats'
-      || patch.kind === 'merge-new-check-items') {
-    // The child check exists on the backend — no local undo.
-    showToast('Check split can’t be undone — hold RESET to revert the session',
-              { bg: T.verm, duration: 2500 });
-    return;
-  }
-  state._manageLog.pop();
-  var undone = true;
-
-  if (patch.kind === 'move') {
-    _undoMoveInverse(state, patch);
-  } else if (patch.kind === 'merge-new-seat') {
-    // The preceding entry is the 'move' that relocated items onto
-    // the new seat — pop + invert it, then remove the now-empty seat.
-    var mv = state._manageLog.pop();
-    if (mv && mv.kind === 'move') _undoMoveInverse(state, mv);
-    _removeSeatByIdIfEmpty(state, patch.newSeatId);
-  } else if (patch.kind === 'split') {
-    state.seats = _cloneSeats(patch.preSeats);
-  } else {
-    undone = false;
-  }
-
-  state.selected      = {};
-  state.selectedItems = {};
-  _syncSelectedFromItems(state);
-  rerenderTopArea(state);
-  if (undone) showToast('Undone', { bg: T.greenWarm });
-}
-
-function _resetManageSession(state) {
-  if (!state._manageSnapshot) return;
-  state.seats         = _cloneSeats(state._manageSnapshot.seats);
-  state.paidSeats     = Object.assign({}, state._manageSnapshot.paidSeats);
-  state.selected      = Object.assign({}, state._manageSnapshot.selected);
-  state.selectedItems = Object.assign({}, state._manageSnapshot.selectedItems);
-  state._manageLog    = [];
-  rerenderTopArea(state);
-  showToast('MANAGE session reset', { bg: T.verm });
-}
-
-// buildPillButton has no `height` option, so apply the 46 px chrome
-// directly on the returned element after construction. Keeps the
-// MANAGE toolbar pills the same uniform height that the old callsites
-// were silently asking for.
-function _makeToolPill(label, active) {
-  var color  = active ? T.elec : T.card;
-  var darkBg = active ? T.elecDk : darkenHex(T.card, 0.2);
-  var btn = buildPillButton({
-    label:     label,
-    color:     color,
-    darkBg:    darkBg,
-    textColor: active ? T.well : T.elec,
-    padding:   '0 20px',
-    fontSize:  T.fsB3,
-  });
-  btn.style.height = '46px';
-  return btn;
-}
-
-function _makeUtilPill(label, textColor, opts) {
-  opts = opts || {};
-  var color = opts.bg || T.card;
-  var darkBg = opts.darkBg || darkenHex(color, 0.2);
-  var btn = buildPillButton({
-    label:     label,
-    color:     color,
-    darkBg:    darkBg,
-    textColor: textColor,
-    padding:   '0 20px',
-    fontSize:  T.fsB3,
-  });
-  btn.style.height = '46px';
-  return btn;
-}
-
-// Vertical dashed separator used inside the MANAGE toolbar between the
-// tool pills (MOVE / SPLIT / MERGE) and the utility pills (UNDO /
-// RESET / DONE). Zero-width element whose left border paints the
-// dashed line, stretched to the toolbar's full height.
-function _dashedDivider() {
-  var el = document.createElement('div');
-  Object.assign(el.style, {
-    width:       '0',
-    alignSelf:   'stretch',
-    borderLeft:  '2px dashed ' + T.border,
-    margin:      '4px 8px',
-    flexShrink:  '0',
-  });
-  return el;
-}
-
-// ── MANAGE SPLIT ──
-// The split flow is a pick-then-pick-then-commit pattern:
-//   1. Cashier pre-selects items with item taps (state.selectedItems).
-//   2. Taps the SPLIT pill → the tool becomes active and state.selected
-//      is seeded with the source seats as recipients-by-default.
-//   3. Taps seat tiles to toggle recipient inclusion (tile inverts as
-//      usual; state.selected is the recipient set while split is live).
-//   4. Taps SPLIT again → commits. Each selected item is removed from
-//      its source and a copy is appended to every recipient with
-//      price / N, so the cost divides evenly across the tapped seats.
-// A snapshot of the pre-split seats is pushed onto state._manageLog so
-// Step 12's UNDO can restore the whole layout in one shot.
-
-// ── MANAGE MERGE ──
-// Selection + tile tap → move every selected item onto the tapped
-// seat. The add-tile doubles as +SEAT: tapping it while MERGE is
-// live creates a fresh seat on the check via addSeat() and then
-// moves the selection onto that new seat. Existing-seat merges log
-// a { kind: 'move' } patch for UNDO; new-seat merges additionally
-// carry a { kind: 'merge-new-seat', newSeatId } marker so Step 12
-// can replay the full inverse.
-
-function _enterManageMerge(state) {
-  if (Object.keys(state.selectedItems || {}).length === 0) {
-    showToast('Select items to merge first', { bg: T.gold });
-    return;
-  }
-  state._manageTool = 'merge';
-  rerenderTopArea(state);
-  showToast('Tap a seat tile or the + tile to merge into it',
-            { bg: T.elec, duration: 2500 });
-}
 
 // Fire-and-observe wrapper around POST /orders/{id}/split-by-seat.
 // Parent + child order IDs come back in data.child_orders; we refresh
@@ -1580,253 +1338,6 @@ function _callSplitBySeat(state, seatNumbers) {
     .catch(function() { showToast('Split failed', { bg: T.verm }); });
 }
 
-// +CHECK target: split the current selection off into a new sibling
-// check. Two paths:
-//   - Whole seats selected (state.selected populated): call
-//     split-by-seat directly with those seat numbers.
-//   - Arbitrary items (selectedItems only): create a fresh seat via
-//     addSeat, move the selection onto it, then call split-by-seat
-//     on just that new seat. preSeats is snapshotted for UNDO.
-function _mergeToNewCheck(state) {
-  var seatIds = Object.keys(state.selected || {}).filter(function(id) {
-    return !state.paidSeats[id];
-  });
-  var itemCount = Object.keys(state.selectedItems || {}).length;
-
-  if (seatIds.length === 0 && itemCount === 0) {
-    showToast('Select items or seats to split off', { bg: T.gold });
-    return;
-  }
-  if (!state.orderId) {
-    showToast('Save items first', { bg: T.gold });
-    return;
-  }
-
-  // Seat-aligned fast path. toggleSeat mirrors seat selection onto
-  // item selection, so a "whole seat" selection shows up here as
-  // state.selected populated with matching items already included.
-  if (seatIds.length > 0) {
-    var nums = [];
-    for (var i = 0; i < seatIds.length; i++) {
-      var idx = _seatIdxById(state, seatIds[i]);
-      if (idx >= 0) nums.push(state.seats[idx].number);
-    }
-    state._manageLog.push({ kind: 'merge-new-check-seats', seatNumbers: nums });
-    _callSplitBySeat(state, nums);
-    return;
-  }
-
-  // Arbitrary items — two-step: make a temp seat, move items there,
-  // split off just that seat. The preSeats snapshot captures the
-  // layout before addSeat so UNDO can reverse both the move and the
-  // new-seat creation on the client side (the new child check still
-  // exists on the backend and would need a separate undo).
-  var preSeats = _cloneSeats(state.seats);
-  var refs = getSelectedItemRefs(state);
-  addSeat(state);
-  var newSeat = state.seats[state.seats.length - 1];
-  if (!newSeat) return;
-  _moveItemsToSeat(state, refs, newSeat.id, { skipLog: true });
-  state._manageLog.push({
-    kind:     'merge-new-check-items',
-    preSeats: preSeats,
-    newSeatNumber: newSeat.number,
-  });
-  _callSplitBySeat(state, [newSeat.number]);
-}
-
-function _mergeToNewSeat(state) {
-  var refs = getSelectedItemRefs(state);
-  if (refs.length === 0) {
-    showToast('Nothing selected to merge', { bg: T.gold });
-    return;
-  }
-  addSeat(state);
-  var newSeat = state.seats[state.seats.length - 1];
-  if (!newSeat) return;
-  // Refs computed above reference the pre-addSeat indices — addSeat
-  // only pushes a new empty seat at the end, so existing (seatIdx,
-  // itemIdx) tuples remain valid.
-  var moved = _moveItemsToSeat(state, refs, newSeat.id);
-  if (moved > 0) {
-    state._manageLog.push({
-      kind:      'merge-new-seat',
-      newSeatId: newSeat.id,
-    });
-  }
-}
-
-function _enterManageSplit(state) {
-  if (Object.keys(state.selectedItems || {}).length === 0) {
-    showToast('Select items to split first', { bg: T.gold });
-    return;
-  }
-  state._manageTool = 'split';
-  // Seed recipients with the source seats of the selected items so the
-  // original seat is included by default per spec. Cashier can tap it
-  // off if they want the item to move off entirely.
-  state.selected = {};
-  var refs = getSelectedItemRefs(state);
-  for (var r = 0; r < refs.length; r++) {
-    var seat = state.seats[refs[r].seatIdx];
-    if (seat) state.selected[seat.id] = true;
-  }
-  rerenderTopArea(state);
-  showToast('Tap seat tiles to pick recipients, then tap SPLIT again',
-            { bg: T.elec, duration: 2500 });
-}
-
-async function _commitManageSplit(state) {
-  var recipients = [];
-  for (var sid in state.selected) {
-    if (!state.paidSeats[sid]) recipients.push(sid);
-  }
-  if (recipients.length === 0) {
-    showToast('Tap seat tiles to add recipients', { bg: T.gold });
-    return;
-  }
-  var itemRefs = getSelectedItemRefs(state);
-  if (itemRefs.length === 0) {
-    showToast('Nothing selected to split', { bg: T.gold });
-    return;
-  }
-
-  var preSeats = _cloneSeats(state.seats);
-
-  // Descending sort so splices don't shift later refs.
-  itemRefs.sort(function(a, b) {
-    if (a.seatIdx !== b.seatIdx) return b.seatIdx - a.seatIdx;
-    return b.itemIdx - a.itemIdx;
-  });
-
-  var itemsToVoid = [];
-  var newItemsToCreate = [];
-
-  for (var r = 0; r < itemRefs.length; r++) {
-    var ref = itemRefs[r];
-    var src = state.seats[ref.seatIdx].items.splice(ref.itemIdx, 1)[0];
-    if (src.item_id) itemsToVoid.push(src.item_id);
-
-    var orig = (src.effectivePrice != null ? src.effectivePrice : src.price) || 0;
-    var totalCents = Math.round(orig * 100);
-    var floorCents = Math.floor(totalCents / recipients.length);
-    var remainderCents = totalCents % recipients.length;
-
-    for (var k = 0; k < recipients.length; k++) {
-      var tIdx = _seatIdxById(state, recipients[k]);
-      if (tIdx < 0) continue;
-
-      var shareCents = floorCents + (k === 0 ? remainderCents : 0);
-      var piece = shareCents / 100;
-
-      var copy = Object.assign({}, src);
-      // seatSubtotal prefers effectivePrice when present; set both so
-      // later pricing passes stay consistent.
-      copy.price          = piece;
-      copy.effectivePrice = piece;
-      // Drop the original item_id so the backend sees a fresh line
-      // rather than colliding with the removed parent on next save.
-      copy.item_id        = null;
-      // Mark the item as a split share so the recap rows make the
-      // fractional cost obvious next to the item name.
-      copy.name = (copy.name || '') + ' (1/' + recipients.length + ')';
-      state.seats[tIdx].items.push(copy);
-
-      newItemsToCreate.push({
-        seat_number:  state.seats[tIdx].number || (tIdx + 1),
-        menu_item_id: src.menu_item_id || src.name.toLowerCase().replace(/\s+/g, '_'),
-        name:         copy.name,
-        price:        piece,
-        category:     src.category || 'general'
-      });
-    }
-  }
-
-  try {
-    if (state.orderId) {
-      for (var i = 0; i < newItemsToCreate.length; i++) {
-        var postRes = await fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(newItemsToCreate[i]),
-        }, 10000);
-        if (!postRes.ok) throw new Error('POST failed');
-      }
-
-      for (var j = 0; j < itemsToVoid.length; j++) {
-        var delRes = await fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items/' + itemsToVoid[j], {
-          method: 'DELETE',
-        }, 10000);
-        if (!delRes.ok) throw new Error('DELETE failed');
-      }
-    }
-
-    state._manageLog.push({ kind: 'split', preSeats: preSeats });
-    state.selected      = {};
-    state.selectedItems = {};
-    state._manageTool   = 'move';
-    rerenderTopArea(state);
-    showToast('Split across ' + recipients.length + ' seat(s)', { bg: T.greenWarm });
-  } catch (err) {
-    console.warn('[KINDpos] Split persistence failed:', err);
-    state.seats = preSeats;
-    showToast('Split failed: backend sync error', { bg: T.verm });
-    rerenderTopArea(state);
-  }
-}
-
-function renderManageToolbar(state) {
-  var zone = state.bottomBarEl;
-  if (!zone) return;
-  zone.innerHTML = '';
-
-  // ── Left: tool pills ──
-  // MOVE and MERGE are "modes" — the pill selects the tool, then a
-  // seat-tile tap commits the op. SPLIT is a "trigger" — the pill
-  // opens column-editor directly because SPLIT has its own flow
-  // inside that transactional scene and there's no seat-tile tap
-  // to forward.
-  for (var i = 0; i < MANAGE_TOOLS.length; i++) {
-    var tool = MANAGE_TOOLS[i];
-    var active = state._manageTool === tool.id;
-    var pill = _makeToolPill(tool.label, active);
-    (function(toolId) {
-      pill.addEventListener('click', function() {
-        if (toolId === 'split') {
-          // Tap while split is already live = commit; otherwise enter.
-          if (state._manageTool === 'split') _commitManageSplit(state);
-          else                               _enterManageSplit(state);
-          return;
-        }
-        if (toolId === 'merge') {
-          _enterManageMerge(state);
-          return;
-        }
-        state._manageTool = toolId;
-        rerenderTopArea(state);
-      });
-    })(tool.id);
-    zone.appendChild(pill);
-  }
-
-  zone.appendChild(_dashedDivider());
-
-  // ── Right: utility pills — UNDO, RESET, DONE ──
-  var undoBtn = _makeUtilPill('UNDO', T.text);
-  undoBtn.addEventListener('click', function() { _undoManage(state); });
-  zone.appendChild(undoBtn);
-
-  var resetBtn = _makeUtilPill('RESET', T.verm);
-  // Short tap is a no-op by design — RESET wipes the entire MANAGE
-  // session and we don't want an accidental tap to erase the cashier's
-  // in-progress reorg.
-  resetBtn.addEventListener('click', function() {
-    showToast('Hold RESET to revert session', { bg: T.gold });
-  });
-  _wireLongPress(resetBtn, function() { _resetManageSession(state); });
-  zone.appendChild(resetBtn);
-
-}
 
 // ═══════════════════════════════════════════════════
 //  SEATS CONTAINER — Nostalgia card shell
@@ -1855,33 +1366,6 @@ function buildSeatsContainer(state) {
     flexDirection:'column',
     overflow:     'visible',
   });
-
-  // MANAGE-mode banner. Shown only while state._manageMode is true so
-  // the cashier always knows they're in the tool-dispatching surface
-  // rather than the normal overview. The label's "[TOOL] ACTIVE"
-  // segment updates with state._manageTool.
-  if (state._manageMode) {
-    var banner = document.createElement('div');
-    Object.assign(banner.style, {
-      flexShrink:    '0',
-      height:        '26px',
-      background:    hexToRgba(T.elec, 0.14),
-      borderBottom:  '1px solid ' + hexToRgba(T.elec, 0.45),
-      color:         T.elec,
-      fontFamily:    T.fb,
-      fontSize:      '10px',
-      fontWeight:    T.fwBold,
-      letterSpacing: '0.18em',
-      display:       'flex',
-      alignItems:    'center',
-      justifyContent:'center',
-      padding:       '0 14px',
-      userSelect:    'none',
-    });
-    banner.textContent = '▶ MANAGE MODE · '
-      + String(state._manageTool || 'move').toUpperCase() + ' ACTIVE';
-    root.appendChild(banner);
-  }
 
   // ── Selection toolbar ──
   // Small SELECT ALL / CLEAR chip above the seats area. Flips labels +
@@ -1936,14 +1420,6 @@ function buildSeatsContainer(state) {
     boxSizing:     'border-box',
   });
   root.appendChild(body);
-
-  body.addEventListener('pointerup', function(e) {
-    if (e.target === body && state._manageMode) {
-      state.selected = {};
-      state.selectedItems = {};
-      exitManageMode(state);
-    }
-  });
 
   return { root: root, body: body, mode: mode };
 }
@@ -2061,12 +1537,6 @@ function renderSeatsGrid(state, container, mode) {
       tile.style.width = '';
       tilesCol.appendChild(tile);
     }
-    if (state._manageMode && state._manageTool === 'merge') {
-      var chkB = buildCheckTile(state, { fullSize: true });
-      chkB.style.flex  = '';
-      chkB.style.width = '';
-      tilesCol.appendChild(chkB);
-    }
     container.appendChild(tilesCol);
     return;
   }
@@ -2100,19 +1570,6 @@ function renderSeatsGrid(state, container, mode) {
     addTile.style.width = '0';
   }
   container.appendChild(addTile);
-
-  if (state._manageMode && state._manageTool === 'merge') {
-    var checkTile = buildCheckTile(state, { fullSize: true });
-    if (activeCount >= 4) {
-      checkTile.style.flex       = '0 0 auto';
-      checkTile.style.width      = '80px';
-      checkTile.style.flexShrink = '0';
-    } else {
-      checkTile.style.flex  = '1';
-      checkTile.style.width = '0';
-    }
-    container.appendChild(checkTile);
-  }
 }
 
 // Per-seat accent — canonical palette lives in common/tokens.js as
@@ -2724,12 +2181,6 @@ function buildAddTile(state, opts) {
   wrap.addEventListener('pointerup', function() {
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
     if (longPressed) { longPressed = false; return; }
-    if (state._manageMode
-        && state._manageTool === 'merge'
-        && Object.keys(state.selectedItems || {}).length > 0) {
-      _mergeToNewSeat(state);
-      return;
-    }
     addSeat(state);
   });
   wrap.addEventListener('pointerleave', function() {
@@ -2765,66 +2216,6 @@ function addSeatsBatch(state, n) {
   rerenderTopArea(state);
 }
 
-// ── +CHECK tile ──
-// Rendered alongside the +SEAT add-tile during MANAGE + MERGE mode.
-// Tapping it splits the current selection off into a new sibling
-// check via _mergeToNewCheck. Shares the dashed-outline empty-slot
-// look with buildAddTile but tints the glyph and border T.elec to
-// flag that it leaves the current check.
-function buildCheckTile(state, opts) {
-  opts = opts || {};
-  var tile = document.createElement('div');
-  Object.assign(tile.style, {
-    background:     'transparent',
-    border:         '1px dashed ' + T.elec,
-    borderRadius:   '10px',
-    display:        'flex',
-    flexDirection:  'column',
-    alignItems:     'center',
-    justifyContent: 'center',
-    gap:            '2px',
-    cursor:         'pointer',
-    minHeight:      opts.compact ? '72px' : '0',
-    pointerEvents:  'auto',
-    flexShrink:     '0',
-  });
-  if (opts.narrow) tile.style.width = '54px';
-
-  var plus = document.createElement('div');
-  Object.assign(plus.style, {
-    fontFamily: T.fh,
-    fontWeight: T.fwBold,
-    fontSize:   (opts.narrow || opts.fullSize) ? '40px' : (opts.compact ? '26px' : '40px'),
-    color:      T.elec,
-    lineHeight: '1',
-  });
-  plus.textContent = '+';
-  tile.appendChild(plus);
-
-  var lbl = document.createElement('span');
-  Object.assign(lbl.style, {
-    fontFamily:    T.fb,
-    fontSize:      opts.narrow ? '7px' : '9px',
-    fontWeight:    T.fwBold,
-    letterSpacing: '0.14em',
-    color:         T.elec,
-  });
-  lbl.textContent = 'CHECK';
-  tile.appendChild(lbl);
-
-  tile.addEventListener('pointerdown', function() {
-    tile.style.background = hexToRgba(T.elec, 0.08);
-  });
-  tile.addEventListener('pointerup', function() {
-    tile.style.background = 'transparent';
-    _mergeToNewCheck(state);
-  });
-  tile.addEventListener('pointerleave', function() {
-    tile.style.background = 'transparent';
-  });
-  return tile;
-}
-
 // ═══════════════════════════════════════════════════
 //  TAP + LONG-PRESS WIRING
 // ═══════════════════════════════════════════════════
@@ -2848,30 +2239,6 @@ function _wireHeaderTaps(state, seatId, el) {
     if (state.paidSeats[seatId]) {
       reopenSeat(state, seatId);
       return;
-    }
-    // MANAGE mode routing — tool decides how a seat-tile tap is
-    // interpreted:
-    //   MOVE: tap = move the current item selection onto this seat
-    //         (falls through to toggleSeat when no items are selected
-    //         so the cashier can still use the header to pick
-    //         everything on a seat).
-    //   SPLIT: tap toggles this seat in/out of the recipient set.
-    //          state.selected is the recipient set while split is
-    //          live; selectedItems stays intact so the commit has
-    //          something to split. toggleSeat's mirror is bypassed.
-    if (state._manageMode) {
-      if (state._manageTool === 'split') {
-        if (state.selected[seatId]) delete state.selected[seatId];
-        else                         state.selected[seatId] = true;
-        rerenderTopArea(state);
-        return;
-      }
-      if ((state._manageTool === 'move' || state._manageTool === 'merge')
-          && Object.keys(state.selectedItems || {}).length > 0) {
-        var refs = getSelectedItemRefs(state);
-        _moveItemsToSeat(state, refs, seatId);
-        return;
-      }
     }
     toggleSeat(state, seatId);
   });
@@ -2976,10 +2343,6 @@ function toggleSeat(state, seatId) {
   if (seat.items.length === 0) {
     if (state.selected[seatId]) delete state.selected[seatId];
     else                         state.selected[seatId] = true;
-    if (state._manageMode && Object.keys(state.selected).length === 0 && Object.keys(state.selectedItems || {}).length === 0) {
-      exitManageMode(state);
-      return;
-    }
     rerenderTopArea(state);
     return;
   }
@@ -2994,10 +2357,6 @@ function toggleSeat(state, seatId) {
     else             state.selectedItems[key] = true;
   }
   _syncSelectedFromItems(state);
-  if (state._manageMode && Object.keys(state.selected).length === 0 && Object.keys(state.selectedItems || {}).length === 0) {
-    exitManageMode(state);
-    return;
-  }
   rerenderTopArea(state);
 }
 
@@ -3762,14 +3121,11 @@ function handleSeatAction(state, optId, seatId) {
 }
 
 // ── Move primitive ──
-// Shared in-memory move used by both the long-press "Move to seat…"
-// picker (_pickMoveTarget) and the MANAGE MOVE tool. refs is the
-// [{seatIdx, itemIdx}] list the selection helpers produce; targetSeatId
-// is the destination seat. opts.skipLog skips the MANAGE UNDO entry
-// when the helper is driving a caller that already owns its own log
-// (reserved for future use). Returns the count actually moved.
-function _moveItemsToSeat(state, refs, targetSeatId, opts) {
-  opts = opts || {};
+// Shared in-memory move used by the long-press "Move to seat…" picker
+// (_pickMoveTarget). refs is the [{seatIdx, itemIdx}] list the
+// selection helpers produce; targetSeatId is the destination seat.
+// Returns the count actually moved.
+function _moveItemsToSeat(state, refs, targetSeatId) {
   var targetIdx = _seatIdxById(state, targetSeatId);
   if (targetIdx < 0) return 0;
 
@@ -3806,14 +3162,6 @@ function _moveItemsToSeat(state, refs, targetSeatId, opts) {
 
   persistItemSeats(state, movedItems);
   persistSeats(state);
-
-  if (state._manageMode && !opts.skipLog) {
-    state._manageLog.push({
-      kind:         'move',
-      targetSeatId: targetSeatId,
-      patches:      patches,
-    });
-  }
 
   state.selectedItems = {};
   state.selected      = {};
@@ -3925,13 +3273,25 @@ function _openTransfer(state) {
 // ═══════════════════════════════════════════════════
 
 function openEditSeats(state) {
-  var columns = [];
-  for (var i = 0; i < state.seats.length; i++) {
-    if (state.paidSeats[state.seats[i].id]) continue;
-    columns.push({
-      id:    state.seats[i].id,
-      label: state.seats[i].id,
-      items: state.seats[i].items.map(function(it) {
+  // Determine which seats to send: selected seats if any, else all unpaid.
+  var sentIndices = [];
+  var selKeys = Object.keys(state.selected || {});
+  if (selKeys.length > 0) {
+    for (var i = 0; i < state.seats.length; i++) {
+      if (state.selected[state.seats[i].id]) sentIndices.push(i);
+    }
+  } else {
+    for (var i = 0; i < state.seats.length; i++) {
+      if (!state.paidSeats[state.seats[i].id]) sentIndices.push(i);
+    }
+  }
+
+  var columns = sentIndices.map(function(idx) {
+    var seat = state.seats[idx];
+    return {
+      id:    seat.id,
+      label: seat.id,
+      items: seat.items.map(function(it) {
         return {
           name:         it.name,
           qty:          it.qty,
@@ -3944,71 +3304,44 @@ function openEditSeats(state) {
           _splitRef:    it._splitRef || undefined,
         };
       }),
-    });
-  }
-  SceneManager.openTransactional('column-editor', {
-    columns:     columns,
-    operations:  ['MERGE', 'MOVE', 'SPLIT'],
-    initialMode: 'move',
-    orderId:     state.orderId,
-    onSave: function(newColumns) {
-      // Rebuild seats from columns
-      var newSeats = [];
-      for (var c = 0; c < newColumns.length; c++) {
-        var oldNumber = parseInt(newColumns[c].id.replace(/^S-|^NEW-/, ''), 10) || (c + 1);
-        newSeats.push({
-          id:     'S-' + String(c + 1).padStart(3, '0'),
-          number: c + 1,
-          items:  newColumns[c].items,
-        });
-      }
-      // Preserve any paid seats at the front unchanged
-      var paid = [];
-      for (var p = 0; p < state.seats.length; p++) {
-        if (state.paidSeats[state.seats[p].id]) paid.push(state.seats[p]);
-      }
-      state.seats = paid.concat(newSeats);
-      state.selectedItems = {};
-      state.selected = {};
-      rerenderTopArea(state);
+    };
+  });
 
-      // ── Backend sync for split items ──
-      // For each item carrying a _splitRef: DELETE the original backend record
-      // (once per ref) then POST each split copy as a new item with split_ref.
-      // Other diffs (plain moves, merges of unsplit items) remain TODO.
-      var orderId = state.orderId;
-      if (orderId) {
-        var deletedRefs = {};
-        var API = '/api/v1';
-        for (var sc = 0; sc < newColumns.length; sc++) {
-          var seatNum = sc + 1;
-          for (var si = 0; si < newColumns[sc].items.length; si++) {
-            var it = newColumns[sc].items[si];
-            if (!it._splitRef) continue;
-            if (!deletedRefs[it._splitRef]) {
-              deletedRefs[it._splitRef] = true;
-              fetch(API + '/orders/' + orderId + '/items/' + it._splitRef, {
-                method: 'DELETE',
-              }).catch(function() {});
-            }
-            fetch(API + '/orders/' + orderId + '/items', {
-              method:  'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name:         it.name,
-                price:        it.price,
-                quantity:     it.qty,
-                menu_item_id: it.menu_item_id || '',
-                category:     it.category || '',
-                notes:        it.notes   || '',
-                seat_number:  seatNum,
-                modifiers:    [],
-                split_ref:    it._splitRef,
-              }),
-            }).catch(function() {});
-          }
+  SceneManager.openTransactional('column-editor', {
+    columns:  columns,
+    orderId:  state.orderId,
+    onSave: function(newColumns) {
+      // Zip returned columns back into the original seat indices.
+      sentIndices.forEach(function(origIdx, colIdx) {
+        if (newColumns[colIdx]) {
+          state.seats[origIdx].items = newColumns[colIdx].items;
         }
-      }
+      });
+
+      // Handle extra columns (added inside column-editor).
+      var usedNumbers = state.seats.map(function(s) { return s.number; });
+      newColumns.slice(sentIndices.length).forEach(function(col) {
+        if (!col.isNewCheck) {
+          // New seat column — find the lowest gap number.
+          var n = 1;
+          while (usedNumbers.indexOf(n) >= 0) n++;
+          usedNumbers.push(n);
+          state.seats.push({
+            id:     'S-' + String(n).padStart(3, '0'),
+            number: n,
+            items:  col.items,
+          });
+        } else {
+          // New check column — hand off to the split-by-seat backend call.
+          _callSplitBySeat(state, col.items.map(function(it) {
+            return it.seat_number || n;
+          }));
+        }
+      });
+
+      state.selectedItems = {};
+      state.selected      = {};
+      rerenderTopArea(state);
     },
   });
 }
