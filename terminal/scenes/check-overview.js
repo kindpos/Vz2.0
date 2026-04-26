@@ -3311,33 +3311,54 @@ function openEditSeats(state) {
     columns:  columns,
     orderId:  state.orderId,
     onSave: function(newColumns) {
+      var itemsToSync = [];
+
       // Zip returned columns back into the original seat indices.
+      // Seats whose column was merged away are cleared.
       sentIndices.forEach(function(origIdx, colIdx) {
+        var seat = state.seats[origIdx];
         if (newColumns[colIdx]) {
-          state.seats[origIdx].items = newColumns[colIdx].items;
+          seat.items = newColumns[colIdx].items;
+        } else {
+          seat.items = [];
+        }
+        for (var i = 0; i < seat.items.length; i++) {
+          var it = seat.items[i];
+          if (it.item_id) {
+            it.seat_number = seat.number;
+            itemsToSync.push(it);
+          }
         }
       });
 
-      // Handle extra columns (added inside column-editor).
+      // Handle extra columns (new seats added inside column-editor).
       var usedNumbers = state.seats.map(function(s) { return s.number; });
       newColumns.slice(sentIndices.length).forEach(function(col) {
         if (!col.isNewCheck) {
-          // New seat column — find the lowest gap number.
           var n = 1;
           while (usedNumbers.indexOf(n) >= 0) n++;
           usedNumbers.push(n);
-          state.seats.push({
+          var newSeat = {
             id:     'S-' + String(n).padStart(3, '0'),
             number: n,
             items:  col.items,
-          });
+          };
+          state.seats.push(newSeat);
+          for (var i = 0; i < col.items.length; i++) {
+            if (col.items[i].item_id) {
+              col.items[i].seat_number = n;
+              itemsToSync.push(col.items[i]);
+            }
+          }
         } else {
-          // New check column — hand off to the split-by-seat backend call.
-          _callSplitBySeat(state, col.items.map(function(it) {
-            return it.seat_number || n;
-          }));
+          // New check column — collect seat numbers and hand off to backend split.
+          var seatNums = col.items.map(function(it) { return it.seat_number; }).filter(Boolean);
+          if (seatNums.length > 0) _callSplitBySeat(state, seatNums);
         }
       });
+
+      if (itemsToSync.length > 0) persistItemSeats(state, itemsToSync);
+      persistSeats(state);
 
       state.selectedItems = {};
       state.selected      = {};
