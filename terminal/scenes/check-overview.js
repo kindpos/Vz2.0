@@ -440,6 +440,7 @@ defineScene({
     state._voidTimers   = [];
     state._mode         = null;
     state._osActive     = false;
+    state._tileSelSet   = new Set();
     state._mountParams  = params;   // persistSeats() reads employee info
     state._seatsChain   = null;     // reset per mount
     state.seats = orderToSeats(null, 1);
@@ -1471,13 +1472,13 @@ function rerenderTopArea(state) {
 
 function renderSeatsGrid(state, container, mode) {
   if (mode === 'B') {
-    // ── Mode B: left column = recap OR paid-seat payment detail ──
-    // recapCol is a flex column so its child can use flex:1 + minHeight:0
-    // and let its own overflow-y:auto drive scrolling. A single
-    // overflow-y:auto on recapCol alone doesn't reliably scroll on webkit
-    // touch runtimes because align-items:stretch doesn't establish a
-    // definite height for the inner block — turning recapCol into a flex
-    // column makes that explicit.
+    // _tileSelSet lives on state so it survives rerenderTopArea calls
+    // triggered by tile taps — it's reset only on mount and when ALL
+    // SEATS is tapped. It does NOT write to state.selected /
+    // state.selectedItems; it only filters the left recap.
+    var _tileSelSet = state._tileSelSet || (state._tileSelSet = new Set());
+
+    // ── LEFT: scrollable recap ──
     var recapCol = document.createElement('div');
     Object.assign(recapCol.style, {
       flex:          '1',
@@ -1488,67 +1489,130 @@ function renderSeatsGrid(state, container, mode) {
     });
 
     if (state._selectedPaidSeat) {
-      // A paid tile is selected — show that seat's payment rows in the
-      // left column instead of the normal item recap.
       var paidPanel = _buildPaidRecapPanel(state, state._selectedPaidSeat);
       paidPanel.style.flex      = '1';
       paidPanel.style.minHeight = '0';
       paidPanel.style.overflowY = 'auto';
       recapCol.appendChild(paidPanel);
     } else {
-      // Normal item recap — skip paid seats (they live in the tile grid).
-      var adaptedOrder = _adaptOrderForRecap(state);
-      var filteredToState = [];
-      for (var ai = 0; ai < adaptedOrder.seats.length; ai++) {
-        var adaptedNum = adaptedOrder.seats[ai].seatNumber;
-        for (var si2 = 0; si2 < state.seats.length; si2++) {
-          if (state.seats[si2].number === adaptedNum) {
-            filteredToState[ai] = si2;
-            break;
+      // Inline seat sections with _buildItemSubCard per item.
+      // _tileSelSet filters which seats are shown; empty = show all.
+      var scrollList = document.createElement('div');
+      Object.assign(scrollList.style, {
+        flex:          '1',
+        minHeight:     '0',
+        overflowY:     'auto',
+        display:       'flex',
+        flexDirection: 'column',
+        gap:           '8px',
+        padding:       '4px 2px',
+      });
+
+      for (var rsi = 0; rsi < state.seats.length; rsi++) {
+        var rSeat = state.seats[rsi];
+        if (state.paidSeats[rSeat.id]) continue;
+        if (_tileSelSet.size > 0 && !_tileSelSet.has(rsi)) continue;
+
+        var anyItemSel = false;
+        for (var rki = 0; rki < rSeat.items.length; rki++) {
+          if (state.selectedItems && state.selectedItems[rsi + ':' + rki]) {
+            anyItemSel = true; break;
           }
         }
-      }
 
-      var recapEl = buildItemRecap(adaptedOrder, {
-        hideHeader:  true,
-        hideTotals:  true,
-        collapsible: true,
-        seatAccent: function(fIdx) {
-          var realIdx = filteredToState[fIdx];
-          return realIdx != null ? seatAccent(realIdx) : null;
-        },
-        itemSelected: function(fIdx, itemIdx) {
-          var realIdx = filteredToState[fIdx];
-          return realIdx != null
-            && !!(state.selectedItems && state.selectedItems[realIdx + ':' + itemIdx]);
-        },
-        onItemTap: function(fIdx, itemIdx) {
-          var realIdx = filteredToState[fIdx];
-          if (realIdx != null) toggleItem(state, realIdx, itemIdx);
-        },
-      });
-      recapEl.style.maxWidth  = 'none';
-      recapEl.style.width     = '100%';
-      recapEl.style.flex      = '1';
-      recapEl.style.minHeight = '0';
-      recapCol.appendChild(recapEl);
+        // Seat section header (tappable — toggleSeat)
+        var secHdr = document.createElement('div');
+        Object.assign(secHdr.style, {
+          background:    T.well,
+          borderLeft:    '3px solid ' + (anyItemSel ? T.green : T.moon),
+          borderRadius:  '6px',
+          padding:       '5px 8px',
+          display:       'flex',
+          alignItems:    'center',
+          justifyContent:'space-between',
+          cursor:        'pointer',
+          pointerEvents: 'auto',
+          touchAction:   'manipulation',
+          userSelect:    'none',
+        });
+        var secLabel = document.createElement('span');
+        Object.assign(secLabel.style, {
+          fontFamily: T.fh,
+          fontWeight: T.fwBold,
+          fontSize:   '20px',
+          color:      anyItemSel ? T.green : T.moon,
+        });
+        secLabel.textContent = 'S' + (rSeat.number != null ? rSeat.number : (rsi + 1));
+        secHdr.appendChild(secLabel);
+        var secSub = document.createElement('span');
+        Object.assign(secSub.style, {
+          fontFamily: T.fb,
+          fontWeight: T.fwBold,
+          fontSize:   '11px',
+          color:      T.gold,
+        });
+        secSub.textContent = fmt(seatTotal(rSeat));
+        secHdr.appendChild(secSub);
+        (function(capturedSeatId) {
+          secHdr.addEventListener('pointerup', function(e) {
+            if (e.defaultPrevented) return;
+            toggleSeat(state, capturedSeatId);
+          });
+        })(rSeat.id);
+        scrollList.appendChild(secHdr);
+
+        // Indented item sub-cards
+        for (var rii = 0; rii < rSeat.items.length; rii++) {
+          var subCard = _buildItemSubCard(state, rsi, rii);
+          subCard.style.marginLeft = '24px';
+          scrollList.appendChild(subCard);
+        }
+      }
+      recapCol.appendChild(scrollList);
     }
     container.appendChild(recapCol);
 
+    // ── RIGHT: 300px compact tile grid ──
     var tilesCol = document.createElement('div');
     Object.assign(tilesCol.style, {
-      flex:                '1',
-      minWidth:             '0',
-      display:              'grid',
-      gridTemplateColumns:  'repeat(3, 1fr)',
-      gridAutoRows:         'min-content',
-      alignContent:         'start',
-      gap:                  '10px',
-      overflowY:            'auto',
+      width:               '300px',
+      flexShrink:          '0',
+      display:             'grid',
+      gridTemplateColumns: 'repeat(3, 1fr)',
+      gridAutoRows:        'min-content',
+      alignContent:        'start',
+      gap:                 '6px',
+      overflowY:           'auto',
     });
-    // +SEAT goes in first so grid places it at (1,1). position:sticky
-    // keeps it pinned to the top of the scroll container so the cashier
-    // can always add a seat without scrolling back up on dense checks.
+
+    // ALL SEATS button — spans 3 columns
+    var allSel = _tileSelSet.size === 0;
+    var allSeatsBtn = document.createElement('div');
+    Object.assign(allSeatsBtn.style, {
+      gridColumn:     '1 / -1',
+      background:     allSel ? T.elec : T.well,
+      border:         '1px solid ' + (allSel ? T.elec : T.moon),
+      borderRadius:   '8px',
+      padding:        '8px',
+      textAlign:      'center',
+      cursor:         'pointer',
+      pointerEvents:  'auto',
+      touchAction:    'manipulation',
+      userSelect:     'none',
+      fontFamily:     T.fh,
+      fontWeight:     T.fwBold,
+      fontSize:       '12px',
+      color:          allSel ? T.moonText : T.moon,
+    });
+    allSeatsBtn.textContent = 'ALL SEATS';
+    allSeatsBtn.addEventListener('pointerup', function(e) {
+      if (e.defaultPrevented) return;
+      state._tileSelSet.clear();
+      rerenderTopArea(state);
+    });
+    tilesCol.appendChild(allSeatsBtn);
+
+    // +SEAT add tile
     var addB = buildAddTile(state, { fullSize: true });
     addB.style.flex     = '';
     addB.style.width    = '';
@@ -1557,17 +1621,15 @@ function renderSeatsGrid(state, container, mode) {
     addB.style.zIndex   = '1';
     tilesCol.appendChild(addB);
 
-    for (var i = 0; i < state.seats.length; i++) {
-      if (state.paidSeats[state.seats[i].id]) {
-        var paidTile = buildPaidCompactTile(state, i);
+    for (var ti = 0; ti < state.seats.length; ti++) {
+      if (state.paidSeats[state.seats[ti].id]) {
+        var paidTile = buildPaidCompactTile(state, ti);
         paidTile.style.flex  = '';
         paidTile.style.width = '';
         tilesCol.appendChild(paidTile);
         continue;
       }
-      var tile = buildCompactTile(state, i);
-      // Grid controls width — undo buildStaticCard's flex default so the
-      // tile doesn't try to stretch across tracks.
+      var tile = buildCompactTile(state, ti);
       tile.style.flex  = '';
       tile.style.width = '';
       tilesCol.appendChild(tile);
@@ -2175,43 +2237,39 @@ function buildPaidSeatCard(state, seatIdx) {
 // in the recap column to the left.
 function buildCompactTile(state, seatIdx) {
   var seat = state.seats[seatIdx];
-  var isSelected = !!(state.selected && state.selected[seat.id]);
-  var accent     = seatAccent(seatIdx);
+  // Tile selection is from _tileSelSet (UI-only, not state.selected).
+  var _tileSelSet = state._tileSelSet || (state._tileSelSet = new Set());
+  var tileActive  = _tileSelSet.has(seatIdx);
 
-  // buildActionCard (same builder the manager-landing check grid uses)
-  // gives us cursor:pointer, pointer-events:auto, touch-action:manipulation,
-  // and the press-depress animation — everything a tappable tile needs.
-  // buildStaticCard is display-only, which is why taps on the tile body
-  // showed no cursor feedback and didn't register.
-  var wrap = buildActionCard({ accent: accent });
+  var wrap = buildActionCard({ accent: T.moon });
   wrap.style.padding       = '0';
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
   wrap.style.minHeight     = '90px';
-
-  // Inverted selection visual — wrap fills with the per-seat accent,
-  // all text flips to T.well. Matches the file-header spec ('selected
-  // tiles fill with a per-seat accent ... every text node flips to
-  // T.well').
-  if (isSelected) {
-    wrap.style.background = accent;
-  }
+  wrap.style.background    = T.well;
+  wrap.style.border        = '1px solid ' + T.moon;
+  wrap.style.boxShadow     = '0 2px 0 ' + T.moonDk;
 
   wrap.addEventListener('pointerup', function(e) {
     if (e.defaultPrevented) return;
-    toggleSeat(state, seat.id);
+    if (_tileSelSet.has(seatIdx)) _tileSelSet.delete(seatIdx);
+    else                          _tileSelSet.add(seatIdx);
+    rerenderTopArea(state);
   });
 
+  // Header: floods T.green when tile is selected
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    background:   isSelected ? darkenHex(accent, 0.15) : T.well,
-    padding:      '6px 12px',
-    borderBottom: '1px solid ' + T.border,
+    background:    tileActive ? T.green : T.well,
+    padding:       '6px 10px',
+    borderBottom:  '1px solid ' + T.border,
+    pointerEvents: 'auto',
+    touchAction:   'manipulation',
   });
   var label = document.createElement('div');
   Object.assign(label.style, {
-    color:      isSelected ? T.well : T.green,
+    color:      tileActive ? T.moonText : T.moon,
     fontFamily: T.fh,
     fontWeight: T.fwBold,
   });
@@ -2219,18 +2277,18 @@ function buildCompactTile(state, seatIdx) {
   hdr.appendChild(label);
   wrap.appendChild(hdr);
 
+  // Body: subtotal only — no item count
   var body = document.createElement('div');
   Object.assign(body.style, {
-    background:     isSelected ? accent : T.card,
     flex:           '1',
     display:        'flex',
     alignItems:     'center',
     justifyContent: 'center',
-    padding:        '10px',
+    padding:        '8px',
   });
   var totalEl = document.createElement('div');
   Object.assign(totalEl.style, {
-    color:      isSelected ? T.well : T.gold,
+    color:      tileActive ? T.green : T.gold,
     fontFamily: T.fb,
     fontSize:   T.fsB1,
     fontWeight: T.fwBold,
