@@ -924,8 +924,9 @@ function _buildClosedCheckRow(chk, handlers) {
 // tips, this is the yellow blocker. When all tips are adjusted, it becomes a
 // gold review card so the server can fix typos by tapping EDIT on any row.
 function buildTipsCard(state, handlers, tipFilter) {
+  var hasCards = state.unadjustedChecks.length > 0 || state.adjustedChecks.length > 0;
   var hasUnadj = state.unadjustedChecks.length > 0;
-  var accentColor = hasUnadj ? T.warning : T.gold;
+  var accentColor = !hasCards ? T.border : (hasUnadj ? T.warning : T.gold);
 
   var card = buildBaseCard({ accent: accentColor, stroke: accentColor });
   card.dataset.cardKey = 'unadjusted-tips';
@@ -941,26 +942,20 @@ function buildTipsCard(state, handlers, tipFilter) {
     'display:flex;align-items:center;justify-content:center;',
     'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + accentColor + ';',
   ].join('');
-  icon.textContent = hasUnadj ? '!' : '\u2713';
+  icon.textContent = (!hasCards || !hasUnadj) ? '\u2713' : '!';
 
   var title = document.createElement('span');
   title.style.cssText = 'flex:1;font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + accentColor + ';letter-spacing:1.8px;';
-  if (hasUnadj) {
-    title.textContent = 'UNADJUSTED TIPS \u2022 ' + state.unadjustedChecks.length;
-  } else {
-    title.textContent = 'TIPS \u2022 ALL ADJUSTED';
-  }
-
-  // Filter tabs — always visible whenever the card renders, so the
-  // server always has the same mental model (unadj/adj counts + toggle)
-  // regardless of whether there's still a blocker. "UNADJ 0" is useful
-  // info on its own — tells the server at a glance that everything's done.
-  var unadjCount = state.unadjustedChecks.length;
-  var adjCount   = state.adjustedChecks.length;
+  title.textContent = !hasCards
+    ? 'CC TIPS'
+    : (hasUnadj ? 'UNADJUSTED TIPS \u2022 ' + state.unadjustedChecks.length : 'TIPS \u2022 ALL ADJUSTED');
 
   hdr.appendChild(icon);
   hdr.appendChild(title);
-  hdr.appendChild(buildTipFilterTabs(tipFilter, unadjCount, adjCount, handlers));
+
+  if (hasCards) {
+    hdr.appendChild(buildTipFilterTabs(tipFilter, state.unadjustedChecks.length, state.adjustedChecks.length, handlers));
+  }
 
   card.appendChild(hdr);
 
@@ -968,12 +963,24 @@ function buildTipsCard(state, handlers, tipFilter) {
   var list = document.createElement('div');
   list.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;';
 
-  var showing = (tipFilter === 'adjusted') ? state.adjustedChecks : state.unadjustedChecks;
-  var mode = (tipFilter === 'adjusted') ? 'adjusted' : 'unadjusted';
-
-  showing.forEach(function(chk) {
-    list.appendChild(buildTipRow(chk, mode, handlers));
-  });
+  if (!hasCards) {
+    var emptyAll = document.createElement('div');
+    emptyAll.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.4;text-align:center;padding:10px 0;font-style:italic;';
+    emptyAll.textContent = 'no card checks today';
+    list.appendChild(emptyAll);
+  } else {
+    var showing = (tipFilter === 'adjusted') ? state.adjustedChecks : state.unadjustedChecks;
+    var mode = (tipFilter === 'adjusted') ? 'adjusted' : 'unadjusted';
+    showing.forEach(function(chk) {
+      list.appendChild(buildTipRow(chk, mode, handlers));
+    });
+    if (!showing.length) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.45;text-align:center;padding:10px 0;font-style:italic;';
+      empty.textContent = tipFilter === 'adjusted' ? 'no adjusted tips yet' : 'all tips adjusted \u2014 ready to finalize';
+      list.appendChild(empty);
+    }
+  }
 
   card.appendChild(list);
   return card;
@@ -1123,9 +1130,7 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds, activeTab)
 
   cardStack.appendChild(buildChecksCard(state, handlers, activeTab, selectedCheckIds));
 
-  if (state.unadjustedChecks.length > 0 || state.adjustedChecks.length > 0) {
-    cardStack.appendChild(buildTipsCard(state, handlers, tipFilter));
-  }
+  cardStack.appendChild(buildTipsCard(state, handlers, tipFilter));
 
   col.appendChild(cardStack);
 

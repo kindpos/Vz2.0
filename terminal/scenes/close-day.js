@@ -631,9 +631,7 @@ function buildMiddleCol(data, handlers, sceneState) {
 
   cardStack.appendChild(buildChecksCard(data, handlers, sceneState.activeTab, sceneState.selectedCheckIds));
 
-  if (data.closedCardChecks.length > 0) {
-    cardStack.appendChild(buildTipsCard(data, handlers, sceneState.tipFilter));
-  }
+  cardStack.appendChild(buildTipsCard(data, handlers, sceneState.tipFilter));
 
   col.appendChild(cardStack);
 
@@ -977,14 +975,16 @@ function _buildClosedCheckRow(chk, handlers) {
 
 
 // ── Tips (filterable UNADJ / ADJ) ──
+// ── Tips (filterable UNADJ / ADJ) ──
 function buildTipsCard(state, handlers, tipFilter) {
+  var hasCards = (state.closedCardChecks && state.closedCardChecks.length > 0)
+    || state.unadjustedChecks.length > 0 || state.adjustedChecks.length > 0;
   var hasUnadj = state.unadjustedChecks.length > 0;
-  var accent = hasUnadj ? T.warning : T.gold;
+  var accent = !hasCards ? T.border : (hasUnadj ? T.warning : T.gold);
 
   var card = buildBaseCard({ accent: accent });
   card.dataset.cardKey = 'unadjusted-tips';
 
-  // Resolve filter — default to unadjusted when any, adjusted when all done
   var filter = tipFilter || (hasUnadj ? 'unadjusted' : 'adjusted');
 
   // Header
@@ -998,21 +998,22 @@ function buildTipsCard(state, handlers, tipFilter) {
     'display:flex;align-items:center;justify-content:center;',
     'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + accent + ';',
   ].join('');
-  icon.textContent = hasUnadj ? '!' : '\u2713';
+  icon.textContent = (!hasCards || !hasUnadj) ? '\u2713' : '!';
 
   var title = document.createElement('span');
   title.style.cssText = 'flex:1;font-family:' + T.fh + ';font-size:' + FS_LABEL + ';font-weight:700;color:' + accent + ';letter-spacing:1.8px;';
-  title.textContent = hasUnadj
-    ? 'UNADJUSTED TIPS \u2022 ' + state.unadjustedChecks.length
-    : 'TIPS \u2022 ALL ADJUSTED';
+  title.textContent = !hasCards
+    ? 'CC TIPS'
+    : (hasUnadj ? 'UNADJUSTED TIPS \u2022 ' + state.unadjustedChecks.length : 'TIPS \u2022 ALL ADJUSTED');
 
   hdr.appendChild(icon);
   hdr.appendChild(title);
-  hdr.appendChild(buildTipFilterTabs(filter, state.unadjustedChecks.length, state.adjustedChecks.length, handlers));
 
-  if (hasUnadj && tipFilter !== 'adjusted') {
-    var zeroBtn = buildZeroRemainingBtn(handlers);
-    hdr.appendChild(zeroBtn);
+  if (hasCards) {
+    hdr.appendChild(buildTipFilterTabs(filter, state.unadjustedChecks.length, state.adjustedChecks.length, handlers));
+    if (hasUnadj && tipFilter !== 'adjusted') {
+      hdr.appendChild(buildZeroRemainingBtn(handlers));
+    }
   }
 
   card.appendChild(hdr);
@@ -1020,18 +1021,26 @@ function buildTipsCard(state, handlers, tipFilter) {
   // Row list
   var list = document.createElement('div');
   list.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;';
-  var showing = (filter === 'adjusted') ? state.adjustedChecks : state.unadjustedChecks;
-  showing.forEach(function(chk) {
-    list.appendChild(buildTipRow(chk, filter, handlers));
-  });
-  if (!showing.length) {
-    var empty = document.createElement('div');
-    empty.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.45;text-align:center;padding:10px 0;font-style:italic;';
-    empty.textContent = filter === 'adjusted' ? 'no adjusted tips yet' : 'all tips adjusted \u2014 ready to settle';
-    list.appendChild(empty);
-  }
-  card.appendChild(list);
 
+  if (!hasCards) {
+    var emptyAll = document.createElement('div');
+    emptyAll.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.4;text-align:center;padding:10px 0;font-style:italic;';
+    emptyAll.textContent = 'no card checks today';
+    list.appendChild(emptyAll);
+  } else {
+    var showing = (filter === 'adjusted') ? state.adjustedChecks : state.unadjustedChecks;
+    showing.forEach(function(chk) {
+      list.appendChild(buildTipRow(chk, filter, handlers));
+    });
+    if (!showing.length) {
+      var empty = document.createElement('div');
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.45;text-align:center;padding:10px 0;font-style:italic;';
+      empty.textContent = filter === 'adjusted' ? 'no adjusted tips yet' : 'all tips adjusted \u2014 ready to settle';
+      list.appendChild(empty);
+    }
+  }
+
+  card.appendChild(list);
   return card;
 }
 
