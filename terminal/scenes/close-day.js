@@ -617,7 +617,7 @@ function buildMiddleCol(data, handlers, sceneState) {
   col.style.cssText = 'flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;';
 
   var blocked   = (data.openChecks.length + data.unadjustedChecks.length) > 0;
-  var lockReady = !blocked && sceneState.batchSettled && sceneState.cashCounted != null;
+  var lockReady = !blocked && sceneState.batchSettled;
 
   // Card stack — scrollable
   var cardStack = document.createElement('div');
@@ -637,17 +637,20 @@ function buildMiddleCol(data, handlers, sceneState) {
 
   col.appendChild(cardStack);
 
-  // Pinned footer: SETTLE BATCH → COUNT DRAWER → LOCK DAY
+  // Pinned footer: SETTLE BATCH + FINALIZE (right-aligned, auto-width)
   var footer = document.createElement('div');
-  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:6px;';
+  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:4px;';
 
-  // ── Step 1: SETTLE BATCH (shown until settled) ──
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:8px;';
+
+  // SETTLE BATCH — shown until settled, enabled when no unadj tips
   if (!sceneState.batchSettled) {
     var canSettle = data.unadjustedChecks.length === 0;
     var settleBtn = document.createElement('div');
     settleBtn.style.cssText = [
-      'padding:10px 16px;border-radius:8px;box-sizing:border-box;text-align:center;',
-      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;letter-spacing:1.4px;',
+      'padding:10px 18px;border-radius:8px;white-space:nowrap;',
+      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;letter-spacing:1.2px;',
       canSettle
         ? 'background:' + T.elec + ';box-shadow:0 3px 0 ' + T.elecDk + ';color:#fff;cursor:pointer;'
         : 'background:' + T.card + ';border:1.5px solid ' + T.border + ';opacity:0.55;cursor:not-allowed;color:' + T.text + ';',
@@ -658,92 +661,33 @@ function buildMiddleCol(data, handlers, sceneState) {
         if (handlers.onSettleBatch) handlers.onSettleBatch();
       });
     }
-    footer.appendChild(settleBtn);
+    btnRow.appendChild(settleBtn);
   }
 
-  // ── Step 2: COUNT DRAWER (shown once batch settled) ──
-  if (sceneState.batchSettled) {
-    var drawerRow = document.createElement('div');
-    drawerRow.style.cssText = [
-      'display:flex;align-items:center;gap:8px;',
-      'padding:8px 12px;border-radius:8px;background:' + T.well + ';',
-    ].join('');
-
-    var drawerLbl = document.createElement('div');
-    drawerLbl.style.cssText = [
-      'flex-shrink:0;font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-      'letter-spacing:1px;color:' + T.text + ';opacity:0.7;',
-    ].join('');
-    drawerLbl.textContent = 'DRAWER';
-    drawerRow.appendChild(drawerLbl);
-
-    var cashInput = document.createElement('input');
-    cashInput.type = 'text';
-    cashInput.placeholder = fmt(data.cashExpected);
-    if (sceneState.cashCounted != null && sceneState.cashCounted !== 'bypass') {
-      cashInput.value = String(sceneState.cashCounted);
-    }
-    cashInput.disabled = sceneState.cashCounted === 'bypass';
-    cashInput.style.cssText = [
-      'flex:1;min-width:0;height:30px;box-sizing:border-box;padding:0 8px;',
-      'background:' + T.card + ';border:1px solid ' + hexToRgba(T.border, 0.5) + ';border-radius:6px;',
-      'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.text + ';',
-      sceneState.cashCounted === 'bypass' ? 'opacity:0.4;' : '',
-    ].join('');
-    cashInput.addEventListener('change', function() {
-      var n = parseFloat(String(cashInput.value).replace(/[^0-9.\-]/g, ''));
-      if (!isNaN(n) && handlers.onCashInput) handlers.onCashInput(n);
-    });
-    drawerRow.appendChild(cashInput);
-
-    if (sceneState.cashCounted != null && sceneState.cashCounted !== 'bypass') {
-      var variance = sceneState.cashCounted - data.cashExpected;
-      var varColor = Math.abs(variance) < 0.005 ? T.greenWarm : (variance < 0 ? T.verm : T.warning);
-      var varEl = document.createElement('div');
-      varEl.style.cssText = 'flex-shrink:0;font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + varColor + ';';
-      varEl.textContent = (variance >= 0 ? '+' : '') + fmt(variance);
-      drawerRow.appendChild(varEl);
-    } else {
-      var bypassBtn = document.createElement('div');
-      bypassBtn.style.cssText = [
-        'flex-shrink:0;padding:4px 8px;border-radius:6px;cursor:pointer;',
-        'border:1px solid ' + hexToRgba(T.border, 0.5) + ';',
-        'font-family:' + T.fh + ';font-size:10px;font-weight:700;color:' + T.text + ';letter-spacing:0.5px;',
-      ].join('');
-      bypassBtn.textContent = sceneState.cashCounted === 'bypass' ? 'COUNTED' : 'BYPASS';
-      bypassBtn.addEventListener('click', function() {
-        if (handlers.onCashBypass) handlers.onCashBypass();
-      });
-      drawerRow.appendChild(bypassBtn);
-    }
-
-    footer.appendChild(drawerRow);
-  }
-
-  // ── Step 3: LOCK DAY ──
-  var lockBtn = document.createElement('div');
+  // FINALIZE — always shown; verm when ready, muted otherwise
+  var finalBtn = document.createElement('div');
   if (lockReady) {
-    lockBtn.style.cssText = [
-      'padding:12px 16px;border-radius:8px;box-sizing:border-box;cursor:pointer;',
-      'background:' + T.greenWarm + ';',
-      'box-shadow:0 4px 0 ' + T.greenWarmDk + ';',
+    finalBtn.style.cssText = [
+      'padding:10px 18px;border-radius:8px;white-space:nowrap;cursor:pointer;',
+      'background:' + T.verm + ';box-shadow:0 3px 0 ' + darkenHex(T.verm, 0.20) + ';',
       'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;',
-      'color:#1a1a1a;letter-spacing:1.4px;text-align:center;',
+      'color:#fff;letter-spacing:1.2px;',
     ].join('');
-    lockBtn.addEventListener('click', function() {
+    finalBtn.addEventListener('click', function() {
       if (handlers.onLockDay) handlers.onLockDay();
     });
   } else {
-    lockBtn.style.cssText = [
-      'padding:12px 16px;border-radius:8px;box-sizing:border-box;',
+    finalBtn.style.cssText = [
+      'padding:10px 18px;border-radius:8px;white-space:nowrap;',
       'background:' + T.card + ';border:1.5px solid ' + T.border + ';',
       'opacity:0.55;cursor:not-allowed;',
       'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;',
-      'color:' + T.text + ';letter-spacing:1.4px;text-align:center;',
+      'color:' + T.text + ';letter-spacing:1.2px;',
     ].join('');
   }
-  lockBtn.textContent = 'LOCK DAY';
-  footer.appendChild(lockBtn);
+  finalBtn.textContent = 'FINALIZE';
+  btnRow.appendChild(finalBtn);
+  footer.appendChild(btnRow);
 
   if (!lockReady) {
     var reason = document.createElement('div');
@@ -754,14 +698,12 @@ function buildMiddleCol(data, handlers, sceneState) {
       reasonMsg = openN + ' open check' + (openN === 1 ? '' : 's') + ' must be closed';
     } else if (unadjN > 0) {
       reasonMsg = unadjN + ' tip' + (unadjN === 1 ? '' : 's') + ' need adjustment';
-    } else if (!sceneState.batchSettled) {
-      reasonMsg = 'settle batch first';
     } else {
-      reasonMsg = 'count drawer first';
+      reasonMsg = 'settle batch first';
     }
     reason.style.cssText = [
       'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-      'color:' + T.verm + ';text-align:center;letter-spacing:0.6px;',
+      'color:' + T.verm + ';text-align:right;letter-spacing:0.6px;',
     ].join('');
     reason.textContent = reasonMsg;
     footer.appendChild(reason);
