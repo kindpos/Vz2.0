@@ -1613,6 +1613,158 @@ function seatAccent(/* seatIdx */) {
   return T.moon;
 }
 
+// ═══════════════════════════════════════════════════
+//  ITEM SUB-CARD (inline, used in Mode A + Mode B recap)
+//  Replaces buildItemRecap for per-item rendering.
+// ═══════════════════════════════════════════════════
+
+function _buildItemSubCard(state, seatIdx, itemIdx) {
+  var item = state.seats[seatIdx].items[itemIdx];
+  var isSel = !!(state.selectedItems && state.selectedItems[seatIdx + ':' + itemIdx]);
+
+  var card = document.createElement('div');
+  Object.assign(card.style, {
+    background:    isSel ? T.green       : T.well,
+    border:        '1px solid ' + (isSel ? T.green   : T.moon),
+    boxShadow:     '0 3px 0 '  + (isSel ? T.greenDk : T.moonDk),
+    borderRadius:  '8px',
+    padding:       '5px 8px',
+    display:       'flex',
+    flexDirection: 'column',
+    gap:           '2px',
+    cursor:        'pointer',
+    pointerEvents: 'auto',
+    touchAction:   'manipulation',
+    userSelect:    'none',
+    boxSizing:     'border-box',
+  });
+
+  // sent badge
+  if (item.sent_at) {
+    var badge = document.createElement('div');
+    badge.textContent = '>>>';
+    Object.assign(badge.style, {
+      fontSize:      '10px',
+      fontWeight:    T.fwBold,
+      fontFamily:    T.fb,
+      color:         isSel ? T.moonText : T.green,
+      letterSpacing: '0.04em',
+    });
+    card.appendChild(badge);
+  }
+
+  // name + price row
+  var nameRow = document.createElement('div');
+  Object.assign(nameRow.style, {
+    display:        'flex',
+    justifyContent: 'space-between',
+    alignItems:     'baseline',
+    gap:            '6px',
+  });
+
+  var nameEl = document.createElement('span');
+  Object.assign(nameEl.style, {
+    fontSize:   '12px',
+    fontWeight: T.fwBold,
+    fontFamily: T.fh,
+    color:      isSel ? T.moonText : T.text,
+    flex:       '1',
+    minWidth:   '0',
+  });
+  nameEl.textContent = (item.qty > 1 ? item.qty + '× ' : '') + item.name;
+  nameRow.appendChild(nameEl);
+
+  var priceEl = document.createElement('span');
+  Object.assign(priceEl.style, {
+    fontSize:   '11px',
+    fontWeight: T.fwBold,
+    fontFamily: T.fb,
+    color:      isSel ? T.moonText : T.gold,
+    flexShrink: '0',
+  });
+  var itemPrice = item.effectivePrice != null ? item.effectivePrice : (item.price || 0);
+  priceEl.textContent = fmt((item.qty || 1) * itemPrice);
+  nameRow.appendChild(priceEl);
+  card.appendChild(nameRow);
+
+  // modifier rows
+  var mods = item.mods || [];
+  for (var mi = 0; mi < mods.length; mi++) {
+    var mod = mods[mi];
+    var modRow = document.createElement('div');
+    Object.assign(modRow.style, {
+      display:     'flex',
+      alignItems:  'baseline',
+      gap:         '4px',
+      marginLeft:  '8px',
+      paddingLeft: '6px',
+      borderLeft:  '2px solid ' + hexToRgba(T.moon, 0.3),
+    });
+    var modName = document.createElement('span');
+    Object.assign(modName.style, {
+      fontSize:   '10px',
+      fontFamily: T.fb,
+      color:      isSel ? T.moonText : T.moon,
+      flex:       '1',
+    });
+    modName.textContent = mod.name || '';
+    modRow.appendChild(modName);
+    if (mod.price && mod.charged) {
+      var modPrice = document.createElement('span');
+      Object.assign(modPrice.style, {
+        fontSize:   '10px',
+        fontWeight: T.fwBold,
+        fontFamily: T.fb,
+        color:      isSel ? T.moonText : T.moon,
+      });
+      modPrice.textContent = '+' + fmt(mod.price);
+      modRow.appendChild(modPrice);
+    }
+    card.appendChild(modRow);
+  }
+
+  // discount row (item-level discount via effectivePrice being lower than price)
+  var basePrice = item.price || 0;
+  var effPrice  = item.effectivePrice != null ? item.effectivePrice : basePrice;
+  if (effPrice < basePrice && basePrice > 0) {
+    var discRow = document.createElement('div');
+    Object.assign(discRow.style, {
+      display:     'flex',
+      alignItems:  'baseline',
+      gap:         '4px',
+      marginLeft:  '8px',
+      paddingLeft: '6px',
+      borderLeft:  '2px solid ' + hexToRgba(T.verm, 0.4),
+    });
+    var discLabel = document.createElement('span');
+    Object.assign(discLabel.style, {
+      fontSize:   '10px',
+      fontFamily: T.fb,
+      color:      isSel ? T.moonText : T.moon,
+      flex:       '1',
+    });
+    discLabel.textContent = 'DISC';
+    discRow.appendChild(discLabel);
+    var discAmt = document.createElement('span');
+    Object.assign(discAmt.style, {
+      fontSize:   '10px',
+      fontWeight: T.fwBold,
+      fontFamily: T.fb,
+      color:      isSel ? T.moonText : T.verm,
+    });
+    discAmt.textContent = '-' + fmt((item.qty || 1) * (basePrice - effPrice));
+    discRow.appendChild(discAmt);
+    card.appendChild(discRow);
+  }
+
+  card.addEventListener('pointerup', function(e) {
+    if (e.defaultPrevented) return;
+    toggleItem(state, seatIdx, itemIdx);
+  });
+
+  return card;
+}
+
 function buildSeatCard(state, seatIdx) {
   var seat       = state.seats[seatIdx];
   var isSelected = !!(state.selected && state.selected[seat.id]);
