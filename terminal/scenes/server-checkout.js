@@ -26,8 +26,7 @@ import { fmt, detailRow, detailDivider } from './checkout-core.js';
 //  LAYOUT CONSTANTS (match mockup exactly)
 // ─────────────────────────────────────────────────
 
-var LEFT_W   = 260;   // Receipt preview column
-var RIGHT_W  = 236;   // Actions column
+var LEFT_W   = 260;   // Left stats column
 var PAD      = 14;    // Outer side/bottom padding
 var PAD_TOP  = 8;     // reduce top padding per UI audit
 
@@ -1093,303 +1092,75 @@ function buildRowPill(opts) {
 function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds, activeTab) {
   selectedCheckIds = selectedCheckIds || [];
   var col = document.createElement('div');
-  col.style.cssText = [
-    'flex:1;display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
-    'min-width:0;min-height:0;',
-    // Single scroll surface — whole column width is draggable/wheel-scrollable.
-    // touch-action:pan-y tells the browser vertical panning is the intended
-    // gesture anywhere in this container, so drag-to-scroll works on cards and
-    // rows, not just on the scrollbar's 2px gutter.
-    'overflow-y:auto;overflow-x:hidden;',
+  col.style.cssText = 'flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;';
+
+  var blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
+
+  // Card stack — scrollable
+  var cardStack = document.createElement('div');
+  cardStack.style.cssText = [
+    'flex:1;overflow-y:auto;overflow-x:hidden;',
+    'display:flex;flex-direction:column;gap:8px;padding-bottom:4px;',
     'touch-action:pan-y;',
     '-webkit-overflow-scrolling:touch;',
     'overscroll-behavior:contain;',
   ].join('');
 
-  var blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
+  cardStack.appendChild(buildChecksCard(state, handlers, activeTab, selectedCheckIds));
 
-  col.appendChild(buildChecksCard(state, handlers, activeTab, selectedCheckIds));
-
-  // Tips card — shown whenever there are any closed CC checks, either as
-  // the yellow blocker (unadjusted) or gold review (all adjusted). The
-  // filter tabs let the server flip between the two lists to fix typos.
   if (state.unadjustedChecks.length > 0 || state.adjustedChecks.length > 0) {
-    col.appendChild(buildTipsCard(state, handlers, tipFilter));
+    cardStack.appendChild(buildTipsCard(state, handlers, tipFilter));
   }
 
-  return col;
-}
+  col.appendChild(cardStack);
 
-// ─────────────────────────────────────────────────
-//  RIGHT COLUMN — actions + blocker queue + timer
-// ─────────────────────────────────────────────────
+  // Pinned finalize footer
+  var footer = document.createElement('div');
+  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:4px;';
 
-function buildActionsCol(state, handlers, startTime) {
-  var blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
-
-  var col = buildStaticCard({ accent: T.green });
-  col.style.cssText += [
-    'flex-shrink:0;width:' + RIGHT_W + 'px;',
-    'padding:14px 16px;box-sizing:border-box;',
-    'display:flex;flex-direction:column;gap:10px;',
-  ].join('');
-
-  var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.8px;flex-shrink:0;';
-  title.textContent = 'ACTIONS';
-  col.appendChild(title);
-
-  // Back button
-  col.appendChild(buildPillButton({
-    label: 'BACK TO FLOOR',
-    variant: 'ghost',
-    shape: 'chamfer',
-    fontSize: FS_PILL_LG,
-    padding: '10px 14px',
-    onClick: function() { if (handlers.onBack) handlers.onBack(); },
-  }));
-
-  // Print Slip (disabled while blocked)
-  col.appendChild(buildPillButton({
-    label: 'PRINT SLIP',
-    variant: blocked ? 'ghost' : 'ghost',
-    disabled: blocked,
-    shape: 'chamfer',
-    fontSize: FS_PILL_LG,
-    padding: '10px 14px',
-    onClick: function() {
-      if (blocked) return;
-      if (handlers.onPrint) handlers.onPrint();
-    },
-  }));
-
-  // Finalize — the big one.
-  var finalizeBtn = buildPillButton({
-    label: 'FINALIZE' + (blocked ? '' : ' CHECKOUT'),
-    variant: blocked ? 'ghost' : 'goGreen',
-    disabled: blocked,
-    shape: 'chamfer',
-    fontSize: FS_PILL_LG,
-    padding: '12px 14px',
-    onClick: function() {
-      if (blocked) return;
+  var finBtn = document.createElement('div');
+  if (blocked) {
+    finBtn.style.cssText = [
+      'padding:12px 16px;border-radius:8px;box-sizing:border-box;',
+      'background:' + T.card + ';border:1.5px solid ' + T.border + ';',
+      'opacity:0.55;cursor:not-allowed;',
+      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + 'px;font-weight:700;',
+      'color:' + T.text + ';letter-spacing:1.4px;text-align:center;',
+    ].join('');
+  } else {
+    finBtn.style.cssText = [
+      'padding:12px 16px;border-radius:8px;box-sizing:border-box;cursor:pointer;',
+      'background:' + T.greenWarm + ';',
+      'box-shadow:0 4px 0 ' + T.greenWarmDk + ';',
+      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + 'px;font-weight:700;',
+      'color:#1a1a1a;letter-spacing:1.4px;text-align:center;',
+    ].join('');
+    finBtn.addEventListener('click', function() {
       if (handlers.onFinalize) handlers.onFinalize();
-    },
-  });
-  if (blocked) {
-    finalizeBtn.style.opacity = '0.5';
-    var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';margin-top:2px;font-weight:normal;letter-spacing:0;text-transform:none;';
-    sub.textContent = 'resolve ' + (state.openChecks.length + state.unadjustedChecks.length) + ' blockers first';
-    finalizeBtn.appendChild(sub);
-    finalizeBtn.style.flexDirection = 'column';
-    finalizeBtn.style.height = '58px';
-  } else {
-    finalizeBtn.style.height = '58px';
-    finalizeBtn.style.boxShadow = '0 3px 0 rgba(0,0,0,0.3)';
+    });
   }
-  col.appendChild(finalizeBtn);
+  finBtn.textContent = 'FINALIZE CHECKOUT';
+  footer.appendChild(finBtn);
 
-  // Blocker queue (when blocked)
   if (blocked) {
-    col.appendChild(buildBlockerQueue(state, handlers));
+    var reason = document.createElement('div');
+    var openN  = state.openChecks.length;
+    var unadjN = state.unadjustedChecks.length;
+    var reasonMsg = openN > 0
+      ? openN + ' open check' + (openN === 1 ? '' : 's') + ' must be closed'
+      : unadjN + ' tip' + (unadjN === 1 ? '' : 's') + ' need adjustment';
+    reason.style.cssText = [
+      'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+      'color:' + T.verm + ';text-align:center;letter-spacing:0.6px;',
+    ].join('');
+    reason.textContent = reasonMsg;
+    footer.appendChild(reason);
   }
 
-  // Flex spacer to push footer down
-  var spacer = document.createElement('div');
-  spacer.style.cssText = 'flex:1;';
-  col.appendChild(spacer);
-
-  // Footer — elapsed timer + FLSA indicator
-  col.appendChild(buildTimerFooter(startTime));
-
+  col.appendChild(footer);
   return col;
 }
 
-function buildActionPill(opts) {
-  var variant = opts.variant || 'outline';
-  var bg, fg, stroke, opacity = 1;
-  if (variant === 'outline') {
-    bg = T.well;
-    fg = T.text;
-    stroke = hexToRgba(T.text, 0.2);
-  } else if (variant === 'disabled') {
-    bg = T.well;
-    fg = hexToRgba(T.text, 0.6);
-    stroke = hexToRgba(T.text, 0.1);
-    opacity = 0.4;
-  } else {
-    bg = T.well;
-    fg = T.text;
-    stroke = hexToRgba(T.text, 0.2);
-  }
-
-  var wrap = document.createElement('div');
-  wrap.style.cssText = [
-    'flex-shrink:0;display:flex;align-items:center;justify-content:center;',
-    'height:44px;',
-    'background:' + bg + ';border:1px solid ' + stroke + ';border-radius:999px;',
-    'cursor:' + (variant === 'disabled' ? 'default' : 'pointer') + ';',
-    'user-select:none;-webkit-user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'font-family:' + T.fh + ';font-size:12px;font-weight:700;letter-spacing:1.2px;color:' + fg + ';',
-    'opacity:' + opacity + ';',
-  ].join('');
-  wrap.textContent = opts.label;
-  wrap.addEventListener('pointerup', function() {
-    if (opts.onClick) opts.onClick();
-  });
-  return wrap;
-}
-
-function buildFinalizePill(opts) {
-  var blocked = !!opts.blocked;
-  var bg = blocked ? T.well : T.green;
-  var fg = blocked ? hexToRgba(T.text, 0.6) : T.well;
-  var stroke = blocked ? hexToRgba(T.text, 0.1) : null;
-  var opacity = blocked ? 0.5 : 1;
-
-  var wrap = document.createElement('div');
-  wrap.style.cssText = [
-    'flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;',
-    'height:58px;',
-    'background:' + bg + ';',
-    stroke ? 'border:1px solid ' + stroke + ';' : '',
-    'border-radius:999px;',
-    'cursor:' + (blocked ? 'default' : 'pointer') + ';',
-    'user-select:none;-webkit-user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'opacity:' + opacity + ';',
-    blocked ? '' : 'box-shadow:0 3px 0 rgba(0,0,0,0.3);',
-  ].join('');
-
-  var main = document.createElement('div');
-  main.style.cssText = 'font-family:' + T.fh + ';font-size:17px;font-weight:700;letter-spacing:1.5px;color:' + fg + ';';
-  main.textContent = 'FINALIZE' + (blocked ? '' : ' CHECKOUT');
-  wrap.appendChild(main);
-
-  if (blocked) {
-    var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';';
-    sub.textContent = 'resolve ' + opts.blockerCount + ' blocker' + (opts.blockerCount > 1 ? 's' : '') + ' first';
-    wrap.appendChild(sub);
-  }
-
-  wrap.addEventListener('pointerup', function() {
-    if (opts.onClick) opts.onClick();
-  });
-  return wrap;
-}
-
-function buildBlockerQueue(state, handlers) {
-  var wrap = document.createElement('div');
-  wrap.style.cssText = [
-    'flex-shrink:0;background:' + T.well + ';border-radius:8px;padding:12px;',
-    'display:flex;flex-direction:column;gap:8px;',
-  ].join('');
-
-  var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:12px;font-weight:700;color:' + T.verm + ';letter-spacing:1.8px;';
-  title.textContent = 'BLOCKER QUEUE';
-  wrap.appendChild(title);
-
-  if (state.openChecks.length > 0) {
-    wrap.appendChild(buildBlockerQueueRow({
-      accent: T.verm,
-      kind: 'OPEN CHECK' + (state.openChecks.length > 1 ? 'S (' + state.openChecks.length + ')' : ''),
-      detail: state.openChecks.length === 1
-        ? (state.openChecks[0].tableLabel || 'Check') + ' \u2022 ' + fmt(state.openChecks[0].amount || 0)
-        : fmt(state.openChecks.reduce(function(s, c) { return s + (c.amount || 0); }, 0)) + ' total',
-      cardKey: 'open-checks',
-      onClick: function() { if (handlers.onJumpToCard) handlers.onJumpToCard('open-checks'); },
-    }));
-  }
-
-  if (state.unadjustedChecks.length > 0) {
-    wrap.appendChild(buildBlockerQueueRow({
-      accent: T.warning,
-      kind: 'TIPS PENDING',
-      detail: state.unadjustedChecks.length + ' CC txn' + (state.unadjustedChecks.length > 1 ? 's' : ''),
-      cardKey: 'unadjusted-tips',
-      onClick: function() { if (handlers.onJumpToCard) handlers.onJumpToCard('unadjusted-tips'); },
-    }));
-  }
-
-  return wrap;
-}
-
-function buildBlockerQueueRow(opts) {
-  var row = document.createElement('div');
-  row.style.cssText = [
-    'position:relative;padding:6px 8px 6px 12px;',
-    'background:' + T.bg + ';border-radius:6px;',
-    'display:flex;flex-direction:column;gap:2px;',
-    // Tappable — lets server jump the middle column to the matching card.
-    'cursor:pointer;user-select:none;-webkit-user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'transition:background 0.15s;',
-  ].join('');
-  row.addEventListener('pointerup', function() {
-    if (opts.onClick) opts.onClick();
-  });
-  row.addEventListener('pointerenter', function() {
-    row.style.background = hexToRgba(opts.accent, 0.08);
-  });
-  row.addEventListener('pointerleave', function() {
-    row.style.background = T.bg;
-  });
-
-  var bar = document.createElement('div');
-  bar.style.cssText = 'position:absolute;left:0;top:4px;bottom:4px;width:3px;border-radius:1.5px;background:' + opts.accent + ';';
-  row.appendChild(bar);
-
-  var kind = document.createElement('div');
-  kind.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + opts.accent + ';letter-spacing:0.5px;';
-  kind.textContent = opts.kind;
-  row.appendChild(kind);
-
-  var detail = document.createElement('div');
-  detail.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';';
-  detail.textContent = opts.detail;
-  row.appendChild(detail);
-
-  return row;
-}
-
-function buildTimerFooter(startTime) {
-  var started = startTime || Date.now();
-  var wrap = document.createElement('div');
-  wrap.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:4px;padding:8px 0 0;border-top:1px solid ' + hexToRgba(T.text, 0.08) + ';';
-
-  var row = document.createElement('div');
-  row.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';';
-  var rowL = document.createElement('span'); rowL.textContent = 'elapsed';
-  var rowR = document.createElement('span');
-  rowR.style.color = T.green;
-  rowR.style.fontWeight = '700';
-  rowR.textContent = '0m 00s';
-  row.appendChild(rowL);
-  row.appendChild(rowR);
-  wrap.appendChild(row);
-
-  var flsa = document.createElement('div');
-  flsa.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.green + ';';
-  flsa.textContent = 'FLSA timer active';
-  wrap.appendChild(flsa);
-
-  // Live update elapsed
-  var tick = function() {
-    if (!document.body.contains(rowR)) return;
-    var elapsed = Math.floor((Date.now() - started) / 1000);
-    var m = Math.floor(elapsed / 60);
-    var s = elapsed % 60;
-    rowR.textContent = m + 'm ' + (s < 10 ? '0' : '') + s + 's';
-    setTimeout(tick, 1000);
-  };
-  setTimeout(tick, 1000);
-
-  return wrap;
-}
 
 // ═══════════════════════════════════════════════════
 //  SCENE
@@ -1941,14 +1712,8 @@ defineScene({
         return state.data.openChecks.some(function(c) { return c.checkId === id; });
       });
 
-      // Resolve the array of selected check objects in display order.
-      var selectedChecks = state.selectedCheckIds.map(function(id) {
-        return state.data.openChecks.find(function(c) { return c.checkId === id; });
-      }).filter(Boolean);
-
       body.appendChild(buildLeftCol(state.data, handlers));
       body.appendChild(buildMiddleCol(state.data, handlers, resolvedFilter, state.selectedCheckIds, state.activeTab));
-      body.appendChild(buildActionsCol(state.data, handlers, state.startTime));
 
       container.appendChild(body);
     }
