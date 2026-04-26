@@ -341,9 +341,8 @@ function renderCheckPreview(paper, checks, allOrders) {
 function buildLeftCol(state, handlers) {
   var wrapper = document.createElement('div');
   wrapper.style.cssText = [
-    'flex-shrink:0;width:260px;',
+    'flex-shrink:0;width:260px;align-self:flex-start;',
     'display:flex;flex-direction:column;gap:6px;',
-    'min-height:0;',
   ].join('');
 
   var card = document.createElement('div');
@@ -352,12 +351,12 @@ function buildLeftCol(state, handlers) {
     'border-left:3px solid ' + T.green + ';',
     'border-radius:6px;',
     'display:flex;flex-direction:column;',
-    'flex:1;min-height:0;overflow:hidden;',
+    'overflow:hidden;',
   ].join('');
 
   var colBody = document.createElement('div');
   colBody.style.cssText = [
-    'flex:1;padding:16px 14px 10px;',
+    'flex-shrink:0;padding:16px 14px 10px;',
     'display:flex;flex-direction:column;',
     'overflow-y:auto;',
     'touch-action:pan-y;overscroll-behavior:contain;',
