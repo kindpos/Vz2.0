@@ -404,7 +404,7 @@ function _leftColStat(label, value, valueColor, hero) {
 function buildLeftCol(state, handlers) {
   var col = document.createElement('div');
   col.style.cssText = [
-    'flex-shrink:0;width:' + LEFT_W + 'px;',
+    'flex-shrink:0;width:' + LEFT_W + 'px;align-self:flex-start;',
     'display:flex;flex-direction:column;',
     'background:' + T.card + ';',
     'border-left:3px solid ' + T.green + ';',
@@ -414,7 +414,7 @@ function buildLeftCol(state, handlers) {
   // ── Scrollable body ──
   var body = document.createElement('div');
   body.style.cssText = [
-    'flex:1;overflow-y:auto;overflow-x:hidden;',
+    'flex-shrink:0;overflow-y:auto;overflow-x:hidden;',
     'padding:14px 16px;box-sizing:border-box;',
     'display:flex;flex-direction:column;',
     'touch-action:pan-y;overscroll-behavior:contain;',
@@ -630,8 +630,8 @@ function buildMiddleCol(data, handlers, sceneState) {
   ].join('');
 
   cardStack.appendChild(buildChecksCard(data, handlers, sceneState.activeTab, sceneState.selectedCheckIds));
-  cardStack.appendChild(buildBatchCard(data, handlers, sceneState));
   cardStack.appendChild(buildTipsCard(data, handlers, sceneState.tipFilter));
+  cardStack.appendChild(buildBatchCard(data, handlers, sceneState));
 
   col.appendChild(cardStack);
 
