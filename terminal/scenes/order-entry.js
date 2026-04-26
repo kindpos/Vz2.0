@@ -3885,11 +3885,13 @@ async function handleSaveOnly() {
     var results = await Promise.allSettled(itemPromises.map(function(p) { return p.promise; }));
     var anyFailed = false;
     results.forEach(function(r, idx) {
-      if (r.status === 'fulfilled' && r.value.ok) {
-        itemPromises[idx].inst.sent = true;
-      } else {
+      if (r.status !== 'fulfilled' || !r.value.ok) {
         anyFailed = true;
       }
+      // Do NOT mark sent:true — items are saved to the order but have not
+      // been fired to the kitchen (sent_at is null on the backend).
+      // Keeping sent:false means a subsequent SEND will include them
+      // intentionally rather than silently firing them via /send.
     });
     if (anyFailed) throw new Error('Some items failed to save');
 
@@ -4115,7 +4117,7 @@ function recallFromBackend(orderId) {
             };
           }),
           selected:  false,
-          sent:      true,  // items from backend have already been sent
+          sent:      !!(item.sent_at),  // true only if actually kitchen-fired
           category:  item.category || null,
           seat_number: item.seat_number || null,
         };
