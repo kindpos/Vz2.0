@@ -334,6 +334,9 @@ function renderCheckPreview(paper, checks, allOrders) {
       if (fullOrder.tax != null && fullOrder.tax > 0) addTotalRow('tax', fullOrder.tax);
       addTotalRow('TOTAL', fullOrder.total || chk.amount || 0, true);
     }
+  });
+}
+
 // ─────────────────────────────────────────────────
 //  LEFT COLUMN — STATS + CASH EXPECTED
 // ─────────────────────────────────────────────────
