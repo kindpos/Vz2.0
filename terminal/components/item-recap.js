@@ -271,12 +271,13 @@ function _ensureStyles() {
 
     // ── Red X remove button (unsent items) ──
     + '.ir-xbtn{'
-    +   'width:14px;height:14px;'
+    +   'width:18px;height:18px;'
     +   'background:' + T.verm + ';color:#fff;'
-    +   'border-radius:3px;'
-    +   'font-size:11px;font-weight:700;line-height:1;'
+    +   'border-radius:50%;'
+    +   'font-family:' + T.fh + ';font-size:12px;font-weight:' + T.fwBold + ';line-height:1;'
     +   'display:inline-flex;align-items:center;justify-content:center;'
     +   'cursor:pointer;flex-shrink:0;user-select:none;'
+    +   'box-shadow:0 1px 4px rgba(0,0,0,0.4);'
     +   '-webkit-tap-highlight-color:transparent;'
     + '}'
 
