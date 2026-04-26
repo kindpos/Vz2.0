@@ -637,10 +637,90 @@ function buildMiddleCol(data, handlers, sceneState) {
 
   col.appendChild(cardStack);
 
-  // Pinned Lock Day footer
+  // Pinned footer: SETTLE BATCH → COUNT DRAWER → LOCK DAY
   var footer = document.createElement('div');
-  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:4px;';
+  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:6px;';
 
+  // ── Step 1: SETTLE BATCH (shown until settled) ──
+  if (!sceneState.batchSettled) {
+    var canSettle = data.unadjustedChecks.length === 0;
+    var settleBtn = document.createElement('div');
+    settleBtn.style.cssText = [
+      'padding:10px 16px;border-radius:8px;box-sizing:border-box;text-align:center;',
+      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;letter-spacing:1.4px;',
+      canSettle
+        ? 'background:' + T.elec + ';box-shadow:0 3px 0 ' + T.elecDk + ';color:#fff;cursor:pointer;'
+        : 'background:' + T.card + ';border:1.5px solid ' + T.border + ';opacity:0.55;cursor:not-allowed;color:' + T.text + ';',
+    ].join('');
+    settleBtn.textContent = 'SETTLE BATCH';
+    if (canSettle) {
+      settleBtn.addEventListener('click', function() {
+        if (handlers.onSettleBatch) handlers.onSettleBatch();
+      });
+    }
+    footer.appendChild(settleBtn);
+  }
+
+  // ── Step 2: COUNT DRAWER (shown once batch settled) ──
+  if (sceneState.batchSettled) {
+    var drawerRow = document.createElement('div');
+    drawerRow.style.cssText = [
+      'display:flex;align-items:center;gap:8px;',
+      'padding:8px 12px;border-radius:8px;background:' + T.well + ';',
+    ].join('');
+
+    var drawerLbl = document.createElement('div');
+    drawerLbl.style.cssText = [
+      'flex-shrink:0;font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+      'letter-spacing:1px;color:' + T.text + ';opacity:0.7;',
+    ].join('');
+    drawerLbl.textContent = 'DRAWER';
+    drawerRow.appendChild(drawerLbl);
+
+    var cashInput = document.createElement('input');
+    cashInput.type = 'text';
+    cashInput.placeholder = fmt(data.cashExpected);
+    if (sceneState.cashCounted != null && sceneState.cashCounted !== 'bypass') {
+      cashInput.value = String(sceneState.cashCounted);
+    }
+    cashInput.disabled = sceneState.cashCounted === 'bypass';
+    cashInput.style.cssText = [
+      'flex:1;min-width:0;height:30px;box-sizing:border-box;padding:0 8px;',
+      'background:' + T.card + ';border:1px solid ' + hexToRgba(T.border, 0.5) + ';border-radius:6px;',
+      'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.text + ';',
+      sceneState.cashCounted === 'bypass' ? 'opacity:0.4;' : '',
+    ].join('');
+    cashInput.addEventListener('change', function() {
+      var n = parseFloat(String(cashInput.value).replace(/[^0-9.\-]/g, ''));
+      if (!isNaN(n) && handlers.onCashInput) handlers.onCashInput(n);
+    });
+    drawerRow.appendChild(cashInput);
+
+    if (sceneState.cashCounted != null && sceneState.cashCounted !== 'bypass') {
+      var variance = sceneState.cashCounted - data.cashExpected;
+      var varColor = Math.abs(variance) < 0.005 ? T.greenWarm : (variance < 0 ? T.verm : T.warning);
+      var varEl = document.createElement('div');
+      varEl.style.cssText = 'flex-shrink:0;font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + varColor + ';';
+      varEl.textContent = (variance >= 0 ? '+' : '') + fmt(variance);
+      drawerRow.appendChild(varEl);
+    } else {
+      var bypassBtn = document.createElement('div');
+      bypassBtn.style.cssText = [
+        'flex-shrink:0;padding:4px 8px;border-radius:6px;cursor:pointer;',
+        'border:1px solid ' + hexToRgba(T.border, 0.5) + ';',
+        'font-family:' + T.fh + ';font-size:10px;font-weight:700;color:' + T.text + ';letter-spacing:0.5px;',
+      ].join('');
+      bypassBtn.textContent = sceneState.cashCounted === 'bypass' ? 'COUNTED' : 'BYPASS';
+      bypassBtn.addEventListener('click', function() {
+        if (handlers.onCashBypass) handlers.onCashBypass();
+      });
+      drawerRow.appendChild(bypassBtn);
+    }
+
+    footer.appendChild(drawerRow);
+  }
+
+  // ── Step 3: LOCK DAY ──
   var lockBtn = document.createElement('div');
   if (lockReady) {
     lockBtn.style.cssText = [

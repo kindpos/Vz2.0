@@ -93,12 +93,24 @@ function fetchServerState(params) {
     var takeHome = (cardTips + (d.cash_tips || 0)) - tipOutTotal;
     var cashExpected = cashSales - cardTips;
 
+    // Build a lookup so check rows can show table label and guest count,
+    // which the day-summary omits but the orders endpoint includes.
+    var rawById = {};
+    allOrders.forEach(function(o) { rawById[o.order_id] = o; });
+
     // Same defensive scrub on the checks summary. day-summary entries
     // don't always carry server_id (depends on backend version), so when
     // absent we trust the URL filter; when present, we verify.
     var allChecks = (d.checks || []).filter(function(c) {
       if (c.server_id && c.server_id !== empId) return false;
       return true;
+    }).map(function(c) {
+      var raw = rawById[c.checkId] || {};
+      return Object.assign({}, c, {
+        tableLabel:  raw.table         || raw.customer_name || c.tableLabel  || '',
+        guests:      raw.guest_count   || c.guests          || 0,
+        server_name: raw.server_name   || c.server_name     || '',
+      });
     });
     var openChecks = allChecks.filter(function(c) { return c.status === 'open'; });
     var closedCardChecks = allChecks.filter(function(c) {
