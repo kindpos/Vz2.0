@@ -1068,31 +1068,17 @@ function renderActionBar(state) {
   if (!barZone) return;
   barZone.innerHTML = '';
 
-  // Container — Nostalgia card chassis so the action bar matches the
-  // raised-bevel + accent treatment used by manager-landing / COB /
-  // sales cards. buildStaticCard sets background, 4-edge bevel,
-  // inset+drop shadow, and a glowing left accent bar.
-  var bar = buildStaticCard({ accent: T.green });
-  Object.assign(bar.style, {
-    display:     'flex',
-    alignItems:  'stretch',
-    gap:         '10px',
-    padding:     '12px',
-    flex:        '1',
-    boxSizing:   'border-box',
-  });
-  barZone.appendChild(bar);
+  // Drill state — resets to null on every render (spec: "drill state
+  // resets to default on re-render"). Stored as a closure var so the
+  // back-button handler can set it and re-call renderActionBar.
+  var _activeGroup = null;
 
-  var order = state.order || {};
+  var order    = state.order || {};
   var discount = getCashDiscount();
 
-  // Selection-aware totals: when any items are selected, the bar shows
-  // the sum of those items only; otherwise the whole-check totals from
-  // state.order. Items are the source of truth — seat-level selection
-  // is just a bulk shortcut that writes to state.selectedItems.
+  // ── Selection-aware totals ──
   var itemKeys   = Object.keys(state.selectedItems || {});
   var anyItemSel = itemKeys.length > 0;
-
   var subtotal, tax, total, cashTotal;
   if (anyItemSel) {
     subtotal = 0;
@@ -1116,197 +1102,209 @@ function renderActionBar(state) {
     cashTotal = Math.round(total * (1 - discount) * 100) / 100;
   }
 
-  // Totals block — two stacked Nostalgia cards matching the order-entry
-  // totals treatment: buildStaticCard (bevel + green accent bar) wrapping
-  // compact rows (uppercase label left, colored money value right).
-  var totalsBlock = document.createElement('div');
-  Object.assign(totalsBlock.style, {
-    width:         '200px',
-    display:       'flex',
-    flexDirection: 'column',
-    gap:           '8px',
-    flexShrink:    '0',
-  });
-  bar.appendChild(totalsBlock);
-
-  function buildTotalsCard() {
-    var card = buildStaticCard({ accent: T.green });
-    Object.assign(card.style, {
-      padding: '4px 10px 4px 14px',
-      flex:    '1',
-      display: 'flex',
-      flexDirection:  'column',
-      justifyContent: 'center',
-    });
-    return card;
-  }
-
-  // Compact variant of buildDataRow for the bottom bar — label T.fsB4,
-  // value T.fsB3, tight row padding. Keeps the buildStaticCard +
-  // label-left / money-right look from the order-entry totals cards
-  // without blowing out the bar height.
-  function buildCompactRow(label, valText, valColor) {
-    var row = document.createElement('div');
-    Object.assign(row.style, {
-      display:        'flex',
-      justifyContent: 'space-between',
-      alignItems:     'baseline',
-      padding:        '2px 0',
-    });
-    var lbl = document.createElement('span');
-    Object.assign(lbl.style, {
-      fontFamily:    T.fb,
-      fontSize:      T.fsB4,
-      color:         T.text,
-      letterSpacing: '0.08em',
-      textTransform: 'uppercase',
-    });
-    lbl.textContent = label;
-    row.appendChild(lbl);
-    var val = document.createElement('span');
-    Object.assign(val.style, {
-      fontFamily: T.fb,
-      fontSize:   T.fsB3,
-      fontWeight: T.fwBold,
-      color:      valColor || T.text,
-    });
-    val.textContent = valText;
-    row.appendChild(val);
-    return row;
-  }
-
-  var summaryCard = buildTotalsCard();
-  summaryCard.appendChild(buildCompactRow('SUBTOTAL', fmt(subtotal), T.gold));
-  summaryCard.appendChild(buildCompactRow('TAX',      fmt(tax),      T.gold));
-  totalsBlock.appendChild(summaryCard);
-
-  var pricesCard = buildTotalsCard();
-  pricesCard.appendChild(buildCompactRow('CARD PRICE', fmt(total),     T.elec));
-  pricesCard.appendChild(buildCompactRow('CASH PRICE', fmt(cashTotal), T.greenWarm));
-  totalsBlock.appendChild(pricesCard);
-
-  // Left stack — flex-direction: column, gap: 8px, width: 180px.
-  var leftStack = document.createElement('div');
-  Object.assign(leftStack.style, {
-    width: '180px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    flexShrink: '0',
-  });
-  bar.appendChild(leftStack);
-
-  // DISC
-  var discBtn = buildPillButton({
-    label: 'DISC',
-    color: T.groups.actionBar.disc,
-    darkBg: darkenHex(T.groups.actionBar.disc, 0.4),
-    onClick: function() { handleDiscount(state); }
-  });
-  discBtn.style.flex = '1';
-  discBtn.style.borderRadius = '12px 12px 6px 6px';
-  leftStack.appendChild(discBtn);
-
-  // VOID / DELETE — label flips to DELETE when every currently-selected
-  // item is pre-kitchen (no sent_at). Deleting pre-kitchen items is a
-  // local remove (no void record), so using the right verb matches the
-  // operator's mental model.
+  // VOID/DELETE label: flips when every selected item is pre-kitchen
   var voidLabel = 'VOID';
   if (anyItemSel) {
     var allUnsent = true;
     for (var vki = 0; vki < itemKeys.length; vki++) {
-      var vp = itemKeys[vki].split(':');
+      var vp    = itemKeys[vki].split(':');
       var vSeat = state.seats[parseInt(vp[0], 10)];
       var vItem = vSeat && vSeat.items[parseInt(vp[1], 10)];
       if (!vItem) continue;
-      // Treat missing sent_at as unsent — state.seats mirrors backend
-      // items after orderToSeats preserves the field.
       if (vItem.sent_at) { allUnsent = false; break; }
     }
     if (allUnsent) voidLabel = 'DELETE';
   }
 
-  var voidBtn = buildPillButton({
-    label: voidLabel,
-    color: T.groups.actionBar.void,
-    darkBg: T.vermDk,
-    onClick: function() { handleVoid(state); }
-  });
-  voidBtn.style.flex = '1';
-  voidBtn.style.borderRadius = '6px 6px 12px 12px';
-  leftStack.appendChild(voidBtn);
+  function _rebuild() {
+    barZone.innerHTML = '';
 
-  // PAY
-  var payBtn = buildPillButton({
-    label: 'PAY',
-    color: T.groups.actionBar.pay,
-    darkBg: T.goldDk,
-    width: '220px',
-    onClick: function() { handlePay(state, state._params || {}); }
-  });
-  Object.assign(payBtn.style, {
-    alignSelf: 'stretch',
-    borderRadius: T.groups.actionBar.radius,
-    fontSize: '20px',
-    flexShrink: '0',
-  });
-  bar.appendChild(payBtn);
+    var bar = buildStaticCard({ accent: T.green });
+    Object.assign(bar.style, {
+      display:    'flex',
+      alignItems: 'stretch',
+      gap:        '10px',
+      padding:    '12px',
+      flex:       '1',
+      boxSizing:  'border-box',
+    });
+    barZone.appendChild(bar);
 
-  // ADD ITEMS
-  var addBtn = buildPillButton({
-    label: 'ADD ITEMS',
-    color: T.groups.actionBar.addItems,
-    darkBg: T.greenWarmDk,
-    width: '220px',
-    onClick: function() { handleAddItems(state, state._params || {}); }
-  });
-  Object.assign(addBtn.style, {
-    alignSelf: 'stretch',
-    borderRadius: T.groups.actionBar.radius,
-    fontSize: '20px',
-    flexShrink: '0',
-  });
-  bar.appendChild(addBtn);
+    // ── Always-visible left totals block (200px) ──
+    var totalsBlock = document.createElement('div');
+    Object.assign(totalsBlock.style, {
+      width:         '200px',
+      flexShrink:    '0',
+      display:       'flex',
+      flexDirection: 'column',
+      justifyContent:'center',
+      gap:           '3px',
+      borderLeft:    '3px solid ' + T.green,
+      paddingLeft:   '10px',
+    });
+    bar.appendChild(totalsBlock);
 
-  // Right stack
-  var rightStack = document.createElement('div');
-  Object.assign(rightStack.style, {
-    width: '180px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    flexShrink: '0',
-  });
-  bar.appendChild(rightStack);
+    function _totRow(lbl, val, valColor) {
+      var row = document.createElement('div');
+      Object.assign(row.style, {
+        display:        'flex',
+        justifyContent: 'space-between',
+        alignItems:     'baseline',
+      });
+      var l = document.createElement('span');
+      Object.assign(l.style, { fontFamily:T.fb, fontSize:T.fsB4, color:T.text,
+        letterSpacing:'0.07em', textTransform:'uppercase' });
+      l.textContent = lbl;
+      var v = document.createElement('span');
+      Object.assign(v.style, { fontFamily:T.fb, fontSize:T.fsB3,
+        fontWeight:T.fwBold, color:valColor || T.text });
+      v.textContent = val;
+      row.appendChild(l);
+      row.appendChild(v);
+      return row;
+    }
 
-  // MANAGE SEATS / MANAGE CHECK
-  var editBtn = buildPillButton({
-    label: Object.keys(state.selected || {}).length > 0 ? 'MANAGE SEATS' : 'MANAGE CHECK',
-    color: T.groups.actionBar.editSeats,
-    darkBg: T.moonDk,
-    onClick: function() { openEditSeats(state); }
-  });
-  editBtn.style.flex = '1';
-  editBtn.style.borderRadius = '12px 12px 6px 6px';
-  rightStack.appendChild(editBtn);
+    totalsBlock.appendChild(_totRow('SUBTOTAL', fmt(subtotal), T.gold));
+    if (discount > 0) {
+      totalsBlock.appendChild(_totRow('DISC', '-' + fmt(subtotal * discount), T.verm));
+    }
+    totalsBlock.appendChild(_totRow('TAX',  fmt(tax),       T.gold));
+    totalsBlock.appendChild(_totRow('CARD', fmt(total),     T.elec));
+    totalsBlock.appendChild(_totRow('CASH', fmt(cashTotal), T.greenWarm));
 
-  // PRINT
-  var printBtn = buildPillButton({
-    label: 'PRINT',
-    color: T.groups.actionBar.print,
-    darkBg: T.elecDk,
-    onClick: function() { handlePrint(state); }
-  });
-  printBtn.style.flex = '1';
-  printBtn.style.borderRadius = '6px 6px 12px 12px';
-  rightStack.appendChild(printBtn);
+    // ── Right action area ──
+    var actionArea = document.createElement('div');
+    Object.assign(actionArea.style, {
+      flex:       '1',
+      display:    'flex',
+      alignItems: 'stretch',
+      gap:        '8px',
+    });
+    bar.appendChild(actionArea);
 
-  // Trailing spacer — pushes everything (totals + DISC/VOID + PAY +
-  // ADD ITEMS + EDIT SEATS/PRINT) flush against the left edge so the
-  // action group reads as one left-aligned cluster.
-  var spacer = document.createElement('div');
-  spacer.style.flex = '1';
-  bar.appendChild(spacer);
+    if (_activeGroup === null) {
+      // ── Default: 3 category cards ──
+      var groups = [
+        { id: 'order',    label: 'ORDER',    accent: T.moon,  accentDk: T.moonDk,  hint: 'Add · Send · Resend' },
+        { id: 'pay',      label: 'PAY',      accent: T.gold,  accentDk: T.goldDk,  hint: 'Pay · Disc · Void'   },
+        { id: 'terminal', label: 'TERMINAL', accent: T.elec,  accentDk: T.elecDk,  hint: 'Print · Drawer'      },
+      ];
+      for (var gi = 0; gi < groups.length; gi++) {
+        (function(g) {
+          var card = buildActionCard({ accent: g.accent });
+          Object.assign(card.style, {
+            flex:          '1',
+            padding:       '10px 14px',
+            display:       'flex',
+            flexDirection: 'column',
+            justifyContent:'center',
+            borderLeft:    '3px solid ' + g.accent,
+            boxShadow:     '0 3px 0 ' + g.accentDk,
+            pointerEvents: 'auto',
+            touchAction:   'manipulation',
+          });
+          var top = document.createElement('div');
+          Object.assign(top.style, {
+            display:        'flex',
+            justifyContent: 'space-between',
+            alignItems:     'center',
+          });
+          var lbl = document.createElement('span');
+          Object.assign(lbl.style, { fontFamily:T.fh, fontWeight:T.fwBold,
+            fontSize:'16px', color:g.accent });
+          lbl.textContent = g.label;
+          var chev = document.createElement('span');
+          Object.assign(chev.style, { fontFamily:T.fb, fontSize:'18px', color:g.accent });
+          chev.textContent = '›';
+          top.appendChild(lbl);
+          top.appendChild(chev);
+          card.appendChild(top);
+          var hint = document.createElement('div');
+          Object.assign(hint.style, { fontFamily:T.fb, fontSize:T.fsB4,
+            color:hexToRgba(g.accent, 0.6), marginTop:'4px' });
+          hint.textContent = g.hint;
+          card.appendChild(hint);
+          card.addEventListener('pointerup', function(e) {
+            if (e.defaultPrevented) return;
+            _activeGroup = g.id;
+            _rebuild();
+          });
+          actionArea.appendChild(card);
+        })(groups[gi]);
+      }
+    } else if (_activeGroup === 'order') {
+      // ── ORDER drill ──
+      var backO = buildPillButton({ label: '‹ ORDER', color: T.moon, darkBg: T.moonDk,
+        onClick: function() { _activeGroup = null; _rebuild(); } });
+      backO.style.alignSelf = 'stretch';
+      actionArea.appendChild(backO);
+
+      var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
+        onClick: function() { handleAddItems(state, state._params || {}); } });
+      addBtn.style.alignSelf = 'stretch';
+      actionArea.appendChild(addBtn);
+
+      var sendBtn = buildPillButton({ label: 'SEND UNSENT', color: T.green, darkBg: T.greenDk,
+        onClick: function() {
+          if (!state.orderId) { showToast('No items to send', { bg: T.gold }); return; }
+          fetchWithTimeout('/api/v1/orders/' + state.orderId + '/send', { method: 'POST' }, 8000)
+            .then(function(r) {
+              if (r.ok) showToast('Sent to kitchen', { bg: T.greenWarm });
+              else      showToast('Send failed', { bg: T.verm });
+            })
+            .catch(function() { showToast('Send failed', { bg: T.verm }); });
+        } });
+      sendBtn.style.alignSelf = 'stretch';
+      actionArea.appendChild(sendBtn);
+
+      var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
+        onClick: function() { handleResend(state); } });
+      resendBtn.style.alignSelf = 'stretch';
+      actionArea.appendChild(resendBtn);
+
+    } else if (_activeGroup === 'pay') {
+      // ── PAY drill ──
+      var backP = buildPillButton({ label: '‹ PAY', color: T.moon, darkBg: T.moonDk,
+        onClick: function() { _activeGroup = null; _rebuild(); } });
+      backP.style.alignSelf = 'stretch';
+      actionArea.appendChild(backP);
+
+      var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
+        onClick: function() { handlePay(state, state._params || {}); } });
+      payBtn.style.alignSelf = 'stretch';
+      actionArea.appendChild(payBtn);
+
+      var discBtn = buildPillButton({ label: 'DISC', color: '#b48efa',
+        darkBg: darkenHex('#b48efa', 0.4),
+        onClick: function() { handleDiscount(state); } });
+      discBtn.style.alignSelf = 'stretch';
+      actionArea.appendChild(discBtn);
+
+      var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
+        onClick: function() { handleVoid(state); } });
+      voidBtn.style.alignSelf = 'stretch';
+      actionArea.appendChild(voidBtn);
+
+    } else if (_activeGroup === 'terminal') {
+      // ── TERMINAL drill ──
+      var backT = buildPillButton({ label: '‹ TERMINAL', color: T.moon, darkBg: T.moonDk,
+        onClick: function() { _activeGroup = null; _rebuild(); } });
+      backT.style.alignSelf = 'stretch';
+      actionArea.appendChild(backT);
+
+      var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
+        onClick: function() { handlePrint(state); } });
+      printBtn.style.alignSelf = 'stretch';
+      actionArea.appendChild(printBtn);
+
+      var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
+        onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
+      drawerBtn.style.alignSelf = 'stretch';
+      actionArea.appendChild(drawerBtn);
+    }
+  }
+
+  _rebuild();
 }
 
 
