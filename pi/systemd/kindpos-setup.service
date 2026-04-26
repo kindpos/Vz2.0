@@ -1,0 +1,15 @@
+[Unit]
+Description=KINDpos One-Time USB Terminal Setup
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/kindpos/kindpos/pi/scripts/kindpos-setup.sh
+Restart=on-failure
+RestartSec=5
+User=kindpos
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

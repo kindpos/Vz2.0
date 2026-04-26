@@ -1,0 +1,16 @@
+[Unit]
+Description=KINDpos Terminal Watchdog
+After=network.target kindpos-setup.service
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/kindpos/kindpos/pi/scripts/kindpos-watchdog.sh
+Restart=always
+RestartSec=10
+User=kindpos
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
