@@ -1134,26 +1134,26 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds, activeTab)
 
   col.appendChild(cardStack);
 
-  // Pinned finalize footer
+  // Pinned finalize footer — right-aligned auto-width pill
   var footer = document.createElement('div');
-  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:4px;';
+  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end;';
 
   var finBtn = document.createElement('div');
   if (blocked) {
     finBtn.style.cssText = [
-      'padding:12px 16px;border-radius:8px;box-sizing:border-box;',
+      'padding:10px 18px;border-radius:8px;white-space:nowrap;',
       'background:' + T.card + ';border:1.5px solid ' + T.border + ';',
       'opacity:0.55;cursor:not-allowed;',
-      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + 'px;font-weight:700;',
-      'color:' + T.text + ';letter-spacing:1.4px;text-align:center;',
+      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;',
+      'color:' + T.text + ';letter-spacing:1.2px;',
     ].join('');
   } else {
     finBtn.style.cssText = [
-      'padding:12px 16px;border-radius:8px;box-sizing:border-box;cursor:pointer;',
+      'padding:10px 18px;border-radius:8px;white-space:nowrap;cursor:pointer;',
       'background:' + T.greenWarm + ';',
-      'box-shadow:0 4px 0 ' + T.greenWarmDk + ';',
-      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + 'px;font-weight:700;',
-      'color:#1a1a1a;letter-spacing:1.4px;text-align:center;',
+      'box-shadow:0 3px 0 ' + T.greenWarmDk + ';',
+      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;',
+      'color:#1a1a1a;letter-spacing:1.2px;',
     ].join('');
     finBtn.addEventListener('click', function() {
       if (handlers.onFinalize) handlers.onFinalize();
@@ -1171,7 +1171,7 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds, activeTab)
       : unadjN + ' tip' + (unadjN === 1 ? '' : 's') + ' need adjustment';
     reason.style.cssText = [
       'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-      'color:' + T.verm + ';text-align:center;letter-spacing:0.6px;',
+      'color:' + T.verm + ';text-align:right;letter-spacing:0.6px;',
     ].join('');
     reason.textContent = reasonMsg;
     footer.appendChild(reason);
