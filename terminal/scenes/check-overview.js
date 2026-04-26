@@ -3331,6 +3331,9 @@ function openEditSeats(state) {
         }
       });
 
+      // Remove seats emptied by a merge so their numbers are available for reuse.
+      state.seats = state.seats.filter(function(s) { return s.items.length > 0; });
+
       // Handle extra columns (new seats added inside column-editor).
       var usedNumbers = state.seats.map(function(s) { return s.number; });
       newColumns.slice(sentIndices.length).forEach(function(col) {
