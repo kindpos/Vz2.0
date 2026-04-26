@@ -134,6 +134,9 @@ function fetchServerState(params) {
       // Indexed by order_id; checks in `openChecks`/etc. have a `checkId`
       // that matches `order_id` in this array.
       allOrders:          allOrders,
+
+      // Raw tipout rules — needed by buildLeftCol for per-role breakdown.
+      tipoutRules:        rules,
     };
   });
 }
@@ -331,221 +334,306 @@ function renderCheckPreview(paper, checks, allOrders) {
       if (fullOrder.tax != null && fullOrder.tax > 0) addTotalRow('tax', fullOrder.tax);
       addTotalRow('TOTAL', fullOrder.total || chk.amount || 0, true);
     }
-  });
-}
-
 // ─────────────────────────────────────────────────
-//  LEFT COLUMN — RECEIPT PREVIEW
-//  Dimmed with "BLOCKED" placeholder while blockers present.
-//  Full receipt mock shown when clear.
-//  Check preview shown when user taps a row in Open Checks card.
+//  LEFT COLUMN — STATS + CASH EXPECTED
 // ─────────────────────────────────────────────────
 
-function buildReceiptCol(state, handlers, selectedChecks) {
-  selectedChecks = selectedChecks || [];
-  var blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
-  var showingPreview = selectedChecks.length > 0;
-  var isMulti = selectedChecks.length > 1;
-
-  var wrap = buildStaticCard({ accent: T.green });
-  wrap.style.cssText += [
-    'flex-shrink:0;width:' + LEFT_W + 'px;',
-    'padding:14px 18px 14px 14px;box-sizing:border-box;',
-    'display:flex;flex-direction:column;gap:12px;',
-    'opacity:' + (blocked && !showingPreview ? '0.45' : '1') + ';',
-    'transition:opacity 0.2s;',
+function buildLeftCol(state, handlers) {
+  var wrapper = document.createElement('div');
+  wrapper.style.cssText = [
+    'flex-shrink:0;width:260px;',
+    'display:flex;flex-direction:column;gap:6px;',
+    'min-height:0;',
   ].join('');
 
-  var hdr = document.createElement('div');
-  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;flex-shrink:0;gap:6px;';
-  var hdrTitle = document.createElement('span');
-  hdrTitle.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.8px;';
-  hdrTitle.textContent = showingPreview ? 'CHECK PREVIEW' : 'RECEIPT PREVIEW';
-  hdr.appendChild(hdrTitle);
+  var card = document.createElement('div');
+  card.style.cssText = [
+    'background:' + T.card + ';',
+    'border-left:3px solid ' + T.green + ';',
+    'border-radius:6px;',
+    'display:flex;flex-direction:column;',
+    'flex:1;min-height:0;overflow:hidden;',
+  ].join('');
 
-  // Right-side status — dismiss × when preview active, else pending/READY
-  if (showingPreview) {
-    var dismiss = document.createElement('span');
-    dismiss.style.cssText = [
-      'font-family:' + T.fb + ';font-size:16px;color:' + hexToRgba(T.text, 0.6) + ';',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-      'padding:0 4px;line-height:1;',
-    ].join('');
-    dismiss.textContent = '\u00D7';
-    dismiss.addEventListener('pointerup', function() {
-      if (handlers && handlers.onDismissPreview) handlers.onDismissPreview();
-    });
-    hdr.appendChild(dismiss);
-  } else {
-    var hdrStatus = document.createElement('span');
-    hdrStatus.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';';
-    hdrStatus.textContent = blocked ? 'pending' : 'READY';
-    hdr.appendChild(hdrStatus);
-  }
-  wrap.appendChild(hdr);
-
-  var paper = document.createElement('div');
-  paper.style.cssText = [
-    'flex:1;background:' + T.well + ';border-radius:4px;',
-    'padding:16px 12px;overflow-y:auto;',
-    'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';',
-    'display:flex;flex-direction:column;gap:4px;',
+  var colBody = document.createElement('div');
+  colBody.style.cssText = [
+    'flex:1;padding:16px 14px 10px;',
+    'display:flex;flex-direction:column;',
+    'overflow-y:auto;',
     'touch-action:pan-y;overscroll-behavior:contain;',
   ].join('');
 
-  if (showingPreview) {
-    renderCheckPreview(paper, selectedChecks, state.allOrders);
-    wrap.appendChild(paper);
+  // 1. Take Home hero
+  var heroWrap = document.createElement('div');
+  heroWrap.style.cssText = [
+    'background:rgba(0,0,0,0.2);border-radius:6px;',
+    'padding:12px 10px;margin:0 -4px;',
+    'display:flex;flex-direction:column;gap:2px;',
+  ].join('');
 
-    // Action stack:
-    //   1. TRANSFER — full-width, prominent (the multi-select hero action)
-    //   2. 2x2 grid of PRINT / PAY / DISCOUNT / VOID
-    // All handlers receive the full selectedChecks array so they can operate
-    // on one or many. Single-select still works fine — array of length 1.
-    var actStack = document.createElement('div');
-    actStack.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:6px;';
+  var heroLabel = document.createElement('div');
+  heroLabel.style.cssText = [
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+    'letter-spacing:2px;color:' + T.moon + ';text-transform:uppercase;',
+  ].join('');
+  heroLabel.textContent = 'TAKE HOME';
 
-    var transferBtn = buildPillButton({
-      label:  isMulti ? 'Transfer ' + selectedChecks.length + ' Checks' : 'Transfer',
-      color:  T.elec,
-      darkBg: T.elecDk,
-      shape:  'chamfer',
-      onClick: function() {
-        if (handlers && handlers.onTransferChecks) handlers.onTransferChecks(selectedChecks);
-      },
-    });
-    transferBtn.style.cssText += 'font-size:14px;padding:10px 14px;width:100%;box-sizing:border-box;';
-    actStack.appendChild(transferBtn);
+  var heroValue = document.createElement('div');
+  heroValue.style.cssText = [
+    'font-family:' + T.fb + ';font-size:32px;font-weight:700;',
+    'color:' + T.greenWarm + ';line-height:1.1;',
+  ].join('');
+  heroValue.textContent = fmt(state.takeHome);
 
-    var actGrid = document.createElement('div');
-    actGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;';
+  var heroMeta = document.createElement('div');
+  heroMeta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  heroMeta.textContent = 'tips − tipout';
 
-    var ops = [
-      { label: 'Print',    color: T.greenWarm, dark: T.greenWarmDk, handler: 'onPrintCheck' },
-      { label: 'Pay',      color: T.gold,      dark: T.goldDk,      handler: 'onCloseCheck' },
-      { label: 'Discount', color: T.elec,      dark: T.elecDk,      handler: 'onDiscountCheck' },
-      { label: 'Void',     color: T.verm,      dark: T.vermDk,      handler: 'onVoidCheck' },
-    ];
+  heroWrap.appendChild(heroLabel);
+  heroWrap.appendChild(heroValue);
+  heroWrap.appendChild(heroMeta);
+  colBody.appendChild(heroWrap);
 
-    ops.forEach(function(op) {
-      var btn = buildPillButton({
-        label:  op.label,
-        color:  op.color,
-        darkBg: op.dark,
-        shape:  'chamfer',
-        onClick: function() {
-          if (handlers && handlers[op.handler]) handlers[op.handler](selectedChecks);
-        },
-      });
-      btn.style.cssText += 'font-size:14px;padding:8px 10px;';
-      actGrid.appendChild(btn);
-    });
+  // 2. Divider
+  colBody.appendChild(_leftColDivider());
 
-    actStack.appendChild(actGrid);
-    wrap.appendChild(actStack);
-    return wrap;
-  }
+  // 3. Card Tips
+  colBody.appendChild(_leftColStat('CARD TIPS', fmt(state.cardTips), T.gold));
 
-  if (blocked) {
-    // Placeholder paper — receipt will render after blockers clear.
-    var hdrLine = document.createElement('div');
-    hdrLine.style.cssText = 'text-align:center;font-weight:700;color:' + T.text + ';';
-    hdrLine.textContent = state.restaurantName || 'KINDpos/lite';
-    paper.appendChild(hdrLine);
+  // 4. Divider
+  colBody.appendChild(_leftColDivider());
 
-    var rule = document.createElement('div');
-    rule.style.cssText = 'text-align:center;';
-    rule.textContent = '\u2500'.repeat(24);
-    paper.appendChild(rule);
+  // 5. Tip-Out
+  var toSectionLabel = document.createElement('div');
+  toSectionLabel.style.cssText = [
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+    'letter-spacing:2px;color:' + T.moon + ';text-transform:uppercase;',
+  ].join('');
+  toSectionLabel.textContent = 'TIP-OUT';
+  colBody.appendChild(toSectionLabel);
 
-    var spacer = document.createElement('div');
-    spacer.style.flex = '1';
-    paper.appendChild(spacer);
+  var toBlock = document.createElement('div');
+  toBlock.style.cssText = [
+    'background:' + T.well + ';border-radius:5px;',
+    'padding:8px 10px;',
+    'display:flex;flex-direction:column;gap:6px;',
+    'margin-top:2px;',
+  ].join('');
 
-    var blockedMsg = document.createElement('div');
-    blockedMsg.style.cssText = 'text-align:center;font-size:12px;font-weight:700;color:' + T.verm + ';';
-    blockedMsg.textContent = 'BLOCKED';
-    paper.appendChild(blockedMsg);
+  var tipoutRules = state.tipoutRules || [];
+  tipoutRules.forEach(function(r) {
+    var ruleRow = document.createElement('div');
+    ruleRow.style.cssText = 'display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:baseline;';
+    var roleName = document.createElement('div');
+    roleName.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
+    roleName.textContent = r.role || r.name || 'Role';
+    var basis = document.createElement('div');
+    basis.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.moon + ';';
+    basis.textContent = (r.percentage || 0) + '% · ' + (r.category || r.basis || 'Net Sales');
+    var ruleAmt = document.createElement('div');
+    ruleAmt.style.cssText = 'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.verm + ';';
+    ruleAmt.textContent = '−' + fmt(((r.percentage || 0) / 100) * (state.netSales || 0));
+    ruleRow.appendChild(roleName);
+    ruleRow.appendChild(basis);
+    ruleRow.appendChild(ruleAmt);
+    toBlock.appendChild(ruleRow);
+  });
 
-    var hint1 = document.createElement('div');
-    hint1.style.cssText = 'text-align:center;';
-    hint1.textContent = 'resolve issues';
-    paper.appendChild(hint1);
+  var toCrule = document.createElement('div');
+  toCrule.style.cssText = 'height:1px;background:' + T.border + ';opacity:0.5;';
+  toBlock.appendChild(toCrule);
 
-    var hint2 = document.createElement('div');
-    hint2.style.cssText = 'text-align:center;';
-    hint2.textContent = 'to preview slip';
-    paper.appendChild(hint2);
+  var toTotRow = document.createElement('div');
+  toTotRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
+  var toTotLabel = document.createElement('div');
+  toTotLabel.style.cssText = [
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+    'letter-spacing:1.5px;color:' + T.moon + ';text-transform:uppercase;',
+  ].join('');
+  toTotLabel.textContent = 'TOTAL';
+  var toTotValue = document.createElement('div');
+  toTotValue.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + T.verm + ';';
+  toTotValue.textContent = '−' + fmt(state.tipOutTotal);
+  toTotRow.appendChild(toTotLabel);
+  toTotRow.appendChild(toTotValue);
+  toBlock.appendChild(toTotRow);
+  colBody.appendChild(toBlock);
 
-    var spacer2 = document.createElement('div');
-    spacer2.style.flex = '1';
-    paper.appendChild(spacer2);
-  } else {
-    // Real preview — summary sections matching the printed slip.
-    var addLine = function(txt, opts) {
-      opts = opts || {};
-      var line = document.createElement('div');
-      line.style.cssText = [
-        'display:flex;justify-content:space-between;',
-        opts.bold ? 'font-weight:700;color:' + T.text + ';' : '',
-        opts.color ? 'color:' + opts.color + ';' : '',
-      ].join('');
-      if (typeof txt === 'string') {
-        line.textContent = txt;
-        line.style.justifyContent = opts.center ? 'center' : 'flex-start';
-      } else {
-        var l = document.createElement('span'); l.textContent = txt[0];
-        var r = document.createElement('span'); r.textContent = txt[1];
-        line.appendChild(l);
-        line.appendChild(r);
-      }
-      paper.appendChild(line);
-    };
-    var addRule = function() {
-      var r = document.createElement('div');
-      r.style.cssText = 'text-align:center;color:' + hexToRgba(T.text, 0.6) + ';';
-      r.textContent = '\u2500'.repeat(24);
-      paper.appendChild(r);
-    };
-    var center = function(txt, opts) {
-      opts = opts || {};
-      var d = document.createElement('div');
-      d.style.cssText = 'text-align:center;' + (opts.bold ? 'font-weight:700;color:' + T.text + ';' : '') + (opts.color ? 'color:' + opts.color + ';' : '');
-      d.textContent = txt;
-      paper.appendChild(d);
-    };
+  // Adjust Rates pill
+  var adjBtn = document.createElement('div');
+  adjBtn.style.cssText = [
+    'width:100%;box-sizing:border-box;border-radius:999px;',
+    'border:1px solid ' + T.border + ';background:transparent;',
+    'display:flex;align-items:center;justify-content:center;gap:5px;',
+    'padding:6px 0;margin-top:7px;cursor:pointer;',
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+    'letter-spacing:1.5px;color:' + T.moon + ';text-transform:uppercase;',
+    'pointer-events:auto;touch-action:manipulation;',
+    'transition:border-color 0.15s, color 0.15s;',
+  ].join('');
 
-    center(state.restaurantName || 'KINDpos/lite', { bold: true });
-    center(state.employeeName || '', { color: T.lavender });
-    center(new Date().toLocaleDateString(), {});
-    addRule();
-    center('SERVER CHECKOUT', { bold: true, color: T.gold });
-    addLine(['Checks closed', String(state.checksClosed)]);
-    addRule();
-    addLine('SALES', { bold: true });
-    addLine(['Net sales', fmt(state.netSales)]);
-    addLine(['Cash', fmt(state.cashSales)]);
-    addLine(['Card', fmt(state.cardSales)]);
-    addRule();
-    addLine('TIPS', { bold: true });
-    addLine(['Card tips', fmt(state.cardTips)]);
-    addRule();
-    addLine('TIP-OUT', { bold: true });
-    addLine(['Rate', (state.tipOutRate * 100).toFixed(0) + '%']);
-    addLine(['Total tip-out', '\u2212' + fmt(state.tipOutTotal)]);
-    addRule();
-    addLine('TAKE HOME', { bold: true });
-    addLine(['Tips earned', fmt(state.cardTips + (state.cashTips || 0))]);
-    addLine(['Tip-out', '\u2212' + fmt(state.tipOutTotal)]);
-    addLine(['Total', fmt(state.takeHome)]);
-    addRule();
-    addLine(['CASH EXPECTED', fmt(state.cashExpected)]);
-  }
+  (function() {
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', '9');
+    svg.setAttribute('height', '10');
+    svg.setAttribute('viewBox', '0 0 9 10');
+    svg.setAttribute('fill', 'none');
+    svg.style.flexShrink = '0';
+    var lockRect = document.createElementNS(ns, 'rect');
+    lockRect.setAttribute('x', '1');
+    lockRect.setAttribute('y', '4');
+    lockRect.setAttribute('width', '7');
+    lockRect.setAttribute('height', '5.5');
+    lockRect.setAttribute('rx', '1');
+    lockRect.setAttribute('fill', 'currentColor');
+    var lockPath = document.createElementNS(ns, 'path');
+    lockPath.setAttribute('d', 'M2.5 4V3a2 2 0 0 1 4 0v1');
+    lockPath.setAttribute('stroke', 'currentColor');
+    lockPath.setAttribute('stroke-width', '1.2');
+    lockPath.setAttribute('fill', 'none');
+    svg.appendChild(lockRect);
+    svg.appendChild(lockPath);
+    adjBtn.appendChild(svg);
+  })();
 
-  wrap.appendChild(paper);
-  return wrap;
+  var adjText = document.createElement('span');
+  adjText.textContent = 'Adjust Rates';
+  adjBtn.appendChild(adjText);
+
+  adjBtn.addEventListener('pointerenter', function() {
+    adjBtn.style.borderColor = T.warning;
+    adjBtn.style.color = T.warning;
+  });
+  adjBtn.addEventListener('pointerleave', function() {
+    adjBtn.style.borderColor = T.border;
+    adjBtn.style.color = T.moon;
+  });
+  adjBtn.addEventListener('pointerup', function() {
+    if (handlers && handlers.onAdjustRates) handlers.onAdjustRates();
+  });
+  colBody.appendChild(adjBtn);
+
+  // 6. Divider
+  colBody.appendChild(_leftColDivider());
+
+  // 7. Checks Closed
+  colBody.appendChild(_leftColStat('CHECKS CLOSED', String(state.checksClosed), T.text));
+
+  card.appendChild(colBody);
+
+  // cash-footer
+  var cashFooter = document.createElement('div');
+  cashFooter.style.cssText = [
+    'flex-shrink:0;',
+    'border-top:1px solid ' + hexToRgba(T.gold, 0.35) + ';',
+    'background:' + hexToRgba(T.gold, 0.06) + ';',
+    'border-radius:0 0 6px 6px;',
+    'padding:12px 14px 14px;',
+    'display:flex;flex-direction:column;gap:6px;',
+  ].join('');
+
+  var cfLabel = document.createElement('div');
+  cfLabel.style.cssText = [
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+    'letter-spacing:2px;text-transform:uppercase;',
+    'color:' + hexToRgba(T.gold, 0.75) + ';',
+  ].join('');
+  cfLabel.textContent = 'CASH EXPECTED';
+
+  var cfAmount = document.createElement('div');
+  cfAmount.style.cssText = [
+    'font-family:' + T.fb + ';font-size:28px;font-weight:700;',
+    'color:' + T.gold + ';line-height:1.1;',
+  ].join('');
+  cfAmount.textContent = fmt(state.cashExpected);
+
+  var cfMath = document.createElement('div');
+  cfMath.style.cssText = [
+    'display:flex;flex-direction:row;gap:6px;align-items:baseline;',
+    'font-family:' + T.fb + ';font-size:11px;',
+  ].join('');
+
+  [
+    { text: fmt(state.cashSales), color: T.text, bold: true },
+    { text: 'cash',               color: T.moon },
+    { text: '−',             color: T.moon },
+    { text: fmt(state.cardTips),  color: T.verm, bold: true },
+    { text: 'tips',               color: T.moon },
+  ].forEach(function(seg) {
+    var s = document.createElement('span');
+    s.style.color = seg.color;
+    if (seg.bold) s.style.fontWeight = '700';
+    s.textContent = seg.text;
+    cfMath.appendChild(s);
+  });
+
+  cashFooter.appendChild(cfLabel);
+  cashFooter.appendChild(cfAmount);
+  cashFooter.appendChild(cfMath);
+  card.appendChild(cashFooter);
+  wrapper.appendChild(card);
+
+  // Print pill
+  var printPill = document.createElement('div');
+  printPill.style.cssText = [
+    'width:100%;border-radius:999px;padding:10px 0;',
+    'background:' + T.elec + ';box-shadow:0 4px 0 ' + T.elecDk + ';',
+    'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
+    'letter-spacing:2px;color:' + T.well + ';text-transform:uppercase;',
+    'text-align:center;',
+    'touch-action:manipulation;pointer-events:auto;cursor:pointer;',
+    'user-select:none;-webkit-user-select:none;',
+    'transition:filter 0.1s;flex-shrink:0;box-sizing:border-box;',
+  ].join('');
+  printPill.textContent = 'Print Slip';
+
+  printPill.addEventListener('pointerenter', function() {
+    printPill.style.filter = 'brightness(1.08)';
+  });
+  printPill.addEventListener('pointerdown', function() {
+    printPill.style.transform = 'translateY(2px)';
+    printPill.style.boxShadow = '0 2px 0 ' + T.elecDk;
+  });
+  var _printRelease = function() {
+    printPill.style.transform = '';
+    printPill.style.boxShadow = '0 4px 0 ' + T.elecDk;
+    printPill.style.filter = '';
+  };
+  printPill.addEventListener('pointerup', function() {
+    _printRelease();
+    if (handlers && handlers.onPrintSlip) handlers.onPrintSlip();
+  });
+  printPill.addEventListener('pointerleave', _printRelease);
+  printPill.addEventListener('pointercancel', _printRelease);
+
+  wrapper.appendChild(printPill);
+  return wrapper;
 }
+
+function _leftColDivider() {
+  var d = document.createElement('div');
+  d.style.cssText = 'height:1px;background:' + hexToRgba(T.text, 0.08) + ';margin:6px 0;flex-shrink:0;';
+  return d;
+}
+
+function _leftColStat(label, value, valueColor) {
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+  var lbl = document.createElement('div');
+  lbl.style.cssText = [
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+    'letter-spacing:2px;color:' + T.moon + ';text-transform:uppercase;',
+  ].join('');
+  lbl.textContent = label;
+  var val = document.createElement('div');
+  val.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + valueColor + ';';
+  val.textContent = value;
+  row.appendChild(lbl);
+  row.appendChild(val);
+  return row;
+}
+
 
 // ─────────────────────────────────────────────────
 //  CARD STACK HELPERS (middle column)
@@ -1784,6 +1872,20 @@ defineScene({
           state.selectedCheckIds = [];
           rebuild();
         },
+        onPrintSlip: function() {
+          if (handlers.onPrint) handlers.onPrint();
+        },
+        onAdjustRates: function() {
+          SceneManager.interrupt('co-manager-pin', {
+            onConfirm: function() {
+              SceneManager.closeInterrupt('co-manager-pin');
+              showToast('Tipout rate adjustment — pending backend', { bg: T.warning });
+            },
+            onCancel: function() {
+              SceneManager.closeInterrupt('co-manager-pin');
+            },
+          });
+        },
       };
 
       // Resolve the active tip filter. Defaults to 'unadjusted' when there
@@ -1805,7 +1907,7 @@ defineScene({
         return state.data.openChecks.find(function(c) { return c.checkId === id; });
       }).filter(Boolean);
 
-      body.appendChild(buildReceiptCol(state.data, handlers, selectedChecks));
+      body.appendChild(buildLeftCol(state.data, handlers));
       body.appendChild(buildMiddleCol(state.data, handlers, resolvedFilter, state.selectedCheckIds));
       body.appendChild(buildActionsCol(state.data, handlers, state.startTime));
 
