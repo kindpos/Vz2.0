@@ -47,7 +47,6 @@ import { computeCashExpected, computeCashVariance } from './close-day-calc.js';
 // ─────────────────────────────────────────────────
 
 var LEFT_W   = 260;
-var RIGHT_W  = 236;
 var PAD      = 14;
 var PAD_TOP  = 8;    // reduce top padding per UI audit
 
@@ -612,25 +611,85 @@ function buildLeftCol(state, handlers) {
 //  MIDDLE COLUMN — Adaptive card stack
 // ─────────────────────────────────────────────────
 
-function buildMiddleCol(data, handlers, state) {
+function buildMiddleCol(data, handlers, sceneState) {
   var col = document.createElement('div');
-  col.style.cssText = [
-    'flex:1;display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
-    'min-width:0;min-height:0;',
-    'overflow-y:auto;overflow-x:hidden;',
+  col.style.cssText = 'flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;';
+
+  var blocked   = (data.openChecks.length + data.unadjustedChecks.length) > 0;
+  var lockReady = !blocked && sceneState.batchSettled && sceneState.cashCounted != null;
+
+  // Card stack — scrollable
+  var cardStack = document.createElement('div');
+  cardStack.style.cssText = [
+    'flex:1;overflow-y:auto;overflow-x:hidden;',
+    'display:flex;flex-direction:column;gap:8px;padding-bottom:4px;',
     'touch-action:pan-y;',
     '-webkit-overflow-scrolling:touch;',
     'overscroll-behavior:contain;',
   ].join('');
 
-  col.appendChild(buildChecksCard(data, handlers, state.activeTab, state.selectedCheckIds));
+  cardStack.appendChild(buildChecksCard(data, handlers, sceneState.activeTab, sceneState.selectedCheckIds));
 
   if (data.closedCardChecks.length > 0) {
-    col.appendChild(buildTipsCard(data, handlers, state.tipFilter));
+    cardStack.appendChild(buildTipsCard(data, handlers, sceneState.tipFilter));
   }
 
+  col.appendChild(cardStack);
+
+  // Pinned Lock Day footer
+  var footer = document.createElement('div');
+  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:4px;';
+
+  var lockBtn = document.createElement('div');
+  if (lockReady) {
+    lockBtn.style.cssText = [
+      'padding:12px 16px;border-radius:8px;box-sizing:border-box;cursor:pointer;',
+      'background:' + T.greenWarm + ';',
+      'box-shadow:0 4px 0 ' + T.greenWarmDk + ';',
+      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;',
+      'color:#1a1a1a;letter-spacing:1.4px;text-align:center;',
+    ].join('');
+    lockBtn.addEventListener('click', function() {
+      if (handlers.onLockDay) handlers.onLockDay();
+    });
+  } else {
+    lockBtn.style.cssText = [
+      'padding:12px 16px;border-radius:8px;box-sizing:border-box;',
+      'background:' + T.card + ';border:1.5px solid ' + T.border + ';',
+      'opacity:0.55;cursor:not-allowed;',
+      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;',
+      'color:' + T.text + ';letter-spacing:1.4px;text-align:center;',
+    ].join('');
+  }
+  lockBtn.textContent = 'LOCK DAY';
+  footer.appendChild(lockBtn);
+
+  if (!lockReady) {
+    var reason = document.createElement('div');
+    var openN  = data.openChecks.length;
+    var unadjN = data.unadjustedChecks.length;
+    var reasonMsg;
+    if (openN > 0) {
+      reasonMsg = openN + ' open check' + (openN === 1 ? '' : 's') + ' must be closed';
+    } else if (unadjN > 0) {
+      reasonMsg = unadjN + ' tip' + (unadjN === 1 ? '' : 's') + ' need adjustment';
+    } else if (!sceneState.batchSettled) {
+      reasonMsg = 'settle batch first';
+    } else {
+      reasonMsg = 'count drawer first';
+    }
+    reason.style.cssText = [
+      'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+      'color:' + T.verm + ';text-align:center;letter-spacing:0.6px;',
+    ].join('');
+    reason.textContent = reasonMsg;
+    footer.appendChild(reason);
+  }
+
+  col.appendChild(footer);
   return col;
 }
+
 
 
 
@@ -1109,251 +1168,6 @@ function cashStatusColor(sceneState) {
   return T.warning;
 }
 
-// ── Small shared atoms ──
-function cardLabel(text) {
-  var el = document.createElement('span');
-  el.style.cssText = 'font-family:' + T.fh + ';font-size:' + FS_LABEL + ';font-weight:700;color:' + T.text + ';letter-spacing:1.8px;flex-shrink:0;';
-  el.textContent = text;
-  return el;
-}
-
-function flexSpacer() {
-  var el = document.createElement('div');
-  el.style.cssText = 'flex:1;';
-  return el;
-}
-
-function statusChip(text, color) {
-  var el = document.createElement('span');
-  el.style.cssText = [
-    'padding:3px 10px;border-radius:999px;',
-    'background:' + hexToRgba(color, 0.13) + ';border:1px solid ' + color + ';',
-    'font-family:' + T.fh + ';font-size:10px;font-weight:700;color:' + color + ';letter-spacing:1px;',
-    'flex-shrink:0;',
-  ].join('');
-  el.textContent = text;
-  return el;
-}
-
-function kvRow(label, value, opts) {
-  opts = opts || {};
-  var row = document.createElement('div');
-  row.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
-
-  var l = document.createElement('span');
-  l.style.cssText = 'font-family:' + T.fb + ';font-size:' + (opts.labelTiny ? '11px' : '13px') + ';color:' + T.text + ';opacity:' + (opts.labelTiny ? 0.5 : 0.75) + ';letter-spacing:' + (opts.labelTiny ? '1.2px' : '0') + ';';
-  l.textContent = label;
-
-  var v = document.createElement('span');
-  v.style.cssText = 'font-family:' + T.fb + ';font-size:' + (opts.valueSize || '13px') + ';font-weight:' + (opts.valueWeight || 400) + ';color:' + (opts.valueColor || T.text) + ';';
-  v.textContent = value;
-
-  row.appendChild(l);
-  row.appendChild(v);
-  return row;
-}
-
-// ─────────────────────────────────────────────────
-//  RIGHT COLUMN — Actions
-// ─────────────────────────────────────────────────
-
-function buildActionsCol(state, handlers, sceneState) {
-  var blocked = state.openChecks.length + state.unadjustedChecks.length > 0;
-  var lockReady = !blocked && sceneState.batchSettled && sceneState.cashCounted != null;
-
-  var col = buildStaticCard({ accent: T.green });
-  col.style.cssText += [
-    'flex-shrink:0;width:' + RIGHT_W + 'px;',
-    'padding:14px 16px;box-sizing:border-box;',
-    'display:flex;flex-direction:column;gap:10px;',
-  ].join('');
-
-  var title = cardLabel('ACTIONS');
-  col.appendChild(title);
-
-  // BACK pill
-  var backBtn = buildPillButton({
-    variant: 'ghost',
-    shape: 'chamfer',
-    fontSize: FS_PILL_LG,
-    padding: '10px 14px',
-    onClick: function() { if (handlers.onBack) handlers.onBack(); },
-  });
-  backBtn.textContent = 'BACK';
-  col.appendChild(backBtn);
-
-  // ALL CHECKS pill
-  var allBtn = buildPillButton({
-    variant: 'ghost',
-    shape: 'chamfer',
-    fontSize: FS_PILL_LG,
-    padding: '10px 14px',
-    onClick: function() { if (handlers.onAllChecks) handlers.onAllChecks(); },
-  });
-  allBtn.textContent = 'ALL CHECKS  \u00B7  ' + state.totalChecks;
-  col.appendChild(allBtn);
-
-  // BLOCKERS queue (when blocked)
-  if (blocked) {
-    col.appendChild(buildBlockerQueue(state, handlers));
-  }
-
-  // LOCK SNAPSHOT (dimmed while blocked)
-  col.appendChild(buildLockSnapshot(state, sceneState, !lockReady));
-
-  // Flex spacer to push LOCK DAY to the bottom
-  col.appendChild(flexSpacer());
-
-  // LOCK DAY mega-pill
-  col.appendChild(buildLockDayPill({
-    blocked: blocked,
-    lockReady: lockReady,
-    openCount: state.openChecks.length,
-    unadjCount: state.unadjustedChecks.length,
-    batchSettled: sceneState.batchSettled,
-    cashCounted: sceneState.cashCounted,
-    onClick: function() { if (handlers.onLockDay) handlers.onLockDay(); },
-  }));
-
-  return col;
-}
-
-function buildBlockerQueue(state, handlers) {
-  var wrap = document.createElement('div');
-  wrap.style.cssText = [
-    'flex-shrink:0;background:' + T.well + ';border-radius:8px;padding:10px 12px;',
-    'display:flex;flex-direction:column;gap:6px;',
-  ].join('');
-
-  var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:11px;font-weight:700;color:' + T.verm + ';letter-spacing:1.5px;';
-  title.textContent = 'BLOCKERS';
-  wrap.appendChild(title);
-
-  if (state.openChecks.length > 0) {
-    wrap.appendChild(buildBlockerQueueRow({
-      accent: T.verm,
-      label:  state.openChecks.length + ' open check' + (state.openChecks.length > 1 ? 's' : ''),
-      cardKey: 'open-checks',
-      onJump: handlers.onJumpToCard,
-    }));
-  }
-  if (state.unadjustedChecks.length > 0) {
-    wrap.appendChild(buildBlockerQueueRow({
-      accent: T.warning,
-      label:  state.unadjustedChecks.length + ' unadj CC tip' + (state.unadjustedChecks.length > 1 ? 's' : ''),
-      cardKey: 'unadjusted-tips',
-      onJump: handlers.onJumpToCard,
-    }));
-  }
-
-  return wrap;
-}
-
-function buildBlockerQueueRow(opts) {
-  var row = document.createElement('div');
-  row.style.cssText = [
-    'display:flex;align-items:center;gap:8px;',
-    'padding:6px 10px;background:' + T.bg + ';border-radius:6px;',
-    'cursor:pointer;user-select:none;-webkit-user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-  ].join('');
-
-  var dot = document.createElement('div');
-  dot.style.cssText = 'width:6px;height:6px;border-radius:999px;background:' + opts.accent + ';flex-shrink:0;';
-  row.appendChild(dot);
-
-  var lbl = document.createElement('div');
-  lbl.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:11px;font-weight:700;color:' + T.text + ';';
-  lbl.textContent = opts.label;
-  row.appendChild(lbl);
-
-  var arrow = document.createElement('div');
-  arrow.style.cssText = 'font-family:' + T.fh + ';font-size:10px;font-weight:700;color:' + opts.accent + ';';
-  arrow.textContent = '\u2191';
-  row.appendChild(arrow);
-
-  row.addEventListener('pointerup', function() {
-    if (opts.onJump) opts.onJump(opts.cardKey);
-  });
-  return row;
-}
-
-function buildLockSnapshot(state, sceneState, dimmed) {
-  var wrap = document.createElement('div');
-  wrap.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:6px;opacity:' + (dimmed ? 0.4 : 1) + ';transition:opacity 0.2s;';
-
-  var label = document.createElement('div');
-  label.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.6;letter-spacing:1.2px;';
-  label.textContent = 'THE LOCK SNAPSHOT';
-  wrap.appendChild(label);
-
-  var countedCash = sceneState.cashCounted === 'bypass'
-    ? state.cashExpected
-    : (sceneState.cashCounted != null ? sceneState.cashCounted : state.cashExpected);
-
-  [
-    { label: 'Net Sales',     value: fmt(state.netSales),     color: T.gold, bold: true },
-    { label: 'Cash Counted',  value: fmt(countedCash),        color: T.gold, bold: true },
-    { label: 'CC Batch',      value: fmt(state.batchTotal),   color: T.text, bold: true },
-    { label: 'Total Tips',    value: fmt(state.totalTips),    color: T.text, bold: true },
-  ].forEach(function(item) {
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-family:' + T.fb + ';font-size:12px;';
-    var l = document.createElement('span');
-    l.style.cssText = 'color:' + T.text + ';opacity:0.75;';
-    l.textContent = item.label;
-    var v = document.createElement('span');
-    v.style.cssText = 'color:' + item.color + ';font-weight:' + (item.bold ? 700 : 400) + ';';
-    v.textContent = item.value;
-    row.appendChild(l);
-    row.appendChild(v);
-    wrap.appendChild(row);
-  });
-
-  return wrap;
-}
-
-function buildLockDayPill(opts) {
-  var disabled = !opts.lockReady;
-
-  // Build the "why disabled" subtitle
-  var reason = '';
-  if (disabled) {
-    if (opts.blocked) {
-      var n = opts.openCount + opts.unadjCount;
-      reason = 'resolve ' + n + ' blocker' + (n > 1 ? 's' : '') + ' first';
-    } else if (!opts.batchSettled) {
-      reason = 'settle batch first';
-    } else if (opts.cashCounted == null) {
-      reason = 'count drawer first';
-    }
-  }
-
-  var btn = buildPillButton({
-    label: '\uD83D\uDD12  LOCK DAY',
-    variant: disabled ? 'ghost' : 'goGreen',
-    disabled: disabled,
-    shape: 'chamfer',
-    fontSize: FS_PILL_LG,
-    padding: '12px 14px',
-    onClick: opts.onClick,
-  });
-  btn.style.height = '58px';
-  btn.style.flexDirection = 'column';
-  if (disabled) btn.style.opacity = '0.45';
-  else btn.style.boxShadow = '0 3px 0 ' + darkenHex(T.greenWarm, 0.5);
-
-  if (reason) {
-    var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.verm + ';opacity:0.75;font-weight:normal;letter-spacing:0;text-transform:none;';
-    sub.textContent = reason;
-    btn.appendChild(sub);
-  }
-
-  return btn;
-}
-
 // ═══════════════════════════════════════════════════
 //  SCENE DEFINITION
 // ═══════════════════════════════════════════════════
@@ -1428,7 +1242,6 @@ defineScene({
       });
       body.appendChild(buildLeftCol(state.data, handlers));
       body.appendChild(buildMiddleCol(state.data, handlers, state));
-      body.appendChild(buildActionsCol(state.data, handlers, state));
 
       container.appendChild(body);
     }
@@ -1623,16 +1436,6 @@ defineScene({
             SceneManager.closeInterrupt('co-manager-pin');
           },
         });
-      },
-
-      onJumpToCard: function(cardKey) {
-        var target = container.querySelector('[data-card-key="' + cardKey + '"]');
-        if (!target) return;
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        var original = target.style.boxShadow;
-        target.style.transition = 'box-shadow 0.3s ease';
-        target.style.boxShadow = '0 0 0 3px ' + hexToRgba(T.text, 0.35);
-        setTimeout(function() { target.style.boxShadow = original || ''; }, 600);
       },
 
       // ── Selection-scoped actions (match server-checkout exactly) ──
