@@ -1494,8 +1494,9 @@ function renderSeatsGrid(state, container, mode) {
           if (realIdx != null) toggleItem(state, realIdx, itemIdx);
         },
       });
-      recapEl.style.maxWidth = 'none';
-      recapEl.style.width    = '100%';
+      recapEl.style.maxWidth  = 'none';
+      recapEl.style.width     = '100%';
+      recapEl.style.overflowY = 'visible';
       recapCol.appendChild(recapEl);
     }
     container.appendChild(recapCol);

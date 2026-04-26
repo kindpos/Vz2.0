@@ -344,6 +344,7 @@ function _renderItems(items) {
       check.textContent = '\u2713 ';
       check.style.color = T.greenWarm;
       lblContainer.appendChild(check);
+      row.style.opacity = '0.55';
     }
 
     var qtyPrefix = document.createElement('span');

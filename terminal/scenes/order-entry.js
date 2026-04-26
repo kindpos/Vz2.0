@@ -4123,6 +4123,46 @@ function recallFromBackend(orderId) {
 
       renderTicket();
       rebuildBottomBar();
+
+      // Populate the left panel with the existing check's sent items so the
+      // cashier can see what's already on the check while adding new ones.
+      // All recalled items are sent:true (set above). Filter to the selected
+      // seat when exactly one seat was chosen before entering add-items mode.
+      if (sceneParams.returnScene === 'check-overview') {
+        var selSeats = sceneParams.selectedSeatNumbers || [];
+        var sentItems = ticket;
+
+        if (selSeats.length === 1) {
+          sentItems = sentItems.filter(function(i) {
+            return i.seat_number === selSeats[0];
+          });
+        }
+
+        var leftItems = [];
+        if (selSeats.length !== 1 && sentItems.length > 0) {
+          var seatGroups = {};
+          var seatOrder  = [];
+          sentItems.forEach(function(i) {
+            var sn = i.seat_number || 1;
+            if (!seatGroups[sn]) { seatGroups[sn] = []; seatOrder.push(sn); }
+            seatGroups[sn].push(i);
+          });
+          seatOrder.sort(function(a, b) { return a - b; });
+          seatOrder.forEach(function(sn) {
+            var seatTot = seatGroups[sn].reduce(function(s, i) {
+              return s + (i.unitPrice || 0);
+            }, 0);
+            leftItems.push({ seatHeader: true, seatId: 'SEAT ' + sn, seatTotal: seatTot });
+            seatGroups[sn].forEach(function(i) { leftItems.push(i); });
+          });
+        } else {
+          leftItems = sentItems;
+        }
+
+        OrderSummary.unlockItemRender();
+        OrderSummary.update({ items: leftItems });
+        OrderSummary.lockItemRender();
+      }
     })
     .catch(function(err) {
       console.warn('[KINDpos] Failed to recall order:', err);
