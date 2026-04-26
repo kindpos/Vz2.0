@@ -126,6 +126,7 @@ function fetchServerState(params) {
       checksClosed:  (d.total_closed || closedCardChecks.length + (allChecks.filter(function(c) { return c.status === 'closed' && c.method === 'cash'; }).length)),
 
       // Blocker data
+      checks:             allChecks,
       openChecks:         openChecks,
       unadjustedChecks:   unadjustedChecks,
       adjustedChecks:     adjustedChecks,
@@ -655,103 +656,253 @@ function buildBaseCard(opts) {
   return card;
 }
 
-// ── Open Checks blocker card ──
-function buildOpenChecksCard(state, handlers, selectedCheckIds) {
+// ── Checks card — Active / All tab switcher ──
+function buildChecksCard(state, handlers, activeTab, selectedCheckIds) {
   selectedCheckIds = selectedCheckIds || [];
-  var card = buildBaseCard({ accent: T.verm, stroke: T.verm });
-  card.dataset.cardKey = 'open-checks';
+  if (!activeTab) {
+    activeTab = (state.openChecks && state.openChecks.length > 0) ? 'active' : 'all';
+  }
 
+  var hasOpen = state.openChecks.length > 0;
+  var accentColor = hasOpen ? T.verm : T.elec;
+  var allChecks = state.checks || [];
+
+  var card = buildBaseCard({ accent: accentColor });
+  card.style.padding = '12px 14px';
+  card.style.gap = '10px';
+
+  // Header row
   var hdr = document.createElement('div');
-  hdr.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
-  var icon = document.createElement('div');
-  icon.style.cssText = [
-    'width:18px;height:18px;border-radius:4px;flex-shrink:0;',
-    'background:' + hexToRgba(T.verm, 0.18) + ';',
-    'display:flex;align-items:center;justify-content:center;',
-    'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + T.verm + ';',
+  hdr.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+
+  if (hasOpen) {
+    var icon = document.createElement('div');
+    icon.style.cssText = [
+      'width:18px;height:18px;border-radius:4px;flex-shrink:0;',
+      'background:' + hexToRgba(T.verm, 0.18) + ';',
+      'display:flex;align-items:center;justify-content:center;',
+      'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + T.verm + ';',
+    ].join('');
+    icon.textContent = '!';
+    hdr.appendChild(icon);
+  }
+
+  var titleEl = document.createElement('span');
+  titleEl.style.cssText = [
+    'font-family:' + T.fh + ';font-size:11px;font-weight:700;',
+    'letter-spacing:2px;text-transform:uppercase;',
+    'color:' + accentColor + ';',
   ].join('');
-  icon.textContent = '!';
-  var title = document.createElement('span');
-  title.style.cssText = 'flex:1;font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.verm + ';letter-spacing:1.8px;';
-  title.textContent = 'OPEN CHECKS \u2022 ' + state.openChecks.length;
-  var hint = document.createElement('span');
-  hint.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';';
-  hint.textContent = 'must close or transfer';
-  hdr.appendChild(icon);
-  hdr.appendChild(title);
-  hdr.appendChild(hint);
+  titleEl.textContent = 'CHECKS';
+  hdr.appendChild(titleEl);
+
+  // Tab pills
+  var tabBar = document.createElement('div');
+  tabBar.style.cssText = 'display:flex;gap:5px;flex-shrink:0;margin-left:auto;';
+
+  var makeTab = function(key, label, count, activeColor) {
+    var isActive = (activeTab === key);
+    var pill = document.createElement('div');
+    pill.style.cssText = [
+      'padding:3px 9px;border-radius:999px;',
+      'font-family:' + T.fh + ';font-size:10px;font-weight:700;letter-spacing:1px;',
+      'cursor:pointer;user-select:none;-webkit-user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;',
+      isActive
+        ? 'background:' + activeColor + ';color:' + T.well + ';'
+        : 'background:transparent;color:' + T.moon + ';border:1px solid rgba(255,255,255,0.15);',
+    ].join('');
+    pill.textContent = label + ' ' + count;
+    pill.addEventListener('pointerup', function(e) {
+      e.stopPropagation();
+      if (handlers.onTabChange) handlers.onTabChange(key);
+    });
+    return pill;
+  };
+
+  tabBar.appendChild(makeTab('active', 'Active', state.openChecks.length, T.elec));
+  tabBar.appendChild(makeTab('all', 'All', allChecks.length, T.moon));
+  hdr.appendChild(tabBar);
   card.appendChild(hdr);
 
-  // Row list — max 3 visible without scroll, then scrolls
+  // List
   var list = document.createElement('div');
-  list.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;';
+  list.style.cssText = [
+    'display:flex;flex-direction:column;gap:6px;',
+    'max-height:280px;overflow-y:auto;',
+    'touch-action:pan-y;overscroll-behavior:contain;',
+  ].join('');
 
-  state.openChecks.forEach(function(chk) {
-    var selected = selectedCheckIds.indexOf(chk.checkId) !== -1;
-    list.appendChild(buildOpenCheckRow(chk, handlers, selected));
-  });
+  if (activeTab === 'active') {
+    state.openChecks.forEach(function(chk) {
+      var selected = selectedCheckIds.indexOf(chk.checkId) !== -1;
+      list.appendChild(_buildActiveCheckRow(chk, handlers, selected));
+    });
+  } else {
+    allChecks.forEach(function(chk) {
+      if (chk.status === 'closed') {
+        list.appendChild(_buildClosedCheckRow(chk, handlers));
+      } else {
+        var selected = selectedCheckIds.indexOf(chk.checkId) !== -1;
+        list.appendChild(_buildActiveCheckRow(chk, handlers, selected));
+      }
+    });
+  }
 
   card.appendChild(list);
   return card;
 }
 
-function buildOpenCheckRow(chk, handlers, isSelected) {
+function _buildActiveCheckRow(chk, handlers, isSelected) {
   var row = document.createElement('div');
   row.style.cssText = [
     'display:flex;gap:10px;align-items:center;',
-    'padding:10px 12px;border-radius:8px;',
-    // Selection state — subtle cyan border + slightly brighter bg when active,
-    // so the server can see which checks are pinned to the preview panel.
+    'padding:10px 12px;border-radius:6px;',
     isSelected
-      ? 'background:' + hexToRgba(T.elec, 0.12) + ';border:1.5px solid ' + T.elec + ';'
-      : 'background:' + T.well + ';border:1.5px solid transparent;',
+      ? 'border:1.5px solid ' + T.elec + ';background:' + hexToRgba(T.elec, 0.07) + ';'
+      : 'border:1.5px solid transparent;background:' + T.well + ';',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
     'user-select:none;-webkit-user-select:none;',
-    'pointer-events:auto;touch-action:manipulation;',
-    'cursor:pointer;transition:background 0.1s, border-color 0.1s;',
   ].join('');
 
   var info = document.createElement('div');
   info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;';
-  var top = document.createElement('div');
-  top.style.cssText = 'display:flex;gap:8px;align-items:baseline;';
-  var label = document.createElement('span');
-  label.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1.4px;';
-  label.textContent = (chk.tableLabel ? chk.tableLabel.toUpperCase() + ' \u2022 ' : '') + 'CHECK ' + (chk.checkLabel || chk.checkId || '').toUpperCase();
-  top.appendChild(label);
 
-  var amt = document.createElement('div');
-  amt.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + T.text + ';';
-  amt.textContent = fmt(chk.amount || 0);
+  var top = document.createElement('div');
+  top.style.cssText = 'display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;';
+  var checkLbl = document.createElement('span');
+  checkLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.text + ';';
+  checkLbl.textContent = chk.checkLabel || ('Check ' + (chk.checkId || ''));
+  top.appendChild(checkLbl);
+  if (chk.tableLabel) {
+    var tableLbl = document.createElement('span');
+    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';';
+    tableLbl.textContent = chk.tableLabel;
+    top.appendChild(tableLbl);
+  }
+  info.appendChild(top);
 
   var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';';
-  meta.textContent = (chk.guests ? chk.guests + ' guest' + (chk.guests > 1 ? 's' : '') + ' \u2022 ' : '') + 'opened ' + (chk.time || 'recently');
-
-  info.appendChild(top);
-  info.appendChild(amt);
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  var metaParts = [];
+  if (chk.guests) metaParts.push(chk.guests + ' guest' + (chk.guests > 1 ? 's' : ''));
+  if (chk.time) metaParts.push('opened ' + chk.time);
+  meta.textContent = metaParts.join(' · ');
   info.appendChild(meta);
 
-  // Tap row to toggle selection. Transfer action moved to preview panel
-  // so it can operate on one or many checks at once.
+  var amt = document.createElement('div');
+  amt.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + T.gold + ';flex-shrink:0;';
+  amt.textContent = fmt(chk.amount || 0);
+
+  row.appendChild(info);
+  row.appendChild(amt);
   row.addEventListener('pointerup', function() {
     if (handlers.onSelectCheck) handlers.onSelectCheck(chk);
   });
-
-  // Subtle selection checkmark hint on the right side, visible when active.
-  var selMark = document.createElement('div');
-  selMark.style.cssText = [
-    'flex-shrink:0;width:26px;height:26px;border-radius:999px;',
-    'display:flex;align-items:center;justify-content:center;',
-    'font-family:' + T.fb + ';font-size:15px;font-weight:700;',
-    isSelected
-      ? 'background:' + T.elec + ';color:' + T.well + ';'
-      : 'background:' + hexToRgba(T.text, 0.08) + ';color:' + hexToRgba(T.text, 0.6) + ';border:1px solid ' + hexToRgba(T.text, 0.12) + ';',
-  ].join('');
-  selMark.textContent = isSelected ? '\u2713' : '';
-
-  row.appendChild(info);
-  row.appendChild(selMark);
   return row;
+}
+
+function _buildClosedCheckRow(chk, handlers) {
+  var outer = document.createElement('div');
+  outer.style.cssText = [
+    'background:' + T.well + ';border-radius:6px;',
+    'padding:10px 12px;',
+    'display:flex;flex-direction:column;gap:6px;',
+  ].join('');
+
+  // Top row
+  var topRow = document.createElement('div');
+  topRow.style.cssText = 'display:flex;gap:10px;align-items:center;';
+
+  var info = document.createElement('div');
+  info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;';
+
+  var top = document.createElement('div');
+  top.style.cssText = 'display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;';
+  var checkLbl = document.createElement('span');
+  checkLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.text + ';';
+  checkLbl.textContent = chk.checkLabel || ('Check ' + (chk.checkId || ''));
+  top.appendChild(checkLbl);
+  if (chk.tableLabel) {
+    var tableLbl = document.createElement('span');
+    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';';
+    tableLbl.textContent = chk.tableLabel;
+    top.appendChild(tableLbl);
+  }
+  info.appendChild(top);
+
+  var meta = document.createElement('div');
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  var metaParts = [];
+  if (chk.time) metaParts.push('closed ' + chk.time);
+  if (chk.tip != null) metaParts.push('tip ' + fmt(chk.tip));
+  meta.textContent = metaParts.join(' · ');
+  info.appendChild(meta);
+
+  // Payment tag
+  var isCard = chk.method !== 'cash';
+  var tag = document.createElement('div');
+  tag.style.cssText = [
+    'flex-shrink:0;font-size:10px;border-radius:3px;padding:1px 5px;',
+    'font-family:' + T.fb + ';',
+    isCard
+      ? 'background:' + hexToRgba(T.elec, 0.12) + ';color:' + T.elec + ';'
+      : 'background:' + hexToRgba(T.greenWarm, 0.12) + ';color:' + T.greenWarm + ';',
+  ].join('');
+  tag.textContent = isCard
+    ? (chk.cardBrand || 'Card') + (chk.cardLast4 ? ' ··· ' + chk.cardLast4 : '')
+    : 'Cash';
+
+  var amt = document.createElement('div');
+  amt.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + T.gold + ';flex-shrink:0;';
+  amt.textContent = fmt(chk.amount || 0);
+
+  topRow.appendChild(info);
+  topRow.appendChild(tag);
+  topRow.appendChild(amt);
+  outer.appendChild(topRow);
+
+  // Actions row
+  var actRow = document.createElement('div');
+  actRow.style.cssText = 'display:flex;gap:6px;';
+
+  var reprBtn = document.createElement('div');
+  reprBtn.style.cssText = [
+    'background:' + hexToRgba(T.greenWarm, 0.15) + ';',
+    'color:' + T.greenWarm + ';',
+    'border:1px solid ' + hexToRgba(T.greenWarm, 0.3) + ';',
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;letter-spacing:1px;',
+    'border-radius:999px;padding:4px 12px;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'user-select:none;-webkit-user-select:none;',
+  ].join('');
+  reprBtn.textContent = 'Reprint';
+  reprBtn.addEventListener('pointerup', function(e) {
+    e.stopPropagation();
+    if (handlers.onReprintCheck) handlers.onReprintCheck(chk);
+  });
+
+  var reopBtn = document.createElement('div');
+  reopBtn.style.cssText = [
+    'background:' + hexToRgba(T.verm, 0.12) + ';',
+    'color:' + T.verm + ';',
+    'border:1px solid ' + hexToRgba(T.verm, 0.3) + ';',
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;letter-spacing:1px;',
+    'border-radius:999px;padding:4px 12px;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'user-select:none;-webkit-user-select:none;',
+  ].join('');
+  reopBtn.textContent = 'Reopen';
+  reopBtn.addEventListener('pointerup', function(e) {
+    e.stopPropagation();
+    if (handlers.onReopenCheck) handlers.onReopenCheck(chk);
+  });
+
+  actRow.appendChild(reprBtn);
+  actRow.appendChild(reopBtn);
+  outer.appendChild(actRow);
+
+  return outer;
 }
 
 // ── Tips card — filterable between Unadjusted (blocker) and Adjusted (review)
@@ -939,7 +1090,7 @@ function buildRowPill(opts) {
 //  MIDDLE COLUMN — card stack
 // ─────────────────────────────────────────────────
 
-function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds) {
+function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds, activeTab) {
   selectedCheckIds = selectedCheckIds || [];
   var col = document.createElement('div');
   col.style.cssText = [
@@ -957,10 +1108,7 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds) {
 
   var blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
 
-  // Open Checks blocker — only when open checks exist.
-  if (state.openChecks.length > 0) {
-    col.appendChild(buildOpenChecksCard(state, handlers, selectedCheckIds));
-  }
+  col.appendChild(buildChecksCard(state, handlers, activeTab, selectedCheckIds));
 
   // Tips card — shown whenever there are any closed CC checks, either as
   // the yellow blocker (unadjusted) or gold review (all adjusted). The
@@ -1255,6 +1403,7 @@ defineScene({
     startTime: null,
     tipFilter: null, // 'unadjusted' | 'adjusted' — resolved per-render based on data
     selectedCheckIds: [], // array of check IDs pinned to the preview panel
+    activeTab: 'active',
     _refreshing: false,
     el: null,
   },
@@ -1757,6 +1906,25 @@ defineScene({
             },
           });
         },
+        onTabChange: function(tab) {
+          state.activeTab = tab;
+          rebuild();
+        },
+        onReprintCheck: function(chk) {
+          showToast('Reprinting ' + (chk.checkLabel || chk.checkId) + '…', { bg: T.elec });
+        },
+        onReopenCheck: function(chk) {
+          SceneManager.interrupt('co-manager-pin', {
+            onConfirm: function() {
+              SceneManager.closeInterrupt('co-manager-pin');
+              showToast('Reopening ' + (chk.checkLabel || chk.checkId) + ' — backend pending', { bg: T.warning });
+              refresh();
+            },
+            onCancel: function() {
+              SceneManager.closeInterrupt('co-manager-pin');
+            },
+          });
+        },
       };
 
       // Resolve the active tip filter. Defaults to 'unadjusted' when there
@@ -1779,7 +1947,7 @@ defineScene({
       }).filter(Boolean);
 
       body.appendChild(buildLeftCol(state.data, handlers));
-      body.appendChild(buildMiddleCol(state.data, handlers, resolvedFilter, state.selectedCheckIds));
+      body.appendChild(buildMiddleCol(state.data, handlers, resolvedFilter, state.selectedCheckIds, state.activeTab));
       body.appendChild(buildActionsCol(state.data, handlers, state.startTime));
 
       container.appendChild(body);
