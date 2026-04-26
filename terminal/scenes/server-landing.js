@@ -26,7 +26,8 @@ var _inputIgnoreUntil = 0;
 var DOUBLE_TAP_MS     = 1500;   // second tap must land within this window to open
 
 // ── Filter cycle ──────────────────────────────────
-var FILTER_CYCLE  = { OPEN: 'CLOSED', CLOSED: 'VOID', VOID: 'OPEN' };
+var FILTER_CYCLE   = { OPEN: 'CLOSED', CLOSED: 'VOID', VOID: 'OPEN' };
+var FILTER_DISPLAY = { OPEN: 'ACTIVE', CLOSED: 'CLOSED', VOID: 'VOID' };
 var FILTER_COLORS = {
   OPEN:   { color: T.green, dark: T.greenDk },
   CLOSED: { color: T.gold,  dark: T.goldDk  },
@@ -120,7 +121,7 @@ function buildCheckTile(order, isSelected, onClick) {
   var guestEl = document.createElement('div');
   var guests = order.seat_count || order.guest_count || order.covers || 1;
   guestEl.textContent   = 'x' + guests;
-  guestEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.6;';
+  guestEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.moon + ';';
 
   var totalEl = document.createElement('div');
   var total = order.total != null ? fmt(order.total) : fmt((order.total_cents || 0) / 100);
@@ -315,9 +316,9 @@ defineScene({
     tipResult.appendChild(tipList);
 
     // Checkout pill — always enabled, greenWarm variant
-    var checkoutBtn = buildPillButton({ label: 'CHECKOUT', color: T.greenWarm, darkBg: T.greenWarmDk });
+    var checkoutBtn = buildPillButton({ label: 'CHECKOUT', color: T.lavender, darkBg: darkenHex(T.lavender, 0.35) });
     checkoutBtn.style.marginTop = '10px';
-    checkoutBtn.style.width     = '100%';
+    checkoutBtn.style.padding   = '10px 28px';
     tipResult.appendChild(checkoutBtn);
 
     // ─────────────────────────────────────────────
@@ -345,7 +346,7 @@ defineScene({
     gridResult.appendChild(gridFooter);
 
     // OPEN/CLOSED/VOID pill filter — sits in the grid card footer
-    var filterBtn = buildPillButton({ label: 'OPEN', color: T.green, darkBg: T.greenDk, fontSize: T.fsB3 });
+    var filterBtn = buildPillButton({ label: 'ACTIVE', color: T.green, darkBg: T.greenDk, fontSize: T.fsB3 });
     filterBtn.style.pointerEvents = 'auto';
     gridFooter.appendChild(filterBtn);
 
@@ -644,7 +645,7 @@ defineScene({
       state.selectedIds = [];
       state.selectedAt  = {};
       var fc = FILTER_COLORS[state.filter];
-      state._refs.filterBtn.textContent = state.filter;
+      state._refs.filterBtn.textContent = FILTER_DISPLAY[state.filter] || state.filter;
       state._refs.filterBtn.setColor(fc.color, fc.dark);
       renderTiles();
     });

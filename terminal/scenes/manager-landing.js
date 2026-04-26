@@ -54,7 +54,8 @@ function ordersByFilter(allOrders, filter, serverId) {
 }
 
 // ── Filter cycles ─────────────────────────────────
-var STATUS_CYCLE  = { OPEN: 'CLOSED', CLOSED: 'VOID', VOID: 'OPEN' };
+var STATUS_CYCLE   = { OPEN: 'CLOSED', CLOSED: 'VOID', VOID: 'OPEN' };
+var FILTER_DISPLAY = { OPEN: 'ACTIVE', CLOSED: 'CLOSED', VOID: 'VOID' };
 var STATUS_COLORS = {
   OPEN:   { color: T.green, dark: T.greenDk },
   CLOSED: { color: T.gold,  dark: T.goldDk  },
@@ -197,36 +198,34 @@ function _buildCheckTile(order, isSelected, srvColor, onClick, onLongPress, filt
   var tile = buildActionCard({
     accent: isSelected ? T.gold : (filterColor || srvColor || T.moon)
   });
-  tile.style.width          = '140px';
-  tile.style.height         = '120px';
+  tile.style.width          = '110px';
+  tile.style.height         = '90px';
   tile.style.flexShrink     = '0';
   tile.style.display        = 'flex';
   tile.style.flexDirection  = 'column';
-  tile.style.alignItems     = 'center';
-  tile.style.justifyContent = 'center';
-  tile.style.gap            = '4px';
-  tile.style.padding        = '10px 12px';
+  tile.style.justifyContent = 'space-between';
+  tile.style.padding        = '12px 14px';
   tile.style.textAlign      = 'center';
-  tile.style.background     = isSelected ? hexToRgba(T.gold, 0.12) : T.card;
+  if (isSelected) tile.style.background = hexToRgba(T.gold, 0.10);
   tile.style.pointerEvents  = 'auto';
   tile.style.touchAction    = 'manipulation';
 
   var idEl = document.createElement('div');
   idEl.textContent   = checkNum(order);
-  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:18px;font-weight:700;color:' + (isSelected ? T.gold : T.text) + ';letter-spacing:0.06em;';
+  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + (isSelected ? T.gold : T.text) + ';letter-spacing:0.06em;';
 
   var srvEl = document.createElement('div');
   var srvName = (order.server_name || order.server_id || '').split(' ')[0].toUpperCase();
   srvEl.textContent   = srvName;
-  srvEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + (srvColor || T.elec) + ';opacity:0.9;letter-spacing:0.04em;';
+  srvEl.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + (srvColor || T.elec) + ';opacity:0.9;letter-spacing:0.04em;';
 
   var cvrEl = document.createElement('div');
   cvrEl.textContent   = 'x' + (order.seat_count || 1);
-  cvrEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.55;';
+  cvrEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.moon + ';';
 
   var amtEl = document.createElement('div');
   amtEl.textContent   = fmt(order.total || 0);
-  amtEl.style.cssText = 'font-family:' + T.fh + ';font-size:22px;font-weight:700;color:' + T.gold + ';text-shadow:0 0 8px ' + hexToRgba(T.gold, 0.3) + ';margin-top:2px;';
+  amtEl.style.cssText = 'font-family:' + T.fh + ';font-size:16px;font-weight:700;color:' + T.gold + ';text-shadow:0 0 8px ' + hexToRgba(T.gold, 0.3) + ';margin-top:2px;';
 
   tile.appendChild(idEl);
   tile.appendChild(srvEl);
@@ -281,15 +280,23 @@ function _buildCheckTile(order, isSelected, srvColor, onClick, onLongPress, filt
 }
 
 function _buildNewTile(onClick) {
-  var tile = document.createElement('div');
-  tile.style.cssText = 'width:110px;height:90px;flex-shrink:0;border:1px dashed ' + hexToRgba(T.groups.landing.newCheckBorder, 0.4) + ';border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background 0.1s;';
+  var tile = buildActionCard({
+    accent:  T.groups.landing.tileAccent,
+    onClick: onClick,
+  });
+  tile.style.width          = '110px';
+  tile.style.height         = '90px';
+  tile.style.flexShrink     = '0';
+  tile.style.display        = 'flex';
+  tile.style.alignItems     = 'center';
+  tile.style.justifyContent = 'center';
+  tile.style.background     = 'transparent';
+  tile.style.border         = '1px dashed ' + hexToRgba(T.groups.landing.newCheckBorder, 0.5);
   var plus = document.createElement('span');
-  plus.style.cssText = 'font-family:' + T.fh + ';font-size:28px;color:' + hexToRgba(T.groups.landing.newCheckBorder, 0.5) + ';pointer-events:none;';
+  plus.style.cssText = 'font-family:' + T.fh + ';font-size:32px;color:' +
+    hexToRgba(T.groups.landing.newCheckBorder, 0.6) + ';pointer-events:none;';
   plus.textContent = '+';
   tile.appendChild(plus);
-  tile.addEventListener('pointerdown',  function() { tile.style.background = hexToRgba(T.groups.landing.newCheckBorder, 0.08); });
-  tile.addEventListener('pointerup',    function() { tile.style.background = 'transparent'; if (onClick) onClick(); });
-  tile.addEventListener('pointerleave', function() { tile.style.background = 'transparent'; });
   return tile;
 }
 
@@ -800,7 +807,7 @@ defineScene({
     };
     footerRight.appendChild(serverBtn);
 
-    var filterBtn = buildPillButton({ label: 'OPEN', color: T.green, darkBg: T.greenDk, fontSize: T.fsB3, padding: '8px 16px' });
+    var filterBtn = buildPillButton({ label: 'ACTIVE', color: T.green, darkBg: T.greenDk, fontSize: T.fsB3, padding: '8px 16px' });
     filterBtn.setColor = function(c, d) {
       filterBtn.style.background = c;
       filterBtn.style.boxShadow  = '0 6px 0 ' + d;
@@ -882,7 +889,7 @@ defineScene({
     chkResult.appendChild(serverList);
 
     // Close Day pill — lives in card footer, no float positioning
-    var closeDayBtn = buildPillButton({ label: 'CLOSE DAY', color: T.elec, darkBg: T.elecDk });
+    var closeDayBtn = buildPillButton({ label: 'CLOSE DAY', color: T.lavender, darkBg: darkenHex(T.lavender, 0.35) });
     closeDayBtn.style.padding = '10px 28px';
 
     var closeDayWrap = document.createElement('div');
@@ -1068,7 +1075,7 @@ defineScene({
       // Close Day is always tappable — the Finalize gate lives inside
       // close-day.js. Color still communicates readiness at a glance.
       if (cd.batch_ready) {
-        r.closeDayBtn.setColor(T.elec, T.elecDk);
+        r.closeDayBtn.setColor(T.lavender, darkenHex(T.lavender, 0.35));
         r.closeDayBtn.style.opacity = '1';
       } else if (!cd.all_checked_out) {
         r.closeDayBtn.setColor(T.gold, T.goldDk);
@@ -1167,7 +1174,7 @@ defineScene({
       state.selectedIds = [];
       state.selectedAt  = {};
       var fc = STATUS_COLORS[state.filter];
-      state._refs.filterBtn.textContent = state.filter;
+      state._refs.filterBtn.textContent = FILTER_DISPLAY[state.filter] || state.filter;
       state._refs.filterBtn.setColor(fc.color, fc.dark);
       gridResult.setAccent(fc.color);
       renderTiles();
