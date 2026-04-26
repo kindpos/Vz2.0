@@ -1,0 +1,2 @@
+rootProject.name = "kindpos-kiosk"
+include ':app'

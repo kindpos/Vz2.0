@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KINDpos</string>
+    <string name="settings_title">KINDpos Settings</string>
+    <string name="url_hint">Pi URL (e.g. http://192.168.50.1:8000/terminal/)</string>
+    <string name="save">Save</string>
+</resources>
