@@ -47,14 +47,15 @@ function _rgba(hex, a) {
 function _ensureStyles() {
   if (document.getElementById('item-recap-styles')) return;
 
-  var mintDim   = _rgba(T.green, 0.30);
-  var mintDim2  = _rgba(T.green, 0.35);
-  var mintDim5  = _rgba(T.green, 0.50);
-  var textDim35 = _rgba(T.text, 0.35);
-  var textDim38 = _rgba(T.text, 0.38);
-  var textDim50 = _rgba(T.text, 0.50);
-  var textDim55 = _rgba(T.text, 0.55);
-  var textDim60 = _rgba(T.text, 0.60);
+  var mintDim      = _rgba(T.green, 0.30);
+  var mintDim2     = _rgba(T.green, 0.35);
+  var mintDim5     = _rgba(T.green, 0.50);
+  var textDim35    = _rgba(T.text, 0.35);
+  var textDim38    = _rgba(T.text, 0.38);
+  var textDim50    = _rgba(T.text, 0.50);
+  var textDim55    = _rgba(T.text, 0.55);
+  var textDim60    = _rgba(T.text, 0.60);
+  var sentBorder   = _rgba(T.greenWarm, 0.38);
 
   var css = ''
     // ── Root scroll column ──
@@ -120,7 +121,7 @@ function _ensureStyles() {
     + '.ir-card{'
     +   'background:' + T.card + ';'
     +   'border:1px solid ' + T.border + ';'
-    +   'border-top:2px solid ' + T.green + ';'
+    +   'border-top:2px solid var(--cat,' + T.green + ');'
     +   'border-radius:6px;margin-bottom:5px;overflow:hidden;'
     + '}'
 
@@ -285,7 +286,7 @@ function _ensureStyles() {
     // Items that have been dispatched to the kitchen use a warm-green
     // top border (vs the category color) and muted text so the cashier
     // can instantly distinguish "kitchen has it" from "still pending".
-    + '.ir-card.ir-sent{border-top-color:' + T.greenWarm + ';}'
+    + '.ir-card.ir-sent{border-top-color:' + sentBorder + ';}'
     + '.ir-card.ir-sent .ir-iname{color:' + textDim55 + ';}'
     + '.ir-card.ir-sent .ir-iprice{color:' + textDim55 + ';}'
     + '.ir-card.ir-sent .ir-chev{color:' + textDim50 + ';}'
@@ -652,7 +653,7 @@ function _buildItemCard(item, seatIdx, itemIdx, opts) {
   // Red × remove button for unsent items. Tap swallows the event so
   // the row-collapse handler below doesn't fire. No-ops if the
   // consumer didn't wire an onRemoveItem callback.
-  if (item.sent === false) {
+  if (!item.sent) {
     var xbtn = document.createElement('span');
     xbtn.className = 'ir-xbtn';
     xbtn.textContent = '×';

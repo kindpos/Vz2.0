@@ -232,9 +232,18 @@ function _adaptOrderForRecap(state) {
     });
   }
 
-  // Sort selected-having seats to the top; preserve seat-number order
-  // within each group. No-op when nothing is selected.
-  if (Object.keys(seatIdxsWithSelected).length > 0) {
+  // Single-seat focus: when exactly one seat tile is selected, narrow the
+  // recap to that seat only so the left column gives focused context.
+  // With 0 or 2+ selections the full recap is shown (sorted below).
+  var selectedSeatIds = Object.keys(state.selected || {});
+  if (selectedSeatIds.length === 1) {
+    var focusId = selectedSeatIds[0];
+    adaptedSeats = adaptedSeats.filter(function(s) {
+      return state.seats[s._sIdx] && state.seats[s._sIdx].id === focusId;
+    });
+  } else if (Object.keys(seatIdxsWithSelected).length > 0) {
+    // Sort selected-having seats to the top; preserve seat-number order
+    // within each group. No-op when nothing is selected.
     adaptedSeats.sort(function(a, b) {
       var aSel = seatIdxsWithSelected[a._sIdx] ? 1 : 0;
       var bSel = seatIdxsWithSelected[b._sIdx] ? 1 : 0;
@@ -1451,17 +1460,29 @@ function rerenderTopArea(state) {
 function renderSeatsGrid(state, container, mode) {
   if (mode === 'B') {
     // ── Mode B: left column = recap OR paid-seat payment detail ──
+    // recapCol is a flex column so its child can use flex:1 + minHeight:0
+    // and let its own overflow-y:auto drive scrolling. A single
+    // overflow-y:auto on recapCol alone doesn't reliably scroll on webkit
+    // touch runtimes because align-items:stretch doesn't establish a
+    // definite height for the inner block — turning recapCol into a flex
+    // column makes that explicit.
     var recapCol = document.createElement('div');
     Object.assign(recapCol.style, {
-      flex:      '1',
-      minWidth:  '0',
-      overflowY: 'auto',
+      flex:          '1',
+      minWidth:      '0',
+      display:       'flex',
+      flexDirection: 'column',
+      overflow:      'hidden',
     });
 
     if (state._selectedPaidSeat) {
       // A paid tile is selected — show that seat's payment rows in the
       // left column instead of the normal item recap.
-      recapCol.appendChild(_buildPaidRecapPanel(state, state._selectedPaidSeat));
+      var paidPanel = _buildPaidRecapPanel(state, state._selectedPaidSeat);
+      paidPanel.style.flex      = '1';
+      paidPanel.style.minHeight = '0';
+      paidPanel.style.overflowY = 'auto';
+      recapCol.appendChild(paidPanel);
     } else {
       // Normal item recap — skip paid seats (they live in the tile grid).
       var adaptedOrder = _adaptOrderForRecap(state);
@@ -1496,7 +1517,8 @@ function renderSeatsGrid(state, container, mode) {
       });
       recapEl.style.maxWidth  = 'none';
       recapEl.style.width     = '100%';
-      recapEl.style.overflowY = 'visible';
+      recapEl.style.flex      = '1';
+      recapEl.style.minHeight = '0';
       recapCol.appendChild(recapEl);
     }
     container.appendChild(recapCol);
