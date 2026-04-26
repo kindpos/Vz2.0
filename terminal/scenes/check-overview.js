@@ -3360,8 +3360,14 @@ function openEditSeats(state) {
         }
       });
 
-      if (itemsToSync.length > 0) persistItemSeats(state, itemsToSync);
-      persistSeats(state);
+      // Sequence: patch item seat_numbers first, then PUT seat list.
+      // persistSeats emits 'order:updated' which triggers a full refresh;
+      // if that fires before item PATCHes complete, orderToSeats rebuilds
+      // seats from stale item.seat_number values and resurrects cleared seats.
+      var itemSync = itemsToSync.length > 0
+        ? persistItemSeats(state, itemsToSync)
+        : Promise.resolve();
+      itemSync.then(function() { persistSeats(state); });
 
       state.selectedItems = {};
       state.selected      = {};
