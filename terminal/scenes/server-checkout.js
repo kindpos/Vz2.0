@@ -655,31 +655,6 @@ function buildBaseCard(opts) {
   return card;
 }
 
-// ── Sales Summary (always present, dimmed when blocked) ──
-function buildSalesSummaryCard(state, blocked) {
-  var card = buildBaseCard({ accent: T.green, dimmed: blocked });
-  card.style.flexShrink = '0';
-
-  var hdr = document.createElement('div');
-  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
-  var title = document.createElement('span');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1.8px;';
-  title.textContent = 'SALES SUMMARY';
-  var hint = document.createElement('span');
-  hint.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
-  hint.textContent = '';
-  hdr.appendChild(title);
-  hdr.appendChild(hint);
-  card.appendChild(hdr);
-
-  var line = document.createElement('div');
-  line.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
-  line.textContent = fmt(state.netSales) + ' \u2022 ' + state.checksClosed + ' checks';
-  card.appendChild(line);
-
-  return card;
-}
-
 // ── Open Checks blocker card ──
 function buildOpenChecksCard(state, handlers, selectedCheckIds) {
   selectedCheckIds = selectedCheckIds || [];
@@ -960,98 +935,6 @@ function buildRowPill(opts) {
   return wrap;
 }
 
-// ── Collapsed summary line for Tip-Out/Take-Home/Cash Expected when blocked ──
-function buildCollapsedSummaryLine() {
-  var card = buildBaseCard({ accent: T.border, dimmed: true });
-
-  var hdr = document.createElement('div');
-  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
-  var title = document.createElement('span');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1.8px;';
-  title.textContent = 'TIP-OUT \u2022 TAKE-HOME \u2022 CASH EXPECTED';
-  var lock = document.createElement('span');
-  lock.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
-  lock.textContent = '';
-  hdr.appendChild(title);
-  hdr.appendChild(lock);
-  card.appendChild(hdr);
-
-  var line = document.createElement('div');
-  line.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
-  line.textContent = 'available once blockers resolved';
-  card.appendChild(line);
-
-  return card;
-}
-
-// ── Expanded Tip-Out card (when clear) ──
-function buildTipOutCard(state) {
-  var card = buildBaseCard({ accent: T.gold });
-
-  var hdr = document.createElement('div');
-  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
-  var title = document.createElement('span');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.gold + ';letter-spacing:1.8px;';
-  title.textContent = 'TIP-OUT';
-  var pct = document.createElement('span');
-  pct.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.gold + ';font-weight:700;';
-  pct.textContent = (state.tipOutRate * 100).toFixed(0) + '% \u2022 editable';
-  hdr.appendChild(title);
-  hdr.appendChild(pct);
-  card.appendChild(hdr);
-
-  card.appendChild(detailRow('Net sales base', fmt(state.netSales)));
-  card.appendChild(detailRow('Tip-out rate', (state.tipOutRate * 100).toFixed(0) + '%'));
-  card.appendChild(detailDivider());
-  card.appendChild(detailRow('Total tip-out', '\u2212' + fmt(state.tipOutTotal), T.gold));
-
-  return card;
-}
-
-// ── Take-Home hero card (when clear) ──
-function buildTakeHomeCard(state) {
-  var card = buildBaseCard({ accent: T.green });
-
-  var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.green + ';letter-spacing:1.8px;';
-  title.textContent = 'TAKE-HOME';
-  card.appendChild(title);
-
-  var hero = document.createElement('div');
-  hero.style.cssText = 'font-family:' + T.fb + ';font-size:28px;font-weight:700;color:' + T.green + ';text-align:center;padding:8px 0;';
-  hero.textContent = fmt(state.takeHome);
-  card.appendChild(hero);
-
-  var formula = document.createElement('div');
-  formula.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
-  formula.textContent = 'tips \u2212 tipout';
-  card.appendChild(formula);
-
-  return card;
-}
-
-// ── Cash Expected card (when clear) ──
-function buildCashExpectedCard(state) {
-  var card = buildBaseCard({ accent: T.gold });
-
-  var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.gold + ';letter-spacing:1.8px;';
-  title.textContent = 'CASH EXPECTED';
-  card.appendChild(title);
-
-  var hero = document.createElement('div');
-  hero.style.cssText = 'font-family:' + T.fb + ';font-size:28px;font-weight:700;color:' + T.gold + ';text-align:center;padding:8px 0;';
-  hero.textContent = fmt(state.cashExpected);
-  card.appendChild(hero);
-
-  var formula = document.createElement('div');
-  formula.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
-  formula.textContent = 'cash sales \u2212 card tips';
-  card.appendChild(formula);
-
-  return card;
-}
-
 // ─────────────────────────────────────────────────
 //  MIDDLE COLUMN — card stack
 // ─────────────────────────────────────────────────
@@ -1074,9 +957,6 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds) {
 
   var blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
 
-  // Sales Summary — always visible, dimmed when blocked.
-  col.appendChild(buildSalesSummaryCard(state, blocked));
-
   // Open Checks blocker — only when open checks exist.
   if (state.openChecks.length > 0) {
     col.appendChild(buildOpenChecksCard(state, handlers, selectedCheckIds));
@@ -1087,15 +967,6 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds) {
   // filter tabs let the server flip between the two lists to fix typos.
   if (state.unadjustedChecks.length > 0 || state.adjustedChecks.length > 0) {
     col.appendChild(buildTipsCard(state, handlers, tipFilter));
-  }
-
-  // Tip-Out / Take-Home / Cash Expected
-  if (blocked) {
-    col.appendChild(buildCollapsedSummaryLine());
-  } else {
-    col.appendChild(buildTipOutCard(state));
-    col.appendChild(buildTakeHomeCard(state));
-    col.appendChild(buildCashExpectedCard(state));
   }
 
   return col;
