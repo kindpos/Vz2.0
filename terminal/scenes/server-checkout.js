@@ -87,12 +87,12 @@ function fetchServerState(params) {
 
     var rate = rules.reduce(function(s, r) { return s + (r.percentage || 0); }, 0) / 100;
     var netSales = d.net_sales || 0;
-    var cashSales = d.cash_sales || 0;
+    var cashSales = d.cash_total || 0;
     var cardSales = d.card_sales || 0;
     var cardTips  = d.card_tips  || 0;
     var tipOutTotal = netSales * rate;
     var takeHome = (cardTips + (d.cash_tips || 0)) - tipOutTotal;
-    var cashExpected = cashSales - tipOutTotal;
+    var cashExpected = cashSales - cardTips;
 
     // Same defensive scrub on the checks summary. day-summary entries
     // don't always carry server_id (depends on backend version), so when
@@ -936,7 +936,7 @@ function buildTakeHomeCard(state) {
 
   var formula = document.createElement('div');
   formula.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
-  formula.textContent = 'tips \u2212 tipout + cash';
+  formula.textContent = 'tips \u2212 tipout';
   card.appendChild(formula);
 
   return card;
