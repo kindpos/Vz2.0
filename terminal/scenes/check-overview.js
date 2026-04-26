@@ -1377,12 +1377,7 @@ function buildSeatsContainer(state) {
   });
 
   // ── Selection toolbar ──
-  // Small SELECT ALL / CLEAR chip above the seats area. Flips labels +
-  // color based on whether anything is currently selected so one button
-  // covers both directions. Positioned flush right to stay out of the
-  // seat-card visual rhythm.
-  var anySel = Object.keys(state.selectedItems || {}).length > 0
-            || Object.keys(state.selected      || {}).length > 0;
+  // Three fixed right-aligned pills: CLEAR · MANAGE · SELECT ALL.
   var selRow = document.createElement('div');
   Object.assign(selRow.style, {
     flexShrink:     '0',
@@ -1393,18 +1388,35 @@ function buildSeatsContainer(state) {
     padding:        '4px 12px 0',
   });
 
-  var selBtn = buildPillButton({
-    label:    anySel ? 'CLEAR' : 'SELECT ALL',
-    color:    anySel ? T.verm : T.elec,
-    darkBg:   anySel ? T.vermDk : T.elecDk,
+  var clearBtn = buildPillButton({
+    label:    'CLEAR',
+    color:    T.moon,
+    darkBg:   T.moonDk,
     fontSize: T.fsB4,
     padding:  '6px 14px',
-    onClick: function() {
-      if (anySel) clearAllSelection(state);
-      else         forceSelectAll(state);
-    },
+    onClick:  function() { clearAllSelection(state); },
   });
-  selRow.appendChild(selBtn);
+  selRow.appendChild(clearBtn);
+
+  var manageBtn = buildPillButton({
+    label:    'MANAGE',
+    color:    T.moon,
+    darkBg:   T.moonDk,
+    fontSize: T.fsB4,
+    padding:  '6px 14px',
+    onClick:  function() { openEditSeats(state); },
+  });
+  selRow.appendChild(manageBtn);
+
+  var selAllBtn = buildPillButton({
+    label:    'SELECT ALL',
+    color:    T.elec,
+    darkBg:   T.elecDk,
+    fontSize: T.fsB4,
+    padding:  '6px 14px',
+    onClick:  function() { forceSelectAll(state); },
+  });
+  selRow.appendChild(selAllBtn);
   root.appendChild(selRow);
 
   // Layout mode:
