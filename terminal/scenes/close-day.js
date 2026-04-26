@@ -307,6 +307,7 @@ function fetchCloseDayState(params) {
 
       // Raw reference for the recap panel
       daySummary:       d,
+      tipoutRules:       rules,
     };
   });
 }
@@ -370,383 +371,242 @@ function buildBlockerBanner(state) {
 }
 
 // ─────────────────────────────────────────────────
-//  LEFT COLUMN — Receipt Preview
-//  Replicates server-checkout's renderCheckPreview. Looks up the full
-//  order in allOrders for items + subtotal + tax. Handles multi-select
-//  (stacked sub-headers, 3-item cap per check + "+N more").
+//  LEFT COLUMN — Stats panel
 // ─────────────────────────────────────────────────
 
-function buildReceiptCol(state, selectedChecks, allOrders, handlers) {
-  selectedChecks = selectedChecks || [];
-  var showing = selectedChecks.length > 0;
-  var isMulti = selectedChecks.length > 1;
+function _leftColDivider() {
+  var d = document.createElement('div');
+  d.style.cssText = 'height:1px;background:' + T.border + ';opacity:0.4;margin:6px 0;flex-shrink:0;';
+  return d;
+}
 
-  var col = buildStaticCard({ accent: T.green });
-  col.style.cssText += [
+function _leftColStat(label, value, valueColor, hero) {
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;flex-shrink:0;';
+  var lbl = document.createElement('div');
+  lbl.style.cssText = [
+    'font-family:' + T.fb + ';font-size:10px;font-weight:700;',
+    'color:' + T.text + ';opacity:0.6;letter-spacing:1px;',
+  ].join('');
+  lbl.textContent = label;
+  var val = document.createElement('div');
+  val.style.cssText = [
+    'font-family:' + T.fh + ';font-weight:700;line-height:1.1;',
+    'font-size:' + (hero ? '32px' : '20px') + ';',
+    'color:' + (valueColor || T.text) + ';',
+  ].join('');
+  val.textContent = value;
+  wrap.appendChild(lbl);
+  wrap.appendChild(val);
+  return wrap;
+}
+
+function buildLeftCol(state, handlers) {
+  var col = document.createElement('div');
+  col.style.cssText = [
     'flex-shrink:0;width:' + LEFT_W + 'px;',
-    'padding:14px 16px;box-sizing:border-box;',
-    'display:flex;flex-direction:column;gap:10px;',
-  ].join('');
-
-  // Header — title + dismiss × when a selection is pinned
-  var hdr = document.createElement('div');
-  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;flex-shrink:0;gap:6px;';
-  var hdrTitle = buildSectionLabel(showing ? 'CHECK PREVIEW' : 'SALES RECAP', T.text);
-  hdr.appendChild(hdrTitle);
-
-  if (showing) {
-    var dismiss = document.createElement('span');
-    dismiss.style.cssText = [
-      'font-family:' + T.fb + ';font-size:18px;color:' + T.text + ';opacity:0.55;',
-      'cursor:pointer;user-select:none;-webkit-user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-      'padding:0 6px;line-height:1;',
-    ].join('');
-    dismiss.textContent = '\u00D7';
-    dismiss.addEventListener('pointerup', function() {
-      if (handlers && handlers.onDismissPreview) handlers.onDismissPreview();
-    });
-    hdr.appendChild(dismiss);
-  }
-  col.appendChild(hdr);
-
-  var paper = document.createElement('div');
-  paper.style.cssText = [
-    'flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;',
-    'background:' + (showing ? T.well : 'transparent') + ';',
-    'border-radius:6px;',
-    'padding:' + (showing ? '14px 14px' : '0') + ';box-sizing:border-box;',
-    'font-family:' + T.fb + ';',
     'display:flex;flex-direction:column;',
+    'background:' + T.card + ';',
+    'border-left:3px solid ' + T.green + ';',
+    'border-radius:6px;overflow:hidden;',
   ].join('');
 
-  if (!showing) {
-    paper.appendChild(_buildSalesRecapPreview(state.daySummary));
-  } else {
-    renderCheckPreview(paper, selectedChecks, allOrders);
-  }
-  col.appendChild(paper);
+  // ── Scrollable body ──
+  var body = document.createElement('div');
+  body.style.cssText = [
+    'flex:1;overflow-y:auto;overflow-x:hidden;',
+    'padding:14px 16px;box-sizing:border-box;',
+    'display:flex;flex-direction:column;',
+    'touch-action:pan-y;overscroll-behavior:contain;',
+  ].join('');
 
-  // Action stack — only when at least one check is selected. Matches
-  // server-checkout's receipt col: full-width TRANSFER + 2x2 grid of
-  // PRINT / PAY / DISCOUNT / VOID. All handlers receive the full
-  // selectedChecks array; single-select is just an array of length 1.
-  if (showing) {
-    var actStack = document.createElement('div');
-    actStack.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:6px;';
+  // Net Sales hero
+  body.appendChild(_leftColStat('NET SALES', fmt(state.netSales), T.gold, true));
+  body.appendChild(_leftColDivider());
 
-    var transferBtn = buildPillButton({
-      label:  isMulti ? 'Transfer ' + selectedChecks.length + ' Checks' : 'Transfer',
-      color:  T.elec,
-      darkBg: T.elecDk,
-      onClick: function() {
-        if (handlers && handlers.onTransferChecks) handlers.onTransferChecks(selectedChecks);
-      },
-    });
-    transferBtn.style.cssText += 'font-size:14px;padding:10px 14px;width:100%;box-sizing:border-box;';
-    actStack.appendChild(transferBtn);
+  // CC Batch + Total Tips
+  body.appendChild(_leftColStat('CC BATCH', fmt(state.batchTotal), T.elec));
+  body.appendChild(_leftColStat('TOTAL TIPS', fmt(state.totalTips), T.gold));
+  body.appendChild(_leftColDivider());
 
-    var actGrid = document.createElement('div');
-    actGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;';
+  // Tip-Out section
+  var tipWrap = document.createElement('div');
+  tipWrap.style.cssText = [
+    'background:' + T.well + ';border-radius:4px;',
+    'padding:8px 10px;display:flex;flex-direction:column;gap:4px;',
+  ].join('');
 
-    var ops = [
-      { label: 'Print',    color: T.greenWarm, dark: T.greenWarmDk, key: 'onPrintCheck'    },
-      { label: 'Pay',      color: T.gold,      dark: T.goldDk,      key: 'onCloseCheck'    },
-      { label: 'Discount', color: T.elec,      dark: T.elecDk,      key: 'onDiscountCheck' },
-      { label: 'Void',     color: T.verm,      dark: T.vermDk,      key: 'onVoidCheck'     },
-    ];
+  var rules = state.tipoutRules || [];
+  var allAdj = state.unadjustedChecks.length === 0 && state.adjustedChecks.length > 0;
 
-    ops.forEach(function(op) {
-      var btn = buildPillButton({
-        label:  op.label,
-        color:  op.color,
-        darkBg: op.dark,
-        onClick: function() {
-          if (handlers && handlers[op.key]) handlers[op.key](selectedChecks);
-        },
+  if (rules.length > 0) {
+    var grossTips = state.totalTips;
+    rules.forEach(function(r) {
+      var base  = r.calculation_base || 'Net Sales';
+      var catTotals = {};
+      (state.categories || []).forEach(function(c) {
+        if (c && c.name) catTotals[c.name] = c.total || 0;
       });
-      btn.style.cssText += 'font-size:14px;padding:8px 10px;';
-      actGrid.appendChild(btn);
+      var basis;
+      if (base === 'Gross Tips' || base === 'Net Tips') {
+        basis = grossTips;
+      } else if (Array.isArray(r.categories) && r.categories.length) {
+        basis = r.categories.reduce(function(s, cat) { return s + (catTotals[cat] || 0); }, 0);
+      } else {
+        basis = state.netSales;
+      }
+      var rAmt = parseFloat((basis * (r.percentage || 0) / 100).toFixed(2));
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
+      var rL = document.createElement('div');
+      rL.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';';
+      rL.textContent = (r.role_name || r.name || 'Tip-Out') + ' ' + (r.percentage || 0) + '%';
+      var rR = document.createElement('div');
+      rR.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';';
+      rR.textContent = fmt(rAmt);
+      row.appendChild(rL);
+      row.appendChild(rR);
+      tipWrap.appendChild(row);
     });
-
-    actStack.appendChild(actGrid);
-    col.appendChild(actStack);
   }
+
+  // Tip-out total + ADJ chip
+  var totRow = document.createElement('div');
+  totRow.style.cssText = [
+    'display:flex;justify-content:space-between;align-items:center;',
+    'margin-top:4px;padding-top:4px;',
+    'border-top:1px solid ' + hexToRgba(T.border, 0.5) + ';',
+  ].join('');
+  var tL = document.createElement('div');
+  tL.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
+  tL.textContent = 'TIP-OUT';
+  var tR = document.createElement('div');
+  tR.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  if (state.closedCardChecks && state.closedCardChecks.length > 0) {
+    var adjChip = document.createElement('div');
+    var adjColor = allAdj ? T.greenWarm : T.warning;
+    adjChip.style.cssText = [
+      'font-family:' + T.fh + ';font-size:9px;font-weight:700;',
+      'padding:1px 5px;border-radius:3px;',
+      'background:' + hexToRgba(adjColor, 0.15) + ';color:' + adjColor + ';',
+    ].join('');
+    adjChip.textContent = allAdj ? 'ADJ' : 'PENDING';
+    tR.appendChild(adjChip);
+  }
+  var tV = document.createElement('div');
+  tV.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
+  tV.textContent = fmt(state.totalTipOut);
+  tR.appendChild(tV);
+  totRow.appendChild(tL);
+  totRow.appendChild(tR);
+  tipWrap.appendChild(totRow);
+
+  // Adjust Rates pill
+  var adjBtn = document.createElement('div');
+  adjBtn.style.cssText = [
+    'margin-top:6px;padding:6px 10px;border-radius:6px;',
+    'border:1.5px solid ' + T.border + ';cursor:pointer;',
+    'display:flex;align-items:center;justify-content:center;gap:6px;',
+    'font-family:' + T.fh + ';font-size:11px;font-weight:700;',
+    'color:' + T.text + ';letter-spacing:0.8px;',
+    'transition:border-color 0.15s,color 0.15s;',
+  ].join('');
+  adjBtn.innerHTML = '<svg width="10" height="12" viewBox="0 0 10 12" fill="none"><rect x="2" y="5" width="6" height="7" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M3 5V3.5a2 2 0 0 1 4 0V5" stroke="currentColor" stroke-width="1.5"/></svg> ADJUST RATES';
+  adjBtn.addEventListener('pointerenter', function() {
+    adjBtn.style.borderColor = T.warning;
+    adjBtn.style.color = T.warning;
+  });
+  adjBtn.addEventListener('pointerleave', function() {
+    adjBtn.style.borderColor = T.border;
+    adjBtn.style.color = T.text;
+  });
+  adjBtn.addEventListener('click', function() {
+    if (handlers.onAdjustRates) handlers.onAdjustRates();
+  });
+  tipWrap.appendChild(adjBtn);
+  body.appendChild(tipWrap);
+  body.appendChild(_leftColDivider());
+
+  // Voids + Checks row
+  var statsRow = document.createElement('div');
+  statsRow.style.cssText = 'display:flex;gap:12px;';
+  var voidsBlock = document.createElement('div');
+  voidsBlock.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;';
+  var voidsLbl = document.createElement('div');
+  voidsLbl.style.cssText = 'font-family:' + T.fb + ';font-size:10px;font-weight:700;color:' + T.text + ';opacity:0.6;letter-spacing:1px;';
+  voidsLbl.textContent = 'VOIDS';
+  var voidsVal = document.createElement('div');
+  voidsVal.style.cssText = 'font-family:' + T.fh + ';font-size:17px;font-weight:700;color:' + T.verm + ';';
+  voidsVal.textContent = (state.voidsCount || 0) + (state.voidsTotal > 0 ? ' · ' + fmt(state.voidsTotal) : '');
+  voidsBlock.appendChild(voidsLbl);
+  voidsBlock.appendChild(voidsVal);
+  statsRow.appendChild(voidsBlock);
+
+  var checksBlock = document.createElement('div');
+  checksBlock.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;';
+  var checksLbl = document.createElement('div');
+  checksLbl.style.cssText = 'font-family:' + T.fb + ';font-size:10px;font-weight:700;color:' + T.text + ';opacity:0.6;letter-spacing:1px;';
+  checksLbl.textContent = 'CHECKS';
+  var checksVal = document.createElement('div');
+  checksVal.style.cssText = 'font-family:' + T.fh + ';font-size:17px;font-weight:700;color:' + T.text + ';';
+  checksVal.textContent = String(state.totalChecks || 0);
+  checksBlock.appendChild(checksLbl);
+  checksBlock.appendChild(checksVal);
+  statsRow.appendChild(checksBlock);
+  body.appendChild(statsRow);
+
+  // Covers
+  if ((state.covers || 0) > 0) {
+    body.appendChild(_leftColDivider());
+    body.appendChild(_leftColStat('COVERS', String(state.covers), T.text));
+  }
+
+  col.appendChild(body);
+
+  // Cash footer
+  var cashFooter = document.createElement('div');
+  cashFooter.style.cssText = [
+    'flex-shrink:0;',
+    'border-top:1.5px solid ' + T.gold + ';',
+    'background:' + hexToRgba(T.gold, 0.06) + ';',
+    'padding:10px 16px;box-sizing:border-box;',
+  ].join('');
+  var cashLbl = document.createElement('div');
+  cashLbl.style.cssText = [
+    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+    'letter-spacing:1.5px;color:' + T.text + ';margin-bottom:4px;',
+  ].join('');
+  cashLbl.textContent = 'CASH EXPECTED';
+  var cashAmt = document.createElement('div');
+  cashAmt.style.cssText = 'font-family:' + T.fh + ';font-size:28px;font-weight:700;color:' + T.gold + ';line-height:1;';
+  cashAmt.textContent = fmt(state.cashExpected);
+  var cashMath = document.createElement('div');
+  cashMath.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.6;margin-top:3px;';
+  cashMath.textContent = fmt(state.cashSales) + ' cash − ' + fmt(state.cardTips) + ' tips';
+  cashFooter.appendChild(cashLbl);
+  cashFooter.appendChild(cashAmt);
+  cashFooter.appendChild(cashMath);
+  col.appendChild(cashFooter);
+
+  // Print Day Recap pill
+  var printBtn = document.createElement('div');
+  printBtn.style.cssText = [
+    'flex-shrink:0;margin:8px 16px 14px;',
+    'padding:10px 14px;border-radius:8px;cursor:pointer;',
+    'background:' + T.elec + ';',
+    'box-shadow:0 4px 0 ' + T.elecDk + ';',
+    'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
+    'color:#fff;letter-spacing:1.2px;text-align:center;',
+  ].join('');
+  printBtn.textContent = 'PRINT DAY RECAP';
+  printBtn.addEventListener('click', function() {
+    if (handlers.onPrintDayRecap) handlers.onPrintDayRecap();
+  });
+  col.appendChild(printBtn);
 
   return col;
 }
 
-/**
- * Structured receipt-style preview of the day's totals.
- * Pure function. Uses T.* tokens for all styling.
- */
-function _buildSalesRecapPreview(data) {
-  if (!data || Object.keys(data).length === 0) {
-    var empty = document.createElement('div');
-    empty.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';letter-spacing:1px;';
-    empty.textContent = 'AWAITING DATA';
-    return empty;
-  }
-
-  var wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;justify-content:space-between;height:100%;';
-
-  var buildRow = function(label, value, color) {
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;gap:10px;';
-    var l = document.createElement('div');
-    l.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';';
-    l.textContent = label;
-    var v = document.createElement('div');
-    v.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + (color || T.text) + ';';
-    v.textContent = value;
-    row.appendChild(l);
-    row.appendChild(v);
-    return row;
-  };
-
-  var buildSect = function(text, color) {
-    var h = document.createElement('div');
-    h.style.cssText = 'background:' + T.well + ';padding:2px 6px;margin-bottom:6px;';
-    var t = document.createElement('div');
-    t.style.cssText = 'font-family:' + T.fb + ';font-size:9px;font-weight:700;color:' + (color || T.green) + ';text-transform:uppercase;letter-spacing:1px;';
-    t.textContent = text;
-    h.appendChild(t);
-    return h;
-  };
-
-  // Header block
-  var header = document.createElement('div');
-  header.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
-  
-  var storeName = document.createElement('div');
-  storeName.style.cssText = 'font-family:' + T.fh + ';font-size:18px;font-weight:700;color:' + T.text + ';text-align:center;';
-  storeName.textContent = (T.storeName || 'Store Name').toUpperCase();
-  
-  var dateLine = document.createElement('div');
-  dateLine.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';text-align:center;margin-top:2px;';
-  dateLine.textContent = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-  
-  var divider = document.createElement('div');
-  divider.style.cssText = 'height:1px;background:' + T.border + ';width:100%;margin-top:10px;';
-  
-  header.appendChild(storeName);
-  header.appendChild(dateLine);
-  header.appendChild(divider);
-  wrap.appendChild(header);
-
-  // Revenue block
-  var rev = document.createElement('div');
-  rev.appendChild(buildSect('REVENUE', T.gold));
-  rev.appendChild(buildRow('Gross Sales', fmt(data.gross_sales || 0), T.gold));
-  
-  if ((data.voids_total || data.void_total || 0) > 0) {
-    rev.appendChild(buildRow('Voids (' + (data.voids_count || data.void_count || 0) + ')', fmt(data.voids_total || data.void_total), T.verm));
-  }
-  if ((data.discounts_total || data.discount_total || 0) > 0) {
-    rev.appendChild(buildRow('Discounts (' + (data.discounts_count || data.discount_count || 0) + ')', fmt(data.discounts_total || data.discount_total), T.verm));
-  }
-  
-  var revDiv = document.createElement('div');
-  revDiv.style.cssText = 'height:1px;background:' + T.border + ';margin:6px 0;opacity:0.3;';
-  rev.appendChild(revDiv);
-  
-  var netRow = buildRow('NET SALES', fmt(data.net_sales || 0), T.gold);
-  netRow.children[0].style.fontWeight = '700';
-  netRow.children[0].style.fontSize = '11px';
-  netRow.children[1].style.fontWeight = '700';
-  netRow.children[1].style.fontSize = '11px';
-  rev.appendChild(netRow);
-  
-  rev.appendChild(buildRow('Tax', fmt(data.tax_collected || data.tax_total || 0), T.gold));
-  wrap.appendChild(rev);
-
-  // Payments block
-  var pay = document.createElement('div');
-  pay.appendChild(buildSect('PAYMENTS', T.elec));
-  pay.appendChild(buildRow('Cash (' + (data.cash_count || 0) + ')', fmt(data.cash_total || 0), T.gold));
-  pay.appendChild(buildRow('Card (' + (data.card_count || 0) + ')', fmt(data.card_total || 0), T.elec));
-  
-  var payDiv = document.createElement('div');
-  payDiv.style.cssText = 'height:1px;background:' + T.border + ';margin:6px 0;opacity:0.3;';
-  pay.appendChild(payDiv);
-  
-  if ((data.total_tips || 0) > 0) {
-    pay.appendChild(buildRow('Tips', fmt(data.total_tips), T.gold));
-  }
-  wrap.appendChild(pay);
-
-  // Check Stats block
-  var stats = document.createElement('div');
-  stats.appendChild(buildSect('CHECK STATS', T.green));
-  stats.appendChild(buildRow('Checks', data.check_count || data.total_checks || 0));
-  stats.appendChild(buildRow('Avg Check', fmt(data.avg_check || 0), T.gold));
-  if ((data.guest_count || 0) > 0) {
-    stats.appendChild(buildRow('Covers', data.guest_count));
-  }
-  wrap.appendChild(stats);
-
-  return wrap;
-}
-
-function buildReceiptEmptyState() {
-  var wrap = document.createElement('div');
-  wrap.style.cssText = 'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.45;';
-
-  var icon = document.createElement('div');
-  icon.style.cssText = [
-    'width:36px;height:46px;border:1.5px solid ' + T.border + ';border-radius:3px;',
-    'display:flex;flex-direction:column;justify-content:center;gap:4px;padding:6px 5px;',
-  ].join('');
-  [1, 1, 0.6].forEach(function(w) {
-    var l = document.createElement('div');
-    l.style.cssText = 'height:2px;background:' + T.border + ';width:' + (w * 100) + '%;';
-    icon.appendChild(l);
-  });
-
-  var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:12px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;';
-  title.textContent = 'NOTHING SELECTED';
-
-  var hint = document.createElement('div');
-  hint.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';text-align:center;line-height:1.5;';
-  hint.innerHTML = 'tap a check or tip row<br/>to pin it here';
-
-  wrap.appendChild(icon);
-  wrap.appendChild(title);
-  wrap.appendChild(hint);
-  return wrap;
-}
-
-function renderCheckPreview(paper, checks, allOrders) {
-  var isMulti = checks.length > 1;
-  var grandTotal = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
-
-  // Header — "N CHECKS" + grand total on multi, check label + amount on single.
-  var hdrRow = document.createElement('div');
-  hdrRow.style.cssText = [
-    'display:flex;justify-content:space-between;align-items:baseline;',
-    'padding-bottom:8px;border-bottom:1px solid ' + hexToRgba(T.text, 0.1) + ';margin-bottom:4px;',
-  ].join('');
-  var hLabel = document.createElement('div');
-  hLabel.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.elec + ';letter-spacing:1px;';
-  if (isMulti) {
-    hLabel.textContent = checks.length + ' CHECKS';
-  } else {
-    hLabel.textContent = (checks[0].tableLabel ? checks[0].tableLabel + ' \u2022 ' : '') + checkNumDisplay(checks[0]);
-  }
-  var hTotal = document.createElement('div');
-  hTotal.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.gold + ';';
-  hTotal.textContent = fmt(grandTotal);
-  hdrRow.appendChild(hLabel);
-  hdrRow.appendChild(hTotal);
-  paper.appendChild(hdrRow);
-
-  checks.forEach(function(chk, idx) {
-    var fullOrder = (allOrders || []).find(function(o) {
-      return o.order_id === (chk.checkId || chk.check_id);
-    });
-
-    if (isMulti) {
-      // Sub-header per check when multiple selected
-      var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.elec + ';letter-spacing:0.5px;margin-top:' + (idx === 0 ? '0' : '8px') + ';margin-bottom:2px;';
-      sub.textContent = checkNumDisplay(chk) + (fullOrder && fullOrder.server_name ? ' \u00B7 ' + fullOrder.server_name.split(' ')[0].toUpperCase() : '');
-      paper.appendChild(sub);
-    } else if (fullOrder && fullOrder.server_name) {
-      // Single-check: server name gets its own labeled row up top
-      var srvLbl = document.createElement('div');
-      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';letter-spacing:0.5px;margin-bottom:4px;';
-      srvLbl.textContent = fullOrder.server_name.toUpperCase();
-      paper.appendChild(srvLbl);
-    }
-
-    if (!isMulti) {
-      var metaRow = document.createElement('div');
-      metaRow.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.55;margin-bottom:4px;';
-      var mL = document.createElement('span');
-      mL.textContent = chk.guests ? (chk.guests + ' guest' + (chk.guests > 1 ? 's' : '')) : '\u00A0';
-      var mR = document.createElement('span');
-      mR.textContent = chk.time ? ('opened ' + chk.time) : '';
-      metaRow.appendChild(mL);
-      metaRow.appendChild(mR);
-      paper.appendChild(metaRow);
-    }
-
-    // Item rows — pulled from the full order record when present.
-    var items = (fullOrder && fullOrder.items) || [];
-    if (items.length === 0) {
-      var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.5;font-style:italic;padding:6px 0;';
-      empty.textContent = isMulti ? 'no items' : 'no items on this check';
-      paper.appendChild(empty);
-    } else {
-      // Cap items per check on multi-select so the paper doesn't
-      // stretch forever — 3 + "+N more".
-      var showCap = isMulti ? 3 : items.length;
-      items.slice(0, showCap).forEach(function(item) {
-        var row = document.createElement('div');
-        row.style.cssText = [
-          'display:flex;justify-content:space-between;gap:8px;',
-          'padding:3px 0;border-bottom:1px solid ' + hexToRgba(T.text, 0.06) + ';',
-        ].join('');
-        var nm = document.createElement('span');
-        nm.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';';
-        nm.textContent = (item.qty && item.qty > 1 ? item.qty + '\u00D7 ' : '') + (item.name || item.display_name || 'Item');
-        var pr = document.createElement('span');
-        pr.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;';
-        pr.textContent = fmt((item.price || item.amount || 0) * (item.qty || 1));
-        row.appendChild(nm);
-        row.appendChild(pr);
-        paper.appendChild(row);
-      });
-      if (items.length > showCap) {
-        var more = document.createElement('div');
-        more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.55;padding-top:2px;';
-        more.textContent = '+ ' + (items.length - showCap) + ' more';
-        paper.appendChild(more);
-      }
-    }
-
-    // Per-check totals — single-select only; multi shows the grand total in the header.
-    if (!isMulti && fullOrder) {
-      var sep = document.createElement('div');
-      sep.style.cssText = 'height:1px;background:' + hexToRgba(T.text, 0.1) + ';margin:6px 0 2px;';
-      paper.appendChild(sep);
-
-      var addTotalRow = function(label, val, emphasis) {
-        var r = document.createElement('div');
-        r.style.cssText = [
-          'display:flex;justify-content:space-between;padding:2px 0;',
-          'font-family:' + T.fb + ';font-size:' + (emphasis ? '12px' : '11px') + ';',
-          'color:' + T.text + ';opacity:' + (emphasis ? 1 : 0.65) + ';',
-          emphasis ? 'font-weight:700;' : '',
-        ].join('');
-        var rL = document.createElement('span');
-        rL.textContent = label;
-        var rR = document.createElement('span');
-        rR.style.cssText = 'color:' + T.gold + ';font-weight:' + (emphasis ? 700 : 400) + ';';
-        rR.textContent = fmt(val);
-        r.appendChild(rL);
-        r.appendChild(rR);
-        paper.appendChild(r);
-      };
-
-      if (fullOrder.subtotal != null) addTotalRow('subtotal', fullOrder.subtotal);
-      if (fullOrder.tax != null && fullOrder.tax > 0) addTotalRow('tax', fullOrder.tax);
-      addTotalRow('TOTAL', fullOrder.total || chk.amount || 0, true);
-    }
-
-    // Status stamp at the bottom on single-select
-    if (!isMulti) {
-      var stamp = document.createElement('div');
-      var stampColor = chk.status === 'open' ? T.verm : (chk.status === 'closed' ? T.greenWarm : T.warning);
-      stamp.style.cssText = 'margin-top:10px;padding-top:6px;font-family:' + T.fb + ';font-size:10px;color:' + stampColor + ';letter-spacing:3px;text-align:center;opacity:0.7;';
-      stamp.textContent = '\u2014  ' + (chk.status || 'open').toUpperCase() + '  \u2014';
-      paper.appendChild(stamp);
-    }
-  });
-}
 
 // ─────────────────────────────────────────────────
 //  MIDDLE COLUMN — Adaptive card stack
@@ -1944,11 +1804,7 @@ defineScene({
       state.selectedCheckIds = state.selectedCheckIds.filter(function(id) {
         return state.data.openChecks.some(function(c) { return (c.checkId || c.check_id) === id; });
       });
-      var selectedChecks = state.selectedCheckIds.map(function(id) {
-        return state.data.openChecks.find(function(c) { return (c.checkId || c.check_id) === id; });
-      }).filter(Boolean);
-
-      body.appendChild(buildReceiptCol(state.data, selectedChecks, state.data.allOrders, handlers));
+      body.appendChild(buildLeftCol(state.data, handlers));
       body.appendChild(buildMiddleCol(state.data, handlers, state));
       body.appendChild(buildActionsCol(state.data, handlers, state));
 
