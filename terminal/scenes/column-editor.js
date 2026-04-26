@@ -16,6 +16,12 @@ function fmt(n) {
 }
 
 // ─────────────────────────────────────────────────────
+//  Action stubs — logic implemented in a later pass
+// ─────────────────────────────────────────────────────
+function handleUndo(state) {}
+function handleUndoAll(state) {}
+
+// ─────────────────────────────────────────────────────
 //  buildColumn(colIdx, state) → card element
 //
 //  Renders one column card: header + scrollable item list.
@@ -113,16 +119,16 @@ function buildColumn(colIdx, state) {
       row.style.userSelect    = 'none';
 
       var nameSpan = document.createElement('span');
-      nameSpan.textContent   = nameText;
-      nameSpan.style.flex    = '1';
+      nameSpan.textContent    = nameText;
+      nameSpan.style.flex     = '1';
       nameSpan.style.minWidth = '0';
 
       var priceSpan = document.createElement('span');
-      priceSpan.textContent       = fmt(item.qty * item.price);
-      priceSpan.style.marginLeft  = '8px';
-      priceSpan.style.flexShrink  = '0';
-      priceSpan.style.fontFamily  = T.fb;
-      priceSpan.style.fontSize    = T.fsB3;
+      priceSpan.textContent      = fmt(item.qty * item.price);
+      priceSpan.style.marginLeft = '8px';
+      priceSpan.style.flexShrink = '0';
+      priceSpan.style.fontFamily = T.fb;
+      priceSpan.style.fontSize   = T.fsB3;
 
       if (isTarget) {
         // Ghost row: column is a split destination
@@ -132,13 +138,13 @@ function buildColumn(colIdx, state) {
         priceSpan.style.color  = T.gold;
 
         var badge = document.createElement('span');
-        badge.textContent        = '÷' + nTargets;
-        badge.style.fontFamily   = T.fh;
-        badge.style.fontSize     = T.fsB4;
-        badge.style.fontWeight   = T.fwBold;
-        badge.style.color        = T.elec;
-        badge.style.marginLeft   = '6px';
-        badge.style.flexShrink   = '0';
+        badge.textContent      = '÷' + nTargets;
+        badge.style.fontFamily = T.fh;
+        badge.style.fontSize   = T.fsB4;
+        badge.style.fontWeight = T.fwBold;
+        badge.style.color      = T.elec;
+        badge.style.marginLeft = '6px';
+        badge.style.flexShrink = '0';
 
         row.appendChild(nameSpan);
         row.appendChild(badge);
@@ -146,11 +152,11 @@ function buildColumn(colIdx, state) {
 
       } else if (isSelected) {
         // Staged for move / split
-        row.style.opacity            = '0.45';
-        row.style.borderBottom       = '1px solid ' + T.border;
-        nameSpan.style.color         = T.text;
+        row.style.opacity             = '0.45';
+        row.style.borderBottom        = '1px solid ' + T.border;
+        nameSpan.style.color          = T.text;
         nameSpan.style.textDecoration = 'line-through';
-        priceSpan.style.color        = T.moon;
+        priceSpan.style.color         = T.moon;
 
         row.appendChild(nameSpan);
         row.appendChild(priceSpan);
@@ -180,6 +186,198 @@ function buildColumn(colIdx, state) {
   });
 
   return card;
+}
+
+// ─────────────────────────────────────────────────────
+//  renderOpsBar(state)
+//
+//  Clears and rebuilds state.opsPanel with the correct
+//  pills for the current mode. Also (re)creates state.statusEl.
+// ─────────────────────────────────────────────────────
+function renderOpsBar(state) {
+  var panel = state.opsPanel;
+  while (panel.firstChild) panel.removeChild(panel.firstChild);
+
+  // SPLIT — hidden while in split mode
+  if (state.mode !== 'split') {
+    var splitBtn = buildPillButton({
+      label:    'SPLIT',
+      color:    T.elec,
+      darkBg:   T.elecDk,
+      fontSize: T.fsB2,
+    });
+    panel.appendChild(splitBtn);
+  }
+
+  // MERGE — neutral bg normally; gold when mode === 'merge'
+  var mergeActive = state.mode === 'merge';
+  var mergeBtn = buildPillButton({
+    label:     'MERGE',
+    color:     mergeActive ? T.gold  : T.card,
+    darkBg:    mergeActive ? T.goldDk : darkenHex(T.card, 0.35),
+    textColor: mergeActive ? T.well  : T.text,
+    fontSize:  T.fsB2,
+  });
+  if (!mergeActive) mergeBtn.style.border = '1px solid ' + T.border;
+  panel.appendChild(mergeBtn);
+
+  // CANCEL — visible only when a mode is active (mode !== null)
+  if (state.mode !== null) {
+    var cancelBtn = buildPillButton({
+      label:    'CANCEL',
+      color:    T.verm,
+      darkBg:   T.vermDk,
+      fontSize: T.fsB2,
+    });
+    panel.appendChild(cancelBtn);
+  }
+
+  // Status text — recreated each render; state.statusEl tracks the live node
+  var statusEl = document.createElement('span');
+  statusEl.style.fontFamily = T.fb;
+  statusEl.style.fontSize   = '10px';
+  statusEl.style.color      = hexToRgba(T.text, 0.6);
+  statusEl.style.flex       = '1';
+  statusEl.style.minWidth   = '0';
+  state.statusEl = statusEl;
+  panel.appendChild(statusEl);
+}
+
+// ─────────────────────────────────────────────────────
+//  renderBottomCluster(state) → cluster element
+//
+//  Builds the UNDO + CONFIRM pill cluster and wires the
+//  UNDO long-press (600 ms) fill animation + stubs.
+// ─────────────────────────────────────────────────────
+function renderBottomCluster(state) {
+  function track(el, event, handler) {
+    el.addEventListener(event, handler);
+    state.listeners.push({ el: el, event: event, handler: handler });
+  }
+
+  var cluster = document.createElement('div');
+  cluster.style.position = 'absolute';
+  cluster.style.bottom   = '14px';
+  cluster.style.right    = '14px';
+  cluster.style.display  = 'flex';
+  cluster.style.gap      = '8px';
+
+  // ── UNDO pill ─────────────────────────────────────
+  var undoBtn = buildPillButton({
+    label:     'UNDO',
+    color:     T.card,
+    darkBg:    darkenHex(T.card, 0.35),
+    textColor: T.text,
+    fontSize:  T.fsB2,
+  });
+  undoBtn.style.border   = '1px solid ' + T.border;
+  undoBtn.style.position = 'relative';
+  undoBtn.style.overflow = 'hidden';
+
+  // Wrap label text so it stacks above the fill layer
+  var undoLabel = document.createElement('span');
+  undoLabel.textContent    = 'UNDO';
+  undoLabel.style.position = 'relative';
+  undoLabel.style.zIndex   = '1';
+  undoBtn.textContent      = '';
+  undoBtn.appendChild(undoLabel);
+
+  // Step counter badge
+  if (state.actionLog.length > 0) {
+    var cntBadge = document.createElement('span');
+    cntBadge.textContent        = state.actionLog.length;
+    cntBadge.style.position     = 'absolute';
+    cntBadge.style.top          = '-6px';
+    cntBadge.style.right        = '-6px';
+    cntBadge.style.background   = T.elec;
+    cntBadge.style.color        = T.well;
+    cntBadge.style.borderRadius = T.pillRadius;
+    cntBadge.style.fontFamily   = T.fb;
+    cntBadge.style.fontSize     = T.fsB4;
+    cntBadge.style.fontWeight   = T.fwBold;
+    cntBadge.style.padding      = '1px 5px';
+    cntBadge.style.pointerEvents = 'none';
+    cntBadge.style.zIndex       = '2';
+    undoBtn.appendChild(cntBadge);
+  }
+
+  // Long-press fill layer (scaleX 0 → 1, T.verm)
+  var undoFill = document.createElement('div');
+  undoFill.style.position        = 'absolute';
+  undoFill.style.inset           = '0';
+  undoFill.style.background      = T.verm;
+  undoFill.style.transformOrigin = 'left center';
+  undoFill.style.transform       = 'scaleX(0)';
+  undoFill.style.transition      = 'none';
+  undoFill.style.borderRadius    = T.pillRadius;
+  undoFill.style.pointerEvents   = 'none';
+  undoFill.style.zIndex          = '0';
+  undoBtn.appendChild(undoFill);
+
+  if (state.actionLog.length === 0) undoBtn.setDisabled(true);
+
+  // Long-press interaction
+  var longPressTimer = null;
+
+  function _triggerUndoAll() {
+    undoFill.style.transition = 'transform 0.2s linear';
+    undoFill.style.transform  = 'scaleX(1)';
+    setTimeout(function() {
+      undoFill.style.transition = 'none';
+      undoFill.style.transform  = 'scaleX(0)';
+      handleUndoAll(state);
+    }, 200);
+  }
+
+  function _cancelFill() {
+    undoFill.style.transition = 'none';
+    undoFill.style.transform  = 'scaleX(0)';
+  }
+
+  track(undoBtn, 'pointerdown', function() {
+    if (undoBtn._disabled) return;
+    longPressTimer = setTimeout(function() {
+      longPressTimer = null;
+      _triggerUndoAll();
+    }, 600);
+  });
+
+  track(undoBtn, 'pointerup', function() {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+      handleUndo(state);
+    }
+  });
+
+  track(undoBtn, 'pointerleave', function() {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    _cancelFill();
+  });
+
+  track(undoBtn, 'pointercancel', function() {
+    if (longPressTimer !== null) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    _cancelFill();
+  });
+
+  cluster.appendChild(undoBtn);
+
+  // ── CONFIRM pill ──────────────────────────────────
+  var confirmBtn = buildPillButton({
+    label:    'CONFIRM',
+    color:    T.greenWarm,
+    darkBg:   T.greenWarmDk,
+    fontSize: T.fsB2,
+  });
+  cluster.appendChild(confirmBtn);
+
+  return cluster;
 }
 
 defineScene({
@@ -228,15 +426,7 @@ defineScene({
     opsBody.style.marginTop  = '10px';
     state.opsPanel = opsBody;
 
-    var statusEl = document.createElement('div');
-    statusEl.style.fontFamily = T.fb;
-    statusEl.style.fontSize   = T.fsB3;
-    statusEl.style.color      = hexToRgba(T.text, 0.75);
-    statusEl.style.marginLeft = '8px';
-    statusEl.style.flex       = '1';
-    statusEl.style.minWidth   = '0';
-    state.statusEl = statusEl;
-    opsBody.appendChild(statusEl);
+    renderOpsBar(state);
 
     opsCard.appendChild(opsBody);
     root.appendChild(opsCard);
@@ -255,16 +445,14 @@ defineScene({
     root.appendChild(colsArea);
 
     // ── Bottom-right cluster ──────────────────────────
-    var cluster = document.createElement('div');
-    cluster.style.position = 'absolute';
-    cluster.style.bottom   = '14px';
-    cluster.style.right    = '14px';
-    cluster.style.display  = 'flex';
-    cluster.style.gap      = '8px';
-    cluster.appendChild(buildPillButton({ label: '', color: T.card, darkBg: darkenHex(T.card, 0.4) }));
-    cluster.appendChild(buildPillButton({ label: '', color: T.card, darkBg: darkenHex(T.card, 0.4) }));
-    root.appendChild(cluster);
+    root.appendChild(renderBottomCluster(state));
   },
 
-  unmount: function(state) {},
+  unmount: function(state) {
+    for (var i = 0; i < state.listeners.length; i++) {
+      var l = state.listeners[i];
+      l.el.removeEventListener(l.event, l.handler);
+    }
+    state.listeners = [];
+  },
 });
