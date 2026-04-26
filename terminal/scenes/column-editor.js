@@ -20,6 +20,8 @@ function fmt(n) {
 // ─────────────────────────────────────────────────────
 function handleUndo(state) {}
 function handleUndoAll(state) {}
+function handleAddSeat(state) {}
+function handleAddCheck(state) {}
 
 // ─────────────────────────────────────────────────────
 //  buildColumn(colIdx, state) → card element
@@ -184,6 +186,102 @@ function buildColumn(colIdx, state) {
     hdrTotal: hdrTotal,
     itemList: itemList,
   });
+
+  return card;
+}
+
+// ─────────────────────────────────────────────────────
+//  buildAddCard(state) → card element
+//
+//  72px narrow card pinned to the right of the columns
+//  area. Top half = + SEAT (T.green), bottom half =
+//  + CHECK (T.gold), divided by a dashed gradient line.
+// ─────────────────────────────────────────────────────
+function buildAddCard(state) {
+  // ── Card shell ────────────────────────────────────
+  var card = document.createElement('div');
+  card.style.width         = '72px';
+  card.style.flexShrink    = '0';
+  card.style.alignSelf     = 'stretch';
+  card.style.background    = T.card;
+  card.style.border        = '1px solid ' + T.border;
+  card.style.borderRadius  = T.chamferCard + 'px';
+  card.style.display       = 'flex';
+  card.style.flexDirection = 'column';
+  card.style.overflow      = 'hidden';
+
+  // ── Zone factory ──────────────────────────────────
+  function makeZone(plusColor, labelText, labelColor, onTap) {
+    var zone = document.createElement('div');
+    zone.style.flex           = '1';
+    zone.style.display        = 'flex';
+    zone.style.flexDirection  = 'column';
+    zone.style.alignItems     = 'center';
+    zone.style.justifyContent = 'center';
+    zone.style.gap            = '4px';
+    zone.style.cursor         = 'pointer';
+    zone.style.pointerEvents  = 'auto';
+    zone.style.touchAction    = 'manipulation';
+    zone.style.userSelect     = 'none';
+
+    zone.addEventListener('mouseenter', function() {
+      zone.style.background = 'rgba(255,255,255,0.05)';
+    });
+    zone.addEventListener('mouseleave', function() {
+      zone.style.background = '';
+    });
+
+    var plus = document.createElement('div');
+    plus.textContent         = '+';
+    plus.style.fontFamily    = T.fh;
+    plus.style.fontSize      = T.fsH4;   // 26px
+    plus.style.fontWeight    = T.fwBold;
+    plus.style.color         = plusColor;
+    plus.style.lineHeight    = '1';
+    plus.style.pointerEvents = 'none';
+
+    var lbl = document.createElement('div');
+    lbl.textContent         = labelText;
+    lbl.style.fontFamily    = T.fh;
+    lbl.style.fontSize      = '8px';
+    lbl.style.color         = labelColor;
+    lbl.style.textAlign     = 'center';
+    lbl.style.pointerEvents = 'none';
+
+    zone.appendChild(plus);
+    zone.appendChild(lbl);
+
+    zone.addEventListener('pointerup', onTap);
+    state.listeners.push({ el: zone, event: 'pointerup', handler: onTap });
+
+    return zone;
+  }
+
+  // ── Top zone — + SEAT ─────────────────────────────
+  card.appendChild(makeZone(
+    T.green,
+    'NEW SEAT',
+    hexToRgba(T.green, 0.6),
+    function() { handleAddSeat(state); }
+  ));
+
+  // ── Dashed divider ────────────────────────────────
+  var divider = document.createElement('div');
+  divider.style.height     = '1px';
+  divider.style.flexShrink = '0';
+  divider.style.background =
+    'repeating-linear-gradient(to right, ' +
+    T.border + ' 0, ' + T.border + ' 5px, ' +
+    'transparent 5px, transparent 10px)';
+  card.appendChild(divider);
+
+  // ── Bottom zone — + CHECK ─────────────────────────
+  card.appendChild(makeZone(
+    T.gold,
+    'NEW CHECK',
+    hexToRgba(T.gold, 0.6),
+    function() { handleAddCheck(state); }
+  ));
 
   return card;
 }
