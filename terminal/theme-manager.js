@@ -97,7 +97,7 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
     btn.style.borderRadius = '0';
     btn.style.clipPath     = chamfer(o.chamferSize || 6);
   } else {
-    btn.style.borderRadius = T.pillRadius;
+    btn.style.borderRadius = o.borderRadius || T.pillRadius;
   }
   btn.style.cursor        = 'pointer';
   btn.style.padding       = o.padding || '14px 32px';

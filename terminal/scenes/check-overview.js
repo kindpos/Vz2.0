@@ -1235,16 +1235,17 @@ function renderActionBar(state) {
     } else if (_activeGroup === 'order') {
       // ── ORDER drill ──
       var backO = buildPillButton({ label: '‹ ORDER', color: T.moon, darkBg: T.moonDk,
-        onClick: function() { _activeGroup = null; _rebuild(); } });
+        borderRadius: '8px', onClick: function() { _activeGroup = null; _rebuild(); } });
       backO.style.alignSelf = 'stretch';
       actionArea.appendChild(backO);
 
       var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
-        onClick: function() { handleAddItems(state, state._params || {}); } });
+        borderRadius: '8px', onClick: function() { handleAddItems(state, state._params || {}); } });
       addBtn.style.alignSelf = 'stretch';
       actionArea.appendChild(addBtn);
 
       var sendBtn = buildPillButton({ label: 'SEND UNSENT', color: T.green, darkBg: T.greenDk,
+        borderRadius: '8px',
         onClick: function() {
           if (!state.orderId) { showToast('No items to send', { bg: T.gold }); return; }
           fetchWithTimeout('/api/v1/orders/' + state.orderId + '/send', { method: 'POST' }, 8000)
@@ -1258,47 +1259,47 @@ function renderActionBar(state) {
       actionArea.appendChild(sendBtn);
 
       var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
-        onClick: function() { handleResend(state); } });
+        borderRadius: '8px', onClick: function() { handleResend(state); } });
       resendBtn.style.alignSelf = 'stretch';
       actionArea.appendChild(resendBtn);
 
     } else if (_activeGroup === 'pay') {
       // ── PAY drill ──
       var backP = buildPillButton({ label: '‹ PAY', color: T.moon, darkBg: T.moonDk,
-        onClick: function() { _activeGroup = null; _rebuild(); } });
+        borderRadius: '8px', onClick: function() { _activeGroup = null; _rebuild(); } });
       backP.style.alignSelf = 'stretch';
       actionArea.appendChild(backP);
 
       var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
-        onClick: function() { handlePay(state, state._params || {}); } });
+        borderRadius: '8px', onClick: function() { handlePay(state, state._params || {}); } });
       payBtn.style.alignSelf = 'stretch';
       actionArea.appendChild(payBtn);
 
       var discBtn = buildPillButton({ label: 'DISC', color: '#b48efa',
-        darkBg: darkenHex('#b48efa', 0.4),
+        darkBg: darkenHex('#b48efa', 0.4), borderRadius: '8px',
         onClick: function() { handleDiscount(state); } });
       discBtn.style.alignSelf = 'stretch';
       actionArea.appendChild(discBtn);
 
       var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
-        onClick: function() { handleVoid(state); } });
+        borderRadius: '8px', onClick: function() { handleVoid(state); } });
       voidBtn.style.alignSelf = 'stretch';
       actionArea.appendChild(voidBtn);
 
     } else if (_activeGroup === 'terminal') {
       // ── TERMINAL drill ──
       var backT = buildPillButton({ label: '‹ TERMINAL', color: T.moon, darkBg: T.moonDk,
-        onClick: function() { _activeGroup = null; _rebuild(); } });
+        borderRadius: '8px', onClick: function() { _activeGroup = null; _rebuild(); } });
       backT.style.alignSelf = 'stretch';
       actionArea.appendChild(backT);
 
       var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
-        onClick: function() { handlePrint(state); } });
+        borderRadius: '8px', onClick: function() { handlePrint(state); } });
       printBtn.style.alignSelf = 'stretch';
       actionArea.appendChild(printBtn);
 
       var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
-        onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
+        borderRadius: '8px', onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
       drawerBtn.style.alignSelf = 'stretch';
       actionArea.appendChild(drawerBtn);
     }
@@ -1388,32 +1389,35 @@ function buildSeatsContainer(state) {
   });
 
   var clearBtn = buildPillButton({
-    label:    'CLEAR',
-    color:    T.moon,
-    darkBg:   T.moonDk,
-    fontSize: T.fsB4,
-    padding:  '6px 14px',
-    onClick:  function() { clearAllSelection(state); },
+    label:        'CLEAR',
+    color:        T.moon,
+    darkBg:       T.moonDk,
+    fontSize:     T.fsB4,
+    padding:      '6px 14px',
+    borderRadius: '8px',
+    onClick:      function() { clearAllSelection(state); },
   });
   selRow.appendChild(clearBtn);
 
   var manageBtn = buildPillButton({
-    label:    'MANAGE',
-    color:    T.moon,
-    darkBg:   T.moonDk,
-    fontSize: T.fsB4,
-    padding:  '6px 14px',
-    onClick:  function() { openEditSeats(state); },
+    label:        'MANAGE',
+    color:        T.moon,
+    darkBg:       T.moonDk,
+    fontSize:     T.fsB4,
+    padding:      '6px 14px',
+    borderRadius: '8px',
+    onClick:      function() { openEditSeats(state); },
   });
   selRow.appendChild(manageBtn);
 
   var selAllBtn = buildPillButton({
-    label:    'SELECT ALL',
-    color:    T.elec,
-    darkBg:   T.elecDk,
-    fontSize: T.fsB4,
-    padding:  '6px 14px',
-    onClick:  function() { forceSelectAll(state); },
+    label:        'SELECT ALL',
+    color:        T.elec,
+    darkBg:       T.elecDk,
+    fontSize:     T.fsB4,
+    padding:      '6px 14px',
+    borderRadius: '8px',
+    onClick:      function() { forceSelectAll(state); },
   });
   selRow.appendChild(selAllBtn);
   root.appendChild(selRow);
