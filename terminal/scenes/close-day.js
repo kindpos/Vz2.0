@@ -630,37 +630,17 @@ function buildMiddleCol(data, handlers, sceneState) {
   ].join('');
 
   cardStack.appendChild(buildChecksCard(data, handlers, sceneState.activeTab, sceneState.selectedCheckIds));
-
+  cardStack.appendChild(buildBatchCard(data, handlers, sceneState));
   cardStack.appendChild(buildTipsCard(data, handlers, sceneState.tipFilter));
 
   col.appendChild(cardStack);
 
-  // Pinned footer: SETTLE BATCH + FINALIZE (right-aligned, auto-width)
+  // Pinned footer: FINALIZE only (right-aligned, auto-width)
   var footer = document.createElement('div');
-  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:4px;';
+  footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end;';
 
   var btnRow = document.createElement('div');
   btnRow.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:8px;';
-
-  // SETTLE BATCH — shown until settled, enabled when no unadj tips
-  if (!sceneState.batchSettled) {
-    var canSettle = data.unadjustedChecks.length === 0;
-    var settleBtn = document.createElement('div');
-    settleBtn.style.cssText = [
-      'padding:10px 18px;border-radius:8px;white-space:nowrap;',
-      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;letter-spacing:1.2px;',
-      canSettle
-        ? 'background:' + T.elec + ';box-shadow:0 3px 0 ' + T.elecDk + ';color:#fff;cursor:pointer;'
-        : 'background:' + T.card + ';border:1.5px solid ' + T.border + ';opacity:0.55;cursor:not-allowed;color:' + T.text + ';',
-    ].join('');
-    settleBtn.textContent = 'SETTLE BATCH';
-    if (canSettle) {
-      settleBtn.addEventListener('click', function() {
-        if (handlers.onSettleBatch) handlers.onSettleBatch();
-      });
-    }
-    btnRow.appendChild(settleBtn);
-  }
 
   // FINALIZE — always shown; verm when ready, muted otherwise
   var finalBtn = document.createElement('div');
@@ -729,6 +709,72 @@ function buildBaseCard(opts) {
 
   return card;
 }
+// ── CC Batch card ──
+function buildBatchCard(data, handlers, sceneState) {
+  var settled = sceneState.batchSettled;
+  var canSettle = !settled && data.unadjustedChecks.length === 0;
+  var accent = settled ? T.greenWarm : T.elec;
+
+  var card = buildBaseCard({ accent: accent });
+
+  // Header row
+  var hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;';
+
+  var title = document.createElement('span');
+  title.style.cssText = 'flex:1;font-family:' + T.fh + ';font-size:' + FS_LABEL + ';font-weight:700;color:' + accent + ';letter-spacing:1.8px;';
+  title.textContent = 'CC BATCH';
+  hdr.appendChild(title);
+
+  if (settled) {
+    var stamp = document.createElement('div');
+    stamp.style.cssText = [
+      'padding:3px 8px;border-radius:4px;',
+      'background:' + hexToRgba(T.greenWarm, 0.15) + ';',
+      'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+      'color:' + T.greenWarm + ';letter-spacing:1px;',
+    ].join('');
+    stamp.textContent = '✓ SETTLED';
+    hdr.appendChild(stamp);
+  }
+
+  card.appendChild(hdr);
+
+  // Stats row: total + transaction count
+  var statsRow = document.createElement('div');
+  statsRow.style.cssText = 'display:flex;align-items:baseline;gap:16px;';
+  var totalEl = document.createElement('div');
+  totalEl.style.cssText = 'font-family:' + T.fh + ';font-size:22px;font-weight:700;color:' + accent + ';';
+  totalEl.textContent = fmt(data.batchTotal || 0);
+  var txnEl = document.createElement('div');
+  txnEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.55) + ';';
+  txnEl.textContent = (data.batchTransactions || 0) + ' transaction' + ((data.batchTransactions || 0) !== 1 ? 's' : '');
+  statsRow.appendChild(totalEl);
+  statsRow.appendChild(txnEl);
+  card.appendChild(statsRow);
+
+  // SETTLE BATCH button (hidden once settled)
+  if (!settled) {
+    var settleBtn = document.createElement('div');
+    settleBtn.style.cssText = [
+      'margin-top:4px;padding:8px 14px;border-radius:8px;white-space:nowrap;align-self:flex-start;',
+      'font-family:' + T.fh + ';font-size:' + FS_PILL + ';font-weight:700;letter-spacing:1.2px;',
+      canSettle
+        ? 'background:' + T.elec + ';box-shadow:0 3px 0 ' + T.elecDk + ';color:#fff;cursor:pointer;'
+        : 'background:' + T.card + ';border:1.5px solid ' + T.border + ';opacity:0.55;cursor:not-allowed;color:' + T.text + ';',
+    ].join('');
+    settleBtn.textContent = 'SETTLE BATCH';
+    if (canSettle) {
+      settleBtn.addEventListener('click', function() {
+        if (handlers.onSettleBatch) handlers.onSettleBatch();
+      });
+    }
+    card.appendChild(settleBtn);
+  }
+
+  return card;
+}
+
 // ── Checks card (Active / All tabs) ──
 function buildChecksCard(data, handlers, activeTab, selectedCheckIds) {
   selectedCheckIds = selectedCheckIds || [];
@@ -974,7 +1020,6 @@ function _buildClosedCheckRow(chk, handlers) {
 }
 
 
-// ── Tips (filterable UNADJ / ADJ) ──
 // ── Tips (filterable UNADJ / ADJ) ──
 function buildTipsCard(state, handlers, tipFilter) {
   var hasCards = (state.closedCardChecks && state.closedCardChecks.length > 0)
