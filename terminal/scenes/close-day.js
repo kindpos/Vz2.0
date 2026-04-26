@@ -231,6 +231,7 @@ function fetchCloseDayState(params) {
         amount:      (sum.amount != null) ? sum.amount : (raw.total_amount || raw.total || 0),
         tip:         tip,
         adjusted:    (sum.adjusted != null) ? sum.adjusted : (tip != null),
+        paymentId:   sum.paymentId || null,
         server_id:   raw.server_id   || sum.server_id   || '',
         server_name: raw.server_name || sum.server_name || '',
         guests:      raw.guest_count || raw.seat_count  || raw.covers || sum.guests || sum.guest_count || 0,
