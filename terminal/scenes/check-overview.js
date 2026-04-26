@@ -1766,75 +1766,65 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
 }
 
 function buildSeatCard(state, seatIdx) {
-  var seat       = state.seats[seatIdx];
-  var isSelected = !!(state.selected && state.selected[seat.id]);
-  var accent     = seatAccent(seatIdx);
+  var seat = state.seats[seatIdx];
 
-  // buildActionCard for cursor:pointer + touch-action:manipulation +
-  // press animation. buildStaticCard would trigger the theme-manager
-  // guard warning (it's display-only) and swallow touch taps on the
-  // card body.
-  var wrap = buildActionCard({ accent: accent });
+  // seat-active = any item in this seat is in state.selectedItems
+  var seatActive = false;
+  var selItems = state.selectedItems || {};
+  for (var ki = 0; ki < seat.items.length; ki++) {
+    if (selItems[seatIdx + ':' + ki]) { seatActive = true; break; }
+  }
+
+  var wrap = buildActionCard({ accent: T.moon });
   wrap.style.flex          = '1';
   wrap.style.padding       = '0';
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
+  wrap.style.borderLeft    = '4px solid ' + (seatActive ? T.green   : T.moon);
+  wrap.style.boxShadow     = seatActive
+    ? '0 4px 0 ' + T.greenDk + ', 0 0 18px rgba(134,239,172,0.14)'
+    : '0 4px 0 ' + T.moonDk;
 
-  // Selection visual: only the header and the item rows highlight —
-  // the card body stays T.card so selection reads as a focused strip
-  // rather than a full color flood. Item rows get the per-seat accent
-  // via the --ir-accent-selected CSS var on the embedded recap below.
-
-  // ── Header Row ──
-  // Header owns the bulk-select tap so items inside the body stay free
-  // to register their own per-item taps (via buildItemRecap's onItemTap).
+  // ── Header (tappable — toggleSeat) ──
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    background:     isSelected ? accent : T.well,
-    padding:        '8px 12px',
-    borderBottom:   '1px solid ' + T.border,
-    display:        'flex',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-    cursor:         'pointer',
-    userSelect:     'none',
+    background:    seatActive ? T.green : T.well,
+    padding:       '8px 12px',
+    borderBottom:  '1px solid ' + T.border,
+    display:       'flex',
+    alignItems:    'center',
+    cursor:        'pointer',
+    userSelect:    'none',
+    pointerEvents: 'auto',
+    touchAction:   'manipulation',
   });
 
   var label = document.createElement('div');
   Object.assign(label.style, {
-    color:      isSelected ? T.well : T.green,
+    color:      seatActive ? T.moonText : T.moon,
     fontFamily: T.fh,
     fontWeight: T.fwBold,
+    fontSize:   '17px',
   });
   label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   hdr.appendChild(label);
-
-  var subtotal = document.createElement('div');
-  Object.assign(subtotal.style, {
-    color:      isSelected ? T.well : T.gold,
-    fontFamily: T.fb,
-    fontWeight: T.fwBold,
-  });
-  subtotal.textContent = fmt(seatTotal(seat));
-  hdr.appendChild(subtotal);
 
   hdr.addEventListener('pointerup', function(e) {
     if (e.defaultPrevented) return;
     toggleSeat(state, seat.id);
   });
-
   wrap.appendChild(hdr);
 
-  // ── Body ──
+  // ── Body (scrollable item cards) ──
   var body = document.createElement('div');
   Object.assign(body.style, {
-    background:    T.card,
     flex:          '1',
     minHeight:     '0',
-    padding:       '8px 10px',
+    padding:       '8px',
     display:       'flex',
     flexDirection: 'column',
+    gap:           '6px',
     overflowY:     'auto',
   });
 
@@ -1852,37 +1842,59 @@ function buildSeatCard(state, seatIdx) {
     empty.textContent = 'empty seat';
     body.appendChild(empty);
   } else {
-    // Same component Mode B uses, scoped to this single seat via the
-    // existing _adaptSeatForRecap helper. onItemTap toggles individual
-    // items; itemSelected seeds the .sel cascade from state.selectedItems
-    // so the inverted styling survives rerenderTopArea.
-    var recapEl = buildItemRecap(_adaptSeatForRecap(state, seatIdx), {
-      hideHeader:     true,
-      hideTotals:     true,
-      hideSeatHeader: true,
-      itemSelected: function(_fIdx, itemIdx) {
-        return !!(state.selectedItems && state.selectedItems[seatIdx + ':' + itemIdx]);
-      },
-      onItemTap: function(_fIdx, itemIdx) {
-        toggleItem(state, seatIdx, itemIdx);
-      },
-    });
-    // Override .ir-root defaults so the recap fits the seat card body:
-    // no max-width cap, transparent background (card owns the fill),
-    // tight padding that matches the body's own padding.
-    recapEl.style.maxWidth   = 'none';
-    recapEl.style.width      = '100%';
-    recapEl.style.background = 'transparent';
-    recapEl.style.padding    = '4px 2px';
-    // Tint selected item rows with this seat's accent (instead of the
-    // item-recap default T.green) so the per-item highlight reads as
-    // "part of this seat's card" regardless of which accent slot the
-    // seat landed on.
-    recapEl.style.setProperty('--ir-accent-selected', accent);
-    body.appendChild(recapEl);
+    for (var ii = 0; ii < seat.items.length; ii++) {
+      body.appendChild(_buildItemSubCard(state, seatIdx, ii));
+    }
   }
-
   wrap.appendChild(body);
+
+  // ── Footer (subtotal + optional disc) ──
+  if (seat.items.length > 0) {
+    var footer = document.createElement('div');
+    Object.assign(footer.style, {
+      flexShrink:    '0',
+      padding:       '6px 10px',
+      borderTop:     '1px solid ' + hexToRgba(T.border, 0.3),
+      display:       'flex',
+      flexDirection: 'column',
+      gap:           '2px',
+    });
+
+    // DISC row — only when a cash discount is configured
+    var discount = getCashDiscount();
+    if (discount > 0) {
+      var discAmt = seatTotal(seat) * discount;
+      var discRow = document.createElement('div');
+      Object.assign(discRow.style, { display:'flex', justifyContent:'space-between', alignItems:'baseline' });
+      var discLbl = document.createElement('span');
+      Object.assign(discLbl.style, { fontFamily:T.fb, fontSize:'10px', color:T.verm, letterSpacing:'0.06em' });
+      discLbl.textContent = 'DISC';
+      var discVal = document.createElement('span');
+      Object.assign(discVal.style, { fontFamily:T.fb, fontSize:'11px', fontWeight:T.fwBold, color:T.verm });
+      discVal.textContent = '-' + fmt(discAmt);
+      discRow.appendChild(discLbl);
+      discRow.appendChild(discVal);
+      footer.appendChild(discRow);
+    }
+
+    // SUBTOTAL row
+    var subRow = document.createElement('div');
+    Object.assign(subRow.style, { display:'flex', justifyContent:'space-between', alignItems:'baseline' });
+    var subLbl = document.createElement('span');
+    Object.assign(subLbl.style, { fontFamily:T.fb, fontSize:'10px', color:T.moon, letterSpacing:'0.06em' });
+    subLbl.textContent = 'SUBTOTAL';
+    var subVal = document.createElement('span');
+    Object.assign(subVal.style, {
+      fontFamily: T.fb, fontSize:'11px', fontWeight:T.fwBold,
+      color: seatActive ? T.green : T.gold,
+    });
+    subVal.textContent = fmt(seatTotal(seat));
+    subRow.appendChild(subLbl);
+    subRow.appendChild(subVal);
+    footer.appendChild(subRow);
+
+    wrap.appendChild(footer);
+  }
 
   var canDelete = seat.items.length === 0
     && activeSeatCount(state.seats, state.paidSeats) > 1;
