@@ -1607,10 +1607,10 @@ function renderSeatsGrid(state, container, mode) {
   container.appendChild(addTile);
 }
 
-// Per-seat accent — canonical palette lives in common/tokens.js as
-// T.seatPalette so seat-assign and item-recap stay in lockstep.
-function seatAccent(seatIdx) {
-  return T.seatPalette[seatIdx % T.seatPalette.length];
+// Accent is always T.moon (structural) — selection state uses T.green.
+// The old per-seat T.seatPalette lookup is removed per the new visual spec.
+function seatAccent(/* seatIdx */) {
+  return T.moon;
 }
 
 function buildSeatCard(state, seatIdx) {
