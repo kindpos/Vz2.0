@@ -1206,7 +1206,7 @@ function renderActionBar(state) {
   payCard.appendChild(payHeader);
 
   var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
-    borderRadius: '6px',
+    borderRadius: '6px', padding: '0 24px',
     onClick: function() { handlePay(state, state._params || {}); } });
   payBtn.style.height    = '38px';
   payBtn.style.width     = '75%';
@@ -1261,7 +1261,7 @@ function renderActionBar(state) {
   termCard.appendChild(termHeader);
 
   var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
-    borderRadius: '6px',
+    borderRadius: '6px', padding: '0 24px',
     onClick: function() { handlePrint(state); } });
   printBtn.style.height    = '38px';
   printBtn.style.width     = '75%';
@@ -1269,7 +1269,7 @@ function renderActionBar(state) {
   termCard.appendChild(printBtn);
 
   var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
-    borderRadius: '6px',
+    borderRadius: '6px', padding: '0 24px',
     onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
   drawerBtn.style.height    = '38px';
   drawerBtn.style.width     = '75%';
@@ -1304,7 +1304,7 @@ function renderActionBar(state) {
   orderCard.appendChild(orderHeader);
 
   var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
-    borderRadius: '6px',
+    borderRadius: '6px', padding: '0 24px',
     onClick: function() { handleAddItems(state, state._params || {}); } });
   addBtn.style.height    = '38px';
   addBtn.style.width     = '75%';
