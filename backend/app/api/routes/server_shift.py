@@ -16,7 +16,7 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from app.api.dependencies import get_ledger
-from app.api.routes.auth import require_manager
+from app.api.routes.auth import auth_required, require_manager
 from app.core.event_ledger import EventLedger
 from app.core.events import EventType, order_transferred
 from app.core.projections import project_orders
@@ -55,7 +55,7 @@ def _get_server_orders(all_orders, server_id):
 # SALES BY CATEGORY (Pareto chart data)
 # =============================================================================
 
-@router.get("/sales-by-category")
+@router.get("/sales-by-category", dependencies=[Depends(auth_required)])
 async def sales_by_category(
     server_id: str = Query(..., description="Server employee ID"),
     ledger: EventLedger = Depends(get_ledger),
@@ -118,7 +118,7 @@ async def sales_by_category(
 # TABLE STATISTICS (histogram data)
 # =============================================================================
 
-@router.get("/table-stats")
+@router.get("/table-stats", dependencies=[Depends(auth_required)])
 async def table_stats(
     server_id: str = Query(..., description="Server employee ID"),
     ledger: EventLedger = Depends(get_ledger),
@@ -186,7 +186,7 @@ async def table_stats(
 # CHECKOUT STATUS
 # =============================================================================
 
-@router.get("/checkout-status")
+@router.get("/checkout-status", dependencies=[Depends(auth_required)])
 async def checkout_status(
     server_id: str = Query(..., description="Server employee ID"),
     ledger: EventLedger = Depends(get_ledger),
