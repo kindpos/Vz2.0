@@ -797,7 +797,7 @@ function computeTicketTotals() {
   var counts = {};
   var summaryItems = [];  // item summary for ORDER RECAP
   ticket.forEach(function(inst) {
-    var modTotal = inst.mods.reduce(function(s, m) { return s + m.price; }, 0);
+    var modTotal = inst.mods.reduce(function(s, m) { return s + Number(m.price || 0); }, 0);
     var lineTotal = inst.unitPrice + modTotal;
     counts[inst.name] = counts[inst.name] || { unitPrice: inst.unitPrice, qty: 0 };
     counts[inst.name].qty += 1;
@@ -3017,7 +3017,7 @@ function _appendModPreview(list) {
   }
 
   var previewMods = (_modPanelItem.mods || []);
-  var previewModTotal = previewMods.reduce(function(s, m) { return s + m.price; }, 0);
+  var previewModTotal = previewMods.reduce(function(s, m) { return s + Number(m.price || 0); }, 0);
   var previewPrice = (_modPanelItem.basePrice || 0) + previewModTotal;
   var fs = T.fsB2;
   var fsMod = T.fsB3;
@@ -3372,7 +3372,7 @@ function _renderTicketGroup(list, displayTicket) {
         ].join('');
         iName.textContent = (inst.sent ? '✓ ' : '') + (active ? '● ' : '') + inst.name;
 
-        var total = inst.unitPrice + inst.mods.reduce(function(s, m) { return s + m.price; }, 0);
+        var total = inst.unitPrice + inst.mods.reduce(function(s, m) { return s + Number(m.price || 0); }, 0);
         var iPrice = document.createElement('span');
         iPrice.style.cssText = 'font-family:' + T.fb + ';font-size:14px;font-weight:bold;color:' + T.green + ';flex-shrink:0;margin-left:6px;pointer-events:none;';
         iPrice.textContent = '$' + total.toFixed(2);
@@ -3452,7 +3452,7 @@ function _renderTicketGroup(list, displayTicket) {
     pName.textContent = '\u270E ' + _modPanelItem.itemLabel;
     var pPrice = document.createElement('span');
     pPrice.style.cssText = 'font-family:' + T.fb + ';font-size:26px;font-weight:bold;color:' + T.gold + ';white-space:nowrap;flex-shrink:0;margin-left:6px;';
-    var previewTotal = _modPanelItem.basePrice + (_modPanelItem.mods || []).reduce(function(s, m) { return s + m.price; }, 0);
+    var previewTotal = _modPanelItem.basePrice + (_modPanelItem.mods || []).reduce(function(s, m) { return s + Number(m.price || 0); }, 0);
     pPrice.textContent = '$' + previewTotal.toFixed(2);
     pRow.appendChild(pName);
     pRow.appendChild(pPrice);
