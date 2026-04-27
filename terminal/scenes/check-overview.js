@@ -1072,6 +1072,11 @@ function renderActionBar(state) {
   var discount = getCashDiscount();
 
   // ── Selection-aware totals ──
+  // When items are selected the bar shows a filtered subtotal so the user
+  // can confirm what they're about to act on. The server has no endpoint
+  // for a subset total, so we derive it locally from effectivePrice —
+  // which is always a server-provided value populated during refreshOrder().
+  // The unselected path (else) trusts order.subtotal / order.total directly.
   var itemKeys   = Object.keys(state.selectedItems || {});
   var anyItemSel = itemKeys.length > 0;
   var subtotal, tax, total, cashTotal;
@@ -1490,6 +1495,7 @@ function rerenderTopArea(state) {
 }
 
 function renderSeatsGrid(state, container, mode) {
+  container.innerHTML = '';
   if (mode === 'B') {
     // _tileSelSet lives on state so it survives rerenderTopArea calls
     // triggered by tile taps — it's reset only on mount and when ALL
@@ -3035,7 +3041,8 @@ function handlePay(state, params) {
   // state.order.total is the whole-check total and can be stale or zero when
   // the user pays a subset of seats; this mirrors renderActionBar's own
   // selection-aware totals calc so what payment shows matches what was just
-  // displayed on the overview.
+  // displayed on the overview. effectivePrice is always server-sourced via
+  // refreshOrder(), so these are not arbitrary client-side values.
   var discount = getCashDiscount();
   var taxRate  = getTaxRate();
   var subtotal = 0;
@@ -3259,12 +3266,12 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
   }, 15000).then(function(r) {
     if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'HTTP ' + r.status); });
     return r.json();
-  }).then(function() {
+  }).then(function(_discountResp) {
     state.selectedItems = {};
     state.selected = {};
-    // Let the scene refresh from backend truth so other panels (totals,
-    // balance_due, payment scene) see the new discount. `order:updated`
-    // is the same bus event the server-landing refresh listens on.
+    // Refresh from backend truth so totals, balance_due, and payment scene
+    // reflect the server-confirmed discount. `order:updated` notifies other
+    // panels (e.g. server-landing) that the order has changed.
     SceneManager.emit('order:updated', { orderId: state.orderId });
     if (typeof refreshOrder === 'function') refreshOrder(state, {});
     showToast(pct + '% discount applied', { bg: T.greenWarm });
@@ -3752,9 +3759,9 @@ function openSeatPaymentInterrupt(state, seatId, payments) {
         8000
       ).then(function(r) {
         if (r.ok) {
-          delete state.paidSeats[seatId];
-          delete state.seatPayments[seatId];
-          if (state._selectedPaidSeat === seatId) state._selectedPaidSeat = null;
+          // Do not mutate paidSeats/seatPayments locally — let refreshOrder
+          // repaint from the server's response so local state never races
+          // ahead of backend truth.
           showToast('Payment voided', { bg: T.greenWarm });
           refreshOrder(state, {});
         } else {

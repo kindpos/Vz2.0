@@ -782,6 +782,10 @@ function _fmtPrice(n) {
   return '$' + v.toFixed(2);
 }
 
+// Pre-send display totals only — items in `ticket` have not reached the server
+// yet, so there is no authoritative server total to trust. These values are
+// shown as a live preview and are superseded by server-confirmed totals once
+// the order is saved/sent.
 function computeTicketTotals() {
   var subtotal = 0;
   var counts = {};
