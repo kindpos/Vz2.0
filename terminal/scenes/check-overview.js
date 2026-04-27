@@ -1216,19 +1216,17 @@ function renderActionBar(state) {
   var splitPayRow = document.createElement('div');
   Object.assign(splitPayRow.style, { display: 'flex', gap: '6px' });
 
-  var discBtn = buildPillButton({ label: 'DISC', color: T.lavender,
+  var discBtn = buildPillButton({ label: 'DISCOUNTS', color: T.lavender,
     darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px', fontSize: T.fsB4,
     onClick: function() { handleDiscount(state); } });
-  discBtn.style.height   = '38px';
-  discBtn.style.flex     = '1';
-  discBtn.style.minWidth = '0';
+  discBtn.style.height = '38px';
+  discBtn.style.width  = 'calc(50% - 3px)';
   splitPayRow.appendChild(discBtn);
 
   var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
     borderRadius: '6px', fontSize: T.fsB4 });
-  voidBtn.style.height   = '38px';
-  voidBtn.style.flex     = '1';
-  voidBtn.style.minWidth = '0';
+  voidBtn.style.height = '38px';
+  voidBtn.style.width  = 'calc(50% - 3px)';
   _wireLongPress(voidBtn, function() { handleVoid(state); }, 550);
   splitPayRow.appendChild(voidBtn);
 
