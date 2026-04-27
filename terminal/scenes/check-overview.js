@@ -1403,7 +1403,7 @@ function buildSeatsContainer(state) {
   var selRow = document.createElement('div');
   Object.assign(selRow.style, {
     position:  'absolute',
-    top:       '4px',
+    top:       '-44px',
     left:      '50%',
     transform: 'translateX(-50%)',
     zIndex:    '10',
