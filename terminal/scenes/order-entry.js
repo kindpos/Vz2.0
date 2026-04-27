@@ -305,7 +305,9 @@ var sceneParams  = {};
 var modHistory   = [];    // [{inst, mod}] — undo stack for modifier additions
 var _bottomBar   = null;  // DOM ref for bottom action bar
 var _mainArea    = null;  // DOM ref for right panel
-var _activeSeat  = 1;     // current seat number for new items
+var _activeSeats    = new Set();   // currently selected seat numbers
+var _seatList       = [];          // seat numbers available in this session
+var _seatSelectorEl = null;        // DOM ref for the inline seat card
 
 // ── Snake nav state ───────────────────────────────
 var snakeState = {
@@ -331,6 +333,14 @@ var _modPanelOpen  = false;  // drives grid collapse animation
   var s = document.createElement('style');
   s.id = 'co-scroll-style';
   s.textContent = '.co-scroll::-webkit-scrollbar{display:none}';
+  document.head.appendChild(s);
+})();
+
+(function() {
+  if (document.getElementById('oe-seat-scroll-style')) return;
+  var s = document.createElement('style');
+  s.id = 'oe-seat-scroll-style';
+  s.textContent = '._oe-seat-scroll::-webkit-scrollbar{display:none}';
   document.head.appendChild(s);
 })();
 
@@ -390,7 +400,13 @@ defineScene({
     _expandedItems = {};
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
-    _activeSeat    = (params.seatNumbers && params.seatNumbers[0]) || 1;
+    _seatList = (params.selectedSeatNumbers && params.selectedSeatNumbers.length > 0)
+      ? params.selectedSeatNumbers.slice()
+      : (params.seatNumbers && params.seatNumbers.length > 0)
+        ? params.seatNumbers.slice()
+        : [1];
+    _activeSeats    = new Set([_seatList[0]]);
+    _seatSelectorEl = null;
 
     container.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
 
@@ -464,235 +480,13 @@ defineScene({
     _expandedItems = {};
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
-    _activeSeat    = 1;
+    _activeSeats    = new Set();
+    _seatList       = [];
+    _seatSelectorEl = null;
     _menuFetched   = false;
   },
 
   interrupts: {
-    'seat-assign': {
-      render: function(container, params) {
-        var items = params.items || [];       // [ { id, name, mods } ]
-        var seatNumbers = params.seatNumbers || [1]; // available seats [1, 2, 3, ...]
-        var assignments = {};                 // { itemId: [seatNumber, ...] }
-
-        container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
-
-        // Shell: Nostalgia landing-page card affordance (beveled borders,
-        // T.well bg, inset + 3D drop shadow). Taller min-height so the
-        // card has presence even with one item; more interior padding
-        // below so action bar breathes away from the list.
-        var shell = buildStaticCard({ accent: T.groups.composite.shellAccent });
-        shell.style.display       = 'flex';
-        shell.style.flexDirection = 'column';
-        shell.style.gap           = '10px';
-        shell.style.minWidth      = '500px';
-        shell.style.maxWidth      = '620px';
-        shell.style.minHeight     = '420px';
-        shell.style.maxHeight     = '520px';
-        shell.style.padding       = '20px 28px 28px 32px';
-        var panel = shell;
-
-        // Title
-        var title = document.createElement('div');
-        title.style.cssText = [
-          'font-family:' + T.fh + ';',
-          'font-size:' + T.fsB2 + ';',
-          'font-weight:' + T.fwBold + ';',
-          'color:' + T.green + ';',
-          'letter-spacing:0.2em;',
-          'text-transform:uppercase;',
-          'text-align:center;margin-bottom:8px;',
-        ].join('');
-        title.textContent = 'ASSIGN SEATS';
-        panel.appendChild(title);
-
-        // Scrollable item list
-        var list = document.createElement('div');
-        list.className = 'co-scroll';
-        list.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;max-height:380px;';
-
-        var seatBtnRefs = {}; // { itemId: [ { btn, paint, seatNum } ] }
-
-        // Nostalgia seat tile. Per-seat palette (T.seatPalette) drives
-        // both states — see T.groups.selectionGrid for sentinel refs:
-        //   UNSELECTED  selectionGrid.unselectedBg  + selectionGrid.unselectedFg (seatPalette)
-        //   SELECTED    selectionGrid.selectedBg (seatPalette fill) + selectionGrid.selectedFg
-        // Same convention the item-recap and check-overview picker grid
-        // already use — keep them in lockstep.
-        function makeSeatTile(sn) {
-          var seatColor = T.seatPalette[(sn - 1) % T.seatPalette.length];
-          var btn = buildPillButton({
-            label: 'S' + sn,
-            color: T.groups.selectionGrid.unselectedBg,
-            darkBg: T.moonDk,
-            textColor: seatColor,
-            fontSize: T.fsB2,
-          });
-          btn.style.width           = '64px';
-          btn.style.height          = '48px';
-          btn.style.flexShrink      = '0';
-          btn.style.borderRadius    = T.groups.selectionGrid.radius;
-          btn.style.padding         = '0';
-          btn.style.display         = 'flex';
-          btn.style.alignItems      = 'center';
-          btn.style.justifyContent  = 'center';
-
-          function paint(selected) {
-            btn.setColor(
-              selected ? seatColor : T.groups.selectionGrid.unselectedBg,
-              selected ? darkenHex(seatColor, 0.2) : T.moonDk,
-              selected ? T.groups.selectionGrid.selectedFg : seatColor
-            );
-          }
-          return { btn: btn, paint: paint };
-        }
-
-        for (var i = 0; i < items.length; i++) {
-          (function(item) {
-            var row = document.createElement('div');
-            row.style.cssText = 'display:flex;align-items:center;gap:10px;';
-
-            // Item label
-            var label = document.createElement('div');
-            label.style.cssText = [
-              'flex:1;min-width:0;',
-              'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.text + ';',
-              'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
-            ].join('');
-            var displayName = item.name;
-            if (item.mods && item.mods.length > 0) {
-              displayName += ' (' + item.mods.map(function(m) { return m.name; }).join(', ') + ')';
-            }
-            label.textContent = displayName;
-            row.appendChild(label);
-
-            var btnGroup = document.createElement('div');
-            btnGroup.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
-            assignments[item.id] = [];
-            seatBtnRefs[item.id] = [];
-
-            for (var si = 0; si < seatNumbers.length; si++) {
-              (function(sn) {
-                var tile = makeSeatTile(sn);
-                seatBtnRefs[item.id].push({ btn: tile.btn, paint: tile.paint, seatNum: sn });
-                tile.btn.addEventListener('pointerup', function(e) {
-                  e.stopPropagation();
-                  var arr = assignments[item.id];
-                  var idx = arr.indexOf(sn);
-                  if (idx >= 0) arr.splice(idx, 1);
-                  else          arr.push(sn);
-                  var refs = seatBtnRefs[item.id];
-                  var sel = assignments[item.id];
-                  for (var ri = 0; ri < refs.length; ri++) {
-                    refs[ri].paint(sel.indexOf(refs[ri].seatNum) >= 0);
-                  }
-                  updateConfirmState();
-                });
-                btnGroup.appendChild(tile.btn);
-              })(seatNumbers[si]);
-            }
-            row.appendChild(btnGroup);
-            list.appendChild(row);
-          })(items[i]);
-        }
-        panel.appendChild(list);
-
-        // Helper: refresh visuals after SELECT ALL.
-        function refreshAllBtnVisuals() {
-          for (var ii = 0; ii < items.length; ii++) {
-            var refs = seatBtnRefs[items[ii].id];
-            var sel = assignments[items[ii].id];
-            for (var ri = 0; ri < refs.length; ri++) {
-              refs[ri].paint(sel.indexOf(refs[ri].seatNum) >= 0);
-            }
-          }
-        }
-
-        // Bottom bar — check-overview hierarchy.
-        //   Left column  : SELECT ALL (elec/cyan) stacked on top of
-        //                  CANCEL (verm — destructive exit).
-        //   Right column : CONFIRM, full-height mint primary CTA.
-        //                  Disabled (dimmed, unclickable) until every
-        //                  item has at least one seat.
-        var bottomBar = document.createElement('div');
-        bottomBar.style.cssText = [
-          'display:flex;gap:10px;margin-top:auto;',
-          'padding-top:28px;align-items:stretch;',
-        ].join('');
-
-        var leftCol = document.createElement('div');
-        leftCol.style.cssText = [
-          'flex:1;display:flex;flex-direction:column;gap:8px;',
-        ].join('');
-
-        // Match check-overview's action-bar button chrome: 14px border
-        // radius + flex-centered text so the whole family reads as one.
-        function shapeAction(btn) {
-          btn.style.borderRadius   = '14px';
-          btn.style.display        = 'flex';
-          btn.style.alignItems     = 'center';
-          btn.style.justifyContent = 'center';
-        }
-
-        var selectAllBtn = buildPillButton({
-          label: 'SELECT ALL',
-          variant: T.groups.composite.selectAll,
-          fontSize: T.fsB3,
-          onClick: function() {
-            for (var ai = 0; ai < items.length; ai++) {
-              assignments[items[ai].id] = seatNumbers.slice();
-            }
-            refreshAllBtnVisuals();
-            updateConfirmState();
-          },
-        });
-        selectAllBtn.style.height = '36px';
-        selectAllBtn.style.padding = '0 18px';
-        shapeAction(selectAllBtn);
-        leftCol.appendChild(selectAllBtn);
-
-        var cancelBtn = buildPillButton({
-          label: 'CANCEL',
-          variant: T.groups.composite.cancel,
-          fontSize: T.fsB3,
-          onClick: function() { params.onCancel(); },
-        });
-        cancelBtn.style.height = '36px';
-        cancelBtn.style.padding = '0 18px';
-        shapeAction(cancelBtn);
-        leftCol.appendChild(cancelBtn);
-
-        bottomBar.appendChild(leftCol);
-
-        var confirmBtn = buildPillButton({
-          label: 'CONFIRM',
-          variant: T.groups.composite.confirm,
-          fontSize: T.fsB2,
-          onClick: function() { params.onConfirm(assignments); },
-        });
-        confirmBtn.style.flex = '1';
-        confirmBtn.style.minHeight = '80px';
-        shapeAction(confirmBtn);
-        bottomBar.appendChild(confirmBtn);
-        panel.appendChild(bottomBar);
-        container.appendChild(shell);
-
-        function updateConfirmState() {
-          var allAssigned = true;
-          for (var k = 0; k < items.length; k++) {
-            if (!assignments[items[k].id] || assignments[items[k].id].length === 0) { allAssigned = false; break; }
-          }
-          confirmBtn.setDisabled(!allAssigned);
-        }
-        updateConfirmState();
-
-        // Tap scrim to cancel
-        container.addEventListener('pointerup', function(e) {
-          if (e.target === container) { params.onCancel(); }
-        });
-      },
-      unmount: function() {},
-    },
     'qty-edit': {
       render: function(container, params) {
         var inner      = (params && params.params) || {};
@@ -982,6 +776,12 @@ defineScene({
 });
 
 // ── TOTALS HELPER ─────────────────────────────────
+function _fmtPrice(n) {
+  var v = Number(n);
+  if (!isFinite(v)) v = 0;
+  return '$' + v.toFixed(2);
+}
+
 function computeTicketTotals() {
   var subtotal = 0;
   var counts = {};
@@ -1089,7 +889,7 @@ function buildCrumbTile(crumb, isLast) {
   }
 
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB1 + ';color:' + (isLast ? '#fff' : 'rgba(0,0,0,0.75)') + ';letter-spacing:1px;text-align:center;pointer-events:none;';
+  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB1 + ';color:' + (isLast ? T.well : hexToRgba(T.text, 0.75)) + ';letter-spacing:1px;text-align:center;pointer-events:none;';
   lbl.textContent = crumb.label;
   el.appendChild(lbl);
 
@@ -1414,6 +1214,12 @@ function buildMain(parentEl, params) {
   // Note: buildKindModPanel mounts directly onto _mainArea as an absolute overlay
   // (position:relative is set on main to contain it)
 
+  // ── Seat selector card (above bottom bar) ─────────
+  if (_seatList.length > 0) {
+    _seatSelectorEl = buildSeatSelectorCard();
+    main.appendChild(_seatSelectorEl);
+  }
+
   // ── Bottom action bar ─────────────────────────────
   _bottomBar = document.createElement('div');
   _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:auto;';
@@ -1432,144 +1238,90 @@ function buildMain(parentEl, params) {
   return main;
 }
 
+// ── SEAT SELECTOR CARD ────────────────────────────
+function buildSeatSelectorCard() {
+  var card = buildStaticCard({ accent: T.green });
+  card.style.flexShrink = '0';
+  card.style.margin = '0 ' + PAD + 'px ' + GAP + 'px';
 
+  var header = document.createElement('div');
+  header.style.cssText = [
+    'display:flex;align-items:center;',
+    'padding:7px 12px 6px;',
+    'border-bottom:1px solid ' + T.border + ';',
+  ].join('');
 
-// ── SEAT ASSIGNMENT AT COMMIT TIME ───────────────
-function assignSeatsIfNeeded(callback) {
-  var unsent = ticket.filter(function(i) { return !i.sent; });
-  if (unsent.length === 0) { callback(); return; }
+  var seatLabel = document.createElement('div');
+  seatLabel.style.cssText = [
+    'font-family:' + T.fh + ';',
+    'font-size:' + T.fsB4 + ';',
+    'letter-spacing:0.22em;',
+    'flex:1;color:' + T.green + ';',
+    'font-weight:' + T.fwBold + ';',
+  ].join('');
+  seatLabel.textContent = 'SEAT';
 
-  // Fallback to [1] when sceneParams.seatNumbers is missing. For brand-
-  // new checks (recallOrderId null — NEW CHECK, NEW ORDER from payment)
-  // this is expected and quiet. For an EXISTING check with a recallOrderId
-  // it means the transition lost the seat layout (stale state or broken
-  // thread-through) and is about to collapse items onto seat 1 — pin it
-  // to entomology so the hole shows up in diagnostics.
-  var rawSeats = sceneParams.seatNumbers;
-  var seats = (rawSeats && rawSeats.length > 0) ? rawSeats : [1];
-  if ((!rawSeats || rawSeats.length === 0) && sceneParams.recallOrderId) {
-    entReport({
-      code: 'UI-006',
-      source: 'order-entry.assignSeatsIfNeeded',
-      message: 'recall path lost seatNumbers; falling back to [1]',
-      ctx: {
-        recallOrderId: sceneParams.recallOrderId,
-        unsentCount: unsent.length,
-      },
-      level: 'WARNING',
+  var allBtn = buildPillButton({ label: 'ALL', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
+  allBtn.style.padding = '6px 12px';
+  var noneBtn = buildPillButton({ label: 'NONE', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
+  noneBtn.style.padding = '6px 12px';
+
+  header.appendChild(seatLabel);
+  header.appendChild(allBtn);
+  header.appendChild(noneBtn);
+  card.appendChild(header);
+
+  var body = document.createElement('div');
+  body.className = '_oe-seat-scroll';
+  body.style.cssText = [
+    'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;',
+    'padding:8px 12px 10px;max-height:116px;overflow-y:auto;',
+  ].join('');
+  card.appendChild(body);
+
+  function repaintSeats() {
+    body.innerHTML = '';
+    _seatList.forEach(function(sn) {
+      var isActive = _activeSeats.has(sn);
+      var pill = buildPillButton({
+        label: 'S' + sn,
+        color: isActive ? T.green : T.moon,
+        darkBg: isActive ? T.greenDk : T.moonDk,
+        textColor: isActive ? T.well : undefined,
+        fontSize: T.fsB2,
+      });
+      pill.style.height = '48px';
+      pill.style.width = '100%';
+      pill.style.borderRadius = '8px';
+      pill.addEventListener('pointerup', function() {
+        if (_activeSeats.has(sn)) {
+          if (_activeSeats.size <= 1) return;
+          _activeSeats.delete(sn);
+        } else {
+          _activeSeats.add(sn);
+        }
+        repaintSeats();
+        renderTicket();
+      });
+      body.appendChild(pill);
     });
   }
 
-  // 1 seat → auto-assign all pending items to it. Overwrites any
-  // prior per-item assignments because there's only one target.
-  if (seats.length === 1) {
-    for (var i = 0; i < unsent.length; i++) unsent[i].seat_number = seats[0];
-    callback();
-    return;
-  }
-
-  // If exactly one seat is selected in check-overview, auto-assign to it.
-  // (The earlier "retry safety" filter collapsed the next branch onto
-  // seat 1 because new items carry _activeSeat=1 at add time; removed.)
-  var selSeats = sceneParams.selectedSeatNumbers;
-  if (selSeats && selSeats.length === 1) {
-    for (var i = 0; i < unsent.length; i++) unsent[i].seat_number = selSeats[0];
-    callback();
-    return;
-  }
-
-  // 2+ seats and no single pre-selection → open the per-item seat picker.
-  // When check-overview handed off a selection of 2+ seats, narrow the
-  // picker to just those seats so the user assigns items only across
-  // the set they highlighted. Otherwise show every unpaid seat on the
-  // check (the original behavior).
-  var pickerSeats = seats;
-  if (selSeats && selSeats.length > 1) {
-    var selSet = {};
-    for (var s = 0; s < selSeats.length; s++) selSet[selSeats[s]] = true;
-    var filtered = seats.filter(function(n) { return selSet[n]; });
-    if (filtered.length > 0) pickerSeats = filtered;
-  }
-
-  var itemsForAssign = unsent.map(function(inst) {
-    return { id: inst.id, name: inst.name, mods: inst.mods };
+  allBtn.addEventListener('pointerup', function() {
+    _seatList.forEach(function(sn) { _activeSeats.add(sn); });
+    repaintSeats();
+    renderTicket();
   });
 
-  // Trace: which items came in, how many seats, whether any are pre-assigned.
-  // Pairs with UI-008 (confirm) so the end-to-end picker flow is visible.
-  entReport({
-    code: 'UI-010', level: 'INFO',
-    source: 'order-entry.assignSeatsIfNeeded',
-    message: 'seat-picker opened',
-    ctx: {
-      recallOrderId: sceneParams.recallOrderId || null,
-      itemCount: unsent.length,
-      seatCount: pickerSeats.length,
-      seatNumbers: pickerSeats,
-      filtered: pickerSeats.length !== seats.length,
-    },
+  noneBtn.addEventListener('pointerup', function() {
+    _activeSeats = new Set([_seatList[0]]);
+    repaintSeats();
+    renderTicket();
   });
 
-  // IMPORTANT: the interrupt's render reads items + seatNumbers from the
-  // TOP LEVEL of the params object (matching every other interrupt in
-  // this file). The earlier shape nested them under `params:` which made
-  // the render see an empty items list — no cards showed, CONFIRM did
-  // nothing, and items silently retained their add-time seat_number=1
-  // default (matches the "items only land on seat 1" user report).
-  SceneManager.interrupt('seat-assign', {
-    items: itemsForAssign,
-    seatNumbers: pickerSeats,
-    onConfirm: function(assignments) {
-      // Apply assignments: { itemId: [seatNumber, ...] }
-      // Items assigned to multiple seats get duplicated (one per extra seat)
-      var dupes = [];
-      // Build a compact trace: {itemName: [seat, seat, ...]} so entomology
-      // shows which items went where without PII (no item_ids).
-      var trace = {};
-      for (var j = 0; j < unsent.length; j++) {
-        var seatList = assignments[unsent[j].id];
-        if (!seatList || seatList.length === 0) continue;
-        trace[unsent[j].name] = (trace[unsent[j].name] || []).concat(seatList);
-        // First seat goes on the original item
-        unsent[j].seat_number = seatList[0];
-        // Additional seats → duplicate the item
-        for (var s = 1; s < seatList.length; s++) {
-          var clone = Object.assign({}, unsent[j]);
-          clone.id = unsent[j].id + '_s' + seatList[s];
-          clone.idemKey = _idemKey();
-          clone.seat_number = seatList[s];
-          clone.sent = false;
-          clone.mods = (unsent[j].mods || []).slice();
-          dupes.push(clone);
-        }
-      }
-      // Add duplicated items to the ticket
-      for (var d = 0; d < dupes.length; d++) ticket.push(dupes[d]);
-      // Trace: records operator seat-assignment choices so we can later
-      // correlate "items landed on the wrong seat" reports with what the
-      // user actually confirmed in the picker.
-      entReport({
-        code: 'UI-008', level: 'INFO',
-        source: 'order-entry.assignSeatsIfNeeded',
-        message: 'seat-assign confirm',
-        ctx: {
-          recallOrderId: sceneParams.recallOrderId || null,
-          itemCount: unsent.length,
-          cloneCount: dupes.length,
-          seatNumbers: seats,
-          assignments: trace,
-        },
-      });
-      callback();
-    },
-    onCancel: function() {
-      // Without this toast the CANCEL tap looks identical to the SEND tap
-      // (nothing visibly changes); users re-tapped SEND thinking it was
-      // swallowed. Make the cancellation visible AND note that items are
-      // still in the order.
-      showToast('Seat assignment cancelled — items still in order', { bg: T.gold, duration: 2200 });
-    },
-  });
+  repaintSeats();
+  card._repaintSeats = repaintSeats;
+  return card;
 }
 
 // ── BOTTOM BAR — SAVE / SEND ────────────────────
@@ -1600,10 +1352,10 @@ function rebuildBottomBar() {
   finalizeBtn.addEventListener('pointerup', function() {
     if (isSending) return;
     if (!hasUnsent) { handleClose(); return; }
-    assignSeatsIfNeeded(async function() {
+    (async function() {
       try { await handleSaveOnly(); } catch (e) { return; }
       handleClose();
-    });
+    })();
   });
 
   var sendBtn = buildPillButton({
@@ -1618,10 +1370,10 @@ function rebuildBottomBar() {
   sendBtn.addEventListener('pointerup', function() {
     if (isSending) return;
     if (!hasUnsent) { handleClose(); return; }
-    assignSeatsIfNeeded(async function() {
+    (async function() {
       try { await handleSend(); } catch (e) { return; }
       handleClose();
-    });
+    })();
   });
 
   _bottomBar.appendChild(finalizeBtn);
@@ -2206,7 +1958,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       fontSize:     '13px',
       height:       'auto', // let padding define it or set an explicit height if needed
       border:       '1px solid ' + (active ? bg : 'rgba(255,255,255,0.1)'),
-      boxShadow:    (active ? '0 4px 0 ' + hexToRgba(bg, 0.5) : '0 3px 0 #111'),
+      boxShadow:    (active ? '0 4px 0 ' + hexToRgba(bg, 0.5) : '0 3px 0 ' + T.moonDk),
       whiteSpace:   'nowrap',
       width:        'auto',
     });
@@ -2343,7 +2095,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
         'border-left:4px solid ' + crumb.color + ';',
         'box-shadow:0 4px 0 ' + hexToRgba(crumb.color, 0.55) + ';',
         'font-family:' + T.fh + ';font-weight:700;font-size:22px;',
-        'color:#fff;letter-spacing:1px;pointer-events:none;',
+        'color:' + T.well + ';letter-spacing:1px;pointer-events:none;',
       ].join('');
       tile.textContent = crumb.label;
       snakeCard.appendChild(tile);
@@ -2361,7 +2113,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       'min-height:95px;min-width:120px;',
     ].join('');
     var icn = document.createElement('span');
-    icn.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:22px;color:#fff;pointer-events:none;';
+    icn.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:22px;color:' + T.well + ';pointer-events:none;';
     icn.textContent = item.label;
     var icp = document.createElement('span');
     icp.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:rgba(255,255,255,0.75);margin-top:4px;pointer-events:none;';
@@ -2449,10 +2201,10 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
           'padding:5px 14px;border-radius:999px;cursor:pointer;',
           'user-select:none;pointer-events:auto;touch-action:manipulation;',
           'font-family:' + T.fb + ';font-weight:700;font-size:11px;letter-spacing:1px;',
-          'color:#fff;',
+          'color:' + T.well + ';',
           'background:' + (isActive ? pc : T.card) + ';',
           'border:1px solid ' + (isActive ? pc : 'rgba(255,255,255,0.1)') + ';',
-          'box-shadow:' + (isActive ? '0 3px 0 ' + hexToRgba(pc, 0.55) : '0 2px 0 #111') + ';',
+          'box-shadow:' + (isActive ? '0 3px 0 ' + hexToRgba(pc, 0.55) : '0 2px 0 ' + T.moonDk) + ';',
           'transition:all 100ms;white-space:nowrap;',
         ].join('');
         btn.textContent = pfx.label;
@@ -2479,7 +2231,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
             'padding:7px 8px;border-radius:8px;cursor:pointer;',
             'pointer-events:auto;touch-action:manipulation;',
             'font-family:' + T.fb + ';font-weight:700;font-size:10px;letter-spacing:1px;',
-            'color:' + (isActive ? '#fff' : hexToRgba(T.text, 0.6)) + ';',
+            'color:' + (isActive ? T.well : hexToRgba(T.text, 0.6)) + ';',
             'background:' + (isActive ? catColor : 'transparent') + ';',
             'box-shadow:' + (isActive ? '0 3px 0 ' + hexToRgba(catColor, 0.55) : 'none') + ';',
             'transition:all 120ms;',
@@ -2550,10 +2302,11 @@ function openModifierPanel(item, modConfig, catColor, enablePlacement) {
 
   _modPanelOpen = true;
 
-  // Hide grid, show snake strip above the panel, hide bottom bar
-  if (_gridWrap)    _gridWrap.style.display    = 'none';
-  if (_snakeStrip)  { _snakeStrip.innerHTML = ''; _snakeStrip.style.display = 'none'; }
-  if (_bottomBar)   _bottomBar.style.display   = 'none';
+  // Hide grid, seat selector, and bottom bar; snake strip stays hidden
+  if (_gridWrap)       _gridWrap.style.display       = 'none';
+  if (_snakeStrip)     { _snakeStrip.innerHTML = ''; _snakeStrip.style.display = 'none'; }
+  if (_seatSelectorEl) _seatSelectorEl.style.display = 'none';
+  if (_bottomBar)      _bottomBar.style.display      = 'none';
   _mainArea.style.border = 'none';
 
   _modPanel = buildKindModPanel(_mainArea, item, modConfig, catColor, enablePlacement, {
@@ -2576,7 +2329,7 @@ function _buildSnakeStrip(item, catColor) {
       'background:' + crumb.color + ';border-radius:8px;',
       'border-left:4px solid ' + crumb.color + ';',
       'padding:6px 16px;font-family:' + T.fh + ';',
-      'font-weight:700;font-size:14px;color:#fff;letter-spacing:1px;',
+      'font-weight:700;font-size:14px;color:' + T.well + ';letter-spacing:1px;',
       'pointer-events:none;',
     ].join('');
     chip.textContent = crumb.label;
@@ -2589,7 +2342,7 @@ function _buildSnakeStrip(item, catColor) {
     'background:' + catColor + ';border-radius:8px;',
     'border-left:4px solid ' + catColor + ';',
     'padding:6px 16px;font-family:' + T.fh + ';',
-    'font-weight:700;font-size:14px;color:#fff;letter-spacing:1px;',
+    'font-weight:700;font-size:14px;color:' + T.well + ';letter-spacing:1px;',
     'display:flex;align-items:center;gap:8px;cursor:pointer;',
     'pointer-events:auto;touch-action:manipulation;',
     'box-shadow:0 0 12px ' + hexToRgba(catColor, 0.5) + ';',
@@ -2614,10 +2367,11 @@ function closeModifierPanel() {
   _modPanelItem = null;
   _modPanelOpen = false;
 
-  // Restore grid
-  if (_gridWrap)    _gridWrap.style.display    = '';
-  if (_snakeStrip)  { _snakeStrip.innerHTML = ''; _snakeStrip.style.display = 'none'; }
-  if (_mainArea)    _mainArea.style.border     = '';
+  // Restore grid and seat selector
+  if (_gridWrap)       _gridWrap.style.display       = '';
+  if (_snakeStrip)     { _snakeStrip.innerHTML = ''; _snakeStrip.style.display = 'none'; }
+  if (_seatSelectorEl) _seatSelectorEl.style.display = '';
+  if (_mainArea)       _mainArea.style.border        = '';
 
   renderTicket();
 
@@ -2714,7 +2468,6 @@ function commitModifierPanelItem(originalItem, activeItem, modConfig) {
     selected:  false,
     sent:      false,
     category:  snakeState.catId,
-    seat_number: _activeSeat,
     // Preserve modifier panel data for ledger
     _modPanelData: {
       mandatory: mands,
@@ -2726,7 +2479,7 @@ function commitModifierPanelItem(originalItem, activeItem, modConfig) {
     },
   };
 
-  ticket.push(ticketItem);
+  _pushToAllSeats(ticketItem);
   closeModifierPanel();
 }
 
@@ -2828,6 +2581,22 @@ function resolveBackendModifierConfig(itemId, catId) {
   };
 }
 
+function _pushToAllSeats(item) {
+  var seatArr = Array.from(_activeSeats);
+  if (seatArr.length === 0) seatArr = [_seatList[0] || 1];
+  item.seat_number = seatArr[0];
+  ticket.push(item);
+  for (var si = 1; si < seatArr.length; si++) {
+    var clone = Object.assign({}, item);
+    clone.id = ++ticketSeq;
+    clone.idemKey = _idemKey();
+    clone.seat_number = seatArr[si];
+    clone.mods = (item.mods || []).map(function(m) { return Object.assign({}, m); });
+    if (item._modPanelData) clone._modPanelData = Object.assign({}, item._modPanelData);
+    ticket.push(clone);
+  }
+}
+
 function getMenuCat(id) {
   return MENU_DATA.find(function(c) { return c.id === id; });
 }
@@ -2882,9 +2651,8 @@ function handleItemSelect(item) {
       selected:  false,
       sent:      false,
       category:  'combo',
-      seat_number: _activeSeat,
     };
-    ticket.push(ticketItem);
+    _pushToAllSeats(ticketItem);
     comboFlow = { step: 'side', ticketItem: ticketItem };
     var sidesCat = getMenuCat('sides');
     if (sidesCat) _selectCat(sidesCat);
@@ -2896,7 +2664,7 @@ function handleItemSelect(item) {
   // ── Pizza builder: size tap opens the overlay ──
   if (item.pizzaSize) {
     showPizzaBuilderOverlay(item, PIZZA_BUILDER_DATA).then(function(result) {
-      ticket.push({
+      var pizzaItem = {
         id:        ++ticketSeq,
         menu_item_id: item.id,
         idemKey:   _idemKey(),
@@ -2906,8 +2674,8 @@ function handleItemSelect(item) {
         selected:  false,
         sent:      false,
         category:  'pizza',
-        seat_number: _activeSeat,
-      });
+      };
+      _pushToAllSeats(pizzaItem);
       renderTicket();
       rebuildBottomBar();
     }).catch(function() { /* cancelled */ });
@@ -3001,7 +2769,7 @@ function addToTicket(item) {
         mods.push({ name: sm.label, price: sm.price || 0, charged: sm.price > 0 });
       });
     }
-    ticket.push({
+    _pushToAllSeats({
       id:        ++ticketSeq,
       menu_item_id: item.id,
       idemKey:   _idemKey(),
@@ -3011,11 +2779,66 @@ function addToTicket(item) {
       selected:  false,
       sent:      false,
       category:  snakeState.catId,
-      seat_number: _activeSeat,
     });
   }
   renderTicket();
   rebuildBottomBar();
+}
+
+function _buildItemSubCard(inst, isMultiSeat) {
+  var div = document.createElement('div');
+  div.style.cssText = [
+    'background:' + T.well + ';',
+    'border:1px solid ' + T.moon + ';',
+    'box-shadow:0 3px 0 ' + T.moonDk + ';',
+    'border-radius:8px;',
+    'padding:5px 8px;',
+    'display:flex;flex-direction:column;gap:2px;',
+    isMultiSeat ? 'margin-left:24px;' : '',
+    'margin-bottom:4px;',
+  ].join('');
+
+  if (inst.sent) {
+    var badge = document.createElement('div');
+    badge.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';color:' + T.green + ';';
+    badge.textContent = '>>>';
+    div.appendChild(badge);
+  }
+
+  var modTotal = (inst.mods || []).reduce(function(s, m) { return s + (Number(m.price) || 0); }, 0);
+  var totalPrice = (Number(inst.unitPrice) || 0) + modTotal;
+  var qty = inst.qty || 1;
+  var displayName = qty > 1 ? qty + '× ' + inst.name : inst.name;
+
+  var namePrice = document.createElement('div');
+  namePrice.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
+  var nameEl = document.createElement('span');
+  nameEl.style.cssText = 'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:12px;color:' + T.text + ';flex:1;';
+  nameEl.textContent = displayName;
+  var priceEl = document.createElement('span');
+  priceEl.style.cssText = 'font-family:' + T.fb + ';font-weight:' + T.fwBold + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;';
+  priceEl.textContent = _fmtPrice(totalPrice);
+  namePrice.appendChild(nameEl);
+  namePrice.appendChild(priceEl);
+  div.appendChild(namePrice);
+
+  (inst.mods || []).forEach(function(mod) {
+    var modRow = document.createElement('div');
+    modRow.style.cssText = 'display:flex;margin-left:8px;padding-left:6px;border-left:2px solid ' + hexToRgba(T.moon, 0.3) + ';';
+    var modName = document.createElement('span');
+    modName.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.moon + ';flex:1;';
+    modName.textContent = mod.name;
+    modRow.appendChild(modName);
+    if (mod.charged && mod.price > 0) {
+      var upcharge = document.createElement('span');
+      upcharge.style.cssText = 'font-family:' + T.fb + ';font-size:10px;font-weight:' + T.fwBold + ';color:' + T.moon + ';';
+      upcharge.textContent = '+$' + (Number(mod.price) || 0).toFixed(2);
+      modRow.appendChild(upcharge);
+    }
+    div.appendChild(modRow);
+  });
+
+  return div;
 }
 
 function renderTicket() {
@@ -3023,59 +2846,71 @@ function renderTicket() {
   var list = document.getElementById('ticket-list');
   if (!list) return;
   list.innerHTML = '';
-  var frag = document.createDocumentFragment();
 
-  // In check-overview mode, only show newly added (unsent) items
+  // In check-overview mode, only show unsent items
   var displayTicket = ticket;
   if (sceneParams.returnScene === 'check-overview') {
     displayTicket = ticket.filter(function(inst) { return !inst.sent; });
-    if (displayTicket.length === 0 && !_modPanelItem) {
-      var hint = document.createElement('div');
-      hint.style.cssText = 'padding:20px 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
-      hint.textContent = 'Tap items to add';
-      frag.appendChild(hint);
-      list.appendChild(frag);
-      return;
-    }
   }
 
-  // ── Group by seat (check-overview mode) then by name ──
-  var hasSeatGroups = sceneParams.returnScene === 'check-overview' &&
-    sceneParams.seatNumbers && sceneParams.seatNumbers.length > 1;
-
-  if (hasSeatGroups) {
-    // Collect unique seat numbers in order
-    var seatOrder = [];
-    var seatItems = {};
-    displayTicket.forEach(function(inst) {
-      var sn = inst.seat_number || 1;
-      if (!seatItems[sn]) { seatItems[sn] = []; seatOrder.push(sn); }
-      seatItems[sn].push(inst);
+  // Filter to items whose seat_number is in _activeSeats
+  if (_activeSeats.size > 0) {
+    displayTicket = displayTicket.filter(function(inst) {
+      return _activeSeats.has(inst.seat_number);
     });
-    seatOrder.sort(function(a, b) { return a - b; });
+  }
 
-    for (var si = 0; si < seatOrder.length; si++) {
-      var sn = seatOrder[si];
-      // Seat header
-      var seatHdr = document.createElement('div');
-      seatHdr.style.cssText = 'padding:4px 8px 2px;font-family:' + T.fh + ';font-size:' + T.fsB2 + ';color:' + T.green + ';letter-spacing:2px;border-bottom:1px solid ' + T.border + ';margin-bottom:2px;';
-      seatHdr.textContent = 'S-' + String(sn).padStart(3, '0');
-      frag.appendChild(seatHdr);
-      list.appendChild(frag);
-
-      // Render items for this seat using the same group logic below
-      var seatTicket = seatItems[sn];
-      _renderTicketGroup(list, seatTicket);
-    }
+  if (displayTicket.length === 0 && !_modPanelItem) {
+    var hint = document.createElement('div');
+    hint.style.cssText = 'padding:20px 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
+    hint.textContent = 'Tap items to add';
+    list.appendChild(hint);
     _appendModPreview(list);
-    _updateTicketTotals();
+    _updateTicketTotals(displayTicket);
     return;
   }
 
-  _renderTicketGroup(list, displayTicket);
+  if (_activeSeats.size > 1) {
+    // Mode B: seat-grouped sub-cards
+    var seatOrder = Array.from(_activeSeats).sort(function(a, b) { return a - b; });
+    seatOrder.forEach(function(sn) {
+      var seatItems = displayTicket.filter(function(i) { return i.seat_number === sn; });
+      var seatSubtotal = seatItems.reduce(function(s, i) {
+        return s + (Number(i.unitPrice) || 0) + (i.mods || []).reduce(function(ms, m) { return ms + (Number(m.price) || 0); }, 0);
+      }, 0);
+      var hasItems = seatItems.length > 0;
+
+      var seatHdr = document.createElement('div');
+      seatHdr.style.cssText = [
+        'background:' + T.well + ';',
+        'border-left:3px solid ' + (hasItems ? T.green : T.moon) + ';',
+        'border-radius:6px;padding:5px 8px;',
+        'display:flex;flex-direction:row;user-select:none;',
+        'margin-bottom:4px;',
+      ].join('');
+      var seatLeft = document.createElement('span');
+      seatLeft.style.cssText = 'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:20px;color:' + (hasItems ? T.green : T.moon) + ';flex:1;';
+      seatLeft.textContent = 'S' + sn;
+      var seatRight = document.createElement('span');
+      seatRight.style.cssText = 'font-family:' + T.fb + ';font-weight:' + T.fwBold + ';font-size:' + T.fsB3 + ';color:' + T.gold + ';';
+      seatRight.textContent = _fmtPrice(seatSubtotal);
+      seatHdr.appendChild(seatLeft);
+      seatHdr.appendChild(seatRight);
+      list.appendChild(seatHdr);
+
+      seatItems.forEach(function(inst) {
+        list.appendChild(_buildItemSubCard(inst, true));
+      });
+    });
+  } else {
+    // Single seat — sub-cards without seat headers
+    displayTicket.forEach(function(inst) {
+      list.appendChild(_buildItemSubCard(inst, false));
+    });
+  }
+
   _appendModPreview(list);
-  _updateTicketTotals();
-  list.appendChild(frag);
+  _updateTicketTotals(displayTicket);
 }
 
 function _appendModPreview(list) {
@@ -3150,25 +2985,27 @@ function _appendModPreview(list) {
   list.appendChild(pc);
 }
 
-function _updateTicketTotals() {
-  var totals = computeTicketTotals();
+function _updateTicketTotals(filteredTicket) {
+  // When a filtered view is active, compute totals from visible items only.
+  var subtotal = 0;
+  var src = filteredTicket || ticket;
+  src.forEach(function(inst) {
+    var modTotal = (inst.mods || []).reduce(function(s, m) { return s + (Number(m.price) || 0); }, 0);
+    subtotal += (Number(inst.unitPrice) || 0) + modTotal;
+  });
   if (_modPanelItem) {
     var previewMods = (_modPanelItem.mods || []);
-    var previewModTotal = previewMods.reduce(function(s, m) { return s + m.price; }, 0);
-    var previewPrice = _modPanelItem.basePrice + previewModTotal;
-    totals.subtotal += previewPrice;
-    var _t = computeTotals(totals.subtotal);
-    totals.tax = _t.tax;
-    totals.cardTotal = _t.cardTotal;
-    totals.cashPrice = _t.cashPrice;
+    var previewModTotal = previewMods.reduce(function(s, m) { return s + (Number(m.price) || 0); }, 0);
+    subtotal += (_modPanelItem.basePrice || 0) + previewModTotal;
   }
+  var t = computeTotals(subtotal);
   OrderSummary.update({
     checkId: currentCheckNumber || '',
     skipItems: true,
-    subtotal: totals.subtotal,
-    tax: totals.tax,
-    cardTotal: totals.cardTotal,
-    cashPrice: totals.cashPrice,
+    subtotal: t.subtotal,
+    tax: t.tax,
+    cardTotal: t.cardTotal,
+    cashPrice: t.cashPrice,
   });
 }
 
