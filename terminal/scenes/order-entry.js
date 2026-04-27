@@ -1259,6 +1259,46 @@ function buildSeatSelectorCard() {
   var unselectedSeatList = _allSeatList.filter(function(sn) { return _seatList.indexOf(sn) === -1; });
   var hasUnselected = unselectedSeatList.length > 0;
 
+  // Builds a category-card-style tab chip: T.card bg, left accent bar, colored text.
+  function _buildTabChip(label, color, darkBg) {
+    var el = document.createElement('div');
+    el._color  = color;
+    el._darkBg = darkBg;
+    el.style.cssText = [
+      'display:flex;align-items:center;justify-content:center;',
+      'background:' + T.card + ';',
+      'border-left:' + T.accentBarW + ' solid ' + color + ';',
+      'border-radius:' + T.chamferBtn + 'px;',
+      'box-shadow:0 4px 0 ' + darkBg + ';',
+      'padding:5px 10px;',
+      'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';',
+      'color:' + color + ';letter-spacing:0.08em;text-transform:uppercase;',
+      'white-space:nowrap;cursor:pointer;user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;',
+      'transition:' + T.transitionFast + ';',
+    ].join('');
+    el.textContent = label;
+    el.addEventListener('pointerdown', function() {
+      el.style.transform = 'translateY(1px)';
+      el.style.boxShadow = 'none';
+    });
+    var _rel = function() {
+      el.style.transform = '';
+      el.style.boxShadow = '0 4px 0 ' + el._darkBg;
+    };
+    el.addEventListener('pointerup',     _rel);
+    el.addEventListener('pointerleave',  _rel);
+    el.addEventListener('pointercancel', _rel);
+    el.setColor = function(c, d) {
+      el._color  = c;
+      el._darkBg = d;
+      el.style.borderLeftColor = c;
+      el.style.color           = c;
+      el.style.boxShadow       = '0 4px 0 ' + d;
+    };
+    return el;
+  }
+
   // ── Header ──────────────────────────────────────
   var header = document.createElement('div');
   header.style.cssText = [
@@ -1267,19 +1307,14 @@ function buildSeatSelectorCard() {
     'border-bottom:1px solid ' + T.border + ';',
   ].join('');
 
-  var tabOpts = { shape: 'chamfer', chamferSize: 5, fontSize: T.fsB4, padding: '5px 10px' };
-  var selectedTab = buildPillButton(Object.assign({}, tabOpts, { label: 'Selected Seats', color: T.green, darkBg: T.greenDk }));
-
-  var unselectedTab = null;
-  if (hasUnselected) {
-    unselectedTab = buildPillButton(Object.assign({}, tabOpts, { label: 'Unselected', color: T.moon, darkBg: T.moonDk }));
-  }
+  var selectedTab   = _buildTabChip('Selected Seats', T.green, T.greenDk);
+  var unselectedTab = hasUnselected ? _buildTabChip('Unselected', T.moon, T.moonDk) : null;
 
   var spacer = document.createElement('div');
   spacer.style.flex = '1';
 
-  var addBtn = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: '+', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
-  var allBtn = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: 'ALL', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
+  var addBtn  = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: '+',    color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
+  var allBtn  = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: 'ALL',  color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
   var noneBtn = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: 'NONE', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
 
   header.appendChild(selectedTab);
