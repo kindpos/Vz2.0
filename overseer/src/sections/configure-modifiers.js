@@ -5,7 +5,7 @@ import { pushChanges } from '../services/config-push.js';
 
    Two tabs, one event stream:
    1. Modifiers — master list of atoms (add-ons).
-      Atoms can carry subatomic modifiers (quarks).
+      Modifiers can carry microMODs.
    2. Groups — collections of atoms wired to items
       (mandatory) or categories (universal) through
       min_selections / max_selections / drives_pricing.
@@ -528,7 +528,7 @@ function buildModalFooter(container, onSave, opts = {}) {
    Chip tray + "+ Add" that opens a picker modal
    with three-state checks, search, and delta footer.
    Used by both Group editor (pick atoms for group)
-   and Atom editor (pick subatomic quarks).
+   and Modifier editor (pick microMODs).
 ------------------------------------------ */
 
 function buildChipTray(container, initialIds, sourceFn, opts = {}) {
@@ -937,7 +937,7 @@ function buildModifiersTab(container) {
     container.appendChild(headerRow);
 
     // Filter chips — quick filters for common operator tasks:
-    // finding bundled atoms (subatomic carriers) and orphans (unsaved).
+    // finding bundled modifiers (microMOD carriers) and orphans (unsaved).
     buildAtomFilterRow(container, () => renderAtomList(list));
 
     const list = document.createElement('div');
@@ -951,7 +951,7 @@ function buildModifiersTab(container) {
  * Three-option filter pill row for the Modifiers tab. Single-select —
  * one option active at a time. ANDs with the search box.
  *   • All      — show every atom
- *   • Bundled  — only atoms with included_modifier_ids (quarks)
+ *   • Bundled  — only modifiers with included_modifier_ids (microMODs)
  *   • Orphan   — only atoms not referenced by any group
  */
 function buildAtomFilterRow(container, onChange) {
@@ -1105,8 +1105,8 @@ function renderAtomList(list) {
         // Count how many groups reference this atom
         const groupRefs = groups.filter(g => (g.modifier_ids || []).includes(atom.id));
         const isOrphan = groupRefs.length === 0;
-        const quarkCount = (atom.included_modifier_ids || []).length;
-        const isBundled = quarkCount > 0;
+        const microModCount = (atom.included_modifier_ids || []).length;
+        const isBundled = microModCount > 0;
 
         const row = buildCard(isBundled ? C.lavender : isOrphan ? C.warning : C.green, {
             padding: '12px 16px',
@@ -1137,7 +1137,7 @@ function renderAtomList(list) {
 
         if (isBundled) {
             const bundleBadge = document.createElement('span');
-            bundleBadge.textContent = `⋯ ${quarkCount} QUARK${quarkCount === 1 ? '' : 'S'}`;
+            bundleBadge.textContent = `⋯ ${microModCount} MICROMOD${microModCount === 1 ? '' : 'S'}`;
             bundleBadge.style.cssText = `
                 font-family: ui-monospace, monospace;
                 font-size: 9px;
@@ -1199,7 +1199,7 @@ function renderAtomList(list) {
 }
 
 /* ============================================
-   ATOM EDIT MODAL (with subatomic picker)
+   MODIFIER EDIT MODAL (with microMOD picker)
 ============================================ */
 
 function openAtomModal(existing) {
@@ -1214,14 +1214,14 @@ function openAtomModal(existing) {
             hint: 'Price applied when this atom is added as an ADD. EXTRA doubles it.',
         });
 
-        // Subatomic section
+        // microMOD section
         const subSection = document.createElement('div');
         subSection.style.cssText = `
             margin-top: 24px;
             padding-top: 20px;
             border-top: 1px dashed ${C.hairline};
         `;
-        const subLabel = buildLabel('Subatomic Modifiers', { color: C.lavender });
+        const subLabel = buildLabel('microMODs', { color: C.lavender });
         subLabel.style.marginBottom = '4px';
         subSection.appendChild(subLabel);
 
@@ -1236,10 +1236,10 @@ function openAtomModal(existing) {
         subHint.textContent = 'Atoms that come bundled with this one. Long-tap on the terminal opens a strike-off panel (e.g. Meat Lovers → [pepperoni, sausage, bacon, ham]).';
         subSection.appendChild(subHint);
 
-        const quarkIds = [...(existing?.included_modifier_ids || [])];
-        const trayState = buildChipTray(subSection, quarkIds, () => {
+        const microModIds = [...(existing?.included_modifier_ids || [])];
+        const trayState = buildChipTray(subSection, microModIds, () => {
             // Source: all atoms EXCEPT self, and EXCEPT atoms that are
-            // themselves bundled (depth cap at 2: item → atom → quark,
+            // themselves bundled (depth cap at 2: item → modifier → microMOD,
             // no deeper). Schema allows it; UI refuses to render.
             const all = getAllWorking('modifiers');
             return all
@@ -1252,9 +1252,9 @@ function openAtomModal(existing) {
                 }));
         }, {
             accent: C.lavender,
-            addLabel: '+ Add Quark',
-            emptyHint: 'No quarks — tap + Add Quark',
-            pickerTitle: 'Pick subatomic modifiers (quarks)',
+            addLabel: '+ Add microMOD',
+            emptyHint: 'No microMODs — tap + Add microMOD',
+            pickerTitle: 'Pick microMODs',
             excludeIds: () => {
                 // Exclude atoms that are already bundled themselves
                 const all = getAllWorking('modifiers');
@@ -1931,7 +1931,7 @@ function updateFooter() {
  *   1. Collect dirty group IDs — explicit group edits AND any groups
  *      containing a changed atom.
  *   2. For each dirty group, rebuild its modifiers[] payload from
- *      current atom state (merging pending atom changes so subatomic
+ *      current atom state (merging pending modifier changes so microMOD
  *      + name + price ride through).
  *   3. Emit modifier.group_created / _updated / _deleted for each.
  *   4. No atom-level events are emitted — atoms exist only inside

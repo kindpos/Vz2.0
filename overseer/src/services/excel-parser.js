@@ -438,7 +438,7 @@ function _parseItems(workbook, errors, warnings) {
 
 /* ─────────────────────────────────────────────────────────────────────────────
    COMBO SPECIALS  (new in v2)
-   Named toppings that include a set of ingredients (quark groups).
+   Named toppings that include a set of ingredients (microMOD groups).
 ───────────────────────────────────────────────────────────────────────────── */
 function _parseComboSpecials(workbook, warnings) {
     try {
@@ -476,7 +476,7 @@ function _parseComboSpecials(workbook, warnings) {
 
 /* ─────────────────────────────────────────────────────────────────────────────
    PORTION OPTIONS  (new in v2)
-   Universal quark group — Extra / Light / On Side on any topping.
+   Universal microMOD group — Extra / Light / On Side on any topping.
 ───────────────────────────────────────────────────────────────────────────── */
 function _parsePortionOptions(workbook, warnings) {
     try {
