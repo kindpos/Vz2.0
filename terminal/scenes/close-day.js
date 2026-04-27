@@ -1294,11 +1294,15 @@ defineScene({
     ].join('');
 
     function refreshScene() {
+      if (state._refreshing) return;
+      state._refreshing = true;
       fetchCloseDayState(params).then(function(newData) {
+        state._refreshing = false;
         if (!state._alive) return;
         state.data = newData;
         rebuild();
       }).catch(function(err) {
+        state._refreshing = false;
         if (!state._alive) return;
         console.error('[close-day] fetch failed:', err);
         showToast('Close day data unavailable', { bg: T.verm });
@@ -1367,9 +1371,13 @@ defineScene({
         showToast('Reprinting…', { bg: T.greenWarm });
         fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/receipt', { method: 'POST' }, 15000)
           .then(function(r) {
+            if (!state._alive) return;
             showToast(r.ok ? 'Reprinted' : 'Reprint failed', { bg: r.ok ? T.greenWarm : T.verm });
           })
-          .catch(function() { showToast('Reprint unavailable', { bg: T.verm }); });
+          .catch(function() {
+            if (!state._alive) return;
+            showToast('Reprint unavailable', { bg: T.verm });
+          });
       },
 
       onReopenCheck: function(chk) {
@@ -1378,10 +1386,14 @@ defineScene({
             SceneManager.closeInterrupt('co-manager-pin');
             fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/reopen', { method: 'POST' }, 15000)
               .then(function(r) {
+                if (!state._alive) return;
                 showToast(r.ok ? 'Check reopened' : 'Reopen failed (' + r.status + ')', { bg: r.ok ? T.greenWarm : T.verm });
                 refreshScene();
               })
-              .catch(function() { showToast('Reopen unavailable', { bg: T.verm }); });
+              .catch(function() {
+                if (!state._alive) return;
+                showToast('Reopen unavailable', { bg: T.verm });
+              });
           },
           onCancel: function() { SceneManager.closeInterrupt('co-manager-pin'); },
         });
@@ -1432,6 +1444,7 @@ defineScene({
         });
 
         Promise.all(posts).then(function(results) {
+          if (!state._alive) return;
           var ok     = results.filter(function(r) { return  r.ok; });
           var failed = results.filter(function(r) { return !r.ok; });
           if (failed.length === 0) {
@@ -1473,6 +1486,7 @@ defineScene({
         fetchWithTimeout('/api/v1/payments/batch-settle', { method: 'POST' }, 15000)
           .then(function(r) {
             state._settling = false;
+            if (!state._alive) return;
             if (r.ok) {
               state.batchSettled = true;
               showToast('Batch settled', { bg: T.greenWarm });
@@ -1485,6 +1499,7 @@ defineScene({
           })
           .catch(function() {
             state._settling = false;
+            if (!state._alive) return;
             showToast('Settle unavailable — check connection', { bg: T.verm });
           });
       },
@@ -1554,6 +1569,7 @@ defineScene({
             });
 
             Promise.all(transfers).then(function(results) {
+              if (!state._alive) return;
               var ok     = results.filter(function(r) { return  r.ok; });
               var failed = results.filter(function(r) { return !r.ok; });
 
@@ -1591,6 +1607,7 @@ defineScene({
         });
 
         Promise.all(prints).then(function(results) {
+          if (!state._alive) return;
           var ok     = results.filter(function(r) { return  r.ok; });
           var failed = results.filter(function(r) { return !r.ok; });
 
@@ -1651,6 +1668,7 @@ defineScene({
                   });
 
                   Promise.all(discounts).then(function(results) {
+                    if (!state._alive) return;
                     var ok     = results.filter(function(r) { return  r.ok; });
                     var failed = results.filter(function(r) { return !r.ok; });
                     var lbl    = discount.type === 'comp'
@@ -1706,6 +1724,7 @@ defineScene({
                   });
 
                   Promise.all(voids).then(function(results) {
+                    if (!state._alive) return;
                     var ok     = results.filter(function(r) { return  r.ok; });
                     var failed = results.filter(function(r) { return !r.ok; });
 
@@ -1765,6 +1784,7 @@ defineScene({
         body:    JSON.stringify(payload),
       }, 20000).then(function(r) {
         state._locking = false;
+        if (!state._alive) return;
         if (r.ok) {
           showToast('Day locked', { bg: T.greenWarm });
           SceneManager.closeTransactional('close-day');
@@ -1777,6 +1797,7 @@ defineScene({
         }
       }).catch(function() {
         state._locking = false;
+        if (!state._alive) return;
         showToast('Lock unavailable — check connection', { bg: T.verm });
       });
     }

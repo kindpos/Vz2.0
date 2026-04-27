@@ -487,7 +487,7 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                     _seat(int(sn)).discounts.append({
                         "discount_id": payload.get("discount_id"),
                         "discount_type": payload.get("discount_type"),
-                        "amount": payload.get("amount", 0),
+                        "amount": Decimal(str(payload.get("amount", 0))),
                         "approved_by": payload.get("approved_by"),
                         "applied_at": str(event.timestamp),
                     })
@@ -501,12 +501,13 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                     if did:
                         sb.discounts = [d for d in sb.discounts if d.get("discount_id") != did]
                     else:
-                        # Fall back to type+amount match
+                        # Fall back to type+amount match — compare as Decimal
+                        # so that int 10 and float 10.0 both match Decimal("10")
                         dtype = payload.get("discount_type")
-                        amt = str(payload.get("amount", 0))
+                        amt = Decimal(str(payload.get("amount", 0)))
                         sb.discounts = [
                             d for d in sb.discounts
-                            if not (d.get("discount_type") == dtype and str(d.get("amount", 0)) == amt)
+                            if not (d.get("discount_type") == dtype and Decimal(str(d.get("amount", 0))) == amt)
                         ]
 
         elif event.event_type == EventType.SEAT_COMPED:

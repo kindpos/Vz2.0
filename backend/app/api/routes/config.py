@@ -2,6 +2,7 @@ import base64
 import logging
 import os
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import Response
@@ -549,7 +550,7 @@ async def get_terminal_bundle(ledger: EventLedger = Depends(get_ledger)):
 
     return {
         "bundle_version": 1,
-        "generated_at": "2026-03-24T14:30:00Z",  # Should be dynamic
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "store": await store_service.get_projected_config(),
         "employees": await overseer_service.get_employees(),
         "roles": await overseer_service.get_roles(),
