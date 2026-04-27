@@ -571,7 +571,7 @@ describe('terminal/scenes/manager-landing', () => {
     tileA.dispatchEvent(new Event('pointerup'));   // first tap — selects
     expect(state.selectedIds).toContain('order-a');
 
-    vi.advanceTimersByTime(800);   // still within DOUBLE_TAP_MS (1500ms)
+    vi.advanceTimersByTime(200);   // still within DOUBLE_TAP_MS (300ms)
 
     tileA.dispatchEvent(new Event('pointerup'));   // second tap — opens
     expect(SceneManager.mountWorking).toHaveBeenCalledWith(
@@ -595,7 +595,7 @@ describe('terminal/scenes/manager-landing', () => {
     tileA.dispatchEvent(new Event('pointerup'));   // first tap — selects
     expect(state.selectedIds).toContain('order-a');
 
-    vi.advanceTimersByTime(1600);   // past DOUBLE_TAP_MS (1500ms)
+    vi.advanceTimersByTime(400);   // past DOUBLE_TAP_MS (300ms)
 
     tileA.dispatchEvent(new Event('pointerup'));   // second tap — deselects
     expect(state.selectedIds).not.toContain('order-a');

@@ -402,7 +402,7 @@ describe('terminal/scenes/server-landing', () => {
     tileA.dispatchEvent(new Event('pointerup'));   // first tap — selects
     expect(state.selectedIds).toContain('ord-1');
 
-    vi.advanceTimersByTime(800);   // still within DOUBLE_TAP_MS (1500ms)
+    vi.advanceTimersByTime(200);   // still within DOUBLE_TAP_MS (300ms)
 
     tileA.dispatchEvent(new Event('pointerup'));   // second tap — opens
     expect(SceneManagerMock.mountWorking).toHaveBeenCalledWith(
@@ -425,7 +425,7 @@ describe('terminal/scenes/server-landing', () => {
     tileA.dispatchEvent(new Event('pointerup'));   // first tap — selects
     expect(state.selectedIds).toContain('ord-1');
 
-    vi.advanceTimersByTime(1600);   // past DOUBLE_TAP_MS (1500ms)
+    vi.advanceTimersByTime(400);   // past DOUBLE_TAP_MS (300ms)
 
     tileA.dispatchEvent(new Event('pointerup'));   // second tap — deselects
     expect(state.selectedIds).not.toContain('ord-1');

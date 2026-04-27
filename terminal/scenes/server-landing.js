@@ -23,7 +23,7 @@ import { buildNumpad } from '../numpad.js';
 
 // ── Input guard + double-tap window ──────────────
 var _inputIgnoreUntil = 0;
-var DOUBLE_TAP_MS     = 1500;   // second tap must land within this window to open
+var DOUBLE_TAP_MS     = 300;    // second tap must land within this window to open
 
 // ── Filter cycle ──────────────────────────────────
 var FILTER_CYCLE   = { OPEN: 'CLOSED', CLOSED: 'VOID', VOID: 'OPEN' };

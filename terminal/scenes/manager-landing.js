@@ -28,7 +28,7 @@ import {
 // tile grid after a scene push. Scene pushes set this to Date.now()+200;
 // handlers bail while the flag is in the future.
 var _inputIgnoreUntil = 0;
-var DOUBLE_TAP_MS     = 1500;   // second tap must land within this window to open
+var DOUBLE_TAP_MS     = 300;    // second tap must land within this window to open
 
 // ── Helpers ───────────────────────────────────────
 function fmt(n) {
