@@ -1068,11 +1068,6 @@ function renderActionBar(state) {
   if (!barZone) return;
   barZone.innerHTML = '';
 
-  // Drill state — resets to null on every render (spec: "drill state
-  // resets to default on re-render"). Stored as a closure var so the
-  // back-button handler can set it and re-call renderActionBar.
-  var _activeGroup = null;
-
   var order    = state.order || {};
   var discount = getCashDiscount();
 
@@ -1116,196 +1111,218 @@ function renderActionBar(state) {
     if (allUnsent) voidLabel = 'DELETE';
   }
 
-  function _rebuild() {
-    barZone.innerHTML = '';
+  var bar = buildStaticCard({ accent: T.green });
+  Object.assign(bar.style, {
+    display:    'flex',
+    alignItems: 'stretch',
+    overflow:   'hidden',
+    width:      '100%',
+    boxSizing:  'border-box',
+  });
+  barZone.appendChild(bar);
 
-    var bar = buildStaticCard({ accent: T.green });
-    Object.assign(bar.style, {
-      display:    'flex',
-      alignItems: 'stretch',
-      gap:        '10px',
-      padding:    '12px',
-      flex:       '1',
-      boxSizing:  'border-box',
+  // ── Left totals block ──
+  var totalsBlock = document.createElement('div');
+  Object.assign(totalsBlock.style, {
+    width:          '196px',
+    flexShrink:     '0',
+    padding:        '12px 14px',
+    display:        'flex',
+    flexDirection:  'column',
+    justifyContent: 'center',
+    gap:            '5px',
+    borderRight:    '1px solid ' + T.border,
+  });
+  bar.appendChild(totalsBlock);
+
+  function _totRow(lbl, val, valColor) {
+    var row = document.createElement('div');
+    Object.assign(row.style, {
+      display:        'flex',
+      justifyContent: 'space-between',
+      alignItems:     'baseline',
     });
-    barZone.appendChild(bar);
-
-    // ── Always-visible left totals block (200px) ──
-    var totalsBlock = document.createElement('div');
-    Object.assign(totalsBlock.style, {
-      width:         '200px',
-      flexShrink:    '0',
-      display:       'flex',
-      flexDirection: 'column',
-      justifyContent:'center',
-      gap:           '3px',
-      borderLeft:    '3px solid ' + T.green,
-      paddingLeft:   '10px',
-    });
-    bar.appendChild(totalsBlock);
-
-    function _totRow(lbl, val, valColor) {
-      var row = document.createElement('div');
-      Object.assign(row.style, {
-        display:        'flex',
-        justifyContent: 'space-between',
-        alignItems:     'baseline',
-      });
-      var l = document.createElement('span');
-      Object.assign(l.style, { fontFamily:T.fb, fontSize:T.fsB4, color:T.text,
-        letterSpacing:'0.07em', textTransform:'uppercase' });
-      l.textContent = lbl;
-      var v = document.createElement('span');
-      Object.assign(v.style, { fontFamily:T.fb, fontSize:T.fsB3,
-        fontWeight:T.fwBold, color:valColor || T.text });
-      v.textContent = val;
-      row.appendChild(l);
-      row.appendChild(v);
-      return row;
-    }
-
-    totalsBlock.appendChild(_totRow('SUBTOTAL', fmt(subtotal), T.gold));
-    if (discount > 0) {
-      totalsBlock.appendChild(_totRow('DISC', '-' + fmt(subtotal * discount), T.verm));
-    }
-    totalsBlock.appendChild(_totRow('TAX',  fmt(tax),       T.gold));
-    totalsBlock.appendChild(_totRow('CARD', fmt(total),     T.elec));
-    totalsBlock.appendChild(_totRow('CASH', fmt(cashTotal), T.greenWarm));
-
-    // ── Right action area ──
-    var actionArea = document.createElement('div');
-    Object.assign(actionArea.style, {
-      flex:       '1',
-      display:    'flex',
-      alignItems: 'stretch',
-      gap:        '8px',
-    });
-    bar.appendChild(actionArea);
-
-    if (_activeGroup === null) {
-      // ── Default: 3 category cards ──
-      var groups = [
-        { id: 'order',    label: 'ORDER',    accent: T.moon,  accentDk: T.moonDk,  hint: 'Add · Send · Resend' },
-        { id: 'pay',      label: 'PAY',      accent: T.gold,  accentDk: T.goldDk,  hint: 'Pay · Disc · Void'   },
-        { id: 'terminal', label: 'TERMINAL', accent: T.elec,  accentDk: T.elecDk,  hint: 'Print · Drawer'      },
-      ];
-      for (var gi = 0; gi < groups.length; gi++) {
-        (function(g) {
-          var card = buildActionCard({ accent: g.accent });
-          Object.assign(card.style, {
-            flex:          '1',
-            padding:       '10px 14px',
-            display:       'flex',
-            flexDirection: 'column',
-            justifyContent:'center',
-            borderLeft:    '3px solid ' + g.accent,
-            boxShadow:     '0 3px 0 ' + g.accentDk,
-            pointerEvents: 'auto',
-            touchAction:   'manipulation',
-          });
-          var top = document.createElement('div');
-          Object.assign(top.style, {
-            display:        'flex',
-            justifyContent: 'space-between',
-            alignItems:     'center',
-          });
-          var lbl = document.createElement('span');
-          Object.assign(lbl.style, { fontFamily:T.fh, fontWeight:T.fwBold,
-            fontSize:'16px', color:g.accent });
-          lbl.textContent = g.label;
-          var chev = document.createElement('span');
-          Object.assign(chev.style, { fontFamily:T.fb, fontSize:'18px', color:g.accent });
-          chev.textContent = '›';
-          top.appendChild(lbl);
-          top.appendChild(chev);
-          card.appendChild(top);
-          var hint = document.createElement('div');
-          Object.assign(hint.style, { fontFamily:T.fb, fontSize:T.fsB4,
-            color:hexToRgba(g.accent, 0.6), marginTop:'4px' });
-          hint.textContent = g.hint;
-          card.appendChild(hint);
-          card.addEventListener('pointerup', function(e) {
-            if (e.defaultPrevented) return;
-            _activeGroup = g.id;
-            _rebuild();
-          });
-          actionArea.appendChild(card);
-        })(groups[gi]);
-      }
-    } else if (_activeGroup === 'order') {
-      // ── ORDER drill ──
-      var backO = buildPillButton({ label: '‹ ORDER', color: T.moon, darkBg: T.moonDk,
-        borderRadius: '4px', onClick: function() { _activeGroup = null; _rebuild(); } });
-      backO.style.alignSelf = 'stretch'; backO.style.flex = '1';
-      actionArea.appendChild(backO);
-
-      var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
-        borderRadius: '4px', onClick: function() { handleAddItems(state, state._params || {}); } });
-      addBtn.style.alignSelf = 'stretch'; addBtn.style.flex = '1';
-      actionArea.appendChild(addBtn);
-
-      var sendBtn = buildPillButton({ label: 'SEND UNSENT', color: T.green, darkBg: T.greenDk,
-        borderRadius: '4px',
-        onClick: function() {
-          if (!state.orderId) { showToast('No items to send', { bg: T.gold }); return; }
-          fetchWithTimeout('/api/v1/orders/' + state.orderId + '/send', { method: 'POST' }, 8000)
-            .then(function(r) {
-              if (r.ok) showToast('Sent to kitchen', { bg: T.greenWarm });
-              else      showToast('Send failed', { bg: T.verm });
-            })
-            .catch(function() { showToast('Send failed', { bg: T.verm }); });
-        } });
-      sendBtn.style.alignSelf = 'stretch'; sendBtn.style.flex = '1';
-      actionArea.appendChild(sendBtn);
-
-      var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
-        borderRadius: '4px', onClick: function() { handleResend(state); } });
-      resendBtn.style.alignSelf = 'stretch'; resendBtn.style.flex = '1';
-      actionArea.appendChild(resendBtn);
-
-    } else if (_activeGroup === 'pay') {
-      // ── PAY drill ──
-      var backP = buildPillButton({ label: '‹ PAY', color: T.moon, darkBg: T.moonDk,
-        borderRadius: '4px', onClick: function() { _activeGroup = null; _rebuild(); } });
-      backP.style.alignSelf = 'stretch'; backP.style.flex = '1';
-      actionArea.appendChild(backP);
-
-      var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
-        borderRadius: '4px', onClick: function() { handlePay(state, state._params || {}); } });
-      payBtn.style.alignSelf = 'stretch'; payBtn.style.flex = '1';
-      actionArea.appendChild(payBtn);
-
-      var discBtn = buildPillButton({ label: 'DISC', color: '#b48efa',
-        darkBg: darkenHex('#b48efa', 0.4), borderRadius: '8px',
-        onClick: function() { handleDiscount(state); } });
-      discBtn.style.alignSelf = 'stretch'; discBtn.style.flex = '1';
-      actionArea.appendChild(discBtn);
-
-      var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
-        borderRadius: '4px', onClick: function() { handleVoid(state); } });
-      voidBtn.style.alignSelf = 'stretch'; voidBtn.style.flex = '1';
-      actionArea.appendChild(voidBtn);
-
-    } else if (_activeGroup === 'terminal') {
-      // ── TERMINAL drill ──
-      var backT = buildPillButton({ label: '‹ TERMINAL', color: T.moon, darkBg: T.moonDk,
-        borderRadius: '4px', onClick: function() { _activeGroup = null; _rebuild(); } });
-      backT.style.alignSelf = 'stretch'; backT.style.flex = '1';
-      actionArea.appendChild(backT);
-
-      var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
-        borderRadius: '4px', onClick: function() { handlePrint(state); } });
-      printBtn.style.alignSelf = 'stretch'; printBtn.style.flex = '1';
-      actionArea.appendChild(printBtn);
-
-      var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
-        borderRadius: '4px', onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
-      drawerBtn.style.alignSelf = 'stretch'; drawerBtn.style.flex = '1';
-      actionArea.appendChild(drawerBtn);
-    }
+    var l = document.createElement('span');
+    Object.assign(l.style, { fontFamily:T.fb, fontSize:T.fsB4, color:T.text,
+      letterSpacing:'0.07em', textTransform:'uppercase' });
+    l.textContent = lbl;
+    var v = document.createElement('span');
+    Object.assign(v.style, { fontFamily:T.fb, fontSize:T.fsB3,
+      fontWeight:T.fwBold, color:valColor || T.text });
+    v.textContent = val;
+    row.appendChild(l);
+    row.appendChild(v);
+    return row;
   }
 
-  _rebuild();
+  totalsBlock.appendChild(_totRow('SUBTOTAL', fmt(subtotal), T.gold));
+  if (discount > 0) {
+    totalsBlock.appendChild(_totRow('DISC', '-' + fmt(subtotal * discount), T.verm));
+  }
+  totalsBlock.appendChild(_totRow('TAX',  fmt(tax),       T.gold));
+  totalsBlock.appendChild(_totRow('CARD', fmt(total),     T.elec));
+  totalsBlock.appendChild(_totRow('CASH', fmt(cashTotal), T.greenWarm));
+
+  // ── Right action groups wrapper ──
+  var groupsWrap = document.createElement('div');
+  Object.assign(groupsWrap.style, {
+    flex:       '1',
+    display:    'flex',
+    alignItems: 'stretch',
+    gap:        '8px',
+    padding:    '8px 10px 8px 8px',
+    background: T.well,
+  });
+  bar.appendChild(groupsWrap);
+
+  // ── PAY group card ──
+  var payCard = buildStaticCard({ accent: T.gold });
+  Object.assign(payCard.style, {
+    flex:          '1',
+    display:       'flex',
+    flexDirection: 'column',
+    padding:       '10px 12px 12px',
+    gap:           '6px',
+    overflow:      'hidden',
+    boxShadow:     '0 3px 0 ' + T.goldDk,
+  });
+
+  var payHeader = document.createElement('div');
+  Object.assign(payHeader.style, {
+    fontFamily:    T.fh,
+    fontWeight:    T.fwBold,
+    fontSize:      T.fsB4,
+    letterSpacing: '0.2em',
+    paddingLeft:   '8px',
+    marginBottom:  '3px',
+    color:         T.gold,
+  });
+  payHeader.textContent = 'PAY';
+  payCard.appendChild(payHeader);
+
+  var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
+    borderRadius: '6px', onClick: function() { handlePay(state, state._params || {}); } });
+  payBtn.style.height = '38px';
+  payBtn.style.width  = '100%';
+  payCard.appendChild(payBtn);
+
+  var splitPayRow = document.createElement('div');
+  Object.assign(splitPayRow.style, { display: 'flex', gap: '5px' });
+
+  var discBtn = buildPillButton({ label: 'DISC', color: T.lavender,
+    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px',
+    onClick: function() { handleDiscount(state); } });
+  discBtn.style.height = '38px';
+  discBtn.style.flex   = '1';
+  splitPayRow.appendChild(discBtn);
+
+  var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
+    borderRadius: '6px' });
+  voidBtn.style.height = '38px';
+  voidBtn.style.flex   = '1';
+  _wireLongPress(voidBtn, function() { handleVoid(state); }, 550);
+  splitPayRow.appendChild(voidBtn);
+
+  payCard.appendChild(splitPayRow);
+  groupsWrap.appendChild(payCard);
+
+  // ── TERMINAL group card ──
+  var termCard = buildStaticCard({ accent: T.elec });
+  Object.assign(termCard.style, {
+    flex:          '1',
+    display:       'flex',
+    flexDirection: 'column',
+    padding:       '10px 12px 12px',
+    gap:           '6px',
+    overflow:      'hidden',
+    boxShadow:     '0 3px 0 ' + T.elecDk,
+  });
+
+  var termHeader = document.createElement('div');
+  Object.assign(termHeader.style, {
+    fontFamily:    T.fh,
+    fontWeight:    T.fwBold,
+    fontSize:      T.fsB4,
+    letterSpacing: '0.2em',
+    paddingLeft:   '8px',
+    marginBottom:  '3px',
+    color:         T.elec,
+  });
+  termHeader.textContent = 'TERMINAL';
+  termCard.appendChild(termHeader);
+
+  var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
+    borderRadius: '6px', onClick: function() { handlePrint(state); } });
+  printBtn.style.height = '38px';
+  printBtn.style.width  = '100%';
+  termCard.appendChild(printBtn);
+
+  var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
+    borderRadius: '6px',
+    onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
+  drawerBtn.style.height = '38px';
+  drawerBtn.style.width  = '100%';
+  termCard.appendChild(drawerBtn);
+
+  groupsWrap.appendChild(termCard);
+
+  // ── ORDER group card ──
+  var orderCard = buildStaticCard({ accent: T.moon });
+  Object.assign(orderCard.style, {
+    flex:          '1',
+    display:       'flex',
+    flexDirection: 'column',
+    padding:       '10px 12px 12px',
+    gap:           '6px',
+    overflow:      'hidden',
+    boxShadow:     '0 3px 0 ' + T.moonDk,
+  });
+
+  var orderHeader = document.createElement('div');
+  Object.assign(orderHeader.style, {
+    fontFamily:    T.fh,
+    fontWeight:    T.fwBold,
+    fontSize:      T.fsB4,
+    letterSpacing: '0.2em',
+    paddingLeft:   '8px',
+    marginBottom:  '3px',
+    color:         T.moon,
+  });
+  orderHeader.textContent = 'ORDER';
+  orderCard.appendChild(orderHeader);
+
+  var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
+    borderRadius: '6px', onClick: function() { handleAddItems(state, state._params || {}); } });
+  addBtn.style.height = '38px';
+  addBtn.style.width  = '100%';
+  orderCard.appendChild(addBtn);
+
+  var splitOrderRow = document.createElement('div');
+  Object.assign(splitOrderRow.style, { display: 'flex', gap: '5px' });
+
+  var sendBtn = buildPillButton({ label: 'SEND UNSENT', color: T.green, darkBg: T.greenDk,
+    borderRadius: '6px',
+    onClick: function() {
+      if (!state.orderId) { showToast('No items to send', { bg: T.gold }); return; }
+      fetchWithTimeout('/api/v1/orders/' + state.orderId + '/send', { method: 'POST' }, 8000)
+        .then(function(r) {
+          if (r.ok) showToast('Sent to kitchen', { bg: T.greenWarm });
+          else      showToast('Send failed', { bg: T.verm });
+        })
+        .catch(function() { showToast('Send failed', { bg: T.verm }); });
+    } });
+  sendBtn.style.height = '38px';
+  sendBtn.style.flex   = '1';
+  splitOrderRow.appendChild(sendBtn);
+
+  var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
+    borderRadius: '6px', onClick: function() { handleResend(state); } });
+  resendBtn.style.height = '38px';
+  resendBtn.style.flex   = '1';
+  splitOrderRow.appendChild(resendBtn);
+
+  orderCard.appendChild(splitOrderRow);
+  groupsWrap.appendChild(orderCard);
 }
 
 
