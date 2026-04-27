@@ -1247,6 +1247,8 @@ function buildSeatSelectorCard() {
   var card = buildStaticCard({ accent: T.green });
   card.style.flexShrink = '0';
   card.style.margin = '0 ' + PAD + 'px ' + GAP + 'px';
+  card.style.padding = '0';
+  card.style.overflow = 'visible';
 
   var header = document.createElement('div');
   header.style.cssText = [
@@ -1280,6 +1282,7 @@ function buildSeatSelectorCard() {
   body.style.cssText = [
     'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;',
     'padding:8px 12px 10px;max-height:116px;overflow-y:auto;',
+    '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
   ].join('');
   card.appendChild(body);
 
