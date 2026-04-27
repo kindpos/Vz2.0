@@ -1256,8 +1256,7 @@ function buildSeatSelectorCard() {
   card.style.padding = '0';
   card.style.overflow = 'visible';
 
-  var unselectedSeatList = _allSeatList.filter(function(sn) { return _seatList.indexOf(sn) === -1; });
-  var hasUnselected = unselectedSeatList.length > 0;
+  // (recomputed in getTabList each render so + additions are reflected)
 
   // Builds a category-card-style tab chip: T.card bg, left accent bar, colored text.
   function _buildTabChip(label, color, darkBg) {
@@ -1308,7 +1307,7 @@ function buildSeatSelectorCard() {
   ].join('');
 
   var selectedTab   = _buildTabChip('Selected Seats', T.green, T.greenDk);
-  var unselectedTab = hasUnselected ? _buildTabChip('Unselected', T.moon, T.moonDk) : null;
+  var unselectedTab = _buildTabChip('Unselected', T.moon, T.moonDk);
 
   var spacer = document.createElement('div');
   spacer.style.flex = '1';
@@ -1318,7 +1317,7 @@ function buildSeatSelectorCard() {
   var noneBtn = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: 'NONE', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
 
   header.appendChild(selectedTab);
-  if (unselectedTab) header.appendChild(unselectedTab);
+  header.appendChild(unselectedTab);
   header.appendChild(spacer);
   header.appendChild(addBtn);
   header.appendChild(allBtn);
@@ -1346,10 +1345,7 @@ function buildSeatSelectorCard() {
     _seatTab = tab;
     var onSelected = tab === 'selected';
     selectedTab.setColor(onSelected ? T.green : T.moon, onSelected ? T.greenDk : T.moonDk);
-    if (unselectedTab) {
-      var onUnselected = tab === 'unselected';
-      unselectedTab.setColor(onUnselected ? T.green : T.moon, onUnselected ? T.greenDk : T.moonDk);
-    }
+    unselectedTab.setColor(!onSelected ? T.green : T.moon, !onSelected ? T.greenDk : T.moonDk);
     repaintSeats();
   }
 
@@ -1388,7 +1384,7 @@ function buildSeatSelectorCard() {
   }
 
   selectedTab.addEventListener('pointerup', function() { setTab('selected'); });
-  if (unselectedTab) unselectedTab.addEventListener('pointerup', function() { setTab('unselected'); });
+  unselectedTab.addEventListener('pointerup', function() { setTab('unselected'); });
 
   addBtn.addEventListener('pointerup', function() {
     var maxSeat = 0;
