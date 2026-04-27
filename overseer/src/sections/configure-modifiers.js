@@ -1974,9 +1974,9 @@ async function handleSaveChanges() {
 
         const isNew = !baseG;
         // Build modifiers[] using current modifier state
-        const modifiers = getAllWorking('modifiers');
+        const workingModifiers = getAllWorking('modifiers');
         const modifiers = (g.modifier_ids || []).map(mid => {
-            const modifier = modifiers.find(a => a.id === mid);
+            const modifier = workingModifiers.find(a => a.id === mid);
             if (!modifier) return null;
             const base = {
                 modifier_id: mid,
