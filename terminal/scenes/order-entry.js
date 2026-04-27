@@ -963,7 +963,8 @@ function buildItemTile(item, catColor, isFav) {
 function renderSnakeGrid() {
   if (!_gridEl) return;
   _gridEl.innerHTML = '';
-  // Reset to default item-grid layout; cats view overrides to flex-column below
+  // Reset both wrapper and grid to defaults; cats view overrides below
+  _gridWrap.style.cssText = 'flex:1;overflow-y:auto;';
   _gridEl.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;padding:10px;';
   var frag = document.createDocumentFragment();
 
@@ -999,12 +1000,12 @@ function renderSnakeGrid() {
 
   // ── Category home ──
   if (view === 'cats') {
-    // Previously: tiles had a fixed min-height:120px, leaving dead space below
-    // when few categories were loaded. Now: grid-auto-rows:1fr distributes the
-    // full container height across however many rows the auto-fill layout
-    // produces, so cards always fill the nav area. min-height:48px prevents
-    // rows from collapsing below a tappable size when categories are numerous.
-    _gridEl.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));grid-auto-rows:1fr;height:100%;gap:6px;padding:10px;box-sizing:border-box;';
+    // height:100% on _gridEl inside overflow-y:auto doesn't give a definite
+    // height for grid-auto-rows:1fr. Instead, make _gridWrap a flex column so
+    // _gridEl can use flex:1 — that propagates a true definite height, letting
+    // 1fr rows divide the space evenly with no dead space below the cards.
+    _gridWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;';
+    _gridEl.style.cssText = 'flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));grid-auto-rows:1fr;gap:6px;padding:10px;box-sizing:border-box;overflow-y:auto;';
 
     // Inject PERSONAL as first tile
     var personalCat = { id: 'personal', label: 'PERSONAL', color: T.green };
