@@ -306,7 +306,9 @@ var modHistory   = [];    // [{inst, mod}] — undo stack for modifier additions
 var _bottomBar   = null;  // DOM ref for bottom action bar
 var _mainArea    = null;  // DOM ref for right panel
 var _activeSeats    = new Set();   // currently selected seat numbers
-var _seatList       = [];          // seat numbers available in this session
+var _seatList       = [];          // seat numbers in the overview selection
+var _allSeatList    = [];          // all seat numbers in the party
+var _seatTab        = 'selected';  // 'selected' | 'unselected'
 var _seatSelectorEl = null;        // DOM ref for the inline seat card
 
 // ── Snake nav state ───────────────────────────────
@@ -400,12 +402,14 @@ defineScene({
     _expandedItems = {};
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
+    _allSeatList = (params.seatNumbers && params.seatNumbers.length > 0)
+      ? params.seatNumbers.slice()
+      : [1];
     _seatList = (params.selectedSeatNumbers && params.selectedSeatNumbers.length > 0)
       ? params.selectedSeatNumbers.slice()
-      : (params.seatNumbers && params.seatNumbers.length > 0)
-        ? params.seatNumbers.slice()
-        : [1];
+      : _allSeatList.slice();
     _activeSeats    = new Set([_seatList[0]]);
+    _seatTab        = 'selected';
     _seatSelectorEl = null;
 
     container.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
@@ -482,6 +486,8 @@ defineScene({
     favorites      = [];
     _activeSeats    = new Set();
     _seatList       = [];
+    _allSeatList    = [];
+    _seatTab        = 'selected';
     _seatSelectorEl = null;
     _menuFetched   = false;
   },
@@ -1250,33 +1256,45 @@ function buildSeatSelectorCard() {
   card.style.padding = '0';
   card.style.overflow = 'visible';
 
+  var unselectedSeatList = _allSeatList.filter(function(sn) { return _seatList.indexOf(sn) === -1; });
+  var hasUnselected = unselectedSeatList.length > 0;
+
+  // ── Header ──────────────────────────────────────
   var header = document.createElement('div');
   header.style.cssText = [
-    'display:flex;align-items:center;',
+    'display:flex;align-items:center;gap:6px;',
     'padding:7px 12px 6px;',
     'border-bottom:1px solid ' + T.border + ';',
   ].join('');
 
-  var seatLabel = document.createElement('div');
-  seatLabel.style.cssText = [
-    'font-family:' + T.fh + ';',
-    'font-size:' + T.fsB4 + ';',
-    'letter-spacing:0.22em;',
-    'flex:1;color:' + T.green + ';',
-    'font-weight:' + T.fwBold + ';',
-  ].join('');
-  seatLabel.textContent = 'SEAT';
+  var selectedTab = buildPillButton({ label: 'Selected Seats', color: T.green, darkBg: T.greenDk, fontSize: T.fsB4 });
+  selectedTab.style.padding = '5px 10px';
 
+  var unselectedTab = null;
+  if (hasUnselected) {
+    unselectedTab = buildPillButton({ label: 'Unselected', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
+    unselectedTab.style.padding = '5px 10px';
+  }
+
+  var spacer = document.createElement('div');
+  spacer.style.flex = '1';
+
+  var addBtn = buildPillButton({ label: '+', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
+  addBtn.style.padding = '5px 10px';
   var allBtn = buildPillButton({ label: 'ALL', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
-  allBtn.style.padding = '6px 12px';
+  allBtn.style.padding = '5px 10px';
   var noneBtn = buildPillButton({ label: 'NONE', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
-  noneBtn.style.padding = '6px 12px';
+  noneBtn.style.padding = '5px 10px';
 
-  header.appendChild(seatLabel);
+  header.appendChild(selectedTab);
+  if (unselectedTab) header.appendChild(unselectedTab);
+  header.appendChild(spacer);
+  header.appendChild(addBtn);
   header.appendChild(allBtn);
   header.appendChild(noneBtn);
   card.appendChild(header);
 
+  // ── Body ──────────────────────────────────────────
   var body = document.createElement('div');
   body.className = '_oe-seat-scroll';
   body.style.cssText = [
@@ -1286,9 +1304,29 @@ function buildSeatSelectorCard() {
   ].join('');
   card.appendChild(body);
 
+  function getTabList() {
+    if (_seatTab === 'unselected') {
+      return _allSeatList.filter(function(sn) { return _seatList.indexOf(sn) === -1; });
+    }
+    return _seatList;
+  }
+
+  function setTab(tab) {
+    _seatTab = tab;
+    var onSelected = tab === 'selected';
+    selectedTab.style.background = onSelected ? T.green : T.moon;
+    selectedTab.style.boxShadow  = '0 6px 0 ' + (onSelected ? T.greenDk : T.moonDk);
+    if (unselectedTab) {
+      var onUnselected = tab === 'unselected';
+      unselectedTab.style.background = onUnselected ? T.green : T.moon;
+      unselectedTab.style.boxShadow  = '0 6px 0 ' + (onUnselected ? T.greenDk : T.moonDk);
+    }
+    repaintSeats();
+  }
+
   function repaintSeats() {
     body.innerHTML = '';
-    _seatList.forEach(function(sn) {
+    getTabList().forEach(function(sn) {
       var isActive = _activeSeats.has(sn);
       var pill = buildPillButton({
         label: 'S' + sn,
@@ -1306,7 +1344,9 @@ function buildSeatSelectorCard() {
       pill.style.justifyContent = 'center';
       pill.addEventListener('pointerup', function() {
         if (_activeSeats.has(sn)) {
-          if (_activeSeats.size <= 1) return;
+          // Keep at least one seat active from the selected list
+          var selectedActive = _seatList.filter(function(s) { return _activeSeats.has(s); });
+          if (selectedActive.length <= 1 && _seatList.indexOf(sn) !== -1) return;
           _activeSeats.delete(sn);
         } else {
           _activeSeats.add(sn);
@@ -1318,14 +1358,31 @@ function buildSeatSelectorCard() {
     });
   }
 
+  selectedTab.addEventListener('pointerup', function() { setTab('selected'); });
+  if (unselectedTab) unselectedTab.addEventListener('pointerup', function() { setTab('unselected'); });
+
+  addBtn.addEventListener('pointerup', function() {
+    var maxSeat = 0;
+    _allSeatList.forEach(function(sn) { if (sn > maxSeat) maxSeat = sn; });
+    var newSeat = maxSeat + 1;
+    _allSeatList.push(newSeat);
+    _seatList.push(newSeat);
+    _activeSeats.add(newSeat);
+    setTab('selected');
+  });
+
   allBtn.addEventListener('pointerup', function() {
-    _seatList.forEach(function(sn) { _activeSeats.add(sn); });
+    getTabList().forEach(function(sn) { _activeSeats.add(sn); });
     repaintSeats();
     renderTicket();
   });
 
   noneBtn.addEventListener('pointerup', function() {
-    _activeSeats = new Set([_seatList[0]]);
+    if (_seatTab === 'selected') {
+      _activeSeats = new Set([_seatList[0]]);
+    } else {
+      getTabList().forEach(function(sn) { _activeSeats.delete(sn); });
+    }
     repaintSeats();
     renderTicket();
   });
