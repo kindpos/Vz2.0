@@ -1186,8 +1186,8 @@ function renderActionBar(state) {
     flex:          '1',
     display:       'flex',
     flexDirection: 'column',
-    padding:       '10px 12px 12px',
-    gap:           '6px',
+    padding:       '10px 14px 14px',
+    gap:           '10px',
     overflow:      'hidden',
     boxShadow:     '0 3px 0 ' + T.goldDk,
   });
@@ -1209,21 +1209,25 @@ function renderActionBar(state) {
     borderRadius: '6px', fontSize: T.fsB2,
     onClick: function() { handlePay(state, state._params || {}); } });
   payBtn.style.height     = '52px';
-  payBtn.style.alignSelf  = 'center';
+  payBtn.style.alignSelf  = 'stretch';
   payCard.appendChild(payBtn);
 
   var splitPayRow = document.createElement('div');
-  Object.assign(splitPayRow.style, { display: 'flex', gap: '5px', justifyContent: 'center' });
+  Object.assign(splitPayRow.style, { display: 'flex', gap: '6px' });
 
   var discBtn = buildPillButton({ label: 'DISC', color: T.lavender,
-    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px', padding: '8px 20px',
+    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px',
     onClick: function() { handleDiscount(state); } });
-  discBtn.style.height = '38px';
+  discBtn.style.height   = '38px';
+  discBtn.style.flex     = '1';
+  discBtn.style.minWidth = '0';
   splitPayRow.appendChild(discBtn);
 
   var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
-    borderRadius: '6px', padding: '8px 20px' });
-  voidBtn.style.height = '38px';
+    borderRadius: '6px' });
+  voidBtn.style.height   = '38px';
+  voidBtn.style.flex     = '1';
+  voidBtn.style.minWidth = '0';
   _wireLongPress(voidBtn, function() { handleVoid(state); }, 550);
   splitPayRow.appendChild(voidBtn);
 
@@ -1236,8 +1240,8 @@ function renderActionBar(state) {
     flex:          '1',
     display:       'flex',
     flexDirection: 'column',
-    padding:       '10px 12px 12px',
-    gap:           '6px',
+    padding:       '10px 14px 14px',
+    gap:           '10px',
     overflow:      'hidden',
     boxShadow:     '0 3px 0 ' + T.elecDk,
   });
@@ -1259,14 +1263,14 @@ function renderActionBar(state) {
     borderRadius: '6px', fontSize: T.fsB2,
     onClick: function() { handlePrint(state); } });
   printBtn.style.height    = '52px';
-  printBtn.style.alignSelf = 'center';
+  printBtn.style.alignSelf = 'stretch';
   termCard.appendChild(printBtn);
 
   var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
     borderRadius: '6px', fontSize: T.fsB2,
     onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
   drawerBtn.style.height    = '52px';
-  drawerBtn.style.alignSelf = 'center';
+  drawerBtn.style.alignSelf = 'stretch';
   termCard.appendChild(drawerBtn);
 
   groupsWrap.appendChild(termCard);
@@ -1277,8 +1281,8 @@ function renderActionBar(state) {
     flex:          '1',
     display:       'flex',
     flexDirection: 'column',
-    padding:       '10px 12px 12px',
-    gap:           '6px',
+    padding:       '10px 14px 14px',
+    gap:           '10px',
     overflow:      'hidden',
     boxShadow:     '0 3px 0 ' + T.moonDk,
   });
@@ -1300,14 +1304,14 @@ function renderActionBar(state) {
     borderRadius: '6px', fontSize: T.fsB2,
     onClick: function() { handleAddItems(state, state._params || {}); } });
   addBtn.style.height    = '52px';
-  addBtn.style.alignSelf = 'center';
+  addBtn.style.alignSelf = 'stretch';
   orderCard.appendChild(addBtn);
 
   var splitOrderRow = document.createElement('div');
-  Object.assign(splitOrderRow.style, { display: 'flex', gap: '5px', justifyContent: 'center' });
+  Object.assign(splitOrderRow.style, { display: 'flex', gap: '6px' });
 
   var sendBtn = buildPillButton({ label: 'SEND UNSENT', color: T.green, darkBg: T.greenDk,
-    borderRadius: '6px', padding: '8px 20px',
+    borderRadius: '6px',
     onClick: function() {
       if (!state.orderId) { showToast('No items to send', { bg: T.gold }); return; }
       fetchWithTimeout('/api/v1/orders/' + state.orderId + '/send', { method: 'POST' }, 8000)
@@ -1317,12 +1321,16 @@ function renderActionBar(state) {
         })
         .catch(function() { showToast('Send failed', { bg: T.verm }); });
     } });
-  sendBtn.style.height = '38px';
+  sendBtn.style.height   = '38px';
+  sendBtn.style.flex     = '1';
+  sendBtn.style.minWidth = '0';
   splitOrderRow.appendChild(sendBtn);
 
   var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
-    borderRadius: '6px', padding: '8px 20px', onClick: function() { handleResend(state); } });
-  resendBtn.style.height = '38px';
+    borderRadius: '6px', onClick: function() { handleResend(state); } });
+  resendBtn.style.height   = '38px';
+  resendBtn.style.flex     = '1';
+  resendBtn.style.minWidth = '0';
   splitOrderRow.appendChild(resendBtn);
 
   orderCard.appendChild(splitOrderRow);
