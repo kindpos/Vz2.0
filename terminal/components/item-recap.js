@@ -415,7 +415,9 @@ function _buildTotals(t) {
   wrap.appendChild(_sep('ir-tsep'));
   wrap.appendChild(_row('TOTAL', _fmt(t.total), 'ir-tl-strong', 'ir-tv ir-tv-big'));
   wrap.appendChild(_sep('ir-tsep2'));
-  wrap.appendChild(_row('CASH', _fmt(t.cash), 'ir-tl-strong', 'ir-tv ir-tv-cash'));
+  if (t.cash != null) {
+    wrap.appendChild(_row('CASH', _fmt(t.cash), 'ir-tl-strong', 'ir-tv ir-tv-cash'));
+  }
 
   return wrap;
 }
