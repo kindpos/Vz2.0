@@ -740,11 +740,7 @@ function buildChecksCard(state, handlers, activeTab, selectedCheckIds) {
 
   // List
   var list = document.createElement('div');
-  list.style.cssText = [
-    'display:flex;flex-direction:column;gap:6px;',
-    'max-height:280px;overflow-y:auto;',
-    'touch-action:pan-y;overscroll-behavior:contain;',
-  ].join('');
+  list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
 
   if (activeTab === 'active') {
     state.openChecks.forEach(function(chk) {
@@ -960,7 +956,7 @@ function buildTipsCard(state, handlers, tipFilter) {
 
   // Row list — content depends on current filter
   var list = document.createElement('div');
-  list.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;';
+  list.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
 
   if (!hasCards) {
     var emptyAll = document.createElement('div');
