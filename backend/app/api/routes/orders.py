@@ -102,7 +102,7 @@ from app.core.financial_invariants import (
     max_abs_diff,
 )
 from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
-from app.api.routes.auth import _record_diag
+from app.api.routes.auth import _record_diag, require_manager
 
 _ZERO = Decimal('0')
 
@@ -1251,7 +1251,8 @@ class VoidPaymentRequest(BaseModel):
     approved_by: Optional[str] = None
 
 
-@router.post("/{order_id}/payments/{payment_id}/void", response_model=OrderResponse)
+@router.post("/{order_id}/payments/{payment_id}/void", response_model=OrderResponse,
+             dependencies=[Depends(require_manager)])
 async def void_payment(
         order_id: str,
         payment_id: str,

@@ -1300,14 +1300,14 @@ defineScene({
           // until it's added. The frontend call is correct — just swap
           // the template name if the endpoint needs adjustment.
           showToast('Printing slip\u2026', { bg: T.lavender });
-          fetch('/api/v1/server/shift/print-checkout', {
+          fetchWithTimeout('/api/v1/server/shift/print-checkout', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               employee_id:   state.data.employeeId,
               employee_name: state.data.employeeName,
             }),
-          }).then(function(r) {
+          }, 8000).then(function(r) {
             if (r.ok) {
               showToast('Slip printed', { bg: T.greenWarm });
             } else if (r.status === 404) {
@@ -1415,14 +1415,14 @@ defineScene({
               SceneManager.closeInterrupt('co-transfer-picker');
 
               var transfers = checks.map(function(chk) {
-                return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/transfer', {
+                return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/transfer', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     to_server_id: destServer.id,
                     from_server_id: state.data.employeeId,
                   }),
-                }).then(function(r) {
+                }, 10000).then(function(r) {
                   return { chk: chk, ok: r.ok, status: r.status };
                 }).catch(function() {
                   return { chk: chk, ok: false, status: 0 };

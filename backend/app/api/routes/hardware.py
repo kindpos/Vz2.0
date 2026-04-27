@@ -326,7 +326,7 @@ async def _probe_host(ip: str, mac: Optional[str], ports: list, timeout: float) 
 
 # ΓöÇΓöÇ Scan endpoints ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-@router.get("/scan/stream")
+@router.get("/scan/stream", dependencies=[Depends(require_manager)])
 async def scan_network_stream(
     ip: Optional[str] = None,
     type: Optional[str] = None,
@@ -461,7 +461,7 @@ async def scan_network_stream(
 #  DEVICE CRUD
 # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
-@router.get("/devices")
+@router.get("/devices", dependencies=[Depends(require_manager)])
 async def list_devices():
     """Return all saved devices from hardware_config.db."""
     await _ensure_db()
@@ -579,7 +579,7 @@ async def delete_device(
         ))
     return {"deleted": mac}
 
-@router.get("/kitchen-printers")
+@router.get("/kitchen-printers", dependencies=[Depends(require_manager)])
 async def list_kitchen_printers():
     """Return kitchen printers with their assigned categories."""
     await _ensure_db()
@@ -601,7 +601,7 @@ async def list_kitchen_printers():
 #  TEST (by MAC ΓÇö resolves IP from DB)
 # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
-@router.post("/test")
+@router.post("/test", dependencies=[Depends(require_manager)])
 async def test_device(req: TestRequest):
     """Test connectivity to a saved device by MAC address."""
     await _ensure_db()
@@ -633,7 +633,7 @@ async def test_device(req: TestRequest):
 #  TEST PRINT (direct IP ΓÇö used from settings scene device editor)
 # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
-@router.post("/test-print")
+@router.post("/test-print", dependencies=[Depends(require_manager)])
 async def test_print(request: TestPrintRequest):
     """Send a KINDpos test receipt via raw ESC/POS over TCP."""
     ESC = b'\x1b'; GS = b'\x1d'
@@ -687,7 +687,7 @@ def _send_raw(ip: str, port: int, data: bytes):
         s.sendall(data)
 
 
-@router.get("/status")
+@router.get("/status", dependencies=[Depends(require_manager)])
 async def hardware_status():
     return {
         "status": "online",
@@ -709,7 +709,7 @@ class ProbeRequest(BaseModel):
     port: int = 9100
 
 
-@router.post("/probe")
+@router.post("/probe", dependencies=[Depends(require_manager)])
 async def probe_device(req: ProbeRequest):
     """Probe a specific IP:port, identify device type, model, and MAC."""
     ports_to_try = list(dict.fromkeys([req.port] + ALL_SCAN_PORTS))
@@ -738,7 +738,7 @@ class TestConnectionRequest(BaseModel):
     timeout: float = 2.0
 
 
-@router.post("/test-connection")
+@router.post("/test-connection", dependencies=[Depends(require_manager)])
 async def test_connection(req: TestConnectionRequest):
     """Test raw TCP connectivity to an IP:port."""
     try:
@@ -781,7 +781,7 @@ def _run_scan_in_thread(queue: asyncio.Queue, loop, network: str):
     asyncio.run_coroutine_threadsafe(queue.put({"type": "__DONE__"}), loop)
 
 
-@router.post("/discover-printers")
+@router.post("/discover-printers", dependencies=[Depends(require_manager)])
 async def discover_printers(request: ScanRequest = ScanRequest()):
     network = request.network or settings.default_subnet
 
