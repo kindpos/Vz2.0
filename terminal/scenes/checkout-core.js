@@ -791,6 +791,8 @@ defineScene({
       initialTipCents = Math.round(params.initialTip * 100).toString();
     }
 
+    var _submitting = false;
+
     // Container fills the transactional layer and centers the row.
     container.style.cssText = [
       'width:100%;height:100%;',
@@ -893,6 +895,8 @@ defineScene({
         return '$' + (n / 100).toFixed(2);
       },
       onSubmit: function(digits) {
+        if (_submitting) return;
+        _submitting = true;
         var tipAmount = parseInt(digits || '0', 10) / 100;
         fetchWithTimeout('/api/v1/payments/tip-adjust', {
           method: 'POST',
@@ -908,6 +912,7 @@ defineScene({
           SceneManager.closeTransactional('co-adjust-single');
           if (params.onDone) params.onDone();
         }).catch(function() {
+          _submitting = false;
           numpad.setError && numpad.setError('Adjust failed');
           showToast('Tip adjust failed', { bg: T.verm });
         });

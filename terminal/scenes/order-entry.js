@@ -95,11 +95,11 @@ function _handleNameTap() {
   }
   SceneManager.interrupt('oe-name-input', {
     onConfirm: function(name) {
-      fetch(API + '/orders/' + currentOrderId, {
+      fetchWithTimeout(API + '/orders/' + currentOrderId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customer_name: name }),
-      }).then(function(r) {
+      }, 15000).then(function(r) {
         if (r.ok) {
           currentCustomerName = name;
           OrderSummary.update({ customerName: name });
@@ -141,7 +141,7 @@ var ITEM_TO_CATEGORY = {};         // item_id → category_id
 var _menuFetched = false;
 
 function fetchMenuFromAPI() {
-  return fetch(API + '/menu')
+  return fetchWithTimeout(API + '/menu', {}, 15000)
     .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function(menu) {
     if (!menu.categories || !menu.items) return;
@@ -819,7 +819,7 @@ function computeTicketTotals() {
 function loadFavorites() {
   var empId = sceneParams.employeeId;
   if (!empId) return;
-  fetch(API + '/favorites?employee_id=' + empId)
+  fetchWithTimeout(API + '/favorites?employee_id=' + empId, {}, 10000)
     .then(function(r) { return r.ok ? r.json() : { item_ids: [] }; })
     .then(function(data) {
       favorites = data.item_ids || [];
@@ -831,11 +831,11 @@ function loadFavorites() {
 function saveFavorites() {
   var empId = sceneParams.employeeId;
   if (!empId) return;
-  fetch(API + '/favorites', {
+  fetchWithTimeout(API + '/favorites', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ employee_id: empId, item_ids: favorites }),
-  }).catch(function() {});
+  }, 10000).catch(function() {});
 }
 
 function toggleFavorite(itemId) {

@@ -247,7 +247,7 @@ class PrintContextBuilder:
         tip_map = {}
         for e in events:
             if e.event_type == EventType.TIP_ADJUSTED:
-                tip_map[e.payload.get("payment_id")] = e.payload.get("tip_amount", 0.0)
+                tip_map[e.payload.get("payment_id")] = Decimal(str(e.payload.get("tip_amount", "0.00")))
         return tip_map
 
     def __init__(self, ledger: EventLedger):
@@ -523,7 +523,8 @@ class PrintContextBuilder:
                 hours, remainder = divmod(int(delta.total_seconds()), 3600)
                 minutes = remainder // 60
                 shift_duration = f"{hours}h {minutes}m"
-            except Exception: pass
+            except Exception as _e:
+                logger.warning("Could not calculate shift duration for %s: %s", server_id, _e)
 
         # ── Tip-out calculation ───────────────────────────────────────────────
         tip_out_presets = getattr(settings, "tip_out_presets", [])
@@ -578,7 +579,7 @@ class PrintContextBuilder:
         today = datetime.now(timezone.utc).strftime("%m/%d/%Y")
 
         # Gate the server-checkout aggregate against the canonical invariants.
-        _declared_cash_tips = float(declared_cash_tips or 0.0)
+        _declared_cash_tips = declared_cash_tips or Decimal("0.00")
         invariant_gate(
             check_day_close(
                 gross_sales=money_round(gross_sales),
