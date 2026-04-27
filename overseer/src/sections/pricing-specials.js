@@ -11,7 +11,7 @@ import {
      — Specials (promotional pricing events)
      — Order Type Pricing (Dine-In/Takeout/Delivery %)
      — Employee Discount (staff policy)
-     — Comp Reasons (manager comp flow policy)
+     — Void Reasons (manager void flow policy)
 
    Locked per specials-discounts-reskin-spec.md.
    Nice. Dependable. Yours.
@@ -36,7 +36,7 @@ let pricingData = {
     specials:           [],
     order_types:        [],
     employee_discount:  null,
-    comp_reasons:       [],
+    void_reasons:       [],
     categories:         [],
 };
 
@@ -45,11 +45,11 @@ let pendingChanges = {
     specials_new: [],        specials_edited: [],      specials_deleted: [],
     order_types_edited: [],
     employee_edited: null,
-    comp_reasons_new: [],    comp_reasons_edited: [],  comp_reasons_deleted: [],
+    void_reasons_new: [],    void_reasons_edited: [],  void_reasons_deleted: [],
 };
 
 let displayState = {
-    openSection: 'specials',   // one of: day-parts, specials, order-types, employee, comp-reasons, null
+    openSection: 'specials',   // one of: day-parts, specials, order-types, employee, void-reasons, null
 };
 
 const modalStack = [];
@@ -66,9 +66,9 @@ function getPendingCount() {
          + pendingChanges.specials_deleted.length
          + pendingChanges.order_types_edited.length
          + (pendingChanges.employee_edited ? 1 : 0)
-         + pendingChanges.comp_reasons_new.length
-         + pendingChanges.comp_reasons_edited.length
-         + pendingChanges.comp_reasons_deleted.length;
+         + pendingChanges.void_reasons_new.length
+         + pendingChanges.void_reasons_edited.length
+         + pendingChanges.void_reasons_deleted.length;
 }
 
 function defaultWindow() {
@@ -121,9 +121,9 @@ function defaultEmployee() {
     };
 }
 
-function defaultCompReason() {
+function defaultVoidReason() {
     return {
-        id:           `temp_comp_${Date.now()}`,
+        id:           `temp_void_${Date.now()}`,
         name:         '',
         requires_pin: true,
         max_amount:   null,
@@ -219,12 +219,12 @@ function migrateSpecial(raw) {
 
 async function fetchPricingData() {
     try {
-        const [dpRes, spRes, otRes, empRes, compRes, catRes] = await Promise.all([
+        const [dpRes, spRes, otRes, empRes, voidRes, catRes] = await Promise.all([
             fetch('/api/v1/config/pricing/day-parts').catch(() => ({ ok: false })),
             fetch('/api/v1/config/pricing/specials').catch(() => ({ ok: false })),
             fetch('/api/v1/config/pricing/order-types').catch(() => ({ ok: false })),
             fetch('/api/v1/config/pricing/employee-discount').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/pricing/comp-reasons').catch(() => ({ ok: false })),
+            fetch('/api/v1/config/pricing/void-reasons').catch(() => ({ ok: false })),
             fetch('/api/v1/config/menu/categories').catch(() => ({ ok: false })),
         ]);
 
@@ -236,7 +236,7 @@ async function fetchPricingData() {
             { id: 'ot_delivery', name: 'Delivery', adjustment: 0, active: true },
         ];
         const employee_discount = empRes.ok ? await empRes.json() : defaultEmployee();
-        const comp_reasons = compRes.ok ? await compRes.json() : [];
+        const void_reasons = voidRes.ok ? await voidRes.json() : [];
         const rawCats = catRes.ok ? await catRes.json() : [];
         const categories = rawCats.map(c => ({
             id:    c.category_id || c.id,
@@ -244,13 +244,13 @@ async function fetchPricingData() {
             color: c.hex_color || c.color || C.gold,
         }));
 
-        return { day_parts, specials, order_types, employee_discount, comp_reasons, categories };
+        return { day_parts, specials, order_types, employee_discount, void_reasons, categories };
     } catch (e) {
         console.warn('[PricingSpecials] Failed to fetch:', e);
         return {
             day_parts: [], specials: [], order_types: [],
             employee_discount: defaultEmployee(),
-            comp_reasons: [], categories: [],
+            void_reasons: [], categories: [],
         };
     }
 }
@@ -285,13 +285,13 @@ function getWorkingEmployee() {
         : clone(pricingData.employee_discount || defaultEmployee());
 }
 
-function getAllCompReasons() {
-    const edits = new Map(pendingChanges.comp_reasons_edited.map(e => [e.id, e]));
-    const deleted = new Set(pendingChanges.comp_reasons_deleted);
-    return pricingData.comp_reasons
+function getAllVoidReasons() {
+    const edits = new Map(pendingChanges.void_reasons_edited.map(e => [e.id, e]));
+    const deleted = new Set(pendingChanges.void_reasons_deleted);
+    return pricingData.void_reasons
         .map(r => edits.has(r.id) ? edits.get(r.id) : clone(r))
         .filter(r => !deleted.has(r.id))
-        .concat(pendingChanges.comp_reasons_new);
+        .concat(pendingChanges.void_reasons_new);
 }
 
 /* ─── CHANGE TRACKERS ────────────────────────────────────────── */
@@ -342,22 +342,22 @@ function trackOrderTypeEdit(ot) {
 
 function trackEmployeeEdit(emp) { pendingChanges.employee_edited = emp; renderScene(); }
 
-function trackCompReasonCreate(r) { pendingChanges.comp_reasons_new.push(r); renderScene(); }
-function trackCompReasonEdit(r) {
-    if (pendingChanges.comp_reasons_new.some(n => n.id === r.id)) {
-        const i = pendingChanges.comp_reasons_new.findIndex(n => n.id === r.id);
-        pendingChanges.comp_reasons_new[i] = r; renderScene(); return;
+function trackVoidReasonCreate(r) { pendingChanges.void_reasons_new.push(r); renderScene(); }
+function trackVoidReasonEdit(r) {
+    if (pendingChanges.void_reasons_new.some(n => n.id === r.id)) {
+        const i = pendingChanges.void_reasons_new.findIndex(n => n.id === r.id);
+        pendingChanges.void_reasons_new[i] = r; renderScene(); return;
     }
-    const i = pendingChanges.comp_reasons_edited.findIndex(e => e.id === r.id);
-    if (i !== -1) pendingChanges.comp_reasons_edited[i] = r;
-    else pendingChanges.comp_reasons_edited.push(r);
+    const i = pendingChanges.void_reasons_edited.findIndex(e => e.id === r.id);
+    if (i !== -1) pendingChanges.void_reasons_edited[i] = r;
+    else pendingChanges.void_reasons_edited.push(r);
     renderScene();
 }
-function trackCompReasonDelete(id) {
-    const i = pendingChanges.comp_reasons_new.findIndex(n => n.id === id);
-    if (i !== -1) { pendingChanges.comp_reasons_new.splice(i, 1); renderScene(); return; }
-    pendingChanges.comp_reasons_edited = pendingChanges.comp_reasons_edited.filter(e => e.id !== id);
-    if (!pendingChanges.comp_reasons_deleted.includes(id)) pendingChanges.comp_reasons_deleted.push(id);
+function trackVoidReasonDelete(id) {
+    const i = pendingChanges.void_reasons_new.findIndex(n => n.id === id);
+    if (i !== -1) { pendingChanges.void_reasons_new.splice(i, 1); renderScene(); return; }
+    pendingChanges.void_reasons_edited = pendingChanges.void_reasons_edited.filter(e => e.id !== id);
+    if (!pendingChanges.void_reasons_deleted.includes(id)) pendingChanges.void_reasons_deleted.push(id);
     renderScene();
 }
 
@@ -386,7 +386,7 @@ export function registerPricingSpecials(sceneManager) {
             bodyMount = footerMount = currentSaveBar = null;
             pricingData = {
                 day_parts: [], specials: [], order_types: [],
-                employee_discount: null, comp_reasons: [], categories: [],
+                employee_discount: null, void_reasons: [], categories: [],
             };
             pendingChanges = emptyChanges();
             if (container) container.innerHTML = '';
@@ -400,7 +400,7 @@ function emptyChanges() {
         specials_new: [], specials_edited: [], specials_deleted: [],
         order_types_edited: [],
         employee_edited: null,
-        comp_reasons_new: [], comp_reasons_edited: [], comp_reasons_deleted: [],
+        void_reasons_new: [], void_reasons_edited: [], void_reasons_deleted: [],
     };
 }
 
@@ -408,8 +408,8 @@ function sceneSubtitle() {
     const dp = getAllDayParts().length;
     const sp = getAllSpecials().length;
     const ot = getAllOrderTypes().length;
-    const cr = getAllCompReasons().length;
-    return `${dp} day part${dp===1?'':'s'} · ${sp} special${sp===1?'':'s'} · ${ot} order types · ${cr} comp reason${cr===1?'':'s'}`;
+    const cr = getAllVoidReasons().length;
+    return `${dp} day part${dp===1?'':'s'} · ${sp} special${sp===1?'':'s'} · ${ot} order types · ${cr} void reason${cr===1?'':'s'}`;
 }
 
 /* ─── MAIN SCENE RENDER ──────────────────────────────────────── */
@@ -429,7 +429,7 @@ function renderScene() {
     voidsSpacer.style.marginTop = '24px';
     bodyMount.appendChild(voidsSpacer);
     bodyMount.appendChild(buildSuperHeader('VOIDS', C.verm));
-    bodyMount.appendChild(buildCompReasonsAccordion());
+    bodyMount.appendChild(buildVoidReasonsAccordion());
 
     bodyMount.appendChild(buildPendingFooter());
     updateSaveBar();
@@ -1038,21 +1038,21 @@ function makePill(text, tone) {
     return p;
 }
 
-/* ─── COMP REASONS ACCORDION ─────────────────────────────────── */
-function buildCompReasonsAccordion() {
-    const reasons = getAllCompReasons();
+/* ─── VOID REASONS ACCORDION ─────────────────────────────────── */
+function buildVoidReasonsAccordion() {
+    const reasons = getAllVoidReasons();
     const pinCount = reasons.filter(r => r.requires_pin).length;
-    const pendingCount = pendingChanges.comp_reasons_new.length
-                       + pendingChanges.comp_reasons_edited.length
-                       + pendingChanges.comp_reasons_deleted.length;
+    const pendingCount = pendingChanges.void_reasons_new.length
+                       + pendingChanges.void_reasons_edited.length
+                       + pendingChanges.void_reasons_deleted.length;
     return buildAccordion(
-        'comp-reasons', 'Comp Reasons',
+        'void-reasons', 'Void Reasons',
         `${reasons.length} reason${reasons.length === 1 ? '' : 's'}${pinCount > 0 ? ` · ${pinCount} require PIN` : ''}`,
         C.verm,
         (body) => {
             if (reasons.length === 0) {
                 const empty = document.createElement('div');
-                empty.textContent = 'No comp reasons yet';
+                empty.textContent = 'No void reasons yet';
                 empty.style.cssText = `
                     padding: 20px; text-align: center;
                     font-family: ui-monospace, monospace;
@@ -1061,19 +1061,19 @@ function buildCompReasonsAccordion() {
                 `;
                 body.appendChild(empty);
             } else {
-                reasons.forEach(r => body.appendChild(buildCompReasonRow(r)));
+                reasons.forEach(r => body.appendChild(buildVoidReasonRow(r)));
             }
             const addBtn = buildAddBtn('+ Add reason', C.verm);
-            addBtn.addEventListener('click', () => openCompReasonModal(null));
+            addBtn.addEventListener('click', () => openVoidReasonModal(null));
             body.appendChild(addBtn);
         },
         pendingCount
     );
 }
 
-function buildCompReasonRow(r) {
-    const pending = pendingChanges.comp_reasons_new.some(n => n.id === r.id)
-                 || pendingChanges.comp_reasons_edited.some(e => e.id === r.id);
+function buildVoidReasonRow(r) {
+    const pending = pendingChanges.void_reasons_new.some(n => n.id === r.id)
+                 || pendingChanges.void_reasons_edited.some(e => e.id === r.id);
     const row = document.createElement('div');
     row.style.cssText = `
         display: flex; align-items: center; gap: 10px;
@@ -1087,7 +1087,7 @@ function buildCompReasonRow(r) {
     `;
     row.addEventListener('mouseenter', () => row.style.background = C.card);
     row.addEventListener('mouseleave', () => row.style.background = C.well);
-    row.addEventListener('click', () => openCompReasonModal(r));
+    row.addEventListener('click', () => openVoidReasonModal(r));
 
     const name = document.createElement('div');
     name.textContent = r.name || '(unnamed)';
@@ -2041,21 +2041,21 @@ function openEmployeeModal(existing) {
     }, { accent: C.green });
 }
 
-/* ─── COMP REASON MODAL ──────────────────────────────────────── */
-function openCompReasonModal(existing) {
+/* ─── VOID REASON MODAL ──────────────────────────────────────── */
+function openVoidReasonModal(existing) {
     const isEdit = !!existing;
-    const r = existing ? clone(existing) : defaultCompReason();
+    const r = existing ? clone(existing) : defaultVoidReason();
 
-    openModal(isEdit ? `Edit comp reason: ${r.name || ''}` : 'Add comp reason', (body, modalEl, ov) => {
+    openModal(isEdit ? `Edit void reason: ${r.name || ''}` : 'Add void reason', (body, modalEl, ov) => {
         const nameField = buildTextField(body, 'Reason name', r.name, { required: true, placeholder: 'Kitchen Error, Customer Complaint…' });
         const pinToggle = buildToggleRow(body, 'Requires manager PIN', r.requires_pin, (on) => { r.requires_pin = on; }, C.gold);
-        const maxField  = buildTextField(body, 'Max comp amount (blank = unlimited)', r.max_amount != null ? r.max_amount : '', { type: 'number', step: '0.01', placeholder: 'Leave blank for no limit' });
+        const maxField  = buildTextField(body, 'Max void amount (blank = unlimited)', r.max_amount != null ? r.max_amount : '', { type: 'number', step: '0.01', placeholder: 'Leave blank for no limit' });
 
         if (isEdit) {
             body.appendChild(buildDivider());
             const delBtn = buildPillButton('Delete reason', 'danger', () => {
                 if (!confirm(`Delete "${r.name}"?`)) return;
-                trackCompReasonDelete(r.id);
+                trackVoidReasonDelete(r.id);
                 closeModal(ov);
             });
             delBtn.style.width = '100%';
@@ -2075,8 +2075,8 @@ function openCompReasonModal(existing) {
                 max_amount:   maxField.input.value.trim() ? parseFloat(maxField.input.value) : null,
                 active:       true,
             };
-            if (isEdit) trackCompReasonEdit(gathered);
-            else trackCompReasonCreate(gathered);
+            if (isEdit) trackVoidReasonEdit(gathered);
+            else trackVoidReasonCreate(gathered);
             closeModal(ov);
         }, { small: true }));
         body.appendChild(footer);
@@ -2122,16 +2122,16 @@ function generatePricingEvents() {
             payload: pendingChanges.employee_edited });
     }
 
-    pendingChanges.comp_reasons_new.forEach(r => {
+    pendingChanges.void_reasons_new.forEach(r => {
         const id = r.id.replace(/^temp_/, '');
-        events.push({ event_type: 'pricing.comp_reason_created', batch_id, timestamp: ts(),
+        events.push({ event_type: 'pricing.void_reason_created', batch_id, timestamp: ts(),
             payload: { ...r, id } });
     });
-    pendingChanges.comp_reasons_edited.forEach(r => {
-        events.push({ event_type: 'pricing.comp_reason_updated', batch_id, timestamp: ts(), payload: r });
+    pendingChanges.void_reasons_edited.forEach(r => {
+        events.push({ event_type: 'pricing.void_reason_updated', batch_id, timestamp: ts(), payload: r });
     });
-    pendingChanges.comp_reasons_deleted.forEach(id => {
-        events.push({ event_type: 'pricing.comp_reason_deleted', batch_id, timestamp: ts(), payload: { id } });
+    pendingChanges.void_reasons_deleted.forEach(id => {
+        events.push({ event_type: 'pricing.void_reason_deleted', batch_id, timestamp: ts(), payload: { id } });
     });
 
     return events;
@@ -2175,13 +2175,13 @@ async function handleSaveChanges() {
         pricingData.employee_discount = clone(pendingChanges.employee_edited);
     }
 
-    pendingChanges.comp_reasons_new.forEach(r => pricingData.comp_reasons.push(clone(r)));
-    pendingChanges.comp_reasons_edited.forEach(r => {
-        const idx = pricingData.comp_reasons.findIndex(x => x.id === r.id);
-        if (idx !== -1) pricingData.comp_reasons[idx] = clone(r);
+    pendingChanges.void_reasons_new.forEach(r => pricingData.void_reasons.push(clone(r)));
+    pendingChanges.void_reasons_edited.forEach(r => {
+        const idx = pricingData.void_reasons.findIndex(x => x.id === r.id);
+        if (idx !== -1) pricingData.void_reasons[idx] = clone(r);
     });
-    pendingChanges.comp_reasons_deleted.forEach(id => {
-        pricingData.comp_reasons = pricingData.comp_reasons.filter(x => x.id !== id);
+    pendingChanges.void_reasons_deleted.forEach(id => {
+        pricingData.void_reasons = pricingData.void_reasons.filter(x => x.id !== id);
     });
 
     const n = events.length;
