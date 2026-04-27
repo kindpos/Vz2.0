@@ -1875,14 +1875,13 @@ function buildSeatCard(state, seatIdx) {
     if (selItems[seatIdx + ':' + ki]) { seatActive = true; break; }
   }
 
-  var wrap = buildActionCard({ accent: T.moon });
+  var wrap = buildActionCard({ accent: seatActive ? T.green : T.moon });
   wrap.style.flex          = '1';
   wrap.style.padding       = '0';
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
   wrap.style.border        = '1px solid ' + (seatActive ? T.green : T.border);
-  wrap.style.borderLeft    = '4px solid ' + (seatActive ? T.green : T.moon);
   wrap.style.boxShadow     = seatActive ? ('0 4px 0 ' + T.greenDk) : ('0 4px 0 ' + T.moonDk);
 
   // ── Header (tappable — toggleSeat) ──
