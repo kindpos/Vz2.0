@@ -53,6 +53,7 @@
 
 import { T } from '../common/tokens.js';
 import { buildPillButton } from './theme-manager.js';
+import { fetchWithTimeout } from './net.js';
 // ^ adjust import path/names if buildPillButton lives elsewhere
 
 // ─── Style injection (once per page) ────────────────────────────────
@@ -219,10 +220,8 @@ export function performLogout() {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  fetch('/api/v1/auth/logout', {
-    method: 'POST',
-    headers: headers
-  }).catch(err => console.warn('[logout] API background call failed:', err));
+  fetchWithTimeout('/api/v1/auth/logout', { method: 'POST', headers: headers }, 8000)
+    .catch(err => console.warn('[logout] API background call failed:', err));
 }
 
 function triggerLogout() {
