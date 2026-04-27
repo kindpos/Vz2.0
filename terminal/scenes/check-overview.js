@@ -1217,14 +1217,14 @@ function renderActionBar(state) {
   Object.assign(splitPayRow.style, { display: 'flex', gap: '6px' });
 
   var discBtn = buildPillButton({ label: 'DISCOUNTS', color: T.lavender,
-    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px', fontSize: T.fsB3,
+    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px', fontSize: T.fsB3, padding: '0 12px',
     onClick: function() { handleDiscount(state); } });
   discBtn.style.height = '38px';
   discBtn.style.width  = 'calc(50% - 3px)';
   splitPayRow.appendChild(discBtn);
 
   var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
-    borderRadius: '6px', fontSize: T.fsB3 });
+    borderRadius: '6px', fontSize: T.fsB3, padding: '0 12px' });
   voidBtn.style.height = '38px';
   voidBtn.style.width  = 'calc(50% - 3px)';
   _wireLongPress(voidBtn, function() { handleVoid(state); }, 550);
@@ -1312,8 +1312,8 @@ function renderActionBar(state) {
   var splitOrderRow = document.createElement('div');
   Object.assign(splitOrderRow.style, { display: 'flex', gap: '6px' });
 
-  var sendBtn = buildPillButton({ label: 'Unsent >>>', color: T.green, darkBg: T.greenDk,
-    borderRadius: '6px', fontSize: T.fsB3,
+  var sendBtn = buildPillButton({ label: '>>> Unsent', color: T.green, darkBg: T.greenDk,
+    borderRadius: '6px', fontSize: T.fsB3, padding: '0 12px',
     onClick: function() {
       if (!state.orderId) { showToast('No items to send', { bg: T.gold }); return; }
       fetchWithTimeout('/api/v1/orders/' + state.orderId + '/send', { method: 'POST' }, 8000)
@@ -1329,7 +1329,7 @@ function renderActionBar(state) {
   splitOrderRow.appendChild(sendBtn);
 
   var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
-    borderRadius: '6px', fontSize: T.fsB3, onClick: function() { handleResend(state); } });
+    borderRadius: '6px', fontSize: T.fsB3, padding: '0 12px', onClick: function() { handleResend(state); } });
   resendBtn.style.height   = '38px';
   resendBtn.style.flex     = '1';
   resendBtn.style.minWidth = '0';
