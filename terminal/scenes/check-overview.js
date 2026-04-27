@@ -253,12 +253,10 @@ function _adaptOrderForRecap(state) {
   }
 
   var order = state.order || {};
-  var discount = getCashDiscount();
   var totals = {
     subtotal:  order.subtotal || 0,
     tax:       order.tax || 0,
     cardTotal: order.total || 0,
-    cashPrice: Math.round((order.total || 0) * (1 - discount) * 100) / 100,
     taxRate:   getTaxRate(),
   };
 
@@ -280,7 +278,6 @@ function _adaptOrderForRecap(state) {
       tax:       totals.tax,
       paid:      Math.round(paid * 100) / 100,
       total:     totals.cardTotal,
-      cash:      totals.cashPrice,
       taxRate:   totals.taxRate,
     },
   };
@@ -336,7 +333,6 @@ function collectSummary(seats, selected, paidSeats) {
       subtotal += it.qty * ep;
     }
   }
-  var discount = getCashDiscount();
   var taxRate  = getTaxRate();
   var tax      = subtotal * taxRate;
   var cardTotal = subtotal + tax;
@@ -345,7 +341,6 @@ function collectSummary(seats, selected, paidSeats) {
     subtotal:  Math.round(subtotal * 100) / 100,
     tax:       Math.round(tax * 100) / 100,
     cardTotal: Math.round(cardTotal * 100) / 100,
-    cashPrice: Math.round((cardTotal * (1 - discount)) * 100) / 100,
   };
 }
 
@@ -1162,9 +1157,6 @@ function renderActionBar(state) {
   }
 
   totalsBlock.appendChild(_totRow('SUBTOTAL', fmt(subtotal), T.gold));
-  if (discount > 0) {
-    totalsBlock.appendChild(_totRow('DISC', '-' + fmt(subtotal * discount), T.verm));
-  }
   totalsBlock.appendChild(_totRow('TAX',  fmt(tax),       T.gold));
   totalsBlock.appendChild(_totRow('CARD', fmt(total),     T.elec));
   totalsBlock.appendChild(_totRow('CASH', fmt(cashTotal), T.greenWarm));
@@ -1958,23 +1950,6 @@ function buildSeatCard(state, seatIdx) {
       flexDirection: 'column',
       gap:           '2px',
     });
-
-    // DISC row — only when a cash discount is configured
-    var discount = getCashDiscount();
-    if (discount > 0) {
-      var discAmt = seatTotal(seat) * discount;
-      var discRow = document.createElement('div');
-      Object.assign(discRow.style, { display:'flex', justifyContent:'space-between', alignItems:'baseline' });
-      var discLbl = document.createElement('span');
-      Object.assign(discLbl.style, { fontFamily:T.fb, fontSize:'10px', color:T.verm, letterSpacing:'0.06em' });
-      discLbl.textContent = 'DISC';
-      var discVal = document.createElement('span');
-      Object.assign(discVal.style, { fontFamily:T.fb, fontSize:'11px', fontWeight:T.fwBold, color:T.verm });
-      discVal.textContent = '-' + fmt(discAmt);
-      discRow.appendChild(discLbl);
-      discRow.appendChild(discVal);
-      footer.appendChild(discRow);
-    }
 
     // SUBTOTAL row
     var subRow = document.createElement('div');
