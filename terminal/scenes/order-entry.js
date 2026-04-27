@@ -963,8 +963,6 @@ function buildItemTile(item, catColor, isFav) {
 function renderSnakeGrid() {
   if (!_gridEl) return;
   _gridEl.innerHTML = '';
-  // Reset to default item-grid layout; cats view overrides to flex-column below
-  _gridEl.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;padding:10px;';
   var frag = document.createDocumentFragment();
 
   var view   = snakeState.view;
@@ -999,19 +997,9 @@ function renderSnakeGrid() {
 
   // ── Category home ──
   if (view === 'cats') {
-    // Previously: tiles had a fixed min-height:120px inside a CSS auto-fill
-    // grid, leaving dead space below when few categories were loaded.
-    // Now: the nav container is a flex column that fills the wrapper height
-    // (min-height:100%), and each card is flex:1 so all cards divide the
-    // available space evenly. min-height:48px keeps cards tappable when
-    // many categories are present.
-    _gridEl.style.cssText = 'display:flex;flex-direction:column;min-height:100%;gap:6px;padding:10px;box-sizing:border-box;';
-
     // Inject PERSONAL as first tile
     var personalCat = { id: 'personal', label: 'PERSONAL', color: T.green };
     var pTile = buildCatTile(personalCat);
-    pTile.style.flex = '1';
-    pTile.style.minHeight = '48px';
     pTile.addEventListener('pointerup', function() {
       snakeState.view = 'personal';
       snakeState.crumbs = [];
@@ -1023,8 +1011,6 @@ function renderSnakeGrid() {
 
     MENU_DATA.forEach(function(cat) {
       var tile = buildCatTile(cat);
-      tile.style.flex = '1';
-      tile.style.minHeight = '48px';
       tile.addEventListener('pointerup', function() { _selectCat(cat); });
       _gridEl.appendChild(tile);
     });
