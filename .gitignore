@@ -42,6 +42,9 @@ backend/data/print_queue.db-wal
 backend/.coverage
 backend/htmlcov/
 
+# Node
+node_modules/
+
 # Virtualenvs & editor state
 .venv/
 venv/
