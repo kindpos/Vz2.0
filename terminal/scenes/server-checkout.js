@@ -727,8 +727,7 @@ function buildChecksCard(state, handlers, activeTab, selectedCheckIds) {
         : 'background:transparent;color:' + T.moon + ';border:1px solid rgba(255,255,255,0.15);',
     ].join('');
     pill.textContent = label + ' ' + count;
-    pill.addEventListener('pointerup', function(e) {
-      e.stopPropagation();
+    pill.addEventListener('pointerup', function() {
       if (handlers.onTabChange) handlers.onTabChange(key);
     });
     return pill;
@@ -887,8 +886,7 @@ function _buildClosedCheckRow(chk, handlers) {
     'user-select:none;-webkit-user-select:none;',
   ].join('');
   reprBtn.textContent = 'Reprint';
-  reprBtn.addEventListener('pointerup', function(e) {
-    e.stopPropagation();
+  reprBtn.addEventListener('pointerup', function() {
     if (handlers.onReprintCheck) handlers.onReprintCheck(chk);
   });
 
@@ -903,8 +901,7 @@ function _buildClosedCheckRow(chk, handlers) {
     'user-select:none;-webkit-user-select:none;',
   ].join('');
   reopBtn.textContent = 'Reopen';
-  reopBtn.addEventListener('pointerup', function(e) {
-    e.stopPropagation();
+  reopBtn.addEventListener('pointerup', function() {
     if (handlers.onReopenCheck) handlers.onReopenCheck(chk);
   });
 
@@ -1000,8 +997,7 @@ function buildTipFilterTabs(activeFilter, unadjCount, adjCount, handlers) {
         : 'background:transparent;color:' + hexToRgba(T.text, 0.6) + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
     ].join('');
     pill.textContent = label + ' ' + count;
-    pill.addEventListener('pointerup', function(e) {
-      e.stopPropagation();
+    pill.addEventListener('pointerup', function() {
       if (handlers.onTipFilterChange) handlers.onTipFilterChange(key);
     });
     return pill;
@@ -1096,8 +1092,7 @@ function buildRowPill(opts) {
     'box-shadow:0 2px 0 rgba(0,0,0,0.25);',
   ].join('');
   wrap.textContent = opts.label;
-  wrap.addEventListener('pointerup', function(e) {
-    e.stopPropagation();
+  wrap.addEventListener('pointerup', function() {
     if (opts.onClick) opts.onClick();
   });
   return wrap;
