@@ -1186,8 +1186,8 @@ function renderActionBar(state) {
     flex:          '1',
     display:       'flex',
     flexDirection: 'column',
-    padding:       '10px 14px 14px',
-    gap:           '10px',
+    padding:       '10px 12px 12px',
+    gap:           '6px',
     overflow:      'hidden',
     boxShadow:     '0 3px 0 ' + T.goldDk,
   });
@@ -1206,17 +1206,17 @@ function renderActionBar(state) {
   payCard.appendChild(payHeader);
 
   var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
-    borderRadius: '6px', fontSize: T.fsB2,
+    borderRadius: '6px',
     onClick: function() { handlePay(state, state._params || {}); } });
-  payBtn.style.height     = '52px';
-  payBtn.style.alignSelf  = 'stretch';
+  payBtn.style.height    = '38px';
+  payBtn.style.alignSelf = 'stretch';
   payCard.appendChild(payBtn);
 
   var splitPayRow = document.createElement('div');
   Object.assign(splitPayRow.style, { display: 'flex', gap: '6px' });
 
   var discBtn = buildPillButton({ label: 'DISC', color: T.lavender,
-    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px',
+    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px', fontSize: T.fsB4,
     onClick: function() { handleDiscount(state); } });
   discBtn.style.height   = '38px';
   discBtn.style.flex     = '1';
@@ -1224,7 +1224,7 @@ function renderActionBar(state) {
   splitPayRow.appendChild(discBtn);
 
   var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
-    borderRadius: '6px' });
+    borderRadius: '6px', fontSize: T.fsB4 });
   voidBtn.style.height   = '38px';
   voidBtn.style.flex     = '1';
   voidBtn.style.minWidth = '0';
@@ -1240,8 +1240,8 @@ function renderActionBar(state) {
     flex:          '1',
     display:       'flex',
     flexDirection: 'column',
-    padding:       '10px 14px 14px',
-    gap:           '10px',
+    padding:       '10px 12px 12px',
+    gap:           '6px',
     overflow:      'hidden',
     boxShadow:     '0 3px 0 ' + T.elecDk,
   });
@@ -1260,16 +1260,16 @@ function renderActionBar(state) {
   termCard.appendChild(termHeader);
 
   var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
-    borderRadius: '6px', fontSize: T.fsB2,
+    borderRadius: '6px',
     onClick: function() { handlePrint(state); } });
-  printBtn.style.height    = '52px';
+  printBtn.style.height    = '38px';
   printBtn.style.alignSelf = 'stretch';
   termCard.appendChild(printBtn);
 
   var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
-    borderRadius: '6px', fontSize: T.fsB2,
+    borderRadius: '6px',
     onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
-  drawerBtn.style.height    = '52px';
+  drawerBtn.style.height    = '38px';
   drawerBtn.style.alignSelf = 'stretch';
   termCard.appendChild(drawerBtn);
 
@@ -1281,8 +1281,8 @@ function renderActionBar(state) {
     flex:          '1',
     display:       'flex',
     flexDirection: 'column',
-    padding:       '10px 14px 14px',
-    gap:           '10px',
+    padding:       '10px 12px 12px',
+    gap:           '6px',
     overflow:      'hidden',
     boxShadow:     '0 3px 0 ' + T.moonDk,
   });
@@ -1301,17 +1301,17 @@ function renderActionBar(state) {
   orderCard.appendChild(orderHeader);
 
   var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
-    borderRadius: '6px', fontSize: T.fsB2,
+    borderRadius: '6px',
     onClick: function() { handleAddItems(state, state._params || {}); } });
-  addBtn.style.height    = '52px';
+  addBtn.style.height    = '38px';
   addBtn.style.alignSelf = 'stretch';
   orderCard.appendChild(addBtn);
 
   var splitOrderRow = document.createElement('div');
   Object.assign(splitOrderRow.style, { display: 'flex', gap: '6px' });
 
-  var sendBtn = buildPillButton({ label: 'SEND UNSENT', color: T.green, darkBg: T.greenDk,
-    borderRadius: '6px',
+  var sendBtn = buildPillButton({ label: '>>UNSENT>>', color: T.green, darkBg: T.greenDk,
+    borderRadius: '6px', fontSize: T.fsB4,
     onClick: function() {
       if (!state.orderId) { showToast('No items to send', { bg: T.gold }); return; }
       fetchWithTimeout('/api/v1/orders/' + state.orderId + '/send', { method: 'POST' }, 8000)
@@ -1327,7 +1327,7 @@ function renderActionBar(state) {
   splitOrderRow.appendChild(sendBtn);
 
   var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
-    borderRadius: '6px', onClick: function() { handleResend(state); } });
+    borderRadius: '6px', fontSize: T.fsB4, onClick: function() { handleResend(state); } });
   resendBtn.style.height   = '38px';
   resendBtn.style.flex     = '1';
   resendBtn.style.minWidth = '0';
