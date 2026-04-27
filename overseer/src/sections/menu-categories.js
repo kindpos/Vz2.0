@@ -326,12 +326,12 @@ function itemDrivesPricingGroup(item) {
     });
 }
 
-function atomPriceDisplay(atom, item) {
-    if (!atom) return null;
-    const hasSize = atom.price_by_option && Object.keys(atom.price_by_option).length > 0;
-    if (!hasSize) return atom.base_price > 0 ? '+' + formatPrice(atom.base_price) : null;
-    if (!itemDrivesPricingGroup(item)) return atom.base_price > 0 ? '+' + formatPrice(atom.base_price) : null;
-    const prices = Object.values(atom.price_by_option).map(p => parseFloat(p) || 0);
+function modifierPriceDisplay(modifier, item) {
+    if (!modifier) return null;
+    const hasSize = modifier.price_by_option && Object.keys(modifier.price_by_option).length > 0;
+    if (!hasSize) return modifier.base_price > 0 ? '+' + formatPrice(modifier.base_price) : null;
+    if (!itemDrivesPricingGroup(item)) return modifier.base_price > 0 ? '+' + formatPrice(modifier.base_price) : null;
+    const prices = Object.values(modifier.price_by_option).map(p => parseFloat(p) || 0);
     const min = Math.min(...prices);
     const max = Math.max(...prices);
     return min === max ? '+' + formatPrice(min) : '+$' + min.toFixed(2) + '–' + max.toFixed(2);
@@ -1726,7 +1726,7 @@ function openItemModal(cfg) {
         incSection.appendChild(incTrayWrap);
 
         const atomSource = () => menuData.allModifiers.map(a => ({
-            id: a.id, name: a.name, extra: atomPriceDisplay(a, item),
+            id: a.id, name: a.name, extra: modifierPriceDisplay(a, item),
         }));
 
         function rebuildIncTray(ids) {
@@ -1782,7 +1782,7 @@ function openItemModal(cfg) {
                 <div style="color:${C2.warning};font-size:18px;line-height:1.1;flex-shrink:0;">⚠</div>
                 <div>
                     <div style="color:${C2.warning};font-family:ui-monospace,monospace;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;">
-                        Size-variable atom${flagged.length === 1 ? '' : 's'} without a size group
+                        Size-variable modifier${flagged.length === 1 ? '' : 's'} without a size group
                     </div>
                     <div style="color:${withAlpha(C.text,0.7)};font-size:12px;line-height:1.5;">
                         <span style="color:${C2.warning};font-family:ui-monospace,monospace;font-weight:600;">${names.join(', ')}${extra}</span>

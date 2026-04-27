@@ -4,9 +4,9 @@ import { pushChanges } from '../services/config-push.js';
    KINDpos Overseer — Configure Modifiers
 
    Two tabs, one event stream:
-   1. Modifiers — master list of atoms (add-ons).
+   1. Modifiers — master list of modifiers (add-ons).
       Modifiers can carry microMODs.
-   2. Groups — collections of atoms wired to items
+   2. Groups — collections of modifiers wired to items
       (mandatory) or categories (universal) through
       min_selections / max_selections / drives_pricing.
 
@@ -16,7 +16,7 @@ import { pushChanges } from '../services/config-push.js';
 
    Reskinned to Vz2.0 Nostalgia. Event stream is
    group-only: modifier.group_created / _updated /
-   _deleted. Atom edits cascade into updates of
+   _deleted. Modifier edits cascade into updates of
    every group that references them.
 
    Nice. Dependable. Yours.
@@ -55,19 +55,19 @@ const C = {
 let currentWrapper = null;
 let modData = null;
 
-// Single bucket. Atom edits cascade into group events
+// Single bucket. Modifier edits cascade into group events
 // on save — no separate mandatory/universal bucket.
 let pendingChanges = { modifiers: [], groups: [] };
 
 let activeTab = 'modifiers'; // 'modifiers' | 'groups'
 let searchState = { modifiers: '', groups: '' };
 // 'all' | 'bundled' | 'orphan' — scoped to the Modifiers tab
-let atomFilter = 'all';
+let modifierFilter = 'all';
 
 /* ------------------------------------------
    DATA FETCH
    Pulls from /menu (projection) + /config/menu/categories.
-   Deduplicates atoms across groups into a flat
+   Deduplicates modifiers across groups into a flat
    master list. No mandatory/universal fetches
    since those endpoints no longer exist.
 ------------------------------------------ */
@@ -80,7 +80,7 @@ async function fetchModifierData() {
         const menu = menuRes.ok ? await menuRes.json() : { modifier_groups: [] };
         const cats = catRes.ok ? await catRes.json() : [];
 
-        const atomsById = new Map();
+        const modifiersById = new Map();
         const groups = [];
 
         for (const grp of (menu.modifier_groups || [])) {
@@ -96,8 +96,8 @@ async function fetchModifierData() {
             for (const m of allGrpMods) {
                 const mid = m.modifier_id || m.id;
                 if (!mid) continue;
-                if (!atomsById.has(mid)) {
-                    atomsById.set(mid, {
+                if (!modifiersById.has(mid)) {
+                    modifiersById.set(mid, {
                         id: mid,
                         name: m.name || mid,
                         base_price: parseFloat(m.price) || 0,
@@ -106,7 +106,7 @@ async function fetchModifierData() {
                             : [],
                     });
                 } else if (Array.isArray(m.included_modifier_ids) && m.included_modifier_ids.length) {
-                    const existing = atomsById.get(mid);
+                    const existing = modifiersById.get(mid);
                     const merged = new Set([...existing.included_modifier_ids, ...m.included_modifier_ids]);
                     existing.included_modifier_ids = Array.from(merged);
                 }
@@ -134,7 +134,7 @@ async function fetchModifierData() {
         }
 
         return {
-            modifiers: Array.from(atomsById.values()).sort((a, b) => a.name.localeCompare(b.name)),
+            modifiers: Array.from(modifiersById.values()).sort((a, b) => a.name.localeCompare(b.name)),
             groups: groups.sort((a, b) => a.name.localeCompare(b.name)),
             categories: cats.map(c => ({
                 id: c.category_id || c.id,
@@ -389,7 +389,7 @@ function showToast(message, kind = 'confirm') {
 
 /* ------------------------------------------
    MODAL SYSTEM — stacked so pickers can layer
-   on top of the atom edit modal without
+   on top of the modifier edit modal without
    destroying it.
 ------------------------------------------ */
 const modalStack = [];
@@ -527,7 +527,7 @@ function buildModalFooter(container, onSave, opts = {}) {
    MULTI-SELECT PICKER
    Chip tray + "+ Add" that opens a picker modal
    with three-state checks, search, and delta footer.
-   Used by both Group editor (pick atoms for group)
+   Used by both Group editor (pick modifiers for group)
    and Modifier editor (pick microMODs).
 ------------------------------------------ */
 
@@ -563,7 +563,7 @@ function buildChipTray(container, initialIds, sourceFn, opts = {}) {
         }
         const all = sourceFn();
         state.ids.forEach(id => {
-            const atom = all.find(a => a.id === id);
+            const modifier = all.find(a => a.id === id);
             const chip = document.createElement('span');
             chip.style.cssText = `
                 display: inline-flex; align-items: center; gap: 6px;
@@ -577,12 +577,12 @@ function buildChipTray(container, initialIds, sourceFn, opts = {}) {
                 color: ${C.text};
             `;
             const nameSpan = document.createElement('span');
-            nameSpan.textContent = atom ? atom.name : id;
+            nameSpan.textContent = modifier ? modifier.name : id;
             chip.appendChild(nameSpan);
 
-            if (atom && atom.extra) {
+            if (modifier && modifier.extra) {
                 const extra = document.createElement('span');
-                extra.textContent = atom.extra;
+                extra.textContent = modifier.extra;
                 extra.style.cssText = `color: ${C.gold}; font-family: ui-monospace, monospace; font-size: 11px;`;
                 chip.appendChild(extra);
             }
@@ -667,9 +667,9 @@ function openPickerModal(currentIds, sourceFn, opts, onDone) {
                 return;
             }
 
-            filtered.forEach(atom => {
-                const isSelected = selected.has(atom.id);
-                const wasSelected = originallySelected.has(atom.id);
+            filtered.forEach(modifier => {
+                const isSelected = selected.has(modifier.id);
+                const wasSelected = originallySelected.has(modifier.id);
                 const row = document.createElement('button');
                 row.type = 'button';
                 row.style.cssText = `
@@ -705,7 +705,7 @@ function openPickerModal(currentIds, sourceFn, opts, onDone) {
                 row.appendChild(box);
 
                 const name = document.createElement('span');
-                name.textContent = atom.name;
+                name.textContent = modifier.name;
                 name.style.cssText = `
                     flex: 1;
                     color: ${C.text};
@@ -714,9 +714,9 @@ function openPickerModal(currentIds, sourceFn, opts, onDone) {
                 `;
                 row.appendChild(name);
 
-                if (atom.extra) {
+                if (modifier.extra) {
                     const extra = document.createElement('span');
-                    extra.textContent = atom.extra;
+                    extra.textContent = modifier.extra;
                     extra.style.cssText = `
                         color: ${C.gold};
                         font-family: ui-monospace, monospace;
@@ -750,8 +750,8 @@ function openPickerModal(currentIds, sourceFn, opts, onDone) {
                 }
 
                 row.addEventListener('click', () => {
-                    if (selected.has(atom.id)) selected.delete(atom.id);
-                    else selected.add(atom.id);
+                    if (selected.has(modifier.id)) selected.delete(modifier.id);
+                    else selected.add(modifier.id);
                     renderList();
                     renderDelta();
                 });
@@ -917,7 +917,7 @@ function buildSearchBar(container, collection, onChange) {
 }
 
 /* ============================================
-   MODIFIERS TAB (atom master list)
+   MODIFIERS TAB (modifier master list)
 ============================================ */
 
 function buildModifiersTab(container) {
@@ -925,40 +925,40 @@ function buildModifiersTab(container) {
 
     // Search bar first, then Add button row underneath so it reads as a
     // secondary control for the filtered list below.
-    buildSearchBar(container, 'modifiers', () => renderAtomList(list));
+    buildSearchBar(container, 'modifiers', () => renderModifierList(list));
 
     const headerRow = document.createElement('div');
     headerRow.style.cssText = `
         display: flex; align-items: center; justify-content: flex-end;
         margin-bottom: 14px;
     `;
-    const addBtn = buildPillButton('+ Add Modifier', 'primary', () => openAtomModal(null), { small: true });
+    const addBtn = buildPillButton('+ Add Modifier', 'primary', () => openModifierModal(null), { small: true });
     headerRow.appendChild(addBtn);
     container.appendChild(headerRow);
 
     // Filter chips — quick filters for common operator tasks:
     // finding bundled modifiers (microMOD carriers) and orphans (unsaved).
-    buildAtomFilterRow(container, () => renderAtomList(list));
+    buildModifierFilterRow(container, () => renderModifierList(list));
 
     const list = document.createElement('div');
     list.style.cssText = `display: flex; flex-direction: column; gap: 6px;`;
     container.appendChild(list);
 
-    renderAtomList(list);
+    renderModifierList(list);
 }
 
 /**
  * Three-option filter pill row for the Modifiers tab. Single-select —
  * one option active at a time. ANDs with the search box.
- *   • All      — show every atom
+ *   • All      — show every modifier
  *   • Bundled  — only modifiers with included_modifier_ids (microMODs)
- *   • Orphan   — only atoms not referenced by any group
+ *   • Orphan   — only modifiers not referenced by any group
  */
-function buildAtomFilterRow(container, onChange) {
-    const atoms = getAllWorking('modifiers');
+function buildModifierFilterRow(container, onChange) {
+    const modifiers = getAllWorking('modifiers');
     const groups = getAllWorking('groups');
-    const bundledCount = atoms.filter(a => (a.included_modifier_ids || []).length > 0).length;
-    const orphanCount = atoms.filter(a => !groups.some(g => (g.modifier_ids || []).includes(a.id))).length;
+    const bundledCount = modifiers.filter(a => (a.included_modifier_ids || []).length > 0).length;
+    const orphanCount = modifiers.filter(a => !groups.some(g => (g.modifier_ids || []).includes(a.id))).length;
 
     const row = document.createElement('div');
     row.style.cssText = `
@@ -980,7 +980,7 @@ function buildAtomFilterRow(container, onChange) {
     row.appendChild(label);
 
     const options = [
-        { id: 'all',     label: 'All',       count: atoms.length,  accent: C.green    },
+        { id: 'all',     label: 'All',       count: modifiers.length,  accent: C.green    },
         { id: 'bundled', label: '⋯ Bundled', count: bundledCount,  accent: C.lavender },
         { id: 'orphan',  label: '⚠ Orphan',  count: orphanCount,   accent: C.warning  },
     ];
@@ -988,13 +988,13 @@ function buildAtomFilterRow(container, onChange) {
     // Selecting a chip replaces the row in-place so the active state visually
     // updates, then re-renders the list through onChange.
     const rebuild = () => {
-        const fresh = buildAtomFilterRow(container, onChange);
+        const fresh = buildModifierFilterRow(container, onChange);
         row.replaceWith(fresh);
         onChange();
     };
 
     options.forEach(opt => {
-        const isActive = atomFilter === opt.id;
+        const isActive = modifierFilter === opt.id;
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.style.cssText = `
@@ -1029,7 +1029,7 @@ function buildAtomFilterRow(container, onChange) {
         chip.appendChild(badge);
 
         chip.addEventListener('click', () => {
-            atomFilter = opt.id;
+            modifierFilter = opt.id;
             rebuild();
         });
 
@@ -1037,7 +1037,7 @@ function buildAtomFilterRow(container, onChange) {
     });
 
     // Clear link — only visible when filter is non-default
-    if (atomFilter !== 'all') {
+    if (modifierFilter !== 'all') {
         const clear = document.createElement('button');
         clear.type = 'button';
         clear.textContent = '× clear';
@@ -1054,7 +1054,7 @@ function buildAtomFilterRow(container, onChange) {
             margin-left: 4px;
         `;
         clear.addEventListener('click', () => {
-            atomFilter = 'all';
+            modifierFilter = 'all';
             rebuild();
         });
         row.appendChild(clear);
@@ -1065,27 +1065,27 @@ function buildAtomFilterRow(container, onChange) {
     return row;
 }
 
-function renderAtomList(list) {
+function renderModifierList(list) {
     list.innerHTML = '';
-    const atoms = getAllWorking('modifiers');
+    const modifiers = getAllWorking('modifiers');
     const groups = getAllWorking('groups');
     const q = (searchState.modifiers || '').trim().toLowerCase();
 
     // Search + filter compose via AND. Search first (cheap string match),
     // filter second (needs group-membership lookup for orphans).
-    let filtered = q ? atoms.filter(a => a.name.toLowerCase().includes(q)) : atoms;
-    if (atomFilter === 'bundled') {
+    let filtered = q ? modifiers.filter(a => a.name.toLowerCase().includes(q)) : modifiers;
+    if (modifierFilter === 'bundled') {
         filtered = filtered.filter(a => (a.included_modifier_ids || []).length > 0);
-    } else if (atomFilter === 'orphan') {
+    } else if (modifierFilter === 'orphan') {
         filtered = filtered.filter(a => !groups.some(g => (g.modifier_ids || []).includes(a.id)));
     }
 
     if (filtered.length === 0) {
         const empty = document.createElement('div');
         let msg;
-        if (atoms.length === 0) msg = 'No modifiers yet — create one to get started';
-        else if (atomFilter === 'bundled') msg = q ? 'No bundled matches' : 'No bundled atoms';
-        else if (atomFilter === 'orphan')  msg = q ? 'No orphan matches'  : 'No orphan atoms — everything is wired up';
+        if (modifiers.length === 0) msg = 'No modifiers yet — create one to get started';
+        else if (modifierFilter === 'bundled') msg = q ? 'No bundled matches' : 'No bundled modifiers';
+        else if (modifierFilter === 'orphan')  msg = q ? 'No orphan matches'  : 'No orphan modifiers — everything is wired up';
         else msg = 'No matches';
         empty.textContent = msg;
         empty.style.cssText = `
@@ -1101,11 +1101,11 @@ function renderAtomList(list) {
         return;
     }
 
-    filtered.forEach(atom => {
-        // Count how many groups reference this atom
-        const groupRefs = groups.filter(g => (g.modifier_ids || []).includes(atom.id));
+    filtered.forEach(modifier => {
+        // Count how many groups reference this modifier
+        const groupRefs = groups.filter(g => (g.modifier_ids || []).includes(modifier.id));
         const isOrphan = groupRefs.length === 0;
-        const microModCount = (atom.included_modifier_ids || []).length;
+        const microModCount = (modifier.included_modifier_ids || []).length;
         const isBundled = microModCount > 0;
 
         const row = buildCard(isBundled ? C.lavender : isOrphan ? C.warning : C.green, {
@@ -1114,7 +1114,7 @@ function renderAtomList(list) {
         });
         row.addEventListener('mouseenter', () => { row.style.transform = 'translateX(2px)'; });
         row.addEventListener('mouseleave', () => { row.style.transform = 'translateX(0)'; });
-        row.addEventListener('click', () => openAtomModal(atom));
+        row.addEventListener('click', () => openModifierModal(modifier));
 
         const rowInner = document.createElement('div');
         rowInner.style.cssText = `
@@ -1127,7 +1127,7 @@ function renderAtomList(list) {
         const nameRow = document.createElement('div');
         nameRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 2px;';
         const name = document.createElement('span');
-        name.textContent = atom.name;
+        name.textContent = modifier.name;
         name.style.cssText = `
             font-family: system-ui, sans-serif;
             font-size: 15px; font-weight: 700;
@@ -1183,7 +1183,7 @@ function renderAtomList(list) {
 
         // Price
         const price = document.createElement('div');
-        price.textContent = formatPrice(atom.base_price);
+        price.textContent = formatPrice(modifier.base_price);
         price.style.cssText = `
             font-family: ui-monospace, monospace;
             font-size: 14px;
@@ -1202,7 +1202,7 @@ function renderAtomList(list) {
    MODIFIER EDIT MODAL (with microMOD picker)
 ============================================ */
 
-function openAtomModal(existing) {
+function openModifierModal(existing) {
     const isEdit = !!existing;
     openModal(isEdit ? 'Edit Modifier' : 'Add Modifier', (body) => {
         const nameInput = buildModalField(body, 'Name', 'text', existing?.name || '', {
@@ -1211,7 +1211,7 @@ function openAtomModal(existing) {
         const priceInput = buildModalField(body, 'Base Price', 'number', existing?.base_price ?? '0.00', {
             step: '0.01',
             mono: true,
-            hint: 'Price applied when this atom is added as an ADD. EXTRA doubles it.',
+            hint: 'Price applied when this modifier is added as an ADD. EXTRA doubles it.',
         });
 
         // microMOD section
@@ -1238,7 +1238,7 @@ function openAtomModal(existing) {
 
         const microModIds = [...(existing?.included_modifier_ids || [])];
         const trayState = buildChipTray(subSection, microModIds, () => {
-            // Source: all atoms EXCEPT self, and EXCEPT atoms that are
+            // Source: all modifiers EXCEPT self, and EXCEPT modifiers that are
             // themselves bundled (depth cap at 2: item → modifier → microMOD,
             // no deeper). Schema allows it; UI refuses to render.
             const all = getAllWorking('modifiers');
@@ -1256,7 +1256,7 @@ function openAtomModal(existing) {
             emptyHint: 'No microMODs — tap + Add microMOD',
             pickerTitle: 'Pick microMODs',
             excludeIds: () => {
-                // Exclude atoms that are already bundled themselves
+                // Exclude modifiers that are already bundled themselves
                 const all = getAllWorking('modifiers');
                 return all
                     .filter(a => (a.included_modifier_ids || []).length > 0 && a.id !== existing?.id)
@@ -1275,7 +1275,7 @@ function openAtomModal(existing) {
                 () => {
                     handleDeleteItem('modifiers', existing.id);
                     closeModal();
-                    renderAtomList(document.querySelector('#configure-modifiers-content > div:last-child'));
+                    renderModifierList(document.querySelector('#configure-modifiers-content > div:last-child'));
                 }
             );
         }, { small: true }) : null;
@@ -1307,11 +1307,11 @@ function countGroupRefs(atomId) {
     return getAllWorking('groups').filter(g => (g.modifier_ids || []).includes(atomId)).length;
 }
 
-function openOverrideModal(atom, driverAtoms, existingOverrides, onSave) {
-    openModal(`Price Overrides: ${atom.name}`, (body) => {
+function openOverrideModal(modifier, driverAtoms, existingOverrides, onSave) {
+    openModal(`Price Overrides: ${modifier.name}`, (body) => {
         const hint = document.createElement('div');
         hint.style.cssText = `font-size: 12px; color: ${C.textDim}; margin-bottom: 20px;`;
-        hint.textContent = `Base Price: ${formatPrice(atom.base_price)}`;
+        hint.textContent = `Base Price: ${formatPrice(modifier.base_price)}`;
         body.appendChild(hint);
 
         const inputs = {};
@@ -1386,7 +1386,7 @@ function buildGroupsTab(container) {
 function renderGroupList(list) {
     list.innerHTML = '';
     const groups = getAllWorking('groups');
-    const atoms = getAllWorking('modifiers');
+    const modifiers = getAllWorking('modifiers');
     const q = (searchState.groups || '').trim().toLowerCase();
     const filtered = q ? groups.filter(g => g.name.toLowerCase().includes(q)) : groups;
 
@@ -1440,7 +1440,7 @@ function renderGroupList(list) {
 
         // Count pill
         const countBadge = document.createElement('span');
-        countBadge.textContent = `${(group.modifier_ids || []).length} ATOMS`;
+        countBadge.textContent = `${(group.modifier_ids || []).length} MODIFIERS`;
         countBadge.style.cssText = `
             font-family: ui-monospace, monospace;
             font-size: 10px;
@@ -1540,10 +1540,10 @@ function openGroupModal(existing) {
             placeholder: 'e.g. Pizza Toppings, Cheese Options…',
         });
 
-        // Atoms in this group — chip tray picker
+        // Modifiers in this group — chip tray picker
         const atomSection = document.createElement('div');
         atomSection.style.cssText = 'margin-bottom: 20px;';
-        const atomLabel = buildLabel('Atoms in This Group', { color: C.green });
+        const atomLabel = buildLabel('Modifiers in This Group', { color: C.green });
         atomLabel.style.marginBottom = '6px';
         atomSection.appendChild(atomLabel);
 
@@ -1555,9 +1555,9 @@ function openGroupModal(existing) {
             }));
         }, {
             accent: C.green,
-            addLabel: '+ Add Atoms',
-            emptyHint: 'No atoms — tap + Add Atoms',
-            pickerTitle: 'Pick atoms for this group',
+            addLabel: '+ Add Modifiers',
+            emptyHint: 'No modifiers — tap + Add Modifiers',
+            pickerTitle: 'Pick modifiers for this group',
             onChange: (ids) => {
                 draft.modifier_ids = ids;
                 renderSelectionHint();
@@ -1633,7 +1633,7 @@ function openGroupModal(existing) {
             color: ${C.textDim};
             line-height: 1.4;
         `;
-        drivesHint.textContent = 'The selected atom sets pricing for optional modifiers (pizza size → topping prices).';
+        drivesHint.textContent = 'The selected modifier sets pricing for optional modifiers (pizza size → topping prices).';
         drivesLabel.appendChild(drivesHint);
         drivesRow.appendChild(drivesLabel);
 
@@ -1661,7 +1661,7 @@ function openGroupModal(existing) {
         function renderSelectionHint() {
             const min = parseInt(minInput.value, 10) || 0;
             const max = parseInt(maxInput.value, 10) || 1;
-            const atomCount = draft.modifier_ids.length;
+            const modifierCount = draft.modifier_ids.length;
 
             const lines = [];
             const issues = [];
@@ -1690,17 +1690,17 @@ function openGroupModal(existing) {
             }
 
             // Validation issues
-            if (atomCount === 0) {
-                issues.push(`no atoms wired yet`);
+            if (modifierCount === 0) {
+                issues.push(`no modifiers wired yet`);
             }
             if (max < min) {
                 issues.push(`max (${max}) must be ≥ min (${min})`);
             }
-            if (max > atomCount && atomCount > 0) {
-                issues.push(`max (${max}) exceeds atom count (${atomCount})`);
+            if (max > modifierCount && modifierCount > 0) {
+                issues.push(`max (${max}) exceeds modifier count (${modifierCount})`);
             }
-            if (min > atomCount) {
-                issues.push(`min (${min}) exceeds atom count (${atomCount})`);
+            if (min > modifierCount) {
+                issues.push(`min (${min}) exceeds modifier count (${modifierCount})`);
             }
 
             const linesHtml = lines.join('<br>');
@@ -1750,24 +1750,24 @@ function openGroupModal(existing) {
 
             const hint = document.createElement('div');
             hint.style.cssText = `font-size: 11px; color: ${C.textDim}; margin-bottom: 15px; line-height: 1.4;`;
-            hint.textContent = 'Set price overrides for atoms in this group based on selections in "Drives Pricing" groups (e.g. Pizza Size). Atoms without overrides use their Base Price.';
+            hint.textContent = 'Set price overrides for modifiers in this group based on selections in "Drives Pricing" groups (e.g. Pizza Size). Modifiers without overrides use their Base Price.';
             overrideSection.appendChild(hint);
 
             const table = document.createElement('div');
             table.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
 
-            const allAtoms = getAllWorking('modifiers');
+            const allModifiers = getAllWorking('modifiers');
             const driverAtoms = [];
             pricingDrivers.forEach(dg => {
                 (dg.modifier_ids || []).forEach(mid => {
-                    const a = allAtoms.find(x => x.id === mid);
+                    const a = allModifiers.find(x => x.id === mid);
                     if (a) driverAtoms.push({ id: mid, name: a.name, groupName: dg.name });
                 });
             });
 
             draft.modifier_ids.forEach(mid => {
-                const atom = allAtoms.find(a => a.id === mid);
-                if (!atom) return;
+                const modifier = allModifiers.find(a => a.id === mid);
+                if (!modifier) return;
 
                 const row = document.createElement('div');
                 row.style.cssText = `
@@ -1775,12 +1775,12 @@ function openGroupModal(existing) {
                     display: flex; align-items: center; justify-content: space-between;
                 `;
                 const name = document.createElement('div');
-                name.textContent = atom.name;
+                name.textContent = modifier.name;
                 name.style.cssText = 'font-weight: 600; font-size: 13px; color: #fff;';
                 row.appendChild(name);
 
                 const btn = buildPillButton('Set Overrides', 'secondary', () => {
-                    openOverrideModal(atom, driverAtoms, draft.price_by_option_map[mid] || {}, (newOverrides) => {
+                    openOverrideModal(modifier, driverAtoms, draft.price_by_option_map[mid] || {}, (newOverrides) => {
                         if (Object.keys(newOverrides).length === 0) {
                             delete draft.price_by_option_map[mid];
                         } else {
@@ -1929,15 +1929,15 @@ function updateFooter() {
  *
  * Strategy:
  *   1. Collect dirty group IDs — explicit group edits AND any groups
- *      containing a changed atom.
+ *      containing a changed modifier.
  *   2. For each dirty group, rebuild its modifiers[] payload from
- *      current atom state (merging pending modifier changes so microMOD
+ *      current modifier state (merging pending modifier changes so microMOD
  *      + name + price ride through).
  *   3. Emit modifier.group_created / _updated / _deleted for each.
- *   4. No atom-level events are emitted — atoms exist only inside
+ *   4. No modifier-level events are emitted — modifiers exist only inside
  *      groups in the backend projection.
  *
- * Orphan atoms (in pendingChanges.modifiers but not referenced by any
+ * Orphan modifiers (in pendingChanges.modifiers but not referenced by any
  * group) produce no events and are dropped silently on next reload.
  * The Modifiers tab shows ⚠ NO GROUP badges so operators can catch this.
  */
@@ -1949,17 +1949,17 @@ async function handleSaveChanges() {
     // 1. Collect dirty group IDs
     const dirtyGroupIds = new Set();
     (pendingChanges.groups || []).forEach(g => dirtyGroupIds.add(g.id));
-    (pendingChanges.modifiers || []).forEach(atom => {
+    (pendingChanges.modifiers || []).forEach(modifier => {
         const allGroups = getAllWorking('groups');
         allGroups.forEach(g => {
-            if ((g.modifier_ids || []).includes(atom.id)) {
+            if ((g.modifier_ids || []).includes(modifier.id)) {
                 dirtyGroupIds.add(g.id);
             }
         });
     });
 
     // 2+3. Emit events per dirty group
-    const orphanedAtomIds = [];
+    const orphanedModifierIds = [];
     dirtyGroupIds.forEach(gid => {
         const pendingG = (pendingChanges.groups || []).find(g => g.id === gid);
         const baseG = (modData.groups || []).find(g => g.id === gid);
@@ -1973,18 +1973,18 @@ async function handleSaveChanges() {
         if (!g) return;
 
         const isNew = !baseG;
-        // Build modifiers[] using current atom state
-        const atoms = getAllWorking('modifiers');
+        // Build modifiers[] using current modifier state
+        const modifiers = getAllWorking('modifiers');
         const modifiers = (g.modifier_ids || []).map(mid => {
-            const atom = atoms.find(a => a.id === mid);
-            if (!atom) return null;
+            const modifier = modifiers.find(a => a.id === mid);
+            if (!modifier) return null;
             const base = {
                 modifier_id: mid,
-                name: atom.name,
-                price: atom.base_price || 0,
+                name: modifier.name,
+                price: modifier.base_price || 0,
             };
-            if (atom.included_modifier_ids && atom.included_modifier_ids.length > 0) {
-                base.included_modifier_ids = atom.included_modifier_ids.slice();
+            if (modifier.included_modifier_ids && modifier.included_modifier_ids.length > 0) {
+                base.included_modifier_ids = modifier.included_modifier_ids.slice();
             }
             const overrides = (g.price_by_option_map || {})[mid];
             if (overrides && Object.keys(overrides).length > 0) {
@@ -2007,18 +2007,18 @@ async function handleSaveChanges() {
         });
     });
 
-    // Detect orphaned atoms (for warning)
-    (pendingChanges.modifiers || []).forEach(atom => {
-        if (atom._deleted) return;
+    // Detect orphaned modifiers (for warning)
+    (pendingChanges.modifiers || []).forEach(modifier => {
+        if (modifier._deleted) return;
         const allGroups = getAllWorking('groups');
-        const referenced = allGroups.some(g => (g.modifier_ids || []).includes(atom.id));
-        if (!referenced && !(modData.modifiers || []).some(a => a.id === atom.id)) {
-            orphanedAtomIds.push(atom.id);
+        const referenced = allGroups.some(g => (g.modifier_ids || []).includes(modifier.id));
+        if (!referenced && !(modData.modifiers || []).some(a => a.id === modifier.id)) {
+            orphanedModifierIds.push(modifier.id);
         }
     });
 
-    if (events.length === 0 && orphanedAtomIds.length > 0) {
-        showToast(`${orphanedAtomIds.length} atom(s) not in any group — add them to a group to persist`, 'warning');
+    if (events.length === 0 && orphanedModifierIds.length > 0) {
+        showToast(`${orphanedModifierIds.length} modifier(s) not in any group — add them to a group to persist`, 'warning');
         return;
     }
 
@@ -2040,8 +2040,8 @@ async function handleSaveChanges() {
     }
 
     // Apply pending to base data
-    const atoms = getAllWorking('modifiers');
-    modData.modifiers = atoms;
+    const modifiers = getAllWorking('modifiers');
+    modData.modifiers = modifiers;
 
     (pendingChanges.groups || []).forEach(g => {
         if (g._deleted) {
@@ -2056,10 +2056,10 @@ async function handleSaveChanges() {
     pendingChanges = { modifiers: [], groups: [] };
     buildMainView(currentWrapper);
 
-    const msg = orphanedAtomIds.length > 0
-        ? `${events.length} saved · ${orphanedAtomIds.length} orphan atom(s) not persisted`
+    const msg = orphanedModifierIds.length > 0
+        ? `${events.length} saved · ${orphanedModifierIds.length} orphan modifier(s) not persisted`
         : `${events.length} change${events.length === 1 ? '' : 's'} saved`;
-    showToast(msg, orphanedAtomIds.length > 0 ? 'warning' : 'confirm');
+    showToast(msg, orphanedModifierIds.length > 0 ? 'warning' : 'confirm');
 }
 
 /* ============================================
@@ -2111,7 +2111,7 @@ export function registerConfigureModifiers(sceneManager) {
             pendingChanges = { modifiers: [], groups: [] };
             activeTab = 'modifiers';
             searchState = { modifiers: '', groups: '' };
-            atomFilter = 'all';
+            modifierFilter = 'all';
 
             currentWrapper = document.createElement('div');
             currentWrapper.style.cssText = `
@@ -2125,7 +2125,7 @@ export function registerConfigureModifiers(sceneManager) {
 
             buildMainView(currentWrapper);
 
-            console.log(`[ConfigureModifiers] Loaded ${modData.modifiers.length} atoms, ${modData.groups.length} groups.`);
+            console.log(`[ConfigureModifiers] Loaded ${modData.modifiers.length} modifiers, ${modData.groups.length} groups.`);
             console.log('[ConfigureModifiers] Ready.');
         },
         onExit(container) {
