@@ -1365,7 +1365,7 @@ function buildGroupsTab(container) {
         font-size: 16px; font-weight: 700;
         color: ${C.text}; margin-bottom: 2px;
     `;
-    const sub = buildLabel('Collections of atoms with min/max/pricing rules', { color: C.textDim });
+    const sub = buildLabel('Collections of modifiers with min/max/pricing rules', { color: C.textDim });
     leftBlock.appendChild(heading);
     leftBlock.appendChild(sub);
     headerRow.appendChild(leftBlock);
