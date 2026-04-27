@@ -240,6 +240,7 @@ class OrderItemResponse(BaseModel):
     seat_number: Optional[int] = None
     modifiers: list[dict]
     subtotal: Decimal
+    effective_price: Decimal
     added_at: Optional[datetime] = None
     sent_at: Optional[datetime] = None
 
@@ -303,6 +304,7 @@ class OrderResponse(BaseModel):
                     seat_number=item.seat_number,
                     modifiers=item.modifiers,
                     subtotal=money_round(item.subtotal),
+                    effective_price=money_round(item.subtotal / item.quantity),
                     added_at=item.added_at,
                     sent_at=item.sent_at,
                 )
