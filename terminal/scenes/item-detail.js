@@ -21,12 +21,12 @@ defineScene({
 
     var price = document.createElement('div');
     price.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.gold + ';margin-bottom:20px;';
-    var total = inst.unitPrice + (inst.mods || []).reduce(function(s, m) { return s + m.price; }, 0);
+    var total = Number(inst.unitPrice || 0) + (inst.mods || []).reduce(function(s, m) { return s + Number(m.price || 0); }, 0);
     price.textContent = '$' + total.toFixed(2);
     container.appendChild(price);
 
     var modScroll = document.createElement('div');
-    modScroll.style.cssText = 'flex:1;overflow-y:auto;';
+    modScroll.style.cssText = 'flex:1;overflow-y:auto;min-height:0;touch-action:pan-y;';
     container.appendChild(modScroll);
 
     if (!inst.mods || inst.mods.length === 0) {
