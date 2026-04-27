@@ -1052,6 +1052,7 @@ function renderSnakeGrid() {
 function _bindItemTile(tile, item, menuCat) {
   var longPressTimer = null;
   var didLong = false;
+  var _tapping = false;
 
   tile.addEventListener('pointerdown', function() {
     didLong = false;
@@ -1063,7 +1064,11 @@ function _bindItemTile(tile, item, menuCat) {
 
   tile.addEventListener('pointerup', function() {
     clearTimeout(longPressTimer);
-    if (!didLong) handleItemSelect(item);
+    if (!didLong && !_tapping) {
+      _tapping = true;
+      handleItemSelect(item);
+      requestAnimationFrame(function() { _tapping = false; });
+    }
   });
 
   tile.addEventListener('pointerleave', function() {
@@ -2478,6 +2483,8 @@ function closeModifierPanel() {
 
 
 function commitModifierPanelItem(originalItem, activeItem, modConfig) {
+  if (!_modPanelOpen) return;
+  _modPanelOpen = false;
   modConfig = modConfig || {};
   // Build ticket item from modifier panel state
   var mands = activeItem.mandatorySelections;
