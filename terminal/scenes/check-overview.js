@@ -1212,25 +1212,21 @@ function renderActionBar(state) {
   payCard.appendChild(payBtn);
 
   var splitPayRow = document.createElement('div');
-  Object.assign(splitPayRow.style, { display: 'flex', gap: '5px', alignItems: 'stretch' });
+  Object.assign(splitPayRow.style, { display: 'flex', gap: '5px' });
 
   var discBtn = buildPillButton({ label: 'DISC', color: T.lavender,
-    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px',
+    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px', fontSize: '11px',
     onClick: function() { handleDiscount(state); } });
-  discBtn.style.flex       = '1';
-  discBtn.style.minWidth   = '0';
-  discBtn.style.height     = 'auto';
-  discBtn.style.minHeight  = '38px';
-  discBtn.style.whiteSpace = 'normal';
+  discBtn.style.flex     = '1';
+  discBtn.style.minWidth = '0';
+  discBtn.style.height   = '38px';
   splitPayRow.appendChild(discBtn);
 
   var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
-    borderRadius: '6px' });
-  voidBtn.style.flex       = '1';
-  voidBtn.style.minWidth   = '0';
-  voidBtn.style.height     = 'auto';
-  voidBtn.style.minHeight  = '38px';
-  voidBtn.style.whiteSpace = 'normal';
+    borderRadius: '6px', fontSize: '11px' });
+  voidBtn.style.flex     = '1';
+  voidBtn.style.minWidth = '0';
+  voidBtn.style.height   = '38px';
   _wireLongPress(voidBtn, function() { handleVoid(state); }, 550);
   splitPayRow.appendChild(voidBtn);
 
@@ -1309,10 +1305,10 @@ function renderActionBar(state) {
   orderCard.appendChild(addBtn);
 
   var splitOrderRow = document.createElement('div');
-  Object.assign(splitOrderRow.style, { display: 'flex', gap: '5px', alignItems: 'stretch' });
+  Object.assign(splitOrderRow.style, { display: 'flex', gap: '5px' });
 
   var sendBtn = buildPillButton({ label: 'SEND UNSENT', color: T.green, darkBg: T.greenDk,
-    borderRadius: '6px',
+    borderRadius: '6px', fontSize: '11px',
     onClick: function() {
       if (!state.orderId) { showToast('No items to send', { bg: T.gold }); return; }
       fetchWithTimeout('/api/v1/orders/' + state.orderId + '/send', { method: 'POST' }, 8000)
@@ -1322,19 +1318,16 @@ function renderActionBar(state) {
         })
         .catch(function() { showToast('Send failed', { bg: T.verm }); });
     } });
-  sendBtn.style.flex       = '1';
-  sendBtn.style.minWidth   = '0';
-  sendBtn.style.height     = 'auto';
-  sendBtn.style.minHeight  = '38px';
-  sendBtn.style.whiteSpace = 'normal';
+  sendBtn.style.flex     = '1';
+  sendBtn.style.minWidth = '0';
+  sendBtn.style.height   = '38px';
   splitOrderRow.appendChild(sendBtn);
 
   var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
-    borderRadius: '6px', onClick: function() { handleResend(state); } });
-  resendBtn.style.flex       = '1';
-  resendBtn.style.minWidth   = '0';
-  resendBtn.style.height     = 'auto';
-  resendBtn.style.minHeight  = '38px';
+    borderRadius: '6px', fontSize: '11px', onClick: function() { handleResend(state); } });
+  resendBtn.style.flex     = '1';
+  resendBtn.style.minWidth = '0';
+  resendBtn.style.height   = '38px';
   resendBtn.style.whiteSpace = 'normal';
   splitOrderRow.appendChild(resendBtn);
 
