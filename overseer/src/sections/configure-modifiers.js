@@ -1233,7 +1233,7 @@ function openAtomModal(existing) {
             margin-bottom: 10px;
             line-height: 1.5;
         `;
-        subHint.textContent = 'Atoms that come bundled with this one. Long-tap on the terminal opens a strike-off panel (e.g. Meat Lovers → [pepperoni, sausage, bacon, ham]).';
+        subHint.textContent = 'microMODs can be attached to modifiers to allow a second layer of modification. Examples include: Chicken → Grilled or Fried, Meat Lovers → No Ham, etc.';
         subSection.appendChild(subHint);
 
         const microModIds = [...(existing?.included_modifier_ids || [])];
