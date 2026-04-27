@@ -665,6 +665,7 @@ function buildBaseCard(opts) {
   card.style.flexDirection = 'column';
   card.style.gap = '8px';
   card.style.flexShrink = '0';
+  card.style.touchAction = 'pan-y';
 
   return card;
 }
@@ -726,8 +727,7 @@ function buildChecksCard(state, handlers, activeTab, selectedCheckIds) {
         : 'background:transparent;color:' + T.moon + ';border:1px solid rgba(255,255,255,0.15);',
     ].join('');
     pill.textContent = label + ' ' + count;
-    pill.addEventListener('pointerup', function(e) {
-      e.stopPropagation();
+    pill.addEventListener('pointerup', function() {
       if (handlers.onTabChange) handlers.onTabChange(key);
     });
     return pill;
@@ -740,11 +740,7 @@ function buildChecksCard(state, handlers, activeTab, selectedCheckIds) {
 
   // List
   var list = document.createElement('div');
-  list.style.cssText = [
-    'display:flex;flex-direction:column;gap:6px;',
-    'max-height:280px;overflow-y:auto;',
-    'touch-action:pan-y;overscroll-behavior:contain;',
-  ].join('');
+  list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
 
   if (activeTab === 'active') {
     state.openChecks.forEach(function(chk) {
@@ -774,7 +770,7 @@ function _buildActiveCheckRow(chk, handlers, isSelected) {
     isSelected
       ? 'border:1.5px solid ' + T.elec + ';background:' + hexToRgba(T.elec, 0.07) + ';'
       : 'border:1.5px solid transparent;background:' + T.well + ';',
-    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'cursor:pointer;pointer-events:auto;touch-action:pan-y;',
     'user-select:none;-webkit-user-select:none;',
   ].join('');
 
@@ -890,8 +886,7 @@ function _buildClosedCheckRow(chk, handlers) {
     'user-select:none;-webkit-user-select:none;',
   ].join('');
   reprBtn.textContent = 'Reprint';
-  reprBtn.addEventListener('pointerup', function(e) {
-    e.stopPropagation();
+  reprBtn.addEventListener('pointerup', function() {
     if (handlers.onReprintCheck) handlers.onReprintCheck(chk);
   });
 
@@ -906,8 +901,7 @@ function _buildClosedCheckRow(chk, handlers) {
     'user-select:none;-webkit-user-select:none;',
   ].join('');
   reopBtn.textContent = 'Reopen';
-  reopBtn.addEventListener('pointerup', function(e) {
-    e.stopPropagation();
+  reopBtn.addEventListener('pointerup', function() {
     if (handlers.onReopenCheck) handlers.onReopenCheck(chk);
   });
 
@@ -960,7 +954,7 @@ function buildTipsCard(state, handlers, tipFilter) {
 
   // Row list — content depends on current filter
   var list = document.createElement('div');
-  list.style.cssText = 'display:flex;flex-direction:column;gap:8px;max-height:240px;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;';
+  list.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
 
   if (!hasCards) {
     var emptyAll = document.createElement('div');
@@ -1003,8 +997,7 @@ function buildTipFilterTabs(activeFilter, unadjCount, adjCount, handlers) {
         : 'background:transparent;color:' + hexToRgba(T.text, 0.6) + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
     ].join('');
     pill.textContent = label + ' ' + count;
-    pill.addEventListener('pointerup', function(e) {
-      e.stopPropagation();
+    pill.addEventListener('pointerup', function() {
       if (handlers.onTipFilterChange) handlers.onTipFilterChange(key);
     });
     return pill;
@@ -1099,8 +1092,7 @@ function buildRowPill(opts) {
     'box-shadow:0 2px 0 rgba(0,0,0,0.25);',
   ].join('');
   wrap.textContent = opts.label;
-  wrap.addEventListener('pointerup', function(e) {
-    e.stopPropagation();
+  wrap.addEventListener('pointerup', function() {
     if (opts.onClick) opts.onClick();
   });
   return wrap;
