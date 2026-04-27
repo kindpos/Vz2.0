@@ -22,7 +22,7 @@ from app.core.events import (
 )
 from app.models.config_events import (
     StoreConfigBundle, StoreInfo, CCProcessingRate, PendingChange,
-    Role, Employee, TipoutRule, TipPool, MenuItem, MenuCategory, ModifierGroup,
+    Role, Employee, TipoutRule, TipPool, MenuItem, MenuCategory, ModifierGroup, MicroMod,
     Section, FloorPlanLayout, Terminal, Printer, RoutingMatrix
 )
 from app.config import settings
@@ -178,6 +178,12 @@ async def get_menu_items(ledger: EventLedger = Depends(get_ledger)):
 async def get_modifier_groups(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_modifier_groups()
+
+
+@router.get("/micromods", response_model=List[MicroMod])
+async def get_micromods(ledger: EventLedger = Depends(get_ledger)):
+    service = OverseerConfigService(ledger)
+    return await service.get_micromods()
 
 
 @router.get("/floorplan/sections", response_model=List[Section])
@@ -355,6 +361,8 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
         elif etype.startswith("menu.") or etype.startswith("category."):
             sections.add("menu")
         elif etype.startswith("modifier."):
+            sections.add("modifiers")
+        elif etype.startswith("micromod."):
             sections.add("modifiers")
         elif etype.startswith("discount."):
             sections.add("discounts")

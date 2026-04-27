@@ -232,6 +232,8 @@ class ModifierOption(BaseModel):
     # sub-panel listing these for strike-off (NO / ON SIDE). Empty list =
     # leaf atom, regular tap behavior.
     included_modifier_ids: List[str] = []
+    active: bool = True
+    is_86d: bool = False
 
 class ModifierGroup(BaseModel):
     group_id: str
@@ -261,6 +263,14 @@ class ModifierGroup(BaseModel):
     hidden: bool = False
     owner_item_id: Optional[str] = None
     active: bool = True
+
+class MicroMod(BaseModel):
+    micromod_id: str
+    name: str
+    price: Decimal = Decimal("0")
+    modifier_id: Optional[str] = None
+    active: bool = True
+    is_86d: bool = False
 
 # Floor Plan Models
 class TableElement(BaseModel):

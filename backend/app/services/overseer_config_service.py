@@ -3,7 +3,7 @@ from app.core.event_ledger import EventLedger
 from app.core.events import EventType, Event
 from app.models.config_events import (
     Role, Employee, TipoutRule, TipPool,
-    MenuItem, MenuCategory, ModifierGroup,
+    MenuItem, MenuCategory, ModifierGroup, MicroMod,
     Section, FloorPlanLayout,
     Terminal, Printer, RoutingMatrix,
     DashboardConfig, CustomReport, AccountsMapping
@@ -290,7 +290,98 @@ class OverseerConfigService:
                 existing.update(payload)
                 groups[gid] = existing
 
+        # Apply individual modifier lifecycle events (86, deactivate, price change)
+        # on top of the group projection so the API reflects real-time atom state.
+        lifecycle_types = [
+            EventType.MODIFIER_86ED,
+            EventType.MODIFIER_86_CLEARED,
+            EventType.MODIFIER_DEACTIVATED,
+            EventType.MODIFIER_REACTIVATED,
+            EventType.MODIFIER_PRICE_CHANGED,
+        ]
+        lifecycle: list = []
+        for et in lifecycle_types:
+            lifecycle += await self.ledger.get_events_by_type(et, limit=5000)
+        if lifecycle:
+            lifecycle.sort(key=lambda x: x.sequence_number or 0)
+            for e in lifecycle:
+                mid = e.payload.get("modifier_id")
+                if not mid:
+                    continue
+                for g in groups.values():
+                    for mod in g.get("modifiers", []):
+                        if not isinstance(mod, dict) or mod.get("modifier_id") != mid:
+                            continue
+                        if e.event_type == EventType.MODIFIER_86ED:
+                            mod["is_86d"] = True
+                        elif e.event_type == EventType.MODIFIER_86_CLEARED:
+                            mod["is_86d"] = False
+                        elif e.event_type == EventType.MODIFIER_DEACTIVATED:
+                            mod["active"] = False
+                        elif e.event_type == EventType.MODIFIER_REACTIVATED:
+                            mod["active"] = True
+                        elif e.event_type == EventType.MODIFIER_PRICE_CHANGED:
+                            mod["price"] = e.payload.get("new_price", mod.get("price"))
+
         result = [ModifierGroup(**g) for g in groups.values()]
+        cache.set(seq, result)
+        return result
+
+    async def get_micromods(self) -> List[MicroMod]:
+        cache = self._get_cache("micromods")
+        seq = await self._max_seq()
+        cached = cache.get(seq)
+        if cached is not None:
+            return cached
+
+        event_types = [
+            EventType.MICROMOD_CREATED,
+            EventType.MICROMOD_PRICE_CHANGED,
+            EventType.MICROMOD_DEACTIVATED,
+            EventType.MICROMOD_REACTIVATED,
+            EventType.MICROMOD_86ED,
+            EventType.MICROMOD_86_CLEARED,
+            EventType.MICROMOD_ASSIGNED_TO_MODIFIER,
+            EventType.MICROMOD_UNASSIGNED_FROM_MODIFIER,
+        ]
+        events: list = []
+        for et in event_types:
+            events += await self.ledger.get_events_by_type(et, limit=5000)
+        events.sort(key=lambda x: x.sequence_number or 0)
+
+        micromods: Dict[str, Dict[str, Any]] = {}
+        for e in events:
+            payload = e.payload
+            mmid = payload.get("micromod_id")
+            if not mmid:
+                continue
+            if e.event_type == EventType.MICROMOD_CREATED:
+                micromods[mmid] = {
+                    "micromod_id": mmid,
+                    "name": payload.get("name", ""),
+                    "price": payload.get("price", "0"),
+                    "modifier_id": payload.get("modifier_id"),
+                    "active": True,
+                    "is_86d": False,
+                }
+            elif mmid in micromods:
+                mm = micromods[mmid]
+                if e.event_type == EventType.MICROMOD_PRICE_CHANGED:
+                    mm["price"] = payload.get("new_price", mm["price"])
+                elif e.event_type == EventType.MICROMOD_DEACTIVATED:
+                    mm["active"] = False
+                elif e.event_type == EventType.MICROMOD_REACTIVATED:
+                    mm["active"] = True
+                elif e.event_type == EventType.MICROMOD_86ED:
+                    mm["is_86d"] = True
+                elif e.event_type == EventType.MICROMOD_86_CLEARED:
+                    mm["is_86d"] = False
+                elif e.event_type == EventType.MICROMOD_ASSIGNED_TO_MODIFIER:
+                    mm["modifier_id"] = payload.get("modifier_id")
+                elif e.event_type == EventType.MICROMOD_UNASSIGNED_FROM_MODIFIER:
+                    mm["modifier_id"] = None
+
+        result = [MicroMod(**mm) for mm in micromods.values()]
         cache.set(seq, result)
         return result
 
