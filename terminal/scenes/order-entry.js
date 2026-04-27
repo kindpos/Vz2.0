@@ -1300,6 +1300,9 @@ function buildSeatSelectorCard() {
       pill.style.height = '32px';
       pill.style.width = '100%';
       pill.style.borderRadius = '6px';
+      pill.style.display = 'flex';
+      pill.style.alignItems = 'center';
+      pill.style.justifyContent = 'center';
       pill.addEventListener('pointerup', function() {
         if (_activeSeats.has(sn)) {
           if (_activeSeats.size <= 1) return;
