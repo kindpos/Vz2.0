@@ -1364,7 +1364,7 @@ function buildSeatSelectorCard() {
         textColor: isActive ? T.well : undefined,
         fontSize: T.fsB4,
       });
-      pill.style.height = '48px';
+      pill.style.height = '64px';
       pill.style.width = '100%';
       pill.style.padding = '0';
       pill.style.borderRadius = T.groups.selectionGrid.radius;
