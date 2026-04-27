@@ -451,14 +451,24 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                         payment.tax_amount = Decimal(str(payload.get("tax", Decimal("0.00"))))
                         if payload.get("seat_numbers"):
                             payment.seat_numbers = payload["seat_numbers"]
-                        # Distribute a payment slice to each covered seat
+                        # Distribute a payment slice to each covered seat.
+                        # Last seat receives the remainder to avoid losing a
+                        # penny when amount / N is not exactly representable
+                        # (e.g. $10.00 / 3 = $3.33 * 3 = $9.99).
                         seat_nums = payload.get("seat_numbers") or []
                         if seat_nums:
-                            slice_amount = Decimal(str(payment.amount)) / len(seat_nums)
-                            for sn in seat_nums:
+                            total_pay = Decimal(str(payment.amount))
+                            n = len(seat_nums)
+                            distributed = Decimal("0.00")
+                            for idx, sn in enumerate(seat_nums):
+                                if idx == n - 1:
+                                    seat_slice = money_round(total_pay - distributed)
+                                else:
+                                    seat_slice = money_round(total_pay / n)
+                                    distributed += seat_slice
                                 _seat(int(sn)).seat_payments.append({
                                     "payment_id": pid,
-                                    "amount": str(money_round(slice_amount)),
+                                    "amount": str(seat_slice),
                                     "status": "confirmed",
                                     "confirmed_at": str(event.timestamp),
                                 })

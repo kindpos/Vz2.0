@@ -251,6 +251,15 @@ async def process_sale(
         raise HTTPException(status_code=400, detail="Order is already fully paid")
     order_tax = order_proj.tax if order_proj else Decimal("0.00")
 
+    # Validate requested seat_numbers exist on the order
+    if request.seat_numbers and order_proj:
+        invalid_seats = [s for s in request.seat_numbers if s not in order_proj.seat_numbers]
+        if invalid_seats:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Seat numbers {invalid_seats} do not exist on order {request.order_id}",
+            )
+
     # Guard against concurrent requests: if a PAYMENT_INITIATED event exists
     # for this order without a matching result event, another sale is in-flight.
     _result_types = {
@@ -421,6 +430,15 @@ async def process_cash_payment(
     # Guard: reject if order is already fully paid (prevents double-charge on rapid taps)
     if order.is_fully_paid:
         raise HTTPException(status_code=400, detail="Order is already fully paid")
+
+    # Validate requested seat_numbers exist on the order
+    if request.seat_numbers:
+        invalid_seats = [s for s in request.seat_numbers if s not in order.seat_numbers]
+        if invalid_seats:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Seat numbers {invalid_seats} do not exist on order {request.order_id}",
+            )
 
     # Apply cash dual-pricing discount only on the FIRST cash payment
     # (no prior confirmed payments). Applying on every partial payment
