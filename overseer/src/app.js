@@ -89,7 +89,7 @@ const NAV = [
         label: 'MENU',
         subs: [
             { id: 'menu-categories',     label: 'Items & Categories' },
-            { id: 'modifier-groups',      label: 'Modifiers'         },
+            { id: 'modifier-groups',      label: "Modifiers & microMODs" },
             { id: 'pricing-specials',    label: 'Discounts & Specials' },
             { id: 'import-excel',        label: 'Import Menu'       },
         ]

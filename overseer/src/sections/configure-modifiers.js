@@ -814,7 +814,7 @@ function buildMainView(wrapper) {
     `;
     const titleBlock = document.createElement('div');
     const title = document.createElement('div');
-    title.textContent = 'Configure Modifiers';
+    title.textContent = 'Modifiers & microMODs';
     title.style.cssText = `
         font-family: system-ui, sans-serif;
         font-size: 22px; font-weight: 700;
@@ -2102,7 +2102,7 @@ function showConfirmDialog(title, message, confirmLabel, onConfirm) {
 export function registerConfigureModifiers(sceneManager) {
     sceneManager.register('modifier-groups', {
         type: 'detail',
-        title: 'Configure Modifiers',
+        title: 'Modifiers & microMODs',
         parent: 'menu-subs',
         async onEnter(container) {
             console.log('[ConfigureModifiers] Scene loaded — initializing...');
