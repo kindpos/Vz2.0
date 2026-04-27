@@ -1209,7 +1209,8 @@ function renderActionBar(state) {
     borderRadius: '6px',
     onClick: function() { handlePay(state, state._params || {}); } });
   payBtn.style.height    = '38px';
-  payBtn.style.alignSelf = 'stretch';
+  payBtn.style.width     = '75%';
+  payBtn.style.alignSelf = 'center';
   payCard.appendChild(payBtn);
 
   var splitPayRow = document.createElement('div');
@@ -1263,14 +1264,16 @@ function renderActionBar(state) {
     borderRadius: '6px',
     onClick: function() { handlePrint(state); } });
   printBtn.style.height    = '38px';
-  printBtn.style.alignSelf = 'stretch';
+  printBtn.style.width     = '75%';
+  printBtn.style.alignSelf = 'center';
   termCard.appendChild(printBtn);
 
   var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
     borderRadius: '6px',
     onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
   drawerBtn.style.height    = '38px';
-  drawerBtn.style.alignSelf = 'stretch';
+  drawerBtn.style.width     = '75%';
+  drawerBtn.style.alignSelf = 'center';
   termCard.appendChild(drawerBtn);
 
   groupsWrap.appendChild(termCard);
@@ -1304,7 +1307,8 @@ function renderActionBar(state) {
     borderRadius: '6px',
     onClick: function() { handleAddItems(state, state._params || {}); } });
   addBtn.style.height    = '38px';
-  addBtn.style.alignSelf = 'stretch';
+  addBtn.style.width     = '75%';
+  addBtn.style.alignSelf = 'center';
   orderCard.appendChild(addBtn);
 
   var splitOrderRow = document.createElement('div');
