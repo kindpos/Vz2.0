@@ -1282,7 +1282,7 @@ function buildSeatSelectorCard() {
   body.style.cssText = [
     'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;',
     'padding:8px 12px 10px;max-height:116px;overflow-y:auto;',
-    '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;',
+    '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
   card.appendChild(body);
 
