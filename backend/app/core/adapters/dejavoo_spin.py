@@ -483,7 +483,8 @@ class DejavooSPInAdapter(BasePaymentDevice):
 
             result_code = root.findtext("ResultCode") or ""
             status = TransactionStatus.ERROR
-            if result_code == "0" or "Approved" in resp_msg or "Approval" in resp_msg:
+            _resp_lower = resp_msg.lower()
+            if result_code == "0" or (("approved" in _resp_lower or "approval" in _resp_lower) and "not" not in _resp_lower):
                 status = TransactionStatus.APPROVED
             elif "Declined" in resp_msg:
                 status = TransactionStatus.DECLINED

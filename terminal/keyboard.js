@@ -43,6 +43,7 @@ export function showKeyboard(opts) {
 export function hideKeyboard() {
   if (!_visible) return;
   _visible = false;
+  _opts = {};
   if (_root && _root.parentNode) _root.parentNode.removeChild(_root);
 }
 

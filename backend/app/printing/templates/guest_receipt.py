@@ -150,7 +150,7 @@ class GuestReceiptTemplate(BaseTemplate):
                 qty = item.get('qty', 1)
                 name = item.get('name', 'Item')
                 price = item.get('price', 0.0)
-                total = qty * price
+                total = item.get('subtotal', qty * price)
 
                 # Item line: qty + name + right-aligned price (BOLD)
                 price_str = f"$ {total:.2f}"

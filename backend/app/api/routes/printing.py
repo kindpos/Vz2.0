@@ -15,7 +15,7 @@ from ...core.event_ledger import EventLedger
 from ...models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 from ...printing.print_queue import PrintJobQueue
 from ...services.print_context_builder import PrintContextBuilder
-from .auth import _record_diag
+from .auth import _record_diag, require_manager
 from .hardware import HARDWARE_DB_PATH, _ensure_db
 
 router = APIRouter(prefix="/print", tags=["printing"])
@@ -27,7 +27,7 @@ print_queue = PrintJobQueue()
 
 _logger = logging.getLogger(__name__)
 
-@router.post("/receipt/{order_id}")
+@router.post("/receipt/{order_id}", dependencies=[Depends(require_manager)])
 async def print_receipt(
     order_id: str,
     copy_type: str = "customer",   # query param: customer | merchant | itemized
@@ -46,7 +46,7 @@ async def print_receipt(
     )
     return {"status": "queued", "job_id": job_id, "copy_type": copy_type}
 
-@router.post("/ticket/{order_id}")
+@router.post("/ticket/{order_id}", dependencies=[Depends(require_manager)])
 async def print_ticket(
     order_id: str,
     void: bool = False,
@@ -120,7 +120,7 @@ async def get_queue():
     failed = await print_queue.get_failed_jobs()
     return {"pending": pending, "failed": failed}
 
-@router.post("/queue/{job_id}/retry")
+@router.post("/queue/{job_id}/retry", dependencies=[Depends(require_manager)])
 async def retry_job(job_id: str):
     """Manually retry a failed job."""
     await print_queue.reset_for_retry(job_id)
@@ -132,7 +132,7 @@ class ClockHoursRequest(BaseModel):
     action: str = "CLOCK IN"
 
 
-@router.post("/clock-hours/{employee_id}")
+@router.post("/clock-hours/{employee_id}", dependencies=[Depends(require_manager)])
 async def print_clock_hours(
     employee_id: str,
     request: ClockHoursRequest,
@@ -163,7 +163,7 @@ class SalesRecapRequest(BaseModel):
     printed_by: str = "Manager"
 
 
-@router.post("/sales-recap")
+@router.post("/sales-recap", dependencies=[Depends(require_manager)])
 async def print_sales_recap(
     request: SalesRecapRequest,
     ledger: EventLedger = Depends(get_ledger),
@@ -187,7 +187,7 @@ class ServerCheckoutPrintRequest(BaseModel):
     declared_cash_tips: Optional[float] = None
 
 
-@router.post("/server-checkout/{server_id}")
+@router.post("/server-checkout/{server_id}", dependencies=[Depends(require_manager)])
 async def print_server_checkout(
     server_id: str,
     request: ServerCheckoutPrintRequest,
@@ -211,7 +211,7 @@ async def print_server_checkout(
     return {"status": "queued", "job_id": job_id}
 
 
-@router.post("/test")
+@router.post("/test", dependencies=[Depends(require_manager)])
 async def print_test(template_name: str = Body(..., embed=True), printer_mac: str = Body(..., embed=True)):
     """Fire a fixture template to a printer (test panel)."""
     # Reject any separator or traversal sequence — fixture names are bare filenames.

@@ -113,13 +113,18 @@ async def sweep_orphan_initiated_payments(
             payload=payload,
             correlation_id=payload.get("order_id"),
         )
-        await ledger.append(sweep_event)
-        orphans_swept += 1
-
-        logger.warning(
-            "Swept orphan PAYMENT_INITIATED: payment_id=%s order_id=%s age_s=%.0f",
-            key, payload.get("order_id"), age_s,
-        )
+        try:
+            await ledger.append(sweep_event)
+            orphans_swept += 1
+            logger.warning(
+                "Swept orphan PAYMENT_INITIATED: payment_id=%s order_id=%s age_s=%.0f",
+                key, payload.get("order_id"), age_s,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to sweep orphan PAYMENT_INITIATED: payment_id=%s error=%s",
+                key, exc,
+            )
 
         if collector is not None:
             try:
