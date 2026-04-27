@@ -774,7 +774,7 @@ function _buildActiveCheckRow(chk, handlers, isSelected) {
     isSelected
       ? 'border:1.5px solid ' + T.elec + ';background:' + hexToRgba(T.elec, 0.07) + ';'
       : 'border:1.5px solid transparent;background:' + T.well + ';',
-    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'cursor:pointer;pointer-events:auto;touch-action:pan-y;',
     'user-select:none;-webkit-user-select:none;',
   ].join('');
 
