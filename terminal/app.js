@@ -12,6 +12,7 @@
 import './auth-client.js';
 
 import { SceneManager } from './scene-manager.js';
+import { fetchWithTimeout } from './net.js';
 import { performLogout, fmtTime, fmtDate, greetingFor } from './header.js';
 import { getSession } from './auth-client.js';
 import { T, applyStoreTheme } from '../common/tokens.js';
@@ -189,7 +190,7 @@ async function boot() {
 
   // 3. Load store config from backend
   try {
-    var res = await fetch('/api/v1/config/store');
+    var res = await fetchWithTimeout('/api/v1/config/store', {}, 8000);
     if (res.ok) {
       var config = await res.json();
       applyStoreTheme({

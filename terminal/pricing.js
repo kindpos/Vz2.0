@@ -20,6 +20,8 @@
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
+import { fetchWithTimeout } from './net.js';
+
 // Defaults kick in when the browser hasn't yet heard back from
 // /api/v1/config/pricing. They match the long-standing POS defaults
 // so a first render before the fetch completes looks sane.
@@ -34,7 +36,7 @@ function _roundCents(n) {
 
 function _loadRates() {
   if (_loadPromise) return _loadPromise;
-  _loadPromise = fetch('/api/v1/config/pricing')
+  _loadPromise = fetchWithTimeout('/api/v1/config/pricing', {}, 8000)
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(d) {
       if (d) {

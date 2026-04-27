@@ -16,6 +16,7 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from app.api.dependencies import get_ledger
+from app.api.routes.auth import require_manager
 from app.core.event_ledger import EventLedger
 from app.core.events import EventType, order_transferred
 from app.core.projections import project_orders
@@ -259,8 +260,8 @@ class FinalizeCheckoutRequest(BaseModel):
     manager_pin_verified: bool
 
 
-@router.post("/finalize-checkout")
-@shifts_router.post("/finalize-checkout")
+@router.post("/finalize-checkout", dependencies=[Depends(require_manager)])
+@shifts_router.post("/finalize-checkout", dependencies=[Depends(require_manager)])
 async def finalize_checkout(
     request: FinalizeCheckoutRequest,
     ledger: EventLedger = Depends(get_ledger),
@@ -279,8 +280,8 @@ class ShiftTransferRequest(BaseModel):
     from_server_id: Optional[str] = None
 
 
-@router.post("/transfer")
-@shifts_router.post("/transfer")
+@router.post("/transfer", dependencies=[Depends(require_manager)])
+@shifts_router.post("/transfer", dependencies=[Depends(require_manager)])
 async def transfer_shift_order(
     request: ShiftTransferRequest,
     ledger: EventLedger = Depends(get_ledger),

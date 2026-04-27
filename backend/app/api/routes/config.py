@@ -2,6 +2,7 @@ import base64
 import logging
 import os
 import uuid
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -225,10 +226,6 @@ async def upload_store_logo(
     if len(raw) > _LOGO_MAX_BYTES:
         raise HTTPException(status_code=413, detail=f"image exceeds {_LOGO_MAX_BYTES} bytes")
 
-    path = _logo_storage_path()
-    with open(path, "wb") as fh:
-        fh.write(raw)
-
     event = create_event(
         event_type=EventType.STORE_BRANDING_UPDATED,
         terminal_id="OVERSEER",
@@ -238,6 +235,10 @@ async def upload_store_logo(
         },
     )
     await ledger.append(event)
+
+    path = _logo_storage_path()
+    with open(path, "wb") as fh:
+        fh.write(raw)
     background_tasks.add_task(broadcast_config_update, ["store"])
     # Echo a cache-buster the client can use to refresh the <img> src.
     return {"status": "ok", "event_id": event.sequence_number,
@@ -281,6 +282,9 @@ async def update_store_info(info: StoreInfo, background_tasks: BackgroundTasks,
 @router.post("/store/cc-rate", dependencies=[Depends(require_manager)])
 async def update_cc_rate(rate: CCProcessingRate, background_tasks: BackgroundTasks,
                          ledger: EventLedger = Depends(get_ledger)):
+    _TWO_DP = Decimal("0.01")
+    if rate.per_transaction_fee != rate.per_transaction_fee.quantize(_TWO_DP):
+        raise HTTPException(status_code=422, detail="per_transaction_fee must have at most 2 decimal places")
     event = create_event(
         event_type=EventType.STORE_CC_PROCESSING_RATE_UPDATED,
         terminal_id="OVERSEER",
@@ -409,6 +413,8 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
 
 @router.post("/menu/86", dependencies=[Depends(require_manager)])
 async def item_86(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
+    if not item_id or not item_id.strip():
+        raise HTTPException(status_code=422, detail="item_id must not be empty")
     # Emit the legacy menu.item_86d alongside the spec-aligned item.86ed
     # so existing projections keep seeing the old name while replayers
     # that follow the spec vocabulary have a canonical 86 event.
@@ -429,6 +435,8 @@ async def item_86(item_id: str, background_tasks: BackgroundTasks, ledger: Event
 
 @router.post("/menu/restore", dependencies=[Depends(require_manager)])
 async def item_restore(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
+    if not item_id or not item_id.strip():
+        raise HTTPException(status_code=422, detail="item_id must not be empty")
     # Mirror the 86 route: emit legacy menu.item_restored alongside the
     # spec-aligned item.86_cleared in one atomic append_batch.
     event = create_event(
