@@ -1362,7 +1362,7 @@ function buildSeatSelectorCard() {
         color: isActive ? T.green : T.moon,
         darkBg: isActive ? T.greenDk : T.moonDk,
         textColor: isActive ? T.well : undefined,
-        fontSize: T.fsB4,
+        fontSize: T.fsH3,
       });
       pill.style.height = '64px';
       pill.style.width = '100%';
