@@ -421,8 +421,8 @@ function renderScene() {
     bodyMount.appendChild(buildDayPartsAccordion());
     bodyMount.appendChild(buildSpecialsAccordion());
 
-    bodyMount.appendChild(buildSuperHeader('DISCOUNTS', C.green));
     bodyMount.appendChild(buildOrderTypesAccordion());
+    bodyMount.appendChild(buildSuperHeader('DISCOUNTS', C.green));
     bodyMount.appendChild(buildEmployeeAccordion());
     bodyMount.appendChild(buildCompReasonsAccordion());
 
