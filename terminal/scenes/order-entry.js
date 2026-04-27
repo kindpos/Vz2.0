@@ -1280,8 +1280,8 @@ function buildSeatSelectorCard() {
   var body = document.createElement('div');
   body.className = '_oe-seat-scroll';
   body.style.cssText = [
-    'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;',
-    'padding:8px 12px 10px;max-height:116px;overflow-y:auto;',
+    'display:grid;grid-template-columns:repeat(8,1fr);gap:5px;',
+    'padding:6px 12px 8px;max-height:96px;overflow-y:auto;',
     '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
   card.appendChild(body);
@@ -1295,11 +1295,11 @@ function buildSeatSelectorCard() {
         color: isActive ? T.green : T.moon,
         darkBg: isActive ? T.greenDk : T.moonDk,
         textColor: isActive ? T.well : undefined,
-        fontSize: T.fsB2,
+        fontSize: T.fsB4,
       });
-      pill.style.height = '48px';
+      pill.style.height = '32px';
       pill.style.width = '100%';
-      pill.style.borderRadius = '8px';
+      pill.style.borderRadius = '6px';
       pill.addEventListener('pointerup', function() {
         if (_activeSeats.has(sn)) {
           if (_activeSeats.size <= 1) return;
