@@ -131,8 +131,21 @@ async function boot() {
     ].join('');
     exitBtn.textContent = '×';
 
+    var _backLastTap = 0;
     backBtn.addEventListener('click', function() {
-      if (_backHandler) _backHandler();
+      var now = Date.now();
+      if (now - _backLastTap < 300) {
+        _backLastTap = 0;
+        var sess = getSession();
+        var landingScene = (sess && sess.roles && sess.roles[0] === 'manager')
+          ? 'manager-landing' : 'server-landing';
+        SceneManager.mountWorking(landingScene, sess ? {
+          emp: { id: sess.employee_id, name: sess.name },
+        } : {});
+      } else {
+        _backLastTap = now;
+        if (_backHandler) _backHandler();
+      }
     });
     exitBtn.addEventListener('click', performLogout);
 
