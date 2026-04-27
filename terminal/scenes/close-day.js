@@ -1462,9 +1462,12 @@ defineScene({
           showToast('Adjust all tips before settling the batch', { bg: T.verm });
           return;
         }
+        if (state._settling) return;
+        state._settling = true;
         showToast('Settling batch\u2026', { bg: T.elec });
         fetch('/api/v1/payments/batch-settle', { method: 'POST' })
           .then(function(r) {
+            state._settling = false;
             if (r.ok) {
               state.batchSettled = true;
               showToast('Batch settled', { bg: T.greenWarm });
@@ -1476,6 +1479,7 @@ defineScene({
             }
           })
           .catch(function() {
+            state._settling = false;
             showToast('Settle unavailable — check connection', { bg: T.verm });
           });
       },
@@ -1725,6 +1729,8 @@ defineScene({
     };
 
     function doLockDay(countedCash) {
+      if (state._locking) return;
+      state._locking = true;
       var payload = {
         manager_pin_verified: true,
         manager_id:           state.data.managerId,
@@ -1753,6 +1759,7 @@ defineScene({
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
       }).then(function(r) {
+        state._locking = false;
         if (r.ok) {
           showToast('Day locked', { bg: T.greenWarm });
           SceneManager.closeTransactional('close-day');
@@ -1764,6 +1771,7 @@ defineScene({
           showToast('Lock failed (' + r.status + ') — try again', { bg: T.verm });
         }
       }).catch(function() {
+        state._locking = false;
         showToast('Lock unavailable — check connection', { bg: T.verm });
       });
     }

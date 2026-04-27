@@ -27,6 +27,7 @@ var denomAccum        = 0;
 var numpadStr         = '';
 var paymentMode       = 'card';
 var confirmProcessing = false;
+var _cardController   = null;
 var payments          = [];
 var totalPaid         = 0;
 var baseTotal         = 0;
@@ -127,6 +128,7 @@ defineScene({
     numpadStr         = '';
     paymentMode       = params.paymentMode || 'card';
     confirmProcessing = false;
+    _cardController   = null;
     payments          = [];
     totalPaid         = 0;
     baseTotal         = params.cardTotal || 0;
@@ -160,7 +162,10 @@ defineScene({
     updateSplitDisplay();
 
     if (window._header && window._header.setBackHandler) {
-      window._header.setBackHandler(function() { _returnToParent(sceneData); });
+      window._header.setBackHandler(function() {
+        if (confirmProcessing) return;
+        _returnToParent(sceneData);
+      });
     }
 
     // Prefer the authoritative data from check-overview: it already knows
@@ -196,6 +201,7 @@ defineScene({
 
   unmount: function() {
     SceneManager.off('split:tap', _onSplitTap);
+    if (_cardController) { _cardController.abort(); _cardController = null; }
     if (dotTimer) { clearInterval(dotTimer); dotTimer = null; }
     if (_procAnimTimer) { clearInterval(_procAnimTimer); _procAnimTimer = null; }
     if (OrderSummary && OrderSummary.hide) OrderSummary.hide();
@@ -727,7 +733,10 @@ function buildLeftColumn(params) {
   _chevronEl.style.userSelect    = 'none';
   _chevronEl.style.touchAction   = 'manipulation';
   _chevronEl.style.padding       = '2px 6px';
-  _chevronEl.addEventListener('pointerup', function() { _returnToParent(sceneData); });
+  _chevronEl.addEventListener('pointerup', function() {
+    if (confirmProcessing) return;
+    _returnToParent(sceneData);
+  });
   header.appendChild(_chevronEl);
 
   var title = document.createElement('div');
@@ -1256,7 +1265,8 @@ async function handleConfirm() {
     } else {
       proc = showProcessingOverlay(paymentAmount);
 
-      var controller = new AbortController();
+      _cardController = new AbortController();
+      var controller = _cardController;
       var cardTimeout = setTimeout(function() { controller.abort(); }, 95000);
 
       var transactionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -1278,6 +1288,7 @@ async function handleConfirm() {
       });
 
       clearTimeout(cardTimeout);
+      _cardController = null;
       if (proc) proc.dismiss();
 
       if (!res.ok) {

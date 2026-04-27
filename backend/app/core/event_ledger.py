@@ -260,63 +260,67 @@ class EventLedger:
 
         results = []
         async with self._write_lock:
-            for event in events:
-                # Get previous checksum
-                if results:
-                    previous_checksum = results[-1].checksum
-                else:
+            try:
+                for event in events:
+                    # Get previous checksum
+                    if results:
+                        previous_checksum = results[-1].checksum
+                    else:
+                        cursor = await self._db.execute(
+                            "SELECT checksum FROM events ORDER BY sequence_number DESC LIMIT 1"
+                        )
+                        row = await cursor.fetchone()
+                        previous_checksum = row[0] if row else ""
+
+                    checksum = event.compute_checksum(previous_checksum)
+
+                    await self._db.execute(
+                        """
+                        INSERT INTO events (
+                            event_id, timestamp, terminal_id, event_type, payload,
+                            user_id, user_role, correlation_id, previous_checksum, checksum,
+                            idempotency_key
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            event.event_id,
+                            event.timestamp.isoformat(),
+                            event.terminal_id,
+                            event.event_type.value,
+                            json.dumps(event.payload, default=_decimal_default),
+                            event.user_id,
+                            event.user_role,
+                            event.correlation_id,
+                            previous_checksum,
+                            checksum,
+                            event.idempotency_key,
+                        )
+                    )
+
                     cursor = await self._db.execute(
-                        "SELECT checksum FROM events ORDER BY sequence_number DESC LIMIT 1"
+                        "SELECT sequence_number FROM events WHERE event_id = ?",
+                        (event.event_id,)
                     )
                     row = await cursor.fetchone()
-                    previous_checksum = row[0] if row else ""
 
-                checksum = event.compute_checksum(previous_checksum)
+                    results.append(Event(
+                        event_id=event.event_id,
+                        timestamp=event.timestamp,
+                        terminal_id=event.terminal_id,
+                        event_type=event.event_type,
+                        payload=event.payload,
+                        user_id=event.user_id,
+                        user_role=event.user_role,
+                        correlation_id=event.correlation_id,
+                        sequence_number=row[0],
+                        previous_checksum=previous_checksum,
+                        checksum=checksum,
+                    ))
 
-                await self._db.execute(
-                    """
-                    INSERT INTO events (
-                        event_id, timestamp, terminal_id, event_type, payload,
-                        user_id, user_role, correlation_id, previous_checksum, checksum,
-                        idempotency_key
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        event.event_id,
-                        event.timestamp.isoformat(),
-                        event.terminal_id,
-                        event.event_type.value,
-                        json.dumps(event.payload, default=_decimal_default),
-                        event.user_id,
-                        event.user_role,
-                        event.correlation_id,
-                        previous_checksum,
-                        checksum,
-                        event.idempotency_key,
-                    )
-                )
-
-                cursor = await self._db.execute(
-                    "SELECT sequence_number FROM events WHERE event_id = ?",
-                    (event.event_id,)
-                )
-                row = await cursor.fetchone()
-
-                results.append(Event(
-                    event_id=event.event_id,
-                    timestamp=event.timestamp,
-                    terminal_id=event.terminal_id,
-                    event_type=event.event_type,
-                    payload=event.payload,
-                    user_id=event.user_id,
-                    user_role=event.user_role,
-                    correlation_id=event.correlation_id,
-                    sequence_number=row[0],
-                    previous_checksum=previous_checksum,
-                    checksum=checksum,
-                ))
-
-            await self._db.commit()
+                await self._db.commit()
+            except Exception:
+                await self._db.rollback()
+                raise
 
         return results
 
