@@ -730,26 +730,27 @@ defineScene({
         st._voidPending    = false;
         st._voidPendingKey = null;
         var voided = 0, vFailed = 0;
+        function _voidDone() {
+          if (voided + vFailed !== ids.length) return;
+          showToast(
+            vFailed === 0
+              ? 'Voided ' + voided + ' check' + (voided === 1 ? '' : 's')
+              : voided + ' voided, ' + vFailed + ' failed',
+            { bg: vFailed === 0 ? T.green : T.gold, duration: 2000 }
+          );
+          st.selectedIds = [];
+          st.selectedAt  = {};
+          refresh();
+        }
         ids.forEach(function(orderId) {
           fetch('/api/v1/orders/' + orderId + '/void', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ approved_by: st.emp.employee_id || st.emp.id, reason: 'Manager void from landing' }),
           }).then(function(r) {
-            if (r.ok) voided++;
-            else       vFailed++;
-            if (voided + vFailed === ids.length) {
-              showToast(
-                vFailed === 0
-                  ? 'Voided ' + voided + ' check' + (voided === 1 ? '' : 's')
-                  : voided + ' voided, ' + vFailed + ' failed',
-                { bg: vFailed === 0 ? T.green : T.gold, duration: 2000 }
-              );
-              st.selectedIds = [];
-              st.selectedAt  = {};
-              refresh();
-            }
-          }).catch(function() { vFailed++; });
+            if (r.ok) voided++; else vFailed++;
+            _voidDone();
+          }).catch(function() { vFailed++; _voidDone(); });
         });
         return;
       }

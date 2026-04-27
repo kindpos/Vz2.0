@@ -769,8 +769,8 @@ function renderBottomCluster(state) {
 
   if (state.actionLog.length === 0) undoBtn.setDisabled(true);
 
-  // Long-press interaction
-  var longPressTimer = null;
+  // Long-press interaction — stored in state so unmount can cancel it
+  state._lpTimer = null;
 
   function _triggerUndoAll() {
     undoFill.style.transition = 'transform 0.2s linear';
@@ -789,32 +789,32 @@ function renderBottomCluster(state) {
 
   track(undoBtn, 'pointerdown', function() {
     if (undoBtn._disabled) return;
-    longPressTimer = setTimeout(function() {
-      longPressTimer = null;
+    state._lpTimer = setTimeout(function() {
+      state._lpTimer = null;
       _triggerUndoAll();
     }, 600);
   });
 
   track(undoBtn, 'pointerup', function() {
-    if (longPressTimer !== null) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
+    if (state._lpTimer !== null) {
+      clearTimeout(state._lpTimer);
+      state._lpTimer = null;
       handleUndo(state);
     }
   });
 
   track(undoBtn, 'pointerleave', function() {
-    if (longPressTimer !== null) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
+    if (state._lpTimer !== null) {
+      clearTimeout(state._lpTimer);
+      state._lpTimer = null;
     }
     _cancelFill();
   });
 
   track(undoBtn, 'pointercancel', function() {
-    if (longPressTimer !== null) {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
+    if (state._lpTimer !== null) {
+      clearTimeout(state._lpTimer);
+      state._lpTimer = null;
     }
     _cancelFill();
   });
@@ -911,6 +911,10 @@ defineScene({
   },
 
   unmount: function(state) {
+    if (state._lpTimer !== null) {
+      clearTimeout(state._lpTimer);
+      state._lpTimer = null;
+    }
     for (var i = 0; i < state.listeners.length; i++) {
       var l = state.listeners[i];
       l.el.removeEventListener(l.event, l.handler);

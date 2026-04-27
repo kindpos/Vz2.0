@@ -578,7 +578,7 @@ defineScene({
         pin,
         function onSuccess(data) {
           var empId = data.employee_id || data.id || '';
-          fetch('/api/v1/servers/clocked-in')
+          fetchWithTimeout('/api/v1/servers/clocked-in', {}, 10000)
             .then(function(r) { return r.json(); })
             .then(function(clockData) {
               var isClockedIn = (clockData.staff || []).some(function(s) { return s.employee_id === empId; });

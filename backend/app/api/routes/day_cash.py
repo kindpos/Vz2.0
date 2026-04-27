@@ -163,7 +163,7 @@ async def record_cash_payout(
     }
 
 
-@router.get("/variance")
+@router.get("/variance", dependencies=[Depends(require_manager)])
 async def get_cash_variance(ledger: EventLedger = Depends(get_ledger)):
     """Compute expected cash in drawer from event history since last day close."""
     return await _compute_cash_variance(ledger)

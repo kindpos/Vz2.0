@@ -831,7 +831,7 @@ class PatchOrderRequest(BaseModel):
     """Request to update order-level fields (e.g. server transfer, check name)."""
     server_id: Optional[str] = None
     server_name: Optional[str] = None
-    guest_count: Optional[int] = None
+    guest_count: Optional[int] = Field(None, ge=1)
     customer_name: Optional[str] = None
     table: str | int | None = None
     changed_by: Optional[str] = None
@@ -846,6 +846,12 @@ async def patch_order(
     """Update order fields. Supports server transfer, check naming,
     guest-count edit, and table changes."""
     order = await get_order_or_404(ledger, order_id)
+
+    if order.status != "open":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot update {order.status} order",
+        )
 
     # Collect every field change and write them as one batch so a failure
     # in the middle can't leave the order half-updated (e.g. transferred to
@@ -1039,10 +1045,17 @@ async def remove_item(
         )
 
     # Verify item exists
-    if not any(item.item_id == item_id for item in order.items):
+    target_item = next((i for i in order.items if i.item_id == item_id), None)
+    if target_item is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Item {item_id} not found in order"
+        )
+
+    if target_item.sent:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Item already sent to kitchen — manager void required",
         )
 
     event = item_removed(
@@ -1080,6 +1093,9 @@ async def modify_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Item {item_id} not found in order"
         )
+
+    if request.price is not None:
+        _validate_2dp(request.price, "price")
 
     event = item_modified(
         terminal_id=settings.terminal_id,
@@ -1128,6 +1144,8 @@ async def apply_modifier(
             status_code=status.HTTP_409_CONFLICT,
             detail="Item already sent to kitchen — void and re-add to change modifiers",
         )
+
+    _validate_2dp(request.modifier_price, "modifier_price")
 
     event = modifier_applied(
         terminal_id=settings.terminal_id,
