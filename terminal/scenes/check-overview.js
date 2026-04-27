@@ -1208,8 +1208,8 @@ function renderActionBar(state) {
   var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
     borderRadius: '6px', fontSize: T.fsB2,
     onClick: function() { handlePay(state, state._params || {}); } });
-  payBtn.style.height = '52px';
-  payBtn.style.width  = '100%';
+  payBtn.style.height     = '52px';
+  payBtn.style.alignSelf  = 'center';
   payCard.appendChild(payBtn);
 
   var splitPayRow = document.createElement('div');
@@ -1258,15 +1258,15 @@ function renderActionBar(state) {
   var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
     borderRadius: '6px', fontSize: T.fsB2,
     onClick: function() { handlePrint(state); } });
-  printBtn.style.height = '52px';
-  printBtn.style.width  = '100%';
+  printBtn.style.height    = '52px';
+  printBtn.style.alignSelf = 'center';
   termCard.appendChild(printBtn);
 
   var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
     borderRadius: '6px', fontSize: T.fsB2,
     onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
-  drawerBtn.style.height = '52px';
-  drawerBtn.style.width  = '100%';
+  drawerBtn.style.height    = '52px';
+  drawerBtn.style.alignSelf = 'center';
   termCard.appendChild(drawerBtn);
 
   groupsWrap.appendChild(termCard);
@@ -1299,8 +1299,8 @@ function renderActionBar(state) {
   var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
     borderRadius: '6px', fontSize: T.fsB2,
     onClick: function() { handleAddItems(state, state._params || {}); } });
-  addBtn.style.height = '52px';
-  addBtn.style.width  = '100%';
+  addBtn.style.height    = '52px';
+  addBtn.style.alignSelf = 'center';
   orderCard.appendChild(addBtn);
 
   var splitOrderRow = document.createElement('div');
