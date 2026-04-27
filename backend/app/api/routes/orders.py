@@ -1186,6 +1186,12 @@ async def confirm_payment(
     _validate_2dp(request.amount, "amount")
     order = await get_order_or_404(ledger, order_id)
 
+    if order.status != "open":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot confirm payment on {order.status} order",
+        )
+
     # Verify payment exists and amount matches initiation
     initiated = None
     for p in order.payments:

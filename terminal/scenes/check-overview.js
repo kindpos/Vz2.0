@@ -425,6 +425,7 @@ defineScene({
       state.listeners.push({ bus: true, event: event, handler: handler });
     }
 
+    state._alive        = true;
     state.orderId       = params.checkId || null;
     state.checkNumber   = '';
     state.customerName  = '';
@@ -534,7 +535,7 @@ defineScene({
       } : null);
     }
 
-    return function cleanup() { /* scene-level cleanup in unmount */ };
+    return function cleanup() { state._alive = false; };
   },
 
   unmount: function(state) {
@@ -2776,6 +2777,7 @@ function persistSeats(state) {
           message: 'PUT /seats failed',
           ctx: { orderId: state.orderId, error: String(err && err.message || err).slice(0, 200) },
         });
+        showToast('Seat update failed — please try again', { bg: T.verm, duration: 3000 });
       });
   });
   state._seatsChain = myChain;
@@ -3817,6 +3819,7 @@ function refreshOrder(state, params) {
   state._refreshPromise = fetchWithTimeout('/api/v1/orders/' + state.orderId, { cache: 'no-store' }, 15000)
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(order) {
+      if (!state._alive) return;
       state._refreshInFlight = false;
       if (!order) return;
       state.order = order;
