@@ -1212,21 +1212,25 @@ function renderActionBar(state) {
   payCard.appendChild(payBtn);
 
   var splitPayRow = document.createElement('div');
-  Object.assign(splitPayRow.style, { display: 'flex', gap: '5px' });
+  Object.assign(splitPayRow.style, { display: 'flex', gap: '5px', alignItems: 'stretch' });
 
   var discBtn = buildPillButton({ label: 'DISC', color: T.lavender,
     darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px',
     onClick: function() { handleDiscount(state); } });
-  discBtn.style.height   = '38px';
-  discBtn.style.flex     = '1';
-  discBtn.style.minWidth = '0';
+  discBtn.style.flex       = '1';
+  discBtn.style.minWidth   = '0';
+  discBtn.style.height     = 'auto';
+  discBtn.style.minHeight  = '38px';
+  discBtn.style.whiteSpace = 'normal';
   splitPayRow.appendChild(discBtn);
 
   var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
     borderRadius: '6px' });
-  voidBtn.style.height   = '38px';
-  voidBtn.style.flex     = '1';
-  voidBtn.style.minWidth = '0';
+  voidBtn.style.flex       = '1';
+  voidBtn.style.minWidth   = '0';
+  voidBtn.style.height     = 'auto';
+  voidBtn.style.minHeight  = '38px';
+  voidBtn.style.whiteSpace = 'normal';
   _wireLongPress(voidBtn, function() { handleVoid(state); }, 550);
   splitPayRow.appendChild(voidBtn);
 
@@ -1305,7 +1309,7 @@ function renderActionBar(state) {
   orderCard.appendChild(addBtn);
 
   var splitOrderRow = document.createElement('div');
-  Object.assign(splitOrderRow.style, { display: 'flex', gap: '5px' });
+  Object.assign(splitOrderRow.style, { display: 'flex', gap: '5px', alignItems: 'stretch' });
 
   var sendBtn = buildPillButton({ label: 'SEND UNSENT', color: T.green, darkBg: T.greenDk,
     borderRadius: '6px',
@@ -1318,16 +1322,20 @@ function renderActionBar(state) {
         })
         .catch(function() { showToast('Send failed', { bg: T.verm }); });
     } });
-  sendBtn.style.height   = '38px';
-  sendBtn.style.flex     = '1';
-  sendBtn.style.minWidth = '0';
+  sendBtn.style.flex       = '1';
+  sendBtn.style.minWidth   = '0';
+  sendBtn.style.height     = 'auto';
+  sendBtn.style.minHeight  = '38px';
+  sendBtn.style.whiteSpace = 'normal';
   splitOrderRow.appendChild(sendBtn);
 
   var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
     borderRadius: '6px', onClick: function() { handleResend(state); } });
-  resendBtn.style.height   = '38px';
-  resendBtn.style.flex     = '1';
-  resendBtn.style.minWidth = '0';
+  resendBtn.style.flex       = '1';
+  resendBtn.style.minWidth   = '0';
+  resendBtn.style.height     = 'auto';
+  resendBtn.style.minHeight  = '38px';
+  resendBtn.style.whiteSpace = 'normal';
   splitOrderRow.appendChild(resendBtn);
 
   orderCard.appendChild(splitOrderRow);
