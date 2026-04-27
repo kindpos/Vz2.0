@@ -1280,7 +1280,7 @@ function buildSeatSelectorCard() {
   var body = document.createElement('div');
   body.className = '_oe-seat-scroll';
   body.style.cssText = [
-    'display:grid;grid-template-columns:repeat(8,1fr);gap:5px;',
+    'display:grid;grid-template-columns:repeat(10,1fr);gap:5px;',
     'padding:6px 12px 8px;max-height:140px;overflow-y:auto;',
     '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
