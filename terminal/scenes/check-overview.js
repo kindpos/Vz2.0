@@ -1881,10 +1881,9 @@ function buildSeatCard(state, seatIdx) {
   wrap.style.display       = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.overflow      = 'hidden';
-  wrap.style.borderLeft    = '4px solid ' + (seatActive ? T.green   : T.moon);
-  wrap.style.boxShadow     = seatActive
-    ? '0 4px 0 ' + T.greenDk + ', 0 0 18px rgba(134,239,172,0.14)'
-    : '0 4px 0 ' + T.moonDk;
+  wrap.style.border        = '1px solid ' + (seatActive ? T.green : T.border);
+  wrap.style.borderLeft    = '4px solid ' + (seatActive ? T.green : T.moon);
+  wrap.style.boxShadow     = seatActive ? ('0 4px 0 ' + T.greenDk) : ('0 4px 0 ' + T.moonDk);
 
   // ── Header (tappable — toggleSeat) ──
   var hdr = document.createElement('div');
