@@ -53,7 +53,7 @@ class PaymentManager:
             return self._devices[device_id]
         return None
 
-    async def initiate_sale(self, request: TransactionRequest, tax: float = 0.0) -> TransactionResult:
+    async def initiate_sale(self, request: TransactionRequest, tax: Decimal = Decimal("0.00")) -> TransactionResult:
         """Core sale entry point with idempotency and event emission."""
 
         # 5.1 Idempotency check

@@ -28,6 +28,9 @@ from app.core.financial_invariants import (
 )
 from app.config import settings as app_settings
 from app.models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
+import logging
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reports", tags=["reporting"])
 
@@ -252,7 +255,7 @@ async def get_sales_summary(
                 "checks": bucket["checks"],
             })
     except Exception:
-        pass
+        _log.exception("Failed to build last-week hourly comparison; section will be empty")
 
     # ── Top items ─────────────────────────────────────────────────────────
     top_items = _build_top_items(agg["item_revenue"])
@@ -282,7 +285,7 @@ async def get_sales_summary(
                 "hours": hours_data,
             })
     except Exception:
-        pass
+        _log.exception("Failed to build peak-hours heatmap; section will be empty")
 
     # ── Tip buckets ───────────────────────────────────────────────────────
     tip_buckets = _build_tip_buckets(agg["tip_amounts"])
@@ -648,7 +651,7 @@ async def get_labor_summary(
         for emp in await cfg_service.get_employees():
             emp_rates[emp.employee_id] = Decimal(str(emp.hourly_rate or 0))
     except Exception:
-        pass
+        _log.exception("Failed to load employee hourly rates; labor costs will show as $0")
 
     # Compute per-server tips from orders
     server_tips = {}
@@ -745,7 +748,7 @@ async def get_labor_summary(
                 "percent": cob_pct,
             })
     except Exception:
-        pass
+        _log.exception("Failed to build COB trend; section will be empty")
 
     # Surface net_sales so the Overseer's Labor % KPI has a denominator
     # without having to fetch sales-summary separately.

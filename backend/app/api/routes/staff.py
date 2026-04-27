@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
 from app.api.dependencies import get_ledger
+from app.api.routes.auth import require_manager
 from app.core.event_ledger import EventLedger
 from app.core.events import (
     user_logged_in,
@@ -176,7 +177,7 @@ class DeclareCashTipsRequest(BaseModel):
     amount: Decimal
 
 
-@router.post("/declare-cash-tips")
+@router.post("/declare-cash-tips", dependencies=[Depends(require_manager)])
 async def declare_cash_tips(
     request: DeclareCashTipsRequest,
     ledger: EventLedger = Depends(get_ledger),

@@ -23,8 +23,7 @@ import { buildNumpad } from '../numpad.js';
 import { fetchWithTimeout } from '../net.js';
 
 // ── Input guard + double-tap window ──────────────
-var _inputIgnoreUntil = 0;
-var DOUBLE_TAP_MS     = 300;    // second tap must land within this window to open
+var DOUBLE_TAP_MS = 300;    // second tap must land within this window to open
 
 // ── Filter cycle ──────────────────────────────────
 var FILTER_CYCLE   = { OPEN: 'CLOSED', CLOSED: 'VOID', VOID: 'OPEN' };
@@ -235,7 +234,7 @@ defineScene({
   render: function(container, params, state) {
     state.emp = params.staff || params.emp || params || {};
     state.el  = container;
-    _inputIgnoreUntil = Date.now() + 200;
+    state._inputIgnoreUntil = Date.now() + 200;
 
     // ── Root grid ──────────────────────────────────
     var root = document.createElement('div');
@@ -411,7 +410,7 @@ defineScene({
         var id       = order.order_id;
         var selected = state.selectedIds.indexOf(id) !== -1;
         r.tileGrid.appendChild(buildCheckTile(order, selected, function() {
-          if (_inputIgnoreUntil > Date.now()) return;
+          if (state._inputIgnoreUntil > Date.now()) return;
           var idx = state.selectedIds.indexOf(id);
           if (idx === -1) {
             state.selectedIds.push(id);
@@ -424,7 +423,7 @@ defineScene({
               delete state.selectedAt[id];
               renderTiles();
             } else {
-              _inputIgnoreUntil = Date.now() + 200;
+              state._inputIgnoreUntil = Date.now() + 200;
               delete state.selectedAt[id];
               SceneManager.mountWorking('check-overview', {
                 checkId:       order.order_id,
@@ -723,6 +722,7 @@ defineScene({
 
     return function cleanup() {
       state.el = null;
+      closeTipNumpad();
       SceneManager.off('order:updated', refresh);
       SceneManager.off('order:closed',  refresh);
       SceneManager.off('tip:adjusted',  refresh);
