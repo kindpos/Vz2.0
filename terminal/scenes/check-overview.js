@@ -2991,7 +2991,11 @@ function handlePay(state, params) {
     return;
   }
 
+  if (state._payingInProgress) return;
+  state._payingInProgress = true;
+
   if (state.order && state.order.status === 'closed') {
+    state._payingInProgress = false;
     showToast('Check already settled', { bg: T.gold });
     return;
   }
@@ -3017,6 +3021,7 @@ function handlePay(state, params) {
         paidSeatCount: Object.keys(state.paidSeats || {}).length,
       },
     });
+    state._payingInProgress = false;
     showToast('No items to pay', { bg: T.gold });
     return;
   }
@@ -3037,6 +3042,7 @@ function handlePay(state, params) {
 
   // Guard: all selected seats already paid — nothing to charge.
   if (seatSummary.length === 0) {
+    state._payingInProgress = false;
     showToast('Selected seat(s) already paid', { bg: T.gold });
     return;
   }

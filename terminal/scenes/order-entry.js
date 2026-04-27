@@ -798,7 +798,7 @@ function computeTicketTotals() {
   var summaryItems = [];  // item summary for ORDER RECAP
   ticket.forEach(function(inst) {
     var modTotal = inst.mods.reduce(function(s, m) { return s + Number(m.price || 0); }, 0);
-    var lineTotal = inst.unitPrice + modTotal;
+    var lineTotal = Number(inst.unitPrice || 0) + modTotal;
     counts[inst.name] = counts[inst.name] || { unitPrice: inst.unitPrice, qty: 0 };
     counts[inst.name].qty += 1;
     subtotal += lineTotal;
@@ -1390,6 +1390,7 @@ function buildSeatSelectorCard() {
     var maxSeat = 0;
     _allSeatList.forEach(function(sn) { if (sn > maxSeat) maxSeat = sn; });
     var newSeat = maxSeat + 1;
+    if (newSeat > 99) { showToast('Maximum 99 seats', { bg: T.gold }); return; }
     _allSeatList.push(newSeat);
     _seatList.push(newSeat);
     _activeSeats.add(newSeat);
@@ -1404,7 +1405,7 @@ function buildSeatSelectorCard() {
 
   noneBtn.addEventListener('pointerup', function() {
     if (_seatTab === 'selected') {
-      _activeSeats = new Set([_seatList[0]]);
+      _activeSeats = new Set(_seatList.length > 0 ? [_seatList[0]] : []);
     } else {
       getTabList().forEach(function(sn) { _activeSeats.delete(sn); });
     }
@@ -3725,7 +3726,7 @@ function _buildItemPayload(inst) {
   var payload = {
     menu_item_id: inst.menu_item_id || inst.name.toLowerCase().replace(/\s+/g, '_'),
     name:         inst.name,
-    price:        inst.unitPrice,
+    price:        Number(inst.unitPrice) || 0,
     quantity:     1,
     category:     inst.category || 'general',
     seat_number:  inst.seat_number || 1,
