@@ -537,7 +537,7 @@ async def list_open_orders(
     return [OrderResponse.from_order(o) for o in open_orders]
 
 
-@router.get("/day-summary")
+@router.get("/day-summary", dependencies=[Depends(require_manager)])
 async def get_day_summary(
     server_id: str = None,
     ledger: EventLedger = Depends(get_ledger),
@@ -559,7 +559,7 @@ async def get_day_summary(
     tip_map = {}
     for e in all_events:
         if e.event_type == EventType.TIP_ADJUSTED:
-            tip_map[e.payload.get("payment_id")] = e.payload.get("tip_amount", 0.0)
+            tip_map[e.payload.get("payment_id")] = Decimal(str(e.payload.get("tip_amount", "0.00")))
 
     # Filter orders by server if requested
     orders = list(all_orders.values())
@@ -755,7 +755,7 @@ async def get_day_summary(
     }
 
 
-@router.get("/day-history")
+@router.get("/day-history", dependencies=[Depends(require_manager)])
 async def get_day_history(ledger: EventLedger = Depends(get_ledger)):
     """Get all closed day summaries for audit/reporting.
 
@@ -2253,7 +2253,7 @@ async def split_by_seat(
                 item_id=new_item_id,
                 menu_item_id=getattr(item, "menu_item_id", ""),
                 name=item.name,
-                price=float(item.price),
+                price=item.price,
                 quantity=item.quantity,
                 category=getattr(item, "category", None),
                 notes=getattr(item, "notes", None),

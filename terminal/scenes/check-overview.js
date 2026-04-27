@@ -725,7 +725,7 @@ defineScene({
         panel.appendChild(cancelBtn);
         container.appendChild(shell);
 
-        fetch('/api/v1/servers/clocked-in')
+        fetchWithTimeout('/api/v1/servers/clocked-in', {}, 10000)
           .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
           .then(function(data) {
             list.innerHTML = '';
@@ -3261,6 +3261,7 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || 'HTTP ' + r.status); });
     return r.json();
   }).then(function(_discountResp) {
+    if (!state._alive) return;
     state.selectedItems = {};
     state.selected = {};
     // Refresh from backend truth so totals, balance_due, and payment scene
@@ -3523,14 +3524,14 @@ function _openTransfer(state) {
   if (!state.orderId) { showToast('Save items first', { bg: T.gold }); return; }
   SceneManager.interrupt('server-picker', {
     onConfirm: function(server) {
-      fetch('/api/v1/orders/' + state.orderId, {
+      fetchWithTimeout('/api/v1/orders/' + state.orderId, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           server_id:   server.employee_id,
           server_name: server.employee_name,
         }),
-      }).then(function(r) {
+      }, 10000).then(function(r) {
         if (r.ok) showToast('Transferred to ' + server.employee_name, { bg: T.greenWarm });
         else      showToast('Transfer failed',                         { bg: T.verm });
       }).catch(function() {

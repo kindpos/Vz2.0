@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import List, Dict, Any
 from app.core.event_ledger import EventLedger
 from app.core.events import EventType, Event
@@ -64,13 +65,13 @@ class StoreConfigService:
             "active_theme_id": "terminal-glow",
             "tax_rules": {},
             "cc_processing": {
-                "rate_percent": 2.9,
-                "per_transaction_fee": 0.30
+                "rate_percent": Decimal("2.9"),
+                "per_transaction_fee": Decimal("0.30"),
             },
             "operating_hours": {},
             "order_types": { "enabled_types": [] },
-            "auto_gratuity": { "enabled": False, "party_size_threshold": 6, "rate_percent": 20.0, "applies_to_order_types": ["dine_in"] },
-            "cash_discount_rate": 0.0
+            "auto_gratuity": { "enabled": False, "party_size_threshold": 6, "rate_percent": Decimal("20.0"), "applies_to_order_types": ["dine_in"] },
+            "cash_discount_rate": Decimal("0.0")
         }
 
         for event in events:
