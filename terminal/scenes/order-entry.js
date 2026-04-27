@@ -310,6 +310,8 @@ var _seatList       = [];          // seat numbers in the overview selection
 var _allSeatList    = [];          // all seat numbers in the party
 var _seatTab        = 'selected';  // 'selected' | 'unselected'
 var _seatSelectorEl = null;        // DOM ref for the inline seat card
+var _prevSeats       = new Set();   // snapshot of _activeSeats at last item add (for RECALL)
+var _autoSwitchArmed = false;       // true after item add → next seat tap does exclusive replace
 
 // ── Snake nav state ───────────────────────────────
 var snakeState = {
@@ -409,6 +411,8 @@ defineScene({
       ? params.selectedSeatNumbers.slice()
       : _allSeatList.slice();
     _activeSeats    = new Set(_seatList);
+    _prevSeats       = new Set();
+    _autoSwitchArmed = false;
     _seatTab        = 'selected';
     _seatSelectorEl = null;
 
@@ -489,6 +493,8 @@ defineScene({
     _allSeatList    = [];
     _seatTab        = 'selected';
     _seatSelectorEl = null;
+    _prevSeats       = new Set();
+    _autoSwitchArmed = false;
     _menuFetched   = false;
   },
 
@@ -1317,13 +1323,22 @@ function buildSeatSelectorCard() {
   var spacer = document.createElement('div');
   spacer.style.flex = '1';
 
-  var addBtn  = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: '+',    color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
-  var allBtn  = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: 'ALL',  color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
-  var noneBtn = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: 'NONE', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
+  var addBtn    = buildPillButton({ shape:'chamfer', chamferSize:5, label:'+',      color:T.moon,  darkBg:T.moonDk, fontSize:T.fsB4, padding:'5px 10px' });
+  var allBtn    = buildPillButton({ shape:'chamfer', chamferSize:5, label:'ALL',    color:T.moon,  darkBg:T.moonDk, fontSize:T.fsB4, padding:'5px 10px' });
+  var noneBtn   = buildPillButton({ shape:'chamfer', chamferSize:5, label:'NONE',   color:T.moon,  darkBg:T.moonDk, fontSize:T.fsB4, padding:'5px 10px' });
+  var recallBtn = buildPillButton({ shape:'chamfer', chamferSize:5, label:'RECALL', color:T.elec,  darkBg:T.elecDk || T.moonDk, fontSize:T.fsB4, padding:'5px 10px' });
+
+  function _updateRecallBtn() {
+    var hasRecall = _prevSeats.size > 0;
+    recallBtn.style.opacity       = hasRecall ? '1' : '0.3';
+    recallBtn.style.pointerEvents = hasRecall ? 'auto' : 'none';
+  }
+  _updateRecallBtn();
 
   header.appendChild(selectedTab);
   header.appendChild(unselectedTab);
   header.appendChild(spacer);
+  header.appendChild(recallBtn);
   header.appendChild(addBtn);
   header.appendChild(allBtn);
   header.appendChild(noneBtn);
@@ -1373,8 +1388,14 @@ function buildSeatSelectorCard() {
       pill.style.alignItems = 'center';
       pill.style.justifyContent = 'center';
       pill.addEventListener('pointerup', function() {
+        if (_autoSwitchArmed) {
+          _autoSwitchArmed = false;
+          _activeSeats = new Set([sn]);
+          repaintSeats();
+          renderTicket();
+          return;
+        }
         if (_activeSeats.has(sn)) {
-          // Keep at least one seat active from the selected list
           var selectedActive = _seatList.filter(function(s) { return _activeSeats.has(s); });
           if (selectedActive.length <= 1 && _seatList.indexOf(sn) !== -1) return;
           _activeSeats.delete(sn);
@@ -1390,6 +1411,16 @@ function buildSeatSelectorCard() {
 
   selectedTab.addEventListener('pointerup', function() { setTab('selected'); });
   unselectedTab.addEventListener('pointerup', function() { setTab('unselected'); });
+
+  recallBtn.addEventListener('pointerup', function() {
+    if (_prevSeats.size === 0) return;
+    _prevSeats.forEach(function(sn) { _activeSeats.add(sn); });
+    _prevSeats = new Set();
+    _autoSwitchArmed = false;
+    _updateRecallBtn();
+    repaintSeats();
+    renderTicket();
+  });
 
   addBtn.addEventListener('pointerup', function() {
     var maxSeat = 0;
@@ -1420,6 +1451,7 @@ function buildSeatSelectorCard() {
 
   repaintSeats();
   card._repaintSeats = repaintSeats;
+  card._onItemAdded = function() { _updateRecallBtn(); repaintSeats(); };
   return card;
 }
 
@@ -2695,6 +2727,12 @@ function _pushToAllSeats(item) {
     clone.mods = (item.mods || []).map(function(m) { return Object.assign({}, m); });
     if (item._modPanelData) clone._modPanelData = Object.assign({}, item._modPanelData);
     ticket.push(clone);
+  }
+  // Snapshot current seats (overwrites any previous) and arm auto-switch.
+  _prevSeats = new Set(_activeSeats);
+  _autoSwitchArmed = true;
+  if (_seatSelectorEl && typeof _seatSelectorEl._onItemAdded === 'function') {
+    _seatSelectorEl._onItemAdded();
   }
 }
 
