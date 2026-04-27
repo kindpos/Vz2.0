@@ -1198,7 +1198,7 @@ function buildMain(parentEl, params) {
 
   // ── Collapsible grid wrapper ──────────────────────
   var gridWrap = document.createElement('div');
-  gridWrap.style.cssText = 'flex:1;overflow-y:auto;';
+  gridWrap.style.cssText = 'flex:1;min-height:0;overflow-y:auto;';
   _gridWrap = gridWrap;
 
   var grid = document.createElement('div');
