@@ -29,7 +29,7 @@ from ...core.financial_invariants import check_batch_settlement
 from ...core.events import cash_refund_due
 from ...config import settings
 from ...models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
-from .auth import _record_diag
+from .auth import _record_diag, require_manager
 from typing import Optional as Opt
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -118,7 +118,7 @@ async def _ensure_devices(manager: PaymentManager):
         print("  Mock payment device registered (no card reader found)")
 
 
-@router.post("/reload-devices")
+@router.post("/reload-devices", dependencies=[Depends(require_manager)])
 async def reload_devices(ledger: EventLedger = Depends(get_ledger)):
     """Hot-reload card reader from hardware_config.db without server restart."""
     global _devices_initialized, _manager
@@ -733,8 +733,8 @@ async def zero_unadjusted_tips(
                 terminal_id=settings.terminal_id,
                 order_id=order.order_id,
                 payment_id=p.payment_id,
-                tip_amount=0.0,
-                previous_tip=0.0,
+                tip_amount=Decimal("0.00"),
+                previous_tip=Decimal("0.00"),
                 idempotency_key=f"zero_tip_{p.payment_id}",
             )
             appended = await ledger.append(evt)
@@ -834,7 +834,7 @@ async def get_device_status(manager: PaymentManager = Depends(get_payment_manage
     ]
 
 
-@router.post("/batch-settle")
+@router.post("/batch-settle", dependencies=[Depends(require_manager)])
 async def batch_settle(ledger: EventLedger = Depends(get_ledger)):
     """Send BatchClose to the payment terminal to settle with the processor."""
     manager = get_payment_manager(ledger)

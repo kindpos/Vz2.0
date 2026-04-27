@@ -179,7 +179,7 @@ defineScene({
       // check-overview doesn't forward it in params, and the UUID tail
       // ("#15DB75") isn't a real check identifier.
       if (params.orderId) {
-        fetch('/api/v1/orders/' + encodeURIComponent(params.orderId))
+        fetchWithTimeout('/api/v1/orders/' + encodeURIComponent(params.orderId), {}, 10000)
           .then(function(r) { return r.ok ? r.json() : null; })
           .then(function(order) {
             if (order && order.check_number && _checkNumEl) {
@@ -189,7 +189,7 @@ defineScene({
           .catch(function() { /* keep the derived fallback */ });
       }
     } else if (params.orderId) {
-      fetch('/api/v1/orders/' + encodeURIComponent(params.orderId))
+      fetchWithTimeout('/api/v1/orders/' + encodeURIComponent(params.orderId), {}, 10000)
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(order) {
           if (!order) return;

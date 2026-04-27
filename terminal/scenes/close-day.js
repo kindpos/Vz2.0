@@ -29,6 +29,7 @@
 // ═══════════════════════════════════════════════════
 
 import { defineScene, SceneManager }  from '../scene-manager.js';
+import { fetchWithTimeout }           from '../net.js';
 import { T }                          from '../../common/tokens.js';
 import {
   buildStaticCard,
@@ -142,10 +143,10 @@ function fetchCloseDayState(params) {
   var today = new Date();
 
   return Promise.all([
-    fetch('/api/v1/orders/day-summary').then(function(r) { return r.json(); }).catch(function() { return {}; }),
-    fetch('/api/v1/config/tipout').then(function(r) { return r.json(); }).catch(function() { return []; }),
-    fetch('/api/v1/config/store').then(function(r) { return r.json(); }).catch(function() { return {}; }),
-    fetch('/api/v1/orders').then(function(r) { return r.json(); }).catch(function() { return []; }),
+    fetchWithTimeout('/api/v1/orders/day-summary', {}, 10000).then(function(r) { return r.json(); }).catch(function() { return {}; }),
+    fetchWithTimeout('/api/v1/config/tipout', {}, 10000).then(function(r) { return r.json(); }).catch(function() { return []; }),
+    fetchWithTimeout('/api/v1/config/store', {}, 10000).then(function(r) { return r.json(); }).catch(function() { return {}; }),
+    fetchWithTimeout('/api/v1/orders', {}, 10000).then(function(r) { return r.json(); }).catch(function() { return []; }),
     // Last-week comparison — API doesn't expose this yet per charts.js notes.
     // Falling back to 0; when the endpoint lands, replace with e.g.
     //   /api/v1/orders/day-summary?date=<today-7d> → .net_sales
@@ -1263,6 +1264,7 @@ defineScene({
 
   render: function(container, params, state) {
     params = params || {};
+    state._alive = true;
     state.startTime = state.startTime || Date.now();
 
     // close-day owns the esc button while it's the visible transactional.
@@ -1293,9 +1295,11 @@ defineScene({
 
     function refreshScene() {
       fetchCloseDayState(params).then(function(newData) {
+        if (!state._alive) return;
         state.data = newData;
         rebuild();
       }).catch(function(err) {
+        if (!state._alive) return;
         console.error('[close-day] fetch failed:', err);
         showToast('Close day data unavailable', { bg: T.verm });
       });
@@ -1361,7 +1365,7 @@ defineScene({
         // Reprint via server-checkout's print flow (check passed directly)
         if (!chk) return;
         showToast('Reprinting…', { bg: T.greenWarm });
-        fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/receipt', { method: 'POST' })
+        fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/receipt', { method: 'POST' }, 15000)
           .then(function(r) {
             showToast(r.ok ? 'Reprinted' : 'Reprint failed', { bg: r.ok ? T.greenWarm : T.verm });
           })
@@ -1372,7 +1376,7 @@ defineScene({
         SceneManager.interrupt('co-manager-pin', {
           onConfirm: function() {
             SceneManager.closeInterrupt('co-manager-pin');
-            fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/reopen', { method: 'POST' })
+            fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/reopen', { method: 'POST' }, 15000)
               .then(function(r) {
                 showToast(r.ok ? 'Check reopened' : 'Reopen failed (' + r.status + ')', { bg: r.ok ? T.greenWarm : T.verm });
                 refreshScene();
@@ -1410,13 +1414,14 @@ defineScene({
         if (!checks || !checks.length) return;
 
         var posts = checks.map(function(chk) {
-          return fetch(
+          return fetchWithTimeout(
             '/api/v1/orders/' + (chk.checkId || chk.check_id) + '/tip',
             {
               method:  'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body:    JSON.stringify({ tip_amount: 0 }),
-            }
+            },
+            15000
           )
           .then(function(r) {
             return { ok: r.ok, status: r.status };
@@ -1465,7 +1470,7 @@ defineScene({
         if (state._settling) return;
         state._settling = true;
         showToast('Settling batch\u2026', { bg: T.elec });
-        fetch('/api/v1/payments/batch-settle', { method: 'POST' })
+        fetchWithTimeout('/api/v1/payments/batch-settle', { method: 'POST' }, 15000)
           .then(function(r) {
             state._settling = false;
             if (r.ok) {
@@ -1537,14 +1542,14 @@ defineScene({
             SceneManager.closeInterrupt('co-transfer-picker');
 
             var transfers = checks.map(function(chk) {
-              return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/transfer', {
+              return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/transfer', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   to_server_id:   destServer.id,
                   from_server_id: chk.server_id || state.data.managerId,
                 }),
-              }).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
+              }, 15000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
                 .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
             });
 
@@ -1577,11 +1582,11 @@ defineScene({
         showToast('Printing ' + label + '\u2026', { bg: T.greenWarm });
 
         var prints = checks.map(function(chk) {
-          return fetch('/api/v1/checks/' + (chk.checkId || chk.check_id) + '/print', {
+          return fetchWithTimeout('/api/v1/checks/' + (chk.checkId || chk.check_id) + '/print', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ kind: 'guest' }),
-          }).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
+          }, 15000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
             .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
         });
 
@@ -1633,7 +1638,7 @@ defineScene({
                   SceneManager.closeInterrupt('co-discount-picker');
 
                   var discounts = checks.map(function(chk) {
-                    return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/discount', {
+                    return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/discount', {
                       method:  'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -1641,7 +1646,7 @@ defineScene({
                         value: discount.value,
                         manager_pin_verified: true,
                       }),
-                    }).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
+                    }, 15000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
                       .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
                   });
 
@@ -1689,14 +1694,14 @@ defineScene({
                   SceneManager.closeInterrupt('co-void-confirm');
 
                   var voids = checks.map(function(chk) {
-                    return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/void', {
+                    return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/void', {
                       method:  'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         reason: reason,
                         manager_pin_verified: true,
                       }),
-                    }).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
+                    }, 15000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
                       .catch(function()  { return { chk: chk, ok: false, status: 0 }; });
                   });
 
@@ -1754,11 +1759,11 @@ defineScene({
         covers:               state.data.covers,
       };
 
-      fetch('/api/v1/orders/close-day', {
+      fetchWithTimeout('/api/v1/orders/close-day', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
-      }).then(function(r) {
+      }, 20000).then(function(r) {
         state._locking = false;
         if (r.ok) {
           showToast('Day locked', { bg: T.greenWarm });
@@ -1786,6 +1791,7 @@ defineScene({
     SceneManager.on('tip:adjusted',  _onUpdate);
 
     return function cleanup() {
+      state._alive = false;
       SceneManager.off('order:updated', _onUpdate);
       SceneManager.off('order:closed',  _onUpdate);
       SceneManager.off('tip:adjusted',  _onUpdate);
