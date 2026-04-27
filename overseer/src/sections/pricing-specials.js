@@ -424,12 +424,12 @@ function renderScene() {
     bodyMount.appendChild(buildOrderTypesAccordion());
     bodyMount.appendChild(buildSuperHeader('DISCOUNTS', C.green));
     bodyMount.appendChild(buildEmployeeAccordion());
-    bodyMount.appendChild(buildCompReasonsAccordion());
 
     const voidsSpacer = document.createElement('div');
     voidsSpacer.style.marginTop = '24px';
     bodyMount.appendChild(voidsSpacer);
     bodyMount.appendChild(buildSuperHeader('VOIDS', C.verm));
+    bodyMount.appendChild(buildCompReasonsAccordion());
 
     bodyMount.appendChild(buildPendingFooter());
     updateSaveBar();
