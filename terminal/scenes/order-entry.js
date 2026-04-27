@@ -1267,24 +1267,20 @@ function buildSeatSelectorCard() {
     'border-bottom:1px solid ' + T.border + ';',
   ].join('');
 
-  var selectedTab = buildPillButton({ label: 'Selected Seats', color: T.green, darkBg: T.greenDk, fontSize: T.fsB4 });
-  selectedTab.style.padding = '5px 10px';
+  var tabOpts = { shape: 'chamfer', chamferSize: 5, fontSize: T.fsB4, padding: '5px 10px' };
+  var selectedTab = buildPillButton(Object.assign({}, tabOpts, { label: 'Selected Seats', color: T.green, darkBg: T.greenDk }));
 
   var unselectedTab = null;
   if (hasUnselected) {
-    unselectedTab = buildPillButton({ label: 'Unselected', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
-    unselectedTab.style.padding = '5px 10px';
+    unselectedTab = buildPillButton(Object.assign({}, tabOpts, { label: 'Unselected', color: T.moon, darkBg: T.moonDk }));
   }
 
   var spacer = document.createElement('div');
   spacer.style.flex = '1';
 
-  var addBtn = buildPillButton({ label: '+', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
-  addBtn.style.padding = '5px 10px';
-  var allBtn = buildPillButton({ label: 'ALL', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
-  allBtn.style.padding = '5px 10px';
-  var noneBtn = buildPillButton({ label: 'NONE', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4 });
-  noneBtn.style.padding = '5px 10px';
+  var addBtn = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: '+', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
+  var allBtn = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: 'ALL', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
+  var noneBtn = buildPillButton({ shape: 'chamfer', chamferSize: 5, label: 'NONE', color: T.moon, darkBg: T.moonDk, fontSize: T.fsB4, padding: '5px 10px' });
 
   header.appendChild(selectedTab);
   if (unselectedTab) header.appendChild(unselectedTab);
@@ -1314,12 +1310,10 @@ function buildSeatSelectorCard() {
   function setTab(tab) {
     _seatTab = tab;
     var onSelected = tab === 'selected';
-    selectedTab.style.background = onSelected ? T.green : T.moon;
-    selectedTab.style.boxShadow  = '0 6px 0 ' + (onSelected ? T.greenDk : T.moonDk);
+    selectedTab.setColor(onSelected ? T.green : T.moon, onSelected ? T.greenDk : T.moonDk);
     if (unselectedTab) {
       var onUnselected = tab === 'unselected';
-      unselectedTab.style.background = onUnselected ? T.green : T.moon;
-      unselectedTab.style.boxShadow  = '0 6px 0 ' + (onUnselected ? T.greenDk : T.moonDk);
+      unselectedTab.setColor(onUnselected ? T.green : T.moon, onUnselected ? T.greenDk : T.moonDk);
     }
     repaintSeats();
   }
