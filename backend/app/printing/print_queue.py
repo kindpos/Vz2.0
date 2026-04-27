@@ -19,6 +19,7 @@ class PrintJobQueue:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db: Optional[aiosqlite.Connection] = None
+        self._enqueue_lock = asyncio.Lock()
 
     async def connect(self) -> None:
         """Initialize the print queue database and schema."""
@@ -54,35 +55,37 @@ class PrintJobQueue:
                       copy_type: Optional[str] = None) -> str:
         """Add a new job to the queue, returning the existing job_id if an
         identical in-flight job (queued or sent) already exists."""
-        # Idempotency: don't queue the same print twice while it's pending.
-        async with self._db.execute("""
-            SELECT job_id FROM print_queue
-            WHERE order_id = ? AND template_id = ? AND printer_mac = ?
-              AND (copy_type = ? OR (copy_type IS NULL AND ? IS NULL))
-              AND status IN ('queued', 'sent')
-            LIMIT 1
-        """, (order_id, template_id, printer_mac, copy_type, copy_type)) as cur:
-            existing = await cur.fetchone()
-        if existing:
-            logger.info(f"Dedup: job {existing[0]} already pending for {order_id}/{template_id}")
-            return existing[0]
+        async with self._enqueue_lock:
+            # Idempotency: don't queue the same print twice while it's pending.
+            # Lock ensures the SELECT + INSERT is atomic across concurrent callers.
+            async with self._db.execute("""
+                SELECT job_id FROM print_queue
+                WHERE order_id = ? AND template_id = ? AND printer_mac = ?
+                  AND (copy_type = ? OR (copy_type IS NULL AND ? IS NULL))
+                  AND status IN ('queued', 'sent')
+                LIMIT 1
+            """, (order_id, template_id, printer_mac, copy_type, copy_type)) as cur:
+                existing = await cur.fetchone()
+            if existing:
+                logger.info(f"Dedup: job {existing[0]} already pending for {order_id}/{template_id}")
+                return existing[0]
 
-        job_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+            job_id = str(uuid.uuid4())
+            now = datetime.now(timezone.utc).isoformat()
 
-        await self._db.execute("""
-            INSERT INTO print_queue (
+            await self._db.execute("""
+                INSERT INTO print_queue (
+                    job_id, order_id, template_id, printer_mac,
+                    copy_type, ticket_number, context_json, status,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
                 job_id, order_id, template_id, printer_mac,
-                copy_type, ticket_number, context_json, status,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            job_id, order_id, template_id, printer_mac,
-            copy_type, ticket_number, json.dumps(context), 'queued',
-            now
-        ))
-        await self._db.commit()
-        return job_id
+                copy_type, ticket_number, json.dumps(context), 'queued',
+                now
+            ))
+            await self._db.commit()
+            return job_id
 
     async def mark_sent(self, job_id: str, attempt_number: int):
         """Mark a job as currently being sent."""

@@ -56,11 +56,11 @@ function _startClock(timeEl, dateEl, dayEl) {
 async function _attemptLogin(pin, onSuccess, onFail) {
   try {
     console.log('[login] attempting auth...');
-    var res = await fetch('/api/v1/auth/verify-pin', {
+    var res = await fetchWithTimeout('/api/v1/auth/verify-pin', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ pin: pin }),
-    });
+    }, 10000);
     console.log('[login] response status:', res.status);
     if (res.status === 429) {
       // Rate-limited — show a distinct message so operators don't retype a valid PIN.

@@ -354,14 +354,15 @@ class TestProcessJob:
         assert not q.empty()
 
     @pytest.mark.asyncio
-    async def test_render_failure_treated_as_transient(self, dispatcher, monkeypatch):
-        """If the template doesn't exist the render raises — same retry
-        bookkeeping as a socket failure, not an immediate FAILED."""
+    async def test_render_failure_marks_failed_immediately(self, dispatcher, monkeypatch):
+        """If the template doesn't exist the render raises a ValueError —
+        a deterministic failure that should not consume retry slots. The job
+        must be marked FAILED immediately without bumping attempt count."""
         job = _make_job(template_id="bogus_template", attempt_count=0)
         await dispatcher._process_job(job)
         names = dispatcher._queue.names()
-        assert "bump_attempt_for_retry" in names
-        assert "mark_failed" not in names
+        assert "mark_failed" in names
+        assert "bump_attempt_for_retry" not in names
 
 
 # ═══════════════════════════════════════════════════════════════════════════

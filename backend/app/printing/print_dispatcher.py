@@ -178,14 +178,22 @@ class PrintDispatcher:
 
         await self._queue.mark_sent(job_id, attempt)
 
+        # ── Phase 1: render (deterministic — fail immediately, no retry) ──
         try:
             context = json.loads(job["context_json"])
             ip, port, ptype = await self._resolve_printer(printer_mac)
-            raw     = self._render(template_id, context, ptype)
+            raw = self._render(template_id, context, ptype)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Job {job_id} render/config error (will not retry): {e}")
+            await self._queue.mark_failed(job_id)
+            self._broadcast_failure(job, f"Render error: {e}")
+            return
+
+        # ── Phase 2: network send (transient — retry up to MAX_ATTEMPTS) ──
+        try:
             await self._send(ip, port, raw)
             await self._queue.mark_completed(job_id)
             logger.info(f"Job {job_id} ({template_id}) → {ip}:{port} ✓")
-
         except Exception as e:
             logger.warning(f"Job {job_id} attempt {attempt} failed: {e}")
             # Classify the failure for entomology. Each class maps to the
