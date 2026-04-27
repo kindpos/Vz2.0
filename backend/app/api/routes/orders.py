@@ -1643,6 +1643,11 @@ async def apply_discount(
         )
 
     _validate_2dp(request.amount, "amount")
+    if request.amount > order.gross_subtotal:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discount cannot exceed order subtotal",
+        )
     discount_payload = {
         "order_id": order_id,
         "discount_type": request.discount_type,

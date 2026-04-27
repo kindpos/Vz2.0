@@ -14,6 +14,7 @@ import {
 } from '../theme-manager.js';
 import { buildNumpad } from '../numpad.js';
 import { OrderSummary } from '../order-summary.js';
+import { getCashDiscount } from '../pricing.js';
 
 var PAD     = T.scenePad;
 var GAP     = T.colGapSm;
@@ -879,7 +880,7 @@ function populateLeftCard(order) {
   }
   var tax       = (typeof order.tax === 'number') ? order.tax : 0;
   var cardTotal = (typeof order.balance_due === 'number') ? order.balance_due : (subtotal + tax);
-  var cashPrice = cardTotal;
+  var cashPrice = Math.round(cardTotal * (1 - getCashDiscount()) * 100) / 100;
 
   if (!baseTotal) baseTotal = cardTotal;
 
