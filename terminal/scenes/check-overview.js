@@ -1236,12 +1236,12 @@ function renderActionBar(state) {
       // ── ORDER drill ──
       var backO = buildPillButton({ label: '‹ ORDER', color: T.moon, darkBg: T.moonDk,
         borderRadius: '4px', onClick: function() { _activeGroup = null; _rebuild(); } });
-      backO.style.alignSelf = 'stretch';
+      backO.style.alignSelf = 'stretch'; backO.style.flex = '1';
       actionArea.appendChild(backO);
 
       var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
         borderRadius: '4px', onClick: function() { handleAddItems(state, state._params || {}); } });
-      addBtn.style.alignSelf = 'stretch';
+      addBtn.style.alignSelf = 'stretch'; addBtn.style.flex = '1';
       actionArea.appendChild(addBtn);
 
       var sendBtn = buildPillButton({ label: 'SEND UNSENT', color: T.green, darkBg: T.greenDk,
@@ -1255,52 +1255,52 @@ function renderActionBar(state) {
             })
             .catch(function() { showToast('Send failed', { bg: T.verm }); });
         } });
-      sendBtn.style.alignSelf = 'stretch';
+      sendBtn.style.alignSelf = 'stretch'; sendBtn.style.flex = '1';
       actionArea.appendChild(sendBtn);
 
       var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
         borderRadius: '4px', onClick: function() { handleResend(state); } });
-      resendBtn.style.alignSelf = 'stretch';
+      resendBtn.style.alignSelf = 'stretch'; resendBtn.style.flex = '1';
       actionArea.appendChild(resendBtn);
 
     } else if (_activeGroup === 'pay') {
       // ── PAY drill ──
       var backP = buildPillButton({ label: '‹ PAY', color: T.moon, darkBg: T.moonDk,
         borderRadius: '4px', onClick: function() { _activeGroup = null; _rebuild(); } });
-      backP.style.alignSelf = 'stretch';
+      backP.style.alignSelf = 'stretch'; backP.style.flex = '1';
       actionArea.appendChild(backP);
 
       var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
         borderRadius: '4px', onClick: function() { handlePay(state, state._params || {}); } });
-      payBtn.style.alignSelf = 'stretch';
+      payBtn.style.alignSelf = 'stretch'; payBtn.style.flex = '1';
       actionArea.appendChild(payBtn);
 
       var discBtn = buildPillButton({ label: 'DISC', color: '#b48efa',
         darkBg: darkenHex('#b48efa', 0.4), borderRadius: '8px',
         onClick: function() { handleDiscount(state); } });
-      discBtn.style.alignSelf = 'stretch';
+      discBtn.style.alignSelf = 'stretch'; discBtn.style.flex = '1';
       actionArea.appendChild(discBtn);
 
       var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
         borderRadius: '4px', onClick: function() { handleVoid(state); } });
-      voidBtn.style.alignSelf = 'stretch';
+      voidBtn.style.alignSelf = 'stretch'; voidBtn.style.flex = '1';
       actionArea.appendChild(voidBtn);
 
     } else if (_activeGroup === 'terminal') {
       // ── TERMINAL drill ──
       var backT = buildPillButton({ label: '‹ TERMINAL', color: T.moon, darkBg: T.moonDk,
         borderRadius: '4px', onClick: function() { _activeGroup = null; _rebuild(); } });
-      backT.style.alignSelf = 'stretch';
+      backT.style.alignSelf = 'stretch'; backT.style.flex = '1';
       actionArea.appendChild(backT);
 
       var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
         borderRadius: '4px', onClick: function() { handlePrint(state); } });
-      printBtn.style.alignSelf = 'stretch';
+      printBtn.style.alignSelf = 'stretch'; printBtn.style.flex = '1';
       actionArea.appendChild(printBtn);
 
       var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
         borderRadius: '4px', onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
-      drawerBtn.style.alignSelf = 'stretch';
+      drawerBtn.style.alignSelf = 'stretch'; drawerBtn.style.flex = '1';
       actionArea.appendChild(drawerBtn);
     }
   }
