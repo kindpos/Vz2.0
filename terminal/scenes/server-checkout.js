@@ -665,6 +665,7 @@ function buildBaseCard(opts) {
   card.style.flexDirection = 'column';
   card.style.gap = '8px';
   card.style.flexShrink = '0';
+  card.style.touchAction = 'pan-y';
 
   return card;
 }
