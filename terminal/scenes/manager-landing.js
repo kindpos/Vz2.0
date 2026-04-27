@@ -17,6 +17,7 @@ import {
   darkenHex,
 } from '../theme-manager.js';
 import { showToast } from '../components.js';
+import { fetchWithTimeout } from '../net.js';
 import {
   buildSalesOverview,
   buildLineCard,
@@ -70,13 +71,13 @@ function fetchAllData(state) {
     String(today.getDate()).padStart(2, '0');
 
   return Promise.all([
-    fetch('/api/v1/orders/day-summary')
+    fetchWithTimeout('/api/v1/orders/day-summary', {}, 10000)
       .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return {}; }),
-    fetch('/api/v1/orders')
+    fetchWithTimeout('/api/v1/orders', {}, 10000)
       .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return []; }),
-    fetch('/api/v1/servers/clocked-in')
+    fetchWithTimeout('/api/v1/servers/clocked-in', {}, 10000)
       .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return { staff: [] }; }),
-    fetch('/api/v1/reports/labor-summary?date=' + dateStr)
+    fetchWithTimeout('/api/v1/reports/labor-summary?date=' + dateStr, {}, 10000)
       .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return {}; }),
   ]).then(function(results) {
     var daySummary  = results[0] || {};
@@ -679,7 +680,7 @@ defineScene({
           );
         }
         ids.forEach(function(orderId) {
-          fetch('/api/v1/orders/' + orderId + '/print/receipt', { method: 'POST' })
+          fetchWithTimeout('/api/v1/orders/' + orderId + '/print/receipt', { method: 'POST' }, 8000)
             .then(function(r) {
               if (r.ok) printed++;
               else      failed++;
@@ -743,11 +744,11 @@ defineScene({
           refresh();
         }
         ids.forEach(function(orderId) {
-          fetch('/api/v1/orders/' + orderId + '/void', {
+          fetchWithTimeout('/api/v1/orders/' + orderId + '/void', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ approved_by: st.emp.employee_id || st.emp.id, reason: 'Manager void from landing' }),
-          }).then(function(r) {
+          }, 8000).then(function(r) {
             if (r.ok) voided++; else vFailed++;
             _voidDone();
           }).catch(function() { vFailed++; _voidDone(); });
@@ -771,11 +772,11 @@ defineScene({
         var targetId  = ids[0];
         var sourceIds = ids.slice(1);
         showToast('Merging ' + sourceIds.length + ' check(s) into ' + targetId + '…', { bg: T.elec, duration: 1500 });
-        fetch('/api/v1/orders/' + targetId + '/merge', {
+        fetchWithTimeout('/api/v1/orders/' + targetId + '/merge', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ source_ids: sourceIds, approved_by: approver }),
-        }).then(function(r) {
+        }, 8000).then(function(r) {
           return r.json().then(function(data) {
             st._merging = false;
             if (r.ok) {

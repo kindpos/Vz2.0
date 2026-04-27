@@ -271,6 +271,7 @@ async def verify_pin(
         if not e.active or not e.pin:
             continue
         if verify_pin_hash(submitted, e.pin):
+            _attempts.pop(client_id, None)
             token = _create_token(e.employee_id, e.display_name, e.role_ids)
             return {
                 "valid": True,
