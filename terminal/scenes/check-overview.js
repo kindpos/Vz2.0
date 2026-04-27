@@ -1206,8 +1206,9 @@ function renderActionBar(state) {
   payCard.appendChild(payHeader);
 
   var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
-    borderRadius: '6px', onClick: function() { handlePay(state, state._params || {}); } });
-  payBtn.style.height = '38px';
+    borderRadius: '6px', fontSize: T.fsB2,
+    onClick: function() { handlePay(state, state._params || {}); } });
+  payBtn.style.height = '52px';
   payBtn.style.width  = '100%';
   payCard.appendChild(payBtn);
 
@@ -1255,15 +1256,16 @@ function renderActionBar(state) {
   termCard.appendChild(termHeader);
 
   var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
-    borderRadius: '6px', onClick: function() { handlePrint(state); } });
-  printBtn.style.height = '38px';
+    borderRadius: '6px', fontSize: T.fsB2,
+    onClick: function() { handlePrint(state); } });
+  printBtn.style.height = '52px';
   printBtn.style.width  = '100%';
   termCard.appendChild(printBtn);
 
   var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
-    borderRadius: '6px',
+    borderRadius: '6px', fontSize: T.fsB2,
     onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
-  drawerBtn.style.height = '38px';
+  drawerBtn.style.height = '52px';
   drawerBtn.style.width  = '100%';
   termCard.appendChild(drawerBtn);
 
@@ -1295,8 +1297,9 @@ function renderActionBar(state) {
   orderCard.appendChild(orderHeader);
 
   var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
-    borderRadius: '6px', onClick: function() { handleAddItems(state, state._params || {}); } });
-  addBtn.style.height = '38px';
+    borderRadius: '6px', fontSize: T.fsB2,
+    onClick: function() { handleAddItems(state, state._params || {}); } });
+  addBtn.style.height = '52px';
   addBtn.style.width  = '100%';
   orderCard.appendChild(addBtn);
 
@@ -1399,15 +1402,15 @@ function buildSeatsContainer(state) {
   // Three fixed right-aligned pills: CLEAR · MANAGE · SELECT ALL.
   var selRow = document.createElement('div');
   Object.assign(selRow.style, {
-    position:       'absolute',
-    top:            '8px',
-    right:          '12px',
-    zIndex:         '10',
-    display:        'flex',
-    justifyContent: 'flex-end',
-    alignItems:     'center',
-    gap:            '8px',
-    pointerEvents:  'auto',
+    position:  'absolute',
+    top:       '4px',
+    left:      '50%',
+    transform: 'translateX(-50%)',
+    zIndex:    '10',
+    display:   'flex',
+    alignItems:'center',
+    gap:       '8px',
+    pointerEvents: 'auto',
   });
 
   var clearBtn = buildPillButton({
