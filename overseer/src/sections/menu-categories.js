@@ -360,7 +360,7 @@ function formatWindowSummary(win) {
 /* ─── SCENE REGISTRATION ─────────────────────────────────────── */
 export function registerMenuCategories(sceneManager) {
     sceneManager.register('menu-categories', {
-        type: 'detail', title: 'Categories & Items', parent: 'menu-subs',
+        type: 'detail', title: 'Items & Categories', parent: 'menu-subs',
         async onEnter(container) {
             injectAnimations();
             menuData       = await fetchMenuData();
@@ -369,7 +369,7 @@ export function registerMenuCategories(sceneManager) {
             displayState   = { searchTerm: '', filterCategory: 'all', editMode: false, availabilityFilter: 'all', alphaSort: false, reorderMode: false };
 
             const { body, saveBar } = buildScenePage(container, {
-                title:     'Menu Categories & Items',
+                title:     'Menu Items & Categories',
                 subtitle:  `${menuData.categories.length} categories · ${menuData.items.length} items`,
                 saveLabel: 'Publish Changes',
                 onSave:    handlePublish,

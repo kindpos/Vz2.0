@@ -88,7 +88,7 @@ const NAV = [
         id: 'menu',
         label: 'MENU',
         subs: [
-            { id: 'menu-categories',     label: 'Categories'        },
+            { id: 'menu-categories',     label: 'Items & Categories' },
             { id: 'modifier-groups',      label: 'Modifiers'         },
             { id: 'pricing-specials',    label: 'Discounts & Specials' },
             { id: 'import-excel',        label: 'Import Menu'       },
