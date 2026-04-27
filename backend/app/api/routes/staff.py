@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from decimal import Decimal
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -172,7 +173,7 @@ async def get_clocked_in(ledger: EventLedger = Depends(get_ledger)):
 
 class DeclareCashTipsRequest(BaseModel):
     server_id: str
-    amount: float
+    amount: Decimal
 
 
 @router.post("/declare-cash-tips")
@@ -183,6 +184,11 @@ async def declare_cash_tips(
     """Record a server's self-reported cash tips at checkout (optional)."""
     if request.amount < 0:
         raise HTTPException(status_code=400, detail="Tip amount cannot be negative")
+    if request.amount != request.amount.quantize(Decimal("0.01")):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="amount must have at most 2 decimal places",
+        )
     event = cash_tips_declared(
         terminal_id=settings.terminal_id,
         server_id=request.server_id,

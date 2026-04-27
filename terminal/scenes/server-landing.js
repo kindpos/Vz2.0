@@ -20,6 +20,7 @@ import {
   buildTipSparkBg,
 } from '../charts.js';
 import { buildNumpad } from '../numpad.js';
+import { fetchWithTimeout } from '../net.js';
 
 // ── Input guard + double-tap window ──────────────
 var _inputIgnoreUntil = 0;
@@ -71,15 +72,15 @@ function fmtTurnTime(minutes) {
 function fetchAllData(state) {
   var sid = encodeURIComponent((state.emp || {}).id || '');
   return Promise.all([
-    fetch('/api/v1/orders/day-summary?server_id=' + sid)
+    fetchWithTimeout('/api/v1/orders/day-summary?server_id=' + sid, {}, 10000)
       .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return {}; }),
-    fetch('/api/v1/orders?server_id=' + sid)
+    fetchWithTimeout('/api/v1/orders?server_id=' + sid, {}, 10000)
       .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return []; }),
-    fetch('/api/v1/server/shift/table-stats?server_id=' + sid)
+    fetchWithTimeout('/api/v1/server/shift/table-stats?server_id=' + sid, {}, 10000)
       .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return {}; }),
-    fetch('/api/v1/server/shift/checkout-status?server_id=' + sid)
+    fetchWithTimeout('/api/v1/server/shift/checkout-status?server_id=' + sid, {}, 10000)
       .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return { openChecks: 0, unadjustedTips: 0 }; }),
-    fetch('/api/v1/config/tipout')
+    fetchWithTimeout('/api/v1/config/tipout', {}, 10000)
       .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); }).catch(function() { return []; }),
   ]).then(function(results) {
     var _rawSales = results[0] || {};
@@ -612,20 +613,27 @@ defineScene({
         onSubmit: function(pin) {
           var tipVal = parseInt(pin || '0', 10) / 100;
           var checks = state.salesData.checks || [];
+          var target = null;
           for (var i = 0; i < checks.length; i++) {
             if (checks[i].checkId === chk.checkId || checks[i].id === chk.checkId) {
-              checks[i].tip      = tipVal;
-              checks[i].adjusted = true;
+              target = checks[i];
               break;
             }
           }
-          fetch('/api/v1/checks/' + chk.checkId + '/tip', {
+          var prevTip = target ? target.tip : undefined;
+          var prevAdj = target ? target.adjusted : undefined;
+          if (target) { target.tip = tipVal; target.adjusted = true; }
+          closeTipNumpad();
+          renderTipQueue();
+          fetchWithTimeout('/api/v1/checks/' + chk.checkId + '/tip', {
             method:  'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ tip: tipVal, adjusted: true }),
-          }).catch(function() {});
-          closeTipNumpad();
-          renderTipQueue();
+          }, 10000).catch(function() {
+            if (target) { target.tip = prevTip; target.adjusted = prevAdj; }
+            showToast('Tip update failed — please try again', { bg: T.verm, duration: 3000 });
+            if (state.el) renderTipQueue();
+          });
         },
         onCancel: function() {
           closeTipNumpad();

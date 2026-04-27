@@ -770,6 +770,7 @@ defineScene({
   render: function(container, params, state) {
     params = params || {};
     state.startTime = state.startTime || Date.now();
+    state._alive = true;
 
     if (window._header && window._header.setBackHandler) {
       window._header.setBackHandler(function() {
@@ -787,9 +788,11 @@ defineScene({
 
     function refreshData() {
       fetchChecksState().then(function(newData) {
+        if (!state._alive) return;
         state.data = newData;
         rebuild();
       }).catch(function(err) {
+        if (!state._alive) return;
         console.error('[close-day-checks-viewer] fetch failed:', err);
         showToast('Checks data unavailable', { bg: T.verm });
       });
@@ -996,6 +999,7 @@ defineScene({
   },
 
   unmount: function(state) {
+    state._alive = false;
     if (state && state._pendingTimer) {
       clearTimeout(state._pendingTimer);
       state._pendingTimer = null;

@@ -46,7 +46,7 @@ def _check_monetary_precision(payload: dict) -> list[str]:
     failures = []
     for key in _MONETARY_KEYS:
         val = payload.get(key)
-        if val is not None and isinstance(val, (int, float)):
+        if val is not None and isinstance(val, (int, float, Decimal)):
             d = Decimal(str(val))
             if d != d.quantize(_TWO_DP):
                 failures.append(f"{key}={val}")

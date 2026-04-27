@@ -6,6 +6,7 @@
 
 import { T } from '../../common/tokens.js';
 import { showToast } from '../components.js';
+import { fetchWithTimeout } from '../net.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { buildNumpad } from '../numpad.js';
 import {
@@ -346,7 +347,7 @@ export function buildTipAdjustInline(opts) {
         onConfirm: function() {
           var url = '/api/v1/payments/zero-unadjusted';
           if (serverId) url += '?server_id=' + encodeURIComponent(serverId);
-          fetch(url, { method: 'POST' })
+          fetchWithTimeout(url, { method: 'POST' }, 10000)
             .then(function(r) { return r.json(); })
             .then(function() {
               _selected = null;
@@ -399,8 +400,10 @@ export function buildTipAdjustInline(opts) {
     onSubmit: function(digits) {
       if (!_selected) return;
       var tipAmount = parseInt(digits || '0', 10) / 100;
-      var adjusting = _selected; // capture ref — we null _selected optimistically
-      fetch('/api/v1/payments/tip-adjust', {
+      var adjusting = _selected;
+      _selected = null;
+      numpad.clear();
+      fetchWithTimeout('/api/v1/payments/tip-adjust', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -408,12 +411,10 @@ export function buildTipAdjustInline(opts) {
           payment_id: adjusting.payment_id,
           tip_amount: tipAmount,
         }),
-      }).then(function(r) {
+      }, 10000).then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         showToast('Tip adjusted', { bg: T.greenWarm });
         adjusting.tip_amount = tipAmount;
-        _selected = null;
-        numpad.clear();
         onAdjusted();
         // Refetch to confirm server state, then auto-advance if possible
         loadChecks(function() {
@@ -486,7 +487,7 @@ export function buildTipAdjustInline(opts) {
   function loadChecks(cb) {
     var url = '/api/v1/orders/day-summary';
     if (serverId) url += '?server_id=' + encodeURIComponent(serverId);
-    fetch(url)
+    fetchWithTimeout(url, {}, 10000)
       .then(function(r) { return r.json(); })
       .then(function(data) {
         var raw = data.checks || [];
@@ -595,11 +596,11 @@ defineScene({
       maxDigits: 4,
       masked: true,
       onSubmit: function(pin) {
-        fetch('/api/v1/auth/verify-pin', {
+        fetchWithTimeout('/api/v1/auth/verify-pin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pin: pin }),
-        })
+        }, 10000)
           .then(function(r) { return r.json(); })
           .then(function(data) {
             if (data.valid) {
@@ -666,15 +667,16 @@ defineScene({
       onSubmit: function(digits) {
         if (!_selected) return;
         var tipAmount = parseInt(digits || '0', 10) / 100;
-        fetch('/api/v1/payments/tip-adjust', {
+        var adjusting = _selected;
+        _selected = null;
+        fetchWithTimeout('/api/v1/payments/tip-adjust', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ order_id: _selected.check_id, payment_id: _selected.payment_id, tip_amount: tipAmount }),
-        }).then(function(r) {
+          body: JSON.stringify({ order_id: adjusting.check_id, payment_id: adjusting.payment_id, tip_amount: tipAmount }),
+        }, 10000).then(function(r) {
           if (r.ok) {
             showToast('Tip adjusted', { bg: T.greenWarm });
-            _selected.tip_amount = tipAmount;
-            _selected = null;
+            adjusting.tip_amount = tipAmount;
             hintEl.textContent = 'Tap a check to adjust';
             numpad.clear();
             renderList();
@@ -735,7 +737,7 @@ defineScene({
     // Fetch unadjusted checks
     var url = '/api/v1/orders/day-summary';
     if (params.serverId) url += '?server_id=' + encodeURIComponent(params.serverId);
-    fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+    fetchWithTimeout(url, {}, 10000).then(function(r) { return r.json(); }).then(function(data) {
       var raw = data.checks || [];
       _checks = raw.filter(function(c) { return c.status === 'closed' && c.method === 'card'; }).map(function(c) {
         return {
@@ -892,7 +894,7 @@ defineScene({
       },
       onSubmit: function(digits) {
         var tipAmount = parseInt(digits || '0', 10) / 100;
-        fetch('/api/v1/payments/tip-adjust', {
+        fetchWithTimeout('/api/v1/payments/tip-adjust', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -900,7 +902,7 @@ defineScene({
             payment_id: paymentId,
             tip_amount: tipAmount,
           }),
-        }).then(function(r) {
+        }, 10000).then(function(r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);
           showToast('Tip adjusted', { bg: T.greenWarm });
           SceneManager.closeTransactional('co-adjust-single');
@@ -1178,7 +1180,7 @@ defineScene({
 
     // Fetch clocked-in servers + build tiles
     var selectedServer = null;
-    fetch('/api/v1/servers/clocked-in').then(function(r) {
+    fetchWithTimeout('/api/v1/servers/clocked-in', {}, 10000).then(function(r) {
       return r.ok ? r.json() : [];
     }).catch(function() {
       return [];

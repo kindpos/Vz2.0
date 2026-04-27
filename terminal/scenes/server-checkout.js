@@ -21,6 +21,7 @@ import {
   darkenHex,
 } from '../theme-manager.js';
 import { fmt, detailRow, detailDivider } from './checkout-core.js';
+import { fetchWithTimeout } from '../net.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS (match mockup exactly)
@@ -64,10 +65,10 @@ function fetchServerState(params) {
   var ordersUrl  = '/api/v1/orders?server_id=' + encodeURIComponent(empId);
 
   return Promise.all([
-    fetch(summaryUrl).then(function(r) { return r.json(); }),
-    fetch('/api/v1/config/tipout').then(function(r) { return r.json(); }).catch(function() { return []; }),
-    fetch('/api/v1/config/store').then(function(r) { return r.json(); }).catch(function() { return {}; }),
-    fetch(ordersUrl).then(function(r) { return r.json(); }).catch(function() { return []; }),
+    fetchWithTimeout(summaryUrl, {}, 10000).then(function(r) { return r.json(); }),
+    fetchWithTimeout('/api/v1/config/tipout', {}, 10000).then(function(r) { return r.json(); }).catch(function() { return []; }),
+    fetchWithTimeout('/api/v1/config/store', {}, 10000).then(function(r) { return r.json(); }).catch(function() { return {}; }),
+    fetchWithTimeout(ordersUrl, {}, 10000).then(function(r) { return r.json(); }).catch(function() { return []; }),
   ]).then(function(results) {
     var d = results[0] || {};
     var rules = Array.isArray(results[1]) ? results[1] : [];
@@ -1337,7 +1338,7 @@ defineScene({
                     // POST the finalize. Endpoint is stubbed — swap URL when
                     // backend lands. `/server/shift/finalize-checkout` matches
                     // the existing shift endpoint naming convention.
-                    fetch('/api/v1/server/shift/finalize-checkout', {
+                    fetchWithTimeout('/api/v1/server/shift/finalize-checkout', {
                       method:  'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({

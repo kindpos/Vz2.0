@@ -25,6 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ...api.dependencies import get_ledger
+from ...api.routes.auth import require_manager
 from ...config import settings
 from ...core.event_ledger import EventLedger
 from ...core.events import (
@@ -474,7 +475,7 @@ def _parse_categories(raw: str) -> list[str]:
     return [c.strip() for c in (raw or "").split(",") if c.strip()]
 
 
-@router.post("/devices")
+@router.post("/devices", dependencies=[Depends(require_manager)])
 async def save_device(
     device: DeviceRecord,
     ledger: EventLedger = Depends(get_ledger),
@@ -550,7 +551,7 @@ async def save_device(
     return {**device.model_dump(), 'mac': mac, 'saved_at': now}
 
 
-@router.delete("/devices/{mac}")
+@router.delete("/devices/{mac}", dependencies=[Depends(require_manager)])
 async def delete_device(
     mac: str,
     ledger: EventLedger = Depends(get_ledger),
