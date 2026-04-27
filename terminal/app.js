@@ -117,9 +117,8 @@ async function boot() {
     var backBtn = document.createElement('div');
     backBtn.style.cssText = btnBase + [
       'width:52px;font-size:14px;letter-spacing:0.5px;',
-      'background:' + T.moon + ';',
-      'color:' + T.moonText + ';',
-      'border:2px solid ' + T.verm + ';',
+      'background:' + T.verm + ';',
+      'color:#fff;',
       'display:none;',
     ].join('');
     backBtn.textContent = '<<<';
