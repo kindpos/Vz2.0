@@ -422,6 +422,7 @@ defineScene({
     selectedIds:     [],
     selectedAt:      {},        // id → timestamp of when that id was first selected
     _refreshing:     false,
+    _refreshPending: false,
     el:              null,
     _refs:           {},
   },
@@ -1222,8 +1223,10 @@ defineScene({
     //  DATA + REFRESH
     // ─────────────────────────────────────────────
     function refresh() {
-      if (state._refreshing || !state.el) return;
-      state._refreshing = true;
+      if (!state.el) return;
+      if (state._refreshing) { state._refreshPending = true; return; }
+      state._refreshing  = true;
+      state._refreshPending = false;
       fetchAllData(state).then(function() {
         state._refreshing = false;
         if (!state.el) return;
@@ -1242,6 +1245,7 @@ defineScene({
         try { renderServerFilter(); } catch(e) { console.warn('[ml] renderServerFilter threw:', e); }
         try { renderTiles();        } catch(e) { console.warn('[ml] renderTiles threw:', e); }
         try { renderPreview();      } catch(e) { console.warn('[ml] renderPreview threw:', e); }
+        if (state._refreshPending) refresh();
       }).catch(function() { state._refreshing = false; });
     }
 

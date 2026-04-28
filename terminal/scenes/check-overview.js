@@ -728,8 +728,9 @@ defineScene({
         fetchWithTimeout('/api/v1/servers/clocked-in', {}, 10000)
           .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
           .then(function(data) {
+            if (!data || !Array.isArray(data.staff)) throw new Error('unexpected response');
             list.innerHTML = '';
-            var staff = (data.staff || []).filter(function(s) { return s.employee_id !== excludeId; });
+            var staff = data.staff.filter(function(s) { return s.employee_id !== excludeId; });
             if (staff.length === 0) {
               var empty = document.createElement('div');
               empty.style.cssText = [
@@ -1622,7 +1623,8 @@ function renderSeatsGrid(state, container, mode) {
     Object.assign(allSeatsBtn.style, {
       gridColumn:     '1 / -1',
       background:     allSel ? T.elec : T.well,
-      border:         '1px solid ' + (allSel ? T.elec : T.moon),
+      border:         '1px solid ' + T.moon,
+      borderLeft:     '3px solid ' + (allSel ? T.elec : T.moon),
       borderRadius:   '8px',
       padding:        '8px',
       textAlign:      'center',
@@ -1718,7 +1720,8 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
   var card = document.createElement('div');
   Object.assign(card.style, {
     background:    isSel ? T.green       : T.well,
-    border:        '1px solid ' + (isSel ? T.green   : T.moon),
+    border:        '1px solid ' + T.moon,
+    borderLeft:    '3px solid ' + (isSel ? T.green   : T.moon),
     boxShadow:     '0 3px 0 '  + (isSel ? T.greenDk : T.moonDk),
     borderRadius:  '8px',
     padding:       '5px 8px',
@@ -3801,8 +3804,8 @@ function refreshOrder(state, params) {
   state._refreshPromise = fetchWithTimeout('/api/v1/orders/' + state.orderId, { cache: 'no-store' }, 15000)
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(order) {
-      if (!state._alive) return;
       state._refreshInFlight = false;
+      if (!state._alive) return;
       if (!order) return;
       state.order = order;
       state.checkNumber  = order.check_number || '';
