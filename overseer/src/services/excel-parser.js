@@ -78,7 +78,7 @@ function str(v) {
 
 /** Strip asterisks, question marks, newlines, and extra whitespace.
  *  Used to normalise column header keys before comparison. */
-function norm(v) {
+export function norm(v) {
     return str(v).replace(/[*?()\n\r]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
@@ -103,13 +103,13 @@ function get(row, expected, fallback = undefined) {
 }
 
 /** Parse a price string like "$1.50" or "1.50" into a float. */
-function parsePrice(v) {
+export function parsePrice(v) {
     if (!hasValue(v)) return 0.0;
     return parseFloat(String(v).replace(/[^0-9.\-]/g, '')) || 0.0;
 }
 
 /** Split a comma-separated string into a trimmed array, dropping blanks. */
-function splitList(v) {
+export function splitList(v) {
     if (!hasValue(v)) return [];
     return String(v).split(',').map(s => s.trim()).filter(Boolean);
 }
@@ -377,7 +377,7 @@ function _parseOptionGroups(workbook, errors, warnings) {
  * Input format: '8" GF ($0.00), 10" GF ($2.00)'
  * Output: [{ name: '8" GF', price: 0.0 }, { name: '10" GF', price: 2.0 }]
  */
-function _parseMustAlsoPick(raw) {
+export function _parseMustAlsoPick(raw) {
     if (!raw) return [];
     // Split on commas that are NOT inside parentheses
     const parts = raw.match(/[^,]+(?:\([^)]*\))?/g) || [];
