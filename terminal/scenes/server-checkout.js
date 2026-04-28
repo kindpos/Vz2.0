@@ -49,7 +49,7 @@ var FS_RECEIPT = '11px';   // Receipt preview paper (intentionally small — it'
 //  DATA FETCH
 // ─────────────────────────────────────────────────
 
-function fetchServerState(params) {
+export function fetchServerState(params) {
   var empId = params.employeeId || '';
 
   // Hard gate — we must have an employee ID. Without one, a bare

@@ -437,7 +437,7 @@ export function buildPinRow() {
     row: row,
     boxes: boxes,
     setCount: function(n) {
-      boxes.forEach(function(b, i) { b.setFilled(i < n); });
+      boxes.forEach(function(b, i) { b.box.setFilled(i < n); });
     },
   };
 }
