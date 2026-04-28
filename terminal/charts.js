@@ -31,7 +31,7 @@ function _svgEl(tag, attrs) {
 }
 
 // ── Internal: normalize data to 0-1 range ────────
-function _normalize(data) {
+export function _normalize(data) {
   var min = Math.min.apply(null, data);
   var max = Math.max.apply(null, data);
   var range = max - min || 1;
@@ -40,7 +40,7 @@ function _normalize(data) {
 
 // ── Internal: build SVG path string from data ────
 // Returns path 'd' attribute for a line across a viewBox
-function _linePath(data, vbW, vbH, padTop, padBot) {
+export function _linePath(data, vbW, vbH, padTop, padBot) {
   padTop = padTop || 4;
   padBot = padBot || 2;
   var norm = _normalize(data);
@@ -53,7 +53,7 @@ function _linePath(data, vbW, vbH, padTop, padBot) {
 }
 
 // ── Internal: build area path (line + close to bottom) ─
-function _areaPath(data, vbW, vbH, padTop, padBot) {
+export function _areaPath(data, vbW, vbH, padTop, padBot) {
   var line = _linePath(data, vbW, vbH, padTop, padBot);
   return line + ' L' + vbW + ',' + vbH + ' L0,' + vbH + 'Z';
 }
