@@ -583,13 +583,11 @@ export var OrderSummary = {
     opts = opts || {};
     if (_paidRow) {
       _paidRow.style.display = 'flex';
-      var pv = _paidRow.querySelector('[data-val]');
-      if (pv) pv.textContent = '$' + (opts.totalPaid || 0).toFixed(2);
+      _paidRow.setValue('$' + (opts.totalPaid || 0).toFixed(2));
     }
     if (_remainRow) {
       _remainRow.style.display = 'flex';
-      var rv = _remainRow.querySelector('[data-val]');
-      if (rv) rv.textContent = '$' + (opts.remaining || 0).toFixed(2);
+      _remainRow.setValue('$' + (opts.remaining || 0).toFixed(2));
     }
   },
 
