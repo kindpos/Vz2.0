@@ -84,6 +84,7 @@ function projectedColTotal(colIdx, state) {
 
 function pushLog(label, state) {
   state.actionLog.push({ label: label, columns: deepCopyColumns(state.columns) });
+  if (state.undoBtnEl) state.undoBtnEl.setDisabled(false);
 }
 
 function clearMode(state) {
@@ -311,6 +312,7 @@ function handleUndo(state) {
   state.selectedItems = [];
   state.splitTargets  = [];
   state.mode          = null;
+  if (state.undoBtnEl) state.undoBtnEl.setDisabled(state.actionLog.length === 0);
   renderOpsBar(state);
   renderColumns(state);
 }
@@ -322,6 +324,7 @@ function handleUndoAll(state) {
   state.selectedItems = [];
   state.splitTargets  = [];
   state.mode          = null;
+  if (state.undoBtnEl) state.undoBtnEl.setDisabled(true);
   renderOpsBar(state);
   renderColumns(state);
 }
@@ -768,6 +771,7 @@ function renderBottomCluster(state) {
   undoBtn.appendChild(undoFill);
 
   if (state.actionLog.length === 0) undoBtn.setDisabled(true);
+  state.undoBtnEl = undoBtn;
 
   // Long-press interaction — stored in state so unmount can cancel it
   state._lpTimer = null;
@@ -847,6 +851,7 @@ defineScene({
     opsPanel:      null,
     columnsArea:   null,
     statusEl:      null,
+    undoBtnEl:     null,
     onSave:        null,
     actionLog:     [],
     snapshot:      null,

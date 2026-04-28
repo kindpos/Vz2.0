@@ -65,19 +65,19 @@ var FS_RECEIPT = '11px';
 //  HELPERS
 // ─────────────────────────────────────────────────
 
-function fmt(n) {
+export function fmt(n) {
   n = n || 0;
   var abs = Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return (n < 0 ? '\u2212$' : '$') + abs;
 }
 
-function fmtPct(delta) {
+export function fmtPct(delta) {
   if (delta == null || !isFinite(delta)) return '\u2014';
   var sign = delta > 0 ? '\u25B2' : (delta < 0 ? '\u25BC' : '\u00B7');
   return sign + ' ' + Math.abs(delta).toFixed(1) + '%';
 }
 
-function deltaColor(delta) {
+export function deltaColor(delta) {
   if (delta == null || !isFinite(delta) || delta === 0) return T.text;
   return delta > 0 ? T.greenWarm : T.verm;
 }
@@ -87,7 +87,7 @@ function deltaColor(delta) {
 // numerics like "27", and some endpoints return "#21" already prefixed.
 // Rule: if the value already starts with a non-digit (#, C, letters), use
 // it as-is. Only prepend "#" to bare numerics.
-function checkNumDisplay(chk) {
+export function checkNumDisplay(chk) {
   var raw = String(chk.checkLabel || chk.checkId || '');
   if (!raw) return '';
   if (/^[#A-Za-z]/.test(raw)) return raw;
@@ -105,7 +105,7 @@ function checkNumDisplay(chk) {
 //   "abc-def"     → "C-ABC"   (no digits — first 3 chars fallback)
 // Backend check_number fields are ignored — this is the source of truth
 // for display so every screen shows the same value for the same order.
-function synthCheckLabel(id) {
+export function synthCheckLabel(id) {
   var s = String(id || '');
   if (!s) return 'C-???';
   var digits = s.match(/\d+/g);
@@ -121,7 +121,7 @@ function synthCheckLabel(id) {
 // ("2026-04-19T20:23:07.353556Z") which is unreadable for humans.
 // day-summary's d.checks ship pre-formatted strings ("7:23pm"). Accept
 // either — parse ISO to h:mm a, pass through anything else.
-function formatTime(t) {
+export function formatTime(t) {
   if (!t) return '';
   // Pre-formatted: no ISO markers, return as-is.
   if (typeof t !== 'string' || (t.indexOf('T') === -1 && t.indexOf(':') <= 2)) return t;
@@ -1234,13 +1234,13 @@ function cashVariance(state, sceneState) {
   return computeCashVariance(state.cashExpected, sceneState.cashCounted);
 }
 
-function cashStatusLabel(sceneState) {
+export function cashStatusLabel(sceneState) {
   if (sceneState.cashCounted === 'bypass') return 'BYPASSED';
   if (sceneState.cashCounted != null)      return 'DONE';
   return 'PENDING';
 }
 
-function cashStatusColor(sceneState) {
+export function cashStatusColor(sceneState) {
   if (sceneState.cashCounted === 'bypass') return T.lavender;
   if (sceneState.cashCounted != null)      return T.greenWarm;
   return T.warning;
