@@ -26,6 +26,8 @@ from .mock_menu import (
     SERVERS,
     SERVER_NAMES,
     TAX_RATE,
+    EMPLOYEES,
+    DISCOUNT_CATALOG,
 )
 from .simulation_engine import SimulationEngine, SimulationMetrics
 
@@ -149,7 +151,7 @@ async def validate_financial_reconciliation(
     for order in all_orders.values():
         if order.status in ("closed", "paid"):
             closed_count += 1
-            proj_gross_sales += _d(order.subtotal)
+            proj_gross_sales += _d(order.gross_subtotal)  # pre-discount gross
             proj_discounts += _d(order.discount_total)
             proj_tax += _d(order.tax)
             for p in order.payments:
@@ -822,3 +824,206 @@ def build_summary_table(all_results: list[dict]) -> str:
                         lines.append(f"      {c['name']}: {c.get('detail', '')}")
 
     return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════
+# 10. STAFF LIFECYCLE
+# ═══════════════════════════════════════════════════════════════
+
+async def validate_staff_lifecycle(ledger: EventLedger, engine: SimulationEngine) -> dict:
+    """Verify clock-ins, clock-outs, and tipout events were emitted."""
+    results = {"section": "Staff Lifecycle", "checks": [], "result": "PASS"}
+
+    all_events = await ledger.get_events_since(0, limit=100000)
+
+    clock_ins = [e for e in all_events if e.event_type == EventType.USER_LOGGED_IN]
+    results["checks"].append({
+        "name": "Staff clocked in",
+        "passed": len(clock_ins) == len(EMPLOYEES),
+        "detail": f"Expected {len(EMPLOYEES)}, got {len(clock_ins)}",
+    })
+
+    clock_outs = [e for e in all_events if e.event_type == EventType.USER_LOGGED_OUT]
+    results["checks"].append({
+        "name": "Staff clocked out",
+        "passed": len(clock_outs) == len(EMPLOYEES),
+        "detail": f"Expected {len(EMPLOYEES)}, got {len(clock_outs)}",
+    })
+
+    tipout_calcs = [e for e in all_events if e.event_type == EventType.TIPOUT_CALCULATED]
+    results["checks"].append({
+        "name": "Tipout calculations emitted",
+        "passed": len(tipout_calcs) >= 1,
+        "detail": f"{len(tipout_calcs)} TIPOUT_CALCULATED events",
+    })
+
+    tipout_dists = [e for e in all_events if e.event_type == EventType.TIPOUT_DISTRIBUTED]
+    results["checks"].append({
+        "name": "Tipout distributions emitted",
+        "passed": len(tipout_dists) >= 1,
+        "detail": f"{len(tipout_dists)} TIPOUT_DISTRIBUTED events",
+    })
+
+    tipout_rules = [e for e in all_events if e.event_type == EventType.TIPOUT_RULE_CREATED]
+    results["checks"].append({
+        "name": "Tipout rules created",
+        "passed": len(tipout_rules) >= 1,
+        "detail": f"{len(tipout_rules)} TIPOUT_RULE_CREATED events",
+    })
+
+    if any(not c["passed"] for c in results["checks"]):
+        results["result"] = "FAIL"
+    return results
+
+
+# ═══════════════════════════════════════════════════════════════
+# 11. DISCOUNT CATALOG
+# ═══════════════════════════════════════════════════════════════
+
+async def validate_discount_catalog(ledger: EventLedger, engine: SimulationEngine) -> dict:
+    """Verify discount catalog was set up and seat-level discount events were emitted."""
+    results = {"section": "Discount Catalog", "checks": [], "result": "PASS"}
+
+    all_events = await ledger.get_events_since(0, limit=100000)
+
+    disc_created = [e for e in all_events if e.event_type == EventType.DISCOUNT_CREATED]
+    results["checks"].append({
+        "name": "Discount definitions created",
+        "passed": len(disc_created) == len(DISCOUNT_CATALOG),
+        "detail": f"Expected {len(DISCOUNT_CATALOG)}, got {len(disc_created)}",
+    })
+
+    seat_discs = [e for e in all_events if e.event_type == EventType.SEAT_DISCOUNT_APPLIED]
+    results["checks"].append({
+        "name": "Seat discounts applied",
+        "passed": len(seat_discs) > 0,
+        "detail": f"{len(seat_discs)} SEAT_DISCOUNT_APPLIED events",
+    })
+
+    seat_comps = [e for e in all_events if e.event_type == EventType.SEAT_COMPED]
+    results["checks"].append({
+        "name": "Seat comps recorded",
+        "passed": len(seat_comps) > 0,
+        "detail": f"{len(seat_comps)} SEAT_COMPED events",
+    })
+
+    if any(not c["passed"] for c in results["checks"]):
+        results["result"] = "FAIL"
+    return results
+
+
+# ═══════════════════════════════════════════════════════════════
+# 12. CASH VARIANCE
+# ═══════════════════════════════════════════════════════════════
+
+async def validate_cash_variance(ledger: EventLedger, engine: SimulationEngine) -> dict:
+    """Verify cash float, drops, payouts, and seat item transfers."""
+    results = {"section": "Cash Variance", "checks": [], "result": "PASS"}
+
+    all_events = await ledger.get_events_since(0, limit=100000)
+
+    float_events = [e for e in all_events if e.event_type == EventType.DAY_CASH_FLOAT_UPDATED]
+    results["checks"].append({
+        "name": "Cash float set",
+        "passed": len(float_events) >= 1,
+        "detail": f"{len(float_events)} DAY_CASH_FLOAT_UPDATED events",
+    })
+
+    drop_events = [e for e in all_events if e.event_type == EventType.DAY_CASH_DROP]
+    results["checks"].append({
+        "name": "Cash drop recorded",
+        "passed": len(drop_events) >= 1,
+        "detail": f"{len(drop_events)} DAY_CASH_DROP events",
+    })
+
+    payout_events = [e for e in all_events if e.event_type == EventType.DAY_CASH_PAYOUT]
+    results["checks"].append({
+        "name": "Cash payout recorded",
+        "passed": len(payout_events) >= 1,
+        "detail": f"{len(payout_events)} DAY_CASH_PAYOUT events",
+    })
+
+    # Expected in-drawer = float + cash_sales - drops - payouts
+    float_total = sum(_d(e.payload.get("amount", 0)) for e in float_events)
+    drop_total = sum(_d(e.payload.get("amount", 0)) for e in drop_events)
+    payout_total = sum(_d(e.payload.get("amount", 0)) for e in payout_events)
+    # PAYMENT_CONFIRMED has no method field; cross-ref PAYMENT_INITIATED (which does)
+    confirmed_pay_ids = {
+        e.payload.get("payment_id")
+        for e in all_events
+        if e.event_type == EventType.PAYMENT_CONFIRMED
+    }
+    cash_payments = sum(
+        _d(e.payload.get("amount", 0))
+        for e in all_events
+        if e.event_type == EventType.PAYMENT_INITIATED
+        and e.payload.get("method") == "cash"
+        and e.payload.get("payment_id") in confirmed_pay_ids
+    )
+    expected_in_drawer = float_total + cash_payments - drop_total - payout_total
+    results["checks"].append({
+        "name": "Expected drawer balance positive",
+        "passed": expected_in_drawer >= Decimal("0.00"),
+        "detail": f"float={float_total} + cash={cash_payments} - drops={drop_total} - payouts={payout_total} = {expected_in_drawer}",
+    })
+
+    seat_transfers = [e for e in all_events if e.event_type == EventType.SEAT_ITEM_TRANSFERRED_OUT]
+    results["checks"].append({
+        "name": "Seat item transfers recorded",
+        "passed": len(seat_transfers) > 0,
+        "detail": f"{len(seat_transfers)} SEAT_ITEM_TRANSFERRED_OUT events",
+    })
+
+    if any(not c["passed"] for c in results["checks"]):
+        results["result"] = "FAIL"
+    return results
+
+
+# ═══════════════════════════════════════════════════════════════
+# 13. SETTLEMENT INTEGRITY
+# ═══════════════════════════════════════════════════════════════
+
+async def validate_settlement_integrity(ledger: EventLedger, engine: SimulationEngine) -> dict:
+    """Verify clean batch settlement and correct void/discount accounting."""
+    results = {"section": "Settlement Integrity", "checks": [], "result": "PASS"}
+
+    all_events = await ledger.get_events_since(0, limit=100000)
+
+    batch_events = [e for e in all_events if e.event_type == EventType.BATCH_SUBMITTED]
+    results["checks"].append({
+        "name": "BATCH_SUBMITTED present",
+        "passed": len(batch_events) >= 1,
+        "detail": f"{len(batch_events)} BATCH_SUBMITTED events",
+    })
+
+    failed_events = [e for e in all_events if e.event_type == EventType.BATCH_SETTLEMENT_FAILED]
+    results["checks"].append({
+        "name": "No settlement failures",
+        "passed": len(failed_events) == 0,
+        "detail": f"{len(failed_events)} BATCH_SETTLEMENT_FAILED events",
+    })
+
+    # Verify payment decline events were recorded (Dejavoo path)
+    decline_events = [e for e in all_events if e.event_type == EventType.PAYMENT_DECLINED]
+    results["checks"].append({
+        "name": "Payment decline events recorded (Dejavoo simulation)",
+        "passed": len(decline_events) > 0,
+        "detail": f"{len(decline_events)} PAYMENT_DECLINED events",
+    })
+
+    # Void total consistency: engine tracker vs ledger ORDER_VOIDED events
+    ledger_voids = Decimal("0.00")
+    all_orders = project_orders(all_events)
+    for order in all_orders.values():
+        if order.status == "voided":
+            ledger_voids += _d(order.total)
+    engine_voids = _d(engine.total_voids)
+    results["checks"].append({
+        "name": "Void total consistency",
+        "passed": abs(ledger_voids - engine_voids) < Decimal("1.00"),
+        "detail": f"Engine: {engine_voids}, Ledger: {ledger_voids}",
+    })
+
+    if any(not c["passed"] for c in results["checks"]):
+        results["result"] = "FAIL"
+    return results

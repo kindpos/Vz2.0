@@ -141,6 +141,66 @@ for server_id, tables in SERVER_TABLE_MAP.items():
 
 TAX_RATE = Decimal("0.07")  # 7% Florida
 
+EMPLOYEES = [
+    {
+        "employee_id": s,
+        "first_name": SERVER_NAMES[s].split()[0],
+        "last_name": "Staff",
+        "display_name": SERVER_NAMES[s],
+        "hourly_rate": "18.00",
+        "role": "server",
+        "active": True,
+    }
+    for s in SERVERS
+]
+
+DISCOUNT_CATALOG = [
+    {
+        "discount_id": "disc_happy_hour",
+        "name": "Happy Hour 20%",
+        "discount_type": "percentage",
+        "amount": Decimal("20.00"),
+        "applies_to": "check",
+        "requires_approval": False,
+        "auto_apply": False,
+    },
+    {
+        "discount_id": "disc_manager_comp",
+        "name": "Manager Comp",
+        "discount_type": "flat_dollar",
+        "amount": Decimal("0.00"),
+        "applies_to": "item",
+        "requires_approval": True,
+        "auto_apply": False,
+    },
+    {
+        "discount_id": "disc_employee",
+        "name": "Employee Meal",
+        "discount_type": "percentage",
+        "amount": Decimal("50.00"),
+        "applies_to": "check",
+        "requires_approval": False,
+        "auto_apply": False,
+    },
+]
+
+TIPOUT_RULES = [
+    {
+        "rule_id": "rule_bar_to_barback",
+        "name": "Bar to Barback 10%",
+        "pool_id": "pool_bar",
+        "role_ids": ["barback"],
+        "percentage": Decimal("10.00"),
+    },
+    {
+        "rule_id": "rule_server_to_bus",
+        "name": "Server to Busser 3%",
+        "pool_id": "pool_floor",
+        "role_ids": ["busser"],
+        "percentage": Decimal("3.00"),
+    },
+]
+
 
 def get_available_items(eighty_sixed: set[str]) -> list[dict]:
     """Return menu items not currently 86'd."""

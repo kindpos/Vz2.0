@@ -26,11 +26,26 @@ from app.core.events import (
     modifier_applied,
     payment_initiated,
     payment_confirmed,
+    payment_failed,
     order_closed,
     order_voided,
     tip_adjusted,
     batch_submitted,
     day_closed,
+    user_logged_in,
+    user_logged_out,
+    discount_created,
+    tipout_rule_created,
+    tipout_calculated,
+    tipout_distributed,
+    seat_discount_applied,
+    seat_comped,
+    seat_item_transferred_out,
+    seat_item_received,
+    day_opened,
+    day_cash_float_updated,
+    day_cash_drop,
+    day_cash_payout,
 )
 from app.core.projections import project_order
 from app.core.money import money_round
@@ -52,6 +67,9 @@ from .mock_menu import (
     ITEM_TO_86_APPETIZER,
     ITEM_TO_86_ENTREE,
     TAX_RATE,
+    EMPLOYEES,
+    DISCOUNT_CATALOG,
+    TIPOUT_RULES,
     get_available_items,
     pick_random_items,
     get_random_modifier,
@@ -105,6 +123,11 @@ class SimulationMetrics:
     second_rounds: int = 0
     eighty_six_rejections: int = 0
     full_check_voids: int = 0
+    payment_declines: int = 0
+    seat_discounts: int = 0
+    seat_comps: int = 0
+    seat_item_transfers: int = 0
+    staff_clocked_in: int = 0
     start_time: float = 0.0
     end_time: float = 0.0
 
@@ -138,6 +161,18 @@ class SimulationEngine:
         # Server tracking
         self.server_checks: dict[str, list[str]] = {s: [] for s in SERVERS}
         self.server_tips: dict[str, Decimal] = {s: Decimal("0.00") for s in SERVERS}
+
+        # Cash drawer
+        self.cash_float = Decimal("200.00")
+        self.total_cash_drops = Decimal("0.00")
+        self.total_cash_payouts = Decimal("0.00")
+
+        # Catalog refs
+        self.discount_ids: list[str] = []
+        self.tipout_rule_ids: list[str] = []
+
+        # Dynamic sim date (replaces hardcoded "2026-03-29")
+        self.sim_date: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # ─── Helpers ────────────────────────────────────────────
 
@@ -251,6 +286,136 @@ class SimulationEngine:
             payload={"item_id": item_id},
         )
         await self._append(evt)
+
+    # ─── Setup Helpers ──────────────────────────────────────
+
+    async def setup_staff(self):
+        """Emit EMPLOYEE_CREATED + USER_LOGGED_IN for each server."""
+        for emp in EMPLOYEES:
+            evt = create_event(
+                event_type=EventType.EMPLOYEE_CREATED,
+                terminal_id=TERMINAL_ID,
+                payload={
+                    "employee_id": emp["employee_id"],
+                    "first_name": emp["first_name"],
+                    "last_name": emp["last_name"],
+                    "display_name": emp["display_name"],
+                    "hourly_rate": emp["hourly_rate"],
+                    "active": emp["active"],
+                },
+            )
+            await self._append(evt)
+            await self._append(user_logged_in(
+                terminal_id=TERMINAL_ID,
+                employee_id=emp["employee_id"],
+                employee_name=emp["display_name"],
+                role=emp["role"],
+            ))
+            self.metrics.staff_clocked_in += 1
+
+    async def setup_discount_catalog(self):
+        """Emit DISCOUNT_CREATED for each catalog entry."""
+        for disc in DISCOUNT_CATALOG:
+            await self._append(discount_created(
+                terminal_id=TERMINAL_ID,
+                discount_id=disc["discount_id"],
+                name=disc["name"],
+                discount_type=disc["discount_type"],
+                amount=disc["amount"],
+                applies_to=disc["applies_to"],
+                created_by="manager_01",
+                requires_approval=disc.get("requires_approval", False),
+                auto_apply=disc.get("auto_apply", False),
+            ))
+            self.discount_ids.append(disc["discount_id"])
+
+    async def setup_tipout_rules(self):
+        """Emit TIPOUT_RULE_CREATED for each rule."""
+        for rule in TIPOUT_RULES:
+            await self._append(tipout_rule_created(
+                terminal_id=TERMINAL_ID,
+                rule_id=rule["rule_id"],
+                name=rule["name"],
+                pool_id=rule["pool_id"],
+                role_ids=rule["role_ids"],
+                percentage=rule["percentage"],
+                effective_date=self.sim_date,
+                created_by="manager_01",
+            ))
+            self.tipout_rule_ids.append(rule["rule_id"])
+
+    async def setup_cash_drawer(self):
+        """Emit DAY_OPENED and initial cash float."""
+        await self._append(day_opened(terminal_id=TERMINAL_ID, date=self.sim_date))
+        await self._append(day_cash_float_updated(
+            terminal_id=TERMINAL_ID,
+            amount=self.cash_float,
+            set_by="manager_01",
+            reason="Opening float",
+        ))
+
+    async def transfer_seat_item(self, check: "CheckRecord", from_seat: int, to_seat: int):
+        """Move one item between seats on the same check."""
+        if not check.item_ids or check.guest_count < 2:
+            return
+        item_id = random.choice(check.item_ids)
+        await self._append(seat_item_transferred_out(
+            terminal_id=TERMINAL_ID,
+            order_id=check.order_id,
+            seat_number=from_seat,
+            item_id=item_id,
+            target_seat_number=to_seat,
+            transferred_by=check.server_id,
+        ))
+        await self._append(seat_item_received(
+            terminal_id=TERMINAL_ID,
+            order_id=check.order_id,
+            seat_number=to_seat,
+            item_id=item_id,
+            source_seat_number=from_seat,
+            received_by=check.server_id,
+        ))
+        self.metrics.seat_item_transfers += 1
+
+    async def apply_seat_discount(self, check: "CheckRecord"):
+        """Apply a catalog discount to a random seat."""
+        if check.guest_count < 2:
+            return
+        seat = random.randint(1, check.guest_count)
+        await self._append(seat_discount_applied(
+            terminal_id=TERMINAL_ID,
+            order_id=check.order_id,
+            seat_number=seat,
+            amount=self._d("5.00"),
+            discount_type="percentage",
+            discount_id="disc_happy_hour",
+            approved_by="manager_01",
+        ))
+        self.metrics.seat_discounts += 1
+
+    async def comp_seat(self, check: "CheckRecord"):
+        """Comp a specific seat (service recovery)."""
+        if not check.item_ids:
+            return
+        seat = random.randint(1, check.guest_count)
+        events = await self.ledger.get_events_by_correlation(check.order_id)
+        order = project_order(events)
+        if not order or not order.items:
+            return
+        comped_item = random.choice(order.items)
+        amount = self._d(comped_item.subtotal)
+        await self._append(seat_comped(
+            terminal_id=TERMINAL_ID,
+            order_id=check.order_id,
+            seat_number=seat,
+            amount=amount,
+            comped_by="manager_01",
+            reason="Service recovery",
+            comp_category="service_recovery",
+        ))
+        self.total_discounts += amount
+        check.is_comped = True
+        self.metrics.seat_comps += 1
 
     # ─── Check Lifecycle ────────────────────────────────────
 
@@ -522,6 +687,18 @@ class SimulationEngine:
 
     async def _process_payment(self, check: CheckRecord, amount: Decimal, method: str):
         """Process a single payment (card or cash) on a check."""
+        # ~3% Dejavoo terminal decline on card — record failure then retry
+        if method == "card" and random.random() < 0.03:
+            failed_id = self._new_id("pay")
+            await self._append(payment_failed(
+                terminal_id=TERMINAL_ID,
+                order_id=check.order_id,
+                payment_id=failed_id,
+                error="Terminal timeout",
+                error_code="DEJAVOO_TIMEOUT",
+            ))
+            self.metrics.payment_declines += 1
+
         payment_id = self._new_id("pay")
         check.payment_ids.append(payment_id)
 
@@ -534,7 +711,8 @@ class SimulationEngine:
         )
         await self._append(evt)
 
-        txn_id = f"{method}_{uuid.uuid4().hex[:8]}"
+        txn_prefix = "dejavoo_txn_" if method == "card" else f"{method}_"
+        txn_id = f"{txn_prefix}{uuid.uuid4().hex[:8]}"
         evt = payment_confirmed(
             terminal_id=TERMINAL_ID,
             order_id=check.order_id,
@@ -555,9 +733,16 @@ class SimulationEngine:
     async def run_phase1_pre_service(self):
         """Phase 1: Pre-Service (10:30-11:00). Setup, 86 items."""
         print("  Phase 1: Pre-Service (10:30-11:00)")
+        await self.setup_staff()
+        await self.setup_discount_catalog()
+        await self.setup_tipout_rules()
+        await self.setup_cash_drawer()
         await self.setup_menu()
         await self.eighty_six_item(ITEM_TO_86_APPETIZER)
         await self.eighty_six_item(ITEM_TO_86_ENTREE)
+        print(f"    Staff clocked in: {self.metrics.staff_clocked_in}")
+        print(f"    Discounts created: {len(self.discount_ids)}, tipout rules: {len(self.tipout_rule_ids)}")
+        print(f"    Cash float set: ${self.cash_float}")
         print(f"    Menu loaded: {len(MENU_ITEMS)} items, {len(CATEGORIES)} categories")
         print(f"    86'd: {ITEM_TO_86_APPETIZER}, {ITEM_TO_86_ENTREE}")
 
@@ -566,7 +751,7 @@ class SimulationEngine:
         print("  Phase 2: Lunch Rush (11:00-14:00)")
         target = 120
         created = 0
-        sim_time = datetime(2026, 3, 29, 11, 0, tzinfo=timezone.utc)
+        sim_time = datetime.fromisoformat(self.sim_date).replace(hour=11, minute=0, tzinfo=timezone.utc)
 
         while created < target:
             # Ramp rate: peak at 12:15-13:00
@@ -625,7 +810,7 @@ class SimulationEngine:
         print("  Phase 3: Slow Afternoon (14:00-17:00)")
         target = 30
         created = 0
-        sim_time = datetime(2026, 3, 29, 14, 0, tzinfo=timezone.utc)
+        sim_time = datetime.fromisoformat(self.sim_date).replace(hour=14, minute=0, tzinfo=timezone.utc)
 
         while created < target:
             check = await self.create_check("afternoon", sim_time)
@@ -661,7 +846,8 @@ class SimulationEngine:
         print("  Phase 4: Dinner Rush (17:00-22:00)")
         target = 200
         created = 0
-        sim_time = datetime(2026, 3, 29, 17, 0, tzinfo=timezone.utc)
+        cash_drop_done = False
+        sim_time = datetime.fromisoformat(self.sim_date).replace(hour=17, minute=0, tzinfo=timezone.utc)
 
         while created < target:
             hour = sim_time.hour + sim_time.minute / 60
@@ -673,6 +859,30 @@ class SimulationEngine:
                 orders_this_batch = random.randint(1, 4)
 
             orders_this_batch = min(orders_this_batch, target - created)
+
+            # Mid-dinner cash drop at ~100 checks
+            if not cash_drop_done and created >= 100:
+                drop_amount = self._d("300.00")
+                await self._append(day_cash_drop(
+                    terminal_id=TERMINAL_ID,
+                    amount=drop_amount,
+                    approved_by="manager_01",
+                    reason="Safe drop",
+                ))
+                self.total_cash_drops += drop_amount
+
+                payout_amount = self._d("45.00")
+                await self._append(day_cash_payout(
+                    terminal_id=TERMINAL_ID,
+                    amount=payout_amount,
+                    recipient="Acme Linen Co.",
+                    approved_by="manager_01",
+                    reason="Linen delivery",
+                    category="vendor",
+                ))
+                self.total_cash_payouts += payout_amount
+                cash_drop_done = True
+                print(f"    Cash drop ${drop_amount} + payout ${payout_amount} at check {created}")
 
             for _ in range(orders_this_batch):
                 check = await self.create_check("dinner", sim_time)
@@ -696,9 +906,24 @@ class SimulationEngine:
                 if random.random() < 0.05:
                     await self.void_item(check)
 
-                # 5% comp
-                if random.random() < 0.05:
+                # Seat item transfer before payment (~3% of multi-seat checks)
+                if check.guest_count >= 2 and random.random() < 0.03:
+                    from_s = random.randint(1, check.guest_count)
+                    to_s = (from_s % check.guest_count) + 1
+                    if from_s != to_s:
+                        await self.transfer_seat_item(check, from_s, to_s)
+
+                # Seat-level discount before payment (~4% of multi-seat checks)
+                if check.guest_count >= 2 and random.random() < 0.04:
+                    await self.apply_seat_discount(check)
+
+                # 3% order-level comp
+                if random.random() < 0.03:
                     await self.comp_item(check)
+
+                # 2% seat comp (service recovery)
+                if random.random() < 0.02:
+                    await self.comp_seat(check)
 
                 # 2% full void
                 if random.random() < 0.02:
@@ -771,12 +996,18 @@ class SimulationEngine:
         total_tips_f = money_round(total_tips)
         card_settlement_f = money_round(card_sales + card_tips)
 
+        # Correct void/discount totals (were previously hardcoded to zero)
+        void_total_f = money_round(self.total_voids)
+        discount_total_f = money_round(self.total_discounts)
+        # Gross = net collected + voids + discounts (reconstruct pre-reduction gross)
+        gross_sales_f = money_round(total_sales_f + void_total_f + discount_total_f)
+
         # Gate BEFORE emitting any events
         invariant_gate(
             check_day_close(
-                gross_sales=total_sales_f,
-                void_total=_ZERO,
-                discount_total=_ZERO,
+                gross_sales=gross_sales_f,
+                void_total=void_total_f,
+                discount_total=discount_total_f,
                 refund_total=_ZERO,
                 net_sales=total_sales_f,
                 tax_collected=_ZERO,
@@ -803,7 +1034,7 @@ class SimulationEngine:
         # Emit DAY_CLOSED
         evt = day_closed(
             terminal_id=TERMINAL_ID,
-            date="2026-03-29",
+            date=self.sim_date,
             total_orders=len(all_orders),
             total_sales=total_sales_f,
             total_tips=total_tips_f,
@@ -815,6 +1046,36 @@ class SimulationEngine:
         )
         await self._append(evt)
         print(f"    DAY_CLOSED emitted. {len(order_ids)} orders settled.")
+
+        # Clock out all staff
+        for emp in EMPLOYEES:
+            await self._append(user_logged_out(
+                terminal_id=TERMINAL_ID,
+                employee_id=emp["employee_id"],
+                employee_name=emp["display_name"],
+            ))
+
+        # Emit tipout calculation and distribution per server
+        _pct = Decimal("0.03")  # busser rule: 3% of server tips
+        for server_id, tips in self.server_tips.items():
+            if tips > _ZERO and self.tipout_rule_ids:
+                tipout_id = self._new_id("tipout")
+                tipout_amt = money_round(tips * _pct)
+                await self._append(tipout_calculated(
+                    terminal_id=TERMINAL_ID,
+                    tipout_id=tipout_id,
+                    shift_date=self.sim_date,
+                    total_tipout=tipout_amt,
+                    rule_ids=self.tipout_rule_ids,
+                    breakdown=[{"recipient": "busser_pool", "amount": str(tipout_amt)}],
+                ))
+                await self._append(tipout_distributed(
+                    terminal_id=TERMINAL_ID,
+                    tipout_id=tipout_id,
+                    total_distributed=tipout_amt,
+                    distributed_by="manager_01",
+                    recipient_count=1,
+                ))
 
     async def _close_random_open_checks(self, count: int):
         """Close some random open checks to free tables."""
