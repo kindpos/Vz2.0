@@ -160,7 +160,7 @@ function buildNewCheckTile(onClick) {
 // ── Check preview content ─────────────────────────
 function _buildCheckPreview(orders) {
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'padding-bottom:8px;';
+  wrap.style.cssText = 'display:contents;';
 
   var total = orders.reduce(function(s, o) { return s + (o.total || 0); }, 0);
   var hdr = document.createElement('div');
@@ -416,7 +416,7 @@ defineScene({
     previewSlide.appendChild(prevLabel);
 
     var prevContent = document.createElement('div');
-    prevContent.style.cssText = 'flex:1;overflow-y:auto;min-height:0;';
+    prevContent.style.cssText = 'flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:4px;touch-action:pan-y;pointer-events:auto;padding-bottom:8px;';
     previewSlide.appendChild(prevContent);
 
     // ─────────────────────────────────────────────
