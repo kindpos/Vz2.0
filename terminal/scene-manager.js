@@ -435,6 +435,7 @@ function showSummary() {
   if (!_layerSummary) return;
   _summaryVisible = true;
   _layerSummary.style.display = 'flex';
+  _layerSummary.style.pointerEvents = 'auto';
   _applyLayerGeometry();
   _emit('summary:shown');
 }
@@ -443,6 +444,7 @@ function hideSummary() {
   if (!_layerSummary) return;
   _summaryVisible = false;
   _layerSummary.style.display = 'none';
+  _layerSummary.style.pointerEvents = 'none';
   _applyLayerGeometry();
   _emit('summary:hidden');
 }

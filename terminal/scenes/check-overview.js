@@ -380,6 +380,11 @@ defineScene({
     get _callSplitBySeat()        { return _callSplitBySeat; },
     get _moveItemsToSeat()        { return _moveItemsToSeat; },
     get _persistItemSeats()       { return persistItemSeats; },
+    get deleteSeat()              { return deleteSeat; },
+    get toggleItem()              { return toggleItem; },
+    get getSelectedSeatIds()      { return getSelectedSeatIds; },
+    get getSelectedItemRefs()     { return getSelectedItemRefs; },
+    get renderSeatsGrid()         { return renderSeatsGrid; },
   },
 
   state: {
@@ -1487,6 +1492,8 @@ function rerenderTopArea(state) {
     state._osActive = false;
   }
 
+  var savedRecapScroll = state._scrollListEl ? state._scrollListEl.scrollTop : 0;
+
   var top = state.topAreaEl;
   top.innerHTML = '';
   state.seatEls = {};
@@ -1498,6 +1505,8 @@ function rerenderTopArea(state) {
   top.appendChild(shell.root);
 
   renderSeatsGrid(state, shell.body, shell.mode);
+  if (state._scrollListEl) state._scrollListEl.scrollTop = savedRecapScroll;
+
   renderActionBar(state);
 }
 
@@ -1518,6 +1527,7 @@ function renderSeatsGrid(state, container, mode) {
       display:       'flex',
       flexDirection: 'column',
       overflow:      'hidden',
+      pointerEvents: 'auto',
     });
 
     if (state._selectedPaidSeat) {
@@ -1538,7 +1548,10 @@ function renderSeatsGrid(state, container, mode) {
         flexDirection: 'column',
         gap:           '8px',
         padding:       '4px 2px',
+        pointerEvents: 'auto',
+        touchAction:   'pan-y',
       });
+      state._scrollListEl = scrollList;
 
       for (var rsi = 0; rsi < state.seats.length; rsi++) {
         var rSeat = state.seats[rsi];
@@ -1615,6 +1628,8 @@ function renderSeatsGrid(state, container, mode) {
       alignContent:        'start',
       gap:                 '6px',
       overflowY:           'auto',
+      pointerEvents:       'auto',
+      touchAction:         'pan-y',
     });
 
     // ALL SEATS button — spans 3 columns
@@ -2914,7 +2929,7 @@ function handleAddItems(state, params) {
   // Order creation deferred to order-entry's first SAVE/SEND — no POST here.
   // Passing state.orderId forward lets order-entry recall an existing check
   // when we're editing; null means a brand-new check will be created lazily.
-  _gotoOrderEntry(state, params);
+  return _gotoOrderEntry(state, params);
 }
 
 async function _gotoOrderEntry(state, params) {
