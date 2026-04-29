@@ -304,7 +304,7 @@ function _buildNewTile(onClick) {
 // ── Check preview ─────────────────────────────────
 function _buildPreview(orders, allOrders) {
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+  wrap.style.cssText = 'padding-bottom:8px;';
 
   var total = orders.reduce(function(s, o) { return s + (o.total || 0); }, 0);
   var hdr = document.createElement('div');
