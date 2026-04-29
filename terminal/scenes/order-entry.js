@@ -4012,25 +4012,6 @@ async function handleSend() {
 
 }
 
-function deepCopyTicket(src) {
-  return src.map(function(inst) {
-    return {
-      id:        inst.id,
-      menu_item_id: inst.menu_item_id,
-      idemKey:   inst.idemKey || _idemKey(),
-      name:      inst.name,
-      unitPrice: inst.unitPrice,
-      mods:      inst.mods.map(function(m) {
-        return { name: m.name, price: m.price, charged: m.charged, prefix: m.prefix || null, half_price: m.half_price != null ? m.half_price : null };
-      }),
-      selected:  false,   // always reset selection on copy
-      sent:      inst.sent,
-      category:  inst.category || null,
-      seat_number: inst.seat_number,
-    };
-  });
-}
-
 // ── CLOSE (X button) ────────────────────────────
 // Auto-saves unsent items before navigating. Any items the server typed
 // are persisted to the backend (without kitchen-send) so they survive
