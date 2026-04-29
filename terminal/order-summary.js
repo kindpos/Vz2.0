@@ -148,7 +148,7 @@ function _build() {
   _itemScroll = document.createElement('div');
   _itemScroll.id = 'ticket-list';
   _itemScroll.style.cssText = [
-    'flex:1;overflow-y:auto;overflow-x:hidden;',
+    'flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;',
     'padding:4px 10px;',
     'scrollbar-width:none;-ms-overflow-style:none;',
     'display:flex;flex-direction:column;gap:4px;',
