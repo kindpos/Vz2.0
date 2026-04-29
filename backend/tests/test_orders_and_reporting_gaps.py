@@ -454,3 +454,93 @@ async def test_merge_target_closed_concurrently_returns_409(ledger):
 # _voidPendingTimer cleanup — manager-landing cleanup test (JS)
 # =============================================================================
 # Covered by manager-landing.test.js which exercises the cleanup() return value.
+
+
+# =============================================================================
+# Input validation guards — negative prices, zero payments, bad seat numbers
+# =============================================================================
+
+import pydantic
+from app.api.routes.orders import (
+    AddItemRequest, InlineModifier, ApplyModifierRequest,
+    ModifyItemRequest, InitiatePaymentRequest,
+)
+from app.api.routes.payment_routes import CashPaymentRequest
+
+
+class TestNegativePriceRejected:
+    def test_add_item_negative_price_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            AddItemRequest(menu_item_id="m1", name="Burger", price=Decimal("-1.00"))
+
+    def test_add_item_zero_price_allowed(self):
+        req = AddItemRequest(menu_item_id="m1", name="Water", price=Decimal("0.00"))
+        assert req.price == Decimal("0.00")
+
+    def test_inline_modifier_negative_price_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            InlineModifier(name="Extra Cheese", price=Decimal("-0.50"))
+
+    def test_inline_modifier_negative_modifier_price_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            InlineModifier(name="Extra Cheese", modifier_price=Decimal("-0.50"))
+
+    def test_apply_modifier_negative_price_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            ApplyModifierRequest(
+                modifier_id="m1", modifier_name="Cheese", modifier_price=Decimal("-1.00")
+            )
+
+    def test_modify_item_negative_price_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            ModifyItemRequest(price=Decimal("-5.00"))
+
+    def test_initiate_payment_negative_amount_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            InitiatePaymentRequest(amount=Decimal("-10.00"), method="cash")
+
+    def test_initiate_payment_zero_amount_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            InitiatePaymentRequest(amount=Decimal("0.00"), method="cash")
+
+    def test_cash_payment_negative_amount_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            CashPaymentRequest(order_id="o1", amount=Decimal("-5.00"))
+
+    def test_cash_payment_zero_amount_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            CashPaymentRequest(order_id="o1", amount=Decimal("0.00"))
+
+
+class TestSeatNumberValidation:
+    def test_add_item_seat_zero_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            AddItemRequest(
+                menu_item_id="m1", name="Burger", price=Decimal("10.00"), seat_number=0
+            )
+
+    def test_add_item_seat_negative_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            AddItemRequest(
+                menu_item_id="m1", name="Burger", price=Decimal("10.00"), seat_number=-1
+            )
+
+    def test_add_item_seat_none_allowed(self):
+        req = AddItemRequest(
+            menu_item_id="m1", name="Burger", price=Decimal("10.00"), seat_number=None
+        )
+        assert req.seat_number is None
+
+    def test_add_item_seat_one_allowed(self):
+        req = AddItemRequest(
+            menu_item_id="m1", name="Burger", price=Decimal("10.00"), seat_number=1
+        )
+        assert req.seat_number == 1
+
+    def test_modify_item_seat_zero_rejected(self):
+        with pytest.raises((ValueError, pydantic.ValidationError)):
+            ModifyItemRequest(seat_number=0)
+
+    def test_modify_item_seat_none_allowed(self):
+        req = ModifyItemRequest(seat_number=None)
+        assert req.seat_number is None

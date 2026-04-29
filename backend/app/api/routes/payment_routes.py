@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from decimal import Decimal
 import uuid
@@ -400,7 +400,7 @@ async def process_sale(
 
 class CashPaymentRequest(BaseModel):
     order_id: str
-    amount: Decimal
+    amount: Decimal = Field(gt=0)
     payment_method: str = "cash"
     seat_numbers: Optional[list[int]] = None
     transaction_id: Optional[str] = None

@@ -163,8 +163,8 @@ class UpdateSeatsRequest(BaseModel):
 class InlineModifier(BaseModel):
     """Modifier sent inline with an item from the frontend."""
     name: str
-    price: Decimal = Decimal("0.00")
-    modifier_price: Decimal = Decimal("0.00")
+    price: Decimal = Field(default=Decimal("0.00"), ge=0)
+    modifier_price: Decimal = Field(default=Decimal("0.00"), ge=0)
     charged: Optional[bool] = True
     prefix: Optional[str] = None       # 'Left' or 'Right' for half-placement
     half_price: Optional[Decimal] = None
@@ -174,12 +174,12 @@ class AddItemRequest(BaseModel):
     """Request to add an item to an order."""
     menu_item_id: str
     name: str
-    price: Decimal
+    price: Decimal = Field(ge=0)
     quantity: int = Field(default=1, ge=1)
     category: Optional[str] = None
     notes: Optional[str] = None
     table: str | int | None = None
-    seat_number: Optional[int] = None
+    seat_number: Optional[int] = Field(default=None, ge=1)
     modifiers: Optional[list[InlineModifier]] = None
     mandatory_selections: Optional[list[str]] = None
     allergens: Optional[list[str]] = None
@@ -191,22 +191,22 @@ class AddItemRequest(BaseModel):
 class ModifyItemRequest(BaseModel):
     """Request to modify an item."""
     quantity: Optional[int] = Field(default=None, ge=1)
-    price: Optional[Decimal] = None
+    price: Optional[Decimal] = Field(default=None, ge=0)
     notes: Optional[str] = None
-    seat_number: Optional[int] = None
+    seat_number: Optional[int] = Field(default=None, ge=1)
 
 
 class ApplyModifierRequest(BaseModel):
     """Request to apply a modifier to an item."""
     modifier_id: str
     modifier_name: str
-    modifier_price: Decimal = Decimal("0.00")
+    modifier_price: Decimal = Field(default=Decimal("0.00"), ge=0)
     action: str = "add"  # add, remove
 
 
 class InitiatePaymentRequest(BaseModel):
     """Request to initiate a payment."""
-    amount: Decimal
+    amount: Decimal = Field(gt=0)
     method: str  # card, cash, gift_card
 
 
