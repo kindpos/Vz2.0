@@ -1518,6 +1518,7 @@ function renderSeatsGrid(state, container, mode) {
       display:       'flex',
       flexDirection: 'column',
       overflow:      'hidden',
+      pointerEvents: 'auto',
     });
 
     if (state._selectedPaidSeat) {
@@ -1538,6 +1539,8 @@ function renderSeatsGrid(state, container, mode) {
         flexDirection: 'column',
         gap:           '8px',
         padding:       '4px 2px',
+        pointerEvents: 'auto',
+        touchAction:   'pan-y',
       });
 
       for (var rsi = 0; rsi < state.seats.length; rsi++) {
@@ -1615,6 +1618,8 @@ function renderSeatsGrid(state, container, mode) {
       alignContent:        'start',
       gap:                 '6px',
       overflowY:           'auto',
+      pointerEvents:       'auto',
+      touchAction:         'pan-y',
     });
 
     // ALL SEATS button — spans 3 columns
