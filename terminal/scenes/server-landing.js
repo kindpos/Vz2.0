@@ -195,12 +195,20 @@ function _buildCheckPreview(orders) {
     seatOrder.forEach(function(sn) {
       var seatHdr = document.createElement('div');
       seatHdr.style.cssText = [
-        'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-        'color:' + T.green + ';letter-spacing:0.14em;',
-        'padding:6px 2px 4px;margin-top:4px;margin-bottom:4px;',
-        'border-bottom:1px solid ' + hexToRgba(T.green, 0.3) + ';',
+        'display:flex;align-items:center;gap:8px;',
+        'background:' + T.card + ';border-radius:6px;',
+        'border-left:3px solid ' + T.green + ';',
+        'padding:4px 8px 4px 10px;',
+        'margin-top:6px;margin-bottom:4px;',
       ].join('');
-      seatHdr.textContent = 'SEAT ' + sn;
+      var seatNum = document.createElement('span');
+      seatNum.style.cssText = 'font-family:' + T.fh + ';font-size:24px;font-weight:700;color:' + T.green + ';line-height:1;min-width:28px;';
+      seatNum.textContent = String(sn);
+      var seatLbl = document.createElement('span');
+      seatLbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;font-weight:700;color:' + hexToRgba(T.text, 0.35) + ';letter-spacing:0.16em;align-self:flex-end;padding-bottom:3px;';
+      seatLbl.textContent = 'SEAT';
+      seatHdr.appendChild(seatNum);
+      seatHdr.appendChild(seatLbl);
       wrap.appendChild(seatHdr);
 
       seatMap[sn].forEach(function(item) {
@@ -401,7 +409,7 @@ defineScene({
       'display:none;flex-direction:column;',
       'overflow:hidden;',
     ].join('');
-    tipResult.appendChild(previewSlide);
+    tipOuter.appendChild(previewSlide);
 
     var prevLabel = buildSectionLabel('Check Preview');
     prevLabel.style.marginBottom = '10px';
