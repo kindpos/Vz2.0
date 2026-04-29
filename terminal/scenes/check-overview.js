@@ -1100,19 +1100,21 @@ function renderActionBar(state) {
     total     = subtotal + tax;
     cashTotal = Math.round(total * (1 - discount) * 100) / 100;
   } else {
-    // If items are pending void locally (voided flag set, DELETE not yet fired),
-    // compute from local seats so the total reflects the void immediately.
-    var _hasLocalVoid = state.seats.some(function(s) {
-      return s.items.some(function(it) { return it.voided; });
-    });
-    if (_hasLocalVoid) {
+    // Mode B tile selection: _tileSelSet filters the left recap column but does
+    // not write to state.selectedItems, so we must handle it here to make the
+    // bottom-left totals reflect only the selected seats (including tax).
+    var _tileActive = state._tileSelSet && state._tileSelSet.size > 0;
+    if (_tileActive) {
       subtotal = 0;
-      for (var _vi = 0; _vi < state.seats.length; _vi++) {
-        for (var _vj = 0; _vj < state.seats[_vi].items.length; _vj++) {
-          var _vit = state.seats[_vi].items[_vj];
-          if (_vit.voided) continue;
-          var _vp = _vit.effectivePrice != null ? _vit.effectivePrice : (_vit.price || 0);
-          subtotal += (_vit.qty || 0) * _vp;
+      for (var _ti = 0; _ti < state.seats.length; _ti++) {
+        if (!state._tileSelSet.has(_ti)) continue;
+        var _tSeat = state.seats[_ti];
+        if (state.paidSeats && state.paidSeats[_tSeat.id]) continue;
+        for (var _tii = 0; _tii < _tSeat.items.length; _tii++) {
+          var _tItem = _tSeat.items[_tii];
+          if (_tItem.voided) continue;
+          var _tPrice = _tItem.effectivePrice != null ? _tItem.effectivePrice : (_tItem.price || 0);
+          subtotal += (_tItem.qty || 0) * _tPrice;
         }
       }
       subtotal  = Math.round(subtotal * 100) / 100;
@@ -1120,10 +1122,31 @@ function renderActionBar(state) {
       total     = subtotal + tax;
       cashTotal = Math.round(total * (1 - discount) * 100) / 100;
     } else {
-      subtotal  = order.subtotal || 0;
-      tax       = order.tax != null ? order.tax : (subtotal * getTaxRate());
-      total     = order.total || 0;
-      cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+      // If items are pending void locally (voided flag set, DELETE not yet fired),
+      // compute from local seats so the total reflects the void immediately.
+      var _hasLocalVoid = state.seats.some(function(s) {
+        return s.items.some(function(it) { return it.voided; });
+      });
+      if (_hasLocalVoid) {
+        subtotal = 0;
+        for (var _vi = 0; _vi < state.seats.length; _vi++) {
+          for (var _vj = 0; _vj < state.seats[_vi].items.length; _vj++) {
+            var _vit = state.seats[_vi].items[_vj];
+            if (_vit.voided) continue;
+            var _vp = _vit.effectivePrice != null ? _vit.effectivePrice : (_vit.price || 0);
+            subtotal += (_vit.qty || 0) * _vp;
+          }
+        }
+        subtotal  = Math.round(subtotal * 100) / 100;
+        tax       = subtotal * getTaxRate();
+        total     = subtotal + tax;
+        cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+      } else {
+        subtotal  = order.subtotal || 0;
+        tax       = order.tax != null ? order.tax : (subtotal * getTaxRate());
+        total     = order.total || 0;
+        cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+      }
     }
   }
 
