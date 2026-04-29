@@ -380,6 +380,11 @@ defineScene({
     get _callSplitBySeat()        { return _callSplitBySeat; },
     get _moveItemsToSeat()        { return _moveItemsToSeat; },
     get _persistItemSeats()       { return persistItemSeats; },
+    get deleteSeat()              { return deleteSeat; },
+    get toggleItem()              { return toggleItem; },
+    get getSelectedSeatIds()      { return getSelectedSeatIds; },
+    get getSelectedItemRefs()     { return getSelectedItemRefs; },
+    get renderSeatsGrid()         { return renderSeatsGrid; },
   },
 
   state: {
@@ -2919,7 +2924,7 @@ function handleAddItems(state, params) {
   // Order creation deferred to order-entry's first SAVE/SEND — no POST here.
   // Passing state.orderId forward lets order-entry recall an existing check
   // when we're editing; null means a brand-new check will be created lazily.
-  _gotoOrderEntry(state, params);
+  return _gotoOrderEntry(state, params);
 }
 
 async function _gotoOrderEntry(state, params) {

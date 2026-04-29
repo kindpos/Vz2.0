@@ -1064,3 +1064,404 @@ describe('terminal/scenes/check-overview — _moveItemsToSeat', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════
+//  handleAddItems / _gotoOrderEntry
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — handleAddItems / _gotoOrderEntry', () => {
+  let sceneDef;
+  let showToast;
+  let fetchWithTimeout;
+  let entReport;
+  let buildOrderEntryParams;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    interruptCalls.length = 0;
+    SceneManagerMock.mountWorking.mockClear();
+
+    const components  = await import('../components.js');
+    const netMod      = await import('../net.js');
+    const entomology  = await import('../entomology-client.js');
+    const transitions = await import('./transitions.js');
+    showToast          = components.showToast;
+    fetchWithTimeout   = netMod.fetchWithTimeout;
+    entReport          = entomology.entReport;
+    buildOrderEntryParams = transitions.buildOrderEntryParams;
+
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  function makeState(overrides = {}) {
+    const base = { ...JSON.parse(JSON.stringify(sceneDef.state)), ...overrides };
+    base.topAreaEl = document.createElement('div');
+    return base;
+  }
+
+  it('new check (no orderId): navigates immediately without any fetch', async () => {
+    const state = makeState({ orderId: null, order: null });
+    await sceneDef.__handlers.handleAddItems(state, {});
+
+    expect(fetchWithTimeout).not.toHaveBeenCalled();
+    expect(SceneManagerMock.mountWorking).toHaveBeenCalledWith(
+      'order-entry',
+      expect.anything(),
+    );
+  });
+
+  it('existing check already loaded (state.order set): navigates immediately', async () => {
+    const state = makeState({
+      orderId: 'ord-xyz',
+      order:   { order_id: 'ord-xyz', guest_count: 2, payments: [], seat_numbers: [1, 2] },
+    });
+    await sceneDef.__handlers.handleAddItems(state, {});
+
+    expect(SceneManagerMock.mountWorking).toHaveBeenCalledWith('order-entry', expect.anything());
+    // Should not fire a refresh fetch — order data is already present
+    expect(fetchWithTimeout).not.toHaveBeenCalled();
+  });
+
+  it('existing check not yet loaded: awaits refreshOrder before navigating', async () => {
+    const orderData = { order_id: 'ord-abc', guest_count: 1, payments: [], seat_numbers: [1] };
+    fetchWithTimeout.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(orderData),
+    });
+
+    // _alive must be true so refreshOrder writes state.order after the fetch
+    const state = makeState({ orderId: 'ord-abc', order: null, _alive: true });
+    await sceneDef.__handlers.handleAddItems(state, {});
+
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining('/orders/ord-abc'),
+      expect.anything(),
+      expect.any(Number),
+    );
+    expect(SceneManagerMock.mountWorking).toHaveBeenCalledWith('order-entry', expect.anything());
+  });
+
+  it('refresh fails (order still null after await): blocks navigation, fires UI-005', async () => {
+    fetchWithTimeout.mockResolvedValueOnce({ ok: false, status: 500 });
+
+    const state = makeState({ orderId: 'ord-fail', order: null });
+    await sceneDef.__handlers.handleAddItems(state, {});
+
+    expect(SceneManagerMock.mountWorking).not.toHaveBeenCalled();
+    await Promise.resolve();
+    expect(entReport).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'UI-005' }),
+    );
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('load check'),
+      expect.objectContaining({ bg: expect.anything() }),
+    );
+  });
+
+  it('passes seat layout from state into buildOrderEntryParams', async () => {
+    const state = makeState({
+      orderId: null,
+      order:   null,
+      seats:   [{ id: 'S-001', number: 1, items: [] }, { id: 'S-002', number: 2, items: [] }],
+      selected: { 'S-001': true },
+    });
+    await sceneDef.__handlers.handleAddItems(state, {});
+
+    expect(buildOrderEntryParams).toHaveBeenCalledWith(state, expect.anything());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  renderSeatsGrid — Mode A vs Mode B
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — renderSeatsGrid Mode A / Mode B', () => {
+  let sceneDef;
+  let activeSeatCount;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const seatsMod  = await import('./seats.js');
+    activeSeatCount = seatsMod.activeSeatCount;
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  function makeGridState(numSeats) {
+    const seats = Array.from({ length: numSeats }, (_, i) => ({
+      id:     'S-' + String(i + 1).padStart(3, '0'),
+      number: i + 1,
+      items:  [],
+    }));
+    return {
+      ...JSON.parse(JSON.stringify(sceneDef.state)),
+      seats,
+      paidSeats:     {},
+      selected:      {},
+      selectedItems: {},
+      _tileSelSet:   new Set(),
+      seatEls:       {},
+      _lpTimers:     [],
+    };
+  }
+
+  it('Mode B renders a 300 px right-column tiles grid', () => {
+    activeSeatCount.mockReturnValue(5);
+    const state     = makeGridState(5);
+    const container = document.createElement('div');
+
+    sceneDef.__handlers.renderSeatsGrid(state, container, 'B');
+
+    // Right column: 300px wide grid
+    const tilesCol = Array.from(container.children)
+      .find((el) => el.style.width === '300px');
+    expect(tilesCol).toBeDefined();
+    expect(tilesCol.style.gridTemplateColumns).toBe('repeat(3, 1fr)');
+  });
+
+  it('Mode B renders exactly two columns (recap + tiles)', () => {
+    activeSeatCount.mockReturnValue(5);
+    const state     = makeGridState(5);
+    const container = document.createElement('div');
+
+    sceneDef.__handlers.renderSeatsGrid(state, container, 'B');
+
+    // Mode B appends exactly recapCol then tilesCol and returns
+    expect(container.children.length).toBe(2);
+    // First child is the recap column (no fixed width)
+    expect(container.children[0].style.width).not.toBe('300px');
+    // Second child is the tiles column (300px)
+    expect(container.children[1].style.width).toBe('300px');
+  });
+
+  it('Mode A renders one element per seat plus the +SEAT add tile', () => {
+    activeSeatCount.mockReturnValue(2);
+    const state     = makeGridState(2);
+    const container = document.createElement('div');
+
+    sceneDef.__handlers.renderSeatsGrid(state, container, 'A');
+
+    // No 300px tilesCol in Mode A
+    const tilesCol = Array.from(container.children).find((el) => el.style.width === '300px');
+    expect(tilesCol).toBeUndefined();
+    // 2 seat cards + 1 add tile = 3 children
+    expect(container.children.length).toBe(state.seats.length + 1);
+  });
+
+  it('Mode B places one compact tile per seat in the tiles grid', () => {
+    activeSeatCount.mockReturnValue(5);
+    const state     = makeGridState(5);
+    const container = document.createElement('div');
+
+    sceneDef.__handlers.renderSeatsGrid(state, container, 'B');
+
+    const tilesCol = Array.from(container.children).find((el) => el.style.width === '300px');
+    // tilesCol children: ALL SEATS btn + +SEAT tile + 5 seat tiles
+    expect(tilesCol.children.length).toBe(5 + 2);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  deleteSeat guards
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — deleteSeat guards', () => {
+  let sceneDef;
+  let showToast;
+  let fetchWithTimeout;
+  let entReport;
+  let activeSeatCount;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const components = await import('../components.js');
+    const netMod     = await import('../net.js');
+    const entomology = await import('../entomology-client.js');
+    const seatsMod   = await import('./seats.js');
+    showToast        = components.showToast;
+    fetchWithTimeout = netMod.fetchWithTimeout;
+    entReport        = entomology.entReport;
+    activeSeatCount  = seatsMod.activeSeatCount;
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  function makeState(overrides = {}) {
+    const base = {
+      ...JSON.parse(JSON.stringify(sceneDef.state)),
+      seats: [
+        { id: 'S-001', number: 1, items: [] },
+        { id: 'S-002', number: 2, items: [] },
+      ],
+      paidSeats:     {},
+      selected:      {},
+      selectedItems: {},
+      topAreaEl:     document.createElement('div'),
+      seatEls:       {},
+      _lpTimers:     [],
+    };
+    return Object.assign(base, overrides);
+  }
+
+  it('blocks delete of a paid seat and fires UI-007', async () => {
+    const state = makeState({ paidSeats: { 'S-001': true } });
+    activeSeatCount.mockReturnValue(2);
+
+    sceneDef.__handlers.deleteSeat(state, 'S-001');
+
+    expect(state.seats).toHaveLength(2);  // unchanged
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('paid seat'),
+      expect.anything(),
+    );
+    await Promise.resolve();
+    expect(entReport).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'UI-007' }),
+    );
+  });
+
+  it('blocks delete of a seat that still has items', () => {
+    const state = makeState();
+    state.seats[0].items = [{ item_id: 'i1', name: 'Burger', price: 10 }];
+    activeSeatCount.mockReturnValue(2);
+
+    sceneDef.__handlers.deleteSeat(state, 'S-001');
+
+    expect(state.seats).toHaveLength(2);
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('items'),
+      expect.anything(),
+    );
+  });
+
+  it('blocks delete when it is the only remaining seat', () => {
+    const state = makeState({ seats: [{ id: 'S-001', number: 1, items: [] }] });
+    activeSeatCount.mockReturnValue(1);
+
+    sceneDef.__handlers.deleteSeat(state, 'S-001');
+
+    expect(state.seats).toHaveLength(1);
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('only seat'),
+      expect.anything(),
+    );
+  });
+
+  it('removes seat from state.seats on valid delete', () => {
+    const state = makeState();
+    activeSeatCount.mockReturnValue(2);
+
+    sceneDef.__handlers.deleteSeat(state, 'S-001');
+
+    expect(state.seats).toHaveLength(1);
+    expect(state.seats[0].id).toBe('S-002');
+  });
+
+  it('removes deleted seat from state.selected', () => {
+    const state = makeState({ selected: { 'S-001': true } });
+    activeSeatCount.mockReturnValue(2);
+
+    sceneDef.__handlers.deleteSeat(state, 'S-001');
+
+    expect(state.selected['S-001']).toBeUndefined();
+  });
+
+  it('calls persistSeats to sync backend after valid delete', async () => {
+    const state = makeState({ orderId: 'ord-del' });
+    activeSeatCount.mockReturnValue(2);
+
+    sceneDef.__handlers.deleteSeat(state, 'S-001');
+    await Promise.resolve();
+
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining('/orders/ord-del/seats'),
+      expect.objectContaining({ method: 'PUT' }),
+      expect.any(Number),
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  toggleItem / getSelectedSeatIds / getSelectedItemRefs
+// ═══════════════════════════════════════════════════════════════════
+
+describe('terminal/scenes/check-overview — selection helpers', () => {
+  let sceneDef;
+  let toggleItemSelection;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    const seatsMod      = await import('./seats.js');
+    toggleItemSelection = seatsMod.toggleItemSelection;
+    await import('./check-overview.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'check-overview');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  function makeState(overrides = {}) {
+    return {
+      ...JSON.parse(JSON.stringify(sceneDef.state)),
+      seats: [
+        { id: 'S-001', number: 1, items: [{ item_id: 'i1', name: 'Burger', price: 10 }] },
+        { id: 'S-002', number: 2, items: [{ item_id: 'i2', name: 'Fries',  price:  5 }] },
+      ],
+      paidSeats:     {},
+      selected:      {},
+      selectedItems: {},
+      topAreaEl:     document.createElement('div'),
+      seatEls:       {},
+      _lpTimers:     [],
+      ...overrides,
+    };
+  }
+
+  it('toggleItem delegates to toggleItemSelection with correct seat/item indices', () => {
+    const state = makeState();
+    // toggleItemSelection receives the CURRENT selectedItems (empty {}), not the result.
+    // The return value is assigned back to state.selectedItems.
+    toggleItemSelection.mockReturnValue({ '0:0': true });
+
+    sceneDef.__handlers.toggleItem(state, 0, 0);
+
+    expect(toggleItemSelection).toHaveBeenCalledWith({}, 0, 0);
+    expect(state.selectedItems).toEqual({ '0:0': true });
+  });
+
+  it('getSelectedSeatIds returns keys of state.selected', () => {
+    const state = makeState({ selected: { 'S-001': true, 'S-002': true } });
+    const ids = sceneDef.__handlers.getSelectedSeatIds(state);
+    expect(ids).toEqual(expect.arrayContaining(['S-001', 'S-002']));
+    expect(ids).toHaveLength(2);
+  });
+
+  it('getSelectedSeatIds returns empty array when nothing selected', () => {
+    const state = makeState({ selected: {} });
+    expect(sceneDef.__handlers.getSelectedSeatIds(state)).toEqual([]);
+  });
+
+  it('getSelectedItemRefs delegates to collectSelectedItemRefs with state.selectedItems', () => {
+    const state = makeState({ selectedItems: { '0:0': true, '1:0': true } });
+    const refs = sceneDef.__handlers.getSelectedItemRefs(state);
+    expect(refs).toEqual(expect.arrayContaining([
+      { seatIdx: 0, itemIdx: 0 },
+      { seatIdx: 1, itemIdx: 0 },
+    ]));
+  });
+
+  it('getSelectedItemRefs returns empty array when no items selected', () => {
+    const state = makeState({ selectedItems: {} });
+    expect(sceneDef.__handlers.getSelectedItemRefs(state)).toEqual([]);
+  });
+});
+
