@@ -1490,11 +1490,11 @@ defineScene({
           showToast('Printing ' + label + '\u2026', { bg: T.greenWarm });
 
           var prints = checks.map(function(chk) {
-            return fetch('/api/v1/checks/' + (chk.checkId || chk.check_id) + '/print', {
+            return fetchWithTimeout('/api/v1/checks/' + (chk.checkId || chk.check_id) + '/print', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ kind: 'guest' }),
-            }).then(function(r) {
+            }, 10000).then(function(r) {
               return { chk: chk, ok: r.ok, status: r.status };
             }).catch(function() {
               return { chk: chk, ok: false, status: 0 };
@@ -1532,7 +1532,7 @@ defineScene({
                     SceneManager.closeInterrupt('co-discount-picker');
 
                     var discounts = checks.map(function(chk) {
-                      return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/discount', {
+                      return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/discount', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1540,7 +1540,7 @@ defineScene({
                           value: discount.value,
                           manager_pin_verified: true,
                         }),
-                      }).then(function(r) {
+                      }, 10000).then(function(r) {
                         return { chk: chk, ok: r.ok, status: r.status };
                       }).catch(function() {
                         return { chk: chk, ok: false, status: 0 };
@@ -1598,14 +1598,14 @@ defineScene({
                     SceneManager.closeInterrupt('co-void-confirm');
 
                     var voids = checks.map(function(chk) {
-                      return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/void', {
+                      return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/void', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                           reason: reason,
                           manager_pin_verified: true,
                         }),
-                      }).then(function(r) {
+                      }, 10000).then(function(r) {
                         return { chk: chk, ok: r.ok, status: r.status };
                       }).catch(function() {
                         return { chk: chk, ok: false, status: 0 };

@@ -3563,6 +3563,7 @@ def day_cash_drop(
         approved_by: Optional[str] = None,
         reason: Optional[str] = None,
         deposit_ref: Optional[str] = None,
+        transaction_id: Optional[str] = None,
         **kwargs
 ) -> Event:
     """DAY_CASH_DROP: cash removed from the drawer to safe. Payload
@@ -3575,6 +3576,8 @@ def day_cash_drop(
         payload["reason"] = reason
     if deposit_ref is not None:
         payload["deposit_ref"] = deposit_ref
+    if transaction_id is not None:
+        payload["transaction_id"] = transaction_id
     return create_event(
         event_type=EventType.DAY_CASH_DROP,
         terminal_id=terminal_id,
@@ -3590,6 +3593,7 @@ def day_cash_payout(
         approved_by: Optional[str] = None,
         reason: Optional[str] = None,
         category: Optional[str] = None,
+        transaction_id: Optional[str] = None,
         **kwargs
 ) -> Event:
     """DAY_CASH_PAYOUT: cash paid out of the drawer to a vendor,
@@ -3605,6 +3609,8 @@ def day_cash_payout(
         payload["reason"] = reason
     if category is not None:
         payload["category"] = category
+    if transaction_id is not None:
+        payload["transaction_id"] = transaction_id
     return create_event(
         event_type=EventType.DAY_CASH_PAYOUT,
         terminal_id=terminal_id,

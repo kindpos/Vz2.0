@@ -16,6 +16,8 @@ from app.api.dependencies import get_ledger
 from app.api.routes.auth import require_manager
 from app.config import settings
 from app.core.event_ledger import EventLedger
+import uuid
+
 from app.core.events import (
     EventType,
     day_cash_drop,
@@ -39,6 +41,7 @@ class CashDropRequest(BaseModel):
     approved_by: Optional[str] = None
     reason: Optional[str] = None
     deposit_ref: Optional[str] = None
+    transaction_id: Optional[str] = None
 
 
 class CashPayoutRequest(BaseModel):
@@ -47,6 +50,7 @@ class CashPayoutRequest(BaseModel):
     approved_by: Optional[str] = None
     reason: Optional[str] = None
     category: Optional[str] = None
+    transaction_id: Optional[str] = None
 
 
 async def _compute_cash_variance(ledger: EventLedger) -> dict:
@@ -123,12 +127,21 @@ async def record_cash_drop(
     request: CashDropRequest,
     ledger: EventLedger = Depends(get_ledger),
 ):
+    tx_id = request.transaction_id or f"drop_{uuid.uuid4().hex[:12]}"
+    since = await ledger.get_last_day_close_sequence()
+    events = await ledger.get_events_since(since, limit=10000)
+    for e in events:
+        if (e.event_type == EventType.DAY_CASH_DROP
+                and e.payload.get("transaction_id") == request.transaction_id
+                and request.transaction_id):
+            return {"success": True, "amount": str(e.payload.get("amount"))}
     evt = day_cash_drop(
         terminal_id=settings.terminal_id,
         amount=request.amount,
         approved_by=request.approved_by,
         reason=request.reason,
         deposit_ref=request.deposit_ref,
+        transaction_id=tx_id,
     )
     await ledger.append(evt)
     return {
@@ -147,6 +160,18 @@ async def record_cash_payout(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Payout recipient is required",
         )
+    tx_id = request.transaction_id or f"payout_{uuid.uuid4().hex[:12]}"
+    since = await ledger.get_last_day_close_sequence()
+    events = await ledger.get_events_since(since, limit=10000)
+    for e in events:
+        if (e.event_type == EventType.DAY_CASH_PAYOUT
+                and e.payload.get("transaction_id") == request.transaction_id
+                and request.transaction_id):
+            return {
+                "success": True,
+                "amount": str(e.payload.get("amount")),
+                "recipient": e.payload.get("recipient", ""),
+            }
     evt = day_cash_payout(
         terminal_id=settings.terminal_id,
         amount=request.amount,
@@ -154,6 +179,7 @@ async def record_cash_payout(
         approved_by=request.approved_by,
         reason=request.reason,
         category=request.category,
+        transaction_id=tx_id,
     )
     await ledger.append(evt)
     return {

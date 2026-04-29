@@ -203,3 +203,108 @@ async def test_empty_recipient_rejected_at_model_level():
             approved_by="mgr",
             reason="test",
         )
+
+
+# ── idempotency ───────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_cash_drop_idempotent_on_retry(ledger):
+    """Same transaction_id on a second DROP call returns the original payload
+    without creating a second ledger event."""
+    req = day_cash.CashDropRequest(
+        amount=Decimal("150.00"),
+        approved_by="mgr",
+        reason="mid-shift",
+        transaction_id="drop-idem-001",
+    )
+    r1 = await day_cash.record_cash_drop(req, ledger=ledger)
+    r2 = await day_cash.record_cash_drop(req, ledger=ledger)
+
+    assert r1["success"] is True
+    assert r2["success"] is True
+    events = await ledger.get_events_by_type(EventType.DAY_CASH_DROP)
+    assert len(events) == 1, "retry must not create a second DROP event"
+
+
+@pytest.mark.asyncio
+async def test_cash_drop_transaction_id_stored_in_event(ledger):
+    """The client-supplied transaction_id must appear in the event payload."""
+    await day_cash.record_cash_drop(
+        day_cash.CashDropRequest(
+            amount=Decimal("50.00"),
+            approved_by="mgr",
+            transaction_id="drop-stored-001",
+        ),
+        ledger=ledger,
+    )
+    events = await ledger.get_events_by_type(EventType.DAY_CASH_DROP)
+    assert events[0].payload.get("transaction_id") == "drop-stored-001"
+
+
+@pytest.mark.asyncio
+async def test_cash_drop_without_transaction_id_still_works(ledger):
+    """Legacy callers without a transaction_id must still succeed."""
+    result = await day_cash.record_cash_drop(
+        day_cash.CashDropRequest(amount=Decimal("80.00"), approved_by="mgr"),
+        ledger=ledger,
+    )
+    assert result["success"] is True
+    events = await ledger.get_events_by_type(EventType.DAY_CASH_DROP)
+    assert len(events) == 1
+
+
+@pytest.mark.asyncio
+async def test_cash_payout_idempotent_on_retry(ledger):
+    """Same transaction_id on a second PAYOUT call returns the original payload
+    without creating a second ledger event."""
+    req = day_cash.CashPayoutRequest(
+        amount=Decimal("30.00"),
+        recipient="Vendor A",
+        approved_by="mgr",
+        transaction_id="payout-idem-001",
+    )
+    r1 = await day_cash.record_cash_payout(req, ledger=ledger)
+    r2 = await day_cash.record_cash_payout(req, ledger=ledger)
+
+    assert r1["success"] is True
+    assert r2["success"] is True
+    events = await ledger.get_events_by_type(EventType.DAY_CASH_PAYOUT)
+    assert len(events) == 1, "retry must not create a second PAYOUT event"
+
+
+@pytest.mark.asyncio
+async def test_cash_payout_different_transaction_ids_are_independent(ledger):
+    """Two payouts with different IDs must both land in the ledger."""
+    for i, tx in enumerate(["pay-A", "pay-B"]):
+        await day_cash.record_cash_payout(
+            day_cash.CashPayoutRequest(
+                amount=Decimal("20.00"),
+                recipient="Vendor",
+                approved_by="mgr",
+                transaction_id=tx,
+            ),
+            ledger=ledger,
+        )
+    events = await ledger.get_events_by_type(EventType.DAY_CASH_PAYOUT)
+    assert len(events) == 2
+
+
+@pytest.mark.asyncio
+async def test_duplicate_drop_does_not_inflate_variance(ledger):
+    """Retrying a drop must not double-count it in the variance calculation."""
+    await day_cash.update_cash_float(
+        day_cash.FloatUpdateRequest(amount=Decimal("500.00"), set_by="mgr"),
+        ledger=ledger,
+    )
+    req = day_cash.CashDropRequest(
+        amount=Decimal("200.00"),
+        approved_by="mgr",
+        transaction_id="drop-var-001",
+    )
+    await day_cash.record_cash_drop(req, ledger=ledger)
+    await day_cash.record_cash_drop(req, ledger=ledger)  # retry
+
+    result = await day_cash._compute_cash_variance(ledger)
+    # float=500, drop=200 once → expected=300; NOT 100 (which would be 500-200-200)
+    assert result["drops"] == "200.00"
+    assert result["expected_in_drawer"] == "300.00"
