@@ -30,6 +30,17 @@ data/diagnostic_boot.db
 data/diagnostic_boot.db-shm
 data/diagnostic_boot.db-wal
 
+# Bombard stress-test outputs — regenerated each run.
+backend/data/bombard_ledger.db
+backend/data/bombard_ledger.db-shm
+backend/data/bombard_ledger.db-wal
+backend/data/bombard_diagnostic.db
+backend/data/bombard_diagnostic.db-shm
+backend/data/bombard_diagnostic.db-wal
+backend/data/bombard_report.txt
+backend/data/bombard_results.json
+backend/data/KINDpos_Bombard_entomology_*.html
+
 # Runtime ephemeral/print-queue DBs — pure in-process state.
 backend/data/ephemeral_log.db
 backend/data/ephemeral_log.db-shm
