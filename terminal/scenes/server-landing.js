@@ -192,7 +192,7 @@ function _buildCheckPreview(orders) {
     seatOrder.sort(function(a, b) { return a - b; });
 
     seatOrder.forEach(function(sn) {
-      var seatSubtotal = seatMap[sn].reduce(function(s, it) { return s + (it.price || 0); }, 0);
+      var seatSubtotal = seatMap[sn].reduce(function(s, it) { return s + (parseFloat(it.price) || 0); }, 0);
       var seatHdr = document.createElement('div');
       seatHdr.style.cssText = [
         'display:flex;align-items:center;gap:8px;',
