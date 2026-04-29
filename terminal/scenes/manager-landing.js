@@ -304,7 +304,6 @@ function _buildNewTile(onClick) {
 // ── Check preview ─────────────────────────────────
 function _buildPreview(orders, allOrders) {
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'display:contents;';
 
   var total = orders.reduce(function(s, o) { return s + (o.total || 0); }, 0);
   var hdr = document.createElement('div');
@@ -342,6 +341,7 @@ function _buildPreview(orders, allOrders) {
     seatOrder.sort(function(a, b) { return a - b; });
 
     seatOrder.forEach(function(sn) {
+      var seatSubtotal = seatMap[sn].reduce(function(s, it) { return s + (parseFloat(it.price) || 0); }, 0);
       var seatHdr = document.createElement('div');
       seatHdr.style.cssText = [
         'display:flex;align-items:center;gap:8px;',
@@ -349,16 +349,39 @@ function _buildPreview(orders, allOrders) {
         'border-left:3px solid ' + T.green + ';',
         'padding:4px 8px 4px 10px;',
         'margin-top:6px;margin-bottom:4px;',
+        'cursor:pointer;touch-action:manipulation;',
       ].join('');
       var seatNum = document.createElement('span');
       seatNum.style.cssText = 'font-family:' + T.fh + ';font-size:24px;font-weight:700;color:' + T.green + ';line-height:1;min-width:28px;';
-      seatNum.textContent = String(sn);
+      seatNum.textContent = 'S' + sn;
       var seatLbl = document.createElement('span');
       seatLbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;font-weight:700;color:' + hexToRgba(T.text, 0.35) + ';letter-spacing:0.16em;align-self:flex-end;padding-bottom:3px;';
       seatLbl.textContent = 'SEAT';
+      var spacer = document.createElement('span');
+      spacer.style.cssText = 'flex:1;';
+      var seatTot = document.createElement('span');
+      seatTot.style.cssText = 'font-family:' + T.fb + ';font-size:11px;font-weight:700;color:' + T.gold + ';';
+      seatTot.textContent = fmt(seatSubtotal);
+      var chevron = document.createElement('span');
+      chevron.style.cssText = 'font-size:10px;color:' + hexToRgba(T.text, 0.4) + ';margin-left:4px;';
+      chevron.textContent = '▾';
       seatHdr.appendChild(seatNum);
       seatHdr.appendChild(seatLbl);
+      seatHdr.appendChild(spacer);
+      seatHdr.appendChild(seatTot);
+      seatHdr.appendChild(chevron);
+
+      var seatBody = document.createElement('div');
+      seatBody.style.display = 'none';
+
+      seatHdr.addEventListener('click', function() {
+        var open = seatBody.style.display !== 'none';
+        seatBody.style.display = open ? 'none' : 'block';
+        chevron.textContent = open ? '▾' : '▴';
+      });
+
       wrap.appendChild(seatHdr);
+      wrap.appendChild(seatBody);
 
       seatMap[sn].forEach(function(item) {
         var card = document.createElement('div');
@@ -374,7 +397,7 @@ function _buildPreview(orders, allOrders) {
         row.appendChild(nm);
         row.appendChild(pr);
         card.appendChild(row);
-        wrap.appendChild(card);
+        seatBody.appendChild(card);
       });
     });
   });
@@ -531,7 +554,7 @@ defineScene({
     previewSlide.appendChild(prevLabel);
 
     var prevContent = document.createElement('div');
-    prevContent.style.cssText = 'flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:4px;touch-action:pan-y;pointer-events:auto;padding-bottom:8px;';
+    prevContent.style.cssText = 'flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;pointer-events:auto;';
     previewSlide.appendChild(prevContent);
 
     // Action buttons grid
