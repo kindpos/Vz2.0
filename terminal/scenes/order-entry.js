@@ -799,6 +799,9 @@ defineScene({
     handleSend:                 function() { return handleSend(); },
     handleSaveOnly:             function() { return handleSaveOnly(); },
     recallFromBackend:          function(id) { return recallFromBackend(id); },
+    get modifierSession()       { return modifierSession; },
+    set modifierSession(v)      { modifierSession = v; },
+    applyModifier:              function(mod) { return applyModifier(mod); },
   },
 });
 

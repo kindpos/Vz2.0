@@ -328,7 +328,27 @@ That's ~25 tests, all pinning real regressions we fixed. After that, `check-over
 
 ## Appendix — where things currently live
 
-- Backend suite: `backend/tests/`, `1063 passed, 3 skipped`, run with `cd backend && python3 -m pytest tests/ -q --ignore=tests/test_entomology_excel_report.py`
+- Backend suite: `backend/tests/`, `1348 passed, 3 skipped`, run with `cd backend && python3 -m pytest tests/ -q`
+- Frontend suite: 43 test files, **708 tests passing** (`npm test`)
 - The stability probe history: `PROBE_REPORT.md` (read the "Red Flag Patterns" section — same patterns repeat in the frontend, and that list is a decent static analysis checklist you can turn into assertions)
 - The 8 Excel sheets the entomology bug report produces: `backend/app/services/entomology_report.py` — useful to understand the categories you may cross-reference from JS tests
 - Backend coverage notes: `COVERAGE_AUDIT.md`
+
+---
+
+## Coverage status (last audited 2026-04-29)
+
+All 10 items from the original priority list are implemented. The following gaps were filled in this session (+17 tests):
+
+| File | Gap filled | Tests added |
+|------|------------|-------------|
+| `overseer/src/services/auth-client.test.js` | `promptManagerPin`: 429 alert, cancel, valid:false, valid:true, `_pinPromptInFlight` dedup | +5 |
+| `terminal/entomology-client.test.js` | Queue cap at 50, `window.error` → UI-011, `window.unhandledrejection` → UI-011, error dedup | +4 |
+| `overseer/src/sections/employees.test.js` | Edit flow (non-reset) must NOT pass `pin` to `buildEmployeeUpdatePayload` | +1 |
+| `terminal/scenes/order-entry.test.js` | NO-prefix mod → price=0/charged=false; ADD-prefix → price charged | +2 |
+| `terminal/scenes/close-day.test.js` | Scene render triggers correct API calls; state populated on success; `_alive` guard; open-checks blocker state | +5 |
+
+Remaining known gaps (lower priority):
+- `close-day.js` — `doLockDay` POST and blocker-cascade button behavior (would require adding a test seam or DOM interaction)
+- `payment.js` — card processor mock path, split payment confirm
+- `order-entry.js` — menu fetch chain, pizza builder state machine

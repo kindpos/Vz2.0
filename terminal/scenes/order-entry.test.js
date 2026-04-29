@@ -437,3 +437,73 @@ describe('terminal/scenes/order-entry — idempotency guards', () => {
     });
   });
 });
+
+// ── applyModifier — NO-prefix price / charged contract ────────────────────────
+//
+// The regression: pressing ADD/EXTRA charges the modifier price; pressing
+// NO must force price=0 and charged=false regardless of mod.price in the
+// menu data. If this breaks, "NO Pepperoni" would appear on the ticket with
+// a charge instead of as a free removal.
+
+describe('terminal/scenes/order-entry — applyModifier prefix price contract', () => {
+  let sceneDef;
+  let uniPrefixesMock;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+
+    // Populate the PREFIXES mock array (mutation preserves the live binding
+    // that order-entry.js captured at import time).
+    const uniMod = await import('../menu-data/universal-modifiers.js');
+    uniPrefixesMock = uniMod.PREFIXES;
+    uniPrefixesMock.length = 0; // reset from any prior test
+    uniPrefixesMock.push(
+      { id: 'no',    label: 'NO',    chargesPrice: false },
+      { id: 'add',   label: 'ADD',   chargesPrice: true  },
+      { id: 'extra', label: 'EXTRA', chargesPrice: true  },
+    );
+
+    await import('./order-entry.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'order-entry');
+
+    // Reset module-level state so each test starts clean.
+    sceneDef.__handlers.ticket = [];
+    sceneDef.__handlers.currentOrderId = null;
+  });
+
+  afterEach(() => {
+    uniPrefixesMock.length = 0;
+    vi.restoreAllMocks();
+  });
+
+  function ticketItem(overrides = {}) {
+    return { id: 1, name: 'Pizza', unitPrice: 12, mods: [], category: 'pizza',
+             backendItemId: undefined, idemKey: 'ik-1', ...overrides };
+  }
+
+  it('NO prefix: mod with price=1.50 is added with price=0 and charged=false', () => {
+    sceneDef.__handlers.ticket = [ticketItem()];
+    sceneDef.__handlers.modifierSession.activePrefix = 'no';
+    sceneDef.__handlers.modifierSession.selectedItems = [1];
+
+    sceneDef.__handlers.applyModifier({ id: 'mod-pepperoni', label: 'Pepperoni', price: 1.50 });
+
+    const added = sceneDef.__handlers.ticket[0].mods[0];
+    expect(added.charged).toBe(false);
+    expect(added.price).toBe(0);
+    expect(added.name).toContain('Pepperoni');
+  });
+
+  it('ADD prefix: mod with price=1.50 is added with price=1.50 and charged=true', () => {
+    sceneDef.__handlers.ticket = [ticketItem()];
+    sceneDef.__handlers.modifierSession.activePrefix = 'add';
+    sceneDef.__handlers.modifierSession.selectedItems = [1];
+
+    sceneDef.__handlers.applyModifier({ id: 'mod-pepperoni', label: 'Pepperoni', price: 1.50 });
+
+    const added = sceneDef.__handlers.ticket[0].mods[0];
+    expect(added.charged).toBe(true);
+    expect(added.price).toBe(1.50);
+  });
+});

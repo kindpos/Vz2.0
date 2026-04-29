@@ -14,16 +14,16 @@ const VALID = {
   message: 'stacked',
 };
 
-// The module registers a window 'online' listener on every import. When a test
-// calls vi.resetModules(), the NEXT import registers a fresh listener — but
-// the previous module's listener is still bound to `window`. Each dispatch of
-// 'online' would then drain every stranded module's queue. Track every 'online'
-// listener we observe and strip them in beforeEach so each test sees exactly
-// one module's drain effect.
+// The module registers window listeners on every import (online, error,
+// unhandledrejection). When a test calls vi.resetModules(), the NEXT import
+// registers fresh listeners — but the previous module's listeners are still
+// bound to `window`. Track every listener we observe and strip them in
+// beforeEach so each test sees exactly one module's handler set.
 const _origAdd = window.addEventListener.bind(window);
-let _onlineListeners = [];
+const _TRACKED = ['online', 'error', 'unhandledrejection'];
+let _trackedListeners = { online: [], error: [], unhandledrejection: [] };
 window.addEventListener = function(type, handler, opts) {
-  if (type === 'online') _onlineListeners.push(handler);
+  if (_TRACKED.includes(type)) _trackedListeners[type].push(handler);
   return _origAdd(type, handler, opts);
 };
 
@@ -33,8 +33,10 @@ describe('terminal/entomology-client', () => {
   let originalOnlineDescriptor;
 
   beforeEach(() => {
-    _onlineListeners.forEach((fn) => window.removeEventListener('online', fn));
-    _onlineListeners = [];
+    _TRACKED.forEach((type) => {
+      _trackedListeners[type].forEach((fn) => window.removeEventListener(type, fn));
+      _trackedListeners[type] = [];
+    });
     vi.resetModules();
     originalFetch = window.fetch;
     fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
@@ -125,5 +127,84 @@ describe('terminal/entomology-client', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const codes = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).event_code);
     expect(codes).toEqual(expect.arrayContaining(['UI-001', 'UI-002']));
+  });
+
+  it('queue cap: items beyond _QUEUE_MAX (50) are silently dropped', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+    const { entReport } = await import('./entomology-client.js');
+
+    // Queue 52 items (2 over the cap of 50).
+    const reports = [];
+    for (let i = 0; i < 52; i++) {
+      reports.push(entReport({ ...VALID, code: 'UI-001', message: `msg-${i}` }));
+    }
+    await Promise.all(reports);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // Drain on coming back online.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+    window.dispatchEvent(new Event('online'));
+    await Promise.resolve();
+
+    // Only 50 fetches should fire — items 51 and 52 were dropped.
+    expect(fetchMock).toHaveBeenCalledTimes(50);
+  });
+
+  it("window 'error' event fires UI-011 via entReport", async () => {
+    const { entReport: _unused } = await import('./entomology-client.js');
+
+    window.dispatchEvent(new ErrorEvent('error', {
+      message: 'Script blew up',
+      filename: 'terminal/app.js',
+      lineno: 99,
+    }));
+
+    // The error handler calls entReport which calls fetch; give the microtask a turn.
+    await Promise.resolve();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.event_code).toBe('UI-011');
+    expect(body.severity).toBe('ERROR');
+    expect(body.message).toMatch(/Script blew up/);
+  });
+
+  it("window 'unhandledrejection' event fires UI-011 via entReport", async () => {
+    const { entReport: _unused } = await import('./entomology-client.js');
+
+    // jsdom doesn't expose PromiseRejectionEvent; assign reason directly.
+    const reason = new Error('Promise exploded');
+    const silenced = Promise.reject(reason);
+    silenced.catch(() => {});  // prevent test-runner "unhandled rejection" noise
+    const ev = Object.assign(new Event('unhandledrejection'), {
+      reason,
+      promise: silenced,
+    });
+    reason.stack = 'Error: Promise exploded\n    at test.js:1';
+    window.dispatchEvent(ev);
+
+    await Promise.resolve();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.event_code).toBe('UI-011');
+    expect(body.message).toMatch(/Promise exploded/);
+  });
+
+  it('global error dedup: the same source+message is only reported once', async () => {
+    const { entReport: _unused } = await import('./entomology-client.js');
+
+    // Fire the same error three times.
+    for (let i = 0; i < 3; i++) {
+      window.dispatchEvent(new ErrorEvent('error', {
+        message: 'Repeated error',
+        filename: 'terminal/scene.js',
+        lineno: 1,
+      }));
+    }
+    await Promise.resolve();
+
+    // All three dispatches share the same source+message key, so only one fetch.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
