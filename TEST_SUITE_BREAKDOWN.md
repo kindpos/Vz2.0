@@ -183,6 +183,194 @@
 ---
 
 
+---
+
+## Scene Glossary
+
+Cross-reference of test files by scene. Backend entries list only files whose routes are directly exercised by that scene. Links jump to the full breakdown entry.
+
+| Symbol | Meaning |
+|--------|---------|
+| FE | Frontend test file |
+| BE | Backend test file |
+
+---
+
+### `check-overview`
+Seat-level order management: seat layout, item selection, discounts, payments, void items, split-by-seat.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/check-overview.test.js`](#check-overviewtestjs) | 57 |
+| BE | [`backend/tests/test_check_state_validity.py`](#test_check_state_validitypy) | 10 |
+| BE | [`backend/tests/test_seat_payments.py`](#test_seat_paymentspy) | 17 |
+| BE | [`backend/tests/test_seats_coverage.py`](#test_seats_coveragepy) | 21 |
+
+---
+
+### `checkout-core`
+Shared checkout utilities: void confirmation, PIN validation, tip adjust, finalize dialog.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/checkout-core.test.js`](#checkout-coretestjs) | 31 |
+| BE | [`backend/tests/test_adjust_tip_on_order.py`](#test_adjust_tip_on_orderpy) | 7 |
+| BE | [`backend/tests/test_cash_and_tip_flows.py`](#test_cash_and_tip_flowspy) | 7 |
+
+---
+
+### `close-day`
+End-of-day workflow: cash drawer reconciliation, check viewer, day-close lock.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/close-day.test.js`](#close-daytestjs) | 38 |
+| FE | [`terminal/scenes/close-day-calc.test.js`](#close-day-calctestjs) | 11 |
+| FE | [`terminal/scenes/close-day-checks-viewer.test.js`](#close-day-checks-viewertestjs) | 19 |
+| BE | [`backend/tests/test_close_day_extended.py`](#test_close_day_extendedpy) | 9 |
+| BE | [`backend/tests/test_day_close_lock.py`](#test_day_close_lockpy) | 3 |
+| BE | [`backend/tests/test_day_cash_routes.py`](#test_day_cash_routespy) | 16 |
+
+---
+
+### `column-editor`
+Transactional scene for reordering/renaming table columns. Pure client-side UI — no backend routes exercised.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/column-editor.test.js`](#column-editortestjs) | 16 |
+
+---
+
+### `item-detail`
+Per-item modifier editing (add/remove modifiers, quantity, notes) within an open order.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/item-detail.test.js`](#item-detailtestjs) | 12 |
+| BE | [`backend/tests/test_api_routes.py`](#test_api_routespy) | 38 |
+| BE | [`backend/tests/test_api_orders_extended.py`](#test_api_orders_extendedpy) | 9 |
+
+---
+
+### `login`
+PIN entry and session establishment at the gate layer.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/login.test.js`](#logintestjs) | 4 |
+| BE | [`backend/tests/test_auth_routes.py`](#test_auth_routespy) | 18 |
+| BE | [`backend/tests/test_pin_hash.py`](#test_pin_hashpy) | 8 |
+
+---
+
+### `manager-landing`
+Manager dashboard: staff overview, clock edits, shift management.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/manager-landing.test.js`](#manager-landingtestjs) | 18 |
+| BE | [`backend/tests/test_staff_routes_extended.py`](#test_staff_routes_extendedpy) | 4 |
+| BE | [`backend/tests/test_staff_routes_gaps.py`](#test_staff_routes_gapspy) | 7 |
+
+---
+
+### `order-entry`
+Working scene for building a ticket: add items, recall order, send to kitchen, idempotency guards.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/order-entry.test.js`](#order-entrytestjs) | 13 |
+| BE | [`backend/tests/test_api_routes.py`](#test_api_routespy) | 38 |
+| BE | [`backend/tests/test_api_orders_extended.py`](#test_api_orders_extendedpy) | 9 |
+
+---
+
+### `payment`
+Interrupt-layer payment flow: cash/card processing, split payments, idempotency keys, decline handling.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/payment.test.js`](#paymenttestjs) | 21 |
+| BE | [`backend/tests/test_payment_routes_gaps.py`](#test_payment_routes_gapspy) | 23 |
+| BE | [`backend/tests/test_payment_routes_hardware.py`](#test_payment_routes_hardwarepy) | 3 |
+| BE | [`backend/tests/test_payment_routes_refund.py`](#test_payment_routes_refundpy) | 15 |
+| BE | [`backend/tests/test_payment_sale_overage.py`](#test_payment_sale_overagepy) | 3 |
+| BE | [`backend/tests/test_payment_validator.py`](#test_payment_validatorpy) | 13 |
+
+---
+
+### `seats`
+Transactional seat-picker: assign items to seats, seat transfers, balance-due per seat.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/seats.test.js`](#seatstestjs) | 21 |
+| BE | [`backend/tests/test_seats_coverage.py`](#test_seats_coveragepy) | 21 |
+| BE | [`backend/tests/test_seat_payments.py`](#test_seat_paymentspy) | 17 |
+| BE | [`backend/tests/test_phase9_seat_transfer.py`](#test_phase9_seat_transferpy) | 6 |
+| BE | [`backend/tests/test_phase12_seat_balance.py`](#test_phase12_seat_balancepy) | 11 |
+
+---
+
+### `server-checkout`
+Server end-of-shift receipt: sales summary, declared cash tips, clock-out.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/server-checkout.test.js`](#server-checkouttestjs) | 19 |
+| BE | [`backend/tests/test_server_shift.py`](#test_server_shiftpy) | 18 |
+| BE | [`backend/tests/test_server_shift_extended.py`](#test_server_shift_extendedpy) | 16 |
+
+---
+
+### `server-landing`
+Server home screen: active orders, table stats, category sales.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/server-landing.test.js`](#server-landingtestjs) | 12 |
+| BE | [`backend/tests/test_server_shift.py`](#test_server_shiftpy) | 18 |
+| BE | [`backend/tests/test_server_shift_extended.py`](#test_server_shift_extendedpy) | 16 |
+
+---
+
+### `transitions`
+SceneManager lifecycle: mount/unmount sequencing, working/transactional/interrupt layer teardown. Pure frontend — no backend routes.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/scenes/transitions.test.js`](#transitionstestjs) | 9 |
+
+---
+
+### `half-placement-overlay`
+Pizza half-placement selection overlay. Pure UI — item persistence handled by `order-entry`.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/half-placement-overlay.test.js`](#half-placement-overlaytestjs) | 15 |
+
+---
+
+### `pizza-builder-overlay`
+Pizza size/crust/topping configurator overlay. Pure UI — submits through `order-entry` routes.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/pizza-builder-overlay.test.js`](#pizza-builder-overlaytestjs) | 17 |
+
+---
+
+### `item-recap` *(component)*
+Collapsible per-seat item list with selection, void, and modifier display. Pure UI component.
+
+| Role | Path | Tests |
+|------|------|------:|
+| FE | [`terminal/components/item-recap.test.js`](#item-recaptestjs) | 36 |
+
+---
+
 # Backend Tests
 
 ## `conftest.py`
