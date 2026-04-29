@@ -8,6 +8,181 @@
 
 ---
 
+
+## Table of Contents
+
+### Backend Tests
+
+- [`conftest.py`](#conftestpy)
+- [`test_adjust_tip_on_order.py`](#test_adjust_tip_on_orderpy)
+- [`test_api_orders_extended.py`](#test_api_orders_extendedpy)
+- [`test_api_routes.py`](#test_api_routespy)
+- [`test_append_batch.py`](#test_append_batchpy)
+- [`test_auth_routes.py`](#test_auth_routespy)
+- [`test_cash_and_tip_flows.py`](#test_cash_and_tip_flowspy)
+- [`test_chaos_probe.py`](#test_chaos_probepy)
+- [`test_check_state_validity.py`](#test_check_state_validitypy)
+- [`test_close_day_extended.py`](#test_close_day_extendedpy)
+- [`test_config_routes.py`](#test_config_routespy)
+- [`test_config_services.py`](#test_config_servicespy)
+- [`test_daily_workflow.py`](#test_daily_workflowpy)
+- [`test_daily_workflow_extended.py`](#test_daily_workflow_extendedpy)
+- [`test_day_cash_routes.py`](#test_day_cash_routespy)
+- [`test_day_close_lock.py`](#test_day_close_lockpy)
+- [`test_dejavoo_spin.py`](#test_dejavoo_spinpy)
+- [`test_dejavoo_spin_extended.py`](#test_dejavoo_spin_extendedpy)
+- [`test_dejavoo_spin_lockdown.py`](#test_dejavoo_spin_lockdownpy)
+- [`test_demo_seeder.py`](#test_demo_seederpy)
+- [`test_discount_endpoint.py`](#test_discount_endpointpy)
+- [`test_entomology_correlation.py`](#test_entomology_correlationpy)
+- [`test_entomology_collector.py`](#test_entomology_collectorpy)
+- [`test_entomology_excel_report.py`](#test_entomology_excel_reportpy)
+- [`test_entomology_integration.py`](#test_entomology_integrationpy)
+- [`test_entomology_ledger_gaps.py`](#test_entomology_ledger_gapspy)
+- [`test_entomology_model.py`](#test_entomology_modelpy)
+- [`test_entomology_new_hooks.py`](#test_entomology_new_hookspy)
+- [`test_entomology_reboot.py`](#test_entomology_rebootpy)
+- [`test_entomology_registry.py`](#test_entomology_registrypy)
+- [`test_entomology_report.py`](#test_entomology_reportpy)
+- [`test_entomology_routes.py`](#test_entomology_routespy)
+- [`test_entomology_storage.py`](#test_entomology_storagepy)
+- [`test_ephemeral_log.py`](#test_ephemeral_logpy)
+- [`test_escpos_formatter.py`](#test_escpos_formatterpy)
+- [`test_event_ledger.py`](#test_event_ledgerpy)
+- [`test_financial_invariants.py`](#test_financial_invariantspy)
+- [`test_half_placement_utils.py`](#test_half_placement_utilspy)
+- [`test_hardware_ledger_emissions.py`](#test_hardware_ledger_emissionspy)
+- [`test_hardware_routes_extended.py`](#test_hardware_routes_extendedpy)
+- [`test_hash_chain_tamper.py`](#test_hash_chain_tamperpy)
+- [`test_invariants_property.py`](#test_invariants_propertypy)
+- [`test_kindnostic_cli.py`](#test_kindnostic_clipy)
+- [`test_kindnostic_display.py`](#test_kindnostic_displaypy)
+- [`test_kindnostic_probes_critical.py`](#test_kindnostic_probes_criticalpy)
+- [`test_kindnostic_probes_high_low.py`](#test_kindnostic_probes_high_lowpy)
+- [`test_kindnostic_runner.py`](#test_kindnostic_runnerpy)
+- [`test_kindnostic_session4.py`](#test_kindnostic_session4py)
+- [`test_kindnostic_storage.py`](#test_kindnostic_storagepy)
+- [`test_kindnostic_support_codes.py`](#test_kindnostic_support_codespy)
+- [`test_kindnostic_types.py`](#test_kindnostic_typespy)
+- [`test_labor_summary.py`](#test_labor_summarypy)
+- [`test_ledger_concurrency.py`](#test_ledger_concurrencypy)
+- [`test_ledger_crash_recovery.py`](#test_ledger_crash_recoverypy)
+- [`test_ledger_robustness.py`](#test_ledger_robustnesspy)
+- [`test_menu_projection.py`](#test_menu_projectionpy)
+- [`test_money_round.py`](#test_money_roundpy)
+- [`test_new_shift_routes.py`](#test_new_shift_routespy)
+- [`test_orders_and_reporting_gaps.py`](#test_orders_and_reporting_gapspy)
+- [`test_orders_mutations.py`](#test_orders_mutationspy)
+- [`test_overpayment_guard.py`](#test_overpayment_guardpy)
+- [`test_overseer_config_extended.py`](#test_overseer_config_extendedpy)
+- [`test_overseer_config_projection.py`](#test_overseer_config_projectionpy)
+- [`test_payment_health.py`](#test_payment_healthpy)
+- [`test_payment_manager.py`](#test_payment_managerpy)
+- [`test_payment_precision.py`](#test_payment_precisionpy)
+- [`test_payment_routes_gaps.py`](#test_payment_routes_gapspy)
+- [`test_payment_routes_hardware.py`](#test_payment_routes_hardwarepy)
+- [`test_payment_routes_refund.py`](#test_payment_routes_refundpy)
+- [`test_payment_sale_overage.py`](#test_payment_sale_overagepy)
+- [`test_payment_validator.py`](#test_payment_validatorpy)
+- [`test_phase10_discount_catalog.py`](#test_phase10_discount_catalogpy)
+- [`test_phase11_tipout_rules.py`](#test_phase11_tipout_rulespy)
+- [`test_phase12_seat_balance.py`](#test_phase12_seat_balancepy)
+- [`test_phase13_cash_variance.py`](#test_phase13_cash_variancepy)
+- [`test_phase14_settlement_drift.py`](#test_phase14_settlement_driftpy)
+- [`test_phase4c_emissions.py`](#test_phase4c_emissionspy)
+- [`test_phase4d_settlement_failure.py`](#test_phase4d_settlement_failurepy)
+- [`test_phase4e_menu_import.py`](#test_phase4e_menu_importpy)
+- [`test_phase4f_modifier_crud.py`](#test_phase4f_modifier_crudpy)
+- [`test_phase4g_micromods.py`](#test_phase4g_micromodspy)
+- [`test_phase4h_modifier_micromod_wiring.py`](#test_phase4h_modifier_micromod_wiringpy)
+- [`test_phase5_catalog.py`](#test_phase5_catalogpy)
+- [`test_phase6_staff_config.py`](#test_phase6_staff_configpy)
+- [`test_phase7_day_batch.py`](#test_phase7_day_batchpy)
+- [`test_phase8_seat_financial.py`](#test_phase8_seat_financialpy)
+- [`test_phase9_seat_transfer.py`](#test_phase9_seat_transferpy)
+- [`test_physical_integration.py`](#test_physical_integrationpy)
+- [`test_pin_hash.py`](#test_pin_hashpy)
+- [`test_pos_system.py`](#test_pos_systempy)
+- [`test_precision_gate.py`](#test_precision_gatepy)
+- [`test_print_context_builder.py`](#test_print_context_builderpy)
+- [`test_print_context_builder_extended.py`](#test_print_context_builder_extendedpy)
+- [`test_print_dispatcher.py`](#test_print_dispatcherpy)
+- [`test_print_queue.py`](#test_print_queuepy)
+- [`test_print_templates.py`](#test_print_templatespy)
+- [`test_print_templates_money.py`](#test_print_templates_moneypy)
+- [`test_printer_api.py`](#test_printer_apipy)
+- [`test_printer_detector.py`](#test_printer_detectorpy)
+- [`test_printer_manager_extended.py`](#test_printer_manager_extendedpy)
+- [`test_printer_system.py`](#test_printer_systempy)
+- [`test_printing_routes.py`](#test_printing_routespy)
+- [`test_projections.py`](#test_projectionspy)
+- [`test_projections_payment_lifecycle.py`](#test_projections_payment_lifecyclepy)
+- [`test_reporting_extended.py`](#test_reporting_extendedpy)
+- [`test_seat_payments.py`](#test_seat_paymentspy)
+- [`test_server_shift.py`](#test_server_shiftpy)
+- [`test_server_shift_extended.py`](#test_server_shift_extendedpy)
+- [`test_staff_routes_extended.py`](#test_staff_routes_extendedpy)
+- [`test_staff_routes_gaps.py`](#test_staff_routes_gapspy)
+- [`test_startup_sweep.py`](#test_startup_sweeppy)
+- [`test_sync_routes.py`](#test_sync_routespy)
+- [`test_system_routes.py`](#test_system_routespy)
+
+### Frontend Tests (Terminal)
+
+- [`auth-client.test.js`](#auth-clienttestjs)
+- [`category-grid.test.js`](#category-gridtestjs)
+- [`charts.test.js`](#chartstestjs)
+- [`components.test.js`](#componentstestjs)
+- [`discount.test.js`](#discounttestjs)
+- [`entomology-client.test.js`](#entomology-clienttestjs)
+- [`half-placement-overlay.test.js`](#half-placement-overlaytestjs)
+- [`header.test.js`](#headertestjs)
+- [`keyboard.test.js`](#keyboardtestjs)
+- [`modifier-label.test.js`](#modifier-labeltestjs)
+- [`net.test.js`](#nettestjs)
+- [`numpad.test.js`](#numpadtestjs)
+- [`order-summary.test.js`](#order-summarytestjs)
+- [`pricing.test.js`](#pricingtestjs)
+- [`scene-manager.test.js`](#scene-managertestjs)
+- [`theme-manager.test.js`](#theme-managertestjs)
+- [`check-overview.test.js`](#check-overviewtestjs)
+- [`checkout-core.test.js`](#checkout-coretestjs)
+- [`close-day-calc.test.js`](#close-day-calctestjs)
+- [`close-day-checks-viewer.test.js`](#close-day-checks-viewertestjs)
+- [`close-day.test.js`](#close-daytestjs)
+- [`column-editor.test.js`](#column-editortestjs)
+- [`item-detail.test.js`](#item-detailtestjs)
+- [`login.test.js`](#logintestjs)
+- [`manager-landing.test.js`](#manager-landingtestjs)
+- [`payment.test.js`](#paymenttestjs)
+- [`seats.test.js`](#seatstestjs)
+- [`server-checkout.test.js`](#server-checkouttestjs)
+- [`server-landing.test.js`](#server-landingtestjs)
+- [`transitions.test.js`](#transitionstestjs)
+
+### Frontend Tests (Overseer)
+
+- [`date-picker.test.js`](#date-pickertestjs)
+- [`scene-manager.test.js`](#scene-managertestjs)
+- [`sample-payroll.test.js`](#sample-payrolltestjs)
+- [`employee-events.test.js`](#employee-eventstestjs)
+- [`employees.test.js`](#employeestestjs)
+- [`labor-reports.test.js`](#labor-reportstestjs)
+- [`auth-client.test.js`](#auth-clienttestjs)
+- [`config-push.test.js`](#config-pushtestjs)
+- [`excel-parser.test.js`](#excel-parsertestjs)
+- [`money.test.js`](#moneytestjs)
+
+### New Tests (Added After Initial Breakdown)
+
+- [`test_seats_coverage.py`](#test_seats_coveragepy)
+- [`item-recap.test.js`](#item-recaptestjs)
+- [`pizza-builder-overlay.test.js`](#pizza-builder-overlaytestjs)
+- [`order-entry.test.js`](#order-entrytestjs)
+
+---
+
+
 # Backend Tests
 
 ## `conftest.py`
@@ -6767,8 +6942,6 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 | **Pass** | TIPOUT_RULE_CREATED.value="tipout.rule_created", TIPOUT_RULE_UPDATED.value="tipout.rule_updated" |
 
 ---
-# Backend Test Documentation
-
 ## `test_phase12_seat_balance.py`
 > Verifies per-seat balance projections built from seat-scoped events and GET /orders/{id}/seats endpoint
 
@@ -7318,8 +7491,6 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 | **Pass** | One BATCH_OPENED, one BATCH_SETTLEMENT_INITIATED, and one BATCH_REOPENED event with matching fields |
 
 ---
-# Backend Test Documentation
-
 ## `test_phase8_seat_financial.py`
 > Tests for seat-scoped financial events (discounts, comps, payment voids) and tipout calculation.
 
@@ -8702,8 +8873,6 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 | **Pass** | Text includes "TOTAL" |
 
 ---
-# Backend Test Documentation
-
 ## `test_printer_api.py`
 > Tests for the /api/v1/hardware/* endpoints: SSE streaming network scan, device connectivity test, test print, device persistence, and hardware subsystem status.
 
@@ -9602,8 +9771,6 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 
 
 ---
-# Backend Test Documentation
-
 ## `test_projections_payment_lifecycle.py`
 > Payment lifecycle projection tests covering pending/failed payments, refunds, seat distribution, and order status transitions.
 
@@ -10159,8 +10326,6 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 
 
 ---
-# Backend Test Documentation
-
 ## `test_staff_routes_gaps.py`
 > Tests edge cases and event emissions in staff routes: double clock-in rejection, missing clock-in rejection, event pairing, and cash tips validation
 
@@ -12325,8 +12490,6 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 
 
 ---
-# Test File Documentation
-
 ## `theme-manager.test.js`
 > Tests for button, numpad, and pin-entry UI components: buildPillButton, buildNumpadChassis, buildPinRow, buildPinBox
 
@@ -13075,8 +13238,6 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 
 
 ---
-# Test File Documentation
-
 ## `close-day-checks-viewer.test.js`
 > Tests for close-day-checks-viewer scene covering bug fixes: .ok guard, inverted adjusted flag, _busy locks, and setTimeout cleanup
 
@@ -15242,8 +15403,6 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 
 # New Tests (Added After Initial Breakdown)
 
-##  (new file)
-
 ## `test_seats_coverage.py`
 > Tests for seat-related coverage gaps including PUT /{order_id}/seats (update_seats route), SeatBalance.balance_due calculated property, and SEATS_UPDATED projection event handling
 
@@ -15397,8 +15556,6 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 
 
 ---
-
-# Frontend Component Test Documentation
 
 ## `item-recap.test.js`
 > Tests for the item recap panel component that displays ordered items grouped by seat, with price calculations, item cards, modifications, and totals rendering.
