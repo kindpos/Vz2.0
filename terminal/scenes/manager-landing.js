@@ -346,7 +346,7 @@ function _buildPreview(orders, allOrders) {
       seatHdr.style.cssText = [
         'display:flex;align-items:center;gap:8px;',
         'background:' + T.card + ';border-radius:6px;',
-        'border:1px solid ' + T.moon + ';border-top:2px solid ' + T.moon + ';',
+        'border:1px solid ' + T.green + ';border-top:2px solid ' + T.green + ';',
         'padding:4px 8px 4px 10px;',
         'margin-top:6px;margin-bottom:4px;',
         'cursor:pointer;touch-action:manipulation;',
