@@ -179,6 +179,8 @@
 - [`item-recap.test.js`](#item-recaptestjs)
 - [`pizza-builder-overlay.test.js`](#pizza-builder-overlaytestjs)
 - [`order-entry.test.js`](#order-entrytestjs)
+- [`test_tax_calculation.py`](#test_tax_calculationpy)
+- [`test_payment_security.py`](#test_payment_securitypy)
 
 ---
 
@@ -16639,3 +16641,321 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 | **Tests** | When state.selectedItems is empty, getSelectedItemRefs returns an empty array |
 | **Method** | Creates state with selectedItems:{}, calls getSelectedItemRefs |
 | **Pass** | Returns [] |
+
+---
+
+## `test_tax_calculation.py`
+> Dedicated coverage for tax computation edge cases in `app/core/projections.py`. Closes the "Tax calculation ⚠️ PARTIAL" gap. 16 tests.
+
+### `test_basic_computed_tax`
+| | |
+|---|---|
+| **Tests** | $100 item × 7% = $7.00 when no payment has captured tax |
+| **Method** | Seeds order + item at $100; reads project_order; checks order.tax |
+| **Pass** | order.tax == Decimal("7.00") |
+
+### `test_tax_on_fractional_price`
+| | |
+|---|---|
+| **Tests** | $14.99 × 7% = $1.05 (rounds half-up from $1.0493) |
+| **Method** | Seeds item at $14.99; checks order.tax |
+| **Pass** | order.tax == Decimal("1.05") |
+
+### `test_zero_subtotal_zero_tax`
+| | |
+|---|---|
+| **Tests** | Order with no items has zero tax |
+| **Method** | Seeds order_created only (no items); checks order.subtotal and order.tax |
+| **Pass** | subtotal == Decimal("0.00") and tax == Decimal("0.00") |
+
+### `test_confirmed_payment_tax_overrides_computed`
+| | |
+|---|---|
+| **Tests** | When a PAYMENT_CONFIRMED carries tax_amount, projection uses that instead of computing subtotal × rate |
+| **Method** | Seeds $100 item + PAYMENT_INITIATED + PAYMENT_CONFIRMED with tax=9.00; checks order.tax |
+| **Pass** | order.tax == Decimal("9.00") (event-sourced, not computed $7.00) |
+
+### `test_only_confirmed_payments_contribute_to_tax`
+| | |
+|---|---|
+| **Tests** | Pending (unconfirmed) payments do not contribute to event-sourced tax; falls back to computed |
+| **Method** | Seeds item + PAYMENT_INITIATED but no PAYMENT_CONFIRMED; checks order.tax |
+| **Pass** | order.tax == Decimal("3.50") (computed: $50 × 7%) |
+
+### `test_multiple_confirmed_payments_sum_tax`
+| | |
+|---|---|
+| **Tests** | Split payments each capture tax; total tax is the sum across all confirmed payments |
+| **Method** | Seeds $100 item + two confirmed payments each with tax=3.50; checks order.tax |
+| **Pass** | order.tax == Decimal("7.00") ($3.50 × 2) |
+
+### `test_zero_captured_tax_falls_back_to_computed`
+| | |
+|---|---|
+| **Tests** | Captured tax of $0.00 (no explicit tax argument) falls back to computed tax |
+| **Method** | Seeds item + PAYMENT_CONFIRMED with default tax (Decimal("0.00")); checks order.tax |
+| **Pass** | order.tax == Decimal("7.00") (computed, since captured == 0) |
+
+### `test_explicit_tax_rate_overrides_settings`
+| | |
+|---|---|
+| **Tests** | project_order(tax_rate=0.10) overrides the 7% from settings |
+| **Method** | Seeds $100 item; calls project_order(events, tax_rate=Decimal("0.10")) |
+| **Pass** | order.tax == Decimal("10.00") |
+
+### `test_zero_tax_rate_gives_zero_tax`
+| | |
+|---|---|
+| **Tests** | Tax rate of 0 yields zero tax regardless of order total |
+| **Method** | Seeds $100 item; calls project_order(events, tax_rate=Decimal("0.00")) |
+| **Pass** | order.tax == Decimal("0.00") and order.total == Decimal("100.00") |
+
+### `test_paid_modifier_increases_taxable_base`
+| | |
+|---|---|
+| **Tests** | $2.00 modifier on a $20.00 item makes taxable base $22.00 |
+| **Method** | Seeds item at $20 + MODIFIER_APPLIED with modifier_price=2.00; checks gross_subtotal and tax |
+| **Pass** | gross_subtotal == Decimal("22.00") and tax == Decimal("1.54") |
+
+### `test_free_modifier_does_not_change_tax`
+| | |
+|---|---|
+| **Tests** | $0.00 modifier has no effect on tax |
+| **Method** | Seeds item at $20 + MODIFIER_APPLIED with modifier_price=0.00; checks tax |
+| **Pass** | order.tax == Decimal("1.40") ($20 × 7%) |
+
+### `test_flat_discount_reduces_tax`
+| | |
+|---|---|
+| **Tests** | $10 discount on $100 item → taxable base $90 → tax $6.30 |
+| **Method** | Seeds item at $100 + DISCOUNT_APPROVED with amount=10.00; checks subtotal and tax |
+| **Pass** | subtotal == Decimal("90.00") and tax == Decimal("6.30") |
+
+### `test_discount_larger_than_subtotal_clamps_to_zero`
+| | |
+|---|---|
+| **Tests** | Discount exceeding subtotal clamps subtotal and tax to zero, never negative |
+| **Method** | Seeds item at $10 + DISCOUNT_APPROVED with amount=15.00; checks all totals |
+| **Pass** | subtotal == Decimal("0.00") and tax == Decimal("0.00") and total == Decimal("0.00") |
+
+### `test_discount_with_captured_tax_uses_captured_value`
+| | |
+|---|---|
+| **Tests** | Even with a discount applied, confirmed payment tax overrides computed |
+| **Method** | Seeds $100 item + $10 discount + PAYMENT_CONFIRMED with tax=5.00; checks order.tax |
+| **Pass** | order.tax == Decimal("5.00") (captured wins over computed $6.30) |
+
+### `test_half_up_rounding`
+| | |
+|---|---|
+| **Tests** | $0.50 × 7% = $0.035 rounds half-up to $0.04 |
+| **Method** | Seeds item at $0.50; checks order.tax |
+| **Pass** | order.tax == Decimal("0.04") |
+
+### `test_precision_three_item_order`
+| | |
+|---|---|
+| **Tests** | Three $11.11 items: subtotal $33.33 × 7% = $2.3331 → $2.33 |
+| **Method** | Seeds order + 3× item_added at $11.11; checks gross_subtotal and tax |
+| **Pass** | gross_subtotal == Decimal("33.33") and tax == Decimal("2.33") |
+
+---
+
+## `test_payment_security.py`
+> Dedicated coverage for the PCI/security surface of auth and payment subsystems. Closes the "Payment tokenization/PCI ⚠️ PARTIAL" gap. 28 tests.
+
+### `test_payment_initiated_payload_has_no_card_number`
+| | |
+|---|---|
+| **Tests** | PAYMENT_INITIATED event payload contains no raw card-data fields |
+| **Method** | Appends PAYMENT_INITIATED; queries event from ledger; checks payload keys |
+| **Pass** | Keys {card_number, pan, cvv, ccv, track_data, mag_stripe} do not appear in payload |
+
+### `test_payment_confirmed_payload_has_no_card_number`
+| | |
+|---|---|
+| **Tests** | PAYMENT_CONFIRMED event payload contains no raw card-data fields |
+| **Method** | Appends PAYMENT_CONFIRMED; checks payload keys against forbidden set |
+| **Pass** | Keys {card_number, pan, cvv, ccv, track_data} absent from payload |
+
+### `test_payment_payload_contains_only_safe_fields`
+| | |
+|---|---|
+| **Tests** | PAYMENT_INITIATED payload is restricted to safe fields only |
+| **Method** | Appends cash PAYMENT_INITIATED; checks that every key is in the allowed set |
+| **Pass** | payload.keys() ⊆ {order_id, payment_id, amount, method, seat_numbers} |
+
+### `test_hash_pin_returns_pbkdf2_tagged_string`
+| | |
+|---|---|
+| **Tests** | hash_pin() always produces the $pbkdf2-sha256$ tagged format |
+| **Method** | Calls hash_pin("1234"); checks string prefix |
+| **Pass** | Result starts with "$pbkdf2-sha256$" |
+
+### `test_is_hashed_detects_tagged_format`
+| | |
+|---|---|
+| **Tests** | is_hashed() returns True for tagged hashes and False for plaintext |
+| **Method** | Calls is_hashed on hash_pin output, on bare PIN string, and on empty string |
+| **Pass** | is_hashed(hash_pin("5678")) == True; is_hashed("5678") == False; is_hashed("") == False |
+
+### `test_verify_correct_pin`
+| | |
+|---|---|
+| **Tests** | verify_pin_hash passes for correct PIN against its own hash |
+| **Method** | Hashes "9999"; calls verify_pin_hash("9999", h) |
+| **Pass** | Returns True |
+
+### `test_verify_wrong_pin_fails`
+| | |
+|---|---|
+| **Tests** | verify_pin_hash rejects a wrong PIN |
+| **Method** | Hashes "9999"; calls verify_pin_hash("0000", h) |
+| **Pass** | Returns False |
+
+### `test_verify_legacy_plaintext_pin`
+| | |
+|---|---|
+| **Tests** | verify_pin_hash accepts legacy plaintext stored values (migration path) |
+| **Method** | Calls verify_pin_hash("1234", "1234") and verify_pin_hash("0000", "1234") |
+| **Pass** | First returns True; second returns False |
+
+### `test_hash_pin_produces_unique_salts`
+| | |
+|---|---|
+| **Tests** | Same PIN hashed twice produces different outputs due to random salt |
+| **Method** | Calls hash_pin("1111") twice; compares results |
+| **Pass** | h1 != h2 |
+
+### `test_employee_pin_stored_as_hash`
+| | |
+|---|---|
+| **Tests** | Confirms that PBKDF2 hashes are opaque and not equal to plaintext PIN |
+| **Method** | Hashes "4321"; asserts is_hashed(result) and result != "4321" |
+| **Pass** | Both assertions pass |
+
+### `test_tokens_are_unique_per_issuance`
+| | |
+|---|---|
+| **Tests** | Every _create_token call returns a different value (no reuse) |
+| **Method** | Calls _create_token twice with same employee; compares tokens |
+| **Pass** | t1 != t2 |
+
+### `test_token_has_sufficient_entropy`
+| | |
+|---|---|
+| **Tests** | secrets.token_urlsafe(32) produces tokens with ≥ 40 characters |
+| **Method** | Calls _create_token; checks len(token) |
+| **Pass** | len(token) >= 40 |
+
+### `test_token_contains_no_employee_data`
+| | |
+|---|---|
+| **Tests** | The session token is opaque — employee ID is not embedded in the string |
+| **Method** | Creates token for a known employee_id; checks that id is not in token string |
+| **Pass** | employee_id not in token |
+
+### `test_session_stores_correct_metadata`
+| | |
+|---|---|
+| **Tests** | _sessions dict entry holds employee_id, name, and roles |
+| **Method** | Calls _create_token; reads _sessions[token] |
+| **Pass** | session["employee_id"] == "emp_3", "manager" in session["roles"] |
+
+### `test_sec_001_emitted_on_rate_limit_hit`
+| | |
+|---|---|
+| **Tests** | SEC-001 diagnostic is recorded when the MAX_ATTEMPTS rate-limit ceiling is reached |
+| **Method** | Injects DiagnosticCollector; exhausts MAX_ATTEMPTS wrong PINs; triggers 6th attempt |
+| **Pass** | 429 raised; wired_collector has ≥1 event with event_code="SEC-001" and "rate-limit" in message |
+
+### `test_sec_001_not_emitted_on_normal_failure`
+| | |
+|---|---|
+| **Tests** | A single PIN failure below the threshold produces no SEC-001 diagnostic |
+| **Method** | Injects collector; submits one wrong PIN; queries for SEC-001 |
+| **Pass** | len(sec_events) == 0 |
+
+### `test_auth_required_records_sec_005_without_token`
+| | |
+|---|---|
+| **Tests** | auth_required() with no Bearer token emits SEC-005 and returns None in soft mode |
+| **Method** | Injects collector; calls auth_required(mock_request_no_header) |
+| **Pass** | result is None; collector has ≥1 event with event_code="SEC-005" |
+
+### `test_require_manager_records_sec_005_when_no_token`
+| | |
+|---|---|
+| **Tests** | require_manager() with no token emits SEC-005 and returns None in soft mode |
+| **Method** | Injects collector; calls require_manager(mock_request_no_header) |
+| **Pass** | result is None; collector has ≥1 event with event_code="SEC-005" |
+
+### `test_auth_required_no_sec_005_with_valid_token`
+| | |
+|---|---|
+| **Tests** | A valid session token suppresses SEC-005 emission |
+| **Method** | Issues token for server role; calls auth_required with Bearer header |
+| **Pass** | result["employee_id"] == "emp_x"; no SEC-005 events in collector |
+
+### `test_require_manager_records_sec_006_for_server_role`
+| | |
+|---|---|
+| **Tests** | require_manager() with a server-role token emits SEC-006 (insufficient role) |
+| **Method** | Issues token with roles=["server"]; calls require_manager; checks collector |
+| **Pass** | SEC-006 recorded; "manager" in event message (soft mode still returns session) |
+
+### `test_require_manager_no_sec_006_for_manager_role`
+| | |
+|---|---|
+| **Tests** | Manager-role token on require_manager does not emit SEC-006 |
+| **Method** | Issues token with roles=["manager"]; calls require_manager |
+| **Pass** | result is not None; no SEC-006 events in collector |
+
+### `test_require_manager_no_sec_006_for_admin_role`
+| | |
+|---|---|
+| **Tests** | admin role satisfies require_manager — no SEC-006 |
+| **Method** | Issues token with roles=["admin"]; calls require_manager |
+| **Pass** | result is not None; no SEC-006 events in collector |
+
+### `test_security_setting_updated_lands_in_ledger`
+| | |
+|---|---|
+| **Tests** | SECURITY_SETTING_UPDATED event is persisted and retrievable from the ledger |
+| **Method** | Appends security_setting_updated for "session_ttl_seconds"; queries SECURITY_SETTING_UPDATED events |
+| **Pass** | 1 event; payload["setting_key"] == "session_ttl_seconds"; previous/new values and updated_by correct |
+
+### `test_security_setting_updated_does_not_store_secrets`
+| | |
+|---|---|
+| **Tests** | SECURITY_SETTING_UPDATED payload contains only expected keys — no secret tokens or hashes |
+| **Method** | Appends event; checks payload.keys() is a subset of {setting_key, previous_value, new_value, updated_by} |
+| **Pass** | No unexpected keys |
+
+### `test_multiple_setting_changes_all_recorded`
+| | |
+|---|---|
+| **Tests** | Each security policy change creates a separate immutable event |
+| **Method** | Appends SECURITY_SETTING_UPDATED for 3 different setting keys; queries all |
+| **Pass** | 3 events; all 3 setting keys present in the recorded payloads |
+
+### `test_empty_approved_by_returns_403`
+| | |
+|---|---|
+| **Tests** | process_refund raises 403 when approved_by is an empty string |
+| **Method** | Seeds closed paid order; calls process_refund with approved_by="" |
+| **Pass** | HTTPException status_code == 403 |
+
+### `test_whitespace_only_approved_by_returns_403`
+| | |
+|---|---|
+| **Tests** | process_refund treats whitespace-only approved_by as empty (403) |
+| **Method** | Seeds closed paid order; calls process_refund with approved_by="   " |
+| **Pass** | HTTPException status_code == 403 |
+
+### `test_valid_manager_approval_succeeds`
+| | |
+|---|---|
+| **Tests** | Refund with a non-empty approved_by is accepted and records the approver |
+| **Method** | Seeds closed paid order; calls process_refund with approved_by="manager_01" |
+| **Pass** | res["success"] == True and res["approved_by"] == "manager_01" |
