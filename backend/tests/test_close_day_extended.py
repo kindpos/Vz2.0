@@ -113,6 +113,8 @@ async def test_close_day_empty(ledger):
     payload = day_close_events[0].payload
     assert payload["total_orders"] == 0
     assert Decimal(str(payload["total_sales"])) == Decimal("0.00")
+    # Confirm the event was actually emitted — length 1, not 0.
+    # (Guards against an implementation that silently no-ops on empty day.)
 
 
 @pytest.mark.asyncio
@@ -165,7 +167,10 @@ async def test_close_day_only_counts_paid_orders_in_sales(ledger):
 
     resp = await _do_close_day(None, ledger)
 
-    expected_sales = money_round(order_a.total)
+    # $30.00 × (1 + 0.07) = $32.10 — first-principles derivation.
+    # Deriving expected from order_a.total (project_order) would mirror the
+    # same projection used by _pay_order, letting a wrong total formula cancel.
+    expected_sales = money_round(Decimal("30.00") * (1 + TAX_RATE))
     assert resp["summary"]["total_sales"] == expected_sales
     assert resp["summary"]["total_orders"] == 2  # both orders in the day
     assert resp["summary"]["payment_count"] == 1  # only one was actually paid
@@ -238,9 +243,11 @@ async def test_close_day_boundary_excludes_next_day_events(ledger):
     # Close day 2 — should only see ord_d2
     resp2 = await _do_close_day(None, ledger)
     assert resp2["summary"]["total_orders"] == 1
-    assert resp2["summary"]["total_sales"] == money_round(
-        project_order(await ledger.get_events_by_correlation("ord_d2")).total
-    )
+    # $35.00 × (1 + 0.07) = $37.45 — first-principles derivation.
+    # Calling project_order here would share the same projection as _pay_order,
+    # making the assertion tautological when the total formula is wrong.
+    expected_d2 = money_round(Decimal("35.00") * (1 + TAX_RATE))
+    assert resp2["summary"]["total_sales"] == expected_d2
 
 
 @pytest.mark.asyncio

@@ -292,6 +292,13 @@ class TestTableStats:
         assert res["tableCount"] == 0
         assert res["checkAvg"] == pytest.approx(0.0)
         assert res["byPartySize"] == []
+        # Confirm the endpoint is live: another server WITH an order must differ.
+        await _open_order(ledger, order_id="t_live", server_id="emp_has_orders",
+                          guest_count=2, items=[("X", 10.00, 1, "FOOD")])
+        await _pay(ledger, order_id="t_live", amount=10.00, method="cash")
+        await _close(ledger, "t_live", 10.00)
+        res2 = await table_stats(server_id="emp_has_orders", ledger=ledger)
+        assert res2["guestCount"] == 2
 
     @pytest.mark.asyncio
     async def test_check_avg_deducts_discounts(self, ledger):

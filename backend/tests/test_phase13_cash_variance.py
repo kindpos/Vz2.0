@@ -51,6 +51,9 @@ async def test_cash_variance_empty_day(ledger):
     assert result["drops"] == "0.00"
     assert result["payouts"] == "0.00"
     assert result["expected_in_drawer"] == "0.00"
+    # Structural check: all expected keys are present (guards against an empty dict).
+    expected_keys = {"float", "cash_sales", "cash_refunds", "drops", "payouts", "expected_in_drawer"}
+    assert expected_keys.issubset(result.keys())
 
 
 # ── float only ───────────────────────────────────────────────────────────

@@ -51,6 +51,8 @@ async def test_no_settlement_failures(ledger):
     result = await get_settlement_drift(session=_SESSION, ledger=ledger)
     assert result["count"] == 0
     assert result["failures"] == []
+    # Structural check: both expected keys must be present.
+    assert "count" in result and "failures" in result
 
 
 # ── single failure surfaces ──────────────────────────────────────────────

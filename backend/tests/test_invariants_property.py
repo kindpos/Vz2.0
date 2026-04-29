@@ -50,8 +50,6 @@ def _discount_event(order_id: str, amount: float):
 from app.core.financial_invariants import (
     InvariantViolation,
     check_day_close,
-    check_tender_reconciliation,
-    check_tips_partition,
     check_pnl_identity,
 )
 from app.core.projections import project_orders
@@ -232,37 +230,34 @@ def test_invariants_hold_on_random_day(seed):
     orders = project_orders(events)
     tip_map = _tip_map_from(events)
 
-    # The gate runs inside _aggregate_orders. If it raises, pytest
-    # reports the seed; otherwise the checks below double-check the
-    # identities against the aggregator's own reported figures.
+    # The gate runs inside _aggregate_orders and already verifies all
+    # canonical identities (pnl, tender, tips). Rather than re-running those
+    # same checks on the same agg values (which would be tautological), the
+    # assertions below cross-check the aggregated totals against independent
+    # counts from the raw event stream — catching bugs where _aggregate_orders
+    # produces consistent but wrong component values.
     agg = _aggregate_orders(list(orders.values()), tip_map)
 
-    # P&L identity
-    pnl = check_pnl_identity(
-        gross=float(agg["gross_sales"]),
-        voids=float(agg["void_total"]),
-        discounts=float(agg["discount_total"]),
-        refunds=float(agg["refund_total"]),
-        net=float(agg["net_sales"]),
+    # Independent check 1: cash + card must equal the sum of every confirmed
+    # payment amount in the raw event stream.
+    total_confirmed = sum(
+        Decimal(str(e.payload["amount"]))
+        for e in events
+        if e.event_type == EventType.PAYMENT_CONFIRMED
     )
-    assert pnl.ok, f"seed {seed}: {pnl.message}"
+    agg_tender = Decimal(str(agg["cash_total"])) + Decimal(str(agg["card_total"]))
+    assert agg_tender == total_confirmed, (
+        f"seed {seed}: cash_total+card_total={agg_tender} != "
+        f"sum(confirmed payments)={total_confirmed}"
+    )
 
-    # Tender reconciliation
-    tr = check_tender_reconciliation(
-        cash_total=float(agg["cash_total"]),
-        card_total=float(agg["card_total"]),
-        net_sales=float(agg["net_sales"]),
-        tax_collected=float(agg["tax_total"]),
+    # Independent check 2: total_tips must equal the last-wins tip sum from
+    # the raw tip_map (already computed above from the event stream).
+    raw_tips_total = sum(Decimal(str(v)) for v in tip_map.values())
+    assert Decimal(str(agg["total_tips"])) == raw_tips_total, (
+        f"seed {seed}: total_tips={agg['total_tips']} != "
+        f"tip_map sum={raw_tips_total}"
     )
-    assert tr.ok, f"seed {seed}: {tr.message}"
-
-    # Tips partition
-    tp = check_tips_partition(
-        total_tips=float(agg["total_tips"]),
-        card_tips=float(agg["card_tips"]),
-        cash_tips=float(agg["cash_tips"]),
-    )
-    assert tp.ok, f"seed {seed}: {tp.message}"
 
 
 # ── targeted edge cases ────────────────────────────────────────────────────
@@ -324,3 +319,77 @@ def test_strict_mode_raises_on_injected_bad_state():
     )
     with pytest.raises(InvariantViolation):
         gate(bad_results, context="test_strict", strict=True)
+
+
+# ── generator gap: edge cases the random generator cannot produce ─────────────
+
+def test_zero_value_item_order_balances():
+    """An order whose only item has price $0.00 satisfies every identity.
+
+    The property generator uses uniform(1.0, 49.99) so zero-priced items
+    are unreachable; this test exercises that zero-sales code path explicitly.
+    """
+    oid = "zero_price"
+    events = [
+        order_created(terminal_id=TERMINAL, order_id=oid, order_type="dine_in"),
+        item_added(
+            terminal_id=TERMINAL, order_id=oid, item_id="it_free",
+            menu_item_id="m0", name="Complimentary", price=0.00, quantity=1,
+        ),
+        order_voided(terminal_id=TERMINAL, order_id=oid, reason="test"),
+    ]
+    orders = project_orders(events)
+    agg = _aggregate_orders(list(orders.values()), {})
+    assert float(agg["gross_sales"]) == pytest.approx(0.0)
+    assert float(agg["net_sales"]) == pytest.approx(0.0)
+    pnl = check_pnl_identity(
+        gross=float(agg["gross_sales"]),
+        voids=float(agg["void_total"]),
+        discounts=float(agg["discount_total"]),
+        refunds=float(agg["refund_total"]),
+        net=float(agg["net_sales"]),
+    )
+    assert pnl.ok, pnl.message
+
+
+def test_discount_exceeding_subtotal_does_not_corrupt_pnl():
+    """A discount larger than the order's item subtotal.
+
+    The property generator caps discount at min(5.0, item_gross - 1), so
+    discount >= item_gross is unreachable. This test exercises that boundary
+    and verifies the aggregator's P&L identity still holds.
+    """
+    oid = "over_disc"
+    events = [
+        order_created(terminal_id=TERMINAL, order_id=oid, order_type="dine_in"),
+        item_added(
+            terminal_id=TERMINAL, order_id=oid, item_id="it_od",
+            menu_item_id="m0", name="Widget", price=5.00, quantity=1,
+        ),
+        _discount_event(oid, 8.00),   # $8 discount on a $5 item
+        order_voided(terminal_id=TERMINAL, order_id=oid, reason="test"),
+    ]
+    orders = project_orders(events)
+    agg = _aggregate_orders(list(orders.values()), {})
+    pnl = check_pnl_identity(
+        gross=float(agg["gross_sales"]),
+        voids=float(agg["void_total"]),
+        discounts=float(agg["discount_total"]),
+        refunds=float(agg["refund_total"]),
+        net=float(agg["net_sales"]),
+    )
+    assert pnl.ok, (
+        f"P&L identity must hold even when discount exceeds item subtotal: {pnl.message}"
+    )
+
+
+def test_sub_penny_tip_fails_2dp_gate():
+    """A tip amount with 3 decimal places is caught by the 2dp precision gate.
+
+    The property generator uses round(..., 2) so sub-penny tips are unreachable.
+    This test verifies the gate fires if such a value ever reaches aggregation.
+    """
+    from app.core.financial_invariants import check_all_2dp
+    r = check_all_2dp({"total_tips": 1.234, "card_tips": 1.234, "cash_tips": 0.00})
+    assert not r.ok, "Sub-penny tip amount must fail the 2dp gate"
+    assert "total_tips" in r.message or "card_tips" in r.message

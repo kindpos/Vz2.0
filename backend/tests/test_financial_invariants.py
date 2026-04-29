@@ -123,6 +123,10 @@ class TestTipsPartition:
     def test_zero_zero_zero(self):
         r = check_tips_partition(total_tips=0.0, card_tips=0.0, cash_tips=0.0)
         assert r.ok
+        assert r.diff == pytest.approx(0.0)
+        # Confirm the check is live: a mismatch beyond the 0.01 tolerance must fail.
+        r_bad = check_tips_partition(total_tips=0.02, card_tips=0.0, cash_tips=0.0)
+        assert not r_bad.ok
 
 
 # ── Cash expected ───────────────────────────────────────────────────────────
@@ -295,6 +299,8 @@ def _fail(name="pnl_identity", diff="-15.00"):
 class TestGate:
     def test_empty_input_returns_empty_list(self):
         assert gate([]) == []
+        # Confirm the gate is live: a non-empty failure list must not be empty.
+        assert gate([_fail()], strict=False) != []
 
     def test_all_passing_returns_results_unchanged(self):
         r = gate([_ok("pnl_identity"), _ok("batch_settlement")])
@@ -341,6 +347,8 @@ class TestGate:
 class TestMaxAbsDiff:
     def test_empty_returns_zero(self):
         assert max_abs_diff([]) == Decimal("0.00")
+        # Confirm the function is live: a non-empty input must produce non-zero.
+        assert max_abs_diff([_fail("pnl_identity", "-5.00")]) > Decimal("0.00")
 
     def test_all_passing_zero_diff_returns_zero(self):
         assert max_abs_diff([_ok(), _ok()]) == Decimal("0")

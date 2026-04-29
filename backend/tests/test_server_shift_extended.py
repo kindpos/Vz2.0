@@ -26,6 +26,7 @@ from app.core.events import (
     EventType,
     order_created,
     item_added,
+    order_voided,
     payment_initiated,
     payment_confirmed,
     order_closed,
@@ -139,6 +140,12 @@ async def test_sales_by_category_empty(ledger):
     """No orders → empty list returned."""
     result = await sales_by_category(server_id=SERVER_A, ledger=ledger)
     assert result == []
+    # Confirm the endpoint is live: adding an order must produce a non-empty list.
+    order = await _make_order(ledger, "ord_cat_probe", server_id=SERVER_A,
+                              items=[("Probe", Decimal("5.00"), "food")])
+    await _pay_cash(ledger, "ord_cat_probe", order)
+    await _close(ledger, "ord_cat_probe")
+    assert await sales_by_category(server_id=SERVER_A, ledger=ledger) != []
 
 
 @pytest.mark.asyncio
@@ -224,6 +231,12 @@ async def test_table_stats_empty(ledger):
     assert result["tableCount"] == 0
     assert result["checkAvg"] == Decimal("0.00")
     assert result["byPartySize"] == []
+    # Confirm the endpoint is live: a closed order must raise guestCount above 0.
+    order = await _make_order(ledger, "ord_tbl_probe", server_id=SERVER_A,
+                              guest_count=2, items=[("X", Decimal("10.00"), "food")])
+    await _pay_cash(ledger, "ord_tbl_probe", order)
+    await _close(ledger, "ord_tbl_probe")
+    assert (await table_stats(server_id=SERVER_A, ledger=ledger))["guestCount"] == 2
 
 
 @pytest.mark.asyncio
@@ -260,24 +273,32 @@ async def test_table_stats_party_size_bucketing(ledger):
 
 @pytest.mark.asyncio
 async def test_table_stats_excludes_voided_orders(ledger):
-    """Voided orders do not contribute to any stats."""
-    # Create an order but don't pay it — close_day would void it, but here
-    # we just check that a non-closed/non-paid order is excluded.
-    # (is_empty=False, status="open" → excluded by status filter)
-    await _make_order(ledger, "ord_tbl_void", server_id=SERVER_A,
-                      guest_count=2,
-                      items=[("Item", Decimal("10.00"), "food")])
-    # Don't pay or close — status stays "open"
+    """Voided orders do not contribute to table stats.
+
+    Also adds a live closed order so the assertion distinguishes an
+    implementation that correctly excludes voids from one that returns
+    all-zeros for any input.
+    """
+    # Live order: 3 guests, $20 item — should appear in stats
+    live = await _make_order(ledger, "ord_tbl_live", server_id=SERVER_A,
+                             guest_count=3,
+                             items=[("Burger", Decimal("20.00"), "food")])
+    await _pay_cash(ledger, "ord_tbl_live", live)
+    await _close(ledger, "ord_tbl_live")
+
+    # Voided order: 10 guests, $500 item — must NOT appear in stats
+    voided = await _make_order(ledger, "ord_tbl_void", server_id=SERVER_A,
+                               guest_count=10,
+                               items=[("BigItem", Decimal("500.00"), "food")])
+    evt = order_voided(
+        terminal_id=TERMINAL, order_id="ord_tbl_void", reason="test void"
+    )
+    await ledger.append(evt.model_copy(update={"correlation_id": "ord_tbl_void"}))
+
     result = await table_stats(server_id=SERVER_A, ledger=ledger)
-    # open orders are excluded (only closed/paid count toward turn-time stats)
-    # table_stats excludes voided and empty; open orders without close time
-    # still contribute to tableCount if not voided
-    # The key check: guestCount should not include open orders IF the
-    # implementation excludes them — per source, `not order.is_empty` passes,
-    # so open tables ARE counted (they're still active tables).
-    # This test confirms the endpoint returns without error and byPartySize
-    # contains the party size for the open table.
-    assert result["guestCount"] >= 0  # no exception; structural sanity
+    assert result["guestCount"] == 3      # voided 10-guest order excluded
+    assert result["tableCount"] == 1      # only the live order counts
+    assert result["checkAvg"] == Decimal("20.00")
 
 
 # ─── checkout_status ────────────────────────────────────────────────────────
@@ -288,6 +309,10 @@ async def test_checkout_status_no_orders(ledger):
     result = await checkout_status(server_id=SERVER_A, ledger=ledger)
     assert result["openChecks"] == 0
     assert result["unadjustedTips"] == 0
+    # Confirm the endpoint is live: an open order must increment openChecks.
+    await _make_order(ledger, "ord_chk_probe", server_id=SERVER_A,
+                      items=[("Y", Decimal("8.00"), "drinks")])
+    assert (await checkout_status(server_id=SERVER_A, ledger=ledger))["openChecks"] == 1
 
 
 @pytest.mark.asyncio
