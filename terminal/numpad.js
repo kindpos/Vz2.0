@@ -52,6 +52,18 @@ function _buildKey(opts) {
 
   wrap.appendChild(label);
 
+  // Keyboard accessibility — tab-reachable and Enter/Space activates
+  wrap.setAttribute('tabindex', '0');
+  wrap.setAttribute('role', 'button');
+  if (o.ariaLabel) wrap.setAttribute('aria-label', o.ariaLabel);
+  wrap.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      wrap.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      wrap.dispatchEvent(new Event('pointerup',   { bubbles: true }));
+    }
+  });
+
   // Press state — pill sink
   wrap.addEventListener('pointerdown', function() {
     wrap.style.transform  = 'translateY(4px)';
