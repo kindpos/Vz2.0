@@ -291,4 +291,55 @@ describe('overseer/src/sections/employees — PIN-reset modal', () => {
     );
     expect(buildPinResetPayloadMock).not.toHaveBeenCalled();
   });
+
+  it('edit flow (non-reset) does not pass pin to buildEmployeeUpdatePayload', async () => {
+    const { registerEmployeeSections } = await import('./employees.js');
+    const forms = await import('../ui/forms.js');
+    const eventsModule = await import('./employee-events.js');
+    const buildEmployeeUpdatePayload = eventsModule.buildEmployeeUpdatePayload;
+    buildEmployeeUpdatePayload.mockClear();
+
+    // Override buildChipTray so rolesTray.el and rolesTray.getIds() exist.
+    // Override row so field objects ({ wrap, input }) are unwrapped before appendChild.
+    const origBuildChipTray = forms.buildChipTray;
+    const origRow = forms.row;
+    forms.buildChipTray = () => ({ el: document.createElement('div'), getIds: () => ['manager'] });
+    forms.row = (...children) => {
+      const el = document.createElement('div');
+      children.forEach((c) => { if (c) el.appendChild(c && c.wrap ? c.wrap : c); });
+      return el;
+    };
+
+    const container = document.createElement('div');
+    registerEmployeeSections(sectionManager);
+
+    const registeredScene = sectionManager.register.mock.calls
+      .find(([name]) => name === 'employee-management');
+    registeredScene[1].onEnter(container);
+
+    // Click the "Edit" button for the test employee.
+    const editBtn = findButtonByLabel(container, 'Edit');
+    expect(editBtn).toBeDefined();
+    forms.openModal.mockClear();
+    editBtn.click();
+
+    expect(forms.openModal).toHaveBeenCalledTimes(1);
+    const modal = forms.openModal.mock.calls[0][0];
+
+    // The footer is [cancelBtn, saveBtn].
+    const saveBtn = modal.footer.find((b) => b.textContent.trim() === 'Save Changes');
+    expect(saveBtn).toBeDefined();
+    saveBtn.click();
+
+    await new Promise((r) => setTimeout(r, 0)); // flush async (flushEvents)
+
+    // buildEmployeeUpdatePayload must have been called, and its argument must
+    // NOT contain a `pin` key — that would overwrite the backend's hashed PIN.
+    expect(buildEmployeeUpdatePayload).toHaveBeenCalledTimes(1);
+    const callArg = buildEmployeeUpdatePayload.mock.calls[0][0];
+    expect(callArg).not.toHaveProperty('pin');
+
+    forms.buildChipTray = origBuildChipTray;
+    forms.row = origRow;
+  });
 });
