@@ -149,6 +149,7 @@ function _build() {
   _itemScroll.id = 'ticket-list';
   _itemScroll.style.cssText = [
     'flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;',
+    'touch-action:pan-y;',
     'padding:4px 10px;',
     'scrollbar-width:none;-ms-overflow-style:none;',
     'display:flex;flex-direction:column;gap:4px;',
@@ -259,6 +260,7 @@ function _summaryRow(label, value, color, bold) {
 function _renderItems(items) {
   if (!_itemScroll) return;
   if (_itemRenderLocked) return;
+  var savedScroll = _itemScroll.scrollTop;
   _itemScroll.innerHTML = '';
   var isCollapsible = _collapsible;
   (items || []).forEach(function(item, itemIndex) {
@@ -389,6 +391,7 @@ function _renderItems(items) {
 
     // ── Modifier detail container — always hidden in order-summary, use overlay ──
   });
+  _itemScroll.scrollTop = savedScroll;
 }
 
 function _renderSummary(params) {
