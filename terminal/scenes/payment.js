@@ -708,6 +708,19 @@ defineScene({
       },
     },
   },
+
+  // Test seam — only referenced in *.test.js files.
+  __handlers: {
+    get pendingTxId()         { return _pendingTxId; },
+    get confirmProcessing()   { return confirmProcessing; },
+    get payments()            { return payments; },
+    set sceneData(v)          { sceneData = v; },
+    set enteredAmount(v)      { enteredAmount = v; },
+    set paymentMode(v)        { paymentMode = v; },
+    set totalPaid(v)          { totalPaid = v; },
+    set baseTotal(v)          { baseTotal = v; },
+    handleConfirm:            function() { return handleConfirm(); },
+  },
 });
 
 

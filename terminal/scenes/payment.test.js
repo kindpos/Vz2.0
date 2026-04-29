@@ -264,3 +264,152 @@ describe('terminal/scenes/payment — pc-change-due result screen', () => {
     expect(overviewBtn.textContent.trim().toUpperCase()).toBe('OVERVIEW');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  handleConfirm — _pendingTxId idempotency
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('terminal/scenes/payment — handleConfirm _pendingTxId', () => {
+  let sceneDef;
+  let fetchWithTimeout;
+  let showToast;
+
+  function setupHandlers(opts = {}) {
+    sceneDef.__handlers.sceneData    = { orderId: 'ord-pay-001' };
+    sceneDef.__handlers.enteredAmount = opts.amount  ?? 20;
+    sceneDef.__handlers.baseTotal     = opts.total   ?? 20;
+    sceneDef.__handlers.totalPaid     = opts.paid    ?? 0;
+    sceneDef.__handlers.paymentMode   = opts.mode    ?? 'cash';
+  }
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+
+    const netMod   = await import('../net.js');
+    const compMod  = await import('../components.js');
+    fetchWithTimeout = netMod.fetchWithTimeout;
+    showToast        = compMod.showToast;
+
+    await import('./payment.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'payment');
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  // ── Cash path ────────────────────────────────────────────────────────────
+
+  it('cash: _pendingTxId is generated on the first CONFIRM tap', async () => {
+    setupHandlers({ mode: 'cash' });
+    fetchWithTimeout.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+
+    expect(sceneDef.__handlers.pendingTxId).toBeNull();
+    await sceneDef.__handlers.handleConfirm();
+    // After success, pendingTxId is cleared — we verify it WAS set by checking
+    // the body that was POSTed.
+    const cashCall = fetchWithTimeout.mock.calls.find((c) => c[0].includes('/payments/cash'));
+    expect(cashCall).toBeDefined();
+    const body = JSON.parse(cashCall[1].body);
+    expect(body.transaction_id).toBeTruthy();
+    expect(typeof body.transaction_id).toBe('string');
+  });
+
+  it('cash: _pendingTxId is the same on retry after a network failure', async () => {
+    setupHandlers({ mode: 'cash' });
+
+    // First attempt — server error → confirmProcessing resets to false
+    fetchWithTimeout.mockResolvedValueOnce({ ok: false, status: 500,
+      json: () => Promise.resolve({ detail: 'Server error' }) });
+    await sceneDef.__handlers.handleConfirm();
+
+    const txAfterFirstAttempt = JSON.parse(
+      fetchWithTimeout.mock.calls.find((c) => c[0].includes('/payments/cash'))[1].body
+    ).transaction_id;
+    expect(txAfterFirstAttempt).toBeTruthy();
+
+    // Second attempt — success
+    fetchWithTimeout.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+    await sceneDef.__handlers.handleConfirm();
+
+    const calls = fetchWithTimeout.mock.calls.filter((c) => c[0].includes('/payments/cash'));
+    const txFirstRetry = JSON.parse(calls[1][1].body).transaction_id;
+
+    expect(txFirstRetry).toBe(txAfterFirstAttempt);
+  });
+
+  it('cash: _pendingTxId is cleared after a successful payment', async () => {
+    setupHandlers({ mode: 'cash' });
+    fetchWithTimeout.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+
+    await sceneDef.__handlers.handleConfirm();
+
+    // After success the pending ID is nulled so the next payment gets a fresh one
+    expect(sceneDef.__handlers.pendingTxId).toBeNull();
+  });
+
+  it('cash: _pendingTxId survives a failed attempt (not cleared on failure)', async () => {
+    setupHandlers({ mode: 'cash' });
+    fetchWithTimeout.mockResolvedValueOnce({ ok: false, status: 500,
+      json: () => Promise.resolve({ detail: 'err' }) });
+
+    await sceneDef.__handlers.handleConfirm();
+    // pendingTxId must NOT be cleared — it was set on this attempt and must
+    // be reused on the retry.
+    expect(sceneDef.__handlers.pendingTxId).toBeTruthy();
+  });
+
+  // ── Card path ────────────────────────────────────────────────────────────
+
+  it('card: _pendingTxId is sent in the POST body', async () => {
+    setupHandlers({ mode: 'card' });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({}),
+    });
+
+    await sceneDef.__handlers.handleConfirm();
+
+    const saleCall = fetchSpy.mock.calls.find((c) => String(c[0]).includes('/payments/sale'));
+    expect(saleCall).toBeDefined();
+    const body = JSON.parse(saleCall[1].body);
+    expect(body.transaction_id).toBeTruthy();
+    fetchSpy.mockRestore();
+  });
+
+  it('card: same _pendingTxId reused after a DECLINED response', async () => {
+    setupHandlers({ mode: 'card' });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: false, status: 402,
+        json: () => Promise.resolve({ detail: 'Declined' }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+
+    await sceneDef.__handlers.handleConfirm();
+    const tx1 = JSON.parse(
+      fetchSpy.mock.calls.find((c) => String(c[0]).includes('/payments/sale'))[1].body
+    ).transaction_id;
+
+    await sceneDef.__handlers.handleConfirm();
+    const calls = fetchSpy.mock.calls.filter((c) => String(c[0]).includes('/payments/sale'));
+    const tx2 = JSON.parse(calls[1][1].body).transaction_id;
+
+    expect(tx2).toBe(tx1);
+    fetchSpy.mockRestore();
+  });
+
+  // ── Concurrent-tap guard ─────────────────────────────────────────────────
+
+  it('confirmProcessing prevents a second concurrent CONFIRM', async () => {
+    setupHandlers({ mode: 'cash' });
+    // First call never resolves — simulates a slow server
+    fetchWithTimeout.mockReturnValueOnce(new Promise(() => {}));
+
+    sceneDef.__handlers.handleConfirm(); // fire-and-forget (in flight)
+    await Promise.resolve(); // let the microtask queue flush to set confirmProcessing
+
+    // Second tap should be a no-op
+    await sceneDef.__handlers.handleConfirm();
+
+    const cashCalls = fetchWithTimeout.mock.calls.filter((c) => c[0].includes('/payments/cash'));
+    expect(cashCalls).toHaveLength(1); // only one POST made
+  });
+});
