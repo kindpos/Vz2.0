@@ -46,6 +46,9 @@ export function showToast(message, opts) {
     'overflow:hidden;text-overflow:ellipsis;',
   ].join('');
   el.textContent = message;
+  el.setAttribute('role', 'alert');
+  el.setAttribute('aria-live', 'assertive');
+  el.setAttribute('aria-atomic', 'true');
 
   if (o.append) {
     el.style.pointerEvents = 'auto';

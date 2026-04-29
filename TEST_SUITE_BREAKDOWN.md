@@ -181,6 +181,8 @@
 - [`order-entry.test.js`](#order-entrytestjs)
 - [`test_tax_calculation.py`](#test_tax_calculationpy)
 - [`test_payment_security.py`](#test_payment_securitypy)
+- [`a11y-scenes.test.js`](#a11y-scenestestjs)
+- [`test_i18n_locale.py`](#test_i18n_localepy)
 
 ---
 
@@ -16959,3 +16961,396 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 | **Tests** | Refund with a non-empty approved_by is accepted and records the approver |
 | **Method** | Seeds closed paid order; calls process_refund with approved_by="manager_01" |
 | **Pass** | res["success"] == True and res["approved_by"] == "manager_01" |
+
+---
+
+## `a11y-scenes.test.js`
+
+Accessibility (a11y) tests for KINDpos terminal components. Covers toast ARIA
+attributes, toast contrast heuristic, numpad keyboard reachability, and semantic
+HTML for pill buttons. **21 tests — all pass.**
+
+### Toast ARIA / accessibility
+
+### `toast element carries role="alert"`
+| | |
+|---|---|
+| **Tests** | showToast() attaches role="alert" to the toast element |
+| **Method** | Calls showToast("Order sent"); queries DOM for [role="alert"] |
+| **Pass** | Element is not null |
+
+### `toast element has aria-live="assertive"`
+| | |
+|---|---|
+| **Tests** | Toast announces urgently to screen readers |
+| **Method** | Calls showToast("Payment declined"); queries [aria-live="assertive"] |
+| **Pass** | Element is not null |
+
+### `toast element has aria-atomic="true"`
+| | |
+|---|---|
+| **Tests** | Screen reader reads the whole toast message atomically |
+| **Method** | Calls showToast("Table 5 seated"); queries [aria-atomic="true"] |
+| **Pass** | Element is not null |
+
+### `toast text content is the message passed in`
+| | |
+|---|---|
+| **Tests** | Toast textContent exactly matches the message argument |
+| **Method** | Calls showToast("Item removed"); reads el.textContent from [role="alert"] |
+| **Pass** | textContent === "Item removed" |
+
+### `two toasts each have role="alert"`
+| | |
+|---|---|
+| **Tests** | Multiple toasts are each individually accessible |
+| **Method** | Calls showToast twice; querySelectorAll('[role="alert"]') |
+| **Pass** | alerts.length === 2 |
+
+### Toast contrast heuristic
+
+### `dark background (#000000) gets light text`
+| | |
+|---|---|
+| **Tests** | Luminance heuristic picks T.text (light) for black backgrounds |
+| **Method** | showToast("Error", { bg: "#000000" }); reads el.style.color |
+| **Pass** | el.style.color === rgb(232, 234, 237) (T.text serialized by jsdom) |
+
+### `light background (#ffffff) gets dark text`
+| | |
+|---|---|
+| **Tests** | Luminance heuristic picks T.well (dark) for white backgrounds |
+| **Method** | showToast("Success", { bg: "#ffffff" }); reads el.style.color |
+| **Pass** | el.style.color === rgb(34, 37, 42) (T.well) |
+
+### `mid-grey (#808080) gets light text (lum ≈ 0.502 < 0.55)`
+| | |
+|---|---|
+| **Tests** | Mid-grey luminance falls below threshold → light text |
+| **Method** | showToast("Info", { bg: "#808080" }); reads el.style.color |
+| **Pass** | el.style.color === T.text (light) |
+
+### `light green (#86efac) gets dark text (lum ≈ 0.74 > 0.55)`
+| | |
+|---|---|
+| **Tests** | Light green luminance is above threshold → dark text |
+| **Method** | showToast("Added", { bg: "#86efac" }); reads el.style.color |
+| **Pass** | el.style.color === T.well (dark) |
+
+### `light and dark backgrounds produce different text colors`
+| | |
+|---|---|
+| **Tests** | Contrast heuristic produces distinct results for opposite backgrounds |
+| **Method** | Two toasts (#ffffff, #000000); compares the two style.color values |
+| **Pass** | light.style.color !== dark.style.color |
+
+### Numpad keyboard accessibility
+
+### `digit keys have tabindex="0" making them keyboard-focusable`
+| | |
+|---|---|
+| **Tests** | All numpad keys are reachable via Tab key |
+| **Method** | buildNumpad({}); querySelectorAll('[role="button"]'); checks tabindex attr |
+| **Pass** | Every key has tabindex === "0" |
+
+### `all interactive keys carry role="button"`
+| | |
+|---|---|
+| **Tests** | ARIA role communicates key semantics to screen readers |
+| **Method** | buildNumpad({}); counts [role="button"] elements |
+| **Pass** | Count ≥ 12 (digits 0–9, clear, submit) |
+
+### `Enter key on a digit key appends the digit`
+| | |
+|---|---|
+| **Tests** | Keyboard Enter activates digit key same as pointer tap |
+| **Method** | buildNumpad({ masked: false }); dispatches KeyboardEvent("keydown", { key: "Enter" }) on key "5" |
+| **Pass** | pad.getPin() === "5" |
+
+### `Space key on a digit key appends the digit`
+| | |
+|---|---|
+| **Tests** | Keyboard Space activates digit key same as pointer tap |
+| **Method** | buildNumpad({ masked: false }); dispatches KeyboardEvent("keydown", { key: " " }) on key "3" |
+| **Pass** | pad.getPin() === "3" |
+
+### `Enter key on submit (>>>) fires onSubmit callback`
+| | |
+|---|---|
+| **Tests** | Keyboard Enter on the submit key triggers the onSubmit callback |
+| **Method** | Taps key "4" then dispatches Enter on the ">>>" key |
+| **Pass** | onSubmit mock called with "4" |
+
+### `keyboard activation is capped at maxDigits`
+| | |
+|---|---|
+| **Tests** | maxDigits limit applies equally to keyboard and pointer input |
+| **Method** | maxDigits=2; taps 1, 2; Enter on 3; checks getPin() |
+| **Pass** | getPin() === "12" (third digit rejected) |
+
+### `multiple digits entered via keyboard build pin in order`
+| | |
+|---|---|
+| **Tests** | Sequential keyboard entries accumulate in correct order |
+| **Method** | Enter on "7", "8", "9" in sequence |
+| **Pass** | getPin() === "789" |
+
+### buildPillButton — semantic HTML
+
+### `returns a native <button> element (keyboard-accessible by default)`
+| | |
+|---|---|
+| **Tests** | buildPillButton() returns a focusable native button, not a div |
+| **Method** | buildPillButton({ label: "Pay" }); checks tagName |
+| **Pass** | btn.tagName === "BUTTON" |
+
+### `<button> element is focusable without explicit tabindex`
+| | |
+|---|---|
+| **Tests** | Native button receives focus without needing tabindex=0 |
+| **Method** | Appends button to body; calls btn.focus(); checks document.activeElement |
+| **Pass** | document.activeElement === btn |
+
+### `<button> element carries its label as textContent`
+| | |
+|---|---|
+| **Tests** | Button text is correct for screen readers and visual display |
+| **Method** | buildPillButton({ label: "Void Order" }); reads textContent |
+| **Pass** | btn.textContent === "Void Order" |
+
+### `onClick is called when button is activated`
+| | |
+|---|---|
+| **Tests** | onClick handler fires on pointerup |
+| **Method** | buildPillButton({ label: "Submit", onClick }); dispatches pointerup |
+| **Pass** | onClick called once |
+
+---
+
+## `test_i18n_locale.py`
+
+Localization / i18n consistency tests for KINDpos backend. Covers UTC timestamp
+invariants, money_round() locale-independence, reporting hour labels, weekday name
+mapping, date range parsing, and operating hours fallback. **30 tests — all pass.**
+
+### TestUtcTimestampInvariant
+
+### `test_order_created_timestamp_is_utc_aware`
+| | |
+|---|---|
+| **Tests** | ORDER_CREATED events carry timezone-aware UTC timestamps, never naive |
+| **Method** | Appends order_created; retrieves via get_events_by_correlation; checks ts.tzinfo |
+| **Pass** | ts.tzinfo is not None; utcoffset().total_seconds() == 0 |
+
+### `test_all_event_types_produce_utc_timestamps`
+| | |
+|---|---|
+| **Tests** | item_added and payment_initiated also produce UTC-aware timestamps |
+| **Method** | Appends 3 events (order, item, payment); checks all timestamps |
+| **Pass** | Every event has tzinfo != None and utcoffset == 0 |
+
+### `test_timestamps_are_monotonically_non_decreasing`
+| | |
+|---|---|
+| **Tests** | Sequentially appended events have non-decreasing timestamps |
+| **Method** | Appends 5 ORDER_CREATED events; fetches by correlation; sorts by sequence_number |
+| **Pass** | a.timestamp <= b.timestamp for all consecutive pairs |
+
+### TestMoneyRoundLocaleIndependence
+
+### `test_always_returns_decimal`
+| | |
+|---|---|
+| **Tests** | money_round() returns Decimal for float, int, and Decimal inputs |
+| **Method** | Calls money_round(10.0), money_round(10), money_round(Decimal("10")) |
+| **Pass** | isinstance(result, Decimal) for all three |
+
+### `test_always_exactly_two_decimal_places`
+| | |
+|---|---|
+| **Tests** | Result always has scale of exactly 2 decimal places |
+| **Method** | money_round for 0, 1, 1.5, 100.999, Decimal("7.777"); checks as_tuple()[2] |
+| **Pass** | exponent == -2 for every value |
+
+### `test_float_ieee754_trap_avoided`
+| | |
+|---|---|
+| **Tests** | money_round avoids IEEE 754 binary errors on 0.1 + 0.2 |
+| **Method** | money_round(0.1 + 0.2) |
+| **Pass** | result == Decimal("0.30") |
+
+### `test_accumulating_dollars_stays_exact`
+| | |
+|---|---|
+| **Tests** | Summing 10 × $0.10 yields exactly $1.00 |
+| **Method** | sum(money_round("0.10") for _ in range(10)) |
+| **Pass** | total == Decimal("1.00") |
+
+### `test_none_input_returns_zero`
+| | |
+|---|---|
+| **Tests** | None input returns $0.00, not an error |
+| **Method** | money_round(None) |
+| **Pass** | result == Decimal("0.00") |
+
+### `test_large_amount_preserves_precision`
+| | |
+|---|---|
+| **Tests** | $99,999.999 rounds correctly without precision loss |
+| **Method** | money_round("99999.999") |
+| **Pass** | result == Decimal("100000.00") |
+
+### `test_tax_multiplication_rounds_half_up`
+| | |
+|---|---|
+| **Tests** | $14.99 × 7% = $1.0493 rounds up to $1.05 (ROUND_HALF_UP) |
+| **Method** | money_round(Decimal("14.99") * Decimal("0.07")) |
+| **Pass** | result == Decimal("1.05") |
+
+### `test_half_cent_rounds_up`
+| | |
+|---|---|
+| **Tests** | $0.005 rounds to $0.01 (not $0.00) under ROUND_HALF_UP |
+| **Method** | money_round("0.005") |
+| **Pass** | result == Decimal("0.01") |
+
+### `test_string_decimal_with_comma_not_supported`
+| | |
+|---|---|
+| **Tests** | European-style "1,50" is rejected — raises, not silently wrong |
+| **Method** | money_round("1,50") inside pytest.raises(Exception) |
+| **Pass** | Exception raised |
+
+### TestHourLabel
+
+### `test_midnight_is_12_00`
+| | |
+|---|---|
+| **Tests** | Hour 0 formats as "12:00" |
+| **Method** | _hour_label(0) |
+| **Pass** | result == "12:00" |
+
+### `test_1am_is_1_00`
+| | |
+|---|---|
+| **Tests** | Hour 1 formats as "1:00" |
+| **Method** | _hour_label(1) |
+| **Pass** | result == "1:00" |
+
+### `test_noon_is_12_00`
+| | |
+|---|---|
+| **Tests** | Hour 12 formats as "12:00" (not "0:00") |
+| **Method** | _hour_label(12) |
+| **Pass** | result == "12:00" |
+
+### `test_1pm_is_1_00`
+| | |
+|---|---|
+| **Tests** | Hour 13 formats as "1:00" (12-hour clock) |
+| **Method** | _hour_label(13) |
+| **Pass** | result == "1:00" |
+
+### `test_11pm_is_11_00`
+| | |
+|---|---|
+| **Tests** | Hour 23 formats as "11:00" |
+| **Method** | _hour_label(23) |
+| **Pass** | result == "11:00" |
+
+### `test_all_morning_hours_single_digit_label`
+| | |
+|---|---|
+| **Tests** | Hours 1–9 AM produce single-digit labels ending in ":00" |
+| **Method** | _hour_label(h) for h in range(1, 10); checks format |
+| **Pass** | ":" in label and label.endswith(":00") for all |
+
+### `test_all_24_hours_produce_colon_format`
+| | |
+|---|---|
+| **Tests** | Every hour 0–23 produces a non-empty string containing ":" |
+| **Method** | _hour_label(h) for h in range(24) |
+| **Pass** | ":" in label and len(label) >= 4 for all |
+
+### TestDayNamesMapping
+
+### `test_monday_is_index_0`
+| | |
+|---|---|
+| **Tests** | _DAY_NAMES[0] maps Monday (Python weekday() == 0) |
+| **Method** | assert _DAY_NAMES[0] == "monday" |
+| **Pass** | Exact string match |
+
+### `test_sunday_is_index_6`
+| | |
+|---|---|
+| **Tests** | _DAY_NAMES[6] maps Sunday (Python weekday() == 6) |
+| **Method** | assert _DAY_NAMES[6] == "sunday" |
+| **Pass** | Exact string match |
+
+### `test_all_seven_days_present`
+| | |
+|---|---|
+| **Tests** | All 7 day names appear in the mapping, no duplicates or gaps |
+| **Method** | set(_DAY_NAMES) vs expected set of 7 day names |
+| **Pass** | Sets are equal |
+
+### `test_covers_all_python_weekday_values`
+| | |
+|---|---|
+| **Tests** | Every value of datetime.weekday() (0–6) maps to a valid day name |
+| **Method** | _DAY_NAMES[dow] for dow in range(7); checks against valid set |
+| **Pass** | All 7 values are valid day name strings |
+
+### `test_known_date_maps_to_correct_day`
+| | |
+|---|---|
+| **Tests** | 2026-04-29 is a Wednesday (weekday()==2 → "wednesday") |
+| **Method** | datetime(2026, 4, 29).weekday() → _DAY_NAMES lookup |
+| **Pass** | result == "wednesday" |
+
+### `test_saturday_maps_correctly`
+| | |
+|---|---|
+| **Tests** | 2026-05-02 is a Saturday (weekday()==5 → "saturday") |
+| **Method** | datetime(2026, 5, 2).weekday() → _DAY_NAMES lookup |
+| **Pass** | result == "saturday" |
+
+### TestDateRangeParsing
+
+### `test_historical_date_returns_events_in_range`
+| | |
+|---|---|
+| **Tests** | _get_events_for_date returns events with timestamps on the given date |
+| **Method** | Directly inserts Event with timestamp=2024-01-15T14:30:00Z; calls _get_events_for_date |
+| **Pass** | 1 event found with correlation_id "hist_01" |
+
+### `test_date_boundary_excludes_next_day`
+| | |
+|---|---|
+| **Tests** | Events timestamped at 00:00:00 the next day are excluded |
+| **Method** | Inserts events at 23:59:59 (in range) and 00:00:00 next day (out); checks result |
+| **Pass** | "range_in" in corr_ids; "range_out" not in corr_ids |
+
+### `test_iso_date_format_is_yyyy_mm_dd`
+| | |
+|---|---|
+| **Tests** | European and US slash date formats are rejected; ISO 8601 parses correctly |
+| **Method** | datetime.strptime with wrong formats → raises ValueError; correct format → parses |
+| **Pass** | Two ValueError raises for wrong formats; correct parse for YYYY-MM-DD |
+
+### TestOperatingHoursLookup
+
+### `test_missing_config_returns_fallback_hours`
+| | |
+|---|---|
+| **Tests** | When no store config exists, operating hours fall back to 11:00–22:00 |
+| **Method** | Empty ledger; calls _get_operating_hours(ledger, monday_datetime) |
+| **Pass** | open_h == 11 and close_h == 22 |
+
+### `test_fallback_applies_for_every_day_of_week`
+| | |
+|---|---|
+| **Tests** | 11–22 fallback applies for all 7 days when no config is present |
+| **Method** | Calls _get_operating_hours for 7 consecutive days starting Monday |
+| **Pass** | open_h == 11 and close_h == 22 for each |
