@@ -30,6 +30,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../../common/tokens.js';
+import { SceneManager } from '../scene-manager.js';
 
 // ── Local hex → rgba helper ─────────────────────────
 // Keeps every color derivation flowing from tokens.js instead of

@@ -54,6 +54,12 @@ var PREFIXES = [
  * @param {Array|null}  builderData  — dynamic HexNav data from API, or null for fallback
  * @returns {Promise<{name, unitPrice, mods[], category}>}  the built pizza
  */
+// Rounds a topping price to the nearest cent for half-placement.
+// Exported so tests can verify the formula without needing HexNav.
+export function _halfPriceAmount(price) {
+  return Math.round(price * 50) / 100;
+}
+
 export function showPizzaBuilderOverlay(sizeItem, builderData) {
   var data = (builderData && builderData.length > 0) ? builderData : PIZZA_BUILDER_DATA;
   return new Promise(function(resolve, reject) {
