@@ -482,7 +482,12 @@ defineScene({
   },
 
   render: function(container, params, state) {
-    state.emp = params.staff || params.emp || params || {};
+    var _rawEmp = params.staff || params.emp || params || {};
+    // Auth data uses employee_id; session-restore / check-overview return uses id.
+    // Normalise once so all downstream .id references work regardless of login path.
+    state.emp = (_rawEmp && _rawEmp.employee_id && !_rawEmp.id)
+      ? Object.assign({}, _rawEmp, { id: _rawEmp.employee_id })
+      : _rawEmp;
     state.el  = container;
 
     // Suppress any tap that lands in the first 200ms of this scene —

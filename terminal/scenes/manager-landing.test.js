@@ -260,6 +260,53 @@ describe('terminal/scenes/manager-landing', () => {
     );
   });
 
+  // ── Auth-data emp normalisation (SEC-005 / void-auth regression) ───────
+
+  it('normalises auth-data emp: employee_id is copied to id so void check passes', () => {
+    // Auth API returns { employee_id, name, roles } — no id field.
+    // This is the shape produced by the timeclock clock-in path on first login.
+    const container = document.createElement('div');
+    const state = Object.assign(JSON.parse(JSON.stringify(sceneDef.state)), { _refs: {} });
+    sceneDef.render(container, { staff: { employee_id: 'auth-e99', name: 'Auth Mgr', roles: ['manager'] } }, state);
+    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+
+    expect(state.emp.id).toBe('auth-e99');
+    expect(state.emp.employee_id).toBe('auth-e99');
+  });
+
+  it('void is available after navigating to check-overview and returning (remount with id-shaped emp)', () => {
+    // Reproduce the initial-login → navigate → back → void-blocked bug.
+    // Step 1: first mount with auth-data-shape (employee_id only, no id).
+    const c1 = document.createElement('div');
+    const s1 = Object.assign(JSON.parse(JSON.stringify(sceneDef.state)), { _refs: {} });
+    sceneDef.render(c1, { staff: { employee_id: 'auth-e99', name: 'Auth Mgr', roles: ['manager'] } }, s1);
+    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+
+    // After fix, s1.emp.id should be 'auth-e99' so check-overview gets the right employeeId.
+    // Step 2: simulate check-overview returning — it calls mountWorking('manager-landing',
+    // { emp: { id: s1.emp.id, name: s1.emp.name } }).  With the fix id is correct; without
+    // it would be null.
+    const c2 = document.createElement('div');
+    const s2 = Object.assign(JSON.parse(JSON.stringify(sceneDef.state)), { _refs: {} });
+    sceneDef.render(c2, { emp: { id: s1.emp.id, name: 'Auth Mgr' } }, s2);
+    global.fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+
+    s2.allOrders   = TEST_ORDERS;
+    s2.selectedIds = ['order-a'];
+
+    pillHandlers['Void']();
+
+    // Should NOT show "Manager approval required" — void is available.
+    expect(showToast).not.toHaveBeenCalledWith(
+      expect.stringContaining('Manager approval'),
+      expect.any(Object),
+    );
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('tap again'),
+      expect.any(Object),
+    );
+  });
+
   // ── Merge ───────────────────────────────────────────────────────────
 
   it('Merge with fewer than 2 checks selected shows error toast', () => {
