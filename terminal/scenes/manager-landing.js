@@ -308,7 +308,7 @@ function _buildPreview(orders, allOrders) {
 
   var total = orders.reduce(function(s, o) { return s + (o.total || 0); }, 0);
   var hdr = document.createElement('div');
-  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;padding-bottom:6px;border-bottom:1px solid ' + hexToRgba(T.border, 0.4) + ';margin-bottom:4px;';
+  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;padding-bottom:8px;border-bottom:2px solid ' + T.green + ';margin-bottom:8px;';
   var hLabel = document.createElement('div');
   hLabel.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.green + ';letter-spacing:0.08em;';
   hLabel.textContent   = orders.length > 1 ? orders.length + ' CHECKS' : checkNum(orders[0]);
@@ -322,27 +322,35 @@ function _buildPreview(orders, allOrders) {
   orders.forEach(function(order) {
     if (orders.length > 1) {
       var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.06em;margin-top:4px;';
+      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.06em;margin-top:4px;margin-bottom:4px;';
       sub.textContent   = checkNum(order) + (order.server_name ? ' · ' + order.server_name.split(' ')[0] : '');
       wrap.appendChild(sub);
     } else if (order.server_name) {
       var srvLbl = document.createElement('div');
-      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';margin-bottom:4px;';
+      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';margin-bottom:6px;letter-spacing:0.06em;';
       srvLbl.textContent   = order.server_name.toUpperCase();
       wrap.appendChild(srvLbl);
     }
 
     (order.items || []).slice(0, 3).forEach(function(item) {
+      var card = document.createElement('div');
+      card.style.cssText = 'background:' + T.card + ';border:1px solid ' + T.border + ';border-top:2px solid ' + T.green + ';border-radius:6px;margin-bottom:5px;overflow:hidden;';
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid ' + hexToRgba(T.border, 0.2) + ';';
-      var nm  = document.createElement('span'); nm.style.cssText  = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';'; nm.textContent  = item.name || 'Item';
-      var pr  = document.createElement('span'); pr.style.cssText  = 'font-family:' + T.fb + ';font-size:11px;color:' + T.gold + ';';  pr.textContent  = fmt(item.price || 0);
-      row.appendChild(nm); row.appendChild(pr);
-      wrap.appendChild(row);
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;';
+      var nm = document.createElement('span');
+      nm.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
+      nm.textContent   = item.name || 'Item';
+      var pr = document.createElement('span');
+      pr.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.gold + ';flex-shrink:0;margin-left:12px;';
+      pr.textContent   = fmt(item.price || 0);
+      row.appendChild(nm);
+      row.appendChild(pr);
+      card.appendChild(row);
+      wrap.appendChild(card);
     });
     if ((order.items || []).length > 3) {
       var more = document.createElement('div');
-      more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.5;padding-top:2px;';
+      more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.5;padding:2px 2px 0;';
       more.textContent   = '+ ' + (order.items.length - 3) + ' more';
       wrap.appendChild(more);
     }

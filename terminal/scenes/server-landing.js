@@ -157,6 +157,59 @@ function buildNewCheckTile(onClick) {
 }
 
 
+// ── Check preview content ─────────────────────────
+function _buildCheckPreview(orders) {
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+
+  var total = orders.reduce(function(s, o) { return s + (o.total || 0); }, 0);
+  var hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;padding-bottom:8px;border-bottom:2px solid ' + T.green + ';margin-bottom:8px;';
+  var hLabel = document.createElement('div');
+  hLabel.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.green + ';letter-spacing:0.08em;';
+  hLabel.textContent   = orders.length > 1 ? orders.length + ' CHECKS' : checkNum(orders[0]);
+  var hTotal = document.createElement('div');
+  hTotal.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.gold + ';';
+  hTotal.textContent   = fmt(total);
+  hdr.appendChild(hLabel);
+  hdr.appendChild(hTotal);
+  wrap.appendChild(hdr);
+
+  orders.forEach(function(order) {
+    if (orders.length > 1) {
+      var sub = document.createElement('div');
+      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.06em;margin-top:4px;margin-bottom:4px;';
+      sub.textContent   = checkNum(order);
+      wrap.appendChild(sub);
+    }
+
+    (order.items || []).slice(0, 4).forEach(function(item) {
+      var card = document.createElement('div');
+      card.style.cssText = 'background:' + T.card + ';border:1px solid ' + T.border + ';border-top:2px solid ' + T.green + ';border-radius:6px;margin-bottom:5px;overflow:hidden;';
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;';
+      var nm = document.createElement('span');
+      nm.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
+      nm.textContent   = item.name || 'Item';
+      var pr = document.createElement('span');
+      pr.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.gold + ';flex-shrink:0;margin-left:12px;';
+      pr.textContent   = fmt(item.price || 0);
+      row.appendChild(nm);
+      row.appendChild(pr);
+      card.appendChild(row);
+      wrap.appendChild(card);
+    });
+    if ((order.items || []).length > 4) {
+      var more = document.createElement('div');
+      more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.5;padding:2px 2px 0;';
+      more.textContent   = '+ ' + (order.items.length - 4) + ' more';
+      wrap.appendChild(more);
+    }
+  });
+
+  return wrap;
+}
+
 // ── Tip row ───────────────────────────────────────
 function buildTipRow(chk, onTap, isActive) {
   var adjusted = chk.adjusted;
@@ -321,6 +374,28 @@ defineScene({
     checkoutBtn.style.padding   = '10px 28px';
     tipResult.appendChild(checkoutBtn);
 
+    // Check preview — absolutely covers tipResult when a tile is selected
+    var previewSlide = document.createElement('div');
+    previewSlide.style.cssText = [
+      'z-index:2;position:absolute;inset:0;',
+      'background:' + T.card + ';',
+      'border-left:4px solid ' + T.groups.landing.infoAccent + ';',
+      'border-radius:10px;',
+      'box-shadow:0 4px 16px rgba(0,0,0,0.28);',
+      'padding:12px 14px;',
+      'display:none;flex-direction:column;',
+      'overflow:hidden;',
+    ].join('');
+    tipResult.appendChild(previewSlide);
+
+    var prevLabel = buildSectionLabel('Check Preview');
+    prevLabel.style.marginBottom = '10px';
+    previewSlide.appendChild(prevLabel);
+
+    var prevContent = document.createElement('div');
+    prevContent.style.cssText = 'flex:1;overflow-y:auto;min-height:0;';
+    previewSlide.appendChild(prevContent);
+
     // ─────────────────────────────────────────────
     //  CHECK GRID (cols 2-3, row 1)
     // ─────────────────────────────────────────────
@@ -396,6 +471,7 @@ defineScene({
       tileGrid,
       tipList, tipsTotal, tipResult, checkoutBtn, filterBtn,
       tipSparkBg, scGuests, scAvg, scTables, scTurn, srvSalesOverview,
+      previewSlide, prevContent,
     };
 
     // ─────────────────────────────────────────────
@@ -416,12 +492,14 @@ defineScene({
             state.selectedIds.push(id);
             state.selectedAt[id] = Date.now();
             renderTiles();
+            renderPreview();
           } else {
             var tappedAt = state.selectedAt[id] || 0;
             if (Date.now() - tappedAt > DOUBLE_TAP_MS) {
               state.selectedIds.splice(idx, 1);
               delete state.selectedAt[id];
               renderTiles();
+              renderPreview();
             } else {
               state._inputIgnoreUntil = Date.now() + 200;
               delete state.selectedAt[id];
@@ -455,6 +533,19 @@ defineScene({
       }
     }
 
+    function renderPreview() {
+      var r = state._refs;
+      r.prevContent.innerHTML = '';
+      if (state.selectedIds.length === 0) {
+        r.previewSlide.style.display = 'none';
+        return;
+      }
+      var selected = state.allOrders.filter(function(o) {
+        return state.selectedIds.indexOf(o.order_id) !== -1;
+      });
+      if (selected.length > 0) r.prevContent.appendChild(_buildCheckPreview(selected));
+      r.previewSlide.style.display = 'flex';
+    }
 
     function renderTipQueue() {
       var r      = state._refs;
@@ -707,6 +798,7 @@ defineScene({
           if (!alive[id]) delete state.selectedAt[id];
         });
         try { renderTiles();    } catch(e) { console.warn('[sl] renderTiles threw:', e); }
+        try { renderPreview();  } catch(e) { console.warn('[sl] renderPreview threw:', e); }
         try { renderTipQueue(); } catch(e) { console.warn('[sl] renderTipQueue threw:', e); }
         try { renderStats(); } catch(e) { console.warn('[sl] renderStats threw:', e); }
       }).catch(function() { state._refreshing = false; });
