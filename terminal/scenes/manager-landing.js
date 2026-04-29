@@ -385,7 +385,7 @@ function _buildPreview(orders, allOrders) {
 
       seatMap[sn].forEach(function(item) {
         var card = document.createElement('div');
-        card.style.cssText = 'background:' + T.card + ';border:1px solid ' + T.border + ';border-top:2px solid ' + T.green + ';border-radius:6px;margin-bottom:5px;overflow:hidden;';
+        card.style.cssText = 'background:' + T.card + ';border:1px solid ' + T.moon + ';border-top:2px solid ' + T.moon + ';border-radius:6px;margin-bottom:5px;margin-left:14px;overflow:hidden;';
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;';
         var nm = document.createElement('span');
