@@ -1485,38 +1485,18 @@ function rebuildBottomBar() {
 
   var hasUnsent = ticket.some(function(i) { return !i.sent; });
 
-  var saveLabel = isSending ? 'SAVING…' : 'SAVE';
-  var sendLabel = isSending ? 'SENDING…' : 'SEND';
-  var buttonsActive = hasUnsent && !isSending;
+  var doneLabel = isSending ? 'SENDING…' : 'DONE';
 
-  var finalizeBtn = buildPillButton({
-    label: saveLabel,
-    variant: 'goGreen',
-    disabled: !buttonsActive,
+  var doneBtn = buildPillButton({
+    label:    doneLabel,
+    variant:  'mint',
+    disabled: isSending,
     fontSize: '22px',
   });
-  finalizeBtn.style.gridColumn = '4';
-  finalizeBtn.style.height = '60px';
-  finalizeBtn.style.margin = '4px';
-  finalizeBtn.addEventListener('pointerup', function() {
-    if (isSending) return;
-    if (!hasUnsent) { handleClose(); return; }
-    (async function() {
-      try { await handleSaveOnly(); } catch (e) { return; }
-      handleClose();
-    })();
-  });
-
-  var sendBtn = buildPillButton({
-    label: sendLabel,
-    variant: 'mint',
-    disabled: !buttonsActive,
-    fontSize: '22px',
-  });
-  sendBtn.style.gridColumn = '5';
-  sendBtn.style.height = '60px';
-  sendBtn.style.margin = '4px';
-  sendBtn.addEventListener('pointerup', function() {
+  doneBtn.style.gridColumn = '4 / span 2';
+  doneBtn.style.height = '60px';
+  doneBtn.style.margin = '4px';
+  doneBtn.addEventListener('pointerup', function() {
     if (isSending) return;
     if (!hasUnsent) { handleClose(); return; }
     (async function() {
@@ -1525,8 +1505,7 @@ function rebuildBottomBar() {
     })();
   });
 
-  _bottomBar.appendChild(finalizeBtn);
-  _bottomBar.appendChild(sendBtn);
+  _bottomBar.appendChild(doneBtn);
 }
 
 function clearModifierSelection() {

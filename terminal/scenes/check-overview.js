@@ -1104,19 +1104,7 @@ function renderActionBar(state) {
     cashTotal = Math.round(total * (1 - discount) * 100) / 100;
   }
 
-  // VOID/DELETE label: flips when every selected item is pre-kitchen
   var voidLabel = 'VOID';
-  if (anyItemSel) {
-    var allUnsent = true;
-    for (var vki = 0; vki < itemKeys.length; vki++) {
-      var vp    = itemKeys[vki].split(':');
-      var vSeat = state.seats[parseInt(vp[0], 10)];
-      var vItem = vSeat && vSeat.items[parseInt(vp[1], 10)];
-      if (!vItem) continue;
-      if (vItem.sent_at) { allUnsent = false; break; }
-    }
-    if (allUnsent) voidLabel = 'DELETE';
-  }
 
   var bar = buildStaticCard({ accent: T.green });
   Object.assign(bar.style, {
