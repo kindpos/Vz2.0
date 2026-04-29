@@ -15236,3 +15236,872 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 | **Tests** | Null defaults to '0.0pp' |
 | **Method** | Call fmtPP(null) |
 | **Pass** | Returns '0.0pp' |
+
+
+---
+
+# New Tests (Added After Initial Breakdown)
+
+##  (new file)
+
+## `test_seats_coverage.py`
+> Tests for seat-related coverage gaps including PUT /{order_id}/seats (update_seats route), SeatBalance.balance_due calculated property, and SEATS_UPDATED projection event handling
+
+### `test_seat_numbers_written_to_projection`
+| | |
+|---|---|
+| **Tests** | Seat list is persisted and readable via projection when update_seats is called |
+| **Method** | Seeds order_created event; calls update_seats route with seat_numbers=[1, 2]; asserts response contains seat_numbers |
+| **Pass** | Response.seat_numbers == [1, 2] |
+
+### `test_deduplicates_and_sorts_seat_numbers`
+| | |
+|---|---|
+| **Tests** | Duplicate or out-of-order input is normalized: [3,1,2,1] → [1,2,3] |
+| **Method** | Seeds order_created event; calls update_seats with unsorted/duplicate seat_numbers [3, 1, 2, 1]; asserts normalized result |
+| **Pass** | Response.seat_numbers == [1, 2, 3] (sorted, deduplicated) |
+
+### `test_unions_with_existing_item_seats`
+| | |
+|---|---|
+| **Tests** | Items on a seat survive a SEATS_UPDATED call; the seat is retained in the union of provided seats and item seats |
+| **Method** | Seeds order_created and item_added on seat 4; calls update_seats with seat_numbers=[1, 2]; asserts result includes all three seats |
+| **Pass** | Response.seat_numbers == [1, 2, 4] (union includes item's seat) |
+
+### `test_guest_count_matches_seat_count`
+| | |
+|---|---|
+| **Tests** | guest_count is updated to match the new seat count after update_seats |
+| **Method** | Seeds order_created with guest_count=1; calls update_seats with 3 seat_numbers; asserts guest_count updated |
+| **Pass** | Response.guest_count == 3 |
+
+### `test_404_on_unknown_order`
+| | |
+|---|---|
+| **Tests** | HTTPException 404 is raised when update_seats is called on a non-existent order |
+| **Method** | Calls update_seats with non-existent order ID; expects HTTPException |
+| **Pass** | HTTPException raised with status_code == 404 |
+
+### `test_emits_seats_updated_event`
+| | |
+|---|---|
+| **Tests** | A SEATS_UPDATED event is appended to the correlation timeline when update_seats completes |
+| **Method** | Seeds order_created; calls update_seats; retrieves events by correlation ID; filters for SEATS_UPDATED event |
+| **Pass** | Exactly one SEATS_UPDATED event exists with payload seat_numbers == [1, 2] |
+
+### `test_balance_due_items_only`
+| | |
+|---|---|
+| **Tests** | SeatBalance.balance_due correctly sums a single item's price |
+| **Method** | Constructs SeatBalance with one item priced at 12.00; asserts balance_due property |
+| **Pass** | balance_due == Decimal("12.00") |
+
+### `test_balance_due_multiple_items`
+| | |
+|---|---|
+| **Tests** | SeatBalance.balance_due correctly sums multiple items |
+| **Method** | Constructs SeatBalance with items priced 10.00 and 5.50; asserts balance_due |
+| **Pass** | balance_due == Decimal("15.50") |
+
+### `test_balance_due_quantity_multiplied`
+| | |
+|---|---|
+| **Tests** | SeatBalance.balance_due multiplies item price by quantity |
+| **Method** | Constructs SeatBalance with item price 4.00 and quantity 3; asserts balance_due |
+| **Pass** | balance_due == Decimal("12.00") (4.00 * 3) |
+
+### `test_balance_due_reduced_by_discount`
+| | |
+|---|---|
+| **Tests** | SeatBalance.balance_due subtracts discounts from item subtotal |
+| **Method** | Constructs SeatBalance with item 20.00 and discount 5.00; asserts balance_due |
+| **Pass** | balance_due == Decimal("15.00") (20.00 - 5.00) |
+
+### `test_balance_due_reduced_by_confirmed_payment`
+| | |
+|---|---|
+| **Tests** | SeatBalance.balance_due subtracts only confirmed payments |
+| **Method** | Constructs SeatBalance with item 20.00 and confirmed payment 8.00; asserts balance_due |
+| **Pass** | balance_due == Decimal("12.00") (20.00 - 8.00) |
+
+### `test_balance_due_ignores_pending_payment`
+| | |
+|---|---|
+| **Tests** | Only confirmed payments reduce balance; pending payments are ignored |
+| **Method** | Constructs SeatBalance with item 10.00 and pending payment 10.00; asserts balance_due unchanged |
+| **Pass** | balance_due == Decimal("10.00") (payment not deducted) |
+
+### `test_balance_due_ignores_failed_payment`
+| | |
+|---|---|
+| **Tests** | Only confirmed payments reduce balance; failed payments are ignored |
+| **Method** | Constructs SeatBalance with item 10.00 and failed payment 10.00; asserts balance_due unchanged |
+| **Pass** | balance_due == Decimal("10.00") (payment not deducted) |
+
+### `test_balance_due_never_negative_on_overpayment`
+| | |
+|---|---|
+| **Tests** | Overpayment clamps balance_due to zero, never goes negative |
+| **Method** | Constructs SeatBalance with item 10.00 and confirmed payment 15.00; asserts clamped |
+| **Pass** | balance_due == Decimal("0.00") (not negative) |
+
+### `test_balance_due_discount_plus_payment`
+| | |
+|---|---|
+| **Tests** | Discount and payment reductions stack correctly |
+| **Method** | Constructs SeatBalance with item 30.00, discount 5.00, confirmed payment 10.00; asserts balance_due |
+| **Pass** | balance_due == Decimal("15.00") (30 - 5 - 10) |
+
+### `test_balance_due_zero_on_empty_seat`
+| | |
+|---|---|
+| **Tests** | Empty SeatBalance returns zero balance_due |
+| **Method** | Constructs SeatBalance with no items; asserts balance_due |
+| **Pass** | balance_due == Decimal("0.00") |
+
+### `test_replaces_seat_list`
+| | |
+|---|---|
+| **Tests** | SEATS_UPDATED event overwrites the order's seat_numbers in projection |
+| **Method** | Seeds order_created with seat_numbers=[1,2,3]; seeds SEATS_UPDATED to [4,5]; projects order from correlation events |
+| **Pass** | Projected order.seat_numbers == [4, 5] |
+
+### `test_unions_item_seats_not_in_new_list`
+| | |
+|---|---|
+| **Tests** | Items on a seat are preserved in projection even if SEATS_UPDATED omits that seat |
+| **Method** | Seeds order_created, item_added on seat 3, SEATS_UPDATED to [1,2]; projects order; asserts seat 3 retained |
+| **Pass** | Projected order.seat_numbers includes 1, 2, and 3 (union of explicit seats and item seats) |
+
+### `test_updates_guest_count_to_seat_count`
+| | |
+|---|---|
+| **Tests** | guest_count is updated to reflect new seat count after SEATS_UPDATED projection |
+| **Method** | Seeds order_created with guest_count=1, SEATS_UPDATED to [1,2,3,4]; projects order |
+| **Pass** | Projected order.guest_count == 4 |
+
+### `test_multiple_updates_last_wins`
+| | |
+|---|---|
+| **Tests** | Multiple SEATS_UPDATED events result in last event's seats winning in projection |
+| **Method** | Seeds order_created, two SEATS_UPDATED events ([1,2,3] then [1,2]); projects order |
+| **Pass** | Projected order.seat_numbers == [1, 2] and guest_count == 2 (second update is final) |
+
+### `test_seat_balance_created_for_each_seat`
+| | |
+|---|---|
+| **Tests** | Items added after SEATS_UPDATED are correctly assigned to their seat buckets in SeatBalance |
+| **Method** | Seeds order_created, SEATS_UPDATED to [1,2], item_added on seat 1 (12.00) and seat 2 (4.00); projects order |
+| **Pass** | order.seat_balances[1].item_subtotal == Decimal("12.00") and order.seat_balances[2].item_subtotal == Decimal("4.00") |
+
+
+
+---
+
+# Frontend Component Test Documentation
+
+## `item-recap.test.js`
+> Tests for the item recap panel component that displays ordered items grouped by seat, with price calculations, item cards, modifications, and totals rendering.
+
+### `buildItemRecap — structure > returns a DOM element`
+| | |
+|---|---|
+| **Tests** | Verifies that buildItemRecap() returns an Element instance |
+| **Method** | Direct instantiation with empty object, instanceOf assertion |
+| **Pass** | Function returns an Element (DOM node) |
+
+### `buildItemRecap — structure > renders one seat group per seat`
+| | |
+|---|---|
+| **Tests** | Each seat in the order gets its own `.ir-seat-group` container |
+| **Method** | Creates order with 2 seats, queries for `.ir-seat-group` elements |
+| **Pass** | Exactly 2 seat groups rendered |
+
+### `buildItemRecap — structure > renders item name in each card`
+| | |
+|---|---|
+| **Tests** | Item names appear in the rendered DOM |
+| **Method** | Creates item with name 'Tacos', checks textContent |
+| **Pass** | 'Tacos' is found in element text |
+
+### `buildItemRecap — structure > renders price as qty × price`
+| | |
+|---|---|
+| **Tests** | Formatted price string appears for an item with price 8 and qty 1 |
+| **Method** | Creates item with price $8.00, qty 1; checks textContent |
+| **Pass** | '$8.00' appears in text |
+
+### `buildItemRecap — structure > multiplies price by qty in the displayed amount`
+| | |
+|---|---|
+| **Tests** | Total item price is qty × unit price (5 × 3 = 15) |
+| **Method** | Creates item with price $5, qty 3; checks formatted total |
+| **Pass** | '$15.00' appears in text |
+
+### `buildItemRecap — structure > shows qty label when qty > 1`
+| | |
+|---|---|
+| **Tests** | When qty is 3, a `.ir-qty` element displays '3×' |
+| **Method** | Creates item with qty 3, queries for .ir-qty |
+| **Pass** | .ir-qty element exists with textContent '3×' |
+
+### `buildItemRecap — structure > omits qty label when qty is 1`
+| | |
+|---|---|
+| **Tests** | No `.ir-qty` element when qty equals 1 |
+| **Method** | Creates item with qty 1, queries for .ir-qty |
+| **Pass** | .ir-qty element is null (not found) |
+
+### `buildItemRecap — structure > shows seat number in seat header`
+| | |
+|---|---|
+| **Tests** | Seat header displays 'S3' for seat number 3 |
+| **Method** | Creates seat with seatNumber 3, queries .ir-seat-num |
+| **Pass** | .ir-seat-num textContent is 'S3' |
+
+### `buildItemRecap — structure > renders ORDER RECAP panel header by default`
+| | |
+|---|---|
+| **Tests** | Default panel title is 'ORDER RECAP' |
+| **Method** | Creates recap with no options, queries .ir-panel-title |
+| **Pass** | .ir-panel-title textContent is 'ORDER RECAP' |
+
+### `buildItemRecap — structure > hideHeader suppresses the panel header`
+| | |
+|---|---|
+| **Tests** | Setting hideHeader option removes the panel title |
+| **Method** | Calls with { hideHeader: true }, queries for .ir-panel-title |
+| **Pass** | .ir-panel-title element is null |
+
+### `buildItemRecap — item card interactions > unsent items render a × remove button`
+| | |
+|---|---|
+| **Tests** | Unsent items (sent: false) show a .ir-xbtn remove button |
+| **Method** | Creates item with sent: false, queries for .ir-xbtn |
+| **Pass** | .ir-xbtn element exists (not null) |
+
+### `buildItemRecap — item card interactions > sent items do not render a × remove button`
+| | |
+|---|---|
+| **Tests** | Sent items (sent: true) have no remove button |
+| **Method** | Creates item with sent: true, queries for .ir-xbtn |
+| **Pass** | .ir-xbtn element is null |
+
+### `buildItemRecap — item card interactions > sent items show a ✓ prefix in the name`
+| | |
+|---|---|
+| **Tests** | Sent items display a checkmark (✓) before the name |
+| **Method** | Creates sent item, queries .ir-iname textContent |
+| **Pass** | .ir-iname text contains '✓' |
+
+### `buildItemRecap — item card interactions > × button click calls onRemoveItem(seatIdx, itemIdx)`
+| | |
+|---|---|
+| **Tests** | Clicking remove button invokes callback with correct indices (seatIdx=0, itemIdx=0) |
+| **Method** | Mocks onRemoveItem, dispatches click event on .ir-xbtn |
+| **Pass** | onRemoveItem called with (0, 0) |
+
+### `buildItemRecap — item card interactions > × button click does not call onRemoveItem when callback is absent`
+| | |
+|---|---|
+| **Tests** | Clicking remove button when no callback doesn't throw |
+| **Method** | Omits onRemoveItem option, dispatches click on .ir-xbtn |
+| **Pass** | No exception thrown |
+
+### `buildItemRecap — item card interactions > row tap calls onItemTap(seatIdx, itemIdx)`
+| | |
+|---|---|
+| **Tests** | Clicking item row invokes onItemTap callback with correct indices |
+| **Method** | Mocks onItemTap, dispatches click event on .ir-item-row |
+| **Pass** | onItemTap called with (0, 0) |
+
+### `buildItemRecap — item card interactions > row tap toggles the .sel class`
+| | |
+|---|---|
+| **Tests** | Clicking item row toggles selection state (.sel class) |
+| **Method** | Clicks row twice, checks .sel class presence each time |
+| **Pass** | First click adds .sel, second click removes it |
+
+### `buildItemRecap — item card interactions > row tap does nothing when onItemTap is absent`
+| | |
+|---|---|
+| **Tests** | Clicking item row when no callback doesn't throw |
+| **Method** | Omits onItemTap option, dispatches click on .ir-item-row |
+| **Pass** | No exception thrown |
+
+### `buildItemRecap — item card interactions > chevron click opens item-detail transactional`
+| | |
+|---|---|
+| **Tests** | Clicking chevron button opens item-detail scene via SceneManager.openTransactional |
+| **Method** | Mocks SceneManager, dispatches click on .ir-chev, checks call |
+| **Pass** | SceneManager.openTransactional called with 'item-detail' and item data |
+
+### `buildItemRecap — item card interactions > itemSelected seeds the row with .sel if it returns true`
+| | |
+|---|---|
+| **Tests** | If itemSelected callback returns true, row gets .sel class on render |
+| **Method** | Passes itemSelected: () => true option, checks .ir-item-row class |
+| **Pass** | .ir-item-row has .sel class initially |
+
+### `buildItemRecap — seat header > non-collapsible header tap bulk-selects all item rows`
+| | |
+|---|---|
+| **Tests** | Clicking seat header with 2 items selects all rows and calls onSeatHeaderTap(0, true) |
+| **Method** | Mocks onSeatHeaderTap, dispatches click on .ir-seat-header |
+| **Pass** | onSeatHeaderTap called with (0, true); all .ir-item-row have .sel class |
+
+### `buildItemRecap — seat header > second non-collapsible header tap deselects all`
+| | |
+|---|---|
+| **Tests** | Second click on seat header deselects all previously selected rows |
+| **Method** | Clicks header twice, checks .sel class after second click |
+| **Pass** | After second click, .sel class is removed from all rows |
+
+### `buildItemRecap — seat header > collapsible header tap toggles .collapsed on the group`
+| | |
+|---|---|
+| **Tests** | With collapsible: true, clicking header toggles .collapsed on .ir-seat-group |
+| **Method** | Passes { collapsible: true }, clicks header, checks class |
+| **Pass** | .collapsed toggles from false to true on click |
+
+### `buildItemRecap — mods and halves > renders mod names`
+| | |
+|---|---|
+| **Tests** | Modification names (e.g., 'Extra Cheese') appear in output |
+| **Method** | Creates item with mod { name: 'Extra Cheese', price: 1.5 }, checks text |
+| **Pass** | 'Extra Cheese' found in textContent |
+
+### `buildItemRecap — mods and halves > renders halves grid with 1ST HALF / 2ND HALF headers`
+| | |
+|---|---|
+| **Tests** | Half pizza toppings render with section headers and topping names |
+| **Method** | Creates item with halves: { first: [...], second: [...] }, checks text |
+| **Pass** | Text contains '1ST HALF', '2ND HALF', 'Pepperoni', 'Mushroom' |
+
+### `buildItemRecap — totals block > totals block is appended when order.totals is set`
+| | |
+|---|---|
+| **Tests** | When order.totals is provided, .ir-totals element is rendered |
+| **Method** | Creates order with totals object, queries for .ir-totals |
+| **Pass** | .ir-totals element exists (not null) |
+
+### `buildItemRecap — totals block > totals block is absent when hideTotals is set`
+| | |
+|---|---|
+| **Tests** | Setting hideTotals: true removes totals block even if totals data exists |
+| **Method** | Passes { hideTotals: true } option, queries for .ir-totals |
+| **Pass** | .ir-totals element is null |
+
+### `buildItemRecapTotals > returns a .ir-totals element`
+| | |
+|---|---|
+| **Tests** | buildItemRecapTotals() returns element with className 'ir-totals' |
+| **Method** | Calls buildItemRecapTotals({}), checks className |
+| **Pass** | element.className is exactly 'ir-totals' |
+
+### `buildItemRecapTotals > renders SUBTOTAL with formatted value`
+| | |
+|---|---|
+| **Tests** | Subtotal label and formatted price appear ($18.50) |
+| **Method** | Calls with { subtotal: 18.5 }, checks textContent |
+| **Pass** | Text contains 'SUBTOTAL' and '$18.50' |
+
+### `buildItemRecapTotals > renders TAX with rate percentage when taxRate is provided`
+| | |
+|---|---|
+| **Tests** | Tax label includes rate percentage (7%) when taxRate is provided |
+| **Method** | Calls with { tax: 1.3, taxRate: 0.07 }, checks textContent |
+| **Pass** | Text contains 'TAX (7%)' and '$1.30' |
+
+### `buildItemRecapTotals > renders plain TAX label when taxRate is absent`
+| | |
+|---|---|
+| **Tests** | Tax label omits rate percentage when taxRate is not provided |
+| **Method** | Calls with { tax: 2 }, queries .ir-tl elements |
+| **Pass** | One .ir-tl element has textContent exactly 'TAX' |
+
+### `buildItemRecapTotals > renders TOTAL row`
+| | |
+|---|---|
+| **Tests** | Total amount row displays correctly |
+| **Method** | Calls with { total: 21.5 }, checks textContent |
+| **Pass** | Text contains 'TOTAL' and '$21.50' |
+
+### `buildItemRecapTotals > renders CASH row when cash is provided`
+| | |
+|---|---|
+| **Tests** | Cash amount row displays when cash value is provided |
+| **Method** | Calls with { total: 20, cash: 19.2 }, checks textContent |
+| **Pass** | Text contains 'CASH' and '$19.20' |
+
+### `buildItemRecapTotals > omits CASH row when cash is null`
+| | |
+|---|---|
+| **Tests** | No CASH label appears when cash is null |
+| **Method** | Calls with { total: 20, cash: null }, queries .ir-tl-strong |
+| **Pass** | No .ir-tl-strong element has textContent 'CASH' |
+
+### `buildItemRecapTotals > formats zero values as $0.00`
+| | |
+|---|---|
+| **Tests** | Zero amounts format consistently as $0.00 |
+| **Method** | Calls with all zeros, queries .ir-tv, counts $0.00 occurrences |
+| **Pass** | At least 3 .ir-tv elements contain '$0.00' |
+
+### `buildItemRecapTotals > style injection is idempotent (calling twice leaves one style tag)`
+| | |
+|---|---|
+| **Tests** | Multiple calls don't duplicate #item-recap-styles style tag |
+| **Method** | Calls buildItemRecapTotals() twice, counts #item-recap-styles tags |
+| **Pass** | Exactly 1 style tag with id 'item-recap-styles' in document |
+
+---
+
+## `pizza-builder-overlay.test.js`
+> Tests for the pizza builder overlay component that allows customization of pizza toppings with prefix (Add/No) and placement (1st/Whole/2nd) controls.
+
+### `pizza-builder-overlay — _halfPriceAmount (pure formula) > halves an integer price`
+| | |
+|---|---|
+| **Tests** | _halfPriceAmount(2) returns 1.00 |
+| **Method** | Direct function call with integer input |
+| **Pass** | Returns 1.00 |
+
+### `pizza-builder-overlay — _halfPriceAmount (pure formula) > rounds a half-cent up to the nearest cent`
+| | |
+|---|---|
+| **Tests** | _halfPriceAmount(1.25) rounds 0.625 cents to 0.63 |
+| **Method** | Direct function call with 1.25 |
+| **Pass** | Returns 0.63 |
+
+### `pizza-builder-overlay — _halfPriceAmount (pure formula) > returns 0 for a free topping`
+| | |
+|---|---|
+| **Tests** | _halfPriceAmount(0) returns 0 |
+| **Method** | Direct function call with 0 |
+| **Pass** | Returns 0 |
+
+### `pizza-builder-overlay — _halfPriceAmount (pure formula) > handles fractional prices correctly`
+| | |
+|---|---|
+| **Tests** | _halfPriceAmount(3.00) returns 1.50 exactly |
+| **Method** | Direct function call with 3.00 |
+| **Pass** | Returns 1.50 |
+
+### `pizza-builder-overlay — showPizzaBuilderOverlay > calls SceneManager.interrupt with "pizza-builder"`
+| | |
+|---|---|
+| **Tests** | showPizzaBuilderOverlay() registers pizza-builder interrupt with onConfirm/onCancel callbacks |
+| **Method** | Calls function, checks SceneManager.interrupt mock |
+| **Pass** | SceneManager.interrupt called with 'pizza-builder' and params object containing onConfirm, onCancel, and sizeItem |
+
+### `pizza-builder-overlay — showPizzaBuilderOverlay > returns a Promise`
+| | |
+|---|---|
+| **Tests** | showPizzaBuilderOverlay() return value is a Promise instance |
+| **Method** | Calls function, checks return type |
+| **Pass** | Result is instanceof Promise |
+
+### `pizza-builder-overlay — showPizzaBuilderOverlay > promise resolves when onConfirm is called`
+| | |
+|---|---|
+| **Tests** | Promise resolves with returned data when onConfirm callback is invoked |
+| **Method** | Calls showPizzaBuilderOverlay(), gets onConfirm from mock, calls it with data, awaits promise |
+| **Pass** | Promise resolves to object matching { category: 'pizza' } |
+
+### `pizza-builder-overlay — showPizzaBuilderOverlay > promise rejects when onCancel is called`
+| | |
+|---|---|
+| **Tests** | Promise rejects when onCancel callback is invoked |
+| **Method** | Calls showPizzaBuilderOverlay(), gets onCancel from mock, calls it, expects promise rejection |
+| **Pass** | Promise rejects with an error |
+
+### `pizza-builder-overlay — mount DOM > renders prefix buttons (Add, No)`
+| | |
+|---|---|
+| **Tests** | Prefix selection buttons for 'Add' and 'No' are rendered |
+| **Method** | Mounts overlay, searches DOM for buttons with labels 'Add' and 'No' |
+| **Pass** | Both findBtn(container, 'Add') and findBtn(container, 'No') return defined elements |
+
+### `pizza-builder-overlay — mount DOM > renders placement buttons (1st, Whole, 2nd)`
+| | |
+|---|---|
+| **Tests** | Placement selection buttons for '1st', 'Whole', and '2nd' are rendered |
+| **Method** | Mounts overlay, searches DOM for buttons with those labels |
+| **Pass** | All three buttons (1st, Whole, 2nd) are found |
+
+### `pizza-builder-overlay — mount DOM > renders CANCEL, UNDO, ADD action buttons`
+| | |
+|---|---|
+| **Tests** | Action buttons for cancel, undo, and add are rendered |
+| **Method** | Mounts overlay, searches for buttons with labels 'CANCEL', 'UNDO', 'ADD' |
+| **Pass** | All three action buttons are found |
+
+### `pizza-builder-overlay — mount DOM > CANCEL button calls onCancel`
+| | |
+|---|---|
+| **Tests** | Clicking CANCEL button invokes the onCancel callback |
+| **Method** | Mocks onCancel, mounts overlay, dispatches pointerup on CANCEL button |
+| **Pass** | onCancel mock has been called |
+
+### `pizza-builder-overlay — mount DOM > ADD button calls onConfirm with correct shape`
+| | |
+|---|---|
+| **Tests** | Clicking ADD button invokes onConfirm with pizza object (name, unitPrice, mods, category) |
+| **Method** | Mocks onConfirm with sizeItem { label: 'Medium', price: 12 }, dispatches pointerup on ADD |
+| **Pass** | onConfirm called with { name: 'Medium', unitPrice: 12, mods: [], category: 'pizza' } |
+
+### `pizza-builder-overlay — mount DOM > UNDO is a no-op when no mods have been applied`
+| | |
+|---|---|
+| **Tests** | Clicking UNDO when no mods exist doesn't throw an error |
+| **Method** | Mounts overlay with empty builderData, dispatches pointerup on UNDO |
+| **Pass** | No exception thrown |
+
+### `pizza-builder-overlay — mount DOM > log shows empty-state message when no mods applied`
+| | |
+|---|---|
+| **Tests** | Initial state displays 'Tap a topping' message |
+| **Method** | Mounts overlay, checks textContent |
+| **Pass** | Container text contains 'Tap a topping' |
+
+### `pizza-builder-overlay — mount DOM > prefix tap changes the active prefix visual state (no throw)`
+| | |
+|---|---|
+| **Tests** | Clicking prefix button (e.g., 'No') updates visual state without error |
+| **Method** | Mounts overlay, dispatches pointerup on 'No' prefix button |
+| **Pass** | No exception thrown |
+
+### `pizza-builder-overlay — mount DOM > placement tap changes the active placement visual state (no throw)`
+| | |
+|---|---|
+| **Tests** | Clicking placement button (e.g., '1st') updates visual state without error |
+| **Method** | Mounts overlay, dispatches pointerup on '1st' placement button |
+| **Pass** | No exception thrown |
+
+
+---
+
+## `order-entry.test.js`
+> Tests for idempotency-critical paths in order-entry.js: recalled items preserve backendItemId, save/send operations skip already-persisted items, and order creation uses stable idempotency keys for retry safety.
+
+### `idempotency guards > recallFromBackend > sets backendItemId from item.item_id on every recalled item`
+| | |
+|---|---|
+| **Tests** | Each item in a recalled order has its `backendItemId` set from the response's `item_id` field |
+| **Method** | Mocks fetchWithTimeout returning orderData with two items (bi-aaa, bi-bbb); calls recallFromBackend('ord-r1'); waits 20ms; inspects ticket array |
+| **Pass** | ticket[0].backendItemId === 'bi-aaa' and ticket[1].backendItemId === 'bi-bbb' |
+
+### `idempotency guards > recallFromBackend > marks items as sent when sent_at is set`
+| | |
+|---|---|
+| **Tests** | Recalled items with a non-null sent_at timestamp are marked with sent=true |
+| **Method** | Mocks fetchWithTimeout returning orderData with item having sent_at='2025-01-01T12:00:00'; calls recallFromBackend; waits 20ms |
+| **Pass** | ticket[0].sent === true |
+
+### `idempotency guards > recallFromBackend > sets currentOrderId from the response`
+| | |
+|---|---|
+| **Tests** | currentOrderId is populated from the fetched order_id |
+| **Method** | Mocks fetchWithTimeout returning order_id='ord-r3'; calls recallFromBackend('ord-r3'); waits 20ms |
+| **Pass** | sceneDef.__handlers.currentOrderId === 'ord-r3' |
+
+### `idempotency guards > recallFromBackend > does not populate ticket if scene is no longer active`
+| | |
+|---|---|
+| **Tests** | When order-entry is no longer the active working scene, recallFromBackend does not write items to ticket |
+| **Method** | Sets SceneManagerMock.getActiveWorking to return 'check-overview'; mocks fetch with one item; calls recallFromBackend; waits 20ms |
+| **Pass** | ticket.length === 0 (guard prevented write) |
+
+### `idempotency guards > handleSaveOnly > skips items that already have a backendItemId (the doubling-bug guard)`
+| | |
+|---|---|
+| **Tests** | handleSaveOnly only POSTs items without a backendItemId, skipping already-persisted items to prevent duplicates |
+| **Method** | Sets ticket to one item with backendItemId='bi-existing-001' and one local item (no backendItemId); calls handleSaveOnly(); filters fetch calls for '/items' |
+| **Pass** | Only 1 POST to /items with body.name === 'Fries' (the local item) |
+
+### `idempotency guards > handleSaveOnly > returns early without any fetch when all items have backendItemId`
+| | |
+|---|---|
+| **Tests** | If all items already have backendItemId, handleSaveOnly makes no network requests |
+| **Method** | Sets ticket to two items both with backendItemId; calls handleSaveOnly(); checks fetchWithTimeout calls |
+| **Pass** | itemCalls.length === 0 (no fetch) |
+
+### `idempotency guards > handleSaveOnly > does nothing when ticket is empty`
+| | |
+|---|---|
+| **Tests** | handleSaveOnly is a no-op when ticket is empty |
+| **Method** | Sets ticket to []; calls handleSaveOnly(); checks fetchWithTimeout |
+| **Pass** | fetchWithTimeout was never called |
+
+### `idempotency guards > handleSaveOnly > does nothing when all items are already sent`
+| | |
+|---|---|
+| **Tests** | If all ticket items have sent=true, handleSaveOnly does not fetch |
+| **Method** | Sets ticket to [localItem({ sent: true })]; calls handleSaveOnly() |
+| **Pass** | fetchWithTimeout was never called |
+
+### `idempotency guards > handleSend > skips items with backendItemId and only POSTs new items`
+| | |
+|---|---|
+| **Tests** | handleSend only creates items via POST for items without backendItemId, then fires /send |
+| **Method** | Sets ticket to backendItem + localItem; mocks successful responses; calls handleSend(); filters fetch calls for '/items' |
+| **Pass** | Only 1 POST to /items with body.name === 'Fries' |
+
+### `idempotency guards > handleSend > fires /send to kitchen even when all items have backendItemId`
+| | |
+|---|---|
+| **Tests** | /send to kitchen is called even when no new items need to be POSTed |
+| **Method** | Sets ticket to single backendItem; mocks one successful response; calls handleSend(); filters fetch calls for '/send' |
+| **Pass** | sendCalls.length === 1 |
+
+### `idempotency guards > handleSend > marks all items sent on success`
+| | |
+|---|---|
+| **Tests** | All ticket items are marked sent=true after successful handleSend |
+| **Method** | Sets ticket to localItem + backendItem; mocks three successful responses; calls handleSend() |
+| **Pass** | ticket.every((i) => i.sent) === true |
+
+### `idempotency guards > createOrderIdemKey > reuses the same key when order creation fails and is retried`
+| | |
+|---|---|
+| **Tests** | The idempotency key for order creation remains stable across retries so the backend can deduplicate phantom duplicates |
+| **Method** | First handleSend call mocks 503 failure, captures createOrderIdemKey; second call also mocks failure, captures key again; compares |
+| **Pass** | keyAfterSecondAttempt === keyAfterFirstAttempt |
+
+### `idempotency guards > createOrderIdemKey > clears createOrderIdemKey once order is successfully created`
+| | |
+|---|---|
+| **Tests** | After successful order creation, currentOrderId is set (key is no longer needed) |
+| **Method** | Sets ticket to localItem; mocks four successful responses including order creation returning order_id='ord-new'; calls handleSend() |
+| **Pass** | sceneDef.__handlers.currentOrderId === 'ord-new' |
+
+
+---
+
+### `New tests in test_payment_routes_gaps.py`
+
+#### `test_cash_payment_idempotent_on_retry`
+| | |
+|---|---|
+| **Tests** | A repeated POST with the same `transaction_id` returns the original success payload and does not create a second PAYMENT_CONFIRMED event |
+| **Method** | Creates order, processes cash payment with explicit transaction_id, retries with same request, verifies result and ledger event count |
+| **Pass** | Both calls return success with same payment_id; ledger contains exactly one PAYMENT_CONFIRMED event |
+
+#### `test_cash_payment_transaction_id_stored_in_confirm_event`
+| | |
+|---|---|
+| **Tests** | The client-supplied transaction_id is recorded in the PAYMENT_CONFIRMED payload for idempotency lookups |
+| **Method** | Creates order, processes cash payment with explicit transaction_id, retrieves PAYMENT_CONFIRMED event from ledger |
+| **Pass** | PAYMENT_CONFIRMED event payload contains the supplied transaction_id |
+
+#### `test_cash_payment_without_transaction_id_still_works`
+| | |
+|---|---|
+| **Tests** | Omitting transaction_id (legacy clients) still processes payment normally without errors |
+| **Method** | Creates order, processes cash payment with no transaction_id parameter, checks result and ledger |
+| **Pass** | success=True; exactly one PAYMENT_CONFIRMED event created |
+
+#### `test_cash_payment_different_transaction_ids_are_independent`
+| | |
+|---|---|
+| **Tests** | Two payments with different transaction_ids on the same partial-pay order both succeed independently |
+| **Method** | Creates order, processes two cash payments ($15 each) with different transaction_ids ("tx-A" and "tx-B"), counts PAYMENT_CONFIRMED events |
+| **Pass** | Both payments succeed; ledger contains exactly two distinct PAYMENT_CONFIRMED events |
+
+---
+
+### `New tests in payment.test.js`
+
+#### `cash: _pendingTxId is generated on the first CONFIRM tap`
+| | |
+|---|---|
+| **Tests** | When user taps CONFIRM in cash mode, a transaction_id is generated and sent in POST body |
+| **Method** | Mocks fetch success, calls handleConfirm(), inspects POST body of /payments/cash call |
+| **Pass** | transaction_id in POST body is truthy and a string |
+
+#### `cash: _pendingTxId is the same on retry after a network failure`
+| | |
+|---|---|
+| **Tests** | After a failed payment attempt, retrying reuses the same pending transaction_id |
+| **Method** | First attempt returns 500, captures transaction_id from body; second attempt succeeds, captures transaction_id; compares both |
+| **Pass** | Second attempt's transaction_id matches first attempt's |
+
+#### `cash: _pendingTxId is cleared after a successful payment`
+| | |
+|---|---|
+| **Tests** | After successful payment, the pending transaction_id is nulled so the next payment gets a fresh one |
+| **Method** | Calls handleConfirm with successful response, checks pendingTxId state |
+| **Pass** | pendingTxId is null after success |
+
+#### `cash: _pendingTxId survives a failed attempt (not cleared on failure)`
+| | |
+|---|---|
+| **Tests** | After a failed payment attempt, the pending transaction_id persists so retry can reuse it |
+| **Method** | Calls handleConfirm with 500 error response, checks pendingTxId remains set |
+| **Pass** | pendingTxId is truthy after failure |
+
+#### `card: _pendingTxId is sent in the POST body`
+| | |
+|---|---|
+| **Tests** | In card mode, a transaction_id is generated and included in the POST body to /payments/sale |
+| **Method** | Spies on fetch, calls handleConfirm() in card mode, finds /payments/sale call and inspects body |
+| **Pass** | transaction_id in POST body is truthy |
+
+#### `card: same _pendingTxId reused after a DECLINED response`
+| | |
+|---|---|
+| **Tests** | After a DECLINED (402) card response, retrying reuses the same pending transaction_id |
+| **Method** | First call returns 402 decline, second succeeds; compares transaction_id in both POST bodies |
+| **Pass** | Both calls contain identical transaction_id values |
+
+#### `confirmProcessing prevents a second concurrent CONFIRM`
+| | |
+|---|---|
+| **Tests** | Tapping CONFIRM while a request is in flight prevents a second concurrent request |
+| **Method** | First call mocks an unresolved promise, taps CONFIRM twice, lets microtask queue flush, counts /payments/cash calls |
+| **Pass** | Only one POST to /payments/cash despite two tap events |
+
+---
+
+### `New tests in check-overview.test.js`
+
+#### `handleAddItems > new check (no orderId): navigates immediately without any fetch`
+| | |
+|---|---|
+| **Tests** | When orderId is null and order is null, handleAddItems navigates to order-entry without any refresh fetch |
+| **Method** | Creates state with orderId:null, order:null, calls handleAddItems, checks fetch and SceneManager.mountWorking calls |
+| **Pass** | No fetchWithTimeout calls; SceneManager.mountWorking called with 'order-entry' |
+
+#### `handleAddItems > existing check already loaded (state.order set): navigates immediately`
+| | |
+|---|---|
+| **Tests** | When order data is already in state, handleAddItems navigates without fetching |
+| **Method** | Creates state with orderId and order object populated, calls handleAddItems |
+| **Pass** | SceneManager.mountWorking called with 'order-entry'; no refresh fetch fired |
+
+#### `handleAddItems > existing check not yet loaded: awaits refreshOrder before navigating`
+| | |
+|---|---|
+| **Tests** | When orderId exists but order is null, handleAddItems fetches order data before navigating |
+| **Method** | Mocks fetch returning order data, creates state with orderId but order null, calls handleAddItems |
+| **Pass** | fetchWithTimeout called to /orders/{orderId}; SceneManager.mountWorking called after fetch |
+
+#### `handleAddItems > refresh fails (order still null after await): blocks navigation, fires UI-005`
+| | |
+|---|---|
+| **Tests** | When refresh fetch fails, navigation is blocked and UI-005 error code is reported |
+| **Method** | Mocks fetch returning 500, calls handleAddItems with orderId set but order null |
+| **Pass** | SceneManager.mountWorking not called; entReport fired with code:'UI-005'; error toast shown |
+
+#### `handleAddItems > passes seat layout from state into buildOrderEntryParams`
+| | |
+|---|---|
+| **Tests** | When navigating to order-entry, the current seat layout from state is passed to buildOrderEntryParams |
+| **Method** | Creates state with seats array, calls handleAddItems, checks buildOrderEntryParams mock calls |
+| **Pass** | buildOrderEntryParams called with state as first argument |
+
+#### `seat grid rendering > Mode B renders a 300 px right-column tiles grid`
+| | |
+|---|---|
+| **Tests** | In Mode B, a right-column tiles grid with 300px width and 3-column layout is created |
+| **Method** | Calls renderSeatsGrid with mode 'B', searches rendered container for element with style.width='300px' and checks gridTemplateColumns |
+| **Pass** | Found element with width:300px and gridTemplateColumns:'repeat(3, 1fr)' |
+
+#### `seat grid rendering > Mode B renders exactly two columns (recap + tiles)`
+| | |
+|---|---|
+| **Tests** | Mode B produces exactly two top-level columns: recap column and 300px tiles column |
+| **Method** | Calls renderSeatsGrid with mode 'B', checks container.children length and widths |
+| **Pass** | container has 2 children; first is not 300px, second is 300px |
+
+#### `seat grid rendering > Mode A renders one element per seat plus the +SEAT add tile`
+| | |
+|---|---|
+| **Tests** | Mode A creates individual seat elements; total is seat count + 1 add tile, no fixed-width tiles grid |
+| **Method** | Calls renderSeatsGrid with mode 'A', verifies no 300px column, counts children |
+| **Pass** | No 300px element; container.children.length === seats.length + 1 |
+
+#### `seat grid rendering > Mode B places one compact tile per seat in the tiles grid`
+| | |
+|---|---|
+| **Tests** | In Mode B, the tiles grid contains all seat tiles plus ALL SEATS and +SEAT buttons |
+| **Method** | Calls renderSeatsGrid mode 'B', finds 300px tilesCol, counts children |
+| **Pass** | tilesCol.children.length === 5 seats + 2 utility buttons |
+
+#### `deleteSeat > blocks delete of a paid seat and fires UI-007`
+| | |
+|---|---|
+| **Tests** | Attempting to delete a paid seat is blocked with toast and UI-007 error code |
+| **Method** | Creates state with paidSeats['S-001']=true, calls deleteSeat, checks state.seats and error reporting |
+| **Pass** | state.seats length unchanged; entReport called with code:'UI-007' |
+
+#### `deleteSeat > blocks delete of a seat that still has items`
+| | |
+|---|---|
+| **Tests** | Attempting to delete a seat that contains items is blocked with toast message |
+| **Method** | Creates state where seat[0] has items array, calls deleteSeat |
+| **Pass** | state.seats length unchanged; toast contains "items" |
+
+#### `deleteSeat > blocks delete when it is the only remaining seat`
+| | |
+|---|---|
+| **Tests** | Attempting to delete the final remaining seat is blocked with toast |
+| **Method** | Creates state with single seat, calls deleteSeat |
+| **Pass** | state.seats length unchanged; toast contains "only seat" |
+
+#### `deleteSeat > removes seat from state.seats on valid delete`
+| | |
+|---|---|
+| **Tests** | Valid seat deletion (unpaid, no items, not the only seat) removes it from state.seats |
+| **Method** | Creates state with 2 seats, calls deleteSeat on first |
+| **Pass** | state.seats.length === 1; remaining seat id is 'S-002' |
+
+#### `deleteSeat > removes deleted seat from state.selected`
+| | |
+|---|---|
+| **Tests** | When a seat is deleted, it is also removed from state.selected |
+| **Method** | Creates state with selected['S-001']=true, deletes that seat |
+| **Pass** | state.selected['S-001'] is undefined |
+
+#### `deleteSeat > calls persistSeats to sync backend after valid delete`
+| | |
+|---|---|
+| **Tests** | After valid seat deletion, persistSeats PUTs the new seat layout to the backend |
+| **Method** | Creates state with orderId, calls deleteSeat, awaits promise, checks fetchWithTimeout |
+| **Pass** | fetchWithTimeout called with PUT to /orders/{orderId}/seats |
+
+#### `selection helpers > toggleItem delegates to toggleItemSelection with correct seat/item indices`
+| | |
+|---|---|
+| **Tests** | toggleItem delegates to the seats module's toggleItemSelection with correct indices |
+| **Method** | Mocks toggleItemSelection, calls sceneDef.__handlers.toggleItem(state, 0, 0) |
+| **Pass** | toggleItemSelection called with ({}, 0, 0); state.selectedItems updated with return value |
+
+#### `selection helpers > getSelectedSeatIds returns keys of state.selected`
+| | |
+|---|---|
+| **Tests** | getSelectedSeatIds returns an array containing all keys from state.selected |
+| **Method** | Creates state with selected containing two seat IDs, calls getSelectedSeatIds |
+| **Pass** | Returns array ['S-001', 'S-002'] with length 2 |
+
+#### `selection helpers > getSelectedSeatIds returns empty array when nothing selected`
+| | |
+|---|---|
+| **Tests** | When state.selected is empty, getSelectedSeatIds returns an empty array |
+| **Method** | Creates state with selected:{}, calls getSelectedSeatIds |
+| **Pass** | Returns [] |
+
+#### `selection helpers > getSelectedItemRefs delegates to collectSelectedItemRefs with state.selectedItems`
+| | |
+|---|---|
+| **Tests** | getSelectedItemRefs delegates to collectSelectedItemRefs and returns seat/item index refs |
+| **Method** | Creates state with selectedItems containing keys like '0:0' and '1:0', calls getSelectedItemRefs |
+| **Pass** | Returns [{seatIdx:0, itemIdx:0}, {seatIdx:1, itemIdx:0}] |
+
+#### `selection helpers > getSelectedItemRefs returns empty array when no items selected`
+| | |
+|---|---|
+| **Tests** | When state.selectedItems is empty, getSelectedItemRefs returns an empty array |
+| **Method** | Creates state with selectedItems:{}, calls getSelectedItemRefs |
+| **Pass** | Returns [] |
