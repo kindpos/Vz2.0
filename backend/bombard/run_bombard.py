@@ -30,6 +30,10 @@ from bombard.validators import (
     validate_edge_cases,
     compute_event_statistics,
     build_summary_table,
+    validate_staff_lifecycle,
+    validate_discount_catalog,
+    validate_cash_variance,
+    validate_settlement_integrity,
 )
 
 # ─── Paths ──────────────────────────────────────────────────
@@ -175,7 +179,39 @@ async def main():
     log(f"\n  Section 9 — Statistics: {stats['total_events']} total events")
     all_results.append(r9)
 
-    # ─── Section 10: Summary Table ──────────────────────────
+    # ─── Section 10: Staff Lifecycle ────────────────────────
+    print_section("10. Staff Lifecycle")
+    async with EventLedger(str(BOMBARD_DB)) as ledger3:
+        r10 = await validate_staff_lifecycle(ledger3, engine)
+    print_checks(r10)
+    log(f"\n  Section 10 — Staff Lifecycle: {r10['result']}")
+    all_results.append(r10)
+
+    # ─── Section 11: Discount Catalog ───────────────────────
+    print_section("11. Discount Catalog")
+    async with EventLedger(str(BOMBARD_DB)) as ledger4:
+        r11 = await validate_discount_catalog(ledger4, engine)
+    print_checks(r11)
+    log(f"\n  Section 11 — Discount Catalog: {r11['result']}")
+    all_results.append(r11)
+
+    # ─── Section 12: Cash Variance ──────────────────────────
+    print_section("12. Cash Variance")
+    async with EventLedger(str(BOMBARD_DB)) as ledger5:
+        r12 = await validate_cash_variance(ledger5, engine)
+    print_checks(r12)
+    log(f"\n  Section 12 — Cash Variance: {r12['result']}")
+    all_results.append(r12)
+
+    # ─── Section 13: Settlement Integrity ───────────────────
+    print_section("13. Settlement Integrity")
+    async with EventLedger(str(BOMBARD_DB)) as ledger6:
+        r13 = await validate_settlement_integrity(ledger6, engine)
+    print_checks(r13)
+    log(f"\n  Section 13 — Settlement Integrity: {r13['result']}")
+    all_results.append(r13)
+
+    # ─── Section 14: Summary Table ──────────────────────────
     summary = build_summary_table(all_results)
     print(summary)
     report_lines.append(summary)
