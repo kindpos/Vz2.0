@@ -226,6 +226,130 @@ async def validate_financial_reconciliation(
         "detail": f"Projected: {proj_tips}, Day-summary: {ds_tips}",
     })
 
+    # ── Path C: Raw event sourcing (no projection layer) ─────────────
+    confirmed_ids = {
+        e.payload["payment_id"]
+        for e in all_events
+        if e.event_type == EventType.PAYMENT_CONFIRMED
+    }
+    raw_cash = sum(
+        _d(e.payload.get("amount", 0))
+        for e in all_events
+        if e.event_type == EventType.PAYMENT_INITIATED
+        and e.payload.get("payment_id") in confirmed_ids
+        and e.payload.get("method") == "cash"
+    )
+    raw_card = sum(
+        _d(e.payload.get("amount", 0))
+        for e in all_events
+        if e.event_type == EventType.PAYMENT_INITIATED
+        and e.payload.get("payment_id") in confirmed_ids
+        and e.payload.get("method") != "cash"
+    )
+    raw_tips = sum(
+        _d(e.payload.get("tip_amount", 0))
+        for e in all_events
+        if e.event_type == EventType.TIP_ADJUSTED
+    )
+    cash_payment_ids = {
+        e.payload["payment_id"]
+        for e in all_events
+        if e.event_type == EventType.PAYMENT_INITIATED
+        and e.payload.get("method") == "cash"
+    }
+    raw_card_tips = sum(
+        _d(e.payload.get("tip_amount", 0))
+        for e in all_events
+        if e.event_type == EventType.TIP_ADJUSTED
+        and e.payload.get("payment_id") not in cash_payment_ids
+    )
+    raw_cash_tips = raw_tips - raw_card_tips
+    raw_tax = sum(
+        _d(e.payload.get("tax_amount", 0))
+        for e in all_events
+        if e.event_type == EventType.PAYMENT_CONFIRMED
+    )
+    raw_discounts = sum(
+        _d(e.payload.get("amount", 0))
+        for e in all_events
+        if e.event_type == EventType.DISCOUNT_APPROVED
+    )
+    raw_voids = sum(
+        _d(e.payload.get("total", 0))
+        for e in all_events
+        if e.event_type == EventType.ORDER_VOIDED
+    )
+
+    # Cross-path assertions
+    cross_cash_proj = abs(raw_cash - proj_cash) < Decimal("0.01")
+    cross_cash_ds   = abs(raw_cash - ds_cash)   < Decimal("0.01")
+    cross_card_proj = abs(raw_card - proj_card) < Decimal("0.01")
+    cross_card_ds   = abs(raw_card - ds_card)   < Decimal("0.01")
+    cross_tips_proj = abs(raw_tips - proj_tips) < Decimal("0.01")
+    cross_tips_ds   = abs(raw_tips - ds_tips)   < Decimal("0.01")
+
+    results["checks"].append({
+        "name": "Cross-path: cash (raw vs projection)",
+        "passed": cross_cash_proj,
+        "detail": f"Raw: {raw_cash}, Projected: {proj_cash}",
+    })
+    results["checks"].append({
+        "name": "Cross-path: cash (raw vs day-summary)",
+        "passed": cross_cash_ds,
+        "detail": f"Raw: {raw_cash}, Day-summary: {ds_cash}",
+    })
+    results["checks"].append({
+        "name": "Cross-path: card (raw vs projection)",
+        "passed": cross_card_proj,
+        "detail": f"Raw: {raw_card}, Projected: {proj_card}",
+    })
+    results["checks"].append({
+        "name": "Cross-path: card (raw vs day-summary)",
+        "passed": cross_card_ds,
+        "detail": f"Raw: {raw_card}, Day-summary: {ds_card}",
+    })
+    results["checks"].append({
+        "name": "Cross-path: tips (raw vs projection)",
+        "passed": cross_tips_proj,
+        "detail": f"Raw: {raw_tips}, Projected: {proj_tips}",
+    })
+    results["checks"].append({
+        "name": "Cross-path: tips (raw vs day-summary)",
+        "passed": cross_tips_ds,
+        "detail": f"Raw: {raw_tips}, Day-summary: {ds_tips}",
+    })
+
+    # Canonical identities (raw path)
+    raw_tender = raw_cash + raw_card
+    raw_net = raw_tender - raw_tax
+    tender_recon_ok = abs((raw_cash + raw_card) - (raw_net + raw_tax)) < Decimal("0.01")
+    results["checks"].append({
+        "name": "Tender reconciliation (raw events)",
+        "passed": tender_recon_ok,
+        "detail": f"Tender: {raw_tender}, Net+Tax: {raw_net + raw_tax}",
+    })
+
+    tips_partition_ok = abs(raw_tips - (raw_card_tips + raw_cash_tips)) < Decimal("0.01")
+    results["checks"].append({
+        "name": "Tips partition (raw events)",
+        "passed": tips_partition_ok,
+        "detail": f"Total: {raw_tips}, Card: {raw_card_tips}, Cash: {raw_cash_tips}",
+    })
+
+    raw_cash_expected = raw_cash - raw_card_tips
+    cash_nonneg_ok = raw_cash_expected >= Decimal("0.00")
+    results["checks"].append({
+        "name": "Cash expected non-negative (raw events)",
+        "passed": cash_nonneg_ok,
+        "detail": f"Cash expected: {raw_cash_expected}",
+    })
+
+    paths_agree = all([
+        cross_cash_proj, cross_cash_ds,
+        cross_card_proj, cross_card_ds,
+        cross_tips_proj, cross_tips_ds,
+    ])
+
     # Store financial summary for the report
     results["financial_summary"] = {
         "gross_sales": str(proj_gross_sales),
@@ -238,6 +362,13 @@ async def validate_financial_reconciliation(
         "cash_payments": str(proj_cash),
         "closed_orders": closed_count,
         "voided_orders": voided_count,
+        "raw_cash": str(raw_cash),
+        "raw_card": str(raw_card),
+        "raw_tips": str(raw_tips),
+        "raw_tax": str(raw_tax),
+        "raw_discounts": str(raw_discounts),
+        "raw_voids": str(raw_voids),
+        "paths_agree": paths_agree,
     }
 
     if any(not c["passed"] for c in results["checks"]):

@@ -102,6 +102,7 @@ async def main():
             print(f"      Cash Payments:   ${fs['cash_payments']}")
             print(f"      Closed Orders:   {fs['closed_orders']}")
             print(f"      Voided Orders:   {fs['voided_orders']}")
+            print(f"      Paths agree:     {'YES — all three paths match' if fs.get('paths_agree') else 'NO — DIVERGENCE DETECTED'}")
         log(f"\n  Section 2 — Financial Reconciliation: {r2['result']}")
         all_results.append(r2)
 
