@@ -403,6 +403,7 @@ class CashPaymentRequest(BaseModel):
     amount: Decimal
     payment_method: str = "cash"
     seat_numbers: Optional[list[int]] = None
+    transaction_id: Optional[str] = None
 
 
 @router.post("/cash")
@@ -423,6 +424,22 @@ async def process_cash_payment(
     order = project_order(events)
     if not order:
         raise HTTPException(status_code=404, detail=f"Order {request.order_id} not found")
+
+    # Idempotency: if the client supplied a transaction_id and a PAYMENT_CONFIRMED
+    # event with that ID already exists, the previous request landed — return the
+    # same success payload so a timeout-then-retry is safe.  This check runs
+    # before the closed/voided guard because a full cash payment auto-closes the
+    # order; without this ordering, a retry would hit the 400 before deduplicating.
+    if request.transaction_id:
+        for e in events:
+            if (e.event_type == EventType.PAYMENT_CONFIRMED
+                    and e.payload.get("transaction_id") == request.transaction_id):
+                return {
+                    "success":    True,
+                    "payment_id": e.payload.get("payment_id"),
+                    "order_id":   request.order_id,
+                    "amount":     e.payload.get("amount"),
+                }
 
     if order.status in ("closed", "voided"):
         raise HTTPException(status_code=400, detail=f"Cannot pay on {order.status} order")
@@ -511,7 +528,7 @@ async def process_cash_payment(
         terminal_id=settings.terminal_id,
         order_id=request.order_id,
         payment_id=payment_id,
-        transaction_id=f"cash_{uuid.uuid4().hex[:8]}",
+        transaction_id=request.transaction_id or f"cash_{uuid.uuid4().hex[:8]}",
         amount=sale_amount,
         tax=order.tax,
         seat_numbers=request.seat_numbers,

@@ -34,6 +34,10 @@ var totalPaid         = 0;
 var baseTotal         = 0;
 var numpadRef         = null;
 var dotTimer          = null;
+// Idempotency key for the in-flight payment attempt (cash or card).
+// Generated lazily on first CONFIRM tap; cleared only on success so a
+// network timeout → retry sends the exact same ID the backend already saw.
+var _pendingTxId      = null;
 
 // DOM refs
 var _modeButtons      = {};
@@ -130,6 +134,7 @@ defineScene({
     paymentMode       = params.paymentMode || 'card';
     confirmProcessing = false;
     _cardController   = null;
+    _pendingTxId      = null;
     payments          = [];
     totalPaid         = 0;
     baseTotal         = params.cardTotal || 0;
@@ -1228,6 +1233,12 @@ async function handleConfirm() {
     return;
   }
 
+  if (!_pendingTxId) {
+    _pendingTxId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'tx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+
   try {
     // Resolve seat_numbers for the backend. Two param shapes are supported:
     //  1) sceneData.seatNumbers = [1, 2, 3]             (order-entry, transitions)
@@ -1250,6 +1261,7 @@ async function handleConfirm() {
           amount:         paymentAmount,
           tip:            0.0,
           payment_method: 'cash',
+          transaction_id: _pendingTxId,
       };
       if (seatNumbers) cashBody.seat_numbers = seatNumbers;
       var res = await fetchWithTimeout(API + '/payments/cash', {
@@ -1270,12 +1282,8 @@ async function handleConfirm() {
       var controller = _cardController;
       var cardTimeout = setTimeout(function() { controller.abort(); }, 95000);
 
-      var transactionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
-          ? crypto.randomUUID()
-          : 'tx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-
       var saleBody = {
-          transaction_id: transactionId,
+          transaction_id: _pendingTxId,
           order_id:       sceneData.orderId,
           amount:         paymentAmount,
           terminal_id:    'terminal_01',
@@ -1309,6 +1317,7 @@ async function handleConfirm() {
 
     payments.push({ method: paymentMode, amount: paymentAmount });
     totalPaid += paymentAmount;
+    _pendingTxId = null;
 
     // Hide the back chevron now that money has been taken — a
     // back-to-check-overview here would orphan the recorded payment.

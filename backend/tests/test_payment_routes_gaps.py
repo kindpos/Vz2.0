@@ -460,3 +460,91 @@ async def test_refund_happy_path_emits_cash_refund_due(ledger):
     refund_evts = [e for e in events if e.event_type == EventType.PAYMENT_REFUNDED]
     assert len(refund_evts) == 1
     assert Decimal(str(refund_evts[0].payload["amount"])) == Decimal("20.00")
+
+
+# =============================================================================
+# /cash idempotency via transaction_id — gap 🔴3c
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_cash_payment_idempotent_on_retry(ledger):
+    """A repeated POST with the same transaction_id returns the original success
+    payload without creating a second PAYMENT_CONFIRMED event.
+
+    This covers the scenario where the client times out on the first POST (the
+    backend processed it), then retries with the identical transaction_id.
+    """
+    oid = "cash-idem-retry"
+    await _seed_open_order(ledger, oid, Decimal("15.00"))
+
+    tx_id = "tx_cash_idem_001"
+    req = CashPaymentRequest(order_id=oid, amount=Decimal("15.00"), transaction_id=tx_id)
+
+    result1 = await process_cash_payment(req, ledger=ledger)
+    assert result1["success"] is True
+    original_payment_id = result1["payment_id"]
+
+    # Retry — must NOT create a second confirmed event
+    result2 = await process_cash_payment(req, ledger=ledger)
+    assert result2["success"] is True
+    assert result2["payment_id"] == original_payment_id
+
+    events = await ledger.get_events_by_correlation(oid)
+    confirmed = [e for e in events if e.event_type == EventType.PAYMENT_CONFIRMED]
+    assert len(confirmed) == 1, "Retry must not mint a second PAYMENT_CONFIRMED"
+
+
+@pytest.mark.asyncio
+async def test_cash_payment_transaction_id_stored_in_confirm_event(ledger):
+    """The client-supplied transaction_id is recorded in the PAYMENT_CONFIRMED
+    payload so the idempotency check can find it on the next call."""
+    oid = "cash-idem-stored"
+    await _seed_open_order(ledger, oid, Decimal("10.00"))
+
+    tx_id = "tx_cash_stored_002"
+    await process_cash_payment(
+        CashPaymentRequest(order_id=oid, amount=Decimal("10.00"), transaction_id=tx_id),
+        ledger=ledger,
+    )
+
+    events = await ledger.get_events_by_correlation(oid)
+    confirm_evt = next(e for e in events if e.event_type == EventType.PAYMENT_CONFIRMED)
+    assert confirm_evt.payload["transaction_id"] == tx_id
+
+
+@pytest.mark.asyncio
+async def test_cash_payment_without_transaction_id_still_works(ledger):
+    """Omitting transaction_id (legacy clients) still processes normally."""
+    oid = "cash-idem-no-tx"
+    await _seed_open_order(ledger, oid, Decimal("8.00"))
+
+    result = await process_cash_payment(
+        CashPaymentRequest(order_id=oid, amount=Decimal("8.00")),
+        ledger=ledger,
+    )
+    assert result["success"] is True
+
+    events = await ledger.get_events_by_correlation(oid)
+    confirmed = [e for e in events if e.event_type == EventType.PAYMENT_CONFIRMED]
+    assert len(confirmed) == 1
+
+
+@pytest.mark.asyncio
+async def test_cash_payment_different_transaction_ids_are_independent(ledger):
+    """Two payments with different transaction_ids on the same partial-pay
+    order both succeed (they are distinct payments, not retries)."""
+    oid = "cash-idem-two-pays"
+    await _seed_open_order(ledger, oid, Decimal("30.00"))
+
+    await process_cash_payment(
+        CashPaymentRequest(order_id=oid, amount=Decimal("15.00"), transaction_id="tx-A"),
+        ledger=ledger,
+    )
+    await process_cash_payment(
+        CashPaymentRequest(order_id=oid, amount=Decimal("15.00"), transaction_id="tx-B"),
+        ledger=ledger,
+    )
+
+    events = await ledger.get_events_by_correlation(oid)
+    confirmed = [e for e in events if e.event_type == EventType.PAYMENT_CONFIRMED]
+    assert len(confirmed) == 2

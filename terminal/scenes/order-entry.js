@@ -785,6 +785,21 @@ defineScene({
       unmount: function() {},
     },
   },
+
+  // Test seam — exposes internal state and functions for unit tests.
+  // Only referenced in *.test.js; never called by production code.
+  __handlers: {
+    get ticket()                { return ticket; },
+    set ticket(v)               { ticket = v; },
+    get currentOrderId()        { return currentOrderId; },
+    set currentOrderId(v)       { currentOrderId = v; },
+    get createOrderIdemKey()    { return createOrderIdemKey; },
+    set createOrderIdemKey(v)   { createOrderIdemKey = v; },
+    get isSending()             { return isSending; },
+    handleSend:                 function() { return handleSend(); },
+    handleSaveOnly:             function() { return handleSaveOnly(); },
+    recallFromBackend:          function(id) { return recallFromBackend(id); },
+  },
 });
 
 // ── TOTALS HELPER ─────────────────────────────────
