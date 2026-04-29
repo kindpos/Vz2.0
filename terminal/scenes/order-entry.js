@@ -1495,7 +1495,9 @@ function rebuildBottomBar() {
   });
   doneBtn.style.gridColumn = '4 / span 2';
   doneBtn.style.height = '60px';
-  doneBtn.style.margin = '4px';
+  doneBtn.style.width = '60%';
+  doneBtn.style.justifySelf = 'center';
+  doneBtn.style.margin = '2px 0 10px';
   doneBtn.addEventListener('pointerup', function() {
     if (isSending) return;
     if (!hasUnsent) { handleClose(); return; }

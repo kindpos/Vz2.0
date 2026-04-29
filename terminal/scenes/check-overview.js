@@ -314,12 +314,14 @@ function collectSummary(seats, selected, paidSeats) {
     var seatSub = 0;
     if (showHeaders) {
       for (var k = 0; k < seats[i].items.length; k++) {
+        if (seats[i].items[k].voided) continue;
         seatSub += seats[i].items[k].qty * (seats[i].items[k].effectivePrice || seats[i].items[k].price);
       }
       items.push({ seatHeader: true, seatId: seats[i].id, seatTotal: seatSub, seatIdx: i });
     }
     for (var j = 0; j < seats[i].items.length; j++) {
       var it = seats[i].items[j];
+      if (it.voided) continue;
       var ep = it.effectivePrice || it.price;
       items.push({
         name:      it.name,
@@ -1090,7 +1092,7 @@ function renderActionBar(state) {
       var iIdx  = parseInt(parts[1], 10);
       var selSeat = state.seats[sIdx];
       var selItem = selSeat && selSeat.items[iIdx];
-      if (!selItem) continue;
+      if (!selItem || selItem.voided) continue;
       var selPrice = selItem.effectivePrice != null ? selItem.effectivePrice : (selItem.price || 0);
       subtotal += (selItem.qty || 0) * selPrice;
     }
@@ -1098,10 +1100,31 @@ function renderActionBar(state) {
     total     = subtotal + tax;
     cashTotal = Math.round(total * (1 - discount) * 100) / 100;
   } else {
-    subtotal  = order.subtotal || 0;
-    tax       = order.tax != null ? order.tax : (subtotal * getTaxRate());
-    total     = order.total || 0;
-    cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+    // If items are pending void locally (voided flag set, DELETE not yet fired),
+    // compute from local seats so the total reflects the void immediately.
+    var _hasLocalVoid = state.seats.some(function(s) {
+      return s.items.some(function(it) { return it.voided; });
+    });
+    if (_hasLocalVoid) {
+      subtotal = 0;
+      for (var _vi = 0; _vi < state.seats.length; _vi++) {
+        for (var _vj = 0; _vj < state.seats[_vi].items.length; _vj++) {
+          var _vit = state.seats[_vi].items[_vj];
+          if (_vit.voided) continue;
+          var _vp = _vit.effectivePrice != null ? _vit.effectivePrice : (_vit.price || 0);
+          subtotal += (_vit.qty || 0) * _vp;
+        }
+      }
+      subtotal  = Math.round(subtotal * 100) / 100;
+      tax       = subtotal * getTaxRate();
+      total     = subtotal + tax;
+      cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+    } else {
+      subtotal  = order.subtotal || 0;
+      tax       = order.tax != null ? order.tax : (subtotal * getTaxRate());
+      total     = order.total || 0;
+      cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+    }
   }
 
   var voidLabel = 'VOID';
@@ -1718,28 +1741,41 @@ function seatAccent(/* seatIdx */) {
 
 function _buildItemSubCard(state, seatIdx, itemIdx) {
   var item = state.seats[seatIdx].items[itemIdx];
-  var isSel = !!(state.selectedItems && state.selectedItems[seatIdx + ':' + itemIdx]);
+  var isVoided = !!item.voided;
+  var isSel = !isVoided && !!(state.selectedItems && state.selectedItems[seatIdx + ':' + itemIdx]);
 
   var card = document.createElement('div');
   Object.assign(card.style, {
-    background:    isSel ? T.green       : T.well,
-    border:        '1px solid ' + T.moon,
-    borderLeft:    '3px solid ' + (isSel ? T.green   : T.moon),
-    boxShadow:     '0 3px 0 '  + (isSel ? T.greenDk : T.moonDk),
+    background:    isVoided ? hexToRgba(T.verm, 0.08) : (isSel ? T.green : T.well),
+    border:        '1px solid ' + (isVoided ? T.verm : T.moon),
+    borderLeft:    '3px solid ' + (isVoided ? T.verm : (isSel ? T.green : T.moon)),
+    boxShadow:     '0 3px 0 '  + (isVoided ? T.vermDk : (isSel ? T.greenDk : T.moonDk)),
     borderRadius:  '8px',
     padding:       '5px 8px',
     display:       'flex',
     flexDirection: 'column',
     gap:           '2px',
-    cursor:        'pointer',
+    cursor:        isVoided ? 'default' : 'pointer',
     pointerEvents: 'auto',
     touchAction:   'manipulation',
     userSelect:    'none',
     boxSizing:     'border-box',
+    opacity:       isVoided ? '0.75' : '1',
   });
 
-  // sent badge
-  if (item.sent_at) {
+  // voided badge or sent badge
+  if (isVoided) {
+    var vBadge = document.createElement('div');
+    vBadge.textContent = 'V';
+    Object.assign(vBadge.style, {
+      fontSize:      '10px',
+      fontWeight:    T.fwBold,
+      fontFamily:    T.fh,
+      color:         T.verm,
+      letterSpacing: '0.1em',
+    });
+    card.appendChild(vBadge);
+  } else if (item.sent_at) {
     var badge = document.createElement('div');
     badge.textContent = '>>>';
     Object.assign(badge.style, {
@@ -1766,7 +1802,7 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
     fontSize:   '12px',
     fontWeight: T.fwBold,
     fontFamily: T.fh,
-    color:      isSel ? T.moonText : T.text,
+    color:      isVoided ? T.verm : (isSel ? T.moonText : T.text),
     flex:       '1',
     minWidth:   '0',
   });
@@ -1778,7 +1814,7 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
     fontSize:   '11px',
     fontWeight: T.fwBold,
     fontFamily: T.fb,
-    color:      isSel ? T.moonText : T.gold,
+    color:      isVoided ? T.verm : (isSel ? T.moonText : T.gold),
     flexShrink: '0',
   });
   var itemPrice = item.effectivePrice != null ? item.effectivePrice : (item.price || 0);
@@ -1858,6 +1894,7 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
 
   card.addEventListener('pointerup', function(e) {
     if (e.defaultPrevented) return;
+    if (isVoided) return;
     toggleItem(state, seatIdx, itemIdx);
   });
 
@@ -2624,9 +2661,11 @@ function toggleSeat(state, seatId) {
 
   var allSelected = true;
   for (var j = 0; j < seat.items.length; j++) {
+    if (seat.items[j].voided) continue;
     if (!state.selectedItems[seatIdx + ':' + j]) { allSelected = false; break; }
   }
   for (var k = 0; k < seat.items.length; k++) {
+    if (seat.items[k].voided) continue;
     var key = seatIdx + ':' + k;
     if (allSelected) delete state.selectedItems[key];
     else             state.selectedItems[key] = true;
@@ -2654,6 +2693,7 @@ function forceSelectAll(state) {
       state.selected[seat.id] = true;
     } else {
       for (var j = 0; j < seat.items.length; j++) {
+        if (seat.items[j].voided) continue;
         state.selectedItems[i + ':' + j] = true;
       }
     }
@@ -3102,12 +3142,13 @@ function handleVoid(state) {
     return;
   }
 
-  // Expand seat selections into item refs
+  // Expand seat selections into item refs (skip already-voided items)
   if (itemRefs.length === 0 && seatIds.length > 0) {
     for (var s = 0; s < seatIds.length; s++) {
       var sIdx = _seatIdxById(state, seatIds[s]);
       if (sIdx < 0) continue;
       for (var j = 0; j < state.seats[sIdx].items.length; j++) {
+        if (state.seats[sIdx].items[j].voided) continue;
         itemRefs.push({ seatIdx: sIdx, itemIdx: j });
       }
     }
@@ -3128,23 +3169,13 @@ function handleVoid(state) {
 }
 
 function _voidItems(state, refs) {
-  // Sort descending within each seat so splice doesn't shift indices
-  refs.sort(function(a, b) {
-    if (a.seatIdx !== b.seatIdx) return b.seatIdx - a.seatIdx;
-    return b.itemIdx - a.itemIdx;
-  });
-
   var snapshot = [];
-  var allPreKitchen = true;
   for (var i = 0; i < refs.length; i++) {
     var r = refs[i];
     var item = state.seats[r.seatIdx].items[r.itemIdx];
-    if (item.sent_at) allPreKitchen = false;
     snapshot.push({ seatIdx: r.seatIdx, itemIdx: r.itemIdx, item: item });
-    state.seats[r.seatIdx].items.splice(r.itemIdx, 1);
+    item.voided = true;
   }
-
-  var actionWord = allPreKitchen ? 'Deleted' : 'Voided';
 
   state.selectedItems = {};
   rerenderTopArea(state);
@@ -3152,7 +3183,7 @@ function _voidItems(state, refs) {
   // Hoisted so the undo handler (defined before the setTimeout) can cancel it.
   var _voidTid = null;
 
-  showToast(actionWord + ' ' + refs.length + ' item(s) — tap to undo', {
+  showToast('Voided ' + refs.length + ' item(s) — tap to undo', {
     bg: T.verm,
     duration: 4000,
     onClick: function() {
@@ -3163,23 +3194,16 @@ function _voidItems(state, refs) {
         if (ti !== -1) state._voidTimers.splice(ti, 1);
         _voidTid = null;
       }
-      // Reinsert in ascending order
-      snapshot.sort(function(a, b) {
-        if (a.seatIdx !== b.seatIdx) return a.seatIdx - b.seatIdx;
-        return a.itemIdx - b.itemIdx;
-      });
       for (var j = 0; j < snapshot.length; j++) {
-        var s = snapshot[j];
-        state.seats[s.seatIdx].items.splice(s.itemIdx, 0, s.item);
+        snapshot[j].item.voided = false;
       }
       rerenderTopArea(state);
-      showToast(actionWord + ' undone', { bg: T.greenWarm });
+      showToast('Void undone', { bg: T.greenWarm });
     },
   });
 
-  // After the undo window, commit to backend. Stored in _voidTimers so unmount
-  // can cancel it, but rerenderTopArea (which only clears _lpTimers) won't
-  // accidentally abort it when the user interacts with the UI.
+  // After the undo window, commit to backend then remove from local state.
+  // Stored in _voidTimers so unmount can cancel it.
   if (state.orderId) {
     _voidTid = setTimeout(function() {
       for (var k = 0; k < snapshot.length; k++) {
@@ -3187,6 +3211,16 @@ function _voidItems(state, refs) {
         if (!iid) continue;
         fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items/' + iid, { method: 'DELETE' }, 8000);
       }
+      // Remove voided items from local state after DELETE fires (descending to preserve indices)
+      snapshot.sort(function(a, b) {
+        if (a.seatIdx !== b.seatIdx) return b.seatIdx - a.seatIdx;
+        return b.itemIdx - a.itemIdx;
+      });
+      for (var m = 0; m < snapshot.length; m++) {
+        var sv = snapshot[m];
+        state.seats[sv.seatIdx].items.splice(sv.itemIdx, 1);
+      }
+      if (state._alive) rerenderTopArea(state);
     }, 4200);
     state._voidTimers.push(_voidTid);
   }
