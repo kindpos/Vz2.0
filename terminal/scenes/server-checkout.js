@@ -1294,6 +1294,8 @@ defineScene({
           SceneManager.mountWorking(target, { staff: params.staff });
         },
         onPrint: function() {
+          if (state._printing) return;
+          state._printing = true;
           // Print the server's shift summary slip (the "server checkout"
           // template — not a per-check receipt). Backend template per
           // memory: server_checkout.py is still pending, so expect 404
@@ -1308,6 +1310,7 @@ defineScene({
               employee_name: state.data.employeeName,
             }),
           }, 8000).then(function(r) {
+            state._printing = false;
             if (r.ok) {
               showToast('Slip printed', { bg: T.greenWarm });
             } else if (r.status === 404) {
@@ -1316,6 +1319,7 @@ defineScene({
               showToast('Print failed (' + r.status + ') \u2014 check printer', { bg: T.verm });
             }
           }).catch(function() {
+            state._printing = false;
             showToast('Print failed \u2014 check printer connection', { bg: T.verm });
           });
         },
@@ -1334,6 +1338,8 @@ defineScene({
                   cashExpected: state.data.cashExpected,
                   employeeName: state.data.employeeName,
                   onConfirm: function() {
+                    if (state._finalizing) return;
+                    state._finalizing = true;
                     SceneManager.closeInterrupt('co-finalize-confirm');
                     // POST the finalize. Endpoint is stubbed — swap URL when
                     // backend lands. `/server/shift/finalize-checkout` matches
@@ -1359,11 +1365,14 @@ defineScene({
                         });
                       } else if (r.status === 404) {
                         // Endpoint not yet implemented on the backend.
+                        state._finalizing = false;
                         showToast('Finalize endpoint pending — backend work needed', { bg: T.warning });
                       } else {
+                        state._finalizing = false;
                         showToast('Finalize failed (' + r.status + ') — try again', { bg: T.verm });
                       }
                     }).catch(function() {
+                      state._finalizing = false;
                       showToast('Finalize unavailable — ask your manager', { bg: T.verm });
                     });
                   },
