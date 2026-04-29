@@ -18,6 +18,7 @@ Then run:
 """
 
 import os
+import httpx
 from decimal import Decimal
 
 import pytest
@@ -167,3 +168,23 @@ async def test_real_probe_host_classifies_printer():
     )
     assert result["type"] == "printer"
     assert result["port"] in PRINTER_PORTS
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 7. App server — day-summary endpoint reachable
+# ═══════════════════════════════════════════════════════════════════════
+
+# Post-deploy gate: confirms app server is up and financial endpoints are reachable
+@pytest.mark.skipif(
+    not os.getenv("KINDPOS_SERVER_URL"),
+    reason="KINDPOS_SERVER_URL not set"
+)
+def test_app_server_day_summary():
+    url = f"{os.getenv('KINDPOS_SERVER_URL')}/api/v1/orders/day-summary"
+    response = httpx.get(url, timeout=5)
+    assert response.status_code == 200
+    data = response.json()
+    assert "cash_total" in data
+    assert "card_total" in data
+    assert round(data["cash_total"], 2) == data["cash_total"]
+    assert round(data["card_total"], 2) == data["card_total"]
