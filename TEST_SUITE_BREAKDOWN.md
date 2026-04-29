@@ -1631,6 +1631,48 @@ conftest.py contains only fixture definitions, no individual test functions.
 | **Method** | Direct Pydantic model instantiation with recipient="" |
 | **Pass** | ValidationError or ValueError raised |
 
+### `test_cash_drop_idempotent_on_retry`
+| | |
+|---|---|
+| **Tests** | Same transaction_id on a second DROP call does not create a second ledger event |
+| **Method** | Call record_cash_drop twice with same transaction_id; count DAY_CASH_DROP events |
+| **Pass** | Both calls return success=True; exactly 1 DAY_CASH_DROP event in ledger |
+
+### `test_cash_drop_transaction_id_stored_in_event`
+| | |
+|---|---|
+| **Tests** | Client-supplied transaction_id appears in the DAY_CASH_DROP event payload |
+| **Method** | Call record_cash_drop with explicit transaction_id; retrieve event from ledger |
+| **Pass** | event.payload["transaction_id"] matches the supplied value |
+
+### `test_cash_drop_without_transaction_id_still_works`
+| | |
+|---|---|
+| **Tests** | Legacy callers omitting transaction_id still succeed and create exactly one event |
+| **Method** | Call record_cash_drop without transaction_id; check result and event count |
+| **Pass** | success=True; exactly 1 DAY_CASH_DROP event |
+
+### `test_cash_payout_idempotent_on_retry`
+| | |
+|---|---|
+| **Tests** | Same transaction_id on a second PAYOUT call does not create a second ledger event |
+| **Method** | Call record_cash_payout twice with same transaction_id; count DAY_CASH_PAYOUT events |
+| **Pass** | Both calls return success=True; exactly 1 DAY_CASH_PAYOUT event in ledger |
+
+### `test_cash_payout_different_transaction_ids_are_independent`
+| | |
+|---|---|
+| **Tests** | Two payouts with distinct transaction_ids both land as separate ledger events |
+| **Method** | Call record_cash_payout with "pay-A" then "pay-B" transaction_ids |
+| **Pass** | Exactly 2 DAY_CASH_PAYOUT events in ledger |
+
+### `test_duplicate_drop_does_not_inflate_variance`
+| | |
+|---|---|
+| **Tests** | Retrying a drop must not double-count it in the variance calculation |
+| **Method** | Set float=500, call record_cash_drop($200) twice with same transaction_id, compute variance |
+| **Pass** | drops="200.00" (not 400); expected_in_drawer="300.00" (not 100) |
+
 ---
 
 ## `test_day_close_lock.py`
@@ -1961,6 +2003,41 @@ conftest.py contains only fixture definitions, no individual test functions.
 | **Tests** | Two separate discounts sum (current behavior; no single-discount cap) |
 | **Method** | Direct route handler call twice sequentially |
 | **Pass** | Second call discount_total = sum of both, total adjusted accordingly |
+
+### `test_rejects_on_voided_order`
+| | |
+|---|---|
+| **Tests** | Cannot apply discount to a voided order |
+| **Method** | Create order, append ORDER_VOIDED event, call apply_discount |
+| **Pass** | HTTPException status 400, detail contains "voided" |
+
+### `test_idempotent_with_transaction_id`
+| | |
+|---|---|
+| **Tests** | Same transaction_id on a retry does not create a second DISCOUNT_APPROVED event |
+| **Method** | Call apply_discount twice with identical ApplyDiscountRequest including transaction_id; count DISCOUNT_APPROVED events |
+| **Pass** | Both calls return discount_total=2.00; exactly 1 DISCOUNT_APPROVED event in ledger |
+
+### `test_transaction_id_stored_in_event`
+| | |
+|---|---|
+| **Tests** | The client-supplied transaction_id is stored in the DISCOUNT_APPROVED payload |
+| **Method** | Call apply_discount with explicit transaction_id; retrieve DISCOUNT_APPROVED event |
+| **Pass** | event.payload["transaction_id"] matches the supplied value |
+
+### `test_two_distinct_transaction_ids_both_land`
+| | |
+|---|---|
+| **Tests** | Two discounts with different transaction_ids each create their own DISCOUNT_APPROVED event |
+| **Method** | Call apply_discount with "disc-A" then "disc-B" transaction_ids |
+| **Pass** | discount_total accumulates to 3.00; exactly 2 DISCOUNT_APPROVED events in ledger |
+
+### `test_without_transaction_id_still_works`
+| | |
+|---|---|
+| **Tests** | Legacy callers omitting transaction_id still succeed (no idempotency required) |
+| **Method** | Call apply_discount without transaction_id field |
+| **Pass** | discount_total=2.00; success response returned |
 
 ---
 
@@ -5886,6 +5963,118 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 | **Tests** | Merge detects race: target was open at validation, closed before write loop |
 | **Method** | Validate target open, close it externally, merge fails |
 | **Pass** | HTTPException 400 or 409 |
+
+### `TestNegativePriceRejected > test_add_item_negative_price_rejected`
+| | |
+|---|---|
+| **Tests** | AddItemRequest rejects negative price at model level |
+| **Method** | Direct Pydantic model instantiation with price=Decimal("-1.00") |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestNegativePriceRejected > test_add_item_zero_price_allowed`
+| | |
+|---|---|
+| **Tests** | AddItemRequest accepts zero price (free items are valid) |
+| **Method** | Direct Pydantic model instantiation with price=Decimal("0.00") |
+| **Pass** | req.price == Decimal("0.00") |
+
+### `TestNegativePriceRejected > test_inline_modifier_negative_price_rejected`
+| | |
+|---|---|
+| **Tests** | InlineModifier rejects negative price field |
+| **Method** | Direct Pydantic model instantiation with price=Decimal("-0.50") |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestNegativePriceRejected > test_inline_modifier_negative_modifier_price_rejected`
+| | |
+|---|---|
+| **Tests** | InlineModifier rejects negative modifier_price field |
+| **Method** | Direct Pydantic model instantiation with modifier_price=Decimal("-0.50") |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestNegativePriceRejected > test_apply_modifier_negative_price_rejected`
+| | |
+|---|---|
+| **Tests** | ApplyModifierRequest rejects negative modifier_price |
+| **Method** | Direct Pydantic model instantiation with modifier_price=Decimal("-1.00") |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestNegativePriceRejected > test_modify_item_negative_price_rejected`
+| | |
+|---|---|
+| **Tests** | ModifyItemRequest rejects negative price |
+| **Method** | Direct Pydantic model instantiation with price=Decimal("-5.00") |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestNegativePriceRejected > test_initiate_payment_negative_amount_rejected`
+| | |
+|---|---|
+| **Tests** | InitiatePaymentRequest rejects negative amount |
+| **Method** | Direct Pydantic model instantiation with amount=Decimal("-10.00") |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestNegativePriceRejected > test_initiate_payment_zero_amount_rejected`
+| | |
+|---|---|
+| **Tests** | InitiatePaymentRequest rejects zero amount (payments must be positive) |
+| **Method** | Direct Pydantic model instantiation with amount=Decimal("0.00") |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestNegativePriceRejected > test_cash_payment_negative_amount_rejected`
+| | |
+|---|---|
+| **Tests** | CashPaymentRequest rejects negative amount |
+| **Method** | Direct Pydantic model instantiation with amount=Decimal("-5.00") |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestNegativePriceRejected > test_cash_payment_zero_amount_rejected`
+| | |
+|---|---|
+| **Tests** | CashPaymentRequest rejects zero amount |
+| **Method** | Direct Pydantic model instantiation with amount=Decimal("0.00") |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestSeatNumberValidation > test_add_item_seat_zero_rejected`
+| | |
+|---|---|
+| **Tests** | AddItemRequest rejects seat_number=0 (seats are 1-indexed) |
+| **Method** | Direct Pydantic model instantiation with seat_number=0 |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestSeatNumberValidation > test_add_item_seat_negative_rejected`
+| | |
+|---|---|
+| **Tests** | AddItemRequest rejects negative seat_number |
+| **Method** | Direct Pydantic model instantiation with seat_number=-1 |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestSeatNumberValidation > test_add_item_seat_none_allowed`
+| | |
+|---|---|
+| **Tests** | AddItemRequest accepts seat_number=None (unassigned item) |
+| **Method** | Direct Pydantic model instantiation with seat_number=None |
+| **Pass** | req.seat_number is None |
+
+### `TestSeatNumberValidation > test_add_item_seat_one_allowed`
+| | |
+|---|---|
+| **Tests** | AddItemRequest accepts seat_number=1 (minimum valid seat) |
+| **Method** | Direct Pydantic model instantiation with seat_number=1 |
+| **Pass** | req.seat_number == 1 |
+
+### `TestSeatNumberValidation > test_modify_item_seat_zero_rejected`
+| | |
+|---|---|
+| **Tests** | ModifyItemRequest rejects seat_number=0 |
+| **Method** | Direct Pydantic model instantiation with seat_number=0 |
+| **Pass** | ValidationError or ValueError raised |
+
+### `TestSeatNumberValidation > test_modify_item_seat_none_allowed`
+| | |
+|---|---|
+| **Tests** | ModifyItemRequest accepts seat_number=None |
+| **Method** | Direct Pydantic model instantiation with seat_number=None |
+| **Pass** | req.seat_number is None |
 
 ## `test_orders_mutations.py`
 > Tests for order mutations: merge, discount, split_by_seat, split_evenly, void
