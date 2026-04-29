@@ -1620,6 +1620,7 @@ class ApplyDiscountRequest(BaseModel):
     approved_by: Optional[str] = None
     item_ids: Optional[list[str]] = None  # specific items, or None for whole order
     discount_id: Optional[str] = None  # catalog reference, if applied from a named discount
+    transaction_id: Optional[str] = None  # idempotency key — same ID returns existing result
 
 @router.post("/{order_id}/discount", response_model=OrderResponse)
 async def apply_discount(
@@ -1628,7 +1629,23 @@ async def apply_discount(
         ledger: EventLedger = Depends(get_ledger),
 ):
     """Apply a manager-approved discount to an order."""
-    order = await get_order_or_404(ledger, order_id)
+    events = await ledger.get_events_by_correlation(order_id)
+    if not events:
+        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+
+    # Idempotency: if caller supplies a transaction_id that already landed, return
+    # the current order without appending a second DISCOUNT_APPROVED event.
+    if request.transaction_id:
+        for e in events:
+            if (e.event_type == EventType.DISCOUNT_APPROVED
+                    and e.payload.get("transaction_id") == request.transaction_id):
+                order = project_order(events)
+                return OrderResponse.from_order(order)
+
+    from app.core.projections import project_order as _po
+    order = _po(events)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
 
     if order.status != "open":
         raise HTTPException(
@@ -1659,6 +1676,8 @@ async def apply_discount(
     }
     if request.discount_id is not None:
         discount_payload["discount_id"] = request.discount_id
+    if request.transaction_id is not None:
+        discount_payload["transaction_id"] = request.transaction_id
     event = create_event(
         event_type=EventType.DISCOUNT_APPROVED,
         terminal_id=settings.terminal_id,

@@ -1,15 +1,13 @@
 """
 Endpoint tests for `POST /orders/{order_id}/discount`.
 
-The endpoint has existed for a while, but the terminal UI only called
-it as a TODO stub — discounts were in-memory on the check-overview
-scene. That's been wired, so we now also pin the endpoint contract:
-
   - precision gate rejects 3dp amounts (FIN-001)
   - pending-payment guard blocks discount mid-payment
   - closed/voided orders reject
   - happy path emits DISCOUNT_APPROVED and updates order.discount_total
-  - idempotent-ish: same request twice sums (no event dedup by content)
+  - idempotency: same transaction_id returns existing result without
+    a second DISCOUNT_APPROVED event
+  - two distinct transaction_ids each land their own event
 """
 
 from decimal import Decimal
@@ -177,3 +175,100 @@ class TestDiscountEndpoint:
         )
         assert res.discount_total == Decimal("3.00")
         assert res.total == Decimal("17.00")
+
+    @pytest.mark.asyncio
+    async def test_rejects_on_voided_order(self, ledger):
+        from app.core.events import order_voided
+        oid = await _open_order_with_item(ledger)
+        await ledger.append(order_voided(
+            terminal_id=TERMINAL, order_id=oid, reason="test void",
+        ))
+        with pytest.raises(HTTPException) as exc:
+            await orders_mod.apply_discount(
+                order_id=oid,
+                request=ApplyDiscountRequest(
+                    discount_type="10%",
+                    amount=Decimal("2.00"),
+                    approved_by="mgr_A",
+                ),
+                ledger=ledger,
+            )
+        assert exc.value.status_code == 400
+        assert "voided" in exc.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_idempotent_with_transaction_id(self, ledger, monkeypatch):
+        """Same transaction_id on a second call must NOT create a second
+        DISCOUNT_APPROVED event and must return the current order state."""
+        monkeypatch.setattr(settings, "tax_rate", 0.0)
+        oid = await _open_order_with_item(ledger)
+
+        req = ApplyDiscountRequest(
+            discount_type="10%",
+            amount=Decimal("2.00"),
+            approved_by="mgr_A",
+            transaction_id="disc-idem-001",
+        )
+        r1 = await orders_mod.apply_discount(order_id=oid, request=req, ledger=ledger)
+        r2 = await orders_mod.apply_discount(order_id=oid, request=req, ledger=ledger)
+
+        assert r1.discount_total == Decimal("2.00")
+        assert r2.discount_total == Decimal("2.00")
+        events = await ledger.get_events_by_type(EventType.DISCOUNT_APPROVED)
+        assert len(events) == 1, "retry must not create a second DISCOUNT_APPROVED"
+
+    @pytest.mark.asyncio
+    async def test_transaction_id_stored_in_event(self, ledger):
+        oid = await _open_order_with_item(ledger)
+        await orders_mod.apply_discount(
+            order_id=oid,
+            request=ApplyDiscountRequest(
+                discount_type="10%",
+                amount=Decimal("2.00"),
+                approved_by="mgr_A",
+                transaction_id="disc-store-001",
+            ),
+            ledger=ledger,
+        )
+        events = await ledger.get_events_by_type(EventType.DISCOUNT_APPROVED)
+        assert events[0].payload.get("transaction_id") == "disc-store-001"
+
+    @pytest.mark.asyncio
+    async def test_two_distinct_transaction_ids_both_land(self, ledger, monkeypatch):
+        """Two distinct IDs → two distinct events → cumulative discount."""
+        monkeypatch.setattr(settings, "tax_rate", 0.0)
+        oid = await _open_order_with_item(ledger)
+
+        await orders_mod.apply_discount(
+            order_id=oid,
+            request=ApplyDiscountRequest(
+                discount_type="10%", amount=Decimal("2.00"),
+                approved_by="mgr_A", transaction_id="disc-A",
+            ),
+            ledger=ledger,
+        )
+        r = await orders_mod.apply_discount(
+            order_id=oid,
+            request=ApplyDiscountRequest(
+                discount_type="5%", amount=Decimal("1.00"),
+                approved_by="mgr_A", transaction_id="disc-B",
+            ),
+            ledger=ledger,
+        )
+        assert r.discount_total == Decimal("3.00")
+        events = await ledger.get_events_by_type(EventType.DISCOUNT_APPROVED)
+        assert len(events) == 2
+
+    @pytest.mark.asyncio
+    async def test_without_transaction_id_still_works(self, ledger, monkeypatch):
+        """Legacy callers without a transaction_id must still succeed."""
+        monkeypatch.setattr(settings, "tax_rate", 0.0)
+        oid = await _open_order_with_item(ledger)
+        res = await orders_mod.apply_discount(
+            order_id=oid,
+            request=ApplyDiscountRequest(
+                discount_type="10%", amount=Decimal("2.00"), approved_by="mgr_A",
+            ),
+            ledger=ledger,
+        )
+        assert res.discount_total == Decimal("2.00")
