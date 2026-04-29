@@ -183,28 +183,43 @@ function _buildCheckPreview(orders) {
       wrap.appendChild(sub);
     }
 
-    (order.items || []).slice(0, 4).forEach(function(item) {
-      var card = document.createElement('div');
-      card.style.cssText = 'background:' + T.card + ';border:1px solid ' + T.border + ';border-top:2px solid ' + T.green + ';border-radius:6px;margin-bottom:5px;overflow:hidden;';
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;';
-      var nm = document.createElement('span');
-      nm.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
-      nm.textContent   = item.name || 'Item';
-      var pr = document.createElement('span');
-      pr.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.gold + ';flex-shrink:0;margin-left:12px;';
-      pr.textContent   = fmt(item.price || 0);
-      row.appendChild(nm);
-      row.appendChild(pr);
-      card.appendChild(row);
-      wrap.appendChild(card);
+    var seatMap = {};
+    var seatOrder = [];
+    (order.items || []).forEach(function(item) {
+      var sn = item.seat_number || 1;
+      if (!seatMap[sn]) { seatMap[sn] = []; seatOrder.push(sn); }
+      seatMap[sn].push(item);
     });
-    if ((order.items || []).length > 4) {
-      var more = document.createElement('div');
-      more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.5;padding:2px 2px 0;';
-      more.textContent   = '+ ' + (order.items.length - 4) + ' more';
-      wrap.appendChild(more);
-    }
+    seatOrder.sort(function(a, b) { return a - b; });
+
+    seatOrder.forEach(function(sn) {
+      var seatHdr = document.createElement('div');
+      seatHdr.style.cssText = [
+        'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+        'color:' + T.green + ';letter-spacing:0.14em;',
+        'padding:6px 2px 4px;margin-top:4px;margin-bottom:4px;',
+        'border-bottom:1px solid ' + hexToRgba(T.green, 0.3) + ';',
+      ].join('');
+      seatHdr.textContent = 'SEAT ' + sn;
+      wrap.appendChild(seatHdr);
+
+      seatMap[sn].forEach(function(item) {
+        var card = document.createElement('div');
+        card.style.cssText = 'background:' + T.card + ';border:1px solid ' + T.border + ';border-top:2px solid ' + T.green + ';border-radius:6px;margin-bottom:5px;overflow:hidden;';
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;';
+        var nm = document.createElement('span');
+        nm.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
+        nm.textContent   = item.name || 'Item';
+        var pr = document.createElement('span');
+        pr.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.gold + ';flex-shrink:0;margin-left:12px;';
+        pr.textContent   = fmt(item.price || 0);
+        row.appendChild(nm);
+        row.appendChild(pr);
+        card.appendChild(row);
+        wrap.appendChild(card);
+      });
+    });
   });
 
   return wrap;
