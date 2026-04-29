@@ -3848,16 +3848,21 @@ async function handleSaveOnly() {
       currentCheckNumber = created.check_number;
     }
 
-    // Step 2 — post unsent items (seat already assigned per-item)
+    // Step 2 — post unsent items (seat already assigned per-item).
+    // Skip items with a backendItemId: they were saved in a prior session and
+    // already exist on the backend — re-posting with a new idemKey would create
+    // duplicates when the user later calls handleSend.
     var itemPromises = [];
     for (var ui = 0; ui < unsentInstances.length; ui++) {
       var inst = unsentInstances[ui];
+      if (inst.backendItemId) continue;
       itemPromises.push({ inst: inst, promise: fetchWithTimeout(API + '/orders/' + currentOrderId + '/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': inst.idemKey || _idemKey() },
         body: JSON.stringify(_buildItemPayload(inst)),
       }, 15000)});
     }
+    if (itemPromises.length === 0) return;
     var results = await Promise.allSettled(itemPromises.map(function(p) { return p.promise; }));
     var anyFailed = false;
     results.forEach(function(r, idx) {
@@ -3937,10 +3942,14 @@ async function handleSend() {
       currentCheckNumber = created.check_number;
     }
 
-    // Step 2 — post unsent instances (seat already assigned per-item)
+    // Step 2 — post unsent instances (seat already assigned per-item).
+    // Skip items with a backendItemId: they were saved in a prior session and
+    // already exist on the backend. Re-posting with a new idemKey would create
+    // duplicates. The /send call in step 3 fires them to the kitchen regardless.
     var itemPromises = [];
     for (var ui = 0; ui < unsentInstances.length; ui++) {
       var inst = unsentInstances[ui];
+      if (inst.backendItemId) continue;
       itemPromises.push({ inst: inst, promise: fetchWithTimeout(API + '/orders/' + currentOrderId + '/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': inst.idemKey || _idemKey() },
@@ -4075,9 +4084,10 @@ function recallFromBackend(orderId) {
         var unit = Number(rawUnit);
         if (!Number.isFinite(unit)) unit = 0;
         return {
-          id:        ticketSeq,
+          id:           ticketSeq,
+          backendItemId: item.item_id,  // prevents re-POST on subsequent handleSend/handleSaveOnly
           menu_item_id: item.menu_item_id,
-          idemKey:   _idemKey(),
+          idemKey:      _idemKey(),
           name:      item.name,
           unitPrice: unit,
           mods:      (item.modifiers || []).map(function(m) {
