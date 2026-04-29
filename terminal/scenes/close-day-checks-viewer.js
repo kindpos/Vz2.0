@@ -947,7 +947,7 @@ defineScene({
         state._busy = true;
         // Destructive: manager PIN → reason-required confirm → POST per check.
         SceneManager.interrupt('co-manager-pin', {
-          onConfirm: function() {
+          onConfirm: function(authData) {
             SceneManager.closeInterrupt('co-manager-pin');
             state._pendingTimer = setTimeout(function() {
               state._pendingTimer = null;
@@ -961,7 +961,7 @@ defineScene({
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         reason: reason,
-                        manager_pin_verified: true,
+                        approved_by: authData.employee_id,
                       }),
                     }, 8000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
                             .catch(function()  { return { chk: chk, ok: false, status: 0 }; });

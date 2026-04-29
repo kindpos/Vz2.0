@@ -1589,7 +1589,7 @@ defineScene({
           // Void is destructive + requires manager authorization → PIN first,
           // then a reason-required confirm. Fires one void per selected check.
           SceneManager.interrupt('co-manager-pin', {
-            onConfirm: function() {
+            onConfirm: function(authData) {
               SceneManager.closeInterrupt('co-manager-pin');
               setTimeout(function() {
                 SceneManager.interrupt('co-void-confirm', {
@@ -1598,14 +1598,14 @@ defineScene({
                     SceneManager.closeInterrupt('co-void-confirm');
 
                     var voids = checks.map(function(chk) {
-                      return fetch('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/void', {
+                      return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/void', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                           reason: reason,
-                          manager_pin_verified: true,
+                          approved_by: authData.employee_id,
                         }),
-                      }).then(function(r) {
+                      }, 8000).then(function(r) {
                         return { chk: chk, ok: r.ok, status: r.status };
                       }).catch(function() {
                         return { chk: chk, ok: false, status: 0 };

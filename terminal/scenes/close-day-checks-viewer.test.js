@@ -463,14 +463,18 @@ describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () 
 
     handlers.onVoidCheck([{ checkId: 'c-1' }]);
     const pinCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-manager-pin');
-    pinCall[1].onConfirm();
+    pinCall[1].onConfirm({ employee_id: 'mgr1', name: 'Manager', roles: ['manager'] });
     vi.advanceTimersByTime(200);
 
     const voidCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-void-confirm');
     voidCall[1].onConfirm('damaged goods');
     await flush(4);
 
-    expect(fetchWithTimeout).toHaveBeenCalledWith(expect.stringContaining('/void'), expect.anything(), 8000);
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      expect.stringContaining('/void'),
+      expect.objectContaining({ body: expect.stringContaining('"approved_by":"mgr1"') }),
+      8000,
+    );
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Voided'), expect.anything());
     expect(state._busy).toBe(false);
     vi.useRealTimers();
@@ -484,7 +488,7 @@ describe('close-day-checks-viewer — action handlers use fetchWithTimeout', () 
 
     handlers.onVoidCheck([{ checkId: 'c-1' }]);
     const pinCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-manager-pin');
-    pinCall[1].onConfirm();
+    pinCall[1].onConfirm({ employee_id: 'mgr1', name: 'Manager', roles: ['manager'] });
     vi.advanceTimersByTime(200);
 
     const voidCall = SceneManagerMock.interrupt.mock.calls.find((c) => c[0] === 'co-void-confirm');
