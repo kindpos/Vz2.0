@@ -762,9 +762,12 @@ defineScene({
         clearTimeout(st._voidPendingTimer);
         st._voidPending    = false;
         st._voidPendingKey = null;
+        if (st._voiding) return;
+        st._voiding = true;
         var voided = 0, vFailed = 0;
         function _voidDone() {
           if (voided + vFailed !== ids.length) return;
+          st._voiding = false;
           showToast(
             vFailed === 0
               ? 'Voided ' + voided + ' check' + (voided === 1 ? '' : 's')

@@ -1302,6 +1302,11 @@ async function handleConfirm() {
           terminal_id:    'terminal_01',
       };
       if (seatNumbers) saleBody.seat_numbers = seatNumbers;
+      // Intentional bare fetch() — card payments need a 95 s timeout and
+      // _cardController must be accessible from outside this function so the
+      // payment can be aborted programmatically (e.g. scene unmount or user
+      // cancel). fetchWithTimeout owns its own AbortController internally and
+      // doesn't expose it, so we manage the signal manually here.
       var res = await fetch(API + '/payments/sale', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
