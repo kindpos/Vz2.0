@@ -6394,3 +6394,8845 @@ Now I have all the test files read. Let me compile the formatted markdown docume
 | **Tests** | Full refund on confirmed payment emits PAYMENT_REFUNDED, returns success |
 | **Method** | process_refund full amount |
 | **Pass** | success=True, PAYMENT_REFUNDED event |
+
+## `test_payment_routes_hardware.py`
+> Tests for hardware-adjacent payment endpoints (device reload, testing, diagnostics) with mock device fallback when no real hardware is present.
+
+### `test_reload_devices_falls_back_to_mock`
+| | |
+|---|---|
+| **Tests** | POST /reload-devices endpoint returns success with mock device when no hardware_config.db exists |
+| **Method** | Calls POST /api/v1/payments/reload-devices via AsyncClient; no real hardware setup; asserts response status=200, reloaded=True, using_mock=True |
+| **Pass** | HTTP 200, response.json()["reloaded"]=True, response.json()["using_mock"]=True, active_devices list non-empty |
+
+### `test_test_device_mock_returns_ready`
+| | |
+|---|---|
+| **Tests** | GET /test-device endpoint reports connected + ready status when mock device is loaded |
+| **Method** | Calls GET /api/v1/payments/test-device; asserts response indicates mock device in ready state |
+| **Pass** | HTTP 200, connected=True, using_mock=True, device="mock", status="ready" |
+
+### `test_spin_diag_mock_path_returns_error`
+| | |
+|---|---|
+| **Tests** | GET /spin-diag returns error dict (not 500) when no real card reader is available |
+| **Method** | Calls GET /api/v1/payments/spin-diag; asserts response includes error message mentioning mock or lack of real hardware |
+| **Pass** | HTTP 200, response.json() contains "error" key with string mentioning "mock" or "no real" |
+
+---
+
+## `test_payment_routes_refund.py`
+> Tests for money-out payment routes: refund processing, bulk tip-zeroing, and batch settlement reconciliation.
+
+### `test_full_refund_emits_payment_refunded_event`
+| | |
+|---|---|
+| **Tests** | Full refund (amount=None) emits PAYMENT_REFUNDED event with the original payment amount |
+| **Method** | Seeds a $25 closed order with payment confirmed; calls process_refund with amount=None; queries ledger for PAYMENT_REFUNDED events |
+| **Pass** | result["success"]=True, result["refund_amount"]≈25.00, one PAYMENT_REFUNDED event in ledger with amount≈25.00 |
+
+### `test_partial_refund_reduces_remaining_refundable`
+| | |
+|---|---|
+| **Tests** | Multiple partial refunds aggregate; second refund amount may not exceed remaining refundable balance |
+| **Method** | Seeds $40 order; refunds $10, then $25; asserts second refund succeeds at the requested $25 (within remaining $30) |
+| **Pass** | First refund succeeds, second refund result["refund_amount"]≈25.00 |
+
+### `test_refund_exceeding_remaining_rejected`
+| | |
+|---|---|
+| **Tests** | Refund request exceeding total refundable balance (original payment) raises HTTP 400 |
+| **Method** | Seeds $20 order; refunds $15; attempts to refund $10 more (total=$25 > $20); expects HTTPException |
+| **Pass** | HTTPException raised with status_code=400, detail contains "exceeds remaining" |
+
+### `test_refund_without_manager_approval_forbidden`
+| | |
+|---|---|
+| **Tests** | Refund without approved_by (whitespace-only) raises HTTP 403 |
+| **Method** | Calls process_refund with approved_by="   "; expects HTTPException |
+| **Pass** | HTTPException raised with status_code=403 |
+
+### `test_refund_on_missing_order_404s`
+| | |
+|---|---|
+| **Tests** | Refund on non-existent order_id raises HTTP 404 |
+| **Method** | Calls process_refund with order_id="nope" (never seeded); expects HTTPException |
+| **Pass** | HTTPException raised with status_code=404 |
+
+### `test_refund_on_missing_payment_404s`
+| | |
+|---|---|
+| **Tests** | Refund on non-existent payment_id raises HTTP 404 |
+| **Method** | Seeds order but references non-existent payment_id; expects HTTPException |
+| **Pass** | HTTPException raised with status_code=404 |
+
+### `test_refund_amount_must_be_positive`
+| | |
+|---|---|
+| **Tests** | Refund amount=0.0 raises HTTP 400 (amount must be > 0) |
+| **Method** | Calls process_refund with amount=0.0; expects HTTPException |
+| **Pass** | HTTPException raised with status_code=400 |
+
+### `test_zeros_only_card_payments_without_tip_adjusted`
+| | |
+|---|---|
+| **Tests** | zero_unadjusted_tips emits TIP_ADJUSTED(tip_amount=0) only for card payments without prior tip adjustment |
+| **Method** | Seeds three orders: card without tip (zero), card with tip (skip), cash (skip); calls zero_unadjusted_tips; checks TIP_ADJUSTED event count |
+| **Pass** | zeroed_count=1, exactly two TIP_ADJUSTED events in ledger (one pre-existing, one newly zeroed) |
+
+### `test_scope_by_server_id`
+| | |
+|---|---|
+| **Tests** | zero_unadjusted_tips server_id parameter narrows zeroing to one server's orders |
+| **Method** | Seeds unadjusted card payments for emp_A and emp_B; calls zero_unadjusted_tips(server_id="emp_A"); verifies only emp_A's payment is in TIP_ADJUSTED events |
+| **Pass** | zeroed_count=1, TIP_ADJUSTED events contain only emp_A's payment_id |
+
+### `test_empty_ledger_zeros_nothing`
+| | |
+|---|---|
+| **Tests** | zero_unadjusted_tips on empty ledger returns zeroed_count=0 |
+| **Method** | Calls zero_unadjusted_tips with no prior events; asserts result["zeroed_count"]=0 |
+| **Pass** | zeroed_count=0 |
+
+### `test_skips_orders_not_closed`
+| | |
+|---|---|
+| **Tests** | zero_unadjusted_tips includes paid (auto-transitioned) orders, not just closed; unfinalized orders excluded |
+| **Method** | Seeds open order with confirmed payment (no ORDER_CLOSED); calls zero_unadjusted_tips; asserts order is eligible (zeroed_count=1) |
+| **Pass** | zeroed_count=1 (route filters to "closed"+"paid" statuses) |
+
+### `test_no_device_returns_error`
+| | |
+|---|---|
+| **Tests** | batch_settle with no registered payment device returns error dict (success=False), never raises |
+| **Method** | Patches PaymentManager with fresh instance (no devices); calls batch_settle; asserts success=False with error message |
+| **Pass** | success=False, error contains "No payment device" |
+
+### `test_mock_device_returns_mock_success`
+| | |
+|---|---|
+| **Tests** | batch_settle with mock device returns success=True, using_mock=True, batch_id="MOCK" |
+| **Method** | Patches manager/devices_initialized to force mock setup; calls batch_settle |
+| **Pass** | success=True, using_mock=True, batch_id="MOCK" |
+
+### `test_reconciliation_matches_ledger_reports_invariant_ok`
+| | |
+|---|---|
+| **Tests** | Batch settle with real device: processor total matches ledger (card_sales + card_tips) → invariant_ok=True, settlement_diff=0 |
+| **Method** | Seeds $20 payment + $3 tip; installs fake device returning $23; calls batch_settle; asserts reconciliation matches |
+| **Pass** | success=True, using_mock=False, invariant_ok=True, settlement_diff=0.00, ledger_card_sales=20.00, ledger_card_tips=3.00 |
+
+### `test_reconciliation_drift_surfaces_invariant_failure`
+| | |
+|---|---|
+| **Tests** | Batch settle with processor total != ledger sum: invariant_ok=False, settlement_diff non-zero, but request does not raise |
+| **Method** | Seeds $20+$3=$23; fake device returns $25 (drift=+2); calls batch_settle; asserts drift surfaced without exception |
+| **Pass** | using_mock=False, invariant_ok=False, settlement_diff=2.00, batch_id="BATCH-0001" (not raising) |
+
+---
+
+## `test_payment_sale_overage.py`
+> Tests for overage-as-tip clamping: when card sale > balance_due, backend clamps sale and routes overage to TIP_ADJUSTED event, preserving financial invariants.
+
+### `test_card_overage_clamped_and_emits_tip_adjusted`
+| | |
+|---|---|
+| **Tests** | Card sale exceeding balance_due clamps to balance_due, emits TIP_ADJUSTED for overage, auto-closes order |
+| **Method** | Seeds $10 order; posts $12.50 card sale; queries ledger for PAYMENT_CONFIRMED and TIP_ADJUSTED events |
+| **Pass** | PAYMENT_CONFIRMED amount=10.00, TIP_ADJUSTED tip_amount=2.50 with same txn ID, ORDER_CLOSED event present |
+
+### `test_card_exact_balance_emits_no_overage_tip`
+| | |
+|---|---|
+| **Tests** | Card sale matching balance_due exactly emits no TIP_ADJUSTED, only PAYMENT_CONFIRMED and ORDER_CLOSED |
+| **Method** | Seeds $10 order; posts exactly $10.00 card sale; queries for TIP_ADJUSTED events |
+| **Pass** | TIP_ADJUSTED events empty list, ORDER_CLOSED present |
+
+### `test_card_sale_on_already_fully_paid_rejected`
+| | |
+|---|---|
+| **Tests** | Posting a second card sale on fully-paid order raises HTTP 400 |
+| **Method** | Seeds $10 order; pays $10; attempts second $5 sale; expects HTTPException |
+| **Pass** | HTTPException raised with status_code=400, detail contains "already fully paid" |
+
+---
+
+## `test_payment_validator.py`
+> Tests for PaymentValidator: amount checks, tip ceilings, transaction limits, and device availability rules.
+
+### `test_valid_transaction`
+| | |
+|---|---|
+| **Tests** | Valid $50 transaction passes validation with VALID status |
+| **Method** | Creates TransactionRequest(amount=50); calls validator.validate(); asserts status=VALID |
+| **Pass** | result.status == ValidationStatus.VALID |
+
+### `test_zero_amount_rejected`
+| | |
+|---|---|
+| **Tests** | Transaction amount=0 is rejected per Rule 1 |
+| **Method** | Creates request with amount=0; calls validate(); asserts REJECTED, rule="Rule 1" |
+| **Pass** | status=REJECTED, rule="Rule 1" |
+
+### `test_negative_amount_rejected`
+| | |
+|---|---|
+| **Tests** | Negative transaction amount is rejected |
+| **Method** | Creates request with amount=-10; calls validate(); asserts REJECTED |
+| **Pass** | status=REJECTED |
+
+### `test_negative_tip_rejected`
+| | |
+|---|---|
+| **Tests** | Negative tip_amount is rejected per Rule 2 |
+| **Method** | Creates request with tip=-5; calls validate(); asserts REJECTED, rule="Rule 2" |
+| **Pass** | status=REJECTED, rule="Rule 2" |
+
+### `test_negative_service_charge_rejected`
+| | |
+|---|---|
+| **Tests** | Negative service_charge_amount is rejected per Rule 3 |
+| **Method** | Creates request with service_charge=-1; calls validate(); asserts REJECTED, rule="Rule 3" |
+| **Pass** | status=REJECTED, rule="Rule 3" |
+
+### `test_exceeds_max_total`
+| | |
+|---|---|
+| **Tests** | Transaction total exceeding max limit is rejected per Rule 4 |
+| **Method** | Creates request with amount=9999, tip=2; calls validate(); asserts REJECTED, rule="Rule 4" |
+| **Pass** | status=REJECTED, rule="Rule 4" |
+
+### `test_tip_over_dollar_ceiling_needs_approval`
+| | |
+|---|---|
+| **Tests** | Tip exceeding $100 dollar ceiling requires approval per Rule 5 |
+| **Method** | Creates request with amount=50, tip=101; calls validate(); asserts NEEDS_APPROVAL, rule="Rule 5" |
+| **Pass** | status=NEEDS_APPROVAL, rule="Rule 5" |
+
+### `test_tip_over_percent_ceiling_needs_approval`
+| | |
+|---|---|
+| **Tests** | Tip exceeding 50% of amount requires approval per Rule 5 |
+| **Method** | Creates request with amount=20, tip=11 (55%); calls validate(); asserts NEEDS_APPROVAL, rule="Rule 5" |
+| **Pass** | status=NEEDS_APPROVAL, rule="Rule 5" |
+
+### `test_tip_within_both_ceilings_valid`
+| | |
+|---|---|
+| **Tests** | Tip within both dollar ($100) and percent (50%) ceilings passes validation |
+| **Method** | Creates request with amount=100, tip=40 (40%, under $100); calls validate(); asserts VALID |
+| **Pass** | status=VALID |
+
+### `test_device_offline_rejected`
+| | |
+|---|---|
+| **Tests** | Offline device (status=OFFLINE) causes validation rejection per Rule 9 |
+| **Method** | Creates mock device (defaults OFFLINE); calls validate with device; asserts REJECTED, rule="Rule 9" |
+| **Pass** | status=REJECTED, rule="Rule 9" |
+
+### `test_device_error_rejected`
+| | |
+|---|---|
+| **Tests** | Device in ERROR status causes validation rejection |
+| **Method** | Creates mock device, sets status=ERROR; calls validate; asserts REJECTED |
+| **Pass** | status=REJECTED |
+
+### `test_device_in_sacred_state_rejected`
+| | |
+|---|---|
+| **Tests** | Device in PROCESSING state (sacred/busy) causes validation rejection per Rule 9 |
+| **Method** | Creates mock device, sets status=PROCESSING; calls validate; asserts REJECTED, rule="Rule 9" |
+| **Pass** | status=REJECTED, rule="Rule 9" |
+
+### `test_no_device_still_valid`
+| | |
+|---|---|
+| **Tests** | Transaction with device=None (no device passed) still passes validation |
+| **Method** | Creates request, calls validate with device=None; asserts status=VALID |
+| **Pass** | status=VALID |
+
+---
+
+## `test_phase10_discount_catalog.py`
+> Tests for Phase 10 discount catalog CRUD events (created, updated, deactivated, reactivated) emitted via /config/push.
+
+### `test_discount_created_roundtrip`
+| | |
+|---|---|
+| **Tests** | discount.created event with full payload (name, percentage, applies_to, approval flags, created_by) lands in ledger |
+| **Method** | Pushes PendingChange with event_type="discount.created"; queries ledger for DISCOUNT_CREATED events; asserts payload fields |
+| **Pass** | One DISCOUNT_CREATED event, payload contains discount_id, name, percentage, requires_approval=True, auto_apply=False, created_by |
+
+### `test_discount_created_minimal_payload`
+| | |
+|---|---|
+| **Tests** | discount.created accepts minimal required fields; optional booleans omitted from payload when not sent |
+| **Method** | Pushes PendingChange with only required fields (no requires_approval/auto_apply); asserts payload lacks those keys |
+| **Pass** | One DISCOUNT_CREATED event, payload has discount_id/name/created_by but no requires_approval/auto_apply keys |
+
+### `test_discount_updated_roundtrip`
+| | |
+|---|---|
+| **Tests** | discount.updated event with fields_changed dict lands in ledger |
+| **Method** | Pushes PendingChange with event_type="discount.updated"; asserts DISCOUNT_UPDATED event with fields_changed |
+| **Pass** | One DISCOUNT_UPDATED event, payload["fields_changed"]["name"]="Happy Hour 25%", updated_by="mgr_alice" |
+
+### `test_discount_deactivated_roundtrip`
+| | |
+|---|---|
+| **Tests** | discount.deactivated event with deactivated_by and reason lands in ledger |
+| **Method** | Pushes PendingChange with event_type="discount.deactivated"; asserts DISCOUNT_DEACTIVATED event with reason |
+| **Pass** | One DISCOUNT_DEACTIVATED event, payload includes deactivated_by, reason="Promotion ended" |
+
+### `test_discount_deactivated_no_reason`
+| | |
+|---|---|
+| **Tests** | discount.deactivated accepts optional reason field; omitting reason does not error |
+| **Method** | Pushes PendingChange without reason; queries ledger; asserts "reason" key absent from payload |
+| **Pass** | One DISCOUNT_DEACTIVATED event, payload lacks "reason" key |
+
+### `test_discount_reactivated_roundtrip`
+| | |
+|---|---|
+| **Tests** | discount.reactivated event with reactivated_by lands in ledger |
+| **Method** | Pushes PendingChange with event_type="discount.reactivated"; asserts DISCOUNT_REACTIVATED event |
+| **Pass** | One DISCOUNT_REACTIVATED event, payload includes reactivated_by="mgr_bob" |
+
+### `test_discount_full_lifecycle`
+| | |
+|---|---|
+| **Tests** | Four discount events (created → updated → deactivated → reactivated) emitted in one push, all land in ledger |
+| **Method** | Pushes all four PendingChanges for same discount_id; asserts result["events_written"]=4 and queries each event type |
+| **Pass** | result["events_written"]=4, one event in ledger per type (created, updated, deactivated, reactivated) |
+
+### `test_discount_section_inferred`
+| | |
+|---|---|
+| **Tests** | discount.* events infer section automatically and write without error |
+| **Method** | Pushes created/updated/deactivated for same discount; asserts result["events_written"]=4 (deactivated included) |
+| **Pass** | result["events_written"]=4, no errors during push |
+
+### `test_event_type_entries_exist`
+| | |
+|---|---|
+| **Tests** | EventType enum contains all four new discount event type entries with correct values |
+| **Method** | Asserts EventType enum members DISCOUNT_CREATED, DISCOUNT_UPDATED, DISCOUNT_DEACTIVATED, DISCOUNT_REACTIVATED exist with correct .value strings |
+| **Pass** | All four assertions pass: DISCOUNT_CREATED.value="discount.created", etc. |
+
+---
+
+## `test_phase11_tipout_rules.py`
+> Tests for Phase 11 tipout rule factories and wiring (rule_created, rule_updated events) emitted via /config/push.
+
+### `test_tipout_rule_created_roundtrip`
+| | |
+|---|---|
+| **Tests** | tipout.rule_created event with rule metadata (name, pool_id, role_ids, percentage, effective_date, created_by) lands in ledger |
+| **Method** | Pushes PendingChange with event_type="tipout.rule_created"; queries ledger for TIPOUT_RULE_CREATED event; asserts payload fields |
+| **Pass** | One TIPOUT_RULE_CREATED event, payload contains rule_id, name="Bar-to-barback 10%", pool_id, role_ids=["barback"], percentage="10.00", created_by |
+
+### `test_tipout_rule_created_multiple_roles`
+| | |
+|---|---|
+| **Tests** | tipout.rule_created role_ids can carry multiple role references as an array |
+| **Method** | Pushes PendingChange with role_ids=["busser", "food_runner", "expo"]; asserts payload role_ids length=3 |
+| **Pass** | One TIPOUT_RULE_CREATED event, len(payload["role_ids"])=3 |
+
+### `test_tipout_rule_updated_roundtrip`
+| | |
+|---|---|
+| **Tests** | tipout.rule_updated event with rule_id and fields_changed dict lands in ledger |
+| **Method** | Pushes PendingChange with event_type="tipout.rule_updated"; asserts TIPOUT_RULE_UPDATED event with fields_changed |
+| **Pass** | One TIPOUT_RULE_UPDATED event, payload["fields_changed"]["percentage"]="12.00", updated_by="mgr_alice" |
+
+### `test_tipout_rule_full_lifecycle`
+| | |
+|---|---|
+| **Tests** | Three tipout events (created → updated → deactivated) emitted in one push, all land in ledger |
+| **Method** | Pushes created/updated/deactivated PendingChanges; asserts result["events_written"]=3; queries each event type |
+| **Pass** | result["events_written"]=3, one event per type in ledger (created, updated, deactivated) |
+
+### `test_tipout_rule_section_employees`
+| | |
+|---|---|
+| **Tests** | tipout.rule_created and tipout.rule_updated events infer section (employees) and write without error |
+| **Method** | Pushes created/updated events; asserts result["events_written"]=2, no errors |
+| **Pass** | result["events_written"]=2, push succeeds |
+
+### `test_event_type_entries_exist`
+| | |
+|---|---|
+| **Tests** | EventType enum contains TIPOUT_RULE_CREATED and TIPOUT_RULE_UPDATED entries with correct values |
+| **Method** | Asserts EventType enum members exist with correct .value strings |
+| **Pass** | TIPOUT_RULE_CREATED.value="tipout.rule_created", TIPOUT_RULE_UPDATED.value="tipout.rule_updated" |
+
+---
+# Backend Test Documentation
+
+## `test_phase12_seat_balance.py`
+> Verifies per-seat balance projections built from seat-scoped events and GET /orders/{id}/seats endpoint
+
+### `test_seat_balance_dataclass_exists`
+| | |
+|---|---|
+| **Tests** | SeatBalance dataclass initializes with correct default field values |
+| **Method** | Direct instantiation; asserts all fields (seat_number, item_subtotal, discount_total, amount_paid, balance_due, is_paid, is_comped) match expected defaults |
+| **Pass** | SeatBalance(seat_number=1) has item_subtotal=0.00, is_paid=False, is_comped=False, etc. |
+
+### `test_item_added_populates_seat_balance`
+| | |
+|---|---|
+| **Tests** | Item events with seat_number populate corresponding seat_balance entries in projected order |
+| **Method** | Seed two-seat order via item_added events; project_order() replays events; assert seat_balances dict keys and item subtotals |
+| **Pass** | Order has seat_balances[1] and seat_balances[2]; seat 1 item_subtotal=20.00, seat 2 item_subtotal=15.00 |
+
+### `test_item_without_seat_not_in_seat_balances`
+| | |
+|---|---|
+| **Tests** | Items without seat_number do not create seat_balance entries |
+| **Method** | Seed order with item that omits seat_number; project_order() and check seat_balances dict |
+| **Pass** | seat_balances is empty {} |
+
+### `test_item_removed_updates_seat_balance`
+| | |
+|---|---|
+| **Tests** | ITEM_REMOVED event zeroes items and item_subtotal for that seat |
+| **Method** | Seed two-seat order; emit ITEM_REMOVED for seat 1 burger; project_order() |
+| **Pass** | Seat 1 items=[], item_subtotal=0.00; seat 2 unchanged at 15.00 |
+
+### `test_seat_discount_applied_reduces_balance`
+| | |
+|---|---|
+| **Tests** | Seat discount application reduces balance_due and updates discount_total |
+| **Method** | Seed order; push seat.discount_applied event; project_order(); assert discount_total and balance_due |
+| **Pass** | Seat 1: item_subtotal=20.00, discount_total=5.00, balance_due=15.00 |
+
+### `test_seat_discount_voided_restores_balance`
+| | |
+|---|---|
+| **Tests** | Seat discount voiding returns discount_total to zero and restores balance_due |
+| **Method** | Seed order; push seat.discount_applied then seat.discount_voided; project_order() |
+| **Pass** | Seat 1: discount_total=0.00, balance_due=20.00 |
+
+### `test_seat_comped_marks_is_comped`
+| | |
+|---|---|
+| **Tests** | Seat comp event sets is_comped=True and stores comp_category |
+| **Method** | Seed order; push seat.comped event for seat 2; project_order() |
+| **Pass** | Seat 2: is_comped=True, comp_category='vip'; seat 1: is_comped=False |
+
+### `test_seat_paid_marks_seat`
+| | |
+|---|---|
+| **Tests** | Seat paid event sets is_paid=True for that seat only |
+| **Method** | Seed order; push seat.paid event for seat 1; project_order() |
+| **Pass** | Seat 1: is_paid=True; seat 2: is_paid=False |
+
+### `test_payment_confirmed_distributes_to_seats`
+| | |
+|---|---|
+| **Tests** | Payment confirmed event splits amount_paid across participating seats equally |
+| **Method** | Seed two-seat order; emit payment_confirmed for 35.00 covering seats 1,2; project_order() |
+| **Pass** | Seat 1: amount_paid=17.50; seat 2: amount_paid=17.50 |
+
+### `test_seat_balances_endpoint`
+| | |
+|---|---|
+| **Tests** | GET /orders/{id}/seats returns per-seat breakdown with items, subtotals, discounts |
+| **Method** | Seed order; apply discount to seat 1; call orders_mod.get_seat_balances() |
+| **Pass** | Response includes order_id, seats list with seat_number, item_subtotal, discount_total, balance_due, items array |
+
+### `test_seat_balances_endpoint_empty_order`
+| | |
+|---|---|
+| **Tests** | Order with no seat-scoped items returns empty seats list |
+| **Method** | Seed order_created only (no item_added); call orders_mod.get_seat_balances() |
+| **Pass** | result["seats"] == [] |
+
+---
+
+## `test_phase13_cash_variance.py`
+> Verifies cash variance calculation by summing float, cash sales, drops, payouts, and refunds since last day.closed
+
+### `test_cash_variance_empty_day`
+| | |
+|---|---|
+| **Tests** | Empty ledger returns zero cash variance components |
+| **Method** | Call _compute_cash_variance() with no prior events |
+| **Pass** | All fields (float, cash_sales, cash_refunds, drops, payouts, expected_in_drawer) = 0.00 |
+
+### `test_cash_variance_float_only`
+| | |
+|---|---|
+| **Tests** | Float-only variance sums to expected_in_drawer |
+| **Method** | Push day.cash_float_updated event for 200.00; call _compute_cash_variance() |
+| **Pass** | float=200.00, expected_in_drawer=200.00 |
+
+### `test_cash_variance_with_sales`
+| | |
+|---|---|
+| **Tests** | Cash payment.confirmed adds to cash_sales component |
+| **Method** | Push float=100 + payment.confirmed method='cash' for 45.50; call _compute_cash_variance() |
+| **Pass** | float=100.00, cash_sales=45.50, expected_in_drawer=145.50 |
+
+### `test_cash_variance_card_payments_ignored`
+| | |
+|---|---|
+| **Tests** | Card payments do not contribute to cash_sales |
+| **Method** | Push float=100 + payment.confirmed method='card' for 80.00; call _compute_cash_variance() |
+| **Pass** | cash_sales=0.00, expected_in_drawer=100.00 |
+
+### `test_cash_variance_drop_reduces`
+| | |
+|---|---|
+| **Tests** | Cash drop subtracts from expected_in_drawer |
+| **Method** | Push float=200 + day.cash_drop=150; call _compute_cash_variance() |
+| **Pass** | drops=150.00, expected_in_drawer=50.00 |
+
+### `test_cash_variance_payout_reduces`
+| | |
+|---|---|
+| **Tests** | Cash payout subtracts from expected_in_drawer |
+| **Method** | Push float=200 + day.cash_payout=30; call _compute_cash_variance() |
+| **Pass** | payouts=30.00, expected_in_drawer=170.00 |
+
+### `test_cash_variance_refund_reduces`
+| | |
+|---|---|
+| **Tests** | Cash refund subtracts from expected_in_drawer despite being counted in sales |
+| **Method** | Push float=100 + payment.confirmed cash 50 + payment.refunded cash 50; call _compute_cash_variance() |
+| **Pass** | cash_sales=50.00, cash_refunds=50.00, expected_in_drawer=100.00 |
+
+### `test_cash_variance_combined`
+| | |
+|---|---|
+| **Tests** | Full scenario: float + sales - refunds - drops - payouts = expected |
+| **Method** | Push float=200 + sales=75 + refund=10 + drop=100 + payout=20; call _compute_cash_variance() |
+| **Pass** | expected_in_drawer = 200 + 75 - 10 - 100 - 20 = 145.00 |
+
+---
+
+## `test_phase14_settlement_drift.py`
+> Surfaces batch.settlement_failed events in GET /entomology/settlement-drift for operator review
+
+### `test_no_settlement_failures`
+| | |
+|---|---|
+| **Tests** | Empty ledger returns zero failures |
+| **Method** | Call get_settlement_drift() with session dict; assert count and failures list |
+| **Pass** | count=0, failures=[] |
+
+### `test_settlement_failure_surfaces`
+| | |
+|---|---|
+| **Tests** | Single batch.settlement_failed event appears in endpoint response with all fields |
+| **Method** | Push batch.settlement_failed; call get_settlement_drift(); inspect failure object |
+| **Pass** | Response includes reason, recon_diff, failed_invariants list, timestamp |
+
+### `test_multiple_failures_sorted_newest_first`
+| | |
+|---|---|
+| **Tests** | Multiple failures are sorted newest-first (reverse chronological order) |
+| **Method** | Push three batch.settlement_failed events sequentially; call get_settlement_drift(); check order |
+| **Pass** | failures[0].reason='third drift', failures[-1].reason='first drift' |
+
+### `test_settlement_failure_missing_optional_fields`
+| | |
+|---|---|
+| **Tests** | Settlement failure with minimal payload defaults missing fields gracefully |
+| **Method** | Push batch.settlement_failed with only reason field; call get_settlement_drift() |
+| **Pass** | failure.reason='minimal event', recon_diff=None, failed_invariants=[] |
+
+---
+
+## `test_phase4c_emissions.py`
+> Tests emission of discount.voided, seat.overpayment_resolved, and seat.tip_added events
+
+### `test_void_discount_emits_discount_voided_and_refunds_amount`
+| | |
+|---|---|
+| **Tests** | void_discount() emits DISCOUNT_VOIDED event with amount and approved_by metadata |
+| **Method** | Seed order; apply_discount; call void_discount(); query ledger for DISCOUNT_VOIDED events |
+| **Pass** | One DISCOUNT_VOIDED event with payload containing discount_id, voided_by, amount=2.00 |
+
+### `test_void_discount_with_no_discount_returns_404`
+| | |
+|---|---|
+| **Tests** | Voiding non-existent discount raises exception |
+| **Method** | Seed order with no discount; call void_discount(); expect exception |
+| **Pass** | Exception raised (404-like behavior) |
+
+### `test_cash_overpayment_emits_overpayment_resolved_change`
+| | |
+|---|---|
+| **Tests** | Cash payment exceeding balance emits seat.overpayment_resolved with resolution='change' |
+| **Method** | Seed order 10.00; pay 15.00 cash (no dual pricing); query SEAT_OVERPAYMENT_RESOLVED |
+| **Pass** | One SEAT_OVERPAYMENT_RESOLVED event with resolution='change' and amount > 0 |
+
+### `test_first_tip_emits_seat_tip_added_but_second_does_not`
+| | |
+|---|---|
+| **Tests** | First tip adjustment emits seat.tip_added; subsequent tips only emit tip_adjusted |
+| **Method** | Seed payment; call adjust_tip() twice; query SEAT_TIP_ADDED and TIP_ADJUSTED |
+| **Pass** | SEAT_TIP_ADDED count stays at 1 after both adjustments; TIP_ADJUSTED count=2 |
+
+---
+
+## `test_phase4d_settlement_failure.py`
+> Verifies batch.settlement_failed emission when close-day invariants fail
+
+### `test_close_day_emits_settlement_failed_when_invariants_fail`
+| | |
+|---|---|
+| **Tests** | Failing invariant check emits batch.settlement_failed with reason, recon_diff, and failed_invariants list |
+| **Method** | Monkeypatch invariant_gate to return failing InvariantResult; call _do_close_day(); query BATCH_SETTLEMENT_FAILED |
+| **Pass** | One BATCH_SETTLEMENT_FAILED event with reason='day_close_invariants_failed', recon_diff=0.13, failed_invariants containing name='cash_plus_card_equals_net_plus_tax' |
+
+### `test_close_day_clean_does_not_emit_settlement_failed`
+| | |
+|---|---|
+| **Tests** | Clean close (no invariant failures) emits only BATCH_SUBMITTED and DAY_CLOSED, not BATCH_SETTLEMENT_FAILED |
+| **Method** | Call _do_close_day() with no seeded failures; query event types |
+| **Pass** | BATCH_SETTLEMENT_FAILED list is empty; BATCH_SUBMITTED and DAY_CLOSED each have count=1 |
+
+---
+
+## `test_phase4e_menu_import.py`
+> Verifies menu.import_started / completed / failed lifecycle events around config push path
+
+### `test_menu_push_wraps_started_and_completed`
+| | |
+|---|---|
+| **Tests** | Menu batch is wrapped in MENU_IMPORT_STARTED and MENU_IMPORT_COMPLETED with matching import_id |
+| **Method** | Push menu.item_created and menu.category_created via cfg.push_changes(); query event types |
+| **Pass** | One MENU_IMPORT_STARTED with expected_event_count=2; one MENU_IMPORT_COMPLETED with event_count=2; both share same import_id |
+
+### `test_non_menu_push_does_not_emit_import_envelope`
+| | |
+|---|---|
+| **Tests** | Non-menu events do not trigger MENU_IMPORT_STARTED/COMPLETED wrapping |
+| **Method** | Push employee.created; query MENU_IMPORT_STARTED and MENU_IMPORT_COMPLETED |
+| **Pass** | Both event type queries return empty list [] |
+
+### `test_menu_push_failure_emits_import_failed`
+| | |
+|---|---|
+| **Tests** | Failure during menu batch append emits MENU_IMPORT_FAILED with error details and re-raises exception |
+| **Method** | Monkeypatch ledger.append_batch to raise RuntimeError; call cfg.push_changes(); restore append_batch; query MENU_IMPORT_FAILED |
+| **Pass** | One MENU_IMPORT_FAILED event with reason='forced batch failure', error_type='RuntimeError'; RuntimeError propagates; MENU_ITEM_CREATED list is empty |
+
+
+---
+## `test_phase4f_modifier_crud.py`
+> Tests modifier CRUD events (created, updated, price_changed, deactivated, reactivated, 86ed, 86_cleared) flowing through /config/push
+
+### `test_modifier_created_lands_in_ledger`
+| | |
+|---|---|
+| **Tests** | Event type MODIFIER_CREATED is properly recorded with correct payload fields |
+| **Method** | Push PendingChange with modifier.created event type, verify ledger contains event with modifier_id, name, and modifier_group_id |
+| **Pass** | One MODIFIER_CREATED event recorded with exact payload fields matched |
+
+### `test_modifier_price_changed_carries_delta`
+| | |
+|---|---|
+| **Tests** | Price change event captures both previous and new price plus who changed it |
+| **Method** | Push modifier.price_changed event, query ledger for MODIFIER_PRICE_CHANGED, assert delta fields present |
+| **Pass** | Event contains previous_price, new_price, and changed_by fields |
+
+### `test_modifier_86ed_and_cleared_roundtrip`
+| | |
+|---|---|
+| **Tests** | 86ed (out-of-stock) and 86_cleared events complete roundtrip through ledger |
+| **Method** | Push both modifier.86ed and modifier.86_cleared events, query for both types, verify counts and payloads |
+| **Pass** | One MODIFIER_86ED and one MODIFIER_86_CLEARED event with matching reason and cleared_by fields |
+
+### `test_modifier_deactivate_reactivate_roundtrip`
+| | |
+|---|---|
+| **Tests** | Deactivate and reactivate lifecycle events complete roundtrip |
+| **Method** | Push modifier.deactivated then modifier.reactivated, verify both event types present in ledger |
+| **Pass** | One MODIFIER_DEACTIVATED and one MODIFIER_REACTIVATED event recorded |
+
+### `test_modifier_updated_records_changed_fields`
+| | |
+|---|---|
+| **Tests** | Updated event records which fields changed on a modifier |
+| **Method** | Push modifier.updated event with fields_changed list, query ledger for MODIFIER_UPDATED |
+| **Pass** | Event contains fields_changed array matching ["name", "sort_order"] |
+
+---
+
+## `test_phase4g_micromods.py`
+> Tests micromod dark-ship events through /config/push as scaffolding for overseer rollout
+
+### `test_micromod_created_lands_in_ledger`
+| | |
+|---|---|
+| **Tests** | Micromod creation event records correctly in ledger with all payload fields |
+| **Method** | Push micromod.created event, retrieve MICROMOD_CREATED from ledger, assert micromod_id, name, price, and modifier_id |
+| **Pass** | One event recorded with micromod_id="micro_ranch" and modifier_id="mod_sauce_on_side" |
+
+### `test_micromod_price_changed_carries_delta`
+| | |
+|---|---|
+| **Tests** | Micromod price change event captures previous and new price |
+| **Method** | Push micromod.price_changed event, query for MICROMOD_PRICE_CHANGED, verify delta |
+| **Pass** | Event contains previous_price=0.50 and new_price=0.75 |
+
+### `test_micromod_assignment_events_roundtrip`
+| | |
+|---|---|
+| **Tests** | Micromod assignment and unassignment to modifiers complete roundtrip |
+| **Method** | Push micromod.assigned_to_modifier then micromod.unassigned_from_modifier events |
+| **Pass** | One MICROMOD_ASSIGNED_TO_MODIFIER and one MICROMOD_UNASSIGNED_FROM_MODIFIER event |
+
+### `test_micromod_86_roundtrip`
+| | |
+|---|---|
+| **Tests** | Micromod 86ed (out-of-stock) and 86_cleared events roundtrip |
+| **Method** | Push both events, query for MICROMOD_86ED and MICROMOD_86_CLEARED types |
+| **Pass** | One event of each type recorded with matching micromod_id |
+
+### `test_micromod_deactivate_reactivate_roundtrip`
+| | |
+|---|---|
+| **Tests** | Micromod deactivate/reactivate lifecycle events complete roundtrip |
+| **Method** | Push micromod.deactivated then micromod.reactivated, verify both event types in ledger |
+| **Pass** | One MICROMOD_DEACTIVATED and one MICROMOD_REACTIVATED event |
+
+---
+
+## `test_phase4h_modifier_micromod_wiring.py`
+> Tests modifier lifecycle projection replay and micromod projection from events, plus broadcast signaling
+
+### `test_modifier_86_reflected_in_projection`
+| | |
+|---|---|
+| **Tests** | Modifier is_86d flag reflects 86ed event in projection |
+| **Method** | Seed modifier.group_created, call get_modifier_groups(), verify is_86d=False; push modifier.86ed, re-fetch groups, verify is_86d=True |
+| **Pass** | Projection updates is_86d flag from False to True after 86ed event |
+
+### `test_modifier_86_cleared_restores_availability`
+| | |
+|---|---|
+| **Tests** | 86_cleared event resets modifier is_86d flag back to False |
+| **Method** | Seed group with 86ed event, push 86_cleared event, verify projection shows is_86d=False |
+| **Pass** | Projection reflects is_86d=False after both 86ed and 86_cleared events |
+
+### `test_modifier_deactivate_reactivate_reflected_in_projection`
+| | |
+|---|---|
+| **Tests** | Modifier active flag toggles with deactivate/reactivate events |
+| **Method** | Seed group, push deactivated event, verify active=False; push reactivated, verify active=True |
+| **Pass** | Projection toggles active flag correctly through lifecycle |
+
+### `test_modifier_price_change_reflected_in_projection`
+| | |
+|---|---|
+| **Tests** | Modifier price updates in projection after price_changed event |
+| **Method** | Seed group with price 1.50, push price_changed to 2.00, verify projection shows Decimal("2.00") |
+| **Pass** | Projection price matches new_price from event |
+
+### `test_get_micromods_empty_when_no_events`
+| | |
+|---|---|
+| **Tests** | Micromod projection returns empty list with no events |
+| **Method** | Create OverseerConfigService with empty ledger, call get_micromods() |
+| **Pass** | Returns empty list |
+
+### `test_micromod_created_appears_in_projection`
+| | |
+|---|---|
+| **Tests** | Created micromod appears in projection with all fields and default state |
+| **Method** | Push micromod.created event, call get_micromods(), verify all fields including active=True and is_86d=False |
+| **Pass** | One micromod in projection with correct id, name, modifier_id, and default flags |
+
+### `test_micromod_price_changed_updates_projection`
+| | |
+|---|---|
+| **Tests** | Micromod price updates in projection after price_changed event |
+| **Method** | Create micromod at 0.50, push price_changed to 0.75, verify projection price |
+| **Pass** | Projection price equals Decimal("0.75") |
+
+### `test_micromod_86_and_cleared_projection`
+| | |
+|---|---|
+| **Tests** | Micromod is_86d flag toggles with 86ed and 86_cleared events |
+| **Method** | Create micromod, push 86ed, verify is_86d=True; push 86_cleared, verify is_86d=False |
+| **Pass** | Projection reflects is_86d state changes |
+
+### `test_micromod_deactivate_reactivate_projection`
+| | |
+|---|---|
+| **Tests** | Micromod active flag toggles with deactivate/reactivate events |
+| **Method** | Create micromod, push deactivated, verify active=False; push reactivated, verify active=True |
+| **Pass** | Projection toggles active flag correctly |
+
+### `test_micromod_assign_unassign_projection`
+| | |
+|---|---|
+| **Tests** | Micromod modifier_id updates with assign/unassign events |
+| **Method** | Create micromod, push assigned_to_modifier, verify modifier_id set; push unassigned_from_modifier, verify modifier_id=None |
+| **Pass** | modifier_id changes correctly through assignment lifecycle |
+
+### `test_micromod_push_queues_modifiers_broadcast`
+| | |
+|---|---|
+| **Tests** | Pushing micromod.* event queues "modifiers" broadcast section |
+| **Method** | Push micromod.created, inspect bg.tasks for broadcast_config_update call, verify "modifiers" in sections arg |
+| **Pass** | One task queued with "modifiers" in broadcast sections |
+
+---
+
+## `test_phase5_catalog.py`
+> Tests check.table_changed wiring plus item and special events through /config/push
+
+### `test_patch_table_emits_check_table_changed`
+| | |
+|---|---|
+| **Tests** | Patching order table emits check.table_changed event with previous/new values |
+| **Method** | Seed order with table="5", call patch_order with table="12", verify CHECK_TABLE_CHANGED event |
+| **Pass** | Event contains previous_table="5", new_table="12", and changed_by="srv_alice" |
+
+### `test_patch_same_table_emits_no_event`
+| | |
+|---|---|
+| **Tests** | Patching to same table does not emit event |
+| **Method** | Seed order with table="7", patch to table="7", verify no CHECK_TABLE_CHANGED events |
+| **Pass** | Empty event list |
+
+### `test_item_price_changed_lands_in_ledger`
+| | |
+|---|---|
+| **Tests** | Item price change event records with previous and new price |
+| **Method** | Push item.price_changed event via /config/push, query for ITEM_PRICE_CHANGED |
+| **Pass** | Event contains previous_price=10.00 and new_price=11.50 |
+
+### `test_item_deactivate_reactivate_roundtrip`
+| | |
+|---|---|
+| **Tests** | Item deactivate and reactivate events complete roundtrip |
+| **Method** | Push both item.deactivated and item.reactivated events, verify both types in ledger |
+| **Pass** | One ITEM_DEACTIVATED and one ITEM_REACTIVATED event |
+
+### `test_special_full_lifecycle_roundtrip`
+| | |
+|---|---|
+| **Tests** | Special (promotion) lifecycle events all roundtrip: created, updated, activated, deactivated |
+| **Method** | Push all four special.* events, verify each event type recorded in ledger |
+| **Pass** | One event of each type (SPECIAL_CREATED, SPECIAL_UPDATED, SPECIAL_ACTIVATED, SPECIAL_DEACTIVATED) |
+
+---
+
+## `test_phase6_staff_config.py`
+> Tests 11 staff, timecard, security, and configuration event types through /config/push
+
+### `test_staff_updated_lands`
+| | |
+|---|---|
+| **Tests** | Staff updated event records fields changed list |
+| **Method** | Push staff.updated event with fields_changed, query for STAFF_UPDATED |
+| **Pass** | Event contains fields_changed=["display_name", "hourly_rate"] |
+
+### `test_staff_role_changed_carries_delta`
+| | |
+|---|---|
+| **Tests** | Staff role change event captures previous and new role lists |
+| **Method** | Push staff.role_changed with role deltas, verify event payload |
+| **Pass** | Event contains previous_role_ids=["server"] and new_role_ids=["server", "shift_lead"] |
+
+### `test_staff_deactivate_reactivate_roundtrip`
+| | |
+|---|---|
+| **Tests** | Staff deactivate and reactivate events complete roundtrip |
+| **Method** | Push both staff.deactivated and staff.reactivated events, verify both types |
+| **Pass** | One STAFF_DEACTIVATED and one STAFF_REACTIVATED event |
+
+### `test_clock_edit_records_before_and_after`
+| | |
+|---|---|
+| **Tests** | Clock edit event records field, previous value, new value, and audit info |
+| **Method** | Push clock.edit event with all details, query for CLOCK_EDIT |
+| **Pass** | Event contains field="clock_out", edited_by="mgr_alice", and reason |
+
+### `test_shift_deleted_records_audit`
+| | |
+|---|---|
+| **Tests** | Shift deletion event records who deleted and why |
+| **Method** | Push shift.deleted event, verify SHIFT_DELETED in ledger |
+| **Pass** | Event contains deleted_by="mgr_alice" and reason |
+
+### `test_category_deactivate_reactivate_roundtrip`
+| | |
+|---|---|
+| **Tests** | Category deactivate and reactivate events complete roundtrip |
+| **Method** | Push both category.deactivated and category.reactivated events |
+| **Pass** | One CATEGORY_DEACTIVATED and one CATEGORY_REACTIVATED event |
+
+### `test_tipout_rule_deactivated`
+| | |
+|---|---|
+| **Tests** | Tipout rule deactivation event records rule ID and who deactivated |
+| **Method** | Push tipout.rule_deactivated event, query for TIPOUT_RULE_DEACTIVATED |
+| **Pass** | Event contains rule_id="rule_1" and deactivated_by="mgr_alice" |
+
+### `test_security_setting_updated_records_delta`
+| | |
+|---|---|
+| **Tests** | Security setting change records before/after values for compliance audit |
+| **Method** | Push security.setting_updated with delta, query for SECURITY_SETTING_UPDATED |
+| **Pass** | Event contains setting_key, previous_value="30", and new_value="15" |
+
+---
+
+## `test_phase7_day_batch.py`
+> Tests 7 day and batch lifecycle events through /config/push
+
+### `test_check_day_locked_roundtrip`
+| | |
+|---|---|
+| **Tests** | Check day locked event records which event triggered the lock |
+| **Method** | Push check.day_locked event, query for CHECK_DAY_LOCKED |
+| **Pass** | Event contains order_id and locked_by_event="day.closed" |
+
+### `test_flash_report_roundtrip`
+| | |
+|---|---|
+| **Tests** | Flash report event records time window, sales total, and generator |
+| **Method** | Push day.flash_report_generated event with window and sales data, verify ledger |
+| **Pass** | Event contains window_start, window_end, total_sales=4250.00, and generated_by |
+
+### `test_day_lock_reopen_roundtrip`
+| | |
+|---|---|
+| **Tests** | Day lock and reopen events complete roundtrip with reason for reopening |
+| **Method** | Push both day.locked and day.reopened events, verify both types |
+| **Pass** | One DAY_LOCKED and one DAY_REOPENED event with reopened_by and reason fields |
+
+### `test_batch_lifecycle_roundtrip`
+| | |
+|---|---|
+| **Tests** | Batch opened, settlement initiated, and reopened events complete lifecycle |
+| **Method** | Push all three batch.* events, query for each event type |
+| **Pass** | One BATCH_OPENED, one BATCH_SETTLEMENT_INITIATED, and one BATCH_REOPENED event with matching fields |
+
+---
+# Backend Test Documentation
+
+## `test_phase8_seat_financial.py`
+> Tests for seat-scoped financial events (discounts, comps, payment voids) and tipout calculation.
+
+### `test_seat_discount_apply_void_roundtrip`
+| | |
+|---|---|
+| **Tests** | Discount lifecycle: applying and voiding a seat discount persists correctly to ledger. |
+| **Method** | Push `seat.discount_applied` then `seat.discount_voided` events via `/config/push`; query ledger for both event types. |
+| **Pass** | One SEAT_DISCOUNT_APPLIED and one SEAT_DISCOUNT_VOIDED event exist with seat_number=2, amount=5.00. |
+
+### `test_seat_comped_lands`
+| | |
+|---|---|
+| **Tests** | Seat comp event (partial or full write-off) persists with all required fields. |
+| **Method** | Push single `seat.comped` event via `/config/push` with comp_category; query ledger. |
+| **Pass** | One SEAT_COMPED event exists with comp_category="guest_relations". |
+
+### `test_seat_payment_voided_records_seat_scope`
+| | |
+|---|---|
+| **Tests** | Per-seat payment void records scope (seat_number, payment_id) correctly. |
+| **Method** | Push `seat.payment_voided` event with order_id, seat_number, payment_id; query ledger. |
+| **Pass** | One SEAT_PAYMENT_VOIDED event with seat_number=1, payment_id="pay_abc". |
+
+### `test_tipout_calculated_roundtrip`
+| | |
+|---|---|
+| **Tests** | Tipout calculation (total amount, recipient breakdown, rule IDs) persists. |
+| **Method** | Push `tipout.calculated` event with breakdown array; query ledger. |
+| **Pass** | One TIPOUT_CALCULATED event with total_tipout=84.50. |
+
+### `test_tipout_adjusted_and_distributed_roundtrip`
+| | |
+|---|---|
+| **Tests** | Tipout adjustment (per-recipient override) and final distribution both persist. |
+| **Method** | Push `tipout.adjusted` then `tipout.distributed` events; query ledger for both. |
+| **Pass** | One TIPOUT_ADJUSTED and one TIPOUT_DISTRIBUTED event exist with recipient_count=2. |
+
+---
+
+## `test_phase9_seat_transfer.py`
+> Tests for per-seat add/remove/relabel, cross-check transfers, item moves, whole-seat transfers, splits/merges, and reopens.
+
+### `test_check_seat_add_remove_relabel`
+| | |
+|---|---|
+| **Tests** | Per-seat lifecycle: add, relabel, remove persist independently. |
+| **Method** | Push `check.seat_added`, `check.seat_relabeled`, `check.seat_removed` events; query ledger. |
+| **Pass** | One event of each type exists in ledger. |
+
+### `test_check_seat_cross_check_transfer`
+| | |
+|---|---|
+| **Tests** | Cross-check transfer: sent_out and received events link via order IDs. |
+| **Method** | Push `check.seat_sent_out` from o1→o2 and `check.seat_received` on o2; query both event types. |
+| **Pass** | Sent event has target_order_id="o2", received event has source_order_id="o1". |
+
+### `test_seat_item_transfer_roundtrip`
+| | |
+|---|---|
+| **Tests** | Item-level transfer within same order: out and received events match on item_id and seat numbers. |
+| **Method** | Push `seat.item_transferred_out` and `seat.item_received` events; query ledger. |
+| **Pass** | Transferred_out event has item_id="it_steak", received event has source_seat_number=2. |
+
+### `test_whole_seat_transfer_roundtrip`
+| | |
+|---|---|
+| **Tests** | Whole-seat transfer across orders: transferred_out and transferred_in events. |
+| **Method** | Push `seat.transferred_out` from o1→o2 and `seat.transferred_in` on o2; query ledger. |
+| **Pass** | One SEAT_TRANSFERRED_OUT and one SEAT_TRANSFERRED_IN event exist. |
+
+### `test_seat_split_and_merge`
+| | |
+|---|---|
+| **Tests** | Seat split (one parent to child) and merge (child back to parent) both record correctly. |
+| **Method** | Push `seat.split_from` and `seat.merged_into` events; query ledger. |
+| **Pass** | Split event has child_seat_number=6, merged event has target_seat_number=2. |
+
+### `test_seat_reopened_lands`
+| | |
+|---|---|
+| **Tests** | Seat reopen event (for late dessert, etc.) persists with reason. |
+| **Method** | Push `seat.reopened` event with reason; query ledger. |
+| **Pass** | One SEAT_REOPENED event with reason="late dessert". |
+
+---
+
+## `test_physical_integration.py`
+> Hardware integration tests gated by environment variables; require real devices on network.
+
+### `test_spin_real_check_status`
+| | |
+|---|---|
+| **Tests** | Dejavoo SPIn device connects and responds with valid status (IDLE/ONLINE/PROCESSING). |
+| **Method** | Connect DejavooSPInAdapter to device from KINDPOS_TEST_SPIN_IP:SPIN_PORT; check status. |
+| **Pass** | Connected=True, status in (IDLE, ONLINE, PROCESSING). Skipped if KINDPOS_TEST_SPIN_IP not set. |
+
+### `test_spin_real_close_batch`
+| | |
+|---|---|
+| **Tests** | Batch close on real device returns non-error status and non-empty batch_id. |
+| **Method** | Connect adapter, call close_batch(), check result status and batch_id. |
+| **Pass** | result.status in (SUCCESS, FAILED), result.batch_id is non-empty. Skipped if KINDPOS_TEST_SPIN_IP not set. |
+
+### `test_printer_real_tcp_probe`
+| | |
+|---|---|
+| **Tests** | Thermal receipt printer TCP port probe succeeds on live device. |
+| **Method** | Call _tcp_probe(PRINTER_IP, PRINTER_PORT, 3.0 timeout). |
+| **Pass** | result=True. Skipped if KINDPOS_TEST_PRINTER_IP not set. |
+
+### `test_kitchen_printer_real_tcp_probe`
+| | |
+|---|---|
+| **Tests** | Impact kitchen printer TCP port probe succeeds on live device. |
+| **Method** | Call _tcp_probe(KITCHEN_IP, 9100, 3.0 timeout). |
+| **Pass** | result=True. Skipped if KINDPOS_TEST_KITCHEN_IP not set. |
+
+### `test_real_arp_scan_finds_hosts`
+| | |
+|---|---|
+| **Tests** | ARP broadcast + cache scan finds at least one live host on subnet. |
+| **Method** | Call _ping_broadcast(SUBNET), then _get_arp_hosts(SUBNET); verify hosts have ip and mac. |
+| **Pass** | len(hosts) >= 1, each host has "ip" and "mac" keys. Skipped if KINDPOS_TEST_SUBNET not set. |
+
+### `test_real_probe_host_classifies_printer`
+| | |
+|---|---|
+| **Tests** | _probe_host classifies live thermal printer as "printer" on correct port. |
+| **Method** | Call _probe_host(PRINTER_IP, None, ALL_SCAN_PORTS, 3.0); check type and port. |
+| **Pass** | result is not None, result["type"]="printer", result["port"] in PRINTER_PORTS. Skipped if KINDPOS_TEST_PRINTER_IP not set. |
+
+---
+
+## `test_pin_hash.py`
+> Unit tests for PBKDF2-tagged PIN hashing used by POST /auth/verify-pin.
+
+### `test_hash_is_tagged`
+| | |
+|---|---|
+| **Tests** | Hashed PIN starts with "$pbkdf2-sha256$" tag and is recognized as hashed. |
+| **Method** | Call hash_pin("1234"), check prefix and is_hashed(). |
+| **Pass** | Hash starts with "$pbkdf2-sha256$" and is_hashed() returns True. |
+
+### `test_hash_is_nondeterministic`
+| | |
+|---|---|
+| **Tests** | Each hash call produces distinct salt; two hashes of same PIN differ. |
+| **Method** | Call hash_pin("1234") twice, compare results. |
+| **Pass** | hash_pin("1234") != hash_pin("1234"). |
+
+### `test_verify_roundtrip`
+| | |
+|---|---|
+| **Tests** | Correct PIN verifies; wrong PIN and empty PIN both fail. |
+| **Method** | Hash "1234", verify against "1234" (pass), "0000" (fail), "" (fail). |
+| **Pass** | verify_pin_hash("1234", hash) is True; verify_pin_hash("0000", hash) and verify_pin_hash("", hash) are False. |
+
+### `test_verify_accepts_legacy_plaintext`
+| | |
+|---|---|
+| **Tests** | Verify accepts plaintext PINs (pre-migration ledger entries) alongside hashed. |
+| **Method** | Call verify_pin_hash("1234", "1234") and verify_pin_hash("0000", "1234"). |
+| **Pass** | verify_pin_hash("1234", "1234") is True; verify_pin_hash("0000", "1234") is False. |
+
+### `test_verify_rejects_empty_stored`
+| | |
+|---|---|
+| **Tests** | Empty stored PIN string is never valid. |
+| **Method** | Call verify_pin_hash with various inputs against empty string. |
+| **Pass** | verify_pin_hash("1234", "") and verify_pin_hash("", "") both return False. |
+
+### `test_verify_rejects_malformed_tag`
+| | |
+|---|---|
+| **Tests** | Malformed tagged hash (broken count or missing parts) does not silently fall through to plaintext. |
+| **Method** | Call verify_pin_hash("1234", "$pbkdf2-sha256$not-a-number$x$y") and similar malformed hashes. |
+| **Pass** | Both return False (do not match). |
+
+### `test_ensure_hashed_pin_is_idempotent`
+| | |
+|---|---|
+| **Tests** | Feeding already-hashed PIN returns it unchanged; result still verifies against original plaintext. |
+| **Method** | Hash "1234" once, pass hash through ensure_hashed_pin again, compare. |
+| **Pass** | ensure_hashed_pin(once) == ensure_hashed_pin(hash_result); verify_pin_hash("1234", result) is True. |
+
+### `test_is_hashed_boundary`
+| | |
+|---|---|
+| **Tests** | is_hashed() correctly distinguishes plaintext, plaintext numbers, and hashed PINs. |
+| **Method** | Call is_hashed(""), is_hashed("1234"), is_hashed(hash_pin("1234")). |
+| **Pass** | is_hashed("") and is_hashed("1234") are False; is_hashed(hash_pin("1234")) is True. |
+
+---
+
+## `test_pos_system.py`
+> Comprehensive POS system tests covering financial accuracy, transaction flow, hardware integration, concurrency, reporting, resilience, and user permissions.
+
+### `test_tax_on_single_item`
+| | |
+|---|---|
+| **Tests** | Single-item tax calculation: $10.00 item × 0.07 = $0.70 tax, total $10.70. |
+| **Method** | Create order, add $10 item, project order with 7% tax rate. |
+| **Pass** | subtotal=$10.00, tax=$0.70, total=$10.70. |
+
+### `test_tax_after_flat_discount`
+| | |
+|---|---|
+| **Tests** | Tax applied after discount: $50 item − $5 discount, tax on $45 = $3.15, total $48.15. |
+| **Method** | Add item, push DISCOUNT_APPROVED event, project order. |
+| **Pass** | discount_total=$5.00, tax=$3.15, total=$48.15. |
+
+### `test_tax_rounding_half_up`
+| | |
+|---|---|
+| **Tests** | Tax rounding via ROUND_HALF_UP: $10.05 × 0.07 = 0.7035 → 0.70. |
+| **Method** | Add $10.05 item, project with TAX_RATE=0.07. |
+| **Pass** | tax=$0.70, total=$10.75. |
+
+### `test_modifier_pricing_with_quantity`
+| | |
+|---|---|
+| **Tests** | Modifier applies per-item-quantity: $10 item + $1.50 modifier, qty 2 = $23.00 subtotal. |
+| **Method** | Add item qty 2, apply $1.50 modifier, project. |
+| **Pass** | subtotal=$23.00. |
+
+### `test_split_payment_balance_tracking`
+| | |
+|---|---|
+| **Tests** | Balance due decreases correctly across multiple partial payments. |
+| **Method** | Create order (total $53.50), pay $20, verify balance=$33.50; pay $33.50, verify balance=$0 and is_fully_paid. |
+| **Pass** | amount_paid=$53.50, balance_due=$0.00, is_fully_paid=True. |
+
+### `test_split_payment_three_way`
+| | |
+|---|---|
+| **Tests** | Three payments totaling exact amount fully pay the order. |
+| **Method** | Create order, make three $10.70 payments (card, card, cash), project. |
+| **Pass** | amount_paid=$32.10, is_fully_paid=True, status="paid". |
+
+### `test_overpayment_negative_balance`
+| | |
+|---|---|
+| **Tests** | Cash overpayment results in negative balance (change owed). |
+| **Method** | Create order total $5.35, pay $10 cash, project. |
+| **Pass** | balance_due=−$4.65 (negative). |
+
+### `test_penny_accumulation_100_items`
+| | |
+|---|---|
+| **Tests** | 100 items at $0.01 each accumulate to exactly $1.00 (no floating-point drift). |
+| **Method** | Add 100 items at $0.01 each, project. |
+| **Pass** | subtotal=$1.00. |
+
+### `test_discount_exceeding_subtotal_clamped`
+| | |
+|---|---|
+| **Tests** | Discount larger than subtotal clamps taxable to 0; total becomes $0. |
+| **Method** | Add $3 item, apply $5 discount, project. |
+| **Pass** | discount_total=$5.00, tax=$0.00, total=$0.00. |
+
+### `test_tip_precision_rounding`
+| | |
+|---|---|
+| **Tests** | Fractional tip amounts round correctly via money_round(). |
+| **Method** | Call money_round on 2.6666666, 2.665, 2.664. |
+| **Pass** | 2.6666666→$2.67, 2.665→$2.67 (half-up), 2.664→$2.66. |
+
+### `test_size_based_pricing_and_included_modifiers`
+| | |
+|---|---|
+| **Tests** | Size-based modifier repricing and included (zero-price) modifiers both project correctly. |
+| **Method** | Add Large Pizza $20, apply Pepperoni $3.50, apply Cheese $0; add Medium Pizza $15 with Pepperoni $2.50; project. |
+| **Pass** | Large+mods=$23.50, full subtotal=$41.00. |
+
+### `test_full_lifecycle`
+| | |
+|---|---|
+| **Tests** | Complete order flow: create → add → send → pay → close. |
+| **Method** | Seed events: ORDER_CREATED, ITEM_ADDED, ITEM_SENT, PAYMENT_INITIATED+CONFIRMED, ORDER_CLOSED. |
+| **Pass** | Sequence of statuses: open → open → open → paid → closed; item.sent=True. |
+
+### `test_void_order_with_reason`
+| | |
+|---|---|
+| **Tests** | Voiding an order records reason, approval, and sets status="voided" with voided_at timestamp. |
+| **Method** | Create order, add item, push ORDER_VOIDED event with reason and approved_by. |
+| **Pass** | status="voided", void_reason="customer walked out", voided_at is not None. |
+
+### `test_void_api_rejects_without_manager`
+| | |
+|---|---|
+| **Tests** | void_order route rejects empty approved_by string with 403. |
+| **Method** | Call void_order() with VoidOrderRequest(approved_by=""). |
+| **Pass** | HTTPException with status_code=403. |
+
+### `test_reopen_after_close`
+| | |
+|---|---|
+| **Tests** | ORDER_REOPENED event changes status back to "open" and clears closed_at. |
+| **Method** | Close order, append ORDER_REOPENED event, project. |
+| **Pass** | status="open", closed_at=None. |
+
+### `test_item_removed_reduces_subtotal`
+| | |
+|---|---|
+| **Tests** | Removing an item from order reduces subtotal and item count. |
+| **Method** | Add two items ($10 + $5), remove first, project. |
+| **Pass** | subtotal=$5.00, len(items)=1. |
+
+### `test_comp_as_discount`
+| | |
+|---|---|
+| **Tests** | DISCOUNT_APPROVED with type=comp reduces order total. |
+| **Method** | Add $14 wine, apply $14 comp discount, project. |
+| **Pass** | discount_total=$14.00, total=$0.00. |
+
+### `test_modifier_add_then_remove`
+| | |
+|---|---|
+| **Tests** | Adding and removing same modifier (action="remove") leaves base item price only. |
+| **Method** | Add $10 item, apply +$2 modifier, then apply same modifier with action="remove". |
+| **Pass** | subtotal=$10.00 (after remove). |
+
+### `test_payment_failed_not_counted`
+| | |
+|---|---|
+| **Tests** | PAYMENT_FAILED event does not increase amount_paid or change order status. |
+| **Method** | Create order, PAYMENT_INITIATED, then PAYMENT_FAILED. |
+| **Pass** | amount_paid=0.00, payments[0].status="failed", order.status="open". |
+
+### `test_refund_full_payment`
+| | |
+|---|---|
+| **Tests** | Full refund on cash payment via process_refund() creates PAYMENT_REFUNDED event. |
+| **Method** | Create order, pay $10.70 cash, call process_refund with full amount. |
+| **Pass** | result["success"]=True, result["refund_amount"]=$10.70; one PAYMENT_REFUNDED event. |
+
+### `test_refund_partial_amount`
+| | |
+|---|---|
+| **Tests** | Partial refund of $5 on $10.70 payment succeeds. |
+| **Method** | Create order, pay $10.70, refund $5. |
+| **Pass** | result["refund_amount"]=$5.00. |
+
+### `test_refund_exceeding_payment_rejected`
+| | |
+|---|---|
+| **Tests** | Refunding more than original payment amount is rejected with 400. |
+| **Method** | Create order, pay $10.70, try to refund $20. |
+| **Pass** | HTTPException with status_code=400, "exceeds" in detail. |
+
+### `test_refund_requires_manager_approval`
+| | |
+|---|---|
+| **Tests** | Refund without manager approval (empty approved_by) rejected with 403. |
+| **Method** | Create order, pay, call process_refund with approved_by="". |
+| **Pass** | HTTPException with status_code=403. |
+
+### `test_double_close_idempotent`
+| | |
+|---|---|
+| **Tests** | Closing an already-closed order does not corrupt state. |
+| **Method** | Create, pay, close, close again. |
+| **Pass** | status="closed", total=$10.70 (unchanged). |
+
+### `test_validator_rejects_zero_amount`
+| | |
+|---|---|
+| **Tests** | PaymentValidator rejects zero/negative amount with ValidationStatus.REJECTED. |
+| **Method** | Call validator.validate(TransactionRequest(amount=$0)). |
+| **Pass** | result.status=REJECTED, "greater than zero" in result.reason. |
+
+### `test_validator_rejects_negative_tip`
+| | |
+|---|---|
+| **Tests** | Negative tip amount rejected with ValidationStatus.REJECTED. |
+| **Method** | Call validator.validate(TransactionRequest(tip_amount=−$1)). |
+| **Pass** | result.status=REJECTED, "negative" in result.reason. |
+
+### `test_validator_tip_ceiling_needs_approval`
+| | |
+|---|---|
+| **Tests** | Tip > 50% of sale (200% example) returns ValidationStatus.NEEDS_APPROVAL. |
+| **Method** | Call validator.validate(TransactionRequest(amount=$100, tip_amount=$200)). |
+| **Pass** | result.status=NEEDS_APPROVAL, "ceiling" or "approval" in reason. |
+
+### `test_validator_device_offline_rejected`
+| | |
+|---|---|
+| **Tests** | Payment validation fails if device is OFFLINE. |
+| **Method** | Mock device with status=OFFLINE, call validator.validate(). |
+| **Pass** | result.status=REJECTED, "unavailable" in reason. |
+
+### `test_validator_sacred_state_rejected`
+| | |
+|---|---|
+| **Tests** | Payment validation fails if device is in sacred state (in_sacred_state=True). |
+| **Method** | Mock device with in_sacred_state=True, status=ONLINE, call validator.validate(). |
+| **Pass** | result.status=REJECTED, "busy" in reason. |
+
+### `test_print_queue_enqueue_and_retrieve`
+| | |
+|---|---|
+| **Tests** | Print queue persists jobs to SQLite, marks sent/failed, and retries. |
+| **Method** | Enqueue job, get_pending_jobs (expect 1), mark_sent, mark_failed, get_failed_jobs (expect 1), reset_for_retry. |
+| **Pass** | Enqueued job_id exists; pending/failed counts correct; after retry attempt_count=0. |
+
+### `test_concurrent_appends_unique_sequences`
+| | |
+|---|---|
+| **Tests** | 20 concurrent appends all receive unique sequence numbers (no collisions). |
+| **Method** | Create order, concurrently append 20 ITEM_ADDED events. |
+| **Pass** | len(set(sequence_numbers)) == 20 (all unique). |
+
+### `test_concurrent_appends_hash_chain_valid`
+| | |
+|---|---|
+| **Tests** | Hash chain remains valid after concurrent writes. |
+| **Method** | Concurrently append 20 items, call verify_chain(). |
+| **Pass** | is_valid=True. |
+
+### `test_rapid_fire_50_orders`
+| | |
+|---|---|
+| **Tests** | Rapidly create 50 orders and verify projection includes all with correct subtotals. |
+| **Method** | Create 50 orders with one $10 item each, project all events. |
+| **Pass** | len(orders)==50; all have subtotal=$10.00. |
+
+### `test_concurrent_payments_no_cross_contamination`
+| | |
+|---|---|
+| **Tests** | Parallel payments on different orders don't bleed between orders. |
+| **Method** | Create 5 orders, concurrently pay all, verify each has exactly one payment of $10.70. |
+| **Pass** | Each order: amount_paid=$10.70, len(payments)==1. |
+
+### `test_event_ordering_preserved`
+| | |
+|---|---|
+| **Tests** | Events for same order replay in ascending sequence_number order. |
+| **Method** | Add 10 items to order, retrieve events, check sequence_numbers are sorted. |
+| **Pass** | seqs == sorted(seqs). |
+
+### `test_high_volume_projection`
+| | |
+|---|---|
+| **Tests** | 200+ events on one order project correctly (subtotal, item count). |
+| **Method** | Add 200 items at $0.50 each, project. |
+| **Pass** | subtotal=$100.00, len(items)==200. |
+
+### `test_day_summary_totals_match_projections`
+| | |
+|---|---|
+| **Tests** | Sum of projected order totals matches manual aggregation. |
+| **Method** | Seed two closed orders, project all, sum totals. |
+| **Pass** | Sum of closed/paid orders' totals matches order1.total + order2.total. |
+
+### `test_voided_orders_excluded_from_net_sales`
+| | |
+|---|---|
+| **Tests** | Voided orders do not count in net sales calculation. |
+| **Method** | Seed two orders, void first, filter for non-voided. |
+| **Pass** | Only one non-voided order remains (order 2). |
+
+### `test_tip_report_matches_events`
+| | |
+|---|---|
+| **Tests** | Sum of TIP_ADJUSTED event amounts matches reported tip total. |
+| **Method** | Seed orders with tip on second, sum TIP_ADJUSTED payloads. |
+| **Pass** | Sum of event tip_amounts == 12.40. |
+
+### `test_server_filter_only_returns_their_orders`
+| | |
+|---|---|
+| **Tests** | Filtering orders by server_id returns only that server's orders. |
+| **Method** | Seed Alice (2 orders), Bob (1 order), filter by server_id. |
+| **Pass** | Alice orders: 2, Bob orders: 1. |
+
+### `test_batch_submitted_totals_match`
+| | |
+|---|---|
+| **Tests** | BATCH_SUBMITTED event payload totals match order projections. |
+| **Method** | Seed orders, push BATCH_SUBMITTED event with total_amount, cash_total, card_total. |
+| **Pass** | Payload totals match order.total, order1.total (cash), order2.total (card). |
+
+### `test_day_closed_boundary`
+| | |
+|---|---|
+| **Tests** | Events after DAY_CLOSED not included in previous day query. |
+| **Method** | Close day after two orders, create new order, query from last close sequence. |
+| **Pass** | New order appears in post-boundary results; old orders do not. |
+
+### `test_cash_vs_card_breakdown`
+| | |
+|---|---|
+| **Tests** | cash_total + card_total equals sum of confirmed payments. |
+| **Method** | Seed orders with mixed payment methods, sum confirmed payments by method. |
+| **Pass** | cash + card == order1.total + order2.total. |
+
+### `test_discount_reduces_net_sales`
+| | |
+|---|---|
+| **Tests** | Discount reduces net sales: net = subtotal − discount. |
+| **Method** | Add $50 item, apply $10 discount, project. |
+| **Pass** | discount_total=$10.00; net (subtotal) = $40.00. |
+
+### `test_committed_events_survive_reopen`
+| | |
+|---|---|
+| **Tests** | Events committed to ledger survive close and reopen (normal shutdown resilience). |
+| **Method** | Create order with item, close ledger, reopen, query events and project. |
+| **Pass** | Events found, order projects correctly with subtotal=$10.00. |
+
+### `test_hash_chain_valid_after_reopen`
+| | |
+|---|---|
+| **Tests** | Hash chain remains valid after ledger close/reopen. |
+| **Method** | Append 10 orders, close/reopen, verify_chain(). |
+| **Pass** | is_valid=True. |
+
+### `test_event_sync_tracking`
+| | |
+|---|---|
+| **Tests** | mark_synced() and get_unsynced_events() track sync state correctly. |
+| **Method** | Create order, get_unsynced_events (expect 2), mark_synced, get_unsynced_events (expect 0). |
+| **Pass** | Initially 2 unsynced; after mark_synced, 0 unsynced. |
+
+### `test_print_queue_survives_restart`
+| | |
+|---|---|
+| **Tests** | Print queue jobs persist to SQLite and survive close/reopen. |
+| **Method** | Enqueue job, close queue, reopen, get_pending_jobs. |
+| **Pass** | Job found with same job_id. |
+
+### `test_new_write_after_reopen_extends_chain`
+| | |
+|---|---|
+| **Tests** | Writing new events after reopen correctly extends hash chain. |
+| **Method** | Create order, close/reopen, add item, verify_chain(). |
+| **Pass** | Chain valid, count==2 events. |
+
+### `test_clock_in_creates_event`
+| | |
+|---|---|
+| **Tests** | USER_LOGGED_IN event records employee_id. |
+| **Method** | Append user_logged_in("emp-1", "Alice"), query by event type. |
+| **Pass** | One USER_LOGGED_IN event with employee_id="emp-1". |
+
+### `test_clock_out_creates_event`
+| | |
+|---|---|
+| **Tests** | USER_LOGGED_OUT event is created after login. |
+| **Method** | Append both USER_LOGGED_IN and USER_LOGGED_OUT, query both. |
+| **Pass** | One of each event type. |
+
+### `test_clocked_in_set_tracking`
+| | |
+|---|---|
+| **Tests** | Replaying login/logout events computes clocked-in set correctly. |
+| **Method** | Log in emp-1 and emp-2, log out emp-1; build clocked_in dict from sorted events. |
+| **Pass** | emp-2 in clocked_in, emp-1 not in clocked_in. |
+
+### `test_tip_ceiling_manager_approval_required`
+| | |
+|---|---|
+| **Tests** | Tip ceiling validation: $200 tip on $100 sale returns NEEDS_APPROVAL. |
+| **Method** | Call validator.validate(amount=$100, tip_amount=$200). |
+| **Pass** | result.status=NEEDS_APPROVAL. |
+
+### `test_void_approved_by_recorded_in_payload`
+| | |
+|---|---|
+| **Tests** | ORDER_VOIDED event payload includes approved_by when provided. |
+| **Method** | Void order with approved_by="mgr-42", query events. |
+| **Pass** | Void event payload has approved_by="mgr-42". |
+
+### `test_void_api_enforces_manager_approval`
+| | |
+|---|---|
+| **Tests** | void_order route rejects empty/whitespace approved_by with 403; accepts valid manager ID. |
+| **Method** | Call void_order with empty approved_by (expect 403), then with "mgr-1" (expect success). |
+| **Pass** | Empty string → HTTPException(403); "mgr-1" → status="voided". |
+
+---
+
+## `test_precision_gate.py`
+> Tests for monetary precision checking in EventLedger; verifies 2 decimal place enforcement.
+
+### `test_check_monetary_precision_clean`
+| | |
+|---|---|
+| **Tests** | Clean 2dp monetary values pass precision check. |
+| **Method** | Call _check_monetary_precision({"price": 10.00, "amount": 5.50}). |
+| **Pass** | Returns empty list []. |
+
+### `test_check_monetary_precision_3dp`
+| | |
+|---|---|
+| **Tests** | 3dp value (10.333) is flagged as bad precision. |
+| **Method** | Call _check_monetary_precision({"price": 10.333}). |
+| **Pass** | Returns list with one error containing "price=10.333". |
+
+### `test_check_monetary_precision_multiple_bad`
+| | |
+|---|---|
+| **Tests** | Multiple bad-precision keys are all flagged. |
+| **Method** | Call _check_monetary_precision({"price": 1.111, "amount": 2.222}). |
+| **Pass** | Returns list of 2 errors; both "price" and "amount" found. |
+
+### `test_check_monetary_precision_non_monetary_keys_ignored`
+| | |
+|---|---|
+| **Tests** | Non-monetary keys (e.g., quantity) with bad precision are not flagged. |
+| **Method** | Call _check_monetary_precision({"name": "test", "quantity": 3.333}). |
+| **Pass** | Returns empty list []. |
+
+### `test_check_monetary_precision_integers_ok`
+| | |
+|---|---|
+| **Tests** | Integer monetary values (e.g., price=10) pass (no decimal part). |
+| **Method** | Call _check_monetary_precision({"price": 10}). |
+| **Pass** | Returns empty list []. |
+
+### `test_check_monetary_precision_none_values_ok`
+| | |
+|---|---|
+| **Tests** | None values in monetary fields do not fail precision check. |
+| **Method** | Call _check_monetary_precision({"price": None}). |
+| **Pass** | Returns empty list []. |
+
+### `test_ledger_rejects_bad_precision`
+| | |
+|---|---|
+| **Tests** | EventLedger.append() rejects event with 3dp amount with ValueError. |
+| **Method** | Create event with amount=10.333, call ledger.append(). |
+| **Pass** | Raises ValueError("non-2dp monetary values..."); count_events()==0. |
+
+### `test_ledger_accepts_valid_precision`
+| | |
+|---|---|
+| **Tests** | EventLedger.append() accepts event with clean 2dp amount. |
+| **Method** | Create event with amount=10.33, call ledger.append(). |
+| **Pass** | Returns appended event with sequence_number >= 1; count_events()==1. |
+
+
+---
+## `test_print_context_builder.py`
+> Tests receipt context builder for sales recap, server checkout, and guest receipts; pins monetary keys and invariants to prevent silent drift.
+
+### `test_happy_path_cash_and_card`
+| | |
+|---|---|
+| **Tests** | Two orders (cash + card payment) produce correct totals, tips, and P&L balance |
+| **Method** | `build_sales_recap_context()` with seeded order ledger; asserts gross_sales, voids, refunds, discounts, net_sales, cash/card breakdown, tips, cash_expected, checks, avg_check |
+| **Pass** | All money fields match expected values; P&L identity, tender reconciliation, and tips partition invariants all pass |
+
+### `test_voided_orders_roll_into_voids_line`
+| | |
+|---|---|
+| **Tests** | Regression fix: voided orders roll into both gross and voids so P&L identity holds |
+| **Method** | One live order (5.00), one voided order (20.00); `build_sales_recap_context()` asserts voids_total=20, gross=25, net=5 |
+| **Pass** | voids_total is 20 (not 0); P&L identity check_pnl_identity passes |
+
+### `test_discount_and_refund_are_separate`
+| | |
+|---|---|
+| **Tests** | Refunds and discounts must not collide—refunds go to refunds_total, not voids |
+| **Method** | One order with 5.00 discount (paid 25.00), one with 10.00 refund (paid 40.00); asserts discounts=5, refunds=10, voids=0, net=55 |
+| **Pass** | refunds_total and discounts_total are distinct; net is correctly 70 − 5 − 10 = 55 |
+
+### `test_category_sales_are_grouped`
+| | |
+|---|---|
+| **Tests** | Category sales list groups items and sorts by total descending |
+| **Method** | One order with Pizza (12+12), Drinks (3); `build_sales_recap_context()` extracts category_sales list, builds dict by name |
+| **Pass** | Pizza total=24 count=2, Drinks total=3 count=1; Pizza first (higher total) |
+
+### `test_cash_expected_uses_canonical_formula`
+| | |
+|---|---|
+| **Tests** | Cash Expected = Cash Sales − Card Tips (not gross − everything) |
+| **Method** | One cash order (20), one card with tip (50 + 8 tip); `build_sales_recap_context()` asserts cash_expected=12 |
+| **Pass** | cash_expected is 20 − 8 = 12 |
+
+### `test_empty_day_does_not_explode`
+| | |
+|---|---|
+| **Tests** | Zero orders produce valid printable context without errors |
+| **Method** | No orders seeded; `build_sales_recap_context()` on empty ledger |
+| **Pass** | Returns dict with total_checks=0, gross/net=0, avg_check=0, cash_expected=0 |
+
+### `test_split_tender_order`
+| | |
+|---|---|
+| **Tests** | One order paid by cash + card; each payment lands in correct bucket |
+| **Method** | One 60.00 order: 25 cash, 35 card with 5 tip; `build_sales_recap_context()` asserts breakdown |
+| **Pass** | cash_sales=25, card_sales=35, card_tips=5, cash_tips=0, total_tips=5 |
+
+### `test_build_sales_recap_context_v2_open`
+| | |
+|---|---|
+| **Tests** | v2 API: returns simplified dict with cob_status='Open' when no DAY_CLOSED event |
+| **Method** | One closed order; `build_sales_recap_context("date")` with no day_closed event; asserts cob_status and Decimal fields |
+| **Pass** | cob_status='Open', total_sales=Decimal("10.00"), cash_sales/card_sales/tips as Decimal |
+
+### `test_build_sales_recap_context_v2_closed`
+| | |
+|---|---|
+| **Tests** | v2 API: returns simplified dict with cob_status='Closed' from stored DAY_CLOSED event |
+| **Method** | Seed DAY_CLOSED event with totals; `build_sales_recap_context(date)` asserts state comes from event |
+| **Pass** | cob_status='Closed', all fields match event (100.00 sales, 30 cash, 70 card, 15 tips, 5 checks) |
+
+### `test_happy_path_one_server`
+| | |
+|---|---|
+| **Tests** | Server checkout for one server: two orders (cash + card), correct totals and cc_transactions |
+| **Method** | Two orders under emp_A; `build_server_checkout_context(emp_A)` asserts sales, voids, tips, transactions |
+| **Pass** | checks_closed=2, gross/net=30, cash=12, card=18, cc_tips=3, cc_transactions length=1 |
+
+### `test_refunds_go_to_refunds_total_not_voids`
+| | |
+|---|---|
+| **Tests** | Regression: refunds were mis-routed to voids_total in server checkout |
+| **Method** | One order with 10.00 refund (40 gross); `build_server_checkout_context()` asserts refunds_total=10, voids=0, net=30 |
+| **Pass** | refunds_total=10, voids_total=0, net_sales=30 |
+
+### `test_voided_orders_owned_by_server_flow_into_voids`
+| | |
+|---|---|
+| **Tests** | Server's voided checks land in their receipt's voids line |
+| **Method** | Two orders under emp_A (one 15 live, one 25 voided); `build_server_checkout_context()` asserts voids, gross, net |
+| **Pass** | voids_total=25, gross=40, net=15; P&L identity passes |
+
+### `test_other_server_orders_excluded`
+| | |
+|---|---|
+| **Tests** | Filtering by server_id is strict—another server's sales don't leak in |
+| **Method** | emp_A order (10), emp_B order (100); `build_server_checkout_context(emp_A)` asserts only emp_A |
+| **Pass** | checks_closed=1, gross_sales=10, cash_sales=10, card_sales=0 |
+
+### `test_declared_cash_tips_flow_into_gross_tips`
+| | |
+|---|---|
+| **Tests** | Server declares cash tips; gross_tips = cc_tips + declared_cash_tips |
+| **Method** | One card order with 2.00 cc_tip; `build_server_checkout_context()` with declared_cash_tips=5; asserts gross_tips=7 |
+| **Pass** | cc_tips_total=2, declared_cash_tips=5, gross_tips=7 |
+
+### `test_clock_times_populate_shift_duration`
+| | |
+|---|---|
+| **Tests** | CLOCK_IN / CLOCK_OUT events produce shift duration formatted as "Xh Ym" |
+| **Method** | USER_LOGGED_IN + order + USER_LOGGED_OUT; `build_server_checkout_context()` asserts clock_in, clock_out, shift_duration |
+| **Pass** | clock_in and clock_out not None, shift_duration contains "h" and "m" |
+
+### `test_empty_server_day_is_safe`
+| | |
+|---|---|
+| **Tests** | Server with no closed orders produces valid receipt context |
+| **Method** | `build_server_checkout_context()` for non-existent server_id |
+| **Pass** | checks_closed=0, gross/net sales=0, cc_transactions=[] |
+
+### `test_build_server_checkout_context_v2`
+| | |
+|---|---|
+| **Tests** | v2 API: returns simplified dict with checks as list of {check_number, total, tip} and clock times |
+| **Method** | One card order under server; USER_LOGGED_IN/OUT; `build_server_checkout_context()` asserts checks list and Decimal fields |
+| **Pass** | server_name='V2 Server', clock_in/out not None, checks is list with 1 item (number, total=10, tip=2) |
+
+---
+
+## `test_print_context_builder_extended.py`
+> Extended tests for kitchen context, station filtering, reprint flag, not-found errors, and clock hours context.
+
+### `test_kitchen_context_basic`
+| | |
+|---|---|
+| **Tests** | Kitchen context renders order_id, station_name, ticket_type, and item list |
+| **Method** | Seed order with Burger + Soda; `build_kitchen_context(oid, station_name)` asserts structure |
+| **Pass** | order_id matches, station_name='Hot Line', ticket_type='ORIGINAL', items list has 2 elements |
+
+### `test_kitchen_context_station_filter`
+| | |
+|---|---|
+| **Tests** | station_categories filters items; matched items go to items, rest to companion_items |
+| **Method** | Three items (Grill, Cold, Bar); `build_kitchen_context(station_categories=["Grill"])` asserts split |
+| **Pass** | items has 1 (Steak), companion_items has 2 (Salad, Beer) |
+
+### `test_kitchen_context_reprint_flag`
+| | |
+|---|---|
+| **Tests** | is_reprint=True sets ticket_type to 'REPRINT' |
+| **Method** | Seed order; `build_kitchen_context(is_reprint=True)` asserts ticket_type |
+| **Pass** | ticket_type='REPRINT' |
+
+### `test_kitchen_context_unknown_order_raises`
+| | |
+|---|---|
+| **Tests** | Unknown order_id raises ValueError with "not found" message |
+| **Method** | `build_kitchen_context("nonexistent-order-id")` |
+| **Pass** | ValueError raised, message contains "not found" |
+
+### `test_clock_hours_one_completed_shift`
+| | |
+|---|---|
+| **Tests** | One completed shift (2 hours) produces clock_in, clock_out, duration, and daily_hours |
+| **Method** | USER_LOGGED_IN (2h ago), USER_LOGGED_OUT (1h ago); `build_clock_hours_context()` asserts fields |
+| **Pass** | clock_in/out not None, shift_duration="1h 0m", at least 1 daily_hours entry with hours != "--" |
+
+### `test_clock_hours_no_shifts`
+| | |
+|---|---|
+| **Tests** | No shifts produce clock_in=None, empty shift_duration, and all daily_hours blank |
+| **Method** | `build_clock_hours_context()` for non-existent employee_id |
+| **Pass** | clock_in=None, clock_out=None, shift_duration="", all daily_hours entries have hours="--" |
+
+---
+
+## `test_print_dispatcher.py`
+> Tests background print queue drainer: render, printer resolution, job processing, retry logic, failure broadcasts, and lifecycle.
+
+### `test_receipt_template_rendered_with_receipt_formatter`
+| | |
+|---|---|
+| **Tests** | guest_receipt + receipt printer_type renders non-empty bytes |
+| **Method** | `dispatcher._render("guest_receipt", ctx, printer_type="receipt")` with minimal guest receipt context |
+| **Pass** | Returns bytes, len > 0 |
+
+### `test_kitchen_template_rendered_with_kitchen_formatter`
+| | |
+|---|---|
+| **Tests** | kitchen_ticket + kitchen printer_type renders non-empty bytes |
+| **Method** | `dispatcher._render("kitchen_ticket", ctx, printer_type="kitchen")` with items |
+| **Pass** | Returns bytes, len > 0 |
+
+### `test_unknown_template_raises_value_error`
+| | |
+|---|---|
+| **Tests** | Unknown template_id raises ValueError with "Unknown template" message |
+| **Method** | `dispatcher._render("not_a_template", {}, printer_type="receipt")` |
+| **Pass** | ValueError with "Unknown template" in message |
+
+### `test_cross_bucket_fallback`
+| | |
+|---|---|
+| **Tests** | Template found in other bucket (kitchen template requested as receipt) still renders |
+| **Method** | `dispatcher._render("kitchen_ticket", ctx, printer_type="receipt")` exercises fallback lookup |
+| **Pass** | Returns bytes, len > 0 |
+
+### `test_legacy_default_keys`
+| | |
+|---|---|
+| **Tests** | DEFAULT_RECEIPT and DEFAULT_KITCHEN resolve to hardcoded fallback IPs and correct types |
+| **Method** | `dispatcher._resolve_printer("DEFAULT_RECEIPT")` and `("DEFAULT_KITCHEN")` asserts IP, port, type |
+| **Pass** | DEFAULT_RECEIPT resolves to FALLBACK_IPS["DEFAULT_RECEIPT"], port=PRINTER_PORT, type="receipt"; same for kitchen |
+
+### `test_db_lookup_returns_ip_port_type`
+| | |
+|---|---|
+| **Tests** | Registered MAC in hardware_config.db returns row's ip, port, type |
+| **Method** | Create hardware.db with device row (AA:BB:CC:DD:EE:FF → 10.0.0.42, 9100, kitchen); `_resolve_printer(mac)` |
+| **Pass** | ip="10.0.0.42", port=9100, ptype="kitchen" |
+
+### `test_db_row_missing_ip_uses_type_fallback`
+| | |
+|---|---|
+| **Tests** | Device row with NULL IP falls back to type-based default IP |
+| **Method** | hardware.db row (mac, NULL ip, 9100, kitchen); `_resolve_printer(mac)` |
+| **Pass** | ip equals _TYPE_FALLBACK_IPS["kitchen"], ptype="kitchen" |
+
+### `test_unknown_mac_raises`
+| | |
+|---|---|
+| **Tests** | Unregistered MAC with no type heuristic raises ValueError "No IP found" |
+| **Method** | Empty hardware.db; `_resolve_printer("DE:AD:BE:EF:00:01")` |
+| **Pass** | ValueError raised, "No IP found" in message |
+
+### `test_name_based_type_fallback`
+| | |
+|---|---|
+| **Tests** | MAC string containing 'kitchen' or 'receipt' resolves via name heuristic |
+| **Method** | `_resolve_printer("some-kitchen-printer")` with no hardware.db |
+| **Pass** | ip=_TYPE_FALLBACK_IPS["kitchen"], ptype="kitchen" |
+
+### `test_success_path_marks_completed`
+| | |
+|---|---|
+| **Tests** | Happy path: mark_sent → render → resolve → send → mark_completed |
+| **Method** | `dispatcher._process_job(job)` with valid guest_receipt context and fake _send; asserts queue calls |
+| **Pass** | mark_sent and mark_completed in queue.names(), no mark_failed, sent_payloads has 1 entry |
+
+### `test_transient_failure_resets_for_retry`
+| | |
+|---|---|
+| **Tests** | Send raises ConnectionRefusedError → bump_attempt_for_retry, no mark_failed, no broadcast |
+| **Method** | Fake _send raises; attempt_count=0; `_process_job()` with subscribe_failures() |
+| **Pass** | mark_sent and bump_attempt_for_retry in names, no mark_failed, failures queue empty |
+
+### `test_exceeds_max_attempts_marks_failed_and_broadcasts`
+| | |
+|---|---|
+| **Tests** | attempt_count reaches MAX_ATTEMPTS and send fails → mark_failed + broadcast failure to subscribers |
+| **Method** | attempt_count=MAX_ATTEMPTS−1, _send raises; `_process_job()` with subscribe_failures() |
+| **Pass** | mark_failed in queue.names(), failure message in broadcast (type="print_failure", includes job_id and error) |
+
+### `test_already_past_max_attempts_short_circuits`
+| | |
+|---|---|
+| **Tests** | Job with attempt_count > MAX_ATTEMPTS marked failed without send attempt |
+| **Method** | attempt_count=MAX_ATTEMPTS+5; `_process_job()` with fake _send tracking |
+| **Pass** | send_attempts empty (no socket attempt), mark_failed called once, broadcast received |
+
+### `test_render_failure_marks_failed_immediately`
+| | |
+|---|---|
+| **Tests** | Template render ValueError (unknown template) marks FAILED immediately without retry |
+| **Method** | template_id="bogus_template", attempt_count=0; `_process_job()` |
+| **Pass** | mark_failed in names, bump_attempt_for_retry not in names |
+
+### `test_subscribe_returns_new_queue`
+| | |
+|---|---|
+| **Tests** | subscribe_failures() returns distinct queues added to _failure_subscribers |
+| **Method** | Call subscribe_failures() twice, compare identity and membership |
+| **Pass** | q1 is not q2, both in dispatcher._failure_subscribers |
+
+### `test_unsubscribe_removes_queue`
+| | |
+|---|---|
+| **Tests** | unsubscribe_failures(q) removes q from _failure_subscribers |
+| **Method** | Subscribe, then unsubscribe; assert membership |
+| **Pass** | q not in dispatcher._failure_subscribers after unsubscribe |
+
+### `test_unsubscribe_unknown_queue_is_a_noop`
+| | |
+|---|---|
+| **Tests** | Double-unsubscribe or unknown queue unsubscribe must not raise |
+| **Method** | Create queue not from subscribe(), call unsubscribe_failures(q) |
+| **Pass** | No exception |
+
+### `test_broadcast_fans_out_to_all_subscribers`
+| | |
+|---|---|
+| **Tests** | _broadcast_failure sends same message to all subscribed queues |
+| **Method** | Subscribe 2 queues, broadcast failure dict with job_id/error |
+| **Pass** | Both q1 and q2 receive identical message with correct job_id and error |
+
+### `test_broadcast_drops_when_subscriber_queue_is_full`
+| | |
+|---|---|
+| **Tests** | Slow subscriber (queue at maxsize) does not block dispatcher—broadcast drops |
+| **Method** | Add slow queue to _failure_subscribers, fill it, broadcast |
+| **Pass** | No QueueFull raised, slow queue still at size 1 (original item, not broadcast) |
+
+### `test_start_then_stop_is_clean`
+| | |
+|---|---|
+| **Tests** | start() schedules loop task, stop() cancels and awaits it |
+| **Method** | `dispatcher.start()`, assert _task set and _running=True; `dispatcher.stop()` |
+| **Pass** | After stop: _running=False, _task.done() |
+
+### `test_stop_before_start_does_not_crash`
+| | |
+|---|---|
+| **Tests** | stop() before start() is safe (no _task to cancel) |
+| **Method** | `dispatcher.stop()` on fresh dispatcher |
+| **Pass** | No exception, _running=False |
+
+---
+
+## `test_print_queue.py`
+> Tests PrintJobQueue: enqueue/dequeue, status transitions, retry/recovery, and idempotency.
+
+### `test_enqueue_returns_job_id`
+| | |
+|---|---|
+| **Tests** | enqueue() returns a non-empty string job_id |
+| **Method** | `queue.enqueue()` with standard kwargs |
+| **Pass** | job_id is str, len > 0 |
+
+### `test_enqueue_and_get_pending`
+| | |
+|---|---|
+| **Tests** | Three enqueued jobs appear in get_pending_jobs() |
+| **Method** | Enqueue 3 jobs with different order_ids; `get_pending_jobs()` |
+| **Pass** | Returns list of 3 jobs |
+
+### `test_mark_sent`
+| | |
+|---|---|
+| **Tests** | mark_sent(job_id, attempt) excludes job from pending, sets status='sent' and attempt_count |
+| **Method** | Enqueue, mark_sent(1); get_pending_jobs() and direct DB check |
+| **Pass** | pending list empty, DB row status='sent' and attempt_count=1 |
+
+### `test_mark_completed`
+| | |
+|---|---|
+| **Tests** | mark_completed() removes job from pending (sent state) |
+| **Method** | Enqueue, mark_sent, mark_completed; get_pending_jobs() |
+| **Pass** | pending list empty |
+
+### `test_mark_failed`
+| | |
+|---|---|
+| **Tests** | mark_failed() moves job to failed and removes from pending |
+| **Method** | Enqueue, mark_failed; get_failed_jobs() and get_pending_jobs() |
+| **Pass** | failed list has 1 job, pending list empty |
+
+### `test_reset_for_retry`
+| | |
+|---|---|
+| **Tests** | reset_for_retry() changes failed job back to queued status |
+| **Method** | Enqueue, mark_failed, reset_for_retry; get_pending_jobs() |
+| **Pass** | pending has 1 job with status='queued' and attempt_count=0 |
+
+### `test_dismiss_job`
+| | |
+|---|---|
+| **Tests** | dismiss_job() removes job from both pending and failed |
+| **Method** | Enqueue, dismiss_job; get_pending_jobs() and get_failed_jobs() |
+| **Pass** | Both lists empty |
+
+### `test_multiple_jobs_order`
+| | |
+|---|---|
+| **Tests** | Jobs returned from pending in creation order (FIFO) |
+| **Method** | Enqueue 3 jobs; get_pending_jobs() |
+| **Pass** | Job order matches enqueue order |
+
+### `test_completed_not_in_pending`
+| | |
+|---|---|
+| **Tests** | Completed job excluded from pending, new pending job visible |
+| **Method** | Enqueue 2 jobs, mark_sent/completed on first; get_pending_jobs() |
+| **Pass** | Pending has 1 job with order_id='order-002' |
+
+### `test_enqueue_idempotent_while_queued`
+| | |
+|---|---|
+| **Tests** | Same (order, template, mac, copy) enqueued twice while queued returns same job_id |
+| **Method** | enqueue(kwargs), enqueue(same kwargs); assert j1==j2, pending has 1 job |
+| **Pass** | j1 == j2 (no duplicate), pending count = 1 |
+
+### `test_enqueue_idempotent_while_sent`
+| | |
+|---|---|
+| **Tests** | Same params enqueued while job in 'sent' status also returns existing job_id |
+| **Method** | enqueue, mark_sent, enqueue(same); assert j1==j2 |
+| **Pass** | j1 == j2 |
+
+### `test_enqueue_not_idempotent_after_completed`
+| | |
+|---|---|
+| **Tests** | Same params enqueued after job completes create new job (e.g. reprint) |
+| **Method** | enqueue, mark_sent, mark_completed, enqueue(same); assert j1!=j2 |
+| **Pass** | j1 != j2, pending has 1 job with j2's id |
+
+### `test_recover_stale_sent_jobs`
+| | |
+|---|---|
+| **Tests** | 'sent' jobs with stale last_attempt_at reset to 'queued' (crashed mid-send recovery) |
+| **Method** | Enqueue, mark_sent, backdate last_attempt_at to 120s ago; recover_stale_sent_jobs(60) |
+| **Pass** | recovered count = 1, pending has 1 job with status='queued' |
+
+### `test_bump_attempt_for_retry_preserves_count`
+| | |
+|---|---|
+| **Tests** | bump_attempt_for_retry resets status to 'queued' while keeping attempt_count |
+| **Method** | Enqueue, mark_sent(2), bump_attempt_for_retry(2); get_pending_jobs() |
+| **Pass** | Pending has 1 job, status='queued', attempt_count=2 (not reset to 0) |
+
+### `test_recover_does_not_touch_recent_sent`
+| | |
+|---|---|
+| **Tests** | Recent 'sent' jobs (still in-flight) not recovered by stale-job recovery |
+| **Method** | Enqueue, mark_sent (no backdate); recover_stale_sent_jobs(60) |
+| **Pass** | recovered count = 0, pending remains empty |
+
+---
+
+## `test_print_templates.py`
+> Tests template rendering: BaseTemplate helpers, GuestReceiptTemplate, and KitchenTicketTemplate.
+
+### `test_base_template_format_time`
+| | |
+|---|---|
+| **Tests** | _format_time converts ISO timestamp to 12-hour time ("02:30 PM") |
+| **Method** | BaseTemplate()._format_time("2025-06-15T14:30:00+00:00") |
+| **Pass** | Returns "02:30 PM" |
+
+### `test_base_template_format_time_none`
+| | |
+|---|---|
+| **Tests** | _format_time returns "N/A" for None input |
+| **Method** | BaseTemplate()._format_time(None) |
+| **Pass** | Returns "N/A" |
+
+### `test_base_template_format_datetime`
+| | |
+|---|---|
+| **Tests** | _format_datetime converts ISO to "MM/DD/YYYY HH:MM AM/PM" |
+| **Method** | BaseTemplate()._format_datetime("2025-06-15T14:30:00+00:00") |
+| **Pass** | Returns "06/15/2025 02:30 PM" |
+
+### `test_base_template_wrap_text`
+| | |
+|---|---|
+| **Tests** | _wrap_text word-wraps text to given width |
+| **Method** | _wrap_text("Hello world foo bar baz", width=12) |
+| **Pass** | Returns list of 2+ lines, line 0 = "Hello world", line 1 contains "foo" |
+
+### `test_base_template_reprint_header`
+| | |
+|---|---|
+| **Tests** | render() with is_reprint=True includes "** REPRINT **" header |
+| **Method** | BaseTemplate().render({'is_reprint': True, 'original_fired_at': '2025-06-15T14:30:00Z'}) |
+| **Pass** | First command contains "** REPRINT **" |
+
+### `test_guest_receipt_render_basic`
+| | |
+|---|---|
+| **Tests** | GuestReceiptTemplate renders minimal guest receipt with restaurant, items, totals, cut |
+| **Method** | GuestReceiptTemplate(80).render(_guest_receipt_context()) |
+| **Pass** | Returns list of dicts; text commands include restaurant name; SUBTOTAL/TOTAL present; ends with cut |
+
+### `test_guest_receipt_card_payment_has_tip_section`
+| | |
+|---|---|
+| **Tests** | Card payment receipts include TIP: section |
+| **Method** | render(payment_method='card') |
+| **Pass** | Contents include "TIP:" |
+
+### `test_guest_receipt_customer_dine_in_tip_suggestions`
+| | |
+|---|---|
+| **Tests** | Customer copy, dine_in, card payment shows TIP SUGGESTIONS with 15%, 18%, 20% |
+| **Method** | render(payment_method='card', copy_type='customer', order_type='dine_in', subtotal=100) |
+| **Pass** | Contents include "TIP SUGGESTIONS:", "15%", "18%", "20%" |
+
+### `test_guest_receipt_empty_items`
+| | |
+|---|---|
+| **Tests** | Empty items list renders without error |
+| **Method** | render(items=[]) |
+| **Pass** | Returns list, ends with cut |
+
+### `test_kitchen_ticket_render_basic`
+| | |
+|---|---|
+| **Tests** | KitchenTicketTemplate renders order_id, station, items, modifiers, cut |
+| **Method** | KitchenTicketTemplate(80).render(_kitchen_ticket_context()) |
+| **Pass** | Returns list; text commands present; ends with cut |
+
+### `test_kitchen_ticket_modifiers_string`
+| | |
+|---|---|
+| **Tests** | String modifiers auto-detect prefix ([NO] Onion, [ADD] Jalapeño, [SUB] GF Bun) |
+| **Method** | render(items=[{modifiers: ['No Onion', 'Add Jalapeño', 'Sub GF Bun']}]) |
+| **Pass** | Text includes "1x Burger", "[NO] Onion", "[ADD] Jalapeño", "[SUB] GF Bun" |
+
+### `test_kitchen_ticket_modifiers_dict`
+| | |
+|---|---|
+| **Tests** | Dict modifiers with 'action' field render prefixes from action (add, remove, substitute) |
+| **Method** | render(items=[{modifiers: [{'name': 'Extra Cheese', 'action': 'add'}, ...]}]) |
+| **Pass** | Text includes "[ADD] Extra Cheese", "[NO] Pickles", "[SUB] Wheat Bun" |
+
+### `test_kitchen_ticket_no_modifiers_clean`
+| | |
+|---|---|
+| **Tests** | Items with empty modifiers list produce no indented blank lines |
+| **Method** | render(items=[{modifiers: []}]) |
+| **Pass** | Text includes "1x Plain Fries", no lines starting with 6-space indent |
+
+### `test_separator_width_80mm`
+| | |
+|---|---|
+| **Tests** | 80mm divider commands produce correct char width in formatter output |
+| **Method** | KitchenTicketTemplate(80).render(), extract dividers, format with ESCPOSFormatter(80) |
+| **Pass** | Dividers exist, formatted output contains expected character * 33 |
+
+### `test_separator_width_58mm`
+| | |
+|---|---|
+| **Tests** | 58mm divider commands produce correct char width in formatter output |
+| **Method** | KitchenTicketTemplate(58).render(), extract dividers, format with ESCPOSFormatter(58) |
+| **Pass** | Dividers exist, formatted output contains expected character * 32 |
+
+---
+
+## `test_print_templates_money.py`
+> Tests money templates (SalesRecapTemplate, ServerCheckoutTemplate, ClockHoursTemplate, DeliveryReceiptTemplate) for all section headers, money values, and conditional logic.
+
+### `test_happy_path_renders_every_section`
+| | |
+|---|---|
+| **Tests** | All sections render: REVENUE/PAYMENTS/CATEGORY/STATS headers, money values, deductions as negative, cut |
+| **Method** | SalesRecapTemplate().render(_balanced_ctx()) asserts text blob contents |
+| **Pass** | Contains "REVENUE", "PAYMENTS", "SALES BY CATEGORY", "CHECK STATS", all money values, cut |
+
+### `test_refund_line_only_appears_when_nonzero`
+| | |
+|---|---|
+| **Tests** | Refunds row only appears if refunds_total > 0 |
+| **Method** | render(refunds_total=0) and render(refunds_total=4.50) |
+| **Pass** | Zero case: "Refunds" absent; nonzero: "Refunds" and "-$4.50" present |
+
+### `test_voids_and_comps_gated_on_count_or_total`
+| | |
+|---|---|
+| **Tests** | Zero voids and comps suppress both section labels |
+| **Method** | render(voids_total=0, voids_count=0, comps_total=0, comps_count=0) |
+| **Pass** | "Voids" and "Comps" absent |
+
+### `test_category_sales_section_suppressed_when_empty`
+| | |
+|---|---|
+| **Tests** | Empty category_sales list suppresses "SALES BY CATEGORY" section |
+| **Method** | render(category_sales=[]) |
+| **Pass** | "SALES BY CATEGORY" absent |
+
+### `test_tip_total_only_rendered_when_nonzero`
+| | |
+|---|---|
+| **Tests** | Tip Total section only appears if total_tips > 0 |
+| **Method** | render(total_tips=0.0) |
+| **Pass** | "Tip Total" absent |
+
+### `test_period_header_uses_date_range_when_different`
+| | |
+|---|---|
+| **Tests** | date_from != date_to renders "Period: YYYY-MM-DD - YYYY-MM-DD" |
+| **Method** | render(date_from="2026-04-15", date_to="2026-04-17") |
+| **Pass** | Text includes "Period: 2026-04-15 - 2026-04-17" |
+
+### `test_money_line_formatter_both_signs`
+| | |
+|---|---|
+| **Tests** | _money_line positive → "$X.XX", negative → "-$X.XX"; both same length |
+| **Method** | tpl._money_line("Label", 12.50, 20) and _money_line("Label", -12.50, 20) |
+| **Pass** | pos contains "Label" + "$12.50", neg contains "Label" + "-$12.50", len(pos)==len(neg) |
+
+### `test_empty_context_does_not_crash` (SalesRecapTemplate)
+| | |
+|---|---|
+| **Tests** | Empty dict renders printable skeleton without error |
+| **Method** | SalesRecapTemplate().render({}) |
+| **Pass** | Returns list, includes cut command |
+
+### `test_reprint_header_appears_when_flagged`
+| | |
+|---|---|
+| **Tests** | is_reprint=True and original_fired_at includes "REPRINT" in output |
+| **Method** | render(is_reprint=True, original_fired_at="2026-04-17T18:30:00+00:00") |
+| **Pass** | Text includes "REPRINT" |
+
+### `test_happy_path_renders_all_sections` (ServerCheckoutTemplate)
+| | |
+|---|---|
+| **Tests** | ServerCheckoutTemplate renders SALES SUMMARY, CHECK STATS, PAYMENT, TIPS, TIP-OUT sections |
+| **Method** | ServerCheckoutTemplate().render(_ctx()) |
+| **Pass** | Contains all section headers, money values, "Alice", "CASH EXPECTED", cut |
+
+### `test_voids_and_comps_collapse_into_deductions`
+| | |
+|---|---|
+| **Tests** | voids + comps + discounts combined into one "Voids / Comps" line with total deduction |
+| **Method** | render(voids=3, comps=2, discounts=5) |
+| **Pass** | Text includes "Voids / Comps" and "-$10.00" |
+
+### `test_no_deductions_label_hidden`
+| | |
+|---|---|
+| **Tests** | All zero voids/comps/discounts suppress "Voids / Comps" label |
+| **Method** | render() with default zero deductions |
+| **Pass** | "Voids / Comps" absent |
+
+### `test_recap_mode_adds_card_detail_section`
+| | |
+|---|---|
+| **Tests** | mode='recap' adds card type breakdown (Visa/MC) with totals |
+| **Method** | render(mode="recap", card_types=[{"label": "Visa", "total": 80}, ...]) |
+| **Pass** | Text includes "Visa", "MC", "Total Card" |
+
+### `test_cash_expected_equals_cash_minus_cc_tips_in_box`
+| | |
+|---|---|
+| **Tests** | Cash box shows: cash_sales − cc_tips = CASH EXPECTED |
+| **Method** | render(cash_sales=100, cc_tips=25, cash_expected=75) |
+| **Pass** | Text includes "$100.00", "-$25.00", "CASH EXPECTED", "$75.00" |
+
+### `test_empty_context_does_not_crash` (ServerCheckoutTemplate)
+| | |
+|---|---|
+| **Tests** | Empty dict renders without error |
+| **Method** | ServerCheckoutTemplate().render({}) |
+| **Pass** | Returns list, includes cut |
+
+### `test_clock_out_renders_shift_duration`
+| | |
+|---|---|
+| **Tests** | action='CLOCK OUT' includes shift duration, total hours, daily breakdown |
+| **Method** | ClockHoursTemplate().render(_ctx()) with clock_out |
+| **Pass** | Text includes "CLOCK OUT", "Alice Smith", "SHIFT HOURS: 8h 15m", "TOTAL HOURS: 24.75", daily entries |
+
+### `test_clock_in_hides_duration_shows_in_progress`
+| | |
+|---|---|
+| **Tests** | action='CLOCK IN' (no clock_out) shows "Shift in progress..." not duration |
+| **Method** | render(action="CLOCK IN") without clock_out |
+| **Pass** | Text includes "CLOCK IN", "Shift in progress", no "SHIFT HOURS" |
+
+### `test_daily_breakdown_lines_appear`
+| | |
+|---|---|
+| **Tests** | Daily hours breakdown renders labels and hour values |
+| **Method** | render() with daily_hours list |
+| **Pass** | Text includes "Mon 04/13", "Tue 04/14", "8.0" |
+
+### `test_empty_daily_list_still_renders`
+| | |
+|---|---|
+| **Tests** | Empty daily_hours list still renders total |
+| **Method** | render(daily_hours=[]) |
+| **Pass** | Text includes "TOTAL HOURS" |
+
+### `test_empty_context_does_not_crash` (ClockHoursTemplate)
+| | |
+|---|---|
+| **Tests** | Empty dict renders without error |
+| **Method** | ClockHoursTemplate().render({}) |
+| **Pass** | Returns list, includes cut |
+
+### `test_cash_on_delivery_renders_amount_due_and_tip_signature_block`
+| | |
+|---|---|
+| **Tests** | Cash payment status renders AMOUNT DUE, TIP, SIGNATURE blocks |
+| **Method** | DeliveryReceiptTemplate().render(_ctx(payment_status="cash")) |
+| **Pass** | Text includes restaurant, "CASH ON DELIVERY", check#, customer, address, "AMOUNT DUE", total, "TIP:", "SIGNATURE:" |
+
+### `test_prepaid_shows_thank_you_no_amount_due_block`
+| | |
+|---|---|
+| **Tests** | payment_status='prepaid' shows "PAID -- THANK YOU", no AMOUNT DUE or signature |
+| **Method** | render(payment_status="prepaid") |
+| **Pass** | Text includes "PREPAID", "PAID -- THANK YOU", no "AMOUNT DUE" or "SIGNATURE" |
+
+### `test_card_on_delivery_matches_cash_block_shape`
+| | |
+|---|---|
+| **Tests** | payment_status='card' renders "CARD ON DELIVERY" and AMOUNT DUE |
+| **Method** | render(payment_status="card") |
+| **Pass** | Text includes "CARD ON DELIVERY", "AMOUNT DUE", total |
+
+### `test_totals_render_with_dollar_signs`
+| | |
+|---|---|
+| **Tests** | Subtotal, delivery fee, tax, total all render with dollar signs |
+| **Method** | render() with standard context |
+| **Pass** | All four money values present in text |
+
+### `test_delivery_fee_hidden_when_zero`
+| | |
+|---|---|
+| **Tests** | Zero delivery_fee suppresses "Delivery Fee" line |
+| **Method** | render(delivery_fee=0.0) |
+| **Pass** | "Delivery Fee" absent |
+
+### `test_item_modifier_lines_indented_under_item`
+| | |
+|---|---|
+| **Tests** | Modifiers render indented under their items |
+| **Method** | render() with items containing modifiers |
+| **Pass** | Text includes "Large Pizza" and "No cheese" in order |
+
+### `test_empty_items_list_still_renders`
+| | |
+|---|---|
+| **Tests** | No items still renders totals section |
+| **Method** | render(items=[]) |
+| **Pass** | Text includes "TOTAL" |
+
+---
+# Backend Test Documentation
+
+## `test_printer_api.py`
+> Tests for the /api/v1/hardware/* endpoints: SSE streaming network scan, device connectivity test, test print, device persistence, and hardware subsystem status.
+
+### `test_scan_stream_emits_start_and_complete`
+| | |
+|---|---|
+| **Tests** | SSE stream from GET /api/v1/hardware/scan/stream returns start and complete events. |
+| **Method** | Makes GET request with ?ip parameter; parses SSE response into JSON objects; checks event types array. |
+| **Pass** | Response status 200, events contain both 'start' and 'complete' type entries. |
+
+### `test_scan_stream_start_has_mode`
+| | |
+|---|---|
+| **Tests** | Start event in SSE stream includes the scan mode (direct vs sweep). |
+| **Method** | Makes GET request with ?ip; parses SSE events; extracts start event and checks mode field. |
+| **Pass** | start event has mode='direct'. |
+
+### `test_scan_stream_direct_multiple_ips`
+| | |
+|---|---|
+| **Tests** | Direct IP mode accepts comma-separated addresses and reports correct total count. |
+| **Method** | Makes GET request with comma-separated ?ip values; parses SSE; checks total in start event. |
+| **Pass** | Response 200, start event has mode='direct' and total=2 for two IPs. |
+
+### `test_scan_stream_sweep_mode`
+| | |
+|---|---|
+| **Tests** | Without ?ip parameter, scan runs in sweep mode (ARP discovery) instead of direct. |
+| **Method** | Makes GET request without ?ip but with ?type parameter; parses SSE start event. |
+| **Pass** | start event has mode='sweep' and total is a valid integer. |
+
+### `test_test_requires_mac`
+| | |
+|---|---|
+| **Tests** | POST /api/v1/hardware/test requires mac field. |
+| **Method** | Makes POST with empty JSON body. |
+| **Pass** | Response status 422 (validation error). |
+
+### `test_test_unknown_mac_returns_not_saved`
+| | |
+|---|---|
+| **Tests** | Testing connectivity on unknown (not saved) MAC returns success=false with message. |
+| **Method** | Makes POST /api/v1/hardware/test with unknown MAC. |
+| **Pass** | Response 200, success=false, message contains "not saved". |
+
+### `test_test_saved_device_unreachable`
+| | |
+|---|---|
+| **Tests** | Testing a saved device that is unreachable (bad IP) returns success=false. |
+| **Method** | POST to /devices to save a device, then POST /test with its MAC; both use unreachable IP. |
+| **Pass** | Response 200, success=false, mac echoed in response. |
+
+### `test_test_print_requires_ip`
+| | |
+|---|---|
+| **Tests** | POST /api/v1/hardware/test-print requires ip field. |
+| **Method** | Makes POST with empty JSON body. |
+| **Pass** | Response status 422. |
+
+### `test_test_print_unreachable`
+| | |
+|---|---|
+| **Tests** | Sending test print to unreachable IP returns success=false. |
+| **Method** | Makes POST /api/v1/hardware/test-print with test IP and port. |
+| **Pass** | Response 200, success=false. |
+
+### `test_save_requires_fields`
+| | |
+|---|---|
+| **Tests** | POST /api/v1/hardware/devices requires all fields (mac, ip, type, name, port). |
+| **Method** | Makes POST with empty JSON body. |
+| **Pass** | Response status 422. |
+
+### `test_save_returns_device`
+| | |
+|---|---|
+| **Tests** | POST /api/v1/hardware/devices echoes back the saved device with normalized MAC and timestamp. |
+| **Method** | Makes POST with full device config including lowercase MAC; checks response. |
+| **Pass** | Response 200, MAC is uppercase, name preserved, saved_at field present. |
+
+### `test_save_upserts_by_mac`
+| | |
+|---|---|
+| **Tests** | Saving a device with same MAC twice updates the record instead of creating duplicate. |
+| **Method** | POST same MAC twice with different name; GET /devices to list. |
+| **Pass** | GET returns exactly 1 device with updated name. |
+
+### `test_devices_returns_list`
+| | |
+|---|---|
+| **Tests** | GET /api/v1/hardware/devices returns JSON array. |
+| **Method** | Makes GET request. |
+| **Pass** | Response 200, body is a list. |
+
+### `test_devices_empty_when_none_saved`
+| | |
+|---|---|
+| **Tests** | GET /api/v1/hardware/devices returns empty list when no devices saved. |
+| **Method** | Makes GET without saving any devices first. |
+| **Pass** | Response 200, body is empty list. |
+
+### `test_saved_devices_have_required_fields`
+| | |
+|---|---|
+| **Tests** | Each saved device in the list has all required fields (mac, ip, type, name, port, saved_at). |
+| **Method** | POST a device, then GET /devices; checks all fields present in response. |
+| **Pass** | Response contains 1 device with all expected fields including timestamp. |
+
+### `test_delete_removes_device`
+| | |
+|---|---|
+| **Tests** | DELETE /api/v1/hardware/devices/:mac removes the device from the list. |
+| **Method** | POST device, DELETE by MAC, then GET /devices. |
+| **Pass** | DELETE returns 200 with deleted MAC, subsequent GET returns empty list. |
+
+### `test_status_returns_online`
+| | |
+|---|---|
+| **Tests** | GET /api/v1/hardware/status returns system status and subnet info. |
+| **Method** | Makes GET request. |
+| **Pass** | Response 200, contains status="online" and default_subnet field. |
+
+---
+
+## `test_printer_detector.py`
+> Tests for the printer_detector.py module: data model, pure helper functions (OUI lookup, CIDR parsing, dedup), network helpers with monkeypatched sockets, network scanning with fake port discovery, scan summaries, and stubs that raise NotImplementedError.
+
+### `test_defaults`
+| | |
+|---|---|
+| **Tests** | DiscoveredPrinter fields without explicit values carry sensible defaults. |
+| **Method** | Creates DiscoveredPrinter with only ip_address; checks other fields. |
+| **Pass** | mac_address="unknown", open_ports=[], protocol="escpos", online_status=True, discovery_method="port_scan". |
+
+### `test_infer_printer_type_kitchen`
+| | |
+|---|---|
+| **Tests** | device_subtype='kitchen' maps to impact printer type. |
+| **Method** | Creates DiscoveredPrinter with device_subtype='kitchen'; calls _infer_printer_type(). |
+| **Pass** | Returns "impact". |
+
+### `test_infer_printer_type_receipt`
+| | |
+|---|---|
+| **Tests** | device_subtype='receipt' or None maps to thermal printer type. |
+| **Method** | Creates DiscoveredPrinter with various device_subtype values; calls _infer_printer_type(). |
+| **Pass** | All return "thermal". |
+
+### `test_str_contains_key_fields`
+| | |
+|---|---|
+| **Tests** | __str__ includes IP, MAC, and port list in string representation. |
+| **Method** | Creates DiscoveredPrinter with specific IP, MAC, ports; converts to string; checks substring presence. |
+| **Pass** | String contains IP, MAC, and port values. |
+
+### `test_to_printer_config_dict_structure`
+| | |
+|---|---|
+| **Tests** | to_printer_config_dict() exports dict with all required PrinterConfig keys. |
+| **Method** | Creates DiscoveredPrinter; calls to_printer_config_dict(); checks key presence. |
+| **Pass** | Dict contains printer_id, name, printer_type, role, connection_string, location_tag, _discovery_metadata. |
+
+### `test_to_printer_config_dict_connection_string`
+| | |
+|---|---|
+| **Tests** | connection_string format is tcp://<ip>:<port>. |
+| **Method** | Creates DiscoveredPrinter with specific IP and port; calls to_printer_config_dict(). |
+| **Pass** | connection_string equals "tcp://10.0.0.186:9100". |
+
+### `test_to_printer_config_dict_fallback_port_9100`
+| | |
+|---|---|
+| **Tests** | No open_ports falls back to port 9100 in connection_string. |
+| **Method** | Creates DiscoveredPrinter with empty open_ports; checks connection_string. |
+| **Pass** | connection_string contains ":9100". |
+
+### `test_to_printer_config_dict_friendly_name_fallback`
+| | |
+|---|---|
+| **Tests** | When friendly_name is None, name falls back to 'Printer at <ip>'. |
+| **Method** | Creates DiscoveredPrinter with friendly_name=None; checks name field. |
+| **Pass** | name contains the IP address. |
+
+### `test_to_printer_config_dict_role_defaults_to_receipt`
+| | |
+|---|---|
+| **Tests** | device_subtype=None produces role='receipt'. |
+| **Method** | Creates DiscoveredPrinter with device_subtype=None; calls to_printer_config_dict(). |
+| **Pass** | role='receipt'. |
+
+### `test_to_printer_config_dict_metadata_fields`
+| | |
+|---|---|
+| **Tests** | _discovery_metadata carries mac, manufacturer, and scan_id. |
+| **Method** | Creates DiscoveredPrinter with those fields; checks metadata dict. |
+| **Pass** | Metadata contains mac_address, manufacturer, and scan_id with correct values. |
+
+### `test_known_epson_oui`
+| | |
+|---|---|
+| **Tests** | _lookup_mac_manufacturer returns "Epson" for known Epson OUI. |
+| **Method** | Creates PrinterDiscovery; calls _lookup_mac_manufacturer with Epson MAC. |
+| **Pass** | Returns "Epson". |
+
+### `test_known_volcora_oui`
+| | |
+|---|---|
+| **Tests** | _lookup_mac_manufacturer returns "Volcora" for known Volcora OUI. |
+| **Method** | Calls _lookup_mac_manufacturer with Volcora MAC. |
+| **Pass** | Returns "Volcora". |
+
+### `test_known_star_micronics_oui`
+| | |
+|---|---|
+| **Tests** | _lookup_mac_manufacturer returns "Star Micronics" for known OUI. |
+| **Method** | Calls _lookup_mac_manufacturer with Star Micronics MAC. |
+| **Pass** | Returns "Star Micronics". |
+
+### `test_unknown_oui_returns_none`
+| | |
+|---|---|
+| **Tests** | Unknown OUI returns None. |
+| **Method** | Calls _lookup_mac_manufacturer with non-existent MAC. |
+| **Pass** | Returns None. |
+
+### `test_unknown_mac_string_returns_none`
+| | |
+|---|---|
+| **Tests** | Invalid MAC string returns None. |
+| **Method** | Calls _lookup_mac_manufacturer with "unknown". |
+| **Pass** | Returns None. |
+
+### `test_empty_string_returns_none`
+| | |
+|---|---|
+| **Tests** | Empty string MAC returns None. |
+| **Method** | Calls _lookup_mac_manufacturer with "". |
+| **Pass** | Returns None. |
+
+### `test_short_mac_returns_none`
+| | |
+|---|---|
+| **Tests** | MAC with fewer than 3 octets cannot build OUI key and returns None. |
+| **Method** | Calls _lookup_mac_manufacturer with "AA:BB". |
+| **Pass** | Returns None. |
+
+### `test_slash_30_gives_two_hosts`
+| | |
+|---|---|
+| **Tests** | _cidr_to_host_list("/30") returns 2 usable host IPs. |
+| **Method** | Calls _cidr_to_host_list with "10.0.0.0/30"; checks length and contents. |
+| **Pass** | Returns list with 2 IPs: 10.0.0.1 and 10.0.0.2. |
+
+### `test_slash_24_gives_254_hosts`
+| | |
+|---|---|
+| **Tests** | _cidr_to_host_list("/24") returns 254 usable host IPs. |
+| **Method** | Calls _cidr_to_host_list with "192.168.1.0/24"; checks length. |
+| **Pass** | Returns list with 254 IPs. |
+
+### `test_network_address_excluded`
+| | |
+|---|---|
+| **Tests** | Network address (.0) is excluded from host list. |
+| **Method** | Calls _cidr_to_host_list with /30; checks that .0 is not present. |
+| **Pass** | "10.0.0.0" not in list. |
+
+### `test_broadcast_excluded`
+| | |
+|---|---|
+| **Tests** | Broadcast address is excluded from host list. |
+| **Method** | Calls _cidr_to_host_list with /30; checks that .3 is not present. |
+| **Pass** | "10.0.0.3" not in list. |
+
+### `test_invalid_cidr_returns_empty`
+| | |
+|---|---|
+| **Tests** | Bad CIDR notation returns empty list without exception. |
+| **Method** | Calls _cidr_to_host_list with "not-a-cidr". |
+| **Pass** | Returns []. |
+
+### `test_host_route_slash32_returns_single_host`
+| | |
+|---|---|
+| **Tests** | /32 host route returns single IP as list. |
+| **Method** | Calls _cidr_to_host_list with "10.0.0.1/32". |
+| **Pass** | Returns ["10.0.0.1"]. |
+
+### `test_single_printer_passes_through`
+| | |
+|---|---|
+| **Tests** | _deduplicate with single printer passes it through unchanged. |
+| **Method** | Creates one DiscoveredPrinter; calls _deduplicate with list. |
+| **Pass** | Returns same list with one printer. |
+
+### `test_same_ip_keeps_one`
+| | |
+|---|---|
+| **Tests** | Two printers with same IP deduplicate to one. |
+| **Method** | Creates two DiscoveredPrinter at same IP; calls _deduplicate. |
+| **Pass** | Returns list with 1 printer. |
+
+### `test_same_ip_prefers_enriched_with_manufacturer`
+| | |
+|---|---|
+| **Tests** | When two records share IP, the one with manufacturer is preferred. |
+| **Method** | Creates two DiscoveredPrinter at same IP, one with manufacturer; calls _deduplicate. |
+| **Pass** | Returns 1 printer with manufacturer="Epson". |
+
+### `test_same_ip_keeps_first_when_both_unenriched`
+| | |
+|---|---|
+| **Tests** | Two bare records at same IP, first one wins by arrival order. |
+| **Method** | Creates two DiscoveredPrinter at same IP with different hostnames; calls _deduplicate. |
+| **Pass** | Returns 1 printer with hostname="host-a". |
+
+### `test_different_ips_both_kept`
+| | |
+|---|---|
+| **Tests** | Two printers with different IPs both kept after dedup. |
+| **Method** | Creates two DiscoveredPrinter at different IPs; calls _deduplicate. |
+| **Pass** | Returns list with 2 printers. |
+
+### `test_empty_list_returns_empty`
+| | |
+|---|---|
+| **Tests** | Deduplicating empty list returns empty. |
+| **Method** | Calls _deduplicate with []. |
+| **Pass** | Returns []. |
+
+### `test_no_callback_is_noop`
+| | |
+|---|---|
+| **Tests** | _emit with no callback registered is silent. |
+| **Method** | Sets on_progress=None; calls _emit. |
+| **Pass** | No exception raised. |
+
+### `test_callback_receives_event_type_and_data`
+| | |
+|---|---|
+| **Tests** | _emit invokes on_progress callback with event type and data. |
+| **Method** | Sets on_progress to a tracking lambda; calls _emit; checks received tuple. |
+| **Pass** | Callback received ("host_found", {"ip": "10.0.0.1"}). |
+
+### `test_callback_error_is_swallowed`
+| | |
+|---|---|
+| **Tests** | A buggy callback in on_progress doesn't crash the scanner. |
+| **Method** | Sets on_progress to callback that raises RuntimeError; calls _emit. |
+| **Pass** | No exception propagated from _emit. |
+
+### `test_open_port_returns_true`
+| | |
+|---|---|
+| **Tests** | _check_port returns True when socket.connect_ex returns 0 (open). |
+| **Method** | Monkeypatches socket to mock; calls _check_port. |
+| **Pass** | Returns True. |
+
+### `test_closed_port_returns_false`
+| | |
+|---|---|
+| **Tests** | _check_port returns False when socket.connect_ex returns non-zero (closed). |
+| **Method** | Monkeypatches socket to return 111; calls _check_port. |
+| **Pass** | Returns False. |
+
+### `test_socket_error_returns_false`
+| | |
+|---|---|
+| **Tests** | _check_port returns False on socket error without exception. |
+| **Method** | Monkeypatches socket to raise socket.error; calls _check_port. |
+| **Pass** | Returns False. |
+
+### `test_successful_lookup_returns_hostname`
+| | |
+|---|---|
+| **Tests** | _reverse_dns calls socket.gethostbyaddr and returns hostname. |
+| **Method** | Monkeypatches socket.gethostbyaddr; calls _reverse_dns. |
+| **Pass** | Returns "printer.local". |
+
+### `test_herror_returns_none`
+| | |
+|---|---|
+| **Tests** | _reverse_dns returns None on socket.herror. |
+| **Method** | Monkeypatches socket.gethostbyaddr to raise socket.herror; calls _reverse_dns. |
+| **Pass** | Returns None. |
+
+### `test_gaierror_returns_none`
+| | |
+|---|---|
+| **Tests** | _reverse_dns returns None on socket.gaierror. |
+| **Method** | Monkeypatches socket.gethostbyaddr to raise socket.gaierror; calls _reverse_dns. |
+| **Pass** | Returns None. |
+
+### `test_returns_discovered_printers`
+| | |
+|---|---|
+| **Tests** | scan_network returns whatever _port_scan_discovery yields. |
+| **Method** | Monkeypatches _port_scan_discovery to return fake printer; calls scan_network. |
+| **Pass** | Returns list with 1 printer at expected IP. |
+
+### `test_discovered_printers_stored_on_instance`
+| | |
+|---|---|
+| **Tests** | After scan_network, discovered_printers attribute is populated. |
+| **Method** | Calls scan_network; checks scanner.discovered_printers. |
+| **Pass** | discovered_printers contains 1 printer. |
+
+### `test_empty_network_returns_empty_list`
+| | |
+|---|---|
+| **Tests** | No printers found in network returns empty result without exception. |
+| **Method** | Monkeypatches _port_scan_discovery to return []; calls scan_network. |
+| **Pass** | Returns []. |
+
+### `test_deduplication_applied_during_scan`
+| | |
+|---|---|
+| **Tests** | Two printers at same IP are merged to one during scan. |
+| **Method** | Monkeypatches _port_scan_discovery to return bare and enriched printer at same IP; calls scan_network. |
+| **Pass** | Returns 1 printer with manufacturer="Epson". |
+
+### `test_progress_callback_receives_scan_start_and_complete`
+| | |
+|---|---|
+| **Tests** | on_progress callback receives at least scan_start and scan_complete events. |
+| **Method** | Sets on_progress to track event types; calls scan_network; checks received types. |
+| **Pass** | received_types contains "scan_start" and "scan_complete". |
+
+### `test_default_method_is_port_scan`
+| | |
+|---|---|
+| **Tests** | scan_network without methods= uses port_scan by default. |
+| **Method** | Monkeypatches _port_scan_discovery to log calls; calls scan_network without methods; checks call log. |
+| **Pass** | _port_scan_discovery was called once. |
+
+### `test_before_any_scan_duration_is_none`
+| | |
+|---|---|
+| **Tests** | Fresh scanner has no scan timestamps, duration_seconds is None. |
+| **Method** | Creates fresh PrinterDiscovery; calls get_scan_summary(). |
+| **Pass** | duration_seconds=None, printers_found=0, printers=[]. |
+
+### `test_scan_id_present`
+| | |
+|---|---|
+| **Tests** | get_scan_summary always includes scan_id starting with "scan_". |
+| **Method** | Creates PrinterDiscovery; calls get_scan_summary(). |
+| **Pass** | summary["scan_id"] starts with "scan_". |
+
+### `test_after_scan_has_positive_duration`
+| | |
+|---|---|
+| **Tests** | After completed scan, duration_seconds is >= 0. |
+| **Method** | Monkeypatches _port_scan_discovery; calls scan_network; calls get_scan_summary(). |
+| **Pass** | duration_seconds is not None and >= 0. |
+
+### `test_after_scan_printers_listed`
+| | |
+|---|---|
+| **Tests** | Discovered printers appear in summary with expected fields. |
+| **Method** | Monkeypatches _port_scan_discovery to return fake printer; calls scan_network; checks summary. |
+| **Pass** | printers_found=1, printers[0] has ip_address and manufacturer. |
+
+### `test_mdns_raises_not_implemented`
+| | |
+|---|---|
+| **Tests** | _mdns_discovery stub raises NotImplementedError. |
+| **Method** | Calls _mdns_discovery(). |
+| **Pass** | Raises NotImplementedError. |
+
+### `test_snmp_raises_not_implemented`
+| | |
+|---|---|
+| **Tests** | _snmp_discovery stub raises NotImplementedError. |
+| **Method** | Calls _snmp_discovery(cidr). |
+| **Pass** | Raises NotImplementedError. |
+
+### `test_usb_raises_not_implemented`
+| | |
+|---|---|
+| **Tests** | _usb_discovery stub raises NotImplementedError. |
+| **Method** | Calls _usb_discovery(). |
+| **Pass** | Raises NotImplementedError. |
+
+---
+
+## `test_printer_manager_extended.py`
+> Tests for gap coverage: bar-role routing, target_printer_id override, Tier-3 emergency fallback, retry delay verification, status transition events, overheat health warnings, unregister, fallback assignment, and ready printer filtering.
+
+### `test_bar_role_routing`
+| | |
+|---|---|
+| **Tests** | Bar role job routes to printer-bar-01. |
+| **Method** | Calls submit_job with target_role="bar"; checks result. |
+| **Pass** | success=True, printer_id="printer-bar-01", rerouted_from=None. |
+
+### `test_target_printer_id_override`
+| | |
+|---|---|
+| **Tests** | target_printer_id overrides role-based routing. |
+| **Method** | Calls submit_job with target_role="kitchen" but target_printer_id="printer-receipt-01"; checks result. |
+| **Pass** | success=True, printer_id="printer-receipt-01", rerouted_from=None. |
+
+### `test_tier3_emergency_fallback`
+| | |
+|---|---|
+| **Tests** | When both IMPACT kitchen printers offline, Tier 3 finds THERMAL printer with matching role. |
+| **Method** | Registers THERMAL kitchen printer; takes both IMPACT offline; submits job to primary; checks fallback. |
+| **Pass** | success=True, rerouted_from="printer-kitchen-01", printer_id="printer-kitchen-thermal". |
+
+### `test_retry_delay_zeroing`
+| | |
+|---|---|
+| **Tests** | asyncio.sleep called exactly MAX_RETRIES-1 times with RETRY_DELAY during submit_job retry loop. |
+| **Method** | Monkeypatches asyncio.sleep; registers printer that always fails; calls submit_job; checks sleep calls. |
+| **Pass** | sleep_calls has length MAX_RETRIES-1, all values equal RETRY_DELAY. |
+
+### `test_printer_status_transition_emits_event`
+| | |
+|---|---|
+| **Tests** | check_all_printers emits PRINTER_STATUS_CHANGED when printer transitions ONLINE→OFFLINE. |
+| **Method** | Sets printer._fail_mode directly; calls check_all_printers; queries ledger for event. |
+| **Pass** | PRINTER_STATUS_CHANGED event exists with previous_status="online", new_status="offline". |
+
+### `test_overheated_emits_health_warning`
+| | |
+|---|---|
+| **Tests** | check_all_printers detects ONLINE→OVERHEATED and emits PRINTER_HEALTH_WARNING. |
+| **Method** | Sets printer overheat state (_fail_mode, threshold, count); calls check_all_printers; queries ledger. |
+| **Pass** | PRINTER_HEALTH_WARNING event exists with warning_type="overheating". |
+
+### `test_unregister_printer`
+| | |
+|---|---|
+| **Tests** | unregister_printer removes printer from registry. |
+| **Method** | Registers extra printer; calls unregister_printer; checks get_all_printers and get_printer. |
+| **Pass** | unregister_printer returns True, printer no longer in registry. |
+
+### `test_assign_fallback_routes_correctly`
+| | |
+|---|---|
+| **Tests** | assign_fallback emits PRINTER_FALLBACK_ASSIGNED and enables Tier-1 routing when primary offline. |
+| **Method** | Calls assign_fallback; takes primary offline; submits job; checks result and ledger. |
+| **Pass** | assign_fallback returns True, event emitted, job routed to backup with rerouted_from set. |
+
+### `test_get_ready_printers_by_role`
+| | |
+|---|---|
+| **Tests** | get_ready_printers_by_role filters offline printers but get_printers_by_role includes all. |
+| **Method** | Sets kitchen-01 offline; calls get_ready_printers_by_role and get_printers_by_role for kitchen; checks counts. |
+| **Pass** | get_ready_printers_by_role returns 1 (kitchen-02), get_printers_by_role returns 2. |
+
+### `test_target_printer_id_nonexistent_falls_back_to_role`
+| | |
+|---|---|
+| **Tests** | When target_printer_id refers to unregistered printer, falls back to role-based selection. |
+| **Method** | Calls submit_job with target_printer_id="printer-does-not-exist"; checks result. |
+| **Pass** | success=True, printer_id in ("printer-kitchen-01", "printer-kitchen-02"), rerouted_from=None. |
+
+---
+
+## `test_printer_system.py`
+> Comprehensive test suite for the printer adapter system covering: basic printing (thermal/impact), double-print prevention, deliberate reprint, retry on failure, fallback tiers (designated backup and same type+role), all-fail queuing, queue recovery, cash drawer operations, maintenance reboot, health monitoring, custom roles, rush orders, delivery tickets, status summary, and event ledger audit trail with hash chain verification.
+
+### `test_basic_printing`
+| | |
+|---|---|
+| **Tests** | Kitchen ticket and receipt print normally via manager.submit_job. |
+| **Method** | Creates kitchen ticket and receipt; calls submit_job for each; asserts success. |
+| **Pass** | Both results have success=True. |
+
+### `test_double_print_prevention`
+| | |
+|---|---|
+| **Tests** | Duplicate job_id blocked on second attempt. |
+| **Method** | Calls submit_job twice with identical ticket; checks first success and second blocked. |
+| **Pass** | First result success=True, second result success=False with error_code="duplicate_blocked". |
+
+### `test_deliberate_reprint`
+| | |
+|---|---|
+| **Tests** | Deliberate reprint allowed when job_type=REPRINT and source_job_id references original. |
+| **Method** | Submits original kitchen ticket; creates REPRINT job with source_job_id; submits reprint. |
+| **Pass** | Both submit_job calls return success=True. |
+
+### `test_retry_on_failure`
+| | |
+|---|---|
+| **Tests** | Intermittent failure retried silently and succeeds on retry. |
+| **Method** | Sets printer fail_mode="intermittent"; submits job; checks success. |
+| **Pass** | result.success=True. |
+
+### `test_fallback_tier1_designated`
+| | |
+|---|---|
+| **Tests** | Primary printer fails, fallback uses designated backup (Tier 1). |
+| **Method** | Calls assign_fallback; takes primary offline; submits job; checks rerouted_from. |
+| **Pass** | success=True, rerouted_from="printer-kitchen-01", printer_id="printer-kitchen-02". |
+
+### `test_fallback_tier2_same_type`
+| | |
+|---|---|
+| **Tests** | No designated backup, discovers same type+role printer (Tier 2). |
+| **Method** | Clears fallback, takes primary offline, targets primary; submits job. |
+| **Pass** | success=True, rerouted to backup (Tier 2: same type+role). |
+
+### `test_fallback_all_failed`
+| | |
+|---|---|
+| **Tests** | All kitchen printers fail, job queued and error reported. |
+| **Method** | Takes all kitchen printers offline; submits job; checks error_code and queue. |
+| **Pass** | success=False, error_code="all_printers_failed", queued_jobs > 0. |
+
+### `test_queue_retry`
+| | |
+|---|---|
+| **Tests** | Queued jobs retry when printer recovers and succeed. |
+| **Method** | Queues job by failing all printers; recovers printers; calls retry_queued_jobs. |
+| **Pass** | Queued jobs after < before, some retries succeed. |
+
+### `test_cash_drawer`
+| | |
+|---|---|
+| **Tests** | open_drawer works via receipt printer, fails on kitchen printer (no drawer). |
+| **Method** | Calls open_drawer without printer_id, then with printer_id="printer-kitchen-01". |
+| **Pass** | First succeeds, second returns False. |
+
+### `test_maintenance_reboot`
+| | |
+|---|---|
+| **Tests** | maintenance_cycle reboots all printers successfully. |
+| **Method** | Calls manager.maintenance_cycle(); checks result values. |
+| **Pass** | All reboot results are True. |
+
+### `test_health_check`
+| | |
+|---|---|
+| **Tests** | check_all_printers detects online status and offline state changes. |
+| **Method** | Calls check_all_printers; sets printer offline; calls again; verifies statuses. |
+| **Pass** | After reboot all ONLINE, after set_fail_mode target is OFFLINE. |
+
+### `test_custom_roles`
+| | |
+|---|---|
+| **Tests** | Custom printer roles can be created, duplicates rejected. |
+| **Method** | Calls create_custom_role three times, duplicate on fourth; checks get_available_roles. |
+| **Pass** | New roles appear in list, duplicate returns False. |
+
+### `test_rush_order`
+| | |
+|---|---|
+| **Tests** | Rush order marked with priority=RUSH prints with emphasis. |
+| **Method** | Creates rush ticket (is_rush=True); calls submit_job. |
+| **Pass** | result.success=True. |
+
+### `test_delivery_ticket`
+| | |
+|---|---|
+| **Tests** | Delivery ticket with OrderContext.DELIVERY prints successfully. |
+| **Method** | Creates delivery ticket; calls submit_job. |
+| **Pass** | result.success=True. |
+
+### `test_status_summary`
+| | |
+|---|---|
+| **Tests** | get_status_summary returns terminal_id, printer counts, roles, and detailed printer list. |
+| **Method** | Calls manager.get_status_summary(); checks structure. |
+| **Pass** | total_printers=4, summary contains all expected keys and printer details. |
+
+### `test_event_ledger_audit`
+| | |
+|---|---|
+| **Tests** | Event ledger captured all events and hash chain integrity is valid. |
+| **Method** | Gets event counts by type; verifies hash chain with ledger.verify_chain(). |
+| **Pass** | Multiple event types recorded (>0 for each), verify_chain returns (True, None). |
+
+---
+
+## `test_printing_routes.py`
+> Tests for /print/* endpoint handlers: SEC-002 path-traversal guard for /print/test (forward slash, backslash, dotdot rejection with diagnostic logging) and specialist endpoints (clock-hours, sales-recap, server-checkout, queue GET) with correct ticket_number and order_id shapes.
+
+### `test_forward_slash_rejected`
+| | |
+|---|---|
+| **Tests** | Path traversal with forward slash in template_name rejected by /print/test. |
+| **Method** | Patches _record_diag and print_queue.enqueue; calls print_test with "../../etc/passwd"; catches HTTPException. |
+| **Pass** | Raises HTTPException with status_code=400. |
+
+### `test_backslash_rejected`
+| | |
+|---|---|
+| **Tests** | Backslash path separator rejected by /print/test. |
+| **Method** | Patches dependencies; calls print_test with backslash template; catches HTTPException. |
+| **Pass** | Raises HTTPException with status_code=400. |
+
+### `test_dotdot_without_slash_rejected`
+| | |
+|---|---|
+| **Tests** | Dotdot (..) without slash rejected by /print/test. |
+| **Method** | Patches dependencies; calls print_test with "..secret"; catches HTTPException. |
+| **Pass** | Raises HTTPException with status_code=400. |
+
+### `test_record_diag_called_on_traversal`
+| | |
+|---|---|
+| **Tests** | _record_diag called with event_code="SEC-002" when traversal detected. |
+| **Method** | Mocks _record_diag; patches print_queue; calls print_test with traversal attempt; checks mock call. |
+| **Pass** | mock_diag.assert_awaited_once() passes, call_kwargs["event_code"]=="SEC-002". |
+
+### `test_ticket_number_is_CLK`
+| | |
+|---|---|
+| **Tests** | /print/clock-hours enqueues job with ticket_number="CLK". |
+| **Method** | Patches PrintContextBuilder and print_queue.enqueue; calls print_clock_hours; checks enqueue kwargs. |
+| **Pass** | result["status"]=="queued", call_kwargs["ticket_number"]=="CLK". |
+
+### `test_order_id_prefixed_with_clock`
+| | |
+|---|---|
+| **Tests** | /print/clock-hours enqueues with order_id prefixed "clock-emp-<id>-". |
+| **Method** | Patches dependencies; calls print_clock_hours with employee_id="emp-99"; checks enqueue kwargs. |
+| **Pass** | call_kwargs["order_id"] starts with "clock-emp-99-". |
+
+### `test_ticket_number_is_RPT`
+| | |
+|---|---|
+| **Tests** | /print/sales-recap enqueues job with ticket_number="RPT". |
+| **Method** | Patches dependencies; calls print_sales_recap; checks enqueue kwargs. |
+| **Pass** | result["status"]=="queued", call_kwargs["ticket_number"]=="RPT". |
+
+### `test_order_id_prefixed_with_sales_recap`
+| | |
+|---|---|
+| **Tests** | /print/sales-recap enqueues with order_id starting "sales-recap-". |
+| **Method** | Patches dependencies; calls print_sales_recap; checks enqueue kwargs. |
+| **Pass** | call_kwargs["order_id"] starts with "sales-recap-". |
+
+### `test_ticket_number_is_CHK`
+| | |
+|---|---|
+| **Tests** | /print/server-checkout enqueues job with ticket_number="CHK". |
+| **Method** | Patches dependencies; calls print_server_checkout with server_id="srv-7"; checks enqueue kwargs. |
+| **Pass** | result["status"]=="queued", call_kwargs["ticket_number"]=="CHK". |
+
+### `test_order_id_prefixed_with_checkout`
+| | |
+|---|---|
+| **Tests** | /print/server-checkout enqueues with order_id starting "checkout-srv-<id>-". |
+| **Method** | Patches dependencies; calls print_server_checkout with server_id="srv-12"; checks enqueue kwargs. |
+| **Pass** | call_kwargs["order_id"] starts with "checkout-srv-12-". |
+
+### `test_returns_pending_and_failed_keys`
+| | |
+|---|---|
+| **Tests** | GET /print/queue returns dict with "pending" and "failed" keys. |
+| **Method** | Patches print_queue methods; calls get_queue; checks keys. |
+| **Pass** | result contains "pending" and "failed". |
+
+### `test_returns_populated_lists`
+| | |
+|---|---|
+| **Tests** | GET /print/queue returns populated pending and failed job lists. |
+| **Method** | Patches print_queue.get_pending_jobs and get_failed_jobs with fake jobs; calls get_queue. |
+| **Pass** | result["pending"] and result["failed"] contain expected job dicts. |
+
+---
+
+## `test_projections.py`
+> Tests for project_order() function: verifies order state correctly rebuilt from event sequences covering order creation, item add/remove/modify, modifiers, payments, status transitions, discounts, tax/total calculations, and edge cases.
+
+### `test_empty_events_returns_none`
+| | |
+|---|---|
+| **Tests** | project_order([]) returns None. |
+| **Method** | Calls project_order with empty event list. |
+| **Pass** | Returns None. |
+
+### `test_order_created_basic`
+| | |
+|---|---|
+| **Tests** | order_created event populates basic order fields. |
+| **Method** | Calls project_order with single order_created event; checks fields. |
+| **Pass** | order_id, table, server_id, server_name, status="open", guest_count all match. |
+
+### `test_item_added_subtotal`
+| | |
+|---|---|
+| **Tests** | item_added events sum correctly into subtotal. |
+| **Method** | Creates order and adds two items; projects; checks subtotal and items length. |
+| **Pass** | subtotal=15.50, len(items)=2. |
+
+### `test_item_removed`
+| | |
+|---|---|
+| **Tests** | item_removed event removes item from order. |
+| **Method** | Creates order, adds item, removes it; projects. |
+| **Pass** | len(items)=0. |
+
+### `test_item_modified_quantity`
+| | |
+|---|---|
+| **Tests** | item_modified event updates quantity and recalculates subtotal. |
+| **Method** | Creates order, adds item, modifies quantity to 3; projects. |
+| **Pass** | items[0].quantity=3, subtotal=30.00. |
+
+### `test_modifier_applied`
+| | |
+|---|---|
+| **Tests** | modifier_applied event adds modifier to item and updates subtotal. |
+| **Method** | Creates order, adds item, applies modifier; projects. |
+| **Pass** | subtotal=11.50, items[0].modifiers has 1 entry. |
+
+### `test_modifier_removed`
+| | |
+|---|---|
+| **Tests** | modifier_applied with action="remove" removes modifier. |
+| **Method** | Applies modifier then removes it; projects. |
+| **Pass** | len(modifiers)=0, subtotal=10.00. |
+
+### `test_payment_initiated_and_confirmed`
+| | |
+|---|---|
+| **Tests** | payment_initiated and payment_confirmed events create confirmed payment entry. |
+| **Method** | Creates order, adds item, initiates payment, confirms it; projects. |
+| **Pass** | len(payments)=1, payments[0].status="confirmed", amount_paid=10.70, is_fully_paid=True. |
+
+### `test_payment_failed_status`
+| | |
+|---|---|
+| **Tests** | PAYMENT_DECLINED event marks payment as failed with error. |
+| **Method** | Creates order, initiates payment, sends PAYMENT_DECLINED event; projects. |
+| **Pass** | payments[0].status="failed", payments[0].error="declined". |
+
+### `test_order_closed_status`
+| | |
+|---|---|
+| **Tests** | order_closed event sets status="closed" and closed_at timestamp. |
+| **Method** | Creates order, closes it; projects. |
+| **Pass** | status="closed", closed_at is not None. |
+
+### `test_order_reopened`
+| | |
+|---|---|
+| **Tests** | order_reopened event restores status="open" and clears closed_at. |
+| **Method** | Creates order, closes, reopens; projects. |
+| **Pass** | status="open", closed_at is None. |
+
+### `test_order_voided`
+| | |
+|---|---|
+| **Tests** | order_voided event sets status="voided" with reason and voided_at timestamp. |
+| **Method** | Creates order, voids with reason; projects. |
+| **Pass** | status="voided", void_reason="customer complaint", voided_at is not None. |
+
+### `test_discount_applied`
+| | |
+|---|---|
+| **Tests** | DISCOUNT_APPROVED event reduces subtotal and recalculates tax and total. |
+| **Method** | Creates order with 50.00 item, applies 5.00 discount; projects. |
+| **Pass** | discount_total=5.00, tax based on (50.00-5.00)*0.07=3.15, total=48.15. |
+
+### `test_split_payment_balance_due`
+| | |
+|---|---|
+| **Tests** | Multiple confirmed payments calculate correct balance_due. |
+| **Method** | Creates 50.00 order, makes 20.00 and 10.00 payments; projects. |
+| **Pass** | amount_paid=30.00, balance_due = total - 30.00. |
+
+### `test_fully_paid_auto_status`
+| | |
+|---|---|
+| **Tests** | When confirmed payments >= total, status auto-transitions to "paid". |
+| **Method** | Creates order, projects to get total, then adds payment for full amount; projects. |
+| **Pass** | status="paid", is_fully_paid=True. |
+
+### `test_tip_adjusted`
+| | |
+|---|---|
+| **Tests** | TIP_ADJUSTED event updates payment's tip_amount. |
+| **Method** | Creates order, confirms payment, sends TIP_ADJUSTED event; projects. |
+| **Pass** | payments[0].tip_amount=5.00. |
+
+### `test_unknown_event_type_ignored`
+| | |
+|---|---|
+| **Tests** | Unrecognized event type doesn't crash projection. |
+| **Method** | Creates order with item, sends USER_LOGGED_IN event; projects. |
+| **Pass** | Returns valid order with 1 item. |
+
+### `test_tax_rate_override`
+| | |
+|---|---|
+| **Tests** | project_order respects tax_rate parameter (0.10 in this case). |
+| **Method** | Projects with tax_rate=0.10 on 10.00 item; checks tax and total. |
+| **Pass** | tax=1.00, total=11.00. |
+
+
+---
+# Backend Test Documentation
+
+## `test_projections_payment_lifecycle.py`
+> Payment lifecycle projection tests covering pending/failed payments, refunds, seat distribution, and order status transitions.
+
+### `test_pending_payment_not_counted`
+| | |
+|---|---|
+| **Tests** | Pending (initiated but unconfirmed) payments are excluded from amount_paid and do not trigger fully-paid status. |
+| **Method** | Seeds order with $20 price, initiates payment without confirming, projects order and asserts is_fully_paid=False and amount_paid=$0. |
+| **Pass** | order.is_fully_paid is False, order.amount_paid is $0.00, order.status is "open". |
+
+### `test_failed_payment_not_counted`
+| | |
+|---|---|
+| **Tests** | Failed (declined) payments are excluded from amount_paid accounting and mark payment status as failed. |
+| **Method** | Seeds order, initiates then fails payment with error message, projects and asserts exclusion from totals. |
+| **Pass** | order.amount_paid is $0.00, order.payments[0].status is "failed", order.status is "open". |
+
+### `test_failed_then_repaid`
+| | |
+|---|---|
+| **Tests** | Order can recover from a failed payment attempt with a subsequent successful payment to reach fully-paid state. |
+| **Method** | Seeds order, initiates and fails first payment, initiates and confirms second payment, projects and checks both payments are recorded. |
+| **Pass** | order.is_fully_paid is True, order.amount_paid matches full payment, exactly one confirmed and one failed payment present. |
+
+### `test_partial_refund_after_confirmation`
+| | |
+|---|---|
+| **Tests** | Refunds on confirmed payments do not alter the is_fully_paid flag or amount_paid; refunds are tracked separately. |
+| **Method** | Confirms full payment, emits PAYMENT_REFUNDED event with partial amount, projects and verifies refund appears in order.refunds list. |
+| **Pass** | order.is_fully_paid is True, order.amount_paid unchanged, order.refund_total matches refund amount. |
+
+### `test_mixed_confirmed_and_failed`
+| | |
+|---|---|
+| **Tests** | Only confirmed payments contribute to amount_paid when both confirmed and failed payments exist for the same order. |
+| **Method** | Seeds $30 order, initiates two payments ($15 each), confirms one and fails the other, projects and asserts only confirmed counts. |
+| **Pass** | order.amount_paid is $15.00 (confirmed only), order.is_fully_paid is False, one confirmed and one failed payment present. |
+
+### `test_three_seat_uneven_distribution`
+| | |
+|---|---|
+| **Tests** | Multi-seat payment distributes amount evenly with remainder to last seat, ensuring exact total. |
+| **Method** | Creates 3-seat order with uneven prices, initiates/confirms $10 payment across all 3 seats, projects and validates seat amounts sum to $10. |
+| **Pass** | Seats 1-2 each get $3.33, seat 3 gets remainder $3.34, total sum equals $10.00. |
+
+### `test_seat_discount_and_payment`
+| | |
+|---|---|
+| **Tests** | Seat discount reduces balance_due when combined with a confirmed payment on that seat. |
+| **Method** | Adds item to seat 1 ($20), applies $5 discount, confirms $15 payment for seat 1, projects and verifies balance_due is zero. |
+| **Pass** | seat_balance[1].balance_due is $0.00, discount_total is $5.00, amount_paid is $15.00. |
+
+### `test_timed_out_and_cancelled_both_fail`
+| | |
+|---|---|
+| **Tests** | PAYMENT_TIMED_OUT and PAYMENT_CANCELLED events both result in failed payment status. |
+| **Method** | Seeds order, emits PAYMENT_TIMED_OUT for one payment and PAYMENT_CANCELLED for another via create_event, projects and asserts both show status failed. |
+| **Pass** | All payments have status "failed", order.amount_paid is $0.00, order.status is "open". |
+
+### `test_order_reverts_open_on_decline`
+| | |
+|---|---|
+| **Tests** | Order status reverts from "paid" to "open" if a previously confirmed payment is later marked as failed. |
+| **Method** | Confirms full payment reaching "paid" status, then emits payment_failed event, projects and verifies status reverted and amount_paid reset. |
+| **Pass** | After failure, order.status is "open", order.is_fully_paid is False, order.amount_paid is $0.00. |
+
+---
+
+## `test_reporting_extended.py`
+> Reporting route tests covering sales summaries, labor summaries, hourly comparisons, and security gates for server scope access.
+
+### `test_empty_day_sales_summary`
+| | |
+|---|---|
+| **Tests** | Sales summary on empty ledger returns zero totals for all numeric fields. |
+| **Method** | Calls get_sales_summary with empty ledger and today's date, asserts all aggregates are zero or empty. |
+| **Pass** | net_sales, gross_sales, tips_collected all $0.00, total_checks is 0, hourly_sales is empty list. |
+
+### `test_single_order_hourly_aggregation`
+| | |
+|---|---|
+| **Tests** | Sales summary aggregates single order amount into hourly buckets matching the order total. |
+| **Method** | Seeds one order of $25, calls get_sales_summary, sums hourly bucket net values and validates sum equals order amount. |
+| **Pass** | Hourly net sum equals order amount ($25), total_checks is 1, response includes hourly_sales list. |
+
+### `test_sales_summary_with_tips`
+| | |
+|---|---|
+| **Tests** | Tip adjustments are captured in tips_collected field of sales summary. |
+| **Method** | Seeds order, emits tip_adjusted event with $5 tip, calls get_sales_summary and checks tips_collected. |
+| **Pass** | response["tips_collected"] equals $5.00. |
+
+### `test_labor_summary_empty`
+| | |
+|---|---|
+| **Tests** | Labor summary on ledger with no clock events returns empty employee list and zero totals. |
+| **Method** | Calls get_labor_summary on empty ledger, asserts employees list is empty and hour/labor totals are zero. |
+| **Pass** | employees list is empty, total_hours and total_labor both $0.00. |
+
+### `test_labor_summary_clock_events`
+| | |
+|---|---|
+| **Tests** | Labor summary computes shift duration from clock-in/out events and populates employee records. |
+| **Method** | Emits user_logged_in event 90 minutes before user_logged_out, calls get_labor_summary, asserts employee entry with ~1.5 hour duration. |
+| **Pass** | Employee record found with name "Alice", hours approximately 1.5, clock_in and clock_out timestamps present. |
+
+### `test_labor_summary_server_view`
+| | |
+|---|---|
+| **Tests** | Labor summary with server_id parameter returns individual shift details for that server. |
+| **Method** | Clocks in/out an employee (60 min duration), calls get_labor_summary with server_id, checks server-view fields. |
+| **Pass** | today_hours approximately 1.0, clock_in and clock_out are not None, ot_status is "ok". |
+
+### `test_hourly_compare_shape`
+| | |
+|---|---|
+| **Tests** | hourly_compare endpoint returns correct response structure with today and last_week hourly data. |
+| **Method** | Calls hourly_compare with empty ledger, validates response has "today" and "last_week" keys containing lists with hour and net_sales fields. |
+| **Pass** | Response has "today" and "last_week" keys, both are lists, each entry has "hour" and "net_sales" keys. |
+
+### `test_sec005_unauthenticated_server_scope`
+| | |
+|---|---|
+| **Tests** | SEC-005 diagnostic event is emitted when server_id is provided without an auth session. |
+| **Method** | Mocks request without auth header, calls get_sales_summary with server_id parameter, queries collector for SEC-005 events. |
+| **Pass** | Request succeeds (auth_enforced=False), SEC-005 event(s) captured in collector with event_code="SEC-005". |
+
+### `test_sec006_cross_server_access`
+| | |
+|---|---|
+| **Tests** | SEC-006 diagnostic event is emitted when an authenticated employee requests data for a different server's scope. |
+| **Method** | Creates bearer token for "emp_A", requests data for "emp_B", queries collector for SEC-006 events with context validation. |
+| **Pass** | SEC-006 event captured, context shows requested_server_id="emp_B" and session_employee_id="emp_A". |
+
+### `test_manager_bypasses_gate`
+| | |
+|---|---|
+| **Tests** | Manager role bypasses the server-scope security gate and does not trigger SEC-006 event. |
+| **Method** | Creates bearer token with "manager" role, requests other employee's data, queries collector for absence of SEC-006. |
+| **Pass** | Request succeeds, no SEC-006 events emitted (empty list from collector). |
+
+### `test_historical_date_query`
+| | |
+|---|---|
+| **Tests** | Historical date queries (past dates) return zero totals without raising errors. |
+| **Method** | Calls get_sales_summary with a date 7 days ago, validates all numeric fields are zero and date field matches input. |
+| **Pass** | net_sales and gross_sales are $0.00, total_checks is 0, response["date"] matches input date. |
+
+---
+
+## `test_seat_payments.py`
+> Seat-level payment tracking tests covering seat_numbers flow through events to projections and API responses.
+
+### `test_payment_stores_seat_numbers`
+| | |
+|---|---|
+| **Tests** | Confirmed payment with seat_numbers stores them on the Payment projection object. |
+| **Method** | Creates order with 2-seat items, confirms payment for seat 1 only with seat_numbers=[1], projects and asserts payment.seat_numbers. |
+| **Pass** | order.payments[0].seat_numbers equals [1], payment status is "confirmed". |
+
+### `test_paid_seats_single_seat`
+| | |
+|---|---|
+| **Tests** | Order.paid_seats aggregates seats from confirmed payments, returning single seat when one payment claims it. |
+| **Method** | Adds 2-seat items, confirms payment for seat 1, projects and checks order.paid_seats. |
+| **Pass** | order.paid_seats equals [1]. |
+
+### `test_paid_seats_multiple_payments`
+| | |
+|---|---|
+| **Tests** | Multiple separate seat payments accumulate into paid_seats, growing list with each confirmed payment. |
+| **Method** | Creates 3-seat order, confirms payment for seat 1, then confirms payment for seat 2, projects and validates paid_seats after each. |
+| **Pass** | After seat 1 payment: paid_seats=[1]; after seat 2 payment: paid_seats=[1,2]. |
+
+### `test_paid_seats_multi_seat_single_payment`
+| | |
+|---|---|
+| **Tests** | One payment can cover multiple seats simultaneously, and all covered seats appear in paid_seats. |
+| **Method** | Adds 2-seat items, confirms single payment with seat_numbers=[1,2], projects and checks paid_seats. |
+| **Pass** | order.paid_seats equals [1,2]. |
+
+### `test_failed_payment_not_in_paid_seats`
+| | |
+|---|---|
+| **Tests** | Seats from failed/declined payments are not included in paid_seats. |
+| **Method** | Initiates and fails payment for seat 1 with seat_numbers=[1], projects and asserts paid_seats is empty. |
+| **Pass** | order.paid_seats equals []. |
+
+### `test_pending_payment_not_in_paid_seats`
+| | |
+|---|---|
+| **Tests** | Seats from pending (initiated but not confirmed) payments do not appear in paid_seats. |
+| **Method** | Initiates payment without confirming it with seat_numbers=[1], projects and asserts paid_seats is empty. |
+| **Pass** | order.paid_seats equals []. |
+
+### `test_payment_without_seat_numbers_backwards_compat`
+| | |
+|---|---|
+| **Tests** | Legacy payments without seat_numbers do not crash and paid_seats remains empty. |
+| **Method** | Confirms payment without providing seat_numbers parameter, projects and validates no error occurs. |
+| **Pass** | order.paid_seats equals [], payment.seat_numbers equals [], amount_paid is correct. |
+
+### `test_paid_seats_deduplicates`
+| | |
+|---|---|
+| **Tests** | When same seat appears in multiple payments, paid_seats contains it once (deduplicated). |
+| **Method** | Creates 1-seat order, makes two payments both claiming seat 1, projects and checks for single appearance. |
+| **Pass** | order.paid_seats equals [1] (not [1,1]). |
+
+### `test_paid_seats_sorted`
+| | |
+|---|---|
+| **Tests** | paid_seats returns seats in ascending order regardless of payment order sequence. |
+| **Method** | Pays seats in reverse order (3, then 1), projects and asserts returned list is sorted ascending. |
+| **Pass** | order.paid_seats equals [1,3] (sorted despite payment order). |
+
+### `test_cash_payment_with_seat_numbers`
+| | |
+|---|---|
+| **Tests** | Cash payment API route accepts and persists seat_numbers in PAYMENT_INITIATED and PAYMENT_CONFIRMED events. |
+| **Method** | POSTs to /api/v1/payments/cash with seat_numbers=[1], queries ledger for events and asserts payload. |
+| **Pass** | PAYMENT_INITIATED and PAYMENT_CONFIRMED events have payload["seat_numbers"] == [1]. |
+
+### `test_order_response_includes_paid_seats`
+| | |
+|---|---|
+| **Tests** | OrderResponse includes paid_seats field populated after seat-specific payments. |
+| **Method** | Creates order, pays seat 1 via API, GETs order and validates paid_seats in response JSON. |
+| **Pass** | response["paid_seats"] equals [1]. |
+
+### `test_order_response_paid_seats_empty_without_seat_numbers`
+| | |
+|---|---|
+| **Tests** | OrderResponse.paid_seats is empty list for legacy payments without seat_numbers. |
+| **Method** | Pays order via API without seat_numbers, GETs order and checks paid_seats field. |
+| **Pass** | response["paid_seats"] equals []. |
+
+### `test_payment_response_includes_seat_numbers`
+| | |
+|---|---|
+| **Tests** | OrderResponse.payments[].seat_numbers field is populated from event payload. |
+| **Method** | Pays seat 1, GETs order, finds confirmed payment and asserts seat_numbers field. |
+| **Pass** | confirmed_payment["seat_numbers"] equals [1]. |
+
+### `test_sequential_seat_payments_accumulate`
+| | |
+|---|---|
+| **Tests** | Sequential seat payments accumulate in paid_seats, allowing partial payment and later completion. |
+| **Method** | Creates 3-seat order, pays seat 1, GETs order and checks paid_seats=[1], pays seat 3, verifies paid_seats=[1,3]. |
+| **Pass** | After each payment, paid_seats reflects only the seats with confirmed payments. |
+
+### `test_seat_payments_when_cash_discount_disabled`
+| | |
+|---|---|
+| **Tests** | Paying one seat with cash_discount_rate=0 does not auto-close the order, allowing other seats to pay later. |
+| **Method** | Disables cash discount, creates 2-seat order, pays seat 1 for full amount, validates order stays open. |
+| **Pass** | Order status remains "open", second seat payment succeeds, final paid_seats=[1,2]. |
+
+### `test_void_payment_reopens_closed_order`
+| | |
+|---|---|
+| **Tests** | Voiding the final payment on a fully-paid closed order reopens it for re-payment. |
+| **Method** | Pays single seat causing auto-close, voids the payment, verifies order reopens to "open" status and paid_seats clears. |
+| **Pass** | After void: order.status="open", paid_seats=[], subsequent re-payment succeeds. |
+
+### `test_void_payment_accepts_json_body`
+| | |
+|---|---|
+| **Tests** | Void payment endpoint accepts reason and approved_by fields in JSON request body. |
+| **Method** | POSTs to void endpoint with JSON body containing reason and approved_by, queries ledger for PAYMENT_CANCELLED event. |
+| **Pass** | PAYMENT_CANCELLED event payload contains exact reason and approved_by values from request. |
+
+---
+
+## `test_server_shift.py`
+> Server shift landing page route tests covering sales-by-category, table-stats, and checkout-status endpoints with cash/card splits and server isolation.
+
+### `test_cash_only_order_all_goes_to_cash`
+| | |
+|---|---|
+| **Tests** | Cash-paid order revenue goes entirely to the cash column of sales-by-category response. |
+| **Method** | Creates pizza order, pays with cash method, closes order, calls sales_by_category and asserts cash field. |
+| **Pass** | response[0]["category"]="PIZZA", response[0]["cash"]≈20.00, response[0]["card"]≈0.00. |
+
+### `test_card_only_order_all_goes_to_card`
+| | |
+|---|---|
+| **Tests** | Card-paid order revenue goes entirely to the card column of sales-by-category response. |
+| **Method** | Creates drinks order, pays with card method, closes order, calls sales_by_category and checks card field. |
+| **Pass** | "DRINKS" category present with cash≈0.00, card≈6.00. |
+
+### `test_mixed_tender_splits_fifty_fifty`
+| | |
+|---|---|
+| **Tests** | Split-tender orders (multiple payments, different methods) split per-item revenue 50/50 between cash and card. |
+| **Method** | Creates 1-item order, makes $6 cash and $6 card payments, closes, calls sales_by_category and validates split. |
+| **Pass** | "SUBS" category has cash≈6.00, card≈6.00 (50/50 split). |
+
+### `test_voided_orders_excluded`
+| | |
+|---|---|
+| **Tests** | Voided orders do not contribute their revenue to any category totals. |
+| **Method** | Creates and closes live order ($10), creates and voids separate order ($100), calls sales_by_category and sums. |
+| **Pass** | Category total equals $10.00 (voided $100 excluded). |
+
+### `test_uncategorized_items_bucketed_as_other`
+| | |
+|---|---|
+| **Tests** | Items with no category are bucketed into "OTHER" category (uppercased). |
+| **Method** | Adds uncategorized item (category=None), pays and closes, calls sales_by_category and finds "OTHER". |
+| **Pass** | "OTHER" category present with revenue matching item price. |
+
+### `test_sorted_desc_by_total`
+| | |
+|---|---|
+| **Tests** | Categories are sorted in descending order by total revenue (cash + card). |
+| **Method** | Creates order with 3 categories ($20 pizza, $8 wings, $4 soda), calls sales_by_category and checks order. |
+| **Pass** | Category order is ["PIZZA", "APPS", "DRINKS"]. |
+
+### `test_cross_server_isolation`
+| | |
+|---|---|
+| **Tests** | Sales-by-category returns only the requested server's categories; other servers' data does not leak in. |
+| **Method** | Creates $10 pizza for emp_A and $100 drinks for emp_B, calls sales_by_category for emp_A. |
+| **Pass** | Result includes only "PIZZA", revenue total ≈$10.00 (emp_B's drinks excluded). |
+
+### `test_guest_and_table_count`
+| | |
+|---|---|
+| **Tests** | Table stats aggregates guest counts and table counts from closed orders matching server. |
+| **Method** | Creates 2 orders (guests 2 and 4, both paid/closed), calls table_stats and checks totals. |
+| **Pass** | guestCount=6, tableCount=2, checkAvg≈25.00 (50/2). |
+
+### `test_voided_orders_dont_count`
+| | |
+|---|---|
+| **Tests** | Voided orders do not contribute to guest counts, table counts, or check averages. |
+| **Method** | Creates live order (2 guests, $20) and void order (8 guests, $500), calls table_stats. |
+| **Pass** | guestCount=2, tableCount=1, checkAvg≈20.00 (void excluded). |
+
+### `test_party_size_buckets_cap_at_4`
+| | |
+|---|---|
+| **Tests** | Party sizes ≥4 are bucketed into the "4+" bucket; sizes 1-3 get individual buckets. |
+| **Method** | Creates orders with guest_count=[1,2,4,6,10], calls table_stats and checks byPartySize buckets. |
+| **Pass** | size=1 count=1, size=2 count=1, size=4 count=3 (includes 4, 6, 10). |
+
+### `test_empty_shift_returns_zeros`
+| | |
+|---|---|
+| **Tests** | Table stats for a server with no orders returns all counters at zero. |
+| **Method** | Calls table_stats with nonexistent server_id, asserts all fields are zero/empty. |
+| **Pass** | guestCount=0, tableCount=0, checkAvg≈0.0, byPartySize=[]. |
+
+### `test_check_avg_deducts_discounts`
+| | |
+|---|---|
+| **Tests** | Check average is calculated on net amount (subtotal minus discounts), not gross. |
+| **Method** | Creates $30 order, applies $6 discount, pays $24, calls table_stats. |
+| **Pass** | checkAvg≈24.00 (30−6, not 30). |
+
+### `test_open_check_counted`
+| | |
+|---|---|
+| **Tests** | Checkout status counts open (unpaid, unclosed) orders as openChecks blockers. |
+| **Method** | Creates order without payment or close, calls checkout_status. |
+| **Pass** | openChecks=1, unadjustedTips=0. |
+
+### `test_closed_cash_order_has_no_unadjusted_tips`
+| | |
+|---|---|
+| **Tests** | Cash payments never generate unadjusted-tip blockers (tips only tracked for card). |
+| **Method** | Creates order, pays cash, closes, calls checkout_status. |
+| **Pass** | openChecks=0, unadjustedTips=0. |
+
+### `test_card_payment_without_tip_adjust_is_unadjusted`
+| | |
+|---|---|
+| **Tests** | Card payment without a TIP_ADJUSTED event counts as a blocker on server's checkout readiness. |
+| **Method** | Creates order, confirms card payment (no tip adjust), closes, calls checkout_status. |
+| **Pass** | unadjustedTips=1 (card payment without explicit tip decision). |
+
+### `test_tip_adjusted_to_zero_still_counts_as_adjusted`
+| | |
+|---|---|
+| **Tests** | Explicit tip adjustment to $0 (e.g., "Zero All" button) clears the unadjusted flag. |
+| **Method** | Creates order, confirms card payment, emits TIP_ADJUSTED with tip_amount=0, calls checkout_status. |
+| **Pass** | unadjustedTips=0 (explicit $0 decision counts as adjusted). |
+
+### `test_other_servers_orders_ignored`
+| | |
+|---|---|
+| **Tests** | Checkout status for one server ignores open checks and tips from other servers. |
+| **Method** | Creates open order for emp_B, calls checkout_status for emp_A. |
+| **Pass** | openChecks=0, unadjustedTips=0 (emp_B's order ignored). |
+
+### `test_returns_not_implemented`
+| | |
+|---|---|
+| **Tests** | PATCH /tipout endpoint returns 501 Not Implemented to prevent silent failures in UI. |
+| **Method** | Calls patch_tipout directly with TipOutRequest, expects HTTPException. |
+| **Pass** | HTTPException raised with status_code=501. |
+
+---
+
+## `test_server_shift_extended.py`
+> Extended server shift tests providing additional coverage for sales-by-category, table-stats, and checkout-status with Decimal precision.
+
+### `test_sales_by_category_empty`
+| | |
+|---|---|
+| **Tests** | Empty ledger returns empty category list from sales_by_category. |
+| **Method** | Calls sales_by_category on ledger with no orders, asserts empty result. |
+| **Pass** | result equals []. |
+
+### `test_sales_by_category_single_category`
+| | |
+|---|---|
+| **Tests** | Single cash-paid order produces one category entry with correct cash and zero card amounts. |
+| **Method** | Creates and closes order with cash payment, calls sales_by_category. |
+| **Pass** | Single category entry with category="FOOD", cash=Decimal("20.00"), card=Decimal("0.00"). |
+
+### `test_sales_by_category_multiple_sorted_by_revenue`
+| | |
+|---|---|
+| **Tests** | Multiple categories are returned sorted by total revenue in descending order. |
+| **Method** | Creates order with food ($30) and drinks ($10) items, calls sales_by_category. |
+| **Pass** | Result length=2, FOOD precedes DRINKS, FOOD cash > DRINKS cash. |
+
+### `test_sales_by_category_excludes_other_servers`
+| | |
+|---|---|
+| **Tests** | Sales-by-category is scoped to single server; other servers' data is completely excluded. |
+| **Method** | Creates orders for SERVER_A ($18) and SERVER_B ($22), queries both separately. |
+| **Pass** | SERVER_A result shows $18.00, SERVER_B result shows $22.00 (no cross-contamination). |
+
+### `test_sales_by_category_card_payment_goes_to_card_column`
+| | |
+|---|---|
+| **Tests** | Card-paid order revenue appears in card column, not cash. |
+| **Method** | Creates and card-pays order with drinks, calls sales_by_category. |
+| **Pass** | Category entry shows cash=Decimal("0.00"), card=Decimal("15.00"). |
+
+### `test_table_stats_empty`
+| | |
+|---|---|
+| **Tests** | Empty ledger returns zero counters and empty party-size buckets. |
+| **Method** | Calls table_stats on ledger with no orders, asserts all fields zero/empty. |
+| **Pass** | guestCount=0, tableCount=0, checkAvg=Decimal("0.00"), byPartySize=[]. |
+
+### `test_table_stats_single_order`
+| | |
+|---|---|
+| **Tests** | Single closed order contributes correct guest, table, and check average values. |
+| **Method** | Creates 3-guest order ($30 total), closes, calls table_stats. |
+| **Pass** | guestCount=3, tableCount=1, checkAvg=Decimal("30.00"). |
+
+### `test_table_stats_party_size_bucketing`
+| | |
+|---|---|
+| **Tests** | Party size 6 is bucketed into the size=4 group; individual size 6 bucket does not appear. |
+| **Method** | Creates order with guest_count=6, calls table_stats. |
+| **Pass** | byPartySize contains size=4 entry, does not contain size=6. |
+
+### `test_table_stats_excludes_voided_orders`
+| | |
+|---|---|
+| **Tests** | Voided or unpaid orders do not contribute to table stats. |
+| **Method** | Creates unpaid order (status stays "open"), calls table_stats, asserts no error and reasonable state. |
+| **Pass** | guestCount >= 0 (structural validity), no exception raised. |
+
+### `test_checkout_status_no_orders`
+| | |
+|---|---|
+| **Tests** | Empty ledger returns zero open checks and zero unadjusted tips. |
+| **Method** | Calls checkout_status on empty ledger. |
+| **Pass** | openChecks=0, unadjustedTips=0. |
+
+### `test_checkout_status_open_check_counted`
+| | |
+|---|---|
+| **Tests** | Open (unpaid, unclosed) order is counted as an open check blocker. |
+| **Method** | Creates order with items but no payment/close, calls checkout_status. |
+| **Pass** | openChecks=1. |
+
+### `test_checkout_status_card_without_tip_is_unadjusted`
+| | |
+|---|---|
+| **Tests** | Closed card payment without TIP_ADJUSTED event blocks checkout (unadjusted tip). |
+| **Method** | Creates order, confirms card payment (no tip adjust), closes, calls checkout_status. |
+| **Pass** | unadjustedTips=1, openChecks=0. |
+
+### `test_checkout_status_adjusted_tip_not_counted`
+| | |
+|---|---|
+| **Tests** | Card payment with an explicit TIP_ADJUSTED event does not count as unadjusted. |
+| **Method** | Creates order, confirms card payment, emits tip_adjusted event, calls checkout_status. |
+| **Pass** | unadjustedTips=0. |
+
+### `test_checkout_status_cash_payment_never_unadjusted`
+| | |
+|---|---|
+| **Tests** | Cash payments are never counted as needing tip adjustment, regardless of TIP_ADJUSTED presence. |
+| **Method** | Creates order, confirms cash payment, closes, calls checkout_status. |
+| **Pass** | unadjustedTips=0. |
+
+### `test_checkout_status_excludes_other_servers`
+| | |
+|---|---|
+| **Tests** | Checkout status is scoped to single server; other servers' blockers do not appear. |
+| **Method** | Creates open order and unadjusted card payment for SERVER_B, queries SERVER_A. |
+| **Pass** | SERVER_A returns openChecks=0, unadjustedTips=0 (SERVER_B's issues excluded). |
+
+### `test_tipout_returns_501`
+| | |
+|---|---|
+| **Tests** | PATCH /tipout endpoint raises HTTPException with 501 status (Not Implemented). |
+| **Method** | Calls patch_tipout with TipOutRequest. |
+| **Pass** | HTTPException raised with status_code=501. |
+
+---
+
+## `test_staff_routes_extended.py`
+> Extended staff route tests covering cash tip declaration and clock-in/out state tracking via get_clocked_in endpoint.
+
+### `test_declare_cash_tips`
+| | |
+|---|---|
+| **Tests** | POST /declare-cash-tips records cash tip declaration and returns success response. |
+| **Method** | POSTs to /api/v1/servers/declare-cash-tips with server_id and amount, asserts response structure. |
+| **Pass** | response["success"]=True, response["server_id"]="srv-01", response["amount"]=50.0. |
+
+### `test_get_clocked_in_empty`
+| | |
+|---|---|
+| **Tests** | GET /clocked-in on empty ledger returns empty staff list. |
+| **Method** | Calls get_clocked_in on ledger with no clock events, asserts staff list is empty. |
+| **Pass** | response["staff"] is empty list. |
+
+### `test_clocked_in_after_clock_in`
+| | |
+|---|---|
+| **Tests** | After clock-in event, get_clocked_in includes the employee with correct id and name. |
+| **Method** | POSTs to /clock-in, then GETs /clocked-in, validates staff entry. |
+| **Pass** | staff list length=1, staff[0]["employee_id"]="emp-01", staff[0]["employee_name"]="Alice". |
+
+### `test_clocked_in_after_clock_out`
+| | |
+|---|---|
+| **Tests** | After clock-out following clock-in, get_clocked_in returns empty staff list. |
+| **Method** | POSTs clock-in, then clock-out, then GETs /clocked-in. |
+| **Pass** | response["staff"] is empty list. |
+
+
+---
+# Backend Test Documentation
+
+## `test_staff_routes_gaps.py`
+> Tests edge cases and event emissions in staff routes: double clock-in rejection, missing clock-in rejection, event pairing, and cash tips validation
+
+### `test_double_clock_in_rejected`
+| | |
+|---|---|
+| **Tests** | Double clock-in is rejected with 400 status code |
+| **Method** | POST /api/v1/servers/clock-in twice with same employee_id; asserts second request fails |
+| **Pass** | Second response has status 400 with "already clocked in" in detail message |
+
+### `test_clock_out_without_clock_in_rejected`
+| | |
+|---|---|
+| **Tests** | Clock-out without prior clock-in is rejected with 400 |
+| **Method** | POST /api/v1/servers/clock-out with employee_id that never clocked in; asserts rejection |
+| **Pass** | Response has status 400 with "not clocked in" in detail message |
+
+### `test_clock_in_emits_both_events`
+| | |
+|---|---|
+| **Tests** | Clock-in emits both CLOCK_IN and USER_LOGGED_IN events |
+| **Method** | POST /api/v1/servers/clock-in and check ledger for both event types with matching employee_id |
+| **Pass** | Both event types present in ledger with the same employee_id |
+
+### `test_clock_out_emits_both_events`
+| | |
+|---|---|
+| **Tests** | Clock-out emits both CLOCK_OUT and USER_LOGGED_OUT events |
+| **Method** | Clock-in first, then POST clock-out; verify both event types in ledger |
+| **Pass** | Both CLOCK_OUT and USER_LOGGED_OUT events present with matching employee_id |
+
+### `test_declare_cash_tips_negative_rejected`
+| | |
+|---|---|
+| **Tests** | Negative cash tips amount is rejected with 400 |
+| **Method** | POST /api/v1/servers/declare-cash-tips with amount=-5.0; asserts rejection |
+| **Pass** | Response has status 400 with "negative" in detail message |
+
+### `test_declare_cash_tips_too_many_decimals_rejected`
+| | |
+|---|---|
+| **Tests** | Cash tips with >2 decimal places is rejected with 422 |
+| **Method** | POST /api/v1/servers/declare-cash-tips with amount=10.001 (3dp); asserts rejection |
+| **Pass** | Response has status 422 |
+
+### `test_get_servers_empty`
+| | |
+|---|---|
+| **Tests** | GET /servers returns empty list when no employees are configured |
+| **Method** | GET /api/v1/servers on fresh ledger; asserts response shape and empty servers list |
+| **Pass** | Status 200, response.json()["servers"] equals [] |
+
+---
+
+## `test_startup_sweep.py`
+> Tests orphan payment timeout recovery: the startup sweep's job is ensuring no PAYMENT_INITIATED older than max_age_seconds remains unresolved
+
+### `test_orphan_is_swept`
+| | |
+|---|---|
+| **Tests** | A lone PAYMENT_INITIATED with no result event older than threshold gets resolved with PAYMENT_TIMED_OUT |
+| **Method** | Emit PAYMENT_INITIATED with max_age_seconds=0 (force old); call sweep_orphan_initiated_payments and check ledger |
+| **Pass** | Sweep returns 1, ledger contains PAYMENT_TIMED_OUT event with error_code="CRASH_RECOVERY_TIMEOUT" |
+
+### `test_resolved_initiated_is_untouched`
+| | |
+|---|---|
+| **Tests** | An INITIATED with existing CONFIRMED/DECLINED result is not re-resolved |
+| **Method** | Emit PAYMENT_INITIATED + PAYMENT_CONFIRMED; call sweep with max_age_seconds=0; verify no timeout |
+| **Pass** | Sweep returns 0, no PAYMENT_TIMED_OUT events created |
+
+### `test_young_initiated_is_not_swept_prematurely`
+| | |
+|---|---|
+| **Tests** | An INITIATED within the live window (younger than max_age_seconds) is skipped |
+| **Method** | Emit PAYMENT_INITIATED; call sweep with max_age_seconds=600; verify sweep skips it |
+| **Pass** | Sweep returns 0, no PAYMENT_TIMED_OUT events |
+
+### `test_sweep_is_idempotent`
+| | |
+|---|---|
+| **Tests** | Running sweep twice is idempotent; second pass does not double-resolve |
+| **Method** | Emit PAYMENT_INITIATED; call sweep twice with max_age_seconds=0; verify counts |
+| **Pass** | First sweep returns 1, second returns 0, ledger has exactly 1 PAYMENT_TIMED_OUT |
+
+### `test_multiple_orphans_all_swept`
+| | |
+|---|---|
+| **Tests** | Multiple orphan INITIATED events are all swept; resolved ones are skipped |
+| **Method** | Emit 3 orphan + 1 resolved PAYMENT_INITIATED; call sweep; verify count and resolved set |
+| **Pass** | Sweep returns 3, ledger has PAYMENT_TIMED_OUT for only the 3 orphans |
+
+---
+
+## `test_sync_routes.py`
+> Tests LAN config sync between Overseer and Terminals: health check, config event filtering, cursor-based pagination, idempotency, and security diagnostics
+
+### `test_heartbeat_shape`
+| | |
+|---|---|
+| **Tests** | /sync/health returns correct shape |
+| **Method** | Call sync_health(); assert response shape |
+| **Pass** | Response equals {"status": "ok", "role": "overseer"} |
+
+### `test_empty_ledger_returns_empty_list`
+| | |
+|---|---|
+| **Tests** | Empty ledger returns empty config events list with prefixes |
+| **Method** | Call get_config_events(since=0, limit=100) on empty ledger; assert response structure |
+| **Pass** | events=[], count=0, latest_sequence=0, prefixes contains "store." and "menu." |
+
+### `test_returns_only_config_events`
+| | |
+|---|---|
+| **Tests** | Operational events (orders, payments) are filtered out; only config events returned |
+| **Method** | Seed config + operational events; call get_config_events; verify types |
+| **Pass** | Response includes employee.created and tipout.rule_created, excludes order.created |
+
+### `test_since_cursor_filters_earlier_events`
+| | |
+|---|---|
+| **Tests** | Since cursor filters events by sequence_number; only events after it are returned |
+| **Method** | Seed two EMPLOYEE_CREATED events; call with since=first.sequence_number |
+| **Pass** | Only second event returned, latest_sequence equals second event's sequence_number |
+
+### `test_limit_capped_at_5000`
+| | |
+|---|---|
+| **Tests** | Limit parameter is capped at 5000 even if caller requests more |
+| **Method** | Call with limit=999_999; assert count is bounded |
+| **Pass** | count <= 5000, no exception raised |
+
+### `test_event_serialization_shape`
+| | |
+|---|---|
+| **Tests** | Each event has correct wire-format keys and types for client consumption |
+| **Method** | Seed STORE_TAX_RULE_CREATED; call get_config_events; inspect serialization |
+| **Pass** | Event has event_id, sequence_number, timestamp (ISO string), terminal_id, event_type, payload |
+
+### `test_applies_config_events`
+| | |
+|---|---|
+| **Tests** | replay_config_events accepts valid config events and appends to ledger |
+| **Method** | Call replay_config_events with employee.created wire event; verify applied=1 and ledger has it |
+| **Pass** | Response equals {"applied": 1, "skipped": 0}, ledger contains the event |
+
+### `test_skips_operational_events`
+| | |
+|---|---|
+| **Tests** | Operational events (order.created) are rejected in replay, not applied |
+| **Method** | Call replay_config_events with order.created; verify skipped=1 |
+| **Pass** | Response equals {"applied": 0, "skipped": 1}, ledger untouched |
+
+### `test_skips_events_missing_event_type`
+| | |
+|---|---|
+| **Tests** | Malformed events without event_type key are skipped; batch continues |
+| **Method** | Call replay with malformed event dict (no event_type); verify skipped=1 |
+| **Pass** | Response equals {"applied": 0, "skipped": 1} |
+
+### `test_idempotent_on_duplicate_event_id`
+| | |
+|---|---|
+| **Tests** | Replaying same event_id twice is idempotent; second is skipped |
+| **Method** | Replay same event twice; verify first applied=1, second applied=0, ledger has one copy |
+| **Pass** | First returns {"applied": 1, "skipped": 0}, second returns applied=0, one event in ledger |
+
+### `test_mixed_batch_partitions_correctly`
+| | |
+|---|---|
+| **Tests** | Batch with config + operational + malformed events partitions correctly |
+| **Method** | Call replay with mixed batch (2 config, 1 operational, 1 malformed); verify counters |
+| **Pass** | Response equals {"applied": 2, "skipped": 2} |
+
+### `test_empty_events_list_succeeds`
+| | |
+|---|---|
+| **Tests** | Empty events list succeeds and returns zero counts |
+| **Method** | Call replay with events=[]; assert response |
+| **Pass** | Response equals {"applied": 0, "skipped": 0} |
+
+### `test_missing_events_key_treated_as_empty`
+| | |
+|---|---|
+| **Tests** | Missing events key in payload is treated as empty batch |
+| **Method** | Call replay with payload={}; assert response |
+| **Pass** | Response equals {"applied": 0, "skipped": 0} |
+
+### `test_events_not_a_list_400s`
+| | |
+|---|---|
+| **Tests** | events field must be a list; non-list raises HTTPException with 400 |
+| **Method** | Call replay with events="not-a-list"; assert exception |
+| **Pass** | HTTPException raised with status_code=400 |
+
+### `test_sec003_fires_on_every_replay`
+| | |
+|---|---|
+| **Tests** | SEC-003 diagnostic is emitted on every replay, even empty batches |
+| **Method** | Replay empty batch; mock _record_diag; verify one call with event_code="SEC-003" |
+| **Pass** | One SEC-003 diagnostic with batch_size=0 and claimed_terminal_ids=[] |
+
+### `test_sec003_captures_claimed_terminal_ids`
+| | |
+|---|---|
+| **Tests** | SEC-003 snapshot includes sorted, deduplicated list of claimed terminal_ids |
+| **Method** | Replay 3 events from T-02, T-03, T-02; mock _record_diag; inspect diag context |
+| **Pass** | SEC-003 has claimed_terminal_ids=["T-02", "T-03"] (sorted, dedup'd) and batch_size=3 |
+
+### `test_sec004_fires_on_self_claim`
+| | |
+|---|---|
+| **Tests** | SEC-004 WARNING is emitted when batch contains event claiming this terminal's ID |
+| **Method** | Set settings.terminal_id="T-THIS"; replay batch with T-THIS and OVERSEER events; mock diag |
+| **Pass** | SEC-004 diagnostic present with local_terminal_id="T-THIS", self_claim_count=1, batch_size=2 |
+
+### `test_sec004_silent_when_no_self_claims`
+| | |
+|---|---|
+| **Tests** | SEC-004 is silent when batch contains no claims from this terminal |
+| **Method** | Set settings.terminal_id="T-THIS"; replay only OVERSEER events; verify no SEC-004 |
+| **Pass** | No SEC-004 diagnostic in captured calls |
+
+### `test_sec004_silent_when_settings_terminal_id_unset`
+| | |
+|---|---|
+| **Tests** | SEC-004 is silent when settings.terminal_id is empty/unconfigured |
+| **Method** | Set settings.terminal_id=""; replay with empty claims; verify no SEC-004 |
+| **Pass** | No SEC-004 diagnostic in captured calls |
+
+### `test_precision_error_counted_as_skipped`
+| | |
+|---|---|
+| **Tests** | Monetary payload with 3+ decimal places triggers precision gate and counts as skipped |
+| **Method** | Replay menu.item_created with price=10.123 (3dp); assert skipped=1 and ledger empty |
+| **Pass** | Response equals {"applied": 0, "skipped": 1}, no events in ledger |
+
+### `test_precision_error_doesnt_abort_remainder_of_batch`
+| | |
+|---|---|
+| **Tests** | One precision error in batch does not abort good rows before/after |
+| **Method** | Replay mixed batch: good + bad (3dp) + good; verify applied=2, skipped=1 |
+| **Pass** | Response equals {"applied": 2, "skipped": 1} |
+
+### `test_non_precision_valueerror_propagates`
+| | |
+|---|---|
+| **Tests** | Non-precision ValueError (e.g., ledger corruption) is not swallowed; bubbles up |
+| **Method** | Mock ledger.append to raise ValueError("Checksum mismatch"); call replay |
+| **Pass** | ValueError propagates with "Checksum mismatch" message |
+
+### `test_loop_skips_batch_of_only_op_events`
+| | |
+|---|---|
+| **Tests** | Over-fetch loop skips batches that are entirely operational; advances to config |
+| **Method** | Seed 5 operational + 1 config event; call get_config_events(limit=10) |
+| **Pass** | Response contains the 1 config event; count=1 |
+
+### `test_latest_sequence_echoes_since_when_no_config_events`
+| | |
+|---|---|
+| **Tests** | When ledger is operational-only, latest_sequence echoes since parameter |
+| **Method** | Seed 3 operational events; call get_config_events(since=0, then since=42) |
+| **Pass** | Both calls return events=[], first latest_sequence=0, second latest_sequence=42 |
+
+### `test_soft_mode_no_token_allows`
+| | |
+|---|---|
+| **Tests** | With auth_enforced=False, missing bearer allows POST /replay (soft SEC-005) |
+| **Method** | HTTP POST /api/v1/sync/config/events/replay without Authorization header; assert allowed |
+| **Pass** | Status 200, response equals {"applied": 0, "skipped": 0} |
+
+### `test_strict_mode_no_token_401`
+| | |
+|---|---|
+| **Tests** | With auth_enforced=True, missing bearer blocks POST /replay with 401 |
+| **Method** | HTTP POST /replay without Authorization in strict mode; assert rejected |
+| **Pass** | Status 401 |
+
+### `test_strict_mode_valid_bearer_passes`
+| | |
+|---|---|
+| **Tests** | With auth_enforced=True, valid bearer with any role passes replay gate |
+| **Method** | HTTP POST /replay with valid bearer token; assert allowed |
+| **Pass** | Status 200, response equals {"applied": 0, "skipped": 0} |
+
+### `test_health_and_get_events_need_no_auth`
+| | |
+|---|---|
+| **Tests** | /health and /config/events endpoints are public; /replay is gated |
+| **Method** | Set auth_enforced=True; HTTP GET /health and /config/events without bearer |
+| **Pass** | Both return 200; health has status=ok, events has shape |
+
+---
+
+## `test_system_routes.py`
+> Tests system route helpers, pytest integration, and auth gates: line classification, test result counting, project root discovery, test runner subprocess, and role-based access control
+
+### `test_passed_keyword`
+| | |
+|---|---|
+| **Tests** | Line containing "PASSED" keyword classifies as 'passed' style |
+| **Method** | Call classify_line("test_foo PASSED"); assert result |
+| **Pass** | Returns "passed" |
+
+### `test_unicode_check_mark`
+| | |
+|---|---|
+| **Tests** | Line with unicode ✓ classifies as 'passed' |
+| **Method** | Call classify_line("✓ test_foo"); assert result |
+| **Pass** | Returns "passed" |
+
+### `test_bracketed_pass_tag`
+| | |
+|---|---|
+| **Tests** | Line with [PASS] classifies as 'passed' |
+| **Method** | Call classify_line("[PASS] test_foo"); assert result |
+| **Pass** | Returns "passed" |
+
+### `test_failed_keyword`
+| | |
+|---|---|
+| **Tests** | Line containing "FAILED" keyword classifies as 'failed' |
+| **Method** | Call classify_line("test_foo FAILED"); assert result |
+| **Pass** | Returns "failed" |
+
+### `test_error_keyword`
+| | |
+|---|---|
+| **Tests** | Line containing "ERROR" classifies as 'failed' |
+| **Method** | Call classify_line("ERROR collecting tests"); assert result |
+| **Pass** | Returns "failed" |
+
+### `test_skipped_keyword`
+| | |
+|---|---|
+| **Tests** | Line containing "SKIPPED" classifies as 'skipped' |
+| **Method** | Call classify_line("test_foo SKIPPED"); assert result |
+| **Pass** | Returns "skipped" |
+
+### `test_skip_substring`
+| | |
+|---|---|
+| **Tests** | Line containing "SKIP" substring classifies as 'skipped' |
+| **Method** | Call classify_line("SKIP reason=..."); assert result |
+| **Pass** | Returns "skipped" |
+
+### `test_equals_header`
+| | |
+|---|---|
+| **Tests** | Line with === border classifies as 'header' |
+| **Method** | Call classify_line("=== session starts ==="); assert result |
+| **Pass** | Returns "header" |
+
+### `test_dashes_header`
+| | |
+|---|---|
+| **Tests** | Line with --- border classifies as 'header' |
+| **Method** | Call classify_line("--- coverage ---"); assert result |
+| **Pass** | Returns "header" |
+
+### `test_summary_line`
+| | |
+|---|---|
+| **Tests** | Line with result summary (e.g., "3 passed in 0.12s") classifies as 'summary' |
+| **Method** | Call classify_line("3 passed in 0.12s"); assert result |
+| **Pass** | Returns "summary" |
+
+### `test_meta_platform`
+| | |
+|---|---|
+| **Tests** | Line with "platform" keyword classifies as 'meta' |
+| **Method** | Call classify_line("platform linux -- Python 3.11"); assert result |
+| **Pass** | Returns "meta" |
+
+### `test_meta_rootdir`
+| | |
+|---|---|
+| **Tests** | Line with "rootdir:" classifies as 'meta' |
+| **Method** | Call classify_line("rootdir: /home/user/Vz2.0/backend"); assert result |
+| **Pass** | Returns "meta" |
+
+### `test_meta_collected`
+| | |
+|---|---|
+| **Tests** | Line with "collected" keyword classifies as 'meta' |
+| **Method** | Call classify_line("collected 5 items"); assert result |
+| **Pass** | Returns "meta" |
+
+### `test_plain_text_is_normal`
+| | |
+|---|---|
+| **Tests** | Plain text line classifies as 'normal' |
+| **Method** | Call classify_line("some random line"); assert result |
+| **Pass** | Returns "normal" |
+
+### `test_empty_string_is_normal`
+| | |
+|---|---|
+| **Tests** | Empty string classifies as 'normal' |
+| **Method** | Call classify_line(""); assert result |
+| **Pass** | Returns "normal" |
+
+### `test_passed_wins_over_failed_substring`
+| | |
+|---|---|
+| **Tests** | PASSED check runs before FAILED check; "test_failed_login PASSED" is 'passed' not 'failed' |
+| **Method** | Call classify_line("test_failed_login PASSED"); assert result |
+| **Pass** | Returns "passed" |
+
+### `test_mid_percent`
+| | |
+|---|---|
+| **Tests** | Line with [NN%] marker is counted as test result |
+| **Method** | Call is_test_result("test_x PASSED  [ 57%]"); assert True |
+| **Pass** | Returns True |
+
+### `test_hundred_percent`
+| | |
+|---|---|
+| **Tests** | Line with [100%] is counted as test result |
+| **Method** | Call is_test_result("test_x PASSED  [100%]"); assert True |
+| **Pass** | Returns True |
+
+### `test_single_digit_padded`
+| | |
+|---|---|
+| **Tests** | Line with padded single-digit percent is counted |
+| **Method** | Call is_test_result("test_x PASSED [  1%]"); assert True |
+| **Pass** | Returns True |
+
+### `test_zero_percent`
+| | |
+|---|---|
+| **Tests** | Line with [0%] is counted as test result |
+| **Method** | Call is_test_result("test_x PASSED [  0%]"); assert True |
+| **Pass** | Returns True |
+
+### `test_no_percent`
+| | |
+|---|---|
+| **Tests** | Line without [NN%] is not counted (e.g., metadata lines) |
+| **Method** | Call is_test_result("collected 5 items"); assert False |
+| **Pass** | Returns False |
+
+### `test_time_bracket_not_percent`
+| | |
+|---|---|
+| **Tests** | Line with time bracket [0.12s] is not counted as test result |
+| **Method** | Call is_test_result("[0.12s]"); assert False |
+| **Pass** | Returns False |
+
+### `test_empty`
+| | |
+|---|---|
+| **Tests** | Empty string is not a test result |
+| **Method** | Call is_test_result(""); assert False |
+| **Pass** | Returns False |
+
+### `test_verbose_passed_no_percent`
+| | |
+|---|---|
+| **Tests** | Verbose pytest format (subprocess.PIPE) without [NN%] is still counted as result |
+| **Method** | Call is_test_result("tests/test_x.py::test_ok PASSED"); assert True |
+| **Pass** | Returns True |
+
+### `test_verbose_failed_no_percent`
+| | |
+|---|---|
+| **Tests** | Verbose FAILED line without [NN%] is counted |
+| **Method** | Call is_test_result("tests/test_x.py::test_bad FAILED"); assert True |
+| **Pass** | Returns True |
+
+### `test_verbose_skipped_no_percent`
+| | |
+|---|---|
+| **Tests** | Verbose SKIPPED line without [NN%] is counted |
+| **Method** | Call is_test_result("tests/test_x.py::test_x SKIPPED"); assert True |
+| **Pass** | Returns True |
+
+### `test_verbose_skipped_with_reason`
+| | |
+|---|---|
+| **Tests** | Verbose SKIPPED with reason parenthetical is counted |
+| **Method** | Call is_test_result("tests/test_x.py::test_x SKIPPED (needs net)"); assert True |
+| **Pass** | Returns True |
+
+### `test_summary_line_not_counted`
+| | |
+|---|---|
+| **Tests** | Summary list line "FAILED <path>::<name>" is not double-counted as a result |
+| **Method** | Call is_test_result("FAILED tests/test_x.py::test_bad - AssertionError"); assert False |
+| **Pass** | Returns False |
+
+### `test_narrative_with_doublecolon_not_counted`
+| | |
+|---|---|
+| **Tests** | Narrative line with :: but no PASSED/FAILED/SKIPPED is not counted |
+| **Method** | Call is_test_result("   at module::function in /some/path"); assert False |
+| **Pass** | Returns False |
+
+### `test_pytest_ini_marker`
+| | |
+|---|---|
+| **Tests** | _find_project_root walks up from file and stops at pytest.ini |
+| **Method** | Create tmp structure with pytest.ini at root; call _find_project_root(nested_file) |
+| **Pass** | Returns root containing pytest.ini |
+
+### `test_fly_preview_toml_marker`
+| | |
+|---|---|
+| **Tests** | _find_project_root stops at fly.preview.toml marker |
+| **Method** | Create tmp structure with fly.preview.toml at root; call _find_project_root(nested_file) |
+| **Pass** | Returns root containing fly.preview.toml |
+
+### `test_backend_frontend_siblings_marker`
+| | |
+|---|---|
+| **Tests** | _find_project_root detects backend+frontend sibling dirs as repo root |
+| **Method** | Create tmp structure with backend/ and frontend/ siblings; call on nested file |
+| **Pass** | Returns root containing both directories |
+
+### `test_pytest_ini_beats_repo_marker`
+| | |
+|---|---|
+| **Tests** | pytest.ini at inner dir wins over backend+frontend further up (first-hit walk) |
+| **Method** | Create structure with pytest.ini at backend/, backend+frontend at outer; call on nested file |
+| **Pass** | Returns backend/ dir containing pytest.ini, not outer root |
+
+### `test_no_markers_falls_back`
+| | |
+|---|---|
+| **Tests** | With no markers anywhere, fallback path returns a valid Path without raising |
+| **Method** | Create deep nested structure with no markers; call _find_project_root(deep_file) |
+| **Pass** | Returns a Path instance; never raises or returns None |
+
+### `test_current_repo_resolves_to_backend`
+| | |
+|---|---|
+| **Tests** | Regression: real system.py resolves to backend/ directory with pytest.ini and tests/ |
+| **Method** | Call _find_project_root() with no args (uses real file); verify structure |
+| **Pass** | Returned path has pytest.ini and tests/ directory |
+
+### `test_direct_tests_dir`
+| | |
+|---|---|
+| **Tests** | _resolve_test_path returns tests/ when it exists directly under PROJECT_ROOT |
+| **Method** | Create tmp with tests/ at root; call _resolve_test_path(root) |
+| **Pass** | Returns root/tests |
+
+### `test_nested_backend_tests`
+| | |
+|---|---|
+| **Tests** | _resolve_test_path finds backend/tests/ layout when PROJECT_ROOT is repo root |
+| **Method** | Create tmp with backend/tests/ structure; call _resolve_test_path(root) |
+| **Pass** | Returns root/backend/tests |
+
+### `test_no_tests_dir_returns_direct_path`
+| | |
+|---|---|
+| **Tests** | Fallback: returns direct path even if it doesn't exist so pytest errors loudly |
+| **Method** | Create tmp with no tests dir; call _resolve_test_path(root) |
+| **Pass** | Returns root/tests (fallback path) |
+
+### `test_direct_preferred_over_nested`
+| | |
+|---|---|
+| **Tests** | Direct tests/ is preferred over nested backend/tests/ when both exist |
+| **Method** | Create tmp with both layouts; call _resolve_test_path(root) |
+| **Pass** | Returns root/tests (direct) not root/backend/tests |
+
+### `test_regression_current_repo_resolves`
+| | |
+|---|---|
+| **Tests** | End-to-end: PROJECT_ROOT + _resolve_test_path lands on real tests/ with files |
+| **Method** | Call _resolve_test_path(PROJECT_ROOT) on current repo; verify directory exists and has test_*.py |
+| **Pass** | Resolved path is a directory with at least one test_*.py file |
+
+### `test_version_returns_app_version`
+| | |
+|---|---|
+| **Tests** | GET /system/version returns settings.app_version in response |
+| **Method** | HTTP GET /api/v1/system/version; verify response |
+| **Pass** | Status 200, response equals {"version": "9.9.9-test"} (or configured version) |
+
+### `test_version_needs_no_auth`
+| | |
+|---|---|
+| **Tests** | Version endpoint is unauthenticated; flipping auth_enforced=True does not gate it |
+| **Method** | Set auth_enforced=True; HTTP GET /system/version without bearer |
+| **Pass** | Status 200, response has "version" key |
+
+### `test_run_tests_happy_path`
+| | |
+|---|---|
+| **Tests** | SSE stream with 2 PASSED tests produces passed=2, exit_code=0, correct event sequence |
+| **Method** | Mock pytest with 2 PASSED results; stream SSE; parse events |
+| **Pass** | start → 3× output (header + 2 results) → complete; complete has passed=2, failed=0, skipped=0, exit_code=0 |
+
+### `test_run_tests_mixed_results`
+| | |
+|---|---|
+| **Tests** | PASSED + FAILED + SKIPPED each bumps correct counter when line has [NN%] marker |
+| **Method** | Mock pytest with mixed results; stream SSE; inspect complete event |
+| **Pass** | complete has passed=2, failed=1, skipped=1, exit_code=1 |
+
+### `test_run_tests_narrative_lines_dont_count`
+| | |
+|---|---|
+| **Tests** | Lines with PASSED but no [NN%] marker are not counted (e.g., log messages) |
+| **Method** | Mock pytest with narrative lines; stream SSE; verify counters at zero |
+| **Pass** | complete has passed=0, failed=0, skipped=0; styling still applied to output |
+
+### `test_run_tests_error_sentinel`
+| | |
+|---|---|
+| **Tests** | __ERROR__:... prefix is stripped and line emitted with 'failed' style |
+| **Method** | Mock pytest with __ERROR__:ValueError message; stream SSE |
+| **Pass** | One output event with line="ValueError: something broke", style="failed", is_result=False |
+
+### `test_run_tests_done_nonzero_exit`
+| | |
+|---|---|
+| **Tests** | __DONE__:N propagates exit code N into complete event |
+| **Method** | Mock __DONE__:N for various N (0, 1, 2, 5); stream SSE each; verify exit codes |
+| **Pass** | Each complete event has exit_code matching N |
+
+### `test_run_tests_done_non_numeric_payload`
+| | |
+|---|---|
+| **Tests** | Non-numeric __DONE__ payload (e.g., "not-a-number") defaults to exit_code=1 |
+| **Method** | Mock __DONE__:not-a-number; stream SSE |
+| **Pass** | complete event has exit_code=1 (default) |
+
+### `test_run_tests_done_with_extra_colon`
+| | |
+|---|---|
+| **Tests** | __DONE__:N with extra colons (N:extra:junk) does not crash; defaults to exit_code=1 |
+| **Method** | Mock __DONE__:42:extra:junk; stream SSE |
+| **Pass** | complete event emitted with exit_code=1 (int() on "42:extra:junk" fails safely) |
+
+### `test_run_tests_soft_mode_allows_anonymous`
+| | |
+|---|---|
+| **Tests** | With auth_enforced=False, missing Authorization header records SEC-005 but allows POST |
+| **Method** | Set auth_enforced=False; HTTP POST /system/run-tests without bearer; stream SSE |
+| **Pass** | Stream opens, complete event emitted |
+
+### `test_run_tests_strict_no_token_returns_401`
+| | |
+|---|---|
+| **Tests** | With auth_enforced=True, missing bearer → 401 before handler runs |
+| **Method** | Set auth_enforced=True; HTTP POST /system/run-tests without bearer |
+| **Pass** | Response status 401 |
+
+### `test_run_tests_strict_non_manager_returns_403`
+| | |
+|---|---|
+| **Tests** | With auth_enforced=True, valid bearer for non-manager role → 403 |
+| **Method** | Set auth_enforced=True; create bearer for "server" role; POST /run-tests |
+| **Pass** | Response status 403 |
+
+### `test_run_tests_strict_manager_passes`
+| | |
+|---|---|
+| **Tests** | With auth_enforced=True, valid bearer for manager role opens stream |
+| **Method** | Set auth_enforced=True; create bearer for "manager" role; stream POST /run-tests |
+| **Pass** | Stream opens, complete event emitted with exit_code=0 |
+
+### `test_run_tests_strict_admin_and_owner_pass`
+| | |
+|---|---|
+| **Tests** | admin and owner roles both pass the manager gate |
+| **Method** | Set auth_enforced=True; create bearers for admin and owner; POST each |
+| **Pass** | Both requests return status 200 |
+
+### `test_run_tests_integration_all_pass`
+| | |
+|---|---|
+| **Tests** | Real pytest subprocess on tmp tests dir with passing test reports at least 1 pass, exit 0 |
+| **Method** | Create tmp/tests/test_trivial.py with simple assert True; mount as PROJECT_ROOT; stream SSE |
+| **Pass** | Stream has complete event with exit_code=0, passed >= 1, failed=0 |
+
+### `test_run_tests_integration_with_failure`
+| | |
+|---|---|
+| **Tests** | Real pytest subprocess with failing test reports failed >= 1 and non-zero exit |
+| **Method** | Create tmp test with passing + failing tests; stream SSE |
+| **Pass** | Stream has complete event with exit_code != 0, failed >= 1, passed >= 1 |
+
+### `test_run_tests_integration_no_tests_dir`
+| | |
+|---|---|
+| **Tests** | With no tests/ directory, pytest errors and stream terminates cleanly with non-zero exit |
+| **Method** | Mount empty tmp as PROJECT_ROOT (no tests dir); stream SSE |
+| **Pass** | Stream has complete event with exit_code != 0; does not hang |
+
+
+
+---
+
+# Frontend Tests (Terminal)
+
+## `auth-client.test.js`
+> Tests token-storage and fetch-interceptor contract to prevent silent 401s on /api/* requests
+
+### `setToken → getToken roundtrip persists all fields`
+| | |
+|---|---|
+| **Tests** | Token storage roundtrip persists token, employee_id, name, roles fields |
+| **Method** | vi.resetModules() + dynamic import; sessionStorage.setItem/getItem |
+| **Pass** | getToken() and getSession() return expected values after setToken() |
+
+### `setToken with missing token is a no-op`
+| | |
+|---|---|
+| **Tests** | setToken rejects null/undefined/{}/missing-token inputs |
+| **Method** | Call setToken with falsy/incomplete values; check getToken() remains null |
+| **Pass** | getToken() is null after invalid setToken calls |
+
+### `clearToken removes the session; survives a throwing sessionStorage`
+| | |
+|---|---|
+| **Tests** | clearToken removes token and gracefully handles sessionStorage.removeItem throw |
+| **Method** | vi.spyOn sessionStorage.removeItem to throw; call clearToken in try/catch |
+| **Pass** | clearToken() does not throw even when removeItem fails |
+
+### `installAuthFetchInterceptor is idempotent (second call does not double-wrap)`
+| | |
+|---|---|
+| **Tests** | Second call to installAuthFetchInterceptor returns without re-wrapping |
+| **Method** | Import module (installs interceptor); call again; compare window.fetch references |
+| **Pass** | window.fetch reference unchanged after second call |
+
+### `attaches Authorization: Bearer <token> on /api/* requests when a token is stored`
+| | |
+|---|---|
+| **Tests** | Stored token is injected as Authorization header on /api/* fetch calls |
+| **Method** | setToken; call fetch('/api/v1/orders'); inspect fetchMock.mock.calls |
+| **Pass** | init.headers.get('Authorization') equals 'Bearer abc123' |
+
+### `does NOT attach Authorization for non-/api/ URLs`
+| | |
+|---|---|
+| **Tests** | Non-/api/ URLs and external CDN requests do not receive Authorization header |
+| **Method** | setToken; fetch non-API URLs; check mock call headers |
+| **Pass** | Authorization header absent from /static/* and https://cdn.* requests |
+
+### `does NOT clobber a caller-supplied Authorization header`
+| | |
+|---|---|
+| **Tests** | Interceptor preserves caller-supplied Authorization header value |
+| **Method** | setToken; fetch with explicit Authorization header; check mock call |
+| **Pass** | Authorization header remains 'Bearer caller-override', not replaced |
+
+---
+
+## `category-grid.test.js`
+> CategoryGrid component constructor and public API for tile-based navigation
+
+### `CategoryGrid — State A > renders one tile per top-level category`
+| | |
+|---|---|
+| **Tests** | Initial render creates one tile element for each category object |
+| **Method** | Create CategoryGrid with 2-item data; count DOM tiles |
+| **Pass** | tiles(container).length equals 2 |
+
+### `CategoryGrid — State A > sorts categories alphabetically by default`
+| | |
+|---|---|
+| **Tests** | Categories sort A-Z by label unless sort option override |
+| **Method** | Create with unsorted data; read tileLabels() |
+| **Pass** | tileLabels equals ['Apple', 'Mango', 'Zucchini'] |
+
+### `CategoryGrid — State A > sort:"none" preserves insertion order`
+| | |
+|---|---|
+| **Tests** | sort:'none' option disables alphabetic sort |
+| **Method** | Create with sort:'none' and unordered data; check tile labels |
+| **Pass** | tileLabels equals ['Zucchini', 'Apple'] |
+
+### `CategoryGrid — State A > shows no tiles for empty data`
+| | |
+|---|---|
+| **Tests** | Empty data array renders zero tiles |
+| **Method** | Create with data:[] and count tiles |
+| **Pass** | tiles(container).length equals 0 |
+
+### `CategoryGrid — drill navigation > tapping a category tile switches to State B with back tile + children`
+| | |
+|---|---|
+| **Tests** | Click category drills to State B: back tile + item children |
+| **Method** | Create grid with nested items; tap category tile; read new labels |
+| **Pass** | tileLabels contains 'Food' (back) and item names 'Burger', 'Fries' |
+
+### `CategoryGrid — drill navigation > tapping the back tile returns to State A`
+| | |
+|---|---|
+| **Tests** | Clicking back tile from State B returns to State A |
+| **Method** | Drill to State B; tap back tile (label='Food'); check labels |
+| **Pass** | tileLabels equals ['Food'] (only the category) |
+
+### `CategoryGrid — drill navigation > tapping a leaf item fires onSelect with the item and empty mods`
+| | |
+|---|---|
+| **Tests** | Clicking item in State B invokes onSelect callback |
+| **Method** | Drill to State B; tap item; inspect onSelect mock call |
+| **Pass** | onSelect called with item object and empty mods object |
+
+### `CategoryGrid — drill navigation > renders price on item tiles when provided`
+| | |
+|---|---|
+| **Tests** | Item price displays as second child element with $ prefix |
+| **Method** | Drill to item; read burgerTile.children[1].textContent |
+| **Pass** | Price element contains '$9.99' |
+
+### `CategoryGrid — nav lock > lockNav() prevents tile clicks from navigating`
+| | |
+|---|---|
+| **Tests** | lockNav() blocks tile click events and onSelect callback |
+| **Method** | Call grid.lockNav(); tap tile; check onSelect not called and labels unchanged |
+| **Pass** | onSelect not called and tileLabels still ['Food'] |
+
+### `CategoryGrid — nav lock > unlockNav() re-enables navigation after lockNav()`
+| | |
+|---|---|
+| **Tests** | unlockNav() restores navigation after lockNav() |
+| **Method** | lockNav; unlockNav; tap category; check navigation works |
+| **Pass** | tileLabels contains item 'Burger' |
+
+### `CategoryGrid — public API > reset() returns to State A from State B`
+| | |
+|---|---|
+| **Tests** | Calling reset() reverts drilled State B back to State A |
+| **Method** | Drill to State B; call grid.reset(); check labels |
+| **Pass** | tileLabels equals ['Food'] |
+
+### `CategoryGrid — public API > setData() replaces data and resets to State A`
+| | |
+|---|---|
+| **Tests** | setData() updates grid data and returns to State A |
+| **Method** | Drill to State B; call setData with new category; check labels |
+| **Pass** | tileLabels equals ['Drinks'] (new single category) |
+
+### `CategoryGrid — public API > getCatId() returns null at State A`
+| | |
+|---|---|
+| **Tests** | getCatId() returns null when no category drilled into |
+| **Method** | Create grid; call getCatId(); check return value |
+| **Pass** | getCatId() is null |
+
+### `CategoryGrid — public API > getCatId() returns the drilled-into category id`
+| | |
+|---|---|
+| **Tests** | getCatId() returns id of currently-drilled category |
+| **Method** | Drill into category 'cat-food'; call getCatId() |
+| **Pass** | getCatId() equals 'cat-food' |
+
+### `CategoryGrid — public API > destroy() removes the grid from the DOM`
+| | |
+|---|---|
+| **Tests** | destroy() removes grid root element from container |
+| **Method** | Create grid; call destroy(); count children |
+| **Pass** | container.children.length equals 0 |
+
+### `CategoryGrid — public API > setColumns() updates the grid template columns`
+| | |
+|---|---|
+| **Tests** | setColumns(n) updates grid CSS grid-template-columns |
+| **Method** | Create grid with columns:3; call setColumns(5); check style |
+| **Pass** | gridRoot.style.gridTemplateColumns equals 'repeat(5, 1fr)' |
+
+### `CategoryGrid — public API > setSort() re-renders with the new sort order`
+| | |
+|---|---|
+| **Tests** | setSort() changes sort mode and updates tile order |
+| **Method** | Create with default (alpha) sort; call setSort('none'); check labels |
+| **Pass** | tileLabels changes from ['Apple', 'Zucchini'] to ['Zucchini', 'Apple'] |
+
+### `CategoryGrid — public API > showPickList() renders a back tile and the provided items`
+| | |
+|---|---|
+| **Tests** | showPickList(label, colors, items) renders custom item list |
+| **Method** | Create empty grid; call showPickList with items; check labels |
+| **Pass** | tileLabels contains 'Sides', 'Mac', 'Slaw' |
+
+### `CategoryGrid — modifier flow > tapping an item with requiredMods enters mod-groups view`
+| | |
+|---|---|
+| **Tests** | Clicking item with requiredMods switches to mod-groups state |
+| **Method** | Create with ITEM having requiredMods; drill and tap item; check labels |
+| **Pass** | tileLabels contains 'Burger' (back) and 'Doneness' (group) |
+
+### `CategoryGrid — modifier flow > DONE tile is absent before any group is satisfied`
+| | |
+|---|---|
+| **Tests** | DONE button not rendered until all required modifier groups selected |
+| **Method** | Drill to mod-groups view; check tileLabels |
+| **Pass** | tileLabels does not contain 'DONE' |
+
+### `CategoryGrid — modifier flow > tapping a group tile drills into its choices`
+| | |
+|---|---|
+| **Tests** | Click modifier group to show its choice options |
+| **Method** | Drill to mod-groups; tap 'Doneness' group; check labels |
+| **Pass** | tileLabels contains 'Medium' and 'Well Done' |
+
+### `CategoryGrid — modifier flow > picking a choice returns to groups view and shows DONE when all groups satisfied`
+| | |
+|---|---|
+| **Tests** | Selecting a choice returns to groups view; DONE shown when all groups satisfied |
+| **Method** | Drill to mod-groups; tap group; tap choice; check labels |
+| **Pass** | tileLabels contains 'Medium' (updated group label) and 'DONE' |
+
+### `CategoryGrid — modifier flow > single-select: picking a second choice replaces the first`
+| | |
+|---|---|
+| **Tests** | Selecting a different choice in same group deselects the previous choice |
+| **Method** | Select 'Medium'; tap group again; select 'Well Done'; check labels |
+| **Pass** | tileLabels contains 'Well Done' but not 'Medium' |
+
+### `CategoryGrid — modifier flow > tapping DONE fires onSelect with item + selectedMods then returns to State B`
+| | |
+|---|---|
+| **Tests** | Click DONE button invokes onSelect with item + filled mods, returns to State B |
+| **Method** | Drill to mods; select choices; tap DONE; inspect onSelect mock |
+| **Pass** | onSelect called once with item and selectedMods array |
+
+### `CategoryGrid — modifier flow > back tile in mod-groups cancels the flow and returns to State B`
+| | |
+|---|---|
+| **Tests** | Clicking back tile in mod-groups returns to State B without invoking onSelect |
+| **Method** | Drill to mods; tap back tile; check onSelect not called and labels |
+| **Pass** | tileLabels shows item 'Burger' and onSelect not called |
+
+### `CategoryGrid — modifier flow > item with requiredMods having no choices calls onSelect directly`
+| | |
+|---|---|
+| **Tests** | Item with requiredMods that have zero choices skips mod UI and invokes onSelect |
+| **Method** | Create with item having empty requiredMods.choices; tap item; check onSelect |
+| **Pass** | onSelect called immediately with item and empty mods |
+
+---
+
+## `charts.test.js`
+> Pure math helpers and buildStatCard/buildSparkline DOM factory API
+
+### `_normalize > maps min to 0 and max to 1 for a distinct-value array`
+| | |
+|---|---|
+| **Tests** | _normalize scales array values to [0,1] range |
+| **Method** | Call _normalize([0, 5, 10]); check each element |
+| **Pass** | result[0]≈0, result[1]≈0.5, result[2]≈1 |
+
+### `_normalize > returns all zeros when all values are equal (zero-range guard)`
+| | |
+|---|---|
+| **Tests** | _normalize returns [0, 0, 0] when input has zero range |
+| **Method** | Call _normalize([3, 3, 3]); check equality |
+| **Pass** | result equals [0, 0, 0] |
+
+### `_normalize > handles a single-element array`
+| | |
+|---|---|
+| **Tests** | _normalize processes single-element array |
+| **Method** | Call _normalize([42]); check result |
+| **Pass** | result equals [0] |
+
+### `_normalize > handles negative values correctly`
+| | |
+|---|---|
+| **Tests** | _normalize scales negative values within [0,1] range |
+| **Method** | Call _normalize([-4, 0, 4]); check elements |
+| **Pass** | result[0]≈0, result[1]≈0.5, result[2]≈1 |
+
+### `_normalize > handles an already-normalized [0,1] input`
+| | |
+|---|---|
+| **Tests** | _normalize passes through [0,1] input unchanged |
+| **Method** | Call _normalize([0, 1]); check elements |
+| **Pass** | result[0]≈0, result[1]≈1 |
+
+### `_linePath > starts with "M" for the first point`
+| | |
+|---|---|
+| **Tests** | _linePath SVG path starts with M (moveto) command |
+| **Method** | Call _linePath([0, 10], 100, 40); check first character |
+| **Pass** | d.startsWith('M') is true |
+
+### `_linePath > uses "L" for subsequent points`
+| | |
+|---|---|
+| **Tests** | _linePath uses L (lineto) for points after first |
+| **Method** | Call _linePath([0, 5, 10], 100, 40); split by space and check parts |
+| **Pass** | parts[1] and parts[2] start with 'L' |
+
+### `_linePath > produces exactly N segments for N data points`
+| | |
+|---|---|
+| **Tests** | _linePath output has one segment per data point |
+| **Method** | Call with 5-element data; split and count parts |
+| **Pass** | split(' ').length equals 5 |
+
+### `_linePath > first point x is 0.0, last point x equals vbW`
+| | |
+|---|---|
+| **Tests** | _linePath first x=0 and last x=vbW (viewBox width) |
+| **Method** | Parse path coordinates; extract first and last x |
+| **Pass** | firstX≈0, lastX≈100 (vbW) |
+
+### `_linePath > higher data values produce lower y (inverted axis)`
+| | |
+|---|---|
+| **Tests** | _linePath inverts y-axis: higher values → lower y coords |
+| **Method** | Call with [0, 10]; parse y coords of first and last point |
+| **Pass** | firstY > lastY (min value has larger y) |
+
+### `_areaPath > ends with Z (closed path)`
+| | |
+|---|---|
+| **Tests** | _areaPath SVG path ends with Z (closepath) command |
+| **Method** | Call _areaPath([0, 5, 10], 100, 40); check last character |
+| **Pass** | d.endsWith('Z') is true |
+
+### `_areaPath > contains the vbW,vbH corner point to close the area`
+| | |
+|---|---|
+| **Tests** | _areaPath includes bottom-right corner point to close path |
+| **Method** | Call _areaPath([0, 10], 100, 40); check string |
+| **Pass** | d contains 'L100,40' |
+
+### `_areaPath > contains the 0,vbH corner point to close the area`
+| | |
+|---|---|
+| **Tests** | _areaPath includes bottom-left corner point to close path |
+| **Method** | Call _areaPath([0, 10], 100, 40); check string |
+| **Pass** | d contains 'L0,40' |
+
+### `buildStatCard > returns an object with wrap, setValue, setDelta, setState`
+| | |
+|---|---|
+| **Tests** | buildStatCard returns card object with required control methods |
+| **Method** | Call buildStatCard(); check properties exist and have correct type |
+| **Pass** | wrap is HTMLElement; setValue/setDelta/setState are functions |
+
+### `buildStatCard > setValue() updates the value element text`
+| | |
+|---|---|
+| **Tests** | setValue() changes displayed value text |
+| **Method** | Call setValue('$75'); query divs and check textContent |
+| **Pass** | Some div contains textContent '$75' |
+
+### `buildStatCard > setDelta() updates the delta element text`
+| | |
+|---|---|
+| **Tests** | setDelta() changes displayed delta text |
+| **Method** | Call setDelta('▼ 5'); query divs and check textContent |
+| **Pass** | Some div contains textContent '▼ 5' |
+
+### `buildStatCard > setState("warning") applies a border to the wrap`
+| | |
+|---|---|
+| **Tests** | setState('warning') sets border style |
+| **Method** | Call setState('warning'); check wrap.style.border |
+| **Pass** | wrap.style.border is truthy |
+
+### `buildStatCard > setState("normal") clears the border`
+| | |
+|---|---|
+| **Tests** | setState('normal') clears border and sets normal appearance |
+| **Method** | Call setState('warning') then setState('normal'); check styles |
+| **Pass** | wrap.style.boxShadow equals 'none' |
+
+### `buildStatCard > title is uppercased in the header`
+| | |
+|---|---|
+| **Tests** | buildStatCard uppercases title in rendered header |
+| **Method** | Create with title:'net sales'; query spans and check textContent |
+| **Pass** | Some span contains 'NET SALES' |
+
+### `buildSparkline > returns a div wrapping an SVG element`
+| | |
+|---|---|
+| **Tests** | buildSparkline returns div container with SVG child |
+| **Method** | Call buildSparkline(); check tagName and querySelector('svg') |
+| **Pass** | wrap.tagName is 'DIV' and querySelector('svg') not null |
+
+### `buildSparkline > SVG contains two path elements (area + line)`
+| | |
+|---|---|
+| **Tests** | buildSparkline SVG has two paths (area fill + line stroke) |
+| **Method** | Call buildSparkline(); count path elements |
+| **Pass** | querySelectorAll('path').length equals 2 |
+
+---
+
+## `components.test.js`
+> showToast and buildRoleButton DOM factory helpers
+
+### `showToast > appends a div to document.body`
+| | |
+|---|---|
+| **Tests** | showToast creates and appends toast element to body |
+| **Method** | Call showToast('Hello world'); count body children |
+| **Pass** | document.body.children.length equals 1 |
+
+### `showToast > sets the toast textContent to the message`
+| | |
+|---|---|
+| **Tests** | Toast element textContent matches message parameter |
+| **Method** | Call showToast('Test message'); read firstElementChild.textContent |
+| **Pass** | textContent equals 'Test message' |
+
+### `showToast > removes the toast after duration + fade (fake timers)`
+| | |
+|---|---|
+| **Tests** | Toast element removed from DOM after duration timeout plus fade time |
+| **Method** | vi.useFakeTimers(); showToast with duration:100; advance 100+250ms |
+| **Pass** | document.body.children.length equals 0 after timeout |
+
+### `showToast > applies a custom bg color to the toast style`
+| | |
+|---|---|
+| **Tests** | showToast applies custom background color to style |
+| **Method** | Call showToast with bg:'#123456'; check toast.style.background |
+| **Pass** | style.background equals rgb(18, 52, 86) |
+
+### `showToast > uses T.verm as the default background`
+| | |
+|---|---|
+| **Tests** | Toast defaults to T.verm (#e8472a) background |
+| **Method** | Call showToast without bg option; check style.background |
+| **Pass** | style.background equals rgb(232, 71, 42) |
+
+### `buildRoleButton > returns a div (not a button)`
+| | |
+|---|---|
+| **Tests** | buildRoleButton returns div element, not button element |
+| **Method** | Call buildRoleButton(); check tagName |
+| **Pass** | wrap.tagName equals 'DIV' |
+
+### `buildRoleButton > textContent is the uppercased role name`
+| | |
+|---|---|
+| **Tests** | buildRoleButton displays role name in uppercase |
+| **Method** | Call buildRoleButton('manager', ...); check textContent |
+| **Pass** | wrap.textContent equals 'MANAGER' |
+
+### `buildRoleButton > _roleName reflects the roleName argument`
+| | |
+|---|---|
+| **Tests** | buildRoleButton stores roleName in _roleName property |
+| **Method** | Call buildRoleButton('Bartender', ...); check _roleName |
+| **Pass** | wrap._roleName equals 'Bartender' |
+
+### `buildRoleButton > _selected starts as false`
+| | |
+|---|---|
+| **Tests** | buildRoleButton initializes _selected to false |
+| **Method** | Call buildRoleButton(); check _selected property |
+| **Pass** | wrap._selected equals false |
+
+### `buildRoleButton > onSelect is called with roleName on pointerup`
+| | |
+|---|---|
+| **Tests** | Dispatching pointerup event invokes onSelect callback with role name |
+| **Method** | Create button; dispatchEvent(new Event('pointerup')); check onSelect mock |
+| **Pass** | onSelect called with 'Server' |
+
+### `buildRoleButton > _resetVisual can be called without error in default (unselected) state`
+| | |
+|---|---|
+| **Tests** | _resetVisual() executes without throwing in unselected state |
+| **Method** | Create button; call _resetVisual(); wrap in expect/not.toThrow |
+| **Pass** | No exception thrown |
+
+### `buildRoleButton > _resetVisual applies selected styles when _selected is true`
+| | |
+|---|---|
+| **Tests** | _resetVisual() applies roleColor background when _selected=true |
+| **Method** | Set _selected=true; call _resetVisual(); check background |
+| **Pass** | wrap.style.background equals rgb(232, 71, 42) (roleColor) |
+
+### `buildRoleButton > _resetVisual applies default card background when unselected`
+| | |
+|---|---|
+| **Tests** | _resetVisual() applies T.card background when _selected=false |
+| **Method** | Set _selected=false; call _resetVisual(); check background |
+| **Pass** | wrap.style.background equals rgb(45, 49, 57) (T.card) |
+
+---
+
+## `discount.test.js`
+> Amount math and request body shape for /api/v1/orders/{id}/discount
+
+### `terminal/discount > computeDiscountAmount > 10% of a single $20 item → $2.00 (always 2dp)`
+| | |
+|---|---|
+| **Tests** | computeDiscountAmount returns correctly rounded 2-decimal result |
+| **Method** | Call computeDiscountAmount([{price:20, qty:1}], 10); check result |
+| **Pass** | Result equals 2 |
+
+### `terminal/discount > computeDiscountAmount > sums modifier prices into each line before applying pct`
+| | |
+|---|---|
+| **Tests** | Modifier prices added to line subtotal before percentage applied |
+| **Method** | Call with item having mods array; verify (price+mods)*qty*pct calculation |
+| **Pass** | Result equals 1.95 |
+
+### `terminal/discount > computeDiscountAmount > respects qty on each line`
+| | |
+|---|---|
+| **Tests** | Quantity multiplier applied to line total |
+| **Method** | Call with qty:3; verify price*qty*pct |
+| **Pass** | Result equals 6 |
+
+### `terminal/discount > computeDiscountAmount > rounds to exactly 2 decimal places (matches backend _validate_2dp)`
+| | |
+|---|---|
+| **Tests** | Result rounds to exactly 2 decimal places, never more |
+| **Method** | Call with various prices/percentages; verify decimal precision |
+| **Pass** | String(result).split('.')[1].length <= 2 for all inputs |
+
+### `terminal/discount > computeDiscountAmount > empty items → 0 (not NaN, not undefined)`
+| | |
+|---|---|
+| **Tests** | computeDiscountAmount returns 0 for empty items array |
+| **Method** | Call with [], 10; check result |
+| **Pass** | Result equals 0 (not NaN or undefined) |
+
+### `terminal/discount > computeDiscountAmount > lines missing price or qty default to safe zeros`
+| | |
+|---|---|
+| **Tests** | Missing price/qty fields treated as 0, don't cause errors |
+| **Method** | Call with items lacking price/qty; verify safe default behavior |
+| **Pass** | Result equals 1 (safe defaults applied) |
+
+### `terminal/discount > extractItemIds > returns only ids for lines that have been persisted (have item_id)`
+| | |
+|---|---|
+| **Tests** | extractItemIds filters to only items with truthy item_id |
+| **Method** | Call with mixed items; some with item_id, some without |
+| **Pass** | Result equals ['a', 'b', 'c'] (empty/falsy IDs excluded) |
+
+### `terminal/discount > extractItemIds > returns [] when nothing is persisted yet`
+| | |
+|---|---|
+| **Tests** | extractItemIds returns empty array when no item_id present |
+| **Method** | Call with items lacking item_id property |
+| **Pass** | Result equals [] |
+
+### `terminal/discount > buildDiscountBody > produces the exact wire shape the backend expects`
+| | |
+|---|---|
+| **Tests** | buildDiscountBody returns object with correct key names and structure |
+| **Method** | Call buildDiscountBody(10, 2.0, ['a','b'], 'mgr-pin-hash'); check keys/values |
+| **Pass** | Result has discount_type, amount, reason, approved_by, item_ids with correct values |
+
+### `terminal/discount > buildDiscountBody > approved_by falls back to null when omitted`
+| | |
+|---|---|
+| **Tests** | approved_by set to null when undefined parameter passed |
+| **Method** | Call buildDiscountBody with undefined approved_by; check result |
+| **Pass** | result.approved_by equals null |
+
+### `terminal/discount > buildDiscountBody > item_ids is null (not []) when no lines are persisted — backend has 400ed on empty arrays`
+| | |
+|---|---|
+| **Tests** | item_ids set to null (not empty array) when no persisted IDs |
+| **Method** | Call buildDiscountBody with empty IDs array; check result |
+| **Pass** | result.item_ids equals null (not []) |
+
+---
+
+## `entomology-client.test.js`
+> Offline queue + drain behavior, keepalive flag, never-throws contract
+
+### `terminal/entomology-client > entReport returns a Promise that resolves (never throws) for valid input`
+| | |
+|---|---|
+| **Tests** | entReport always returns resolvable Promise, never throws |
+| **Method** | Call entReport(VALID); check instanceof Promise; await resolves |
+| **Pass** | Promise resolves to defined value; fetchMock called once |
+
+### `terminal/entomology-client > entReport with missing required fields resolves false and does NOT fetch`
+| | |
+|---|---|
+| **Tests** | entReport rejects incomplete payloads (returns false, no fetch) |
+| **Method** | Call with null, {}, missing source/message; check resolved value |
+| **Pass** | Returns false; fetchMock not called |
+
+### `terminal/entomology-client > entReport POSTs to /api/v1/entomology/client-event with keepalive: true`
+| | |
+|---|---|
+| **Tests** | entReport sends POST with keepalive:true and correct body format |
+| **Method** | Call entReport; inspect fetchMock.mock.calls[0] |
+| **Pass** | URL is /api/v1/entomology/client-event, method is POST, keepalive is true |
+
+### `terminal/entomology-client > when offline, entReport queues and does NOT fetch (resolves false)`
+| | |
+|---|---|
+| **Tests** | entReport queues payloads when navigator.onLine=false, returns false |
+| **Method** | Set navigator.onLine=false; call entReport twice; check fetchMock not called |
+| **Pass** | fetchMock not called; entReport resolves false |
+
+### `terminal/entomology-client > the 'online' event drains queued items`
+| | |
+|---|---|
+| **Tests** | Queued items sent to server when 'online' event fires |
+| **Method** | Go offline; queue 2 items; set online; dispatch 'online' event; check fetch |
+| **Pass** | fetchMock called twice with queued event_codes |
+
+---
+
+## `half-placement-overlay.test.js`
+> Mod-placement overlay for pizza-like half-and-half selections
+
+### `half-placement overlay — header > header contains both itemName and modName`
+| | |
+|---|---|
+| **Tests** | Overlay header displays both item and modifier names |
+| **Method** | Call open() with itemName/modName; check header.textContent |
+| **Pass** | Header contains 'Calzone' and 'Sausage' |
+
+### `half-placement overlay — buttons > LEFT button calls onConfirm with { side: "Left" }`
+| | |
+|---|---|
+| **Tests** | LEFT button dispatch invokes onConfirm with side:'Left' |
+| **Method** | Open overlay; find and dispatch button('LEFT'); check onConfirm mock |
+| **Pass** | onConfirm called with {side:'Left'} |
+
+### `half-placement overlay — buttons > RIGHT button calls onConfirm with { side: "Right" }`
+| | |
+|---|---|
+| **Tests** | RIGHT button dispatch invokes onConfirm with side:'Right' |
+| **Method** | Open overlay; find and dispatch button('RIGHT'); check onConfirm mock |
+| **Pass** | onConfirm called with {side:'Right'} |
+
+### `half-placement overlay — buttons > CANCEL button calls onCancel`
+| | |
+|---|---|
+| **Tests** | CANCEL button dispatch invokes onCancel callback |
+| **Method** | Open overlay; find and dispatch button('CANCEL'); check onCancel mock |
+| **Pass** | onCancel called |
+
+### `half-placement overlay — column filtering > left column shows only mods with prefix="Left"`
+| | |
+|---|---|
+| **Tests** | Left column renders only currentMods with prefix='Left' |
+| **Method** | Open with mixed prefix mods; check document.body for 'Mushrooms' |
+| **Pass** | Mushrooms (prefix='Left') appears in DOM |
+
+### `half-placement overlay — column filtering > right column shows only mods with prefix="Right"`
+| | |
+|---|---|
+| **Tests** | Right column renders only currentMods with prefix='Right' |
+| **Method** | Open with Right-prefixed mods; click RIGHT; check onConfirm and DOM |
+| **Pass** | Olives (prefix='Right') appears in DOM and onConfirm called |
+
+### `half-placement overlay — column filtering > shows placeholder when a column has no mods`
+| | |
+|---|---|
+| **Tests** | Empty columns display placeholder text |
+| **Method** | Open with empty currentMods; check document.body.textContent |
+| **Pass** | Contains 'Nothing on left' and 'Nothing on right' |
+
+### `half-placement overlay — Xtra label > labels a mod as "Xtra" when the same mod is on the whole item`
+| | |
+|---|---|
+| **Tests** | Half mod with whole-item counterpart displays "Xtra" prefix |
+| **Method** | Open with Pepperoni whole + Pepperoni Left; check textContent |
+| **Pass** | Document contains 'Xtra Pepperoni' |
+
+### `half-placement overlay — Xtra label > does NOT label a mod as "Xtra" when it has no whole counterpart`
+| | |
+|---|---|
+| **Tests** | Half mod without whole counterpart shows plain name, not "Xtra" |
+| **Method** | Open with Mushrooms Left only; check textContent |
+| **Pass** | Contains 'Mushrooms' but not 'Xtra Mushrooms' |
+
+### `half-placement overlay — price display > uses half_price when provided and non-null`
+| | |
+|---|---|
+| **Tests** | Mod with half_price property displays half_price, not price |
+| **Method** | Open with mod having price:2.00, half_price:1.00; check textContent |
+| **Pass** | Contains '$1.00' and not '$2.00' |
+
+### `half-placement overlay — price display > falls back to price when half_price is null`
+| | |
+|---|---|
+| **Tests** | Mod with null half_price displays price instead |
+| **Method** | Open with mod having half_price:null; check textContent |
+| **Pass** | Contains '$2.00' |
+
+### `half-placement overlay — price display > omits price span when effective price is 0`
+| | |
+|---|---|
+| **Tests** | Free mod ($0 effective price) has no price span rendered |
+| **Method** | Open with price:0, half_price:null; check textContent |
+| **Pass** | Does not contain '$0.00' |
+
+### `showHalfPlacementOverlay — Promise wrapper > returns a Promise and calls SceneManager.interrupt`
+| | |
+|---|---|
+| **Tests** | showHalfPlacementOverlay returns Promise and interrupts scene |
+| **Method** | Call showHalfPlacementOverlay(); check return type and SceneManager.interrupt mock |
+| **Pass** | Returns Promise; interrupt called with 'half-placement' and callbacks |
+
+### `showHalfPlacementOverlay — Promise wrapper > resolves when the onConfirm callback is invoked`
+| | |
+|---|---|
+| **Tests** | Promise resolves with onConfirm result when callback fired |
+| **Method** | Call showHalfPlacementOverlay(); invoke onConfirm from mock; await promise |
+| **Pass** | Promise resolves to {side:'Right'} |
+
+### `showHalfPlacementOverlay — Promise wrapper > rejects when the onCancel callback is invoked`
+| | |
+|---|---|
+| **Tests** | Promise rejects with error when onCancel callback fired |
+| **Method** | Call showHalfPlacementOverlay(); invoke onCancel; await promise |
+| **Pass** | Promise rejects with 'Interrupt cancelled' error |
+
+---
+
+## `header.test.js`
+> Pure helper functions greetingFor, fmtTime, fmtDate
+
+### `greetingFor > returns Good Evening before 5am (h=4)`
+| | |
+|---|---|
+| **Tests** | greetingFor returns 'Good Evening' for hours before 5 |
+| **Method** | Call greetingFor(4); check return value |
+| **Pass** | Result equals 'Good Evening' |
+
+### `greetingFor > returns Good Morning at exactly 5am`
+| | |
+|---|---|
+| **Tests** | greetingFor returns 'Good Morning' at h=5 boundary |
+| **Method** | Call greetingFor(5); check return value |
+| **Pass** | Result equals 'Good Morning' |
+
+### `greetingFor > returns Good Morning at 11am (just before noon)`
+| | |
+|---|---|
+| **Tests** | greetingFor returns 'Good Morning' for h<12 |
+| **Method** | Call greetingFor(11); check return value |
+| **Pass** | Result equals 'Good Morning' |
+
+### `greetingFor > returns Good Afternoon at exactly noon (h=12)`
+| | |
+|---|---|
+| **Tests** | greetingFor returns 'Good Afternoon' at h=12 boundary |
+| **Method** | Call greetingFor(12); check return value |
+| **Pass** | Result equals 'Good Afternoon' |
+
+### `greetingFor > returns Good Afternoon at 4pm (h=16)`
+| | |
+|---|---|
+| **Tests** | greetingFor returns 'Good Afternoon' for 12<=h<17 |
+| **Method** | Call greetingFor(16); check return value |
+| **Pass** | Result equals 'Good Afternoon' |
+
+### `greetingFor > returns Good Evening at exactly 5pm (h=17)`
+| | |
+|---|---|
+| **Tests** | greetingFor returns 'Good Evening' at h=17 boundary |
+| **Method** | Call greetingFor(17); check return value |
+| **Pass** | Result equals 'Good Evening' |
+
+### `greetingFor > returns Good Evening at midnight (h=0)`
+| | |
+|---|---|
+| **Tests** | greetingFor returns 'Good Evening' for h=0 |
+| **Method** | Call greetingFor(0); check return value |
+| **Pass** | Result equals 'Good Evening' |
+
+### `greetingFor > returns Good Evening at 11pm (h=23)`
+| | |
+|---|---|
+| **Tests** | greetingFor returns 'Good Evening' for h=23 |
+| **Method** | Call greetingFor(23); check return value |
+| **Pass** | Result equals 'Good Evening' |
+
+### `fmtTime > formats midnight as 12:00 AM`
+| | |
+|---|---|
+| **Tests** | fmtTime converts h=0 to '12:00 AM' format |
+| **Method** | Call fmtTime(new Date(0,0,1,0,0,0)); check return |
+| **Pass** | Result equals '12:00 AM' |
+
+### `fmtTime > formats 12:00 as 12:00 PM (noon)`
+| | |
+|---|---|
+| **Tests** | fmtTime formats h=12 as '12:00 PM' |
+| **Method** | Call fmtTime(new Date(0,0,1,12,0,0)); check return |
+| **Pass** | Result equals '12:00 PM' |
+
+### `fmtTime > formats 13:00 as 1:00 PM`
+| | |
+|---|---|
+| **Tests** | fmtTime converts h=13 to 1:00 PM (12-hour format) |
+| **Method** | Call fmtTime(new Date(0,0,1,13,0,0)); check return |
+| **Pass** | Result equals '1:00 PM' |
+
+### `fmtTime > formats 23:59 as 11:59 PM`
+| | |
+|---|---|
+| **Tests** | fmtTime converts h=23 to 11:59 PM |
+| **Method** | Call fmtTime(new Date(0,0,1,23,59,0)); check return |
+| **Pass** | Result equals '11:59 PM' |
+
+### `fmtTime > pads single-digit minutes with a leading zero`
+| | |
+|---|---|
+| **Tests** | fmtTime zero-pads minutes (e.g., 9:05 not 9:5) |
+| **Method** | Call fmtTime(new Date(0,0,1,9,5,0)); check return |
+| **Pass** | Result equals '9:05 AM' |
+
+### `fmtTime > formats 1:00 AM correctly`
+| | |
+|---|---|
+| **Tests** | fmtTime formats h=1 as '1:00 AM' |
+| **Method** | Call fmtTime(new Date(0,0,1,1,0,0)); check return |
+| **Pass** | Result equals '1:00 AM' |
+
+### `fmtDate > formats Thursday January 1 2026`
+| | |
+|---|---|
+| **Tests** | fmtDate formats date as 'DOW · MON DD' (Jan 1 2026 is Thursday) |
+| **Method** | Call fmtDate(new Date(2026,0,1)); check return |
+| **Pass** | Result equals 'THU · JAN 1' |
+
+### `fmtDate > formats Sunday December 27 2026`
+| | |
+|---|---|
+| **Tests** | fmtDate handles Dec dates (Dec 27 2026 is Sunday) |
+| **Method** | Call fmtDate(new Date(2026,11,27)); check return |
+| **Pass** | Result equals 'SUN · DEC 27' |
+
+### `fmtDate > formats Wednesday April 1 2026`
+| | |
+|---|---|
+| **Tests** | fmtDate handles mid-year dates (April 1 2026 is Wednesday) |
+| **Method** | Call fmtDate(new Date(2026,3,1)); check return |
+| **Pass** | Result equals 'WED · APR 1' |
+
+### `fmtDate > includes the numeric date in the output`
+| | |
+|---|---|
+| **Tests** | fmtDate output contains date number |
+| **Method** | Call fmtDate(June 15 2026); check output contains '15' |
+| **Pass** | Result includes '15' |
+
+
+---
+## `keyboard.test.js`
+> Tests for showKeyboard / hideKeyboard / isKeyboardVisible with DOM attachment and input options
+
+### keyboard — visibility > isKeyboardVisible() is false before any call
+| | |
+|---|---|
+| **Tests** | Initial visibility state is false before any keyboard function is invoked |
+| **Method** | Direct assertion on isKeyboardVisible() return value; no DOM interaction |
+| **Pass** | isKeyboardVisible() === false |
+
+### keyboard — visibility > isKeyboardVisible() is true after showKeyboard()
+| | |
+|---|---|
+| **Tests** | Visibility flag toggles to true when showKeyboard() is called |
+| **Method** | Call showKeyboard({}), then assert isKeyboardVisible() |
+| **Pass** | isKeyboardVisible() === true |
+
+### keyboard — visibility > isKeyboardVisible() is false after hideKeyboard()
+| | |
+|---|---|
+| **Tests** | Visibility flag returns to false after hideKeyboard() is invoked |
+| **Method** | Call showKeyboard then hideKeyboard, assert false |
+| **Pass** | isKeyboardVisible() === false |
+
+### keyboard — visibility > hideKeyboard() is a no-op when the keyboard is already hidden
+| | |
+|---|---|
+| **Tests** | hideKeyboard() does not throw and maintains false state when called on hidden keyboard |
+| **Method** | Call hideKeyboard() without prior showKeyboard(); expect no throw; assert false |
+| **Pass** | Function returns without error; isKeyboardVisible() === false |
+
+### keyboard — DOM attachment > showKeyboard() appends the modal to document.body
+| | |
+|---|---|
+| **Tests** | Modal DOM element is inserted into the DOM when showKeyboard() is called |
+| **Method** | Call showKeyboard({}); check document.body.children.length > 0 |
+| **Pass** | Body has child elements |
+
+### keyboard — DOM attachment > hideKeyboard() removes the modal from document.body
+| | |
+|---|---|
+| **Tests** | Modal DOM element is removed from the DOM when hideKeyboard() is called |
+| **Method** | Call showKeyboard then hideKeyboard; check document.body.children.length === 0 |
+| **Pass** | Body is empty |
+
+### keyboard — DOM attachment > second showKeyboard() call reuses the same root element
+| | |
+|---|---|
+| **Tests** | Root element is reused across multiple show/hide cycles (same object identity) |
+| **Method** | Call showKeyboard, store firstElementChild, hideKeyboard, showKeyboard again, compare references |
+| **Pass** | first === second (object identity match) |
+
+### keyboard — input options > sets the input value from initialValue
+| | |
+|---|---|
+| **Tests** | Input element receives value from initialValue option |
+| **Method** | Call showKeyboard({ initialValue: 'hello' }); query input.value |
+| **Pass** | input.value === 'hello' |
+
+### keyboard — input options > clears the input value between calls (no carry-over)
+| | |
+|---|---|
+| **Tests** | Previous input values do not persist to new showKeyboard() calls |
+| **Method** | Call showKeyboard with initialValue, hideKeyboard, call showKeyboard without initialValue, query input |
+| **Pass** | Second call's input.value === '' |
+
+### keyboard — input options > sets maxLength when provided
+| | |
+|---|---|
+| **Tests** | Input element maxLength attribute reflects the provided option |
+| **Method** | Call showKeyboard({ maxLength: 8 }); query input.maxLength |
+| **Pass** | input.maxLength === 8 |
+
+### keyboard — input options > sets placeholder text
+| | |
+|---|---|
+| **Tests** | Input placeholder attribute is set from option |
+| **Method** | Call showKeyboard({ placeholder: 'Type here' }); query input.placeholder |
+| **Pass** | input.placeholder === 'Type here' |
+
+### keyboard — DONE callback > onDone fires with the current input value when DONE is tapped
+| | |
+|---|---|
+| **Tests** | onDone callback is invoked with input value when DONE button receives pointerup event |
+| **Method** | vi.fn() mock for onDone; find DONE button; dispatch pointerup; check mock call args |
+| **Pass** | onDone called once with 'test value' |
+
+### keyboard — DONE callback > keyboard hides after DONE is tapped (dismissOnDone default)
+| | |
+|---|---|
+| **Tests** | Keyboard is hidden after DONE is tapped by default |
+| **Method** | Call showKeyboard with onDone callback; dispatch pointerup on DONE button; check isKeyboardVisible() |
+| **Pass** | isKeyboardVisible() === false |
+
+### keyboard — DONE callback > keyboard stays visible when dismissOnDone:false
+| | |
+|---|---|
+| **Tests** | Keyboard remains visible when dismissOnDone option is set to false |
+| **Method** | Call showKeyboard({ onDone, dismissOnDone: false }); tap DONE; check isKeyboardVisible() |
+| **Pass** | isKeyboardVisible() === true |
+
+### keyboard — DONE callback > pressing Enter in the input fires onDone
+| | |
+|---|---|
+| **Tests** | Enter key event on input triggers onDone callback with input value |
+| **Method** | vi.fn() mock for onDone; dispatch KeyboardEvent with key 'Enter' on input element; check mock |
+| **Pass** | onDone called once with 'enter test' |
+
+### keyboard — CANCEL and dismiss > CANCEL button triggers onDismiss and hides the keyboard
+| | |
+|---|---|
+| **Tests** | CANCEL button firing pointerup event triggers onDismiss callback and closes keyboard |
+| **Method** | vi.fn() mock for onDismiss; find CANCEL button; dispatch pointerup; check mock and state |
+| **Pass** | onDismiss called; isKeyboardVisible() === false |
+
+### keyboard — CANCEL and dismiss > Escape key triggers onDismiss and hides the keyboard
+| | |
+|---|---|
+| **Tests** | Escape key press on input triggers onDismiss callback and closes keyboard |
+| **Method** | vi.fn() mock for onDismiss; dispatch KeyboardEvent with key 'Escape' on input; check both |
+| **Pass** | onDismiss called; isKeyboardVisible() === false |
+
+### keyboard — CANCEL and dismiss > backdrop tap (pointerup directly on root) triggers onDismiss
+| | |
+|---|---|
+| **Tests** | Pointerup event on root modal element (not bubbled from child) triggers onDismiss |
+| **Method** | vi.fn() mock for onDismiss; create pointerup event with target=root, non-bubbling; dispatch; check |
+| **Pass** | onDismiss called; isKeyboardVisible() === false |
+
+---
+
+## `modifier-label.test.js`
+> Tests for formatModifierLabel function to prevent literal "null" in kitchen tickets
+
+### terminal/modifier-label > null prefix → bare label (no literal "null" in the output)
+| | |
+|---|---|
+| **Tests** | Null, undefined, or empty prefix returns bare label without prefix text |
+| **Method** | Call formatModifierLabel(prefix, 'Pepperoni') with null/undefined/'' prefixes; assert output |
+| **Pass** | All three return 'Pepperoni' (no prefix included) |
+
+### terminal/modifier-label > populated prefix → "<prefix> <label>"
+| | |
+|---|---|
+| **Tests** | Non-null prefixes are formatted as space-separated prefix and label strings |
+| **Method** | Call formatModifierLabel with various prefix strings ('ADD', 'NO', 'EXTRA', etc.) and labels |
+| **Pass** | Returns 'ADD Pepperoni', 'NO Onions', 'EXTRA Cheese', 'SUB Chicken', 'LITE Sauce' |
+
+### terminal/modifier-label > handles a null/undefined label defensively (never emits the string "null")
+| | |
+|---|---|
+| **Tests** | Null or undefined label values do not produce literal "null" string in output |
+| **Method** | Call formatModifierLabel(prefix, null) and formatModifierLabel(prefix, undefined); assert strings |
+| **Pass** | formatModifierLabel('ADD', null) === 'ADD ' (space but no "null"); formatModifierLabel(null, null) === '' |
+
+---
+
+## `net.test.js`
+> Tests for fetchWithTimeout function with AbortSignal timeout handling
+
+### terminal/net fetchWithTimeout > passes url/opts through to fetch and resolves with the response
+| | |
+|---|---|
+| **Tests** | URL and options are passed to fetch; response is resolved; AbortSignal is injected if missing |
+| **Method** | vi.fn() mock for window.fetch returning Promise.resolve(Response); call fetchWithTimeout; inspect mock.calls |
+| **Pass** | fetch called once with correct URL and method; init.signal is AbortSignal instance; response.status === 200 |
+
+### terminal/net fetchWithTimeout > aborts the fetch when the timeout elapses (reject path)
+| | |
+|---|---|
+| **Tests** | Timeout delay triggers AbortController.abort(), causing fetch to reject with AbortError |
+| **Method** | vi.useFakeTimers(); mock fetch that listens for signal.abort; vi.advanceTimersByTime(15000); await rejection |
+| **Pass** | capturedSignal.aborted === true; rejection error matches /abort/i |
+
+### terminal/net fetchWithTimeout > defaults to 15s when no timeout is passed (does not fire before then)
+| | |
+|---|---|
+| **Tests** | Default timeout is 15 seconds; does not abort before then; aborts after 15s |
+| **Method** | vi.useFakeTimers(); call fetchWithTimeout without timeout arg; advance timers; check aborted flag |
+| **Pass** | At 14999ms: aborted === false; at 15001ms: aborted === true |
+
+### terminal/net fetchWithTimeout > caller-supplied signal is honored (fetchWithTimeout does not clobber it)
+| | |
+|---|---|
+| **Tests** | Caller-provided AbortSignal is used unchanged instead of creating a new one |
+| **Method** | Create AbortController; call fetchWithTimeout with signal in opts; check that fetch receives same signal |
+| **Pass** | seenSignal === callerController.signal (object identity) |
+
+---
+
+## `numpad.test.js`
+> Tests for buildNumpad public API with digit input, display rendering, and callbacks
+
+### buildNumpad — public API > getPin() starts empty
+| | |
+|---|---|
+| **Tests** | Initial PIN state is empty string before any digit is pressed |
+| **Method** | Call buildNumpad({}); call getPin(); assert return value |
+| **Pass** | getPin() === '' |
+
+### buildNumpad — public API > pressing a digit appends to the pin
+| | |
+|---|---|
+| **Tests** | Tapping a digit key appends that digit to the internal PIN |
+| **Method** | Call buildNumpad({ masked: false }); tap key '5'; call getPin(); assert |
+| **Pass** | getPin() === '5' |
+
+### buildNumpad — public API > pressing multiple digits builds the pin in order
+| | |
+|---|---|
+| **Tests** | Multiple digit taps accumulate in order in the PIN |
+| **Method** | Call buildNumpad({ masked: false }); tap 1, 2, 3 in sequence; assert getPin() |
+| **Pass** | getPin() === '123' |
+
+### buildNumpad — public API > maxDigits caps input at the configured limit
+| | |
+|---|---|
+| **Tests** | Tapping beyond maxDigits limit does not append further digits |
+| **Method** | Call buildNumpad({ maxDigits: 3 }); tap 1, 2, 3, 4, 5; assert getPin() |
+| **Pass** | getPin() === '123' (4 and 5 ignored) |
+
+### buildNumpad — public API > setPin() sets the internal pin and re-renders
+| | |
+|---|---|
+| **Tests** | setPin method accepts a string and updates internal state and display |
+| **Method** | Call buildNumpad({ masked: false }); call setPin('4321'); call getPin(); assert |
+| **Pass** | getPin() === '4321' |
+
+### buildNumpad — public API > clear() empties the pin
+| | |
+|---|---|
+| **Tests** | clear method resets PIN to empty string |
+| **Method** | Call buildNumpad; tap digits 1, 2, 3; call clear(); call getPin() |
+| **Pass** | getPin() === '' |
+
+### buildNumpad — display rendering > masked display shows diamond chars for each digit
+| | |
+|---|---|
+| **Tests** | With masked: true, display renders diamond character (◆) for each digit with spacing |
+| **Method** | Call buildNumpad({ masked: true }); tap 1, 2, 3; query display div; check textContent |
+| **Pass** | display.textContent === '◆ ◆ ◆' |
+
+### buildNumpad — display rendering > unmasked display shows the raw digits
+| | |
+|---|---|
+| **Tests** | With masked: false, display renders actual digit characters |
+| **Method** | Call buildNumpad({ masked: false }); tap 4, 2; query display; check textContent |
+| **Pass** | display.textContent === '42' |
+
+### buildNumpad — display rendering > displayFormat callback overrides default rendering
+| | |
+|---|---|
+| **Tests** | Custom displayFormat function is applied to transform PIN display text |
+| **Method** | Call buildNumpad({ displayFormat: (pin) => pin.replace(/./g, '*') }); tap 1, 2, 3; check display |
+| **Pass** | display.textContent === '***' |
+
+### buildNumpad — display rendering > custom maskChar replaces the default diamond
+| | |
+|---|---|
+| **Tests** | maskChar option changes the character used in masked display |
+| **Method** | Call buildNumpad({ masked: true, maskChar: '#' }); tap 1, 2; check display |
+| **Pass** | display.textContent === '# #' |
+
+### buildNumpad — submit behaviour > onSubmit fires with the current pin
+| | |
+|---|---|
+| **Tests** | onSubmit callback is invoked with current PIN when submit key (>>>) is tapped |
+| **Method** | vi.fn() mock for onSubmit; call buildNumpad({ onSubmit }); tap digits 7, 8, 9; tap >>> button; check |
+| **Pass** | onSubmit called once with '789' |
+
+### buildNumpad — submit behaviour > onSubmit is blocked when canSubmit returns false
+| | |
+|---|---|
+| **Tests** | canSubmit callback returning false prevents onSubmit from firing |
+| **Method** | vi.fn() mock for both; call buildNumpad({ onSubmit, canSubmit: () => false }); tap digit and submit |
+| **Pass** | onSubmit not called |
+
+### buildNumpad — submit behaviour > submit is blocked when pin is empty (default canSubmit)
+| | |
+|---|---|
+| **Tests** | Default canSubmit behavior blocks submission when PIN is empty |
+| **Method** | vi.fn() mock for onSubmit; call buildNumpad({ onSubmit }); tap submit without any digits |
+| **Pass** | onSubmit not called |
+
+### buildNumpad — submit behaviour > custom submitLabel appears on the submit key
+| | |
+|---|---|
+| **Tests** | submitLabel option text appears on the submit button instead of >>> |
+| **Method** | Call buildNumpad({ submitLabel: 'GO' }); find key with text 'GO' |
+| **Pass** | findKey(pad, 'GO') !== null |
+
+### buildNumpad — clear key behaviour > short press removes the last digit
+| | |
+|---|---|
+| **Tests** | Short press (pointerdown + pointerup) on clear button removes last digit from PIN |
+| **Method** | Call buildNumpad; tap digits 1, 2, 3; tap 'clr' key; check getPin() |
+| **Pass** | getPin() === '12' |
+
+### buildNumpad — clear key behaviour > short press on empty pin does nothing
+| | |
+|---|---|
+| **Tests** | Clear button tap on empty PIN leaves it empty (no error, no effect) |
+| **Method** | Call buildNumpad; tap 'clr' without tapping any digits; check getPin() |
+| **Pass** | getPin() === '' |
+
+### buildNumpad — clear key behaviour > long press (500ms) clears the entire pin
+| | |
+|---|---|
+| **Tests** | Holding clear button for 500ms clears the entire PIN at once |
+| **Method** | vi.useFakeTimers(); call buildNumpad; tap digits 1, 2, 3, 4; pointerdown on 'clr', advance 500ms, pointerup |
+| **Pass** | getPin() === '' |
+
+### buildNumpad — onChange callback > onChange fires on every digit press with updated pin
+| | |
+|---|---|
+| **Tests** | onChange callback fires after each digit tap with the updated PIN string |
+| **Method** | vi.fn() mock for onChange; call buildNumpad({ onChange }); tap 1, 2; check nthCalledWith |
+| **Pass** | onChange called with '1' on first tap, '12' on second tap |
+
+### buildNumpad — onChange callback > onChange fires on clear with the remaining pin
+| | |
+|---|---|
+| **Tests** | onChange callback fires after clear button tap with remaining PIN |
+| **Method** | vi.fn() mock for onChange; call buildNumpad({ onChange }); tap 5, 6; clear mock; tap 'clr'; check |
+| **Pass** | onChange called with '5' (remaining digit after backspace) |
+
+### buildNumpad — setError and setHint > setError shows a message and resets after 1200ms
+| | |
+|---|---|
+| **Tests** | setError displays error message in place of PIN; clears PIN and reverts display after 1200ms |
+| **Method** | vi.useFakeTimers(); call buildNumpad; tap digits; call setError('Wrong PIN'); check display; advance 1200ms; check |
+| **Pass** | display shows 'Wrong PIN'; after timeout getPin() === '' and display reverts |
+
+### buildNumpad — setError and setHint > setHint shows hint text; next digit press clears it
+| | |
+|---|---|
+| **Tests** | setHint displays hint message; tapping a digit clears hint and shows the digit |
+| **Method** | Call buildNumpad({ masked: false }); call setHint('Enter code'); check display; tap '9'; check |
+| **Pass** | display shows 'Enter code'; after digit tap display shows '9' |
+
+### buildNumpad — setError and setHint > onCancel button fires the callback when provided
+| | |
+|---|---|
+| **Tests** | Cancel button (X) taps trigger onCancel callback when provided |
+| **Method** | vi.fn() mock for onCancel; call buildNumpad({ onCancel }); find X button; dispatch pointerup; check |
+| **Pass** | onCancel called once |
+
+---
+
+## `order-summary.test.js`
+> Tests for OrderSummary public API including show/hide, item rendering, and callbacks
+
+### OrderSummary — show / hide > show() calls SceneManager.showSummary()
+| | |
+|---|---|
+| **Tests** | OrderSummary.show() delegates visibility to SceneManager.showSummary() |
+| **Method** | Mock SceneManager.showSummary via vi.mock; call OrderSummary.show({ items: [], ... }); check mock |
+| **Pass** | SceneManager.showSummary called once |
+
+### OrderSummary — show / hide > hide() calls SceneManager.hideSummary()
+| | |
+|---|---|
+| **Tests** | OrderSummary.hide() delegates visibility to SceneManager.hideSummary() |
+| **Method** | Mock SceneManager.hideSummary; call OrderSummary.hide(); check mock |
+| **Pass** | SceneManager.hideSummary called once |
+
+### OrderSummary — show / hide > show() makes the wrap element visible
+| | |
+|---|---|
+| **Tests** | OrderSummary wrap element display style is set to 'flex' when show() is called |
+| **Method** | Call OrderSummary.show({ items: [] }); query #order-summary > div; check style.display |
+| **Pass** | wrap.style.display === 'flex' |
+
+### OrderSummary — show / hide > show() resets itemRenderLocked so items render again
+| | |
+|---|---|
+| **Tests** | show() clears render lock so items are re-rendered even after lockItemRender was called |
+| **Method** | Call show with item; call lockItemRender; call show with different item; check item count |
+| **Pass** | Second show re-renders items (count === 1 with new item) |
+
+### OrderSummary — render lock > lockItemRender() prevents update() from re-rendering items
+| | |
+|---|---|
+| **Tests** | lockItemRender() prevents OrderSummary.update() from re-rendering the item list |
+| **Method** | Call show; call lockItemRender; call update with more items; check item element count unchanged |
+| **Pass** | itemScroll.children.length === countBefore |
+
+### OrderSummary — render lock > unlockItemRender() allows update() to re-render items
+| | |
+|---|---|
+| **Tests** | unlockItemRender() re-enables item re-rendering in update() |
+| **Method** | Call show; call lockItemRender; call unlockItemRender; call update with new items; check count |
+| **Pass** | itemScroll.children.length === 2 (new items rendered) |
+
+### OrderSummary — updateSplit > shows paid and remaining rows after updateSplit()
+| | |
+|---|---|
+| **Tests** | updateSplit() makes "Paid" and "Remaining" rows visible (display !== 'none') |
+| **Method** | Call show; check rows hidden initially; call updateSplit({ totalPaid, remaining }); check visible |
+| **Pass** | paidRow.style.display === 'flex' and remainRow.style.display === 'flex' |
+
+### OrderSummary — updateSplit > sets the correct dollar values on paid and remaining rows
+| | |
+|---|---|
+| **Tests** | updateSplit() populates "Paid" and "Remaining" rows with formatted dollar amounts |
+| **Method** | Call show; call updateSplit({ totalPaid: 25.5, remaining: 74.5 }); query row values; assert |
+| **Pass** | paidRow value === '$25.50'; remainRow value === '$74.50' |
+
+### OrderSummary — seat header tap > onSeatHeaderTap fires with seatIdx when a seat header is tapped
+| | |
+|---|---|
+| **Tests** | Tapping a seat header row invokes onSeatHeaderTap callback with the seatIdx argument |
+| **Method** | vi.fn() mock for onSeatHeaderTap; call show with collapsible: true and seat header item; tap header; check |
+| **Pass** | onSeatHeaderTap called once with seatIdx 2 |
+
+### OrderSummary — item tap > onItemTap fires with the item index when a collapsible item is tapped
+| | |
+|---|---|
+| **Tests** | Tapping a collapsible item row invokes onItemTap with the item's forEach index |
+| **Method** | vi.fn() mock for onItemTap; call show with collapsible: true and items; tap second item; check |
+| **Pass** | onItemTap called once with index 1 |
+
+### OrderSummary — item tap > non-collapsible items do not fire onItemTap
+| | |
+|---|---|
+| **Tests** | When collapsible: false, tapping items does not invoke onItemTap |
+| **Method** | vi.fn() mock for onItemTap; call show with collapsible: false; tap item; check |
+| **Pass** | onItemTap not called |
+
+### OrderSummary — back button > onBack fires when the back button is tapped
+| | |
+|---|---|
+| **Tests** | Tapping the back button (‹ symbol) invokes onBack callback |
+| **Method** | vi.fn() mock for onBack; call show with showBack: true and onBack; find and tap ‹ button; check |
+| **Pass** | onBack called once |
+
+### OrderSummary — update() > update({ items }) re-renders the item list when not locked
+| | |
+|---|---|
+| **Tests** | OrderSummary.update() re-renders items when render lock is not active |
+| **Method** | Call show; call update with more items; check item element count increases |
+| **Pass** | itemScroll.children.length === 2 |
+
+### OrderSummary — update() > update({ skipItems: true }) does not re-render items
+| | |
+|---|---|
+| **Tests** | update() with skipItems: true skips item list re-rendering even with new items |
+| **Method** | Call show; call update({ skipItems: true, items: [...] }); check item count unchanged |
+| **Pass** | itemScroll.children.length === countBefore |
+
+---
+
+## `pricing.test.js`
+> Tests for pricing module with TAX_RATE and CASH_DISCOUNT as single source of truth
+
+### terminal/pricing > defaults: 7% tax and 4% cash discount before /config/pricing resolves
+| | |
+|---|---|
+| **Tests** | Default tax rate is 7% and cash discount is 4% before server response arrives |
+| **Method** | Mock fetch to never resolve; import pricing module; check getTaxRate, getCashDiscount, getRates |
+| **Pass** | getTaxRate() === 0.07; getCashDiscount() === 0.04; getRates() === { taxRate: 0.07, cashDiscount: 0.04 } |
+
+### terminal/pricing > ratesReady() resolves once /config/pricing responds; rates update from server
+| | |
+|---|---|
+| **Tests** | ratesReady() promise resolves after /config/pricing response; rates update to server values |
+| **Method** | Mock fetch with jsonResponse { tax_rate: 0.0875, cash_discount_rate: 0.03 }; await ratesReady(); check getters |
+| **Pass** | getTaxRate() === 0.0875; getCashDiscount() === 0.03; fetch called exactly once on repeated ratesReady |
+
+### terminal/pricing > load failure keeps defaults (no NaN, no undefined leaking into totals)
+| | |
+|---|---|
+| **Tests** | Fetch rejection preserves defaults (does not set NaN or undefined) |
+| **Method** | Mock fetch to reject with TypeError; import module; await ratesReady; check values |
+| **Pass** | getTaxRate() === 0.07 (unchanged); getCashDiscount() === 0.04 (unchanged) |
+
+### terminal/pricing > null fields in the response leave the existing rates untouched (partial payload)
+| | |
+|---|---|
+| **Tests** | Null fields in server response do not overwrite existing rates (partial updates safe) |
+| **Method** | Mock fetch with { tax_rate: null, cash_discount_rate: 0.05 }; await ratesReady; check both |
+| **Pass** | getTaxRate() === 0.07 (unchanged); getCashDiscount() === 0.05 (updated) |
+
+### terminal/pricing > computeTotals at defaults: $100 subtotal → $7 tax, $107 card, $102.72 cash
+| | |
+|---|---|
+| **Tests** | computeTotals calculates correct totals with default 7% tax and 4% cash discount |
+| **Method** | Mock fetch to never resolve (use defaults); call computeTotals(100); assert all fields |
+| **Pass** | subtotal: 100; tax: 7; cardTotal: 107; cashPrice: 102.72 |
+
+### terminal/pricing > computeTotals rounds every field to cents (no FP drift)
+| | |
+|---|---|
+| **Tests** | All total fields are rounded to 2 decimal places (cents); no floating-point leakage |
+| **Method** | Call computeTotals(19.99); inspect all returned fields for decimal places |
+| **Pass** | subtotal: 19.99; tax: 1.40; cardTotal: 21.39; cashPrice: 20.53 (all ≤ 2dp) |
+
+### terminal/pricing > computeTotals handles 0 subtotal without NaN
+| | |
+|---|---|
+| **Tests** | computeTotals(0) returns valid totals (0) not NaN or undefined |
+| **Method** | Call computeTotals(0); check return object values |
+| **Pass** | Returns { subtotal: 0, tax: 0, cardTotal: 0, cashPrice: 0 } |
+
+### terminal/pricing > totalsForOrder uses the backend-computed order.total + order.balance_due when present
+| | |
+|---|---|
+| **Tests** | totalsForOrder trusts backend-computed order.total and balance_due fields when available |
+| **Method** | Call totalsForOrder({ total: 107, subtotal: 100, balance_due: 50 }, 0); check all fields |
+| **Pass** | cardTotal: 107; subtotal: 100; tax: 7; balanceDue: 50; cashPrice: 102.72 |
+
+### terminal/pricing > totalsForOrder derives subtotal from total/tax when only total is present
+| | |
+|---|---|
+| **Tests** | totalsForOrder computes missing subtotal as (total / (1 + tax_rate)) when only total provided |
+| **Method** | Call totalsForOrder({ total: 107 }, 0); check derived subtotal and tax |
+| **Pass** | subtotal: 100; tax: 7; balanceDue: 107 (falls back to cardTotal) |
+
+### terminal/pricing > totalsForOrder falls back to computeTotals(fallbackSubtotal) when order is missing
+| | |
+|---|---|
+| **Tests** | totalsForOrder(null|undefined|{}, fallbackSubtotal) delegates to computeTotals(fallbackSubtotal) |
+| **Method** | Call totalsForOrder with null, undefined, {} and fallbackSubtotal 100; compare to computeTotals(100) |
+| **Pass** | All three return same result as computeTotals(100) |
+
+---
+
+## `scene-manager.test.js`
+> Tests for scene-manager interrupt/gate stacking, callback wrapping, layer teardown, and error handling
+
+### terminal/scene-manager > interrupt with object-embedded onConfirm → user callback fires with forwarded args
+| | |
+|---|---|
+| **Tests** | SceneManager.interrupt wraps user onConfirm and forwards arguments when sub-scene calls wrapped version |
+| **Method** | Create scene with mount handler; call SceneManager.interrupt with onConfirm: vi.fn(); trigger wrapped callback; check |
+| **Pass** | User onConfirm called once with same args passed to wrapped callback |
+
+### terminal/scene-manager > interrupt with positional callbacks → user callback fires with forwarded args
+| | |
+|---|---|
+| **Tests** | SceneManager.interrupt supports positional (confirm, cancel) callbacks in addition to object form |
+| **Method** | Call interrupt(name, opts, userConfirm, userCancel); trigger wrapped onConfirm; check |
+| **Pass** | userConfirm called with forwarded args |
+
+### terminal/scene-manager > interrupt onCancel wrapping forwards args the same way
+| | |
+|---|---|
+| **Tests** | onCancel callback receives same argument forwarding as onConfirm |
+| **Method** | Call interrupt with onCancel: vi.fn(); trigger wrapped onCancel with arg; check |
+| **Pass** | userCancel called with forwarded args |
+
+### terminal/scene-manager > hasScene returns false for unregistered names and true after register
+| | |
+|---|---|
+| **Tests** | hasScene() probe returns false for unregistered scene names, true after registration |
+| **Method** | Call hasScene('nope'); register scene; call hasScene again with registered and unregistered names |
+| **Pass** | First call false; after register true for registered, false for unregistered |
+
+### terminal/scene-manager > closeInterrupt is an exported alias that resolves the current interrupt (same as resolveInterrupt)
+| | |
+|---|---|
+| **Tests** | closeInterrupt is an alias for resolveInterrupt; both unmount and run cleanup |
+| **Method** | Register scene; open interrupt; call closeInterrupt; check hasInterrupt, unmountCalls, cleanupCalls |
+| **Pass** | hasInterrupt() === false; unmountCalls === 1; cleanupCalls === 1 |
+
+### terminal/scene-manager > opening an interrupt while one is open tears down the first and emits UI-001
+| | |
+|---|---|
+| **Tests** | Stacking two interrupts automatically tears down the first and emits UI-001 error code |
+| **Method** | Register sceneA, sceneB; call interrupt twice; check unmountCalls on A, mountCalls on B; check entReport |
+| **Pass** | sceneA unmountCalls === 1; sceneB mountCalls === 1; entReport includes UI-001 code |
+
+### terminal/scene-manager > opening a gate while one is open tears down the first and emits UI-001
+| | |
+|---|---|
+| **Tests** | Stacking two gates automatically tears down the first and emits UI-001 |
+| **Method** | Register sceneA, sceneB; call openGate twice; check unmountCalls on A; check entReport |
+| **Pass** | sceneA unmountCalls === 1; entReport includes UI-001 code |
+
+### terminal/scene-manager > onBeforeTransition(fn) returns a disposer that removes the hook
+| | |
+|---|---|
+| **Tests** | onBeforeTransition returns a disposer function that removes the hook from future transitions |
+| **Method** | Call onBeforeTransition(hook); register scene; mountWorking; dispose(); mountWorking again; check calls |
+| **Pass** | hook called once (before dispose); still 1 call after dispose (hook removed) |
+
+### terminal/scene-manager > mounting a new working scene tears down any open interrupt first
+| | |
+|---|---|
+| **Tests** | mountWorking automatically resolves any open interrupt before tearing down old working scene |
+| **Method** | Mount work1; open interrupt; call mountWorking(work2); check hasInterrupt, getActiveWorking, unmountCalls |
+| **Pass** | hasInterrupt() === false; getActiveWorking() === 'work2'; w1.unmountCalls === 1 |
+
+### terminal/scene-manager > mounting a new working scene closes all transactionals (no orphan timers)
+| | |
+|---|---|
+| **Tests** | mountWorking closes all open transactional scenes before switching working scenes |
+| **Method** | Mount work1; open two transactionals; call mountWorking(work2); check transactionalStack and unmountCalls |
+| **Pass** | getTransactionalStack() === []; t1.unmountCalls === 1; t2.unmountCalls === 1 |
+
+### terminal/scene-manager > _emit catches a throwing handler, emits UI-002, and other handlers still fire
+| | |
+|---|---|
+| **Tests** | _emit error-swallow path catches handler exceptions, emits UI-002, continues to other handlers |
+| **Method** | Register two handlers (one throws); call emit; check both called; check entReport includes UI-002 |
+| **Pass** | handlerA and handlerB both called; entReport includes UI-002 with source 'scene-manager._emit' |
+
+
+---
+# Test File Documentation
+
+## `theme-manager.test.js`
+> Tests for button, numpad, and pin-entry UI components: buildPillButton, buildNumpadChassis, buildPinRow, buildPinBox
+
+### `buildPillButton — element creation > returns a <button> element`
+| | |
+|---|---|
+| **Tests** | Button element is created with correct tagName |
+| **Method** | Direct property check of created element |
+| **Pass** | `btn.tagName === 'BUTTON'` |
+
+### `buildPillButton — element creation > sets textContent from label option`
+| | |
+|---|---|
+| **Tests** | Label option is rendered as button text content |
+| **Method** | Direct property assertion on button element |
+| **Pass** | `btn.textContent === 'SAVE'` |
+
+### `buildPillButton — element creation > default variant uses T.green as background`
+| | |
+|---|---|
+| **Tests** | Default (no variant specified) applies green color background |
+| **Method** | jsdom style property check with hex-to-rgb conversion helper |
+| **Pass** | `btn.style.background === rgb('#86efac')` |
+
+### `buildPillButton — variant mapping > verm variant sets T.verm background`
+| | |
+|---|---|
+| **Tests** | 'verm' variant applies vermillion color |
+| **Method** | Style property check on button with variant option |
+| **Pass** | `btn.style.background === rgb('#e8472a')` |
+
+### `buildPillButton — variant mapping > elec variant sets T.elec background`
+| | |
+|---|---|
+| **Tests** | 'elec' variant applies electric blue color |
+| **Method** | Style property check on button with variant option |
+| **Pass** | `btn.style.background === rgb('#00e5ff')` |
+
+### `buildPillButton — variant mapping > goGreen variant sets T.greenWarm background`
+| | |
+|---|---|
+| **Tests** | 'goGreen' variant applies warm green color |
+| **Method** | Style property check on button with variant option |
+| **Pass** | `btn.style.background === rgb('#86efac')` |
+
+### `buildPillButton — variant mapping > ghost variant sets transparent background`
+| | |
+|---|---|
+| **Tests** | 'ghost' variant produces transparent background |
+| **Method** | Style property check on button with variant option |
+| **Pass** | `btn.style.background === 'transparent'` |
+
+### `buildPillButton — setDisabled > setDisabled(true) sets opacity to 0.4`
+| | |
+|---|---|
+| **Tests** | Disabling button reduces opacity to indicate inactive state |
+| **Method** | Call setDisabled method and check style property |
+| **Pass** | `btn.style.opacity === '0.4'` |
+
+### `buildPillButton — setDisabled > setDisabled(true) sets pointerEvents to none`
+| | |
+|---|---|
+| **Tests** | Disabling button blocks pointer events |
+| **Method** | Call setDisabled method and check style property |
+| **Pass** | `btn.style.pointerEvents === 'none'` |
+
+### `buildPillButton — setDisabled > setDisabled(false) restores opacity to 1`
+| | |
+|---|---|
+| **Tests** | Re-enabling button restores full opacity |
+| **Method** | Call setDisabled twice and check final opacity |
+| **Pass** | `btn.style.opacity === '1'` |
+
+### `buildPillButton — setDisabled > setDisabled(false) restores pointerEvents to auto`
+| | |
+|---|---|
+| **Tests** | Re-enabling button allows pointer events again |
+| **Method** | Call setDisabled twice and check final style |
+| **Pass** | `btn.style.pointerEvents === 'auto'` |
+
+### `buildPillButton — setDisabled > disabled:true option applies disabled state at construction`
+| | |
+|---|---|
+| **Tests** | Disabled option in constructor applies disabled state immediately |
+| **Method** | Check internal _disabled flag and opacity style |
+| **Pass** | `btn._disabled === true && btn.style.opacity === '0.4'` |
+
+### `buildPillButton — onClick and disabled guard > onClick fires on pointerup`
+| | |
+|---|---|
+| **Tests** | Click handler is triggered on pointer release |
+| **Method** | Mock onClick callback, simulate tap event with pointerup |
+| **Pass** | `onClick.toHaveBeenCalledOnce()` |
+
+### `buildPillButton — onClick and disabled guard > onClick is blocked when button is disabled`
+| | |
+|---|---|
+| **Tests** | Disabled button prevents click handler execution |
+| **Method** | Mock onClick, disable button, simulate tap, check handler not called |
+| **Pass** | `onClick.not.toHaveBeenCalled()` |
+
+### `buildPillButton — setColor > setColor updates background and box-shadow`
+| | |
+|---|---|
+| **Tests** | setColor method applies custom background color |
+| **Method** | Call setColor with three hex values, check style |
+| **Pass** | `btn.style.background === rgb('#ff0000')` |
+
+### `buildNumpadChassis > returns a div containing 12 buttons (4 rows × 3 keys)`
+| | |
+|---|---|
+| **Tests** | Numpad layout has exactly 12 button elements (4 rows, 3 columns) |
+| **Method** | QuerySelector count of button children |
+| **Pass** | `chassis.querySelectorAll('button').length === 12` |
+
+### `buildNumpadChassis > onKey is called with the correct label on pointerup`
+| | |
+|---|---|
+| **Tests** | Key press handler receives the correct button label |
+| **Method** | Mock onKey callback, find '5' button, trigger pointerup event |
+| **Pass** | `onKey.toHaveBeenCalledWith('5')` |
+
+### `buildNumpadChassis > CLR and ENT keys are present`
+| | |
+|---|---|
+| **Tests** | Special function buttons (CLR, ENT) exist in the numpad |
+| **Method** | Get all button text content and check inclusion |
+| **Pass** | Labels include both 'CLR' and 'ENT' |
+
+### `buildNumpadChassis > digits 0-9 are all present`
+| | |
+|---|---|
+| **Tests** | All numeric digits 0 through 9 are available as buttons |
+| **Method** | Extract all button labels, loop 0-9, check each is present |
+| **Pass** | All digits 0-9 found in labels array |
+
+### `buildPinBox > returns { box, pip } — box is a div, pip is hidden by default`
+| | |
+|---|---|
+| **Tests** | Pin box structure with hidden pip indicator by default |
+| **Method** | Check tagName and display style property |
+| **Pass** | `box.tagName === 'DIV' && pip.style.display === 'none'` |
+
+### `buildPinBox > setFilled(true) shows the pip`
+| | |
+|---|---|
+| **Tests** | Filling the pin box reveals the pip indicator |
+| **Method** | Call box.setFilled(true) and check pip display |
+| **Pass** | `pip.style.display === 'block'` |
+
+### `buildPinBox > setFilled(false) hides the pip`
+| | |
+|---|---|
+| **Tests** | Unfilling the pin box hides the pip indicator |
+| **Method** | Call setFilled true then false, check display |
+| **Pass** | `pip.style.display === 'none'` |
+
+### `buildPinRow > setCount(0) leaves all 4 boxes unfilled`
+| | |
+|---|---|
+| **Tests** | Zero count leaves all pin indicators hidden |
+| **Method** | Call setCount(0), iterate boxes checking pip display |
+| **Pass** | All `boxes[i].pip.style.display === 'none'` |
+
+### `buildPinRow > setCount(2) fills the first 2 boxes and leaves the rest empty`
+| | |
+|---|---|
+| **Tests** | Partial fill only affects specified number of boxes |
+| **Method** | Call setCount(2), check first two pips show and last two hide |
+| **Pass** | First two pips display 'block', last two 'none' |
+
+### `buildPinRow > setCount(4) fills all 4 boxes`
+| | |
+|---|---|
+| **Tests** | Full fill shows all four pin indicators |
+| **Method** | Call setCount(4), iterate all boxes checking display |
+| **Pass** | All `boxes[i].pip.style.display === 'block'` |
+
+---
+
+## `check-overview.test.js`
+> Integration tests for check management: discount flow, seat persistence, item void handling, customer names, refresh state, print/resend guards, seat payments, pay navigation guards, and item management
+
+### `terminal/scenes/check-overview — discount flow > DISC with nothing selected fires UI-007, shows toast, and opens no interrupt`
+| | |
+|---|---|
+| **Tests** | Discount with no items selected triggers error code UI-007, shows user-facing toast, does not open discount flow |
+| **Method** | Render with empty selectedItems, call handleDiscount, check interrupt not called, entReport called with UI-007 |
+| **Pass** | `SceneManagerMock.interrupt.not.toHaveBeenCalled() && showToast called && entReport called with code UI-007` |
+
+### `terminal/scenes/check-overview — discount flow > DISC with selected items opens disc-pin interrupt`
+| | |
+|---|---|
+| **Tests** | Discount with items selected opens PIN entry interrupt |
+| **Method** | Render with selectedItems set, call handleDiscount, verify interrupt called |
+| **Pass** | `SceneManagerMock.interrupt.toHaveBeenCalledWith('disc-pin', {...})` |
+
+### `terminal/scenes/check-overview — discount flow > disc-pin onConfirm triggers disc-select interrupt`
+| | |
+|---|---|
+| **Tests** | Manager PIN confirmation proceeds to discount percentage selection |
+| **Method** | Call handleDiscount, capture disc-pin interrupt, call onConfirm callback |
+| **Pass** | disc-select interrupt found in calls with onConfirm function |
+
+### `terminal/scenes/check-overview — discount flow > disc-select onConfirm calls fetchWithTimeout on the discount endpoint`
+| | |
+|---|---|
+| **Tests** | Discount selection submits to server via POST to /orders/orderId/discount |
+| **Method** | Full interrupt chain: handleDiscount → disc-pin confirm → disc-select confirm, check fetch |
+| **Pass** | `fetchWithTimeout.toHaveBeenCalledWith(/discount/, {...method:'POST'}, ...)` |
+
+### `terminal/scenes/check-overview — discount flow > disc-pin cancel does not open disc-select`
+| | |
+|---|---|
+| **Tests** | Cancelling PIN entry stops discount flow early |
+| **Method** | Call handleDiscount, find disc-pin interrupt, call onCancel |
+| **Pass** | disc-select interrupt not found; discount endpoint not called |
+
+### `terminal/scenes/check-overview — persistSeats > does NOT call fetch when orderId is null — empty check leaves no ledger event`
+| | |
+|---|---|
+| **Tests** | Brand-new check (no orderId) does not persist to server |
+| **Method** | Call _persistSeats with orderId null |
+| **Pass** | `fetchWithTimeout.not.toHaveBeenCalled()` |
+
+### `terminal/scenes/check-overview — persistSeats > PUTs seat layout when orderId is set`
+| | |
+|---|---|
+| **Tests** | Established check persists seat numbers via PUT |
+| **Method** | Call _persistSeats with orderId and seat data |
+| **Pass** | `fetchWithTimeout.toHaveBeenCalledWith(/seats, {method:'PUT', body:...seat_numbers...})` |
+
+### `terminal/scenes/check-overview — persistSeats > addSeat on a brand-new check does not trigger any fetch`
+| | |
+|---|---|
+| **Tests** | Adding seat to new check updates local state without server call |
+| **Method** | Call _addSeat with orderId null |
+| **Pass** | `state.seats.length === 2 && fetchWithTimeout.not.toHaveBeenCalled()` |
+
+### `terminal/scenes/check-overview — Bug 1: void-item timer cancelled on unmount > DELETE does not fire after scene unmounts before 4.2 s elapses`
+| | |
+|---|---|
+| **Tests** | Void-item DELETE timer is cancelled when scene unmounts before timeout |
+| **Method** | Fake timers, call handleVoid, unmount scene, advance 5s, check DELETE not called |
+| **Pass** | `fetchWithTimeout.not.toHaveBeenCalledWith(/items/, {method:'DELETE'})` |
+
+### `terminal/scenes/check-overview — Bug 1: void-item timer cancelled on unmount > DELETE fires when scene stays mounted past 4.2 s`
+| | |
+|---|---|
+| **Tests** | Void-item DELETE timer fires if scene remains mounted past 4.2 seconds |
+| **Method** | Fake timers, call handleVoid, advance 5s without unmount |
+| **Pass** | `fetchWithTimeout.toHaveBeenCalledWith(/items/item-1, {method:'DELETE'})` |
+
+### `terminal/scenes/check-overview — Bug 2: customer-name PATCH error handling > shows error toast when PATCH returns non-2xx`
+| | |
+|---|---|
+| **Tests** | Customer name save failure (422) shows error toast |
+| **Method** | Mock fetchWithTimeout returning {ok:false}, call openNameEditor, confirm name, check toast |
+| **Pass** | `showToast.toHaveBeenCalledWith(...Could not save...)` |
+
+### `terminal/scenes/check-overview — Bug 2: customer-name PATCH error handling > does not toast on success`
+| | |
+|---|---|
+| **Tests** | Successful name save does not show error message and updates state |
+| **Method** | Mock successful response, complete name edit flow |
+| **Pass** | `showToast.not.toHaveBeenCalledWith(...Could not save...) && state.customerName === 'Good Name'` |
+
+### `terminal/scenes/check-overview — Bug 3: _refreshInFlight is per-state > state._refreshInFlight starts false and becomes true while fetch is pending`
+| | |
+|---|---|
+| **Tests** | Refresh flag transitions false→true during in-flight fetch |
+| **Method** | Mock fetch to hang, call refreshOrder, check flag change |
+| **Pass** | `state._refreshInFlight === true` after refreshOrder called |
+
+### `terminal/scenes/check-overview — Bug 3: _refreshInFlight is per-state > two instances have independent _refreshInFlight flags`
+| | |
+|---|---|
+| **Tests** | Multiple check instances maintain separate in-flight state |
+| **Method** | Create stateA and stateB, hang A's fetch, complete B's, check flags independent |
+| **Pass** | `stateA._refreshInFlight === true && stateB._refreshInFlight === false` |
+
+### `terminal/scenes/check-overview — Bug 4: print/resend double-tap guard > handlePrint double-tap fires only one fetch`
+| | |
+|---|---|
+| **Tests** | Rapid print calls are coalesced to single server request |
+| **Method** | Call handlePrint twice, check fetch called once |
+| **Pass** | `fetchWithTimeout.toHaveBeenCalledTimes(1)` to /print/receipt |
+
+### `terminal/scenes/check-overview — Bug 4: print/resend double-tap guard > handleResend double-tap fires only one fetch`
+| | |
+|---|---|
+| **Tests** | Rapid resend calls are coalesced to single server request |
+| **Method** | Call handleResend twice, check fetch called once |
+| **Pass** | `fetchWithTimeout.toHaveBeenCalledTimes(1)` to /resend |
+
+### `terminal/scenes/check-overview — Bug 5: server-picker error message > fetch failure shows distinct error, not the empty-list message`
+| | |
+|---|---|
+| **Tests** | Server picker fetch error shows "Failed" message, not "No servers" |
+| **Method** | Mock global fetch rejection, render server-picker, await promise resolution |
+| **Pass** | Container text contains 'Failed' but not 'No other servers clocked in' |
+
+### `terminal/scenes/check-overview — selection and refresh regression locks > refreshOrder defers when _seatsChain is pending — does not drop the refresh`
+| | |
+|---|---|
+| **Tests** | Refresh waits for seat persistence chain to complete |
+| **Method** | Hang seat chain, call refreshOrder, complete chain, verify refresh fires |
+| **Pass** | No fetch initially; fetch fires after chain resolved |
+
+### `terminal/scenes/check-overview — selection and refresh regression locks > toggleSeat on a paid seat is a silent no-op`
+| | |
+|---|---|
+| **Tests** | Clicking paid seat does not change selection |
+| **Method** | Set paidSeats, call toggleSeat, check selected remains empty |
+| **Pass** | `state.selected['S-001'] === undefined` |
+
+### `terminal/scenes/check-overview — selection and refresh regression locks > forceSelectAll skips paid seats`
+| | |
+|---|---|
+| **Tests** | Select-all operation excludes already-paid seats |
+| **Method** | Set two seats, mark one paid, call forceSelectAll |
+| **Pass** | `state.selectedItems['0:0'] === true && state.selectedItems['1:0'] === undefined` |
+
+### `terminal/scenes/check-overview — openSeatPaymentInterrupt fetch guard > shows "Void failed" toast when void POST returns ok:false`
+| | |
+|---|---|
+| **Tests** | Payment void failure (422) shows error toast and preserves state |
+| **Method** | Mock POST {ok:false}, open seat payment, confirm void, check toast and state |
+| **Pass** | `showToast called with 'Void failed' && state.paidSeats['S-001'] === true` |
+
+### `terminal/scenes/check-overview — openSeatPaymentInterrupt fetch guard > shows "Void failed" toast on network rejection`
+| | |
+|---|---|
+| **Tests** | Payment void network error shows error toast |
+| **Method** | Mock fetchWithTimeout rejection, complete void flow |
+| **Pass** | `showToast.toHaveBeenCalledWith('Void failed', ...)` |
+
+### `terminal/scenes/check-overview — handlePay guards > shows toast and does not navigate when orderId is null`
+| | |
+|---|---|
+| **Tests** | Pay action requires saved check (prevents navigation on new check) |
+| **Method** | Call handlePay with orderId null |
+| **Pass** | `showToast called with ...Save items first... && mountWorking not called` |
+
+### `terminal/scenes/check-overview — handlePay guards > shows toast and does not navigate when check is already settled`
+| | |
+|---|---|
+| **Tests** | Pay action prevents navigation on closed check |
+| **Method** | Call handlePay with order.status === 'closed' |
+| **Pass** | `showToast called with ...Check already settled... && mountWorking not called` |
+
+### `terminal/scenes/check-overview — handlePay guards > shows toast and does not navigate when no seats have items`
+| | |
+|---|---|
+| **Tests** | Pay action prevents navigation on empty check |
+| **Method** | Call handlePay with all seats having empty items |
+| **Pass** | `showToast called with ...No items to pay... && mountWorking not called` |
+
+### `terminal/scenes/check-overview — handlePay guards > shows toast and does not navigate when all selected seats are already paid`
+| | |
+|---|---|
+| **Tests** | Pay action prevents navigation when all selected seats already paid |
+| **Method** | Set seat as paid and selected, call handlePay |
+| **Pass** | `showToast called with ...already paid... && mountWorking not called` |
+
+### `terminal/scenes/check-overview — _callSplitBySeat > happy path: POSTs to /split-by-seat and toasts child order id`
+| | |
+|---|---|
+| **Tests** | Seat split POSTs successfully and toasts new order ID |
+| **Method** | Mock successful response, call _callSplitBySeat |
+| **Pass** | `fetchWithTimeout called with /split-by-seat POST && showToast shows new-999` |
+
+### `terminal/scenes/check-overview — _callSplitBySeat > error path: ok:false toasts the detail message`
+| | |
+|---|---|
+| **Tests** | Seat split server error message is shown to user |
+| **Method** | Mock POST {ok:false, detail:'check is locked'}, call _callSplitBySeat |
+| **Pass** | `showToast.toHaveBeenCalledWith(...check is locked...)` |
+
+### `terminal/scenes/check-overview — _callSplitBySeat > no orderId guard: toasts "Save items first", no fetch`
+| | |
+|---|---|
+| **Tests** | Split action requires saved check |
+| **Method** | Call _callSplitBySeat with orderId null |
+| **Pass** | `fetchWithTimeout.not.toHaveBeenCalled() && showToast called with ...Save items first...` |
+
+### `terminal/scenes/check-overview — persistSeats / persistItemSeats > persistSeats PUTs seat numbers to /seats`
+| | |
+|---|---|
+| **Tests** | Seat persistence sends seat number array via PUT |
+| **Method** | Call _persistSeats on manage state |
+| **Pass** | `fetchWithTimeout called with /seats PUT including seat_numbers:[1,2]` |
+
+### `terminal/scenes/check-overview — persistSeats / persistItemSeats > persistSeats does nothing when orderId is null`
+| | |
+|---|---|
+| **Tests** | Seat persistence is skipped for new checks |
+| **Method** | Call _persistSeats with orderId null |
+| **Pass** | `fetchWithTimeout.not.toHaveBeenCalled()` |
+
+### `terminal/scenes/check-overview — persistSeats / persistItemSeats > persistItemSeats PATCHes each item that has item_id`
+| | |
+|---|---|
+| **Tests** | Item persistence sends individual item updates |
+| **Method** | Call _persistItemSeats with two items having item_id |
+| **Pass** | `fetchWithTimeout.toHaveBeenCalledTimes(2) with /items/i-1 and /items/i-2` |
+
+### `terminal/scenes/check-overview — persistSeats / persistItemSeats > persistItemSeats skips items without item_id`
+| | |
+|---|---|
+| **Tests** | Draft items (no item_id) are not persisted |
+| **Method** | Call _persistItemSeats with items missing item_id |
+| **Pass** | `fetchWithTimeout.not.toHaveBeenCalled()` |
+
+### `terminal/scenes/check-overview — persistSeats / persistItemSeats > persistItemSeats resolves even when a PATCH is rejected`
+| | |
+|---|---|
+| **Tests** | Item persistence continues despite individual failures |
+| **Method** | Mock PATCH rejection, call _persistItemSeats, expect resolution not rejection |
+| **Pass** | Promise resolves with undefined despite network error |
+
+### `terminal/scenes/check-overview — _moveItemsToSeat > moves item from S-001 to S-002: source loses it, target gains it`
+| | |
+|---|---|
+| **Tests** | Item move transfers from source to target seat and clears selection |
+| **Method** | Call _moveItemsToSeat with source/target indices |
+| **Pass** | `source items length 0, target items length 1, selectedItems empty, selected empty` |
+
+### `terminal/scenes/check-overview — _moveItemsToSeat > skipLog: true suppresses the log entry`
+| | |
+|---|---|
+| **Tests** | Move with skipLog option does not record in manage log |
+| **Method** | Call _moveItemsToSeat with skipLog:true, check log length |
+| **Pass** | `state._manageLog.length === 0 && seat[1].items.length === 1` |
+
+### `terminal/scenes/check-overview — _moveItemsToSeat > moving item to its own seat toasts "Already on" and returns 0`
+| | |
+|---|---|
+| **Tests** | No-op move to same seat shows toast and returns zero |
+| **Method** | Call _moveItemsToSeat to same seat |
+| **Pass** | `result === 0 && showToast called with ...Already on... && items unchanged` |
+
+---
+
+## `checkout-core.test.js`
+> Tests for checkout-core scene interrupts: co-void-confirm, fmt currency formatting, buildBlockerBanner, co-manager-pin, co-finalize-confirm, and co-adjust-single
+
+### `terminal/scenes/checkout-core — co-void-confirm interrupt > renders the "VOID CHECK" title and a "voiding 1 check" summary for a single check`
+| | |
+|---|---|
+| **Tests** | Single void displays correct title and count |
+| **Method** | Mount interrupt with one check, check container text |
+| **Pass** | Text contains 'VOID CHECK' and 'voiding 1 check' (singular) |
+
+### `terminal/scenes/checkout-core — co-void-confirm interrupt > renders a "voiding N checks" summary for multiple checks`
+| | |
+|---|---|
+| **Tests** | Multiple voids display correct plural count |
+| **Method** | Mount interrupt with three checks, check text |
+| **Pass** | Text contains 'voiding 3 checks' (plural) |
+
+### `terminal/scenes/checkout-core — co-void-confirm interrupt > VOID button starts disabled (cursor:not-allowed) until a reason is chosen`
+| | |
+|---|---|
+| **Tests** | VOID button is disabled until reason selected |
+| **Method** | Mount interrupt, find VOID button, check cursor style |
+| **Pass** | `voidBtn.style.cursor === 'not-allowed'` |
+
+### `terminal/scenes/checkout-core — co-void-confirm interrupt > VOID button becomes enabled once a reason row is tapped`
+| | |
+|---|---|
+| **Tests** | Selecting reason enables VOID button |
+| **Method** | Mount, tap reason row, check VOID button cursor |
+| **Pass** | `voidBtn.style.cursor === 'pointer'` |
+
+### `terminal/scenes/checkout-core — co-void-confirm interrupt > onConfirm is called with the chosen reason when VOID is tapped`
+| | |
+|---|---|
+| **Tests** | VOID submission passes selected reason to callback |
+| **Method** | Mock onConfirm, select reason, tap VOID |
+| **Pass** | `onConfirm.toHaveBeenCalledWith('Wrong order')` |
+
+### `terminal/scenes/checkout-core — co-void-confirm interrupt > onConfirm is NOT called when no reason is selected and VOID is tapped`
+| | |
+|---|---|
+| **Tests** | VOID without reason selection does not trigger callback |
+| **Method** | Mock onConfirm, tap VOID without selecting reason |
+| **Pass** | `onConfirm.not.toHaveBeenCalled()` |
+
+### `terminal/scenes/checkout-core — co-void-confirm interrupt > CANCEL button calls onCancel`
+| | |
+|---|---|
+| **Tests** | CANCEL button invokes cancel callback |
+| **Method** | Mock onCancel, find and tap CANCEL button |
+| **Pass** | `onCancel.toHaveBeenCalledTimes(1)` |
+
+### `terminal/scenes/checkout-core — fmt > formats zero as $0.00`
+| | |
+|---|---|
+| **Tests** | Zero amount formats as zero dollars |
+| **Method** | Direct function call with 0 |
+| **Pass** | `_fmt(0) === '$0.00'` |
+
+### `terminal/scenes/checkout-core — fmt > formats a positive amount with two decimal places`
+| | |
+|---|---|
+| **Tests** | Positive amounts show two decimal places |
+| **Method** | Direct function call with 45 |
+| **Pass** | `_fmt(45) === '$45.00'` |
+
+### `terminal/scenes/checkout-core — fmt > adds a thousands comma for large values`
+| | |
+|---|---|
+| **Tests** | Large amounts include thousands separator |
+| **Method** | Direct function call with 1000 |
+| **Pass** | `_fmt(1000) === '$1,000.00'` |
+
+### `terminal/scenes/checkout-core — fmt > uses the minus sign (U+2212) for negative values`
+| | |
+|---|---|
+| **Tests** | Negative amounts use Unicode minus, not hyphen |
+| **Method** | Direct function call with -5.50 |
+| **Pass** | `_fmt(-5.50) === '−$5.50'` (uses U+2212 minus) |
+
+### `terminal/scenes/checkout-core — fmt > treats null/undefined as zero`
+| | |
+|---|---|
+| **Tests** | Null and undefined values format as zero |
+| **Method** | Direct function calls with null and undefined |
+| **Pass** | `_fmt(null) === '$0.00' && _fmt(undefined) === '$0.00'` |
+
+### `terminal/scenes/checkout-core — buildBlockerBanner > shows ALL CLEAR text when there are no messages`
+| | |
+|---|---|
+| **Tests** | Empty message list shows all-clear state |
+| **Method** | Call _buildBlockerBanner with empty array |
+| **Pass** | Text contains 'ALL CLEAR' |
+
+### `terminal/scenes/checkout-core — buildBlockerBanner > shows RESOLVE prefix when there are blocking messages`
+| | |
+|---|---|
+| **Tests** | Messages are prefixed with RESOLVE directive |
+| **Method** | Call _buildBlockerBanner with message array |
+| **Pass** | Text contains 'RESOLVE' and 'Missing tips' |
+
+### `terminal/scenes/checkout-core — buildBlockerBanner > joins multiple messages with " + "`
+| | |
+|---|---|
+| **Tests** | Multiple messages are concatenated with plus separator |
+| **Method** | Call _buildBlockerBanner with two messages |
+| **Pass** | Text contains 'Missing tips + Unadjusted checks' |
+
+### `terminal/scenes/checkout-core — co-manager-pin interrupt > renders a numpad into the container`
+| | |
+|---|---|
+| **Tests** | PIN entry renders numpad component |
+| **Method** | Mount interrupt, check container has children and numpad created |
+| **Pass** | `container.children.length > 0 && numpadStore.el !== null` |
+
+### `terminal/scenes/checkout-core — co-manager-pin interrupt > forwards onCancel to the numpad cancel callback`
+| | |
+|---|---|
+| **Tests** | Numpad cancel button triggers interrupt's cancel |
+| **Method** | Mock onCancel, call numpad's onCancel option |
+| **Pass** | `onCancel.toHaveBeenCalledTimes(1)` |
+
+### `terminal/scenes/checkout-core — co-manager-pin interrupt > calls onConfirm with the response data when the PIN is valid`
+| | |
+|---|---|
+| **Tests** | Valid PIN submits auth response (employee_id, role) to callback |
+| **Method** | Mock global fetch returning {valid:true, employee_id, role}, call numpad onSubmit |
+| **Pass** | `onConfirm.toHaveBeenCalledWith({valid:true, employee_id:'mgr1', role:'manager'})` |
+
+### `terminal/scenes/checkout-core — co-manager-pin interrupt > calls numpad.setError when the PIN is invalid`
+| | |
+|---|---|
+| **Tests** | Invalid PIN response triggers error display on numpad |
+| **Method** | Mock fetch {valid:false}, call numpad onSubmit |
+| **Pass** | `numpad.setError.toHaveBeenCalledWith('Invalid PIN')` |
+
+### `terminal/scenes/checkout-core — co-manager-pin interrupt > calls numpad.setError on network failure`
+| | |
+|---|---|
+| **Tests** | Network error shows error message on numpad |
+| **Method** | Mock fetch rejection, call numpad onSubmit |
+| **Pass** | `numpad.setError.toHaveBeenCalledWith('PIN check failed')` |
+
+### `terminal/scenes/checkout-core — co-finalize-confirm interrupt > displays the take-home amount formatted with fmt`
+| | |
+|---|---|
+| **Tests** | Finalize screen shows takeHome amount formatted as currency |
+| **Method** | Mount interrupt with takeHome amount, check text |
+| **Pass** | Text contains '$87.50' |
+
+### `terminal/scenes/checkout-core — co-finalize-confirm interrupt > displays the cash-expected amount formatted with fmt`
+| | |
+|---|---|
+| **Tests** | Finalize screen shows cashExpected amount formatted as currency |
+| **Method** | Mount interrupt with cashExpected amount, check text |
+| **Pass** | Text contains '$32.00' |
+
+### `terminal/scenes/checkout-core — co-finalize-confirm interrupt > CONFIRM button calls onConfirm`
+| | |
+|---|---|
+| **Tests** | CONFIRM button triggers confirm callback |
+| **Method** | Mock onConfirm, find CONFIRM button, trigger pointerup |
+| **Pass** | `onConfirm.toHaveBeenCalledTimes(1)` |
+
+### `terminal/scenes/checkout-core — co-finalize-confirm interrupt > CANCEL button calls onCancel`
+| | |
+|---|---|
+| **Tests** | CANCEL button triggers cancel callback |
+| **Method** | Mock onCancel, find CANCEL button, trigger pointerup |
+| **Pass** | `onCancel.toHaveBeenCalledTimes(1)` |
+
+### `terminal/scenes/checkout-core — co-adjust-single transactional > shows "ADJUST TIP" title in default mode`
+| | |
+|---|---|
+| **Tests** | Default tip adjustment shows ADJUST TIP title |
+| **Method** | Mount with default mode, check text |
+| **Pass** | Text contains 'ADJUST TIP' |
+
+### `terminal/scenes/checkout-core — co-adjust-single transactional > shows "EDIT TIP" title in edit mode`
+| | |
+|---|---|
+| **Tests** | Edit mode shows EDIT TIP title |
+| **Method** | Mount with mode:'edit', check text |
+| **Pass** | Text contains 'EDIT TIP' |
+
+### `terminal/scenes/checkout-core — co-adjust-single transactional > shows the formatted check amount`
+| | |
+|---|---|
+| **Tests** | Check amount is displayed formatted as currency |
+| **Method** | Mount with check.amount, check text |
+| **Pass** | Text contains '$23.75' |
+
+### `terminal/scenes/checkout-core — co-adjust-single transactional > shows the table label and check label in the info block`
+| | |
+|---|---|
+| **Tests** | Table and check identifiers are shown |
+| **Method** | Mount with table_label and check_label, check text |
+| **Pass** | Text contains both 'T3' and '042' |
+
+### `terminal/scenes/checkout-core — co-adjust-single transactional > shows the card brand when present`
+| | |
+|---|---|
+| **Tests** | Card payment method is displayed |
+| **Method** | Mount with card_brand, check text |
+| **Pass** | Text contains 'VISA' |
+
+### `terminal/scenes/checkout-core — co-adjust-single transactional > accepts camelCase check shape (checkId / checkLabel)`
+| | |
+|---|---|
+| **Tests** | Check object accepts both snake_case and camelCase properties |
+| **Method** | Mount with camelCase checkId/checkLabel |
+| **Pass** | Text contains 'check label' |
+
+### `terminal/scenes/checkout-core — co-adjust-single transactional > shows current tip row in edit mode when initialTip is provided`
+| | |
+|---|---|
+| **Tests** | Edit mode displays existing tip amount |
+| **Method** | Mount with mode:'edit' and initialTip |
+| **Pass** | Text contains '$8.00' |
+
+---
+
+## `close-day-calc.test.js`
+> Regression tests for close-of-day cash calculations: cash expected formula and cash variance computation
+
+### `computeCashExpected > subtracts card_tips from cash_total — not cash_tips`
+| | |
+|---|---|
+| **Tests** | Cash expected subtracts only card tips (CC tips paid from drawer, cash tips already in) |
+| **Method** | Direct function call with {cash_total, card_tips, cash_tips} |
+| **Pass** | `computeCashExpected({cash_total:500, card_tips:80, cash_tips:30}) === 420` |
+
+### `computeCashExpected > does NOT subtract cash_tips (they remain in the drawer)`
+| | |
+|---|---|
+| **Tests** | Cash tips are not subtracted from expected amount |
+| **Method** | Direct function call with cash_tips but no card_tips |
+| **Pass** | `computeCashExpected({cash_total:200, card_tips:0, cash_tips:50}) === 200` |
+
+### `computeCashExpected > handles zero card_tips`
+| | |
+|---|---|
+| **Tests** | Zero card tips returns cash total unchanged |
+| **Method** | Direct function call with card_tips:0 |
+| **Pass** | `computeCashExpected({cash_total:300, card_tips:0}) === 300` |
+
+### `computeCashExpected > handles missing fields gracefully`
+| | |
+|---|---|
+| **Tests** | Missing/null/undefined inputs default to zero |
+| **Method** | Direct function calls with empty object, null, undefined |
+| **Pass** | All return 0 |
+
+### `computeCashExpected > result can be negative when card_tips exceed cash_total`
+| | |
+|---|---|
+| **Tests** | Drawer shortage when card tips exceed cash on hand |
+| **Method** | Direct function call with card_tips > cash_total |
+| **Pass** | `computeCashExpected({cash_total:20, card_tips:50}) === -30` |
+
+### `computeCashVariance > returns 0 when cashCounted is null (not yet counted)`
+| | |
+|---|---|
+| **Tests** | Uncounted cash (null) shows zero variance |
+| **Method** | Direct function call with null cashCounted |
+| **Pass** | `computeCashVariance(400, null) === 0` |
+
+### `computeCashVariance > returns 0 when cashCounted is "bypass"`
+| | |
+|---|---|
+| **Tests** | Bypassed count shows zero variance |
+| **Method** | Direct function call with 'bypass' string |
+| **Pass** | `computeCashVariance(400, 'bypass') === 0` |
+
+### `computeCashVariance > returns positive variance when drawer is over`
+| | |
+|---|---|
+| **Tests** | Drawer surplus is returned as positive |
+| **Method** | Direct function call with cashCounted > expected |
+| **Pass** | `computeCashVariance(400, 415) === 15` |
+
+### `computeCashVariance > returns negative variance when drawer is short`
+| | |
+|---|---|
+| **Tests** | Drawer shortage is returned as negative |
+| **Method** | Direct function call with cashCounted < expected |
+| **Pass** | `computeCashVariance(400, 392.50) === -7.5` |
+
+### `computeCashVariance > returns 0 when exact`
+| | |
+|---|---|
+| **Tests** | Exact match shows zero variance |
+| **Method** | Direct function call with equal amounts |
+| **Pass** | `computeCashVariance(400, 400) === 0` |
+
+### `computeCashVariance > rounds to 2 decimal places`
+| | |
+|---|---|
+| **Tests** | Floating-point variance is rounded to cents |
+| **Method** | Direct function call with 1/3 (0.3333...) |
+| **Pass** | `computeCashVariance(0, 1/3) === 0.33` |
+
+
+---
+# Test File Documentation
+
+## `close-day-checks-viewer.test.js`
+> Tests for close-day-checks-viewer scene covering bug fixes: .ok guard, inverted adjusted flag, _busy locks, and setTimeout cleanup
+
+### `close-day-checks-viewer — Bug A: fetchChecksState .ok guard > falls back to empty data when all three fetches return HTTP 500`
+| | |
+|---|---|
+| **Tests** | Verifies that HTTP 500 responses are caught and fallback to empty check arrays rather than corrupting state |
+| **Method** | Mocks fetchWithTimeout to return `{ok: false, status: 500}`, calls scene render, flushes promises (6 times) |
+| **Pass** | `state.data.openChecks` and `state.data.closedChecks` are both empty arrays |
+
+### `close-day-checks-viewer — Bug A: fetchChecksState .ok guard > uses data normally when fetches return ok:true`
+| | |
+|---|---|
+| **Tests** | Verifies successful fetch responses are parsed and populate state correctly |
+| **Method** | Mocks fetchWithTimeout with three sequential `.ok: true` responses containing check summary, orders, and store data |
+| **Pass** | State contains one check with correct checkId; restaurantName is set from store data |
+
+### `close-day-checks-viewer — Bug A: fetchChecksState .ok guard > falls back gracefully when fetch rejects (network error)`
+| | |
+|---|---|
+| **Tests** | Verifies network errors (Promise rejection) are caught and fallback to empty data |
+| **Method** | Mocks fetchWithTimeout to reject with error, calls render, flushes promises |
+| **Pass** | `state.data.openChecks` is empty array despite rejection |
+
+### `close-day-checks-viewer — Bug B: tip-adjusted flag > adjusted is false when tip exists but sum.adjusted is not set`
+| | |
+|---|---|
+| **Tests** | Verifies adjusted flag defaults to false when not explicitly set in summary |
+| **Method** | Fetches check with tip=5 but no adjusted property, extracts first check from state |
+| **Pass** | Check's `adjusted` property is `false` |
+
+### `close-day-checks-viewer — Bug B: tip-adjusted flag > adjusted is true when sum.adjusted is explicitly true (regardless of tip)`
+| | |
+|---|---|
+| **Tests** | Verifies explicitly-set true adjusted flag is preserved |
+| **Method** | Fetches check with adjusted=true in summary data |
+| **Pass** | Check's `adjusted` property is `true` |
+
+### `close-day-checks-viewer — Bug B: tip-adjusted flag > adjusted is false when sum.adjusted is explicitly false`
+| | |
+|---|---|
+| **Tests** | Verifies explicitly-set false adjusted flag is respected |
+| **Method** | Fetches check with adjusted=false in summary data |
+| **Pass** | Check's `adjusted` property is `false` |
+
+### `close-day-checks-viewer — Bug B: tip-adjusted flag > adjusted is false when tip is null and sum.adjusted is not set`
+| | |
+|---|---|
+| **Tests** | Verifies adjusted defaults to false when both tip and adjusted property are absent |
+| **Method** | Fetches check with tip=null, no adjusted property |
+| **Pass** | Check's `adjusted` property is `false` |
+
+### `close-day-checks-viewer — Bug D: _busy guard > onTransferChecks ignores a second call while busy`
+| | |
+|---|---|
+| **Tests** | Verifies _busy flag prevents concurrent handler execution for onTransferChecks |
+| **Method** | Renders scene, calls onTransferChecks twice in succession, checks SceneManager.interrupt call count |
+| **Pass** | Second call does not trigger new interrupt; _busy remains true after first call |
+
+### `close-day-checks-viewer — Bug D: _busy guard > onPrintCheck ignores a second call while busy`
+| | |
+|---|---|
+| **Tests** | Verifies _busy flag prevents concurrent handler execution for onPrintCheck |
+| **Method** | Renders scene, calls onPrintCheck twice, counts fetchWithTimeout calls before/after |
+| **Pass** | Fetch count does not increase on second call |
+
+### `close-day-checks-viewer — Bug D: _busy guard > onVoidCheck ignores a second call while busy`
+| | |
+|---|---|
+| **Tests** | Verifies _busy flag prevents concurrent handler execution for onVoidCheck |
+| **Method** | Renders scene, calls onVoidCheck twice, checks that second call doesn't trigger interrupt |
+| **Pass** | SceneManager.interrupt is not called for second invocation |
+
+### `close-day-checks-viewer — Bug D: _busy guard > onTransferChecks clears _busy after cancel`
+| | |
+|---|---|
+| **Tests** | Verifies _busy flag is cleared when transfer dialog is cancelled |
+| **Method** | Calls onTransferChecks, finds co-transfer-picker interrupt, calls its onCancel |
+| **Pass** | `state._busy` is reset to `false` |
+
+### `close-day-checks-viewer — Bug E: onVoidCheck setTimeout cleanup > timer cleared on unmount — interrupt does not fire after scene unmounts`
+| | |
+|---|---|
+| **Tests** | Verifies pending setTimeout is cleared on scene unmount to prevent orphaned callbacks |
+| **Method** | Uses fake timers, triggers onVoidCheck flow through PIN confirmation, unmounts scene before timer fires, advances time 200ms |
+| **Pass** | co-void-confirm interrupt is never opened; state._pendingTimer is null after unmount |
+
+### `close-day-checks-viewer — Bug E: onVoidCheck setTimeout cleanup > timer fires normally when scene stays mounted`
+| | |
+|---|---|
+| **Tests** | Verifies setTimeout fires normally when scene remains mounted |
+| **Method** | Uses fake timers, triggers onVoidCheck → PIN confirmation → advances 200ms while mounted |
+| **Pass** | co-void-confirm interrupt is found in SceneManager calls |
+
+### `close-day-checks-viewer — action handlers use fetchWithTimeout > onTransferChecks ok:true — shows success toast and clears busy`
+| | |
+|---|---|
+| **Tests** | Verifies successful transfer shows toast, uses fetchWithTimeout with 8s timeout, clears busy flag |
+| **Method** | Renders with managerId, triggers onTransferChecks, confirms transfer picker with target server, flushes promises |
+| **Pass** | fetchWithTimeout called with `/transfer` URL and 8000ms timeout; success toast shown; _busy is false |
+
+### `close-day-checks-viewer — action handlers use fetchWithTimeout > onTransferChecks ok:false — shows error toast`
+| | |
+|---|---|
+| **Tests** | Verifies failed transfer response shows error toast |
+| **Method** | Mocks fetchWithTimeout to return `{ok: false, status: 500}`, triggers transfer flow, confirms dialog |
+| **Pass** | Toast message contains "failed" |
+
+### `close-day-checks-viewer — action handlers use fetchWithTimeout > onPrintCheck ok:true — shows printed toast and clears busy`
+| | |
+|---|---|
+| **Tests** | Verifies successful print shows toast, uses fetchWithTimeout with 8s timeout, clears busy |
+| **Method** | Renders scene, calls onPrintCheck with check, flushes promises |
+| **Pass** | fetchWithTimeout called with `/print` URL and 8000ms timeout; success toast contains "Printed"; _busy is false |
+
+### `close-day-checks-viewer — action handlers use fetchWithTimeout > onPrintCheck ok:false — shows error toast`
+| | |
+|---|---|
+| **Tests** | Verifies failed print response shows error toast |
+| **Method** | Mocks fetchWithTimeout `{ok: false}`, calls onPrintCheck, flushes |
+| **Pass** | Toast message contains "failed" |
+
+### `close-day-checks-viewer — action handlers use fetchWithTimeout > onVoidCheck confirm path ok:true — shows voided toast and clears busy`
+| | |
+|---|---|
+| **Tests** | Verifies successful void through PIN confirmation shows toast, calls fetch, clears busy |
+| **Method** | Uses fake timers, triggers onVoidCheck → confirms PIN → advances 200ms → confirms void reason, flushes |
+| **Pass** | fetchWithTimeout called with `/void` URL and 8000ms timeout; toast contains "Voided"; _busy is false |
+
+### `close-day-checks-viewer — action handlers use fetchWithTimeout > onVoidCheck confirm path ok:false — shows error toast`
+| | |
+|---|---|
+| **Tests** | Verifies failed void response shows error toast |
+| **Method** | Uses fake timers, mocks fetchWithTimeout `{ok: false, status: 500}`, triggers void flow through PIN and reason dialogs |
+| **Pass** | Toast message contains "failed" |
+
+---
+
+## `close-day.test.js`
+> Tests for exported pure helper functions in close-day.js (fmt, fmtPct, deltaColor, checkNumDisplay, synthCheckLabel, formatTime, cashStatusLabel, cashStatusColor)
+
+### `fmt — dollar formatter > formats a positive decimal`
+| | |
+|---|---|
+| **Tests** | Verifies dollar formatting of positive values with 2 decimal places |
+| **Method** | Direct function call with numeric input |
+| **Pass** | fmt(9.5) returns '$9.50' |
+
+### `fmt — dollar formatter > formats zero`
+| | |
+|---|---|
+| **Tests** | Verifies zero is formatted as $0.00 |
+| **Method** | Direct function call with 0 |
+| **Pass** | Returns '$0.00' |
+
+### `fmt — dollar formatter > uses unicode minus for negative values`
+| | |
+|---|---|
+| **Tests** | Verifies negative values use unicode minus sign instead of hyphen |
+| **Method** | Direct function call with negative number |
+| **Pass** | fmt(-5) returns '−$5.00' (unicode minus) |
+
+### `fmt — dollar formatter > inserts thousands separator`
+| | |
+|---|---|
+| **Tests** | Verifies comma is inserted in thousands positions |
+| **Method** | Direct function call with 4+ digit number |
+| **Pass** | fmt(1234.5) returns '$1,234.50' |
+
+### `fmt — dollar formatter > treats null/undefined as 0`
+| | |
+|---|---|
+| **Tests** | Verifies falsy inputs are coerced to zero |
+| **Method** | Direct function calls with null and undefined |
+| **Pass** | Both return '$0.00' |
+
+### `fmtPct — percentage formatter > returns em-dash for null`
+| | |
+|---|---|
+| **Tests** | Verifies null input renders as em-dash (no percentage) |
+| **Method** | Direct function call with null |
+| **Pass** | Returns '—' |
+
+### `fmtPct — percentage formatter > returns em-dash for non-finite (Infinity)`
+| | |
+|---|---|
+| **Tests** | Verifies Infinity values render as em-dash (undefined percentage) |
+| **Method** | Direct function call with Infinity |
+| **Pass** | Returns '—' |
+
+### `fmtPct — percentage formatter > returns middle-dot for zero`
+| | |
+|---|---|
+| **Tests** | Verifies zero delta shows neutral indicator |
+| **Method** | Direct function call with 0 |
+| **Pass** | Returns '· 0.0%' |
+
+### `fmtPct — percentage formatter > shows up-arrow for positive delta`
+| | |
+|---|---|
+| **Tests** | Verifies positive percentage shows up-arrow indicator |
+| **Method** | Direct function call with positive number |
+| **Pass** | fmtPct(5.1) returns '▲ 5.1%' |
+
+### `fmtPct — percentage formatter > shows down-arrow for negative delta`
+| | |
+|---|---|
+| **Tests** | Verifies negative percentage shows down-arrow indicator |
+| **Method** | Direct function call with negative number |
+| **Pass** | fmtPct(-3.2) returns '▼ 3.2%' |
+
+### `deltaColor — picks color by sign > returns neutral text color for zero`
+| | |
+|---|---|
+| **Tests** | Verifies zero delta uses neutral color |
+| **Method** | Direct function call with 0 |
+| **Pass** | Returns '#text' |
+
+### `deltaColor — picks color by sign > returns neutral text color for null`
+| | |
+|---|---|
+| **Tests** | Verifies null uses neutral color |
+| **Method** | Direct function call with null |
+| **Pass** | Returns '#text' |
+
+### `deltaColor — picks color by sign > returns green for positive delta`
+| | |
+|---|---|
+| **Tests** | Verifies positive deltas use success/green color |
+| **Method** | Direct function call with positive number |
+| **Pass** | deltaColor(1) returns '#green' |
+
+### `deltaColor — picks color by sign > returns verm for negative delta`
+| | |
+|---|---|
+| **Tests** | Verifies negative deltas use error/vermillion color |
+| **Method** | Direct function call with negative number |
+| **Pass** | deltaColor(-1) returns '#verm' |
+
+### `deltaColor — picks color by sign > positive and negative return different colors`
+| | |
+|---|---|
+| **Tests** | Verifies distinct colors for opposite deltas |
+| **Method** | Direct function calls with 10 and -10, compares results |
+| **Pass** | Two results are not equal |
+
+### `checkNumDisplay — check label normalizer > passes through labels that start with #`
+| | |
+|---|---|
+| **Tests** | Verifies '#' prefixed labels are returned unchanged |
+| **Method** | Direct function call with {checkLabel: '#21'} |
+| **Pass** | Returns '#21' |
+
+### `checkNumDisplay — check label normalizer > passes through labels that start with C (e.g. C-001)`
+| | |
+|---|---|
+| **Tests** | Verifies 'C-' prefixed labels are returned unchanged |
+| **Method** | Direct function call with {checkLabel: 'C-001'} |
+| **Pass** | Returns 'C-001' |
+
+### `checkNumDisplay — check label normalizer > prepends # to bare numeric labels`
+| | |
+|---|---|
+| **Tests** | Verifies bare numbers are prefixed with '#' |
+| **Method** | Direct function call with {checkLabel: '27'} |
+| **Pass** | Returns '#27' |
+
+### `checkNumDisplay — check label normalizer > falls back to checkId when checkLabel absent`
+| | |
+|---|---|
+| **Tests** | Verifies checkId is used when checkLabel is missing, with '#' prefix added |
+| **Method** | Direct function call with {checkId: '42'} |
+| **Pass** | Returns '#42' |
+
+### `checkNumDisplay — check label normalizer > returns empty string when neither field is present`
+| | |
+|---|---|
+| **Tests** | Verifies empty object returns empty string |
+| **Method** | Direct function call with {} |
+| **Pass** | Returns '' |
+
+### `synthCheckLabel — synthesizes display label from order_id > pads bare numbers to 3 digits`
+| | |
+|---|---|
+| **Tests** | Verifies short numbers are zero-padded to 3 digits with C- prefix |
+| **Method** | Direct function call with '27' |
+| **Pass** | Returns 'C-027' |
+
+### `synthCheckLabel — synthesizes display label from order_id > strips leading zeros before padding`
+| | |
+|---|---|
+| **Tests** | Verifies leading zeros are removed before re-padding to 3 digits |
+| **Method** | Direct function call with '0027' |
+| **Pass** | Returns 'C-027' |
+
+### `synthCheckLabel — synthesizes display label from order_id > extracts trailing number from prefixed IDs`
+| | |
+|---|---|
+| **Tests** | Verifies numeric suffix is extracted from prefixed IDs |
+| **Method** | Direct function call with 'order_27' |
+| **Pass** | Returns 'C-027' |
+
+### `synthCheckLabel — synthesizes display label from order_id > uses last numeric group in compound IDs`
+| | |
+|---|---|
+| **Tests** | Verifies trailing numeric group is extracted from multi-part IDs |
+| **Method** | Direct function call with 'ord-abc-5' |
+| **Pass** | Returns 'C-005' |
+
+### `synthCheckLabel — synthesizes display label from order_id > does not pad numbers longer than 3 digits`
+| | |
+|---|---|
+| **Tests** | Verifies 4+ digit numbers are not zero-padded |
+| **Method** | Direct function call with '1234' |
+| **Pass** | Returns 'C-1234' |
+
+### `synthCheckLabel — synthesizes display label from order_id > falls back to uppercase first-3-chars when no digits`
+| | |
+|---|---|
+| **Tests** | Verifies non-numeric IDs use first 3 uppercase characters |
+| **Method** | Direct function call with 'abc-def' |
+| **Pass** | Returns 'C-ABC' |
+
+### `synthCheckLabel — synthesizes display label from order_id > returns C-??? for empty/falsy input`
+| | |
+|---|---|
+| **Tests** | Verifies empty/null input renders as C-??? placeholder |
+| **Method** | Direct function calls with '' and null |
+| **Pass** | Both return 'C-???' |
+
+### `formatTime — normalises time strings > returns empty string for falsy input`
+| | |
+|---|---|
+| **Tests** | Verifies empty string and null are returned unchanged |
+| **Method** | Direct function calls with '' and null |
+| **Pass** | Both return '' |
+
+### `formatTime — normalises time strings > passes through pre-formatted strings like "7:23pm"`
+| | |
+|---|---|
+| **Tests** | Verifies already-formatted 12-hour times are unchanged |
+| **Method** | Direct function call with '7:23pm' |
+| **Pass** | Returns '7:23pm' |
+
+### `formatTime — normalises time strings > passes through "20:23" (colon at position 2, no T marker)`
+| | |
+|---|---|
+| **Tests** | Verifies 24-hour time format is unchanged |
+| **Method** | Direct function call with '20:23' |
+| **Pass** | Returns '20:23' |
+
+### `formatTime — normalises time strings > converts ISO-8601 to 12-hour local time`
+| | |
+|---|---|
+| **Tests** | Verifies ISO 8601 timestamps are converted to 12-hour local time |
+| **Method** | Builds ISO string from known local Date (2:23pm), calls formatTime |
+| **Pass** | Returns '2:23pm' |
+
+### `formatTime — normalises time strings > returns invalid ISO strings unchanged`
+| | |
+|---|---|
+| **Tests** | Verifies malformed date strings are not modified |
+| **Method** | Direct function call with 'not-a-date' |
+| **Pass** | Returns 'not-a-date' |
+
+### `cashStatusLabel > returns PENDING when cashCounted is null`
+| | |
+|---|---|
+| **Tests** | Verifies uncounted cash shows PENDING status |
+| **Method** | Direct function call with {cashCounted: null} |
+| **Pass** | Returns 'PENDING' |
+
+### `cashStatusLabel > returns DONE when cashCounted is a number`
+| | |
+|---|---|
+| **Tests** | Verifies counted cash amount shows DONE status |
+| **Method** | Direct function call with {cashCounted: 150} |
+| **Pass** | Returns 'DONE' |
+
+### `cashStatusLabel > returns BYPASSED when cashCounted is "bypass"`
+| | |
+|---|---|
+| **Tests** | Verifies bypass flag shows BYPASSED status |
+| **Method** | Direct function call with {cashCounted: 'bypass'} |
+| **Pass** | Returns 'BYPASSED' |
+
+### `cashStatusColor > returns warning color when pending`
+| | |
+|---|---|
+| **Tests** | Verifies pending cash status uses warning color |
+| **Method** | Direct function call with {cashCounted: null} |
+| **Pass** | Returns '#warn' |
+
+### `cashStatusColor > returns green when done`
+| | |
+|---|---|
+| **Tests** | Verifies completed cash count uses success color |
+| **Method** | Direct function call with {cashCounted: 50} |
+| **Pass** | Returns '#green' |
+
+### `cashStatusColor > returns lavender when bypassed`
+| | |
+|---|---|
+| **Tests** | Verifies bypassed cash status uses lavender color |
+| **Method** | Direct function call with {cashCounted: 'bypass'} |
+| **Pass** | Returns '#lav' |
+
+---
+
+## `column-editor.test.js`
+> Integration tests for column-editor scene through render() and DOM event surface (Move, Split, Merge, Undo, UndoAll, AddSeat, AddCheck operations)
+
+### `column-editor — Move > moves a selected item from col 0 to col 1`
+| | |
+|---|---|
+| **Tests** | Verifies item is transferred from source column to target column on selection + header tap |
+| **Method** | Mounts two columns, taps item in col 0, taps col 1 header to move |
+| **Pass** | Col 0 has 0 items, col 1 has 1 item with name 'Burger' |
+
+### `column-editor — Move > move is recorded in the action log`
+| | |
+|---|---|
+| **Tests** | Verifies each move operation is recorded for undo tracking |
+| **Method** | Performs a move operation, checks state.actionLog |
+| **Pass** | actionLog has length 1 |
+
+### `column-editor — Move > selected items are cleared after a move`
+| | |
+|---|---|
+| **Tests** | Verifies selection state is reset after move completes |
+| **Method** | Selects item, moves it, checks state.selectedItems |
+| **Pass** | selectedItems array has length 0 |
+
+### `column-editor — Split > splits a $10.00 item evenly across 2 seats → $5.00 each`
+| | |
+|---|---|
+| **Tests** | Verifies price is divided evenly without remainder (even amount) |
+| **Method** | Enters split mode, selects $10 item, marks both columns as targets, confirms split |
+| **Pass** | Two items with $5.00 each; sum equals $10.00 |
+
+### `column-editor — Split > assigns the cent remainder to the first seat on odd amounts`
+| | |
+|---|---|
+| **Tests** | Verifies remainder penny goes to first target column on uneven division |
+| **Method** | Splits $10.01 across 2 columns, compares prices |
+| **Pass** | Higher price is $5.01 (first seat), lower is $5.00; sum is $10.01 |
+
+### `column-editor — Split > split items share the same _splitRef`
+| | |
+|---|---|
+| **Tests** | Verifies split items are linked via internal reference for later merge detection |
+| **Method** | Splits item, checks _splitRef on both resulting items |
+| **Pass** | Both items have truthy _splitRef and they are equal |
+
+### `column-editor — Split > split across 3 seats: remainder lands on seat 0 only`
+| | |
+|---|---|
+| **Tests** | Verifies division logic with 3+ targets distributes cleanly with remainder on first |
+| **Method** | Splits $10 across 3 columns, verifies total and distribution |
+| **Pass** | 3 items total; sum is approximately $10.00 |
+
+### `column-editor — Merge > merges both columns into the target; result has one column`
+| | |
+|---|---|
+| **Tests** | Verifies all columns are collapsed into selected target column |
+| **Method** | Enters merge mode, taps col 1 header as target |
+| **Pass** | Result has 1 column with 2 items |
+
+### `column-editor — Merge > previously split items are recollapsed on merge`
+| | |
+|---|---|
+| **Tests** | Verifies split items with matching _splitRef are recombined into single item at original price |
+| **Method** | Creates 2 columns with split items (same _splitRef, $15 each), merges |
+| **Pass** | Result has 1 column with 1 item at $30.00 |
+
+### `column-editor — Undo > undo after a move restores the original column state`
+| | |
+|---|---|
+| **Tests** | Verifies single undo reverses last move operation |
+| **Method** | Moves item from col 0 to col 1, short-presses UNDO button |
+| **Pass** | Col 0 has 1 item 'Soup', col 1 has 0 items |
+
+### `column-editor — Undo > undo on an empty action log does nothing`
+| | |
+|---|---|
+| **Tests** | Verifies undo is harmless when no operations have been performed |
+| **Method** | Presses UNDO without any prior actions |
+| **Pass** | Column state unchanged; actionLog has length 0 |
+
+### `column-editor — Undo > undo-all (long press 600ms) restores original snapshot`
+| | |
+|---|---|
+| **Tests** | Verifies 600ms long-press clears all actions and reverts to initial state |
+| **Method** | Uses fake timers, performs 2 moves, long-presses UNDO for 600ms |
+| **Pass** | actionLog is empty; col 0 has 1 item; col 1 has 0 items |
+
+### `column-editor — Add seat > adds a new column with the next sequential seat number`
+| | |
+|---|---|
+| **Tests** | Verifies new column is created with auto-incremented S-NNN label |
+| **Method** | Taps NEW SEAT zone |
+| **Pass** | State has 2 columns; new column label is 'S-002' |
+
+### `column-editor — Add seat > skips already-used seat numbers`
+| | |
+|---|---|
+| **Tests** | Verifies next seat number is correctly calculated from existing columns |
+| **Method** | Starts with 2 columns (S-001, S-002), taps NEW SEAT |
+| **Pass** | Third column label is 'S-003' |
+
+### `column-editor — Add check > moves selected items into a new CHK column`
+| | |
+|---|---|
+| **Tests** | Verifies selected items are moved to a new column marked as check |
+| **Method** | Selects first of two items, taps NEW CHECK zone |
+| **Pass** | 2 columns total; col 0 has 1 item (Beer); col 1 has 1 item (Wine) with isNewCheck=true |
+
+### `column-editor — Add check > does nothing when no items are selected`
+| | |
+|---|---|
+| **Tests** | Verifies NEW CHECK without selection shows error toast and does not modify state |
+| **Method** | Taps NEW CHECK zone without selecting items |
+| **Pass** | State has 1 column; showToast called with message containing "Select items" |
+
+---
+
+## `item-detail.test.js`
+> Tests for item-detail scene render logic (price calculation, item name, modifier list, DONE button)
+
+### `item-detail render — guard > returns without rendering when params.item is absent`
+| | |
+|---|---|
+| **Tests** | Verifies render is guarded against missing item parameter |
+| **Method** | Calls render with empty params object |
+| **Pass** | Container has 0 children |
+
+### `item-detail render — total price > shows unitPrice when there are no mods`
+| | |
+|---|---|
+| **Tests** | Verifies price element displays base item price when no modifiers exist |
+| **Method** | Renders burger (unitPrice: 9.99) with empty mods array |
+| **Pass** | Second child element shows '$9.99' |
+
+### `item-detail render — total price > totals unitPrice + sum of mod prices`
+| | |
+|---|---|
+| **Tests** | Verifies total price is sum of item and modifier prices |
+| **Method** | Renders pizza ($12) + 2 mods ($1.50, $0.75) |
+| **Pass** | Price element shows '$14.25' |
+
+### `item-detail render — total price > treats missing mod price as 0`
+| | |
+|---|---|
+| **Tests** | Verifies undefined mod prices do not increment total |
+| **Method** | Renders item with mod lacking price property |
+| **Pass** | Price shows base item price only ($8.00) |
+
+### `item-detail render — item name > displays the item name in the title element`
+| | |
+|---|---|
+| **Tests** | Verifies first child element contains item name |
+| **Method** | Renders item with name 'Cheeseburger' |
+| **Pass** | First child has textContent 'Cheeseburger' |
+
+### `item-detail render — modifier list > shows "No modifiers" when mods array is empty`
+| | |
+|---|---|
+| **Tests** | Verifies empty mod array shows placeholder message |
+| **Method** | Renders item with mods: [] |
+| **Pass** | Third child shows 'No modifiers' |
+
+### `item-detail render — modifier list > shows "No modifiers" when mods is absent`
+| | |
+|---|---|
+| **Tests** | Verifies missing mods property shows placeholder message |
+| **Method** | Renders item without mods property |
+| **Pass** | Third child shows 'No modifiers' |
+
+### `item-detail render — modifier list > displays mod name with prefix prepended`
+| | |
+|---|---|
+| **Tests** | Verifies prefix and name are concatenated in modifier display |
+| **Method** | Renders pizza with mod (name: 'Pepperoni', prefix: 'Extra') |
+| **Pass** | Span in scroll container shows 'Extra Pepperoni' |
+
+### `item-detail render — modifier list > displays mod name without prefix when prefix is absent`
+| | |
+|---|---|
+| **Tests** | Verifies mod is displayed with name alone when prefix is missing |
+| **Method** | Renders item with mod (name: 'Mushrooms', no prefix) |
+| **Pass** | Span shows 'Mushrooms' |
+
+### `item-detail render — modifier list > shows "+$X.XX" price only when mod price is greater than zero`
+| | |
+|---|---|
+| **Tests** | Verifies mod prices are shown only for non-zero amounts |
+| **Method** | Renders wrap with 2 mods: paid ($2.00) and free (price: 0) |
+| **Pass** | Paid mod shows '+$2.00'; free mod shows '' |
+
+### `item-detail render — modifier list > renders child exclusion rows indented under the parent mod`
+| | |
+|---|---|
+| **Tests** | Verifies nested child mods (exclusions) are indented and displayed |
+| **Method** | Renders pizza with parent mod (Half Topping) containing 2 child mods (No Mushrooms, No Onions) |
+| **Pass** | Multiple indented div rows found containing "No Mushrooms" and "No Onions" |
+
+### `item-detail render — DONE button > DONE button calls SceneManager.closeTransactional("item-detail")`
+| | |
+|---|---|
+| **Tests** | Verifies DONE button closes the item-detail scene when clicked |
+| **Method** | Renders item, finds button with text 'DONE', dispatches pointerup event |
+| **Pass** | SceneManager.closeTransactional called with 'item-detail' |
+
+---
+## `login.test.js`
+> Tests PIN verification, setToken flow, and double-submit guards with 429 vs "INVALID PIN" distinction
+
+### `429 from verify-pin → numpad shows "TOO MANY ATTEMPTS" (distinct from invalid-PIN)`
+| | |
+|---|---|
+| **Tests** | 429 response triggers rate-limit error message instead of generic PIN error |
+| **Method** | Mock fetch to return 429 status; invoke numpad onSubmit callback; assert error message and cleared state |
+| **Pass** | numpad.setError called with 'TOO MANY ATTEMPTS', setToken not called, state.locked is false |
+
+### `200 with valid:false → numpad shows the default "INVALID PIN" message`
+| | |
+|---|---|
+| **Tests** | Valid false response displays standard PIN error message |
+| **Method** | Mock fetch to return 200 with {valid: false}; invoke numpad onSubmit; assert error display |
+| **Pass** | numpad.setError called with 'INVALID PIN', setToken not called, state.locked is false |
+
+### `200 with valid:true → setToken is called with the full response payload`
+| | |
+|---|---|
+| **Tests** | Successful PIN verification passes full auth payload to setToken |
+| **Method** | Mock fetch to return 200 with auth payload; invoke onSubmit; await async chain (fetch → json → setToken) |
+| **Pass** | setTokenMock called once with entire response object including token, employee_id, name, roles |
+
+### `state.locked gates double-submit: second call while first is in flight is a no-op`
+| | |
+|---|---|
+| **Tests** | In-flight request guard prevents concurrent submissions using state.locked flag |
+| **Method** | Mock fetch to never resolve; invoke onSubmit twice; measure fetch call count and token calls |
+| **Pass** | state.locked set to true on first submit, second submit ignored, only one fetch made, setToken never called |
+
+---
+
+## `manager-landing.test.js`
+> Integration tests for void/merge/print actions, filter cycling, order reconciliation, and double-tap detection
+
+### `Void first tap sets _voidPending, shows toast, does NOT fetch`
+| | |
+|---|---|
+| **Tests** | First tap on void button arms confirmation without network call |
+| **Method** | Mount scene with test orders, set selectedIds, invoke pillHandlers['Void'](), assert state and toast |
+| **Pass** | _voidPending and _voidPendingKey set, showToast called with "tap again" message, fetch not called |
+
+### `Void second tap with same selection fires POST to /orders/{id}/void`
+| | |
+|---|---|
+| **Tests** | Confirmation double-tap sends void request to correct endpoint |
+| **Method** | Invoke Void twice on same selection; assert fetch called with POST and order ID in URL |
+| **Pass** | fetch called once with /orders/order-a/void and method POST, _voidPending cleared |
+
+### `changing selection between tap-1 and tap-2 resets confirmation (bypass fix)`
+| | |
+|---|---|
+| **Tests** | Selection change between taps resets pending confirmation, prevents accidental void of wrong order |
+| **Method** | Void tap-1 on order-a, change state.selectedIds to order-b, Void tap-2; assert no fetch and new key |
+| **Pass** | fetch not called, _voidPendingKey now points to order-b, showToast called twice |
+
+### `Void pending flag expires after 3 s`
+| | |
+|---|---|
+| **Tests** | Pending confirmation window closes automatically after timeout |
+| **Method** | Use fake timers; invoke Void once; advance time by 3001ms; assert flag cleared |
+| **Pass** | _voidPending false after 3s, _voidPendingKey nulled |
+
+### `Void with no manager emp shows error toast and does not fetch`
+| | |
+|---|---|
+| **Tests** | Missing manager identity blocks void action |
+| **Method** | Mount with state.emp = {}, invoke Void; assert toast and no fetch |
+| **Pass** | showToast called with "Manager approval" message, fetch not called |
+
+### `Merge with fewer than 2 checks selected shows error toast`
+| | |
+|---|---|
+| **Tests** | Merge requires minimum 2 selections |
+| **Method** | Mount with one selected order, invoke pillHandlers['Merge'](); assert error toast |
+| **Pass** | showToast called with "2+" requirement message, fetch not called |
+
+### `Merge in-flight guard: rapid double-tap fires only one POST`
+| | |
+|---|---|
+| **Tests** | Concurrent merge requests blocked while first is in flight |
+| **Method** | Mock fetch to never resolve; invoke Merge twice with 2+ selections; assert single fetch |
+| **Pass** | fetch called once with /orders/.../merge and method POST |
+
+### `filter cycles OPEN → CLOSED → VOID → OPEN and clears selectedIds each time`
+| | |
+|---|---|
+| **Tests** | Filter cycles through three statuses and clears selection on each cycle |
+| **Method** | Mount scene, set selectedIds, dispatch pointerup on filterBtn three times; assert state changes |
+| **Pass** | state.filter changes OPEN → CLOSED → VOID → OPEN, selectedIds emptied each time |
+
+### `cleanup cancels the void-pending timer so it cannot fire on stale state`
+| | |
+|---|---|
+| **Tests** | Scene cleanup properly cancels pending void timer to prevent side effects on unmounted state |
+| **Method** | Use fake timers; mount, arm void pending, call cleanup function, advance time; assert timer cancelled |
+| **Pass** | cleanup is a function, timer does not fire on detached state after cleanup |
+
+### `refresh() prunes selectedIds when an order vanishes from allOrders`
+| | |
+|---|---|
+| **Tests** | Selection reconciliation removes IDs for orders that no longer exist |
+| **Method** | Mount with order-a selected, mock fetch to return only order-b, trigger order:updated event; assert |
+| **Pass** | allOrders contains only order-b, selectedIds emptied |
+
+### `Print partial failure: toast fires even when one POST rejects`
+| | |
+|---|---|
+| **Tests** | Print handles mixed success/failure across multiple orders |
+| **Method** | Mount with 2 orders selected, mock fetch to reject one; invoke Print; await promises; assert toast |
+| **Pass** | showToast called with "1 printed, 1 failed", _printing cleared |
+
+### `Print in-flight guard: second tap during in-flight fetch does not fire another POST`
+| | |
+|---|---|
+| **Tests** | Print prevents concurrent requests |
+| **Method** | Mock fetch to never resolve; invoke Print twice; assert single fetch |
+| **Pass** | fetch called once |
+
+### `Print all-success: completion toast uses plural/singular correctly`
+| | |
+|---|---|
+| **Tests** | Print displays correct grammar for completion count |
+| **Method** | Mount with 2 selected orders, mock fetch ok:true; invoke Print; assert toast text |
+| **Pass** | showToast called with "Printed 2 receipts" |
+
+### `pill action does not fire a fetch for an order that vanished during refresh`
+| | |
+|---|---|
+| **Tests** | Post-reconciliation void on empty selection shows appropriate error |
+| **Method** | Mount, select order-a, refresh removes it, invoke Void twice; assert no void POST and error toast |
+| **Pass** | fetch not called with /void endpoint, showToast called with "Select a check first" |
+
+### `Merge 400 with {detail}: toast shows server detail and clears _merging`
+| | |
+|---|---|
+| **Tests** | Merge error response with detail field displays server message |
+| **Method** | Mount with 2+ selected, mock fetch to return 400 with {detail} body; invoke Merge; assert |
+| **Pass** | showToast called with server detail text, _merging flag false |
+
+### `Void partial failure: mixed success/fail toast fires and selection clears`
+| | |
+|---|---|
+| **Tests** | Void with multiple orders handles partial failure and clears selection |
+| **Method** | Mount with 2 selected, mock fetch to fail one; Void tap-1 then tap-2; await promises; assert |
+| **Pass** | showToast called with "1 voided, 1 failed", selectedIds cleared |
+
+### `double-tap within timeout opens check-overview`
+| | |
+|---|---|
+| **Tests** | Rapid double-tap on tile launches order detail scene within 300ms window |
+| **Method** | Use fake timers; mount, set allOrders, advance past 200ms guard, tap tile twice within 300ms; assert mountWorking |
+| **Pass** | SceneManager.mountWorking called with 'check-overview' and order data |
+
+### `double-tap after timeout deselects the tile instead of opening check-overview`
+| | |
+|---|---|
+| **Tests** | Slow second tap toggles selection instead of opening scene |
+| **Method** | Use fake timers; mount, advance past 200ms guard, tap once, advance 400ms, tap again; assert |
+| **Pass** | order deselected, SceneManager.mountWorking not called |
+
+---
+
+## `payment.test.js`
+> Split-select interrupt param shape validation and pc-change-due result screen behavior
+
+### `renders the correct remaining balance in the sub-line`
+| | |
+|---|---|
+| **Tests** | Split-select displays remaining balance passed via params |
+| **Method** | Mount interrupt with remaining=45.00; check container textContent |
+| **Pass** | textContent contains '$45.00' |
+
+### `renders three split options (1/2, 1/3, 1/4)`
+| | |
+|---|---|
+| **Tests** | Three fractional split buttons are rendered |
+| **Method** | Mount interrupt; search container for option labels; assert all three found |
+| **Pass** | findOption returns non-null for '1/2', '1/3', '1/4' |
+
+### `1/2 option passes ceil(remaining / 2) to onConfirm`
+| | |
+|---|---|
+| **Tests** | 1/2 split calculates and confirms correct amount |
+| **Method** | Mount with remaining=45.00, vi.fn() onConfirm; dispatch pointerup on 1/2 option; assert call |
+| **Pass** | onConfirm called with 22.50 |
+
+### `1/3 option rounds the onConfirm payload up to the nearest cent`
+| | |
+|---|---|
+| **Tests** | 1/3 split rounds up fractional cents |
+| **Method** | Mount with remaining=10.00; tap 1/3; assert ceil rounding |
+| **Pass** | onConfirm called with 3.34 (ceil of 3.333...) |
+
+### `1/4 option passes ceil(remaining / 4) to onConfirm`
+| | |
+|---|---|
+| **Tests** | 1/4 split calculates correct amount |
+| **Method** | Mount with remaining=45.00; tap 1/4; assert call |
+| **Pass** | onConfirm called with 11.25 |
+
+### `shows OVERVIEW button (not NEW ORDER)`
+| | |
+|---|---|
+| **Tests** | pc-change-due result screen has OVERVIEW action, not NEW ORDER |
+| **Method** | Mount result screen; query buttons; extract textContent labels; assert presence/absence |
+| **Pass** | labels includes 'OVERVIEW', does not include 'NEW ORDER' |
+
+### `shows LOGOUT button`
+| | |
+|---|---|
+| **Tests** | pc-change-due result displays logout option |
+| **Method** | Mount result; query button labels |
+| **Pass** | labels includes 'LOGOUT' |
+
+### `shows "Payment Approved" for a card payment with no change`
+| | |
+|---|---|
+| **Tests** | Card payment zero-change displays approval message |
+| **Method** | Mount with paymentMode='card', change=0; check textContent |
+| **Pass** | container textContent contains 'Payment Approved' |
+
+### `shows change amount for a cash payment with change due`
+| | |
+|---|---|
+| **Tests** | Cash payment displays change amount and label |
+| **Method** | Mount with paymentMode='cash', change=5.25; check textContent |
+| **Pass** | textContent contains '$5.25' and 'Change Due' |
+
+### `shows "Exact Change" for a cash payment with zero change`
+| | |
+|---|---|
+| **Tests** | Cash zero-change displays exact change message |
+| **Method** | Mount with paymentMode='cash', change=0; check textContent |
+| **Pass** | textContent contains 'Exact Change' |
+
+### `shows auto-countdown hint when isLastPayment is true`
+| | |
+|---|---|
+| **Tests** | Last payment in sequence displays return countdown |
+| **Method** | Use fake timers; mount with isLastPayment=true; check for countdown pattern |
+| **Pass** | textContent matches /returning to landing in \d+s/ |
+
+### `does NOT show countdown hint when isLastPayment is false`
+| | |
+|---|---|
+| **Tests** | Non-final payment omits countdown |
+| **Method** | Use fake timers; mount with isLastPayment=false; assert no countdown text |
+| **Pass** | textContent does not match /returning to landing/ |
+
+### `countdown decrements every second when isLastPayment`
+| | |
+|---|---|
+| **Tests** | Countdown timer updates each second |
+| **Method** | Use fake timers; mount with isLastPayment=true; advance 1000ms twice; assert text changes |
+| **Pass** | textContent shows '3s' initially, '2s' after 1s, '1s' after 2s |
+
+### `OVERVIEW tap invokes closeAllTransactional via mocked SceneManager`
+| | |
+|---|---|
+| **Tests** | OVERVIEW button is interactive (routes back to check view) |
+| **Method** | Mount; find OVERVIEW button; dispatch pointerup; assert button content |
+| **Pass** | button textContent is 'OVERVIEW' (routing test requires sceneData internals) |
+
+---
+
+## `seats.test.js`
+> Seat and item selection, layout mode, backend-to-frontend shape conversion, subtotal math
+
+### `seatSubtotal sums qty × price`
+| | |
+|---|---|
+| **Tests** | Seat total correctly multiplies item quantities by prices |
+| **Method** | Call seatSubtotal with test seat containing items array; assert numeric result |
+| **Pass** | Returns 20 (2×5 + 1×10) |
+
+### `seatSubtotal prefers effectivePrice over price (mods + discounts baked in)`
+| | |
+|---|---|
+| **Tests** | Effective price (after mods/discounts) takes precedence over base price |
+| **Method** | Call with items having both price and effectivePrice; assert uses effective |
+| **Pass** | Returns 20 (1×12 + 1×8 using effectivePrice) |
+
+### `seatSubtotal is 0 for an empty or missing items list`
+| | |
+|---|---|
+| **Tests** | Safe fallback for empty or null seat data |
+| **Method** | Call with {}, {items: []}, null, undefined; assert all return 0 |
+| **Pass** | All cases return 0 |
+
+### `checkSubtotal skips paid seats`
+| | |
+|---|---|
+| **Tests** | Check total excludes seats marked as paid |
+| **Method** | Call with 3 seats and paidSeats map; assert only unpaid summed |
+| **Pass** | checkSubtotal(seats, {s2: true}) returns 40 (10 + 30, skips 20) |
+
+### `activeSeatCount ignores paid seats`
+| | |
+|---|---|
+| **Tests** | Active seat count excludes paid seats |
+| **Method** | Call with 3 seats and paidSeats {b: true}; assert returns 2 |
+| **Pass** | Returns 2, handles empty and null paidSeats as 3 |
+
+### `layoutModeFor: 1-4 → A, 5+ → B`
+| | |
+|---|---|
+| **Tests** | Layout mode selection based on active seat count |
+| **Method** | Call with various counts; assert mode switches at 5 |
+| **Pass** | 1-4 returns 'A', 5+ returns 'B' |
+
+### `seeds from order.seat_numbers so empty seats are preserved`
+| | |
+|---|---|
+| **Tests** | orderToSeats creates empty seat objects for all declared seat numbers |
+| **Method** | Call with order containing seat_numbers [1,2,3] and no items; assert 3 seats |
+| **Pass** | Returns 3 seats with numbers [1,2,3], all with empty items arrays |
+
+### `attaches items to their seat_number; preserves seats with no items`
+| | |
+|---|---|
+| **Tests** | Items routed to correct seat, empty seats retained |
+| **Method** | Call with 3 seats and items on seats 1, 2; assert correct attachment and empty seat 3 |
+| **Pass** | Seat 1 has Burger, seat 2 has Fries, seat 3 has empty items array |
+
+### `creates a seat on-the-fly for an item whose seat_number is missing from seat_numbers (legacy replay)`
+| | |
+|---|---|
+| **Tests** | Missing declared seats materialized from item routing, preventing data loss |
+| **Method** | Call with seat_numbers=[1] but items on seats 1, 2, 5; assert all 3 seats created |
+| **Pass** | Returns 3 seats [1, 2, 5] with items correctly routed |
+
+### `pads to minSeats when the backend returns fewer`
+| | |
+|---|---|
+| **Tests** | Fresh check creates minimum seat count |
+| **Method** | Call orderToSeats with null and minSeats=1; empty order and minSeats=2; order with 1 seat and minSeats=3 |
+| **Pass** | Returns 1, 2, 3 seats respectively |
+
+### `returns seats sorted ascending by number even if backend sent them unsorted`
+| | |
+|---|---|
+| **Tests** | Seat ordering normalized independent of API response order |
+| **Method** | Call with seat_numbers [5,1,3]; assert output sorted |
+| **Pass** | Returns seats ordered [1, 3, 5] |
+
+### `uses effective_price when present; falls back to price (0 is treated as absent here, matching legacy behavior)`
+| | |
+|---|---|
+| **Tests** | Effective price mapping in orderToSeats respects field name mismatch |
+| **Method** | Call with item having price=10, effective_price=15; assert both fields set correctly |
+| **Pass** | seat.items[0].price is 10, effectivePrice is 15 |
+
+### `items with null / undefined / 0 seat_number default to seat 1`
+| | |
+|---|---|
+| **Tests** | Items without explicit seat number land on seat 1 |
+| **Method** | Call with items missing seat_number, with null, with 0; assert all on seat 1 |
+| **Pass** | All items on seat 1 |
+
+### `toggleSeatSelection adds an unselected seat`
+| | |
+|---|---|
+| **Tests** | Toggle adds new seat to selection map |
+| **Method** | Call with empty selection, empty paid map, seat 's1'; assert added |
+| **Pass** | Returns {s1: true} |
+
+### `toggleSeatSelection removes a selected seat`
+| | |
+|---|---|
+| **Tests** | Toggle removes selected seat |
+| **Method** | Call with {s1: true}; assert removed |
+| **Pass** | Returns {} |
+
+### `toggleSeatSelection is a no-op on paid seats (selection is only for pending work)`
+| | |
+|---|---|
+| **Tests** | Paid seats cannot be toggled |
+| **Method** | Call with paid map {s2: true}, attempt toggle s2; assert unchanged |
+| **Pass** | Returns {s1: true} (only existing selection) |
+
+### `toggleSeatSelection returns a NEW map (does not mutate the input)`
+| | |
+|---|---|
+| **Tests** | Immutable selection updates |
+| **Method** | Call and compare returned map identity to input; assert different objects |
+| **Pass** | next !== prev, input unchanged, next has new seat |
+
+### `toggleItemSelection toggles a "seatIdx:itemIdx" key`
+| | |
+|---|---|
+| **Tests** | Item selection uses composite string key |
+| **Method** | Toggle same key twice from empty; assert presence then absence |
+| **Pass** | First returns {0:3: true}, second returns {} |
+
+### `selectAllUnpaid marks every unpaid seat and nothing else`
+| | |
+|---|---|
+| **Tests** | Select-all respects paid status |
+| **Method** | Call with 3 seats, paid map {b: true}; assert a and c selected |
+| **Pass** | Returns {a: true, c: true} |
+
+### `collectSelectedItemRefs decodes the string keys back into {seatIdx, itemIdx}`
+| | |
+|---|---|
+| **Tests** | Item selection keys deserialized correctly |
+| **Method** | Call with {'0:3': true, '2:1': true}; assert decoded objects |
+| **Pass** | Returns array with {seatIdx: 0, itemIdx: 3} and {seatIdx: 2, itemIdx: 1} |
+
+### `collectSelectedItemRefs returns [] for empty / null / undefined`
+| | |
+|---|---|
+| **Tests** | Safe fallback for missing selection state |
+| **Method** | Call with {}, null, undefined; assert all return [] |
+| **Pass** | All return empty array |
+
+---
+
+## `server-checkout.test.js`
+> fetchServerState aggregation, scrubbing, tip-out math, check categorization, API resilience
+
+### `rejects immediately when employeeId is missing`
+| | |
+|---|---|
+| **Tests** | Guard condition prevents API calls without employee identity |
+| **Method** | Call fetchServerState({}); assert rejection and no fetchWithTimeout calls |
+| **Pass** | Promise rejects with 'missing employee id', fetchWithTimeout never called |
+
+### `rejects when employeeId is an empty string`
+| | |
+|---|---|
+| **Tests** | Empty employee ID treated as missing |
+| **Method** | Call fetchServerState({employeeId: ''}); assert rejection |
+| **Pass** | Promise rejects with 'missing employee id' |
+
+### `keeps only orders whose server_id matches the employee`
+| | |
+|---|---|
+| **Tests** | Order scrubbing filters by server ownership |
+| **Method** | Mock fetch with 3 orders, one matching emp-1, two mismatched; call fetchServerState; assert |
+| **Pass** | allOrders has length 1, contains only matching order |
+
+### `returns an empty allOrders array when all orders belong to other servers`
+| | |
+|---|---|
+| **Tests** | All-mismatched orders result in empty state |
+| **Method** | Mock fetch with orders for 'other' server; call with 'emp-1'; assert empty |
+| **Pass** | allOrders has length 0 |
+
+### `handles a non-array orders response gracefully (returns empty)`
+| | |
+|---|---|
+| **Tests** | Non-array orders response does not crash |
+| **Method** | Mock fetch to return null orders; call fetchServerState; assert |
+| **Pass** | allOrders has length 0 |
+
+### `keeps checks with matching server_id and checks without any server_id`
+| | |
+|---|---|
+| **Tests** | Check scrubbing asymmetric: match OR absent server_id kept |
+| **Method** | Mock fetch with 3 checks (match, mismatch, none); call with emp-1; assert 2 kept |
+| **Pass** | checks has length 2, contains c1 and c3 but not c2 |
+
+### `enriches checks with tableLabel from the matching order`
+| | |
+|---|---|
+| **Tests** | Check enrichment pulls table info from order cross-reference |
+| **Method** | Mock fetch with check and order sharing ID; call; assert tableLabel set |
+| **Pass** | result.checks[0].tableLabel is 'Table 7' |
+
+### `sums tipout percentages across all rules`
+| | |
+|---|---|
+| **Tests** | Tip-out rate aggregates all rules |
+| **Method** | Mock tipout with [5%, 3%] rules and net_sales=1000; assert rate and total |
+| **Pass** | tipOutRate ≈ 0.08 (8%), tipOutTotal ≈ 80 |
+
+### `computes takeHome = (cardTips + cashTips) − tipOutTotal`
+| | |
+|---|---|
+| **Tests** | Take-home calculation after tip-out deduction |
+| **Method** | Mock with net_sales=1000, tips=80, tipout=5%; assert math |
+| **Pass** | takeHome ≈ 30 (60 + 20 - 50) |
+
+### `computes cashExpected = cashSales − cardTips`
+| | |
+|---|---|
+| **Tests** | Expected cash balance accounts for card tips paid from cash |
+| **Method** | Mock cash_total=200, card_tips=40; assert result |
+| **Pass** | cashExpected ≈ 160 (200 - 40) |
+
+### `returns zero rate and tipOutTotal when no rules are defined`
+| | |
+|---|---|
+| **Tests** | Empty tipout rules yield zero rate |
+| **Method** | Mock with empty tipout array; assert zero values |
+| **Pass** | tipOutRate is 0, tipOutTotal is 0 |
+
+### `handles a rule with a null percentage as 0 (no NaN)`
+| | |
+|---|---|
+| **Tests** | Null percentage treated as 0, prevents NaN propagation |
+| **Method** | Mock with [null, 5%] rules and net_sales=200; assert calculation |
+| **Pass** | tipOutTotal ≈ 10 (200 * 0.05), not NaN |
+
+### `openChecks contains only status=open checks`
+| | |
+|---|---|
+| **Tests** | Check categorization: open status |
+| **Method** | Mock with mixed status checks; call; assert openChecks filtered |
+| **Pass** | openChecks has length 1, contains only open-1 |
+
+### `unadjustedChecks contains closed card checks without adjusted flag`
+| | |
+|---|---|
+| **Tests** | Check categorization: closed card, not adjusted |
+| **Method** | Mock with mixed checks; call; assert unadjustedChecks filtered |
+| **Pass** | unadjustedChecks has length 1, contains only unadj-1 |
+
+### `adjustedChecks contains closed card checks with adjusted:true`
+| | |
+|---|---|
+| **Tests** | Check categorization: closed card, adjusted |
+| **Method** | Mock with mixed checks; call; assert adjustedChecks filtered |
+| **Pass** | adjustedChecks has length 1, contains only adj-1 |
+
+### `cash checks appear in none of the three special categories`
+| | |
+|---|---|
+| **Tests** | Cash payment checks excluded from card-specific categories |
+| **Method** | Mock with mixed checks; call; assert cash-1 not in any special list |
+| **Pass** | specialIds does not contain 'cash-1' |
+
+### `no check appears in more than one special category`
+| | |
+|---|---|
+| **Tests** | Check categorization mutually exclusive |
+| **Method** | Mock with mixed checks; collect all special category IDs; assert no duplicates |
+| **Pass** | Unique count equals total count |
+
+### `defaults to zero rate when the tipout endpoint fails`
+| | |
+|---|---|
+| **Tests** | Tipout fetch failure gracefully falls back |
+| **Method** | Mock tipout to reject; call fetchServerState; assert zero result |
+| **Pass** | tipOutTotal is 0 |
+
+### `uses a fallback store name when the store endpoint fails`
+| | |
+|---|---|
+| **Tests** | Store name fetch failure uses hardcoded default |
+| **Method** | Mock store endpoint to reject; call; assert fallback |
+| **Pass** | restaurantName is 'KINDpos/lite' |
+
+---
+
+## `server-landing.test.js`
+> Scene registration, checkout button, filter cycling, refresh guard, cleanup, tip adjustment, double-tap
+
+### `registers as 'server-landing'`
+| | |
+|---|---|
+| **Tests** | Scene registered with correct name |
+| **Method** | Import module, query registeredScenes by name; assert defined |
+| **Pass** | sceneDef is defined, sceneDef.name is 'server-landing' |
+
+### `checkout button mounts server-checkout working scene`
+| | |
+|---|---|
+| **Tests** | Checkout action launches checkout workflow |
+| **Method** | Mount, dispatch pointerup on checkoutBtn; assert mountWorking called |
+| **Pass** | SceneManager.mountWorking called with 'server-checkout' and staff data |
+
+### `filter cycles OPEN → CLOSED → VOID → OPEN`
+| | |
+|---|---|
+| **Tests** | Filter state cycles through three statuses |
+| **Method** | Mount, dispatch pointerup on filterBtn three times; assert state progression |
+| **Pass** | state.filter changes OPEN → CLOSED → VOID → OPEN |
+
+### `_refreshing guard prevents a second concurrent fetch`
+| | |
+|---|---|
+| **Tests** | In-flight refresh blocks event-driven refreshes |
+| **Method** | Mount with never-resolving fetch, set _refreshing true, trigger event handler; assert no new fetch |
+| **Pass** | Fetch call count unchanged after event handler |
+
+### `cleanup nulls state.el and removes all SceneManager listeners`
+| | |
+|---|---|
+| **Tests** | Proper teardown: element nulled and event handlers unregistered |
+| **Method** | Mount, call cleanup, assert state and mock calls |
+| **Pass** | state.el is null, SceneManager.off called 3 times (order:updated, order:closed, tip:adjusted) |
+
+### `check tile double-tap passes pin to check-overview mountWorking params`
+| | |
+|---|---|
+| **Tests** | PIN threaded through to detail view |
+| **Method** | Mount with emp.pin, set allOrders, advance timers, render tiles, double-tap within window; assert |
+| **Pass** | SceneManager.mountWorking called with 'check-overview' and pin in params |
+
+### `render exception in renderTips does not prevent renderStats from running`
+| | |
+|---|---|
+| **Tests** | Error isolation: renderTips exception does not block renderStats |
+| **Method** | Mount, force renderTips to throw by nulling unadjBadge, trigger refresh event; assert renderStats ran |
+| **Pass** | scGuests.setValue called after renderTips exception |
+
+### `tip row pointerup opens inline tip-numpad (scrim + card appended to body)`
+| | |
+|---|---|
+| **Tests** | Tip adjustment modal appears on tip row tap |
+| **Method** | Mount, mock fetch with check data, dispatch pointerup on tipList first child; assert DOM growth |
+| **Pass** | document.body.children.length increased by 2 (scrim + card) |
+
+### `fetch rejection clears _refreshing so a subsequent refresh is not blocked`
+| | |
+|---|---|
+| **Tests** | Error path releases refresh guard for retry |
+| **Method** | Mount with rejecting fetch; await; set up new fetch; trigger event; assert second fetch fires |
+| **Pass** | _refreshing is false after rejection, second fetch call count increases |
+
+### `cleanup during in-flight refresh: state.el null-check blocks post-teardown render`
+| | |
+|---|---|
+| **Tests** | Post-cleanup render prevented by state.el guard |
+| **Method** | Mount with never-resolving fetch, call cleanup, resolve fetch, await; assert no post-cleanup render |
+| **Pass** | scGuests.setValue not called (no render after cleanup) |
+
+### `double-tap within timeout opens check-overview`
+| | |
+|---|---|
+| **Tests** | Rapid tile double-tap within 300ms launches detail view |
+| **Method** | Use fake timers; mount, advance past guard, tap tile twice within window; assert mountWorking |
+| **Pass** | SceneManager.mountWorking called with 'check-overview' and checkId |
+
+### `double-tap after timeout deselects the tile instead of opening check-overview`
+| | |
+|---|---|
+| **Tests** | Slow second tap toggles selection instead of opening |
+| **Method** | Use fake timers; mount, advance past guard, tap once, advance 400ms, tap again; assert |
+| **Pass** | selectedIds does not contain order, SceneManager.mountWorking not called |
+
+---
+
+## `transitions.test.js`
+> Check-overview ↔ order-entry parameter shape contracts
+
+### `threads orderId, checkNumber, employee context, and returnTo`
+| | |
+|---|---|
+| **Tests** | buildOrderEntryParams correctly maps all handoff fields |
+| **Method** | Call with state (orderId, checkNumber, seats, selected) and params (ids, names, pin, returnLanding); assert output |
+| **Pass** | recallOrderId, recallCheckNumber, employee fields, returnTo, returnParams all present and correct |
+
+### `brand-new check (orderId null) → recallOrderId is null, not undefined`
+| | |
+|---|---|
+| **Tests** | Fresh check safety: null fallback on nil order ID |
+| **Method** | Call buildOrderEntryParams with orderId null; assert explicit null (not undefined) |
+| **Pass** | recallOrderId is null, recallCheckNumber is null |
+
+### `passes seat numbers in order so order-entry can restore the seat layout`
+| | |
+|---|---|
+| **Tests** | Seat count preserved across transition |
+| **Method** | Call with 3 seats [1, 2, 3]; assert seatNumbers array |
+| **Pass** | seatNumbers is [1, 2, 3] |
+
+### `selectedSeatNumbers contains only seats flagged in state.selected`
+| | |
+|---|---|
+| **Tests** | Selected seat filtering |
+| **Method** | Call with selected {a: true, c: true}; assert subset |
+| **Pass** | selectedSeatNumbers is [1, 3] |
+
+### `handles empty / undefined state without throwing`
+| | |
+|---|---|
+| **Tests** | Safe handling of nil state |
+| **Method** | Call buildOrderEntryParams(undefined, undefined) and ({}, {}); assert no throw and default values |
+| **Pass** | No exception, seatNumbers [], selectedSeatNumbers [], recallOrderId null |
+
+### `prefers currentOrderId (order POSTed during the session)`
+| | |
+|---|---|
+| **Tests** | buildCheckOverviewParams prioritizes fresh order ID over recall |
+| **Method** | Call with currentOrderId 'fresh-ord' and recallOrderId 'stale-ord'; assert preference |
+| **Pass** | checkId is 'fresh-ord' |
+
+### `falls back to sceneParams.recallOrderId if no order was POSTed (user left immediately)`
+| | |
+|---|---|
+| **Tests** | Fallback to initial order when session produced no new order |
+| **Method** | Call buildCheckOverviewParams(null, {recallOrderId: 'orig-ord'}); assert |
+| **Pass** | checkId is 'orig-ord' |
+
+### `checkId is null (never undefined) when neither id is available — brand-new empty check`
+| | |
+|---|---|
+| **Tests** | New check safety: null not undefined |
+| **Method** | Call buildCheckOverviewParams(null, {}); assert explicit null |
+| **Pass** | checkId is null |
+
+### `threads employee + PIN so check-overview does NOT re-prompt for manager PIN`
+| | |
+|---|---|
+| **Tests** | Manager context preserved across transition |
+| **Method** | Call with pin, employeeId, employeeName; assert all present in result |
+| **Pass** | pin, employeeId, employeeName all threaded through |
+
+
+
+---
+
+# Frontend Tests (Overseer)
+
+## `date-picker.test.js`
+> Tests for the date picker and date range picker components covering navigation, input selection, and range presets.
+
+### `buildDatePicker > renders prev / next / label in a wrapper`
+| | |
+|---|---|
+| **Tests** | DOM structure contains three children: previous button (◀), formatted date label, and next button (▶) |
+| **Method** | DOM queries on picker.children; textContent assertions on button/label elements |
+| **Pass** | prev.textContent === '◀', next.textContent === '▶', label matches formatted date (Apr 22, 2026) |
+
+### `buildDatePicker > next button is disabled when current date is today`
+| | |
+|---|---|
+| **Tests** | Navigation is locked at current date; next button disabled when value equals today |
+| **Method** | Set picker value to today's date, query next button disabled property |
+| **Pass** | next.disabled === true |
+
+### `buildDatePicker > prev shifts the date back 1 day and fires onChange`
+| | |
+|---|---|
+| **Tests** | Clicking prev button decrements date by one day and invokes onChange callback |
+| **Method** | vi.fn() mock for onChange, click prev button, check mock call and label text |
+| **Pass** | onChange called with '2026-04-21', label text updates to Apr 21, 2026 |
+
+### `buildDatePicker > next shifts the date forward 1 day when not at today`
+| | |
+|---|---|
+| **Tests** | Clicking next button increments date until reaching today (then disabled); onChange fires per click |
+| **Method** | Set value to 2 days ago, click next twice, track onChange calls and disabled state |
+| **Pass** | First next call → onChange with 1 day ago, disabled still false; second call → onChange with today, disabled becomes true |
+
+### `buildDatePicker > clicking the label swaps in a native date input focused at the current value`
+| | |
+|---|---|
+| **Tests** | Label click replaces label span with <input type=date> showing current value |
+| **Method** | DOM manipulation via click event, query picker.children[1] tagName and type |
+| **Pass** | swapped element is INPUT, type='date', value='2026-04-22' |
+
+### `buildDatePicker > picking a new date from the native input fires onChange and restores the label`
+| | |
+|---|---|
+| **Tests** | Changing native input value triggers onChange and swaps input back to formatted label |
+| **Method** | Click label to show input, set input.value, dispatch change event, inspect restored label |
+| **Pass** | onChange called with '2026-04-15', label restored as SPAN with text matching Apr 15, 2026 |
+
+### `buildDateRangePicker > renders two native date inputs, a separator, and 7d/14d/30d presets`
+| | |
+|---|---|
+| **Tests** | DOM contains exactly 2 date inputs with correct initial values and 3 preset buttons |
+| **Method** | DOM queries for input[type="date"] and button elements, textContent assertions |
+| **Pass** | inputs.length === 2, inputs[0].value === '2026-04-15', inputs[1].value === '2026-04-22', button texts are ['7d', '14d', '30d'] |
+
+### `buildDateRangePicker > editing start fires onChange with both ends`
+| | |
+|---|---|
+| **Tests** | Changing start date fires onChange with object containing both start and end dates |
+| **Method** | vi.fn() onChange mock, set startInput.value, dispatch change event |
+| **Pass** | onChange called with { start: '2026-04-10', end: '2026-04-22' } |
+
+### `buildDateRangePicker > editing end fires onChange with both ends`
+| | |
+|---|---|
+| **Tests** | Changing end date fires onChange with object containing both start and end dates |
+| **Method** | vi.fn() onChange mock, set endInput.value, dispatch change event |
+| **Pass** | onChange called with { start: '2026-04-15', end: '2026-04-21' } |
+
+### `buildDateRangePicker > auto-clamps end when start is moved past it`
+| | |
+|---|---|
+| **Tests** | Moving start date after end automatically clamps end to start value |
+| **Method** | Set startInput to '2026-04-25' after end='2026-04-22', check onChange and endInput.value |
+| **Pass** | onChange called with { start: '2026-04-25', end: '2026-04-25' }, endInput.value updated to '2026-04-25' |
+
+### `buildDateRangePicker > auto-clamps start when end is moved before it`
+| | |
+|---|---|
+| **Tests** | Moving end date before start automatically clamps start to end value |
+| **Method** | Set endInput to '2026-04-10' before start='2026-04-15', check onChange and startInput.value |
+| **Pass** | onChange called with { start: '2026-04-10', end: '2026-04-10' }, startInput.value updated to '2026-04-10' |
+
+### `buildDateRangePicker > presets anchor the range at today`
+| | |
+|---|---|
+| **Tests** | Clicking 7d/14d/30d preset buttons sets range anchored at today (today as end, past as start) |
+| **Method** | vi.fn() onChange mock, click each preset button, verify onChange calls and input values |
+| **Pass** | 7d click → onChange { start: today-7d, end: today }, 14d click → { start: today-14d, end: today }, 30d click → { start: today-30d, end: today }; inputs reflect last (30d) press |
+
+## `scene-manager.test.js`
+> Tests for SceneManager navigation fix ensuring unmount receives container and throwing cleanup/unmount does not trap navigation.
+
+### `scene-manager > scene.unmount receives the stored container argument (not undefined)`
+| | |
+|---|---|
+| **Tests** | Scene unmount method called with the actual container DOM element, not undefined |
+| **Method** | Register scene with mount/unmount lifecycle, mount then unmount, inspect handle.unmountArg |
+| **Pass** | handle.unmountCalls === 1, handle.unmountArg === mountedContainer (DOM element) |
+
+### `scene-manager > a throwing unmount does NOT block the next mountWorking (navigation stays unblocked)`
+| | |
+|---|---|
+| **Tests** | Exception in unmount is caught; next mountWorking proceeds without rethrowing |
+| **Method** | Mock console.error, register buggy scene with throwing unmount, mount it, mount next scene |
+| **Pass** | nextHandle.mountCalls === 1, SceneManager.getActiveWorking() === 'w-next' (navigation unblocked) |
+
+### `scene-manager > a throwing cleanup is also caught; container still removed, _workingScene cleared`
+| | |
+|---|---|
+| **Tests** | Exception in cleanup function (returned from mount) is caught; orphaned container removed; next mount succeeds |
+| **Method** | Register scene with cleanup that throws, mount it, mount next scene, check for stale container |
+| **Pass** | querySelector for old container returns null, nextHandle.mountCalls === 1, SceneManager.getActiveWorking() === 'w-fresh' |
+
+## `sample-payroll.test.js`
+> Tests for payroll data loader ensuring totalWages and totalTips are computed and always numeric (never undefined).
+
+### `sample-payroll > loadPayrollData populates totalWages and totalTips (2dp rounded) from the per-employee rows`
+| | |
+|---|---|
+| **Tests** | Fetch resolves with employee payroll data; totalWages and totalTips summed from per-employee gross_pay and tips |
+| **Method** | vi.fn() fetch mock returning JSON response, dynamic import of module, read PAYROLL_SUMMARY live binding |
+| **Pass** | PAYROLL_SUMMARY.laborSummary.totalWages === 1190.75, totalTips === 36.05, both Number.isFinite() === true |
+
+### `sample-payroll > empty employees array → totalWages and totalTips are 0, not undefined`
+| | |
+|---|---|
+| **Tests** | Fetch resolves with empty employees array; totals default to 0, not undefined |
+| **Method** | vi.fn() fetch mock with empty employees, import and loadPayrollData(), check PAYROLL_SUMMARY |
+| **Pass** | totalWages === 0, totalTips === 0 |
+
+### `sample-payroll > loader-failure path preserves the numeric shape (no undefined reaching fmt$)`
+| | |
+|---|---|
+| **Tests** | Fetch rejects with error; catch block repopulates from local fixture; totals remain numeric zeros |
+| **Method** | vi.fn() fetch mock rejecting TypeError, check laborSummary fields are numbers and not NaN |
+| **Pass** | ls.totalWages and ls.totalTips are typeof 'number', Number.isNaN() === false for both |
+
+### `sample-payroll > res.ok === false (e.g. 500) leaves the prior summary untouched (numeric shape preserved)`
+| | |
+|---|---|
+| **Tests** | HTTP 500 response early-returns without reassigning summary; numeric shape preserved |
+| **Method** | vi.fn() fetch mock returning 500 status, check PAYROLL_SUMMARY fields remain numeric |
+| **Pass** | typeof ls.totalWages === 'number', typeof ls.totalTips === 'number' |
+
+## `employee-events.test.js`
+> Tests for employee event payload builders (PIN reset, employee update, employee create) ensuring correct wire format for /config/push.
+
+### `buildPinResetPayload > sends the REAL new PIN (not a placeholder hash)`
+| | |
+|---|---|
+| **Tests** | Payload contains actual PIN string, not placeholder like 'SHA256_SIMULATED' |
+| **Method** | Call buildPinResetPayload('e42', '4321', true), inspect payload.pin and property absence |
+| **Pass** | payload.pin === '4321', payload does not have new_pin_hash property |
+
+### `buildPinResetPayload > includes the employee id, force flag, and a reason string`
+| | |
+|---|---|
+| **Tests** | Payload structure matches backend expectation: employee_id, pin, force_change_on_login, reset_reason |
+| **Method** | Call buildPinResetPayload with test employee id and pin, compare exact object shape |
+| **Pass** | Result equals { employee_id: 'e1', pin: '1234', force_change_on_login: false, reset_reason: 'Manager-initiated reset' } |
+
+### `buildPinResetPayload > coerces truthy/falsy force-change inputs to booleans`
+| | |
+|---|---|
+| **Tests** | Various truthy/falsy values coerced to boolean force_change_on_login |
+| **Method** | Call with undefined, null, and truthy (1) inputs, check resulting boolean |
+| **Pass** | undefined → false, null → false, 1 → true |
+
+### `buildPinResetPayload > accepts both auto-generated (4-digit) and custom (up to 6-digit) PINs`
+| | |
+|---|---|
+| **Tests** | PIN parameter accepts 4–6 digit numeric strings |
+| **Method** | Call with '1234' and '654321' PINs, match against /^\d{4,6}$/ regex |
+| **Pass** | Both cases match regex /^\d{4,6}$/ |
+
+### `buildEmployeeUpdatePayload (edit-without-reset) > does NOT include `pin` — preserves the existing hashed PIN on the backend`
+| | |
+|---|---|
+| **Tests** | Update payload omits pin field to avoid overwriting server-side hash on edit-only path |
+| **Method** | Call buildEmployeeUpdatePayload with employee object, check payload property |
+| **Pass** | payload does not have pin property |
+
+### `buildEmployeeUpdatePayload (edit-without-reset) > produces the exact shape /config/push consumes`
+| | |
+|---|---|
+| **Tests** | Payload structure exactly matches /config/push endpoint expectations |
+| **Method** | Call with sample employee { id, firstName, lastName, roles, payRate, status }, compare shape |
+| **Pass** | Result equals { employee_id: 'e7', first_name: 'Mel', last_name: 'Manager', display_name: 'Mel Manager', role_ids: ['manager', 'server'], hourly_rate: 18.5, active: true } |
+
+### `buildEmployeeUpdatePayload (edit-without-reset) > active flips to false for any non-active status`
+| | |
+|---|---|
+| **Tests** | Employee status 'inactive' or 'do_not_rehire' maps to active: false |
+| **Method** | Call with status variants, check active property |
+| **Pass** | status='inactive' → active=false, status='do_not_rehire' → active=false |
+
+### `buildEmployeeCreatePayload > carries the plaintext pin (hashed server-side by /config/push)`
+| | |
+|---|---|
+| **Tests** | Create payload includes plaintext PIN which backend hashes; employee_id and active flags set |
+| **Method** | Call with employee object and PIN string, check payload structure |
+| **Pass** | payload.pin === '9876', payload.employee_id === 'e9', payload.active === true |
+
+## `employees.test.js`
+> Integration tests for PIN-reset modal in employee management section, pinning user flow from row button to payload generation.
+
+### `PIN-reset modal > "Reset PIN" row button opens the PIN-reset modal`
+| | |
+|---|---|
+| **Tests** | Clicking "Reset PIN" button on employee row invokes openModal with correct title |
+| **Method** | Register employee section, mount onEnter, find "Reset PIN" button, click and inspect openModal call |
+| **Pass** | openModal called once, modalArgs.title matches /Reset PIN/i |
+
+### `PIN-reset modal > footer "Reset PIN" button (random method) calls buildPinResetPayload with a numeric PIN`
+| | |
+|---|---|
+| **Tests** | Modal footer reset button calls buildPinResetPayload with employee id, generated PIN, and force-change flag |
+| **Method** | vi.fn() mock of buildPinResetPayload, click row button to open modal, click footer reset button, inspect mock calls |
+| **Pass** | buildPinResetPayloadMock called once with (empId='emp-01', pin matches /^\d{4,6}$/, forceChange=true) |
+
+### `PIN-reset modal > invalid custom PIN (< 4 digits) shows validation toast, no buildPinResetPayload call`
+| | |
+|---|---|
+| **Tests** | Entering custom PIN with < 4 digits shows error toast and does not invoke payload builder |
+| **Method** | Mock chipGroup to return ['custom'], set custom input to '12', click reset button, check showToast and builder mock |
+| **Pass** | showToast called with error message containing '4', buildPinResetPayloadMock not called |
+
+## `labor-reports.test.js`
+> Tests for overtime calculation in labor reports, pinning federal OT rule (weekly_hours > 40, not daily hours) at KPI and row level.
+
+### `labor-reports > weekly_hours > 40 lights up per-employee OT (daily `hours` is irrelevant)`
+| | |
+|---|---|
+| **Tests** | Employee with weekly 50 hours shows 10h OT, daily 8h does not trigger OT |
+| **Method** | vi.fn() fetch mock returning labor payload, buildLaborReportsScene, query rowOvertime and kpiOvertimeValue |
+| **Pass** | rowOvertime('Alice') === '10.00h', kpiOvertimeValue() === '10.00h' |
+
+### `labor-reports > weekly_hours ≤ 40 shows no overtime, even when daily `hours` is huge`
+| | |
+|---|---|
+| **Tests** | Employee with weekly 30 hours shows no OT despite pulling one 50h shift today |
+| **Method** | vi.fn() fetch mock with employee {hours: 50, weekly_hours: 30}, query rowOvertime and kpiOvertimeValue |
+| **Pass** | rowOvertime('Bob') === '—', kpiOvertimeValue() === '0.00h' |
+
+### `labor-reports > KPI OT total equals sum of per-employee OT across the roster`
+| | |
+|---|---|
+| **Tests** | Aggregate OT (Alice 10 + Cara 5 + Dan 0 = 15) matches KPI card and all rows in lockstep |
+| **Method** | vi.fn() fetch mock with multi-employee roster, query rowOvertime per person and kpiOvertimeValue |
+| **Pass** | Alice row '10.00h', Cara row '5.00h', Dan row '—', KPI '15.00h' |
+
+## `auth-client.test.js`
+> Tests for token storage and fetch interceptor, pinning overseer-specific session key and 401/403 pass-through (no retry).
+
+### `auth-client > setToken/getToken/clearToken roundtrip under the overseer-specific storage key`
+| | |
+|---|---|
+| **Tests** | Token lifecycle uses 'kindpos.overseer.session' key, independent from terminal's 'kindpos.session' |
+| **Method** | Call setToken, getToken, clearToken; check sessionStorage keys |
+| **Pass** | After setToken: getToken() === 'ov-abc', sessionStorage.getItem('kindpos.overseer.session') truthy, sessionStorage.getItem('kindpos.session') null; after clearToken: getToken() === null |
+
+### `auth-client > attaches Authorization: Bearer <token> on /api/* when a token is stored`
+| | |
+|---|---|
+| **Tests** | Fetch interceptor adds Authorization header with stored token for /api/* requests |
+| **Method** | vi.fn() fetch mock, setToken, call window.fetch with /api route, inspect init.headers |
+| **Pass** | init.headers.get('Authorization') === 'Bearer tok-1' |
+
+### `auth-client > on 401, returns the response directly with no prompt and no retry`
+| | |
+|---|---|
+| **Tests** | 401 response passes through without triggering PIN prompt or fetch retry |
+| **Method** | vi.fn() fetch mock returning 401, spy window.prompt, call fetch, check spy and response |
+| **Pass** | prompt not called, fetchMock called once, res.status === 401 |
+
+### `auth-client > on 403, returns the response directly with no prompt and no retry`
+| | |
+|---|---|
+| **Tests** | 403 response passes through without triggering PIN prompt or fetch retry |
+| **Method** | vi.fn() fetch mock returning 403, spy window.prompt, call fetch, check spy and response |
+| **Pass** | prompt not called, fetchMock called once, res.status === 403 |
+
+## `config-push.test.js`
+> Tests for single egress point of all config writes (/api/v1/config/push), pinning wire format and error handling.
+
+### `config-push > empty events → no fetch, resolves { ok: true, events_written: 0 }`
+| | |
+|---|---|
+| **Tests** | Null/undefined/empty array inputs short-circuit; no HTTP request made |
+| **Method** | vi.fn() fetch mock, call pushChanges with [], null, undefined, check fetchMock and result |
+| **Pass** | pushChanges([]) → { ok: true, events_written: 0 }, pushChanges(null/undefined) → same, fetchMock not called |
+
+### `config-push > POSTs to /api/v1/config/push with an array of {event_type, payload} entries`
+| | |
+|---|---|
+| **Tests** | POST request to correct endpoint with events array in JSON body; response.events_written returned |
+| **Method** | vi.fn() fetch mock, call pushChanges with 2 events, inspect URL, method, content-type, and body |
+| **Pass** | URL === '/api/v1/config/push', method === 'POST', headers['Content-Type'] === 'application/json', body matches input events array, result.events_written === 2 |
+
+### `config-push > strips extraneous fields on events — only event_type + payload are sent`
+| | |
+|---|---|
+| **Tests** | Input events with client_timestamp, retry_count, id are filtered; only event_type and payload POSTed |
+| **Method** | vi.fn() fetch mock, call pushChanges with padded event, parse posted body |
+| **Pass** | Posted body[0] === { event_type, payload }, no client_timestamp/retry_count/id properties |
+
+### `config-push > non-ok response → { ok: false, error: "Server responded <status>" } (no throw)`
+| | |
+|---|---|
+| **Tests** | HTTP 400 response returns error object without throwing; caller can retry |
+| **Method** | vi.fn() fetch mock returning 400, call pushChanges, check result |
+| **Pass** | result.ok === false, result.error matches /400/ |
+
+### `config-push > network error → { ok: false, error: <message> } (no throw, callers can retry)`
+| | |
+|---|---|
+| **Tests** | Fetch rejection (TypeError) returns error object without throwing; caller can retry |
+| **Method** | vi.fn() fetch mock rejecting TypeError('NetworkError'), call pushChanges, check result |
+| **Pass** | result.ok === false, result.error === 'NetworkError' |
+
+## `excel-parser.test.js`
+> Tests for menu template Excel parser, covering utility functions (parsePrice, splitList, norm, _parseMustAlsoPick), summary extraction, and full workbook parsing with XLSX mock.
+
+### `parsePrice > parses a plain numeric string`
+| | |
+|---|---|
+| **Tests** | Pure function converts numeric string to number |
+| **Method** | Call parsePrice('5.99') |
+| **Pass** | Returns 5.99 |
+
+### `parsePrice > strips a leading dollar sign`
+| | |
+|---|---|
+| **Tests** | Dollar sign prefix removed before parsing |
+| **Method** | Call parsePrice('$12.50') |
+| **Pass** | Returns 12.50 |
+
+### `parsePrice > handles an integer string`
+| | |
+|---|---|
+| **Tests** | Integer string parsed to number with .0 decimal |
+| **Method** | Call parsePrice('10') |
+| **Pass** | Returns 10.0 |
+
+### `parsePrice > returns 0 for an empty string`
+| | |
+|---|---|
+| **Tests** | Empty string defaults to 0 |
+| **Method** | Call parsePrice('') |
+| **Pass** | Returns 0.0 |
+
+### `parsePrice > returns 0 for null / undefined`
+| | |
+|---|---|
+| **Tests** | Nullish inputs default to 0 |
+| **Method** | Call parsePrice(null) and parsePrice(undefined) |
+| **Pass** | Both return 0.0 |
+
+### `parsePrice > returns 0 for non-numeric text`
+| | |
+|---|---|
+| **Tests** | Non-numeric string defaults to 0 |
+| **Method** | Call parsePrice('N/A') |
+| **Pass** | Returns 0.0 |
+
+### `parsePrice > parses a negative price`
+| | |
+|---|---|
+| **Tests** | Negative numeric string parsed correctly |
+| **Method** | Call parsePrice('-2.00') |
+| **Pass** | Returns -2.0 |
+
+### `splitList > splits a comma-separated string into trimmed entries`
+| | |
+|---|---|
+| **Tests** | CSV parsed and whitespace trimmed from each segment |
+| **Method** | Call splitList('A, B, C') |
+| **Pass** | Returns ['A', 'B', 'C'] |
+
+### `splitList > drops blank segments from consecutive commas`
+| | |
+|---|---|
+| **Tests** | Empty segments (,, or trailing comma) filtered out |
+| **Method** | Call splitList('X,,Y') |
+| **Pass** | Returns ['X', 'Y'] |
+
+### `splitList > returns [] for an empty string`
+| | |
+|---|---|
+| **Tests** | Empty string returns empty array |
+| **Method** | Call splitList('') |
+| **Pass** | Returns [] |
+
+### `splitList > returns [] for null`
+| | |
+|---|---|
+| **Tests** | Null input returns empty array |
+| **Method** | Call splitList(null) |
+| **Pass** | Returns [] |
+
+### `splitList > handles a single item with no commas`
+| | |
+|---|---|
+| **Tests** | Single item without delimiter returns array with one element |
+| **Method** | Call splitList('Pepperoni') |
+| **Pass** | Returns ['Pepperoni'] |
+
+### `splitList > trims whitespace around each item`
+| | |
+|---|---|
+| **Tests** | Leading/trailing whitespace removed from all segments |
+| **Method** | Call splitList('  Cheese ,  Ham  ') |
+| **Pass** | Returns ['Cheese', 'Ham'] |
+
+### `norm > lowercases the input`
+| | |
+|---|---|
+| **Tests** | String converted to lowercase |
+| **Method** | Call norm('HELLO') |
+| **Pass** | Returns 'hello' |
+
+### `norm > strips trailing asterisk from header names`
+| | |
+|---|---|
+| **Tests** | Asterisk suffix removed (common in Excel header conventions) |
+| **Method** | Call norm('Item Name *') |
+| **Pass** | Returns 'item name' |
+
+### `norm > strips question marks`
+| | |
+|---|---|
+| **Tests** | Question marks removed |
+| **Method** | Call norm('Active?') |
+| **Pass** | Returns 'active' |
+
+### `norm > collapses multiple spaces into one`
+| | |
+|---|---|
+| **Tests** | Consecutive spaces reduced to single space |
+| **Method** | Call norm('Item  Name') |
+| **Pass** | Returns 'item name' |
+
+### `norm > strips parentheses`
+| | |
+|---|---|
+| **Tests** | Parenthetical text removed |
+| **Method** | Call norm('Price (Y/N)') |
+| **Pass** | Returns 'price y/n' |
+
+### `norm > strips newlines and normalises whitespace`
+| | |
+|---|---|
+| **Tests** | Newlines removed and whitespace normalized |
+| **Method** | Call norm('Price *\n($0.00 if free)') |
+| **Pass** | Returns 'price $0.00 if free' |
+
+### `_parseMustAlsoPick > returns [] for empty string`
+| | |
+|---|---|
+| **Tests** | Empty string returns empty array |
+| **Method** | Call _parseMustAlsoPick('') |
+| **Pass** | Returns [] |
+
+### `_parseMustAlsoPick > returns [] for null / undefined`
+| | |
+|---|---|
+| **Tests** | Nullish inputs return empty array |
+| **Method** | Call _parseMustAlsoPick(null) and _parseMustAlsoPick(undefined) |
+| **Pass** | Both return [] |
+
+### `_parseMustAlsoPick > parses a single item with price`
+| | |
+|---|---|
+| **Tests** | Single item with parenthetical price parsed into name and price fields |
+| **Method** | Call _parseMustAlsoPick('8" GF ($2.00)') |
+| **Pass** | Returns [{ name: '8" GF', price: 2.0 }] |
+
+### `_parseMustAlsoPick > parses multiple items separated by commas`
+| | |
+|---|---|
+| **Tests** | CSV with price per item parsed into array of objects |
+| **Method** | Call _parseMustAlsoPick('Small ($0.00), Large ($3.50)') |
+| **Pass** | Returns [{ name: 'Small', price: 0.0 }, { name: 'Large', price: 3.5 }] |
+
+### `_parseMustAlsoPick > falls back to name-only with price 0 for items without price parens`
+| | |
+|---|---|
+| **Tests** | Items without price parentheses default to price 0 |
+| **Method** | Call _parseMustAlsoPick('Plain item') |
+| **Pass** | Returns [{ name: 'Plain item', price: 0.0 }] |
+
+### `_parseMustAlsoPick > handles items with $-sign inside parens`
+| | |
+|---|---|
+| **Tests** | Dollar sign inside price parens parsed correctly |
+| **Method** | Call _parseMustAlsoPick('Sauce ($1.25)'), check price field |
+| **Pass** | result[0].price === 1.25 |
+
+### `_parseMustAlsoPick > filters out blank entries`
+| | |
+|---|---|
+| **Tests** | Empty segments (trailing comma) do not produce zero-length name entries |
+| **Method** | Call _parseMustAlsoPick('Cheese ($0.00)'), verify every entry has name.length > 0 |
+| **Pass** | result.every(x => x.name.length > 0) === true |
+
+### `getSummary > returns the restaurant name from restaurant_info`
+| | |
+|---|---|
+| **Tests** | Extract restaurant name from nested restaurant_info dict |
+| **Method** | Call getSummary({ restaurant_info: { 'Restaurant Name': 'Luigi's' } }) |
+| **Pass** | result.restaurant_name === 'Luigi's' |
+
+### `getSummary > returns Unknown when restaurant_info is empty`
+| | |
+|---|---|
+| **Tests** | Missing/empty restaurant_info defaults to 'Unknown' |
+| **Method** | Call getSummary({}) |
+| **Pass** | result.restaurant_name === 'Unknown' |
+
+### `getSummary > returns the tax rate from the first tax rule`
+| | |
+|---|---|
+| **Tests** | Extract tax rate from first element of tax_rules array |
+| **Method** | Call getSummary({ tax_rules: [{ rate: 0.08 }] }) |
+| **Pass** | result.tax_rate === 0.08 |
+
+### `getSummary > counts categories, items, staff, and discounts`
+| | |
+|---|---|
+| **Tests** | Count array lengths for menu structure objects |
+| **Method** | Call getSummary with populated categories, items, staff, discounts, option_groups, portion_options |
+| **Pass** | categories_count===1, items_count===3, staff_count===2, discounts_count===1, choices_count===2, groups_count===1, portion_options_count===1 |
+
+### `getSummary > defaults to 0 counts for missing arrays`
+| | |
+|---|---|
+| **Tests** | Missing array fields default to 0 count |
+| **Method** | Call getSummary({}) |
+| **Pass** | categories_count===0, items_count===0, choices_count===0, tax_rate===0 |
+
+### `parseMenuTemplate — error handling > returns success:false and error message when arrayBuffer() throws`
+| | |
+|---|---|
+| **Tests** | File read failure returns error in result.errors array |
+| **Method** | Mock file.arrayBuffer() to reject, call parseMenuTemplate(file) |
+| **Pass** | result.success === false, result.errors includes message matching 'Failed to read file' |
+
+### `parseMenuTemplate — error handling > returns success:false when required sheets are missing`
+| | |
+|---|---|
+| **Tests** | Workbook without required sheet names returns error list |
+| **Method** | Mock XLSX.read to return workbook with empty Sheets, call parseMenuTemplate |
+| **Pass** | result.success === false, result.errors contains 'Missing sheet: RESTAURANT INFO', 'Missing sheet: CATEGORIES', 'Missing sheet: ITEMS' |
+
+### `parseMenuTemplate — valid workbook > returns success:true when all required sheets are valid`
+| | |
+|---|---|
+| **Tests** | Well-formed workbook with all required sheets returns success |
+| **Method** | Mock XLSX.read and sheet_to_json for valid data, call parseMenuTemplate |
+| **Pass** | result.success === true, result.errors.length === 0 |
+
+### `parseMenuTemplate — valid workbook > parses restaurant name from RESTAURANT INFO`
+| | |
+|---|---|
+| **Tests** | Extract restaurant name from RESTAURANT INFO sheet |
+| **Method** | Mock sheets to return restaurant data, call parseMenuTemplate, check result.data |
+| **Pass** | result.data.restaurant_info['Restaurant Name'] === 'Taco Town' |
+
+### `parseMenuTemplate — valid workbook > parses category name and active flag from CATEGORIES`
+| | |
+|---|---|
+| **Tests** | Extract category objects with name and active status |
+| **Method** | Mock CATEGORIES sheet with category row, call parseMenuTemplate |
+| **Pass** | result.data.categories.length === 1, categories[0].name === 'Tacos', categories[0].active === true |
+
+### `parseMenuTemplate — valid workbook > parses item name and price from ITEMS`
+| | |
+|---|---|
+| **Tests** | Extract menu items with name and price fields |
+| **Method** | Mock ITEMS sheet with item row, call parseMenuTemplate |
+| **Pass** | result.data.items.length === 1, items[0].name === 'Classic Taco', items[0].price === 4.99 |
+
+### `parseMenuTemplate — valid workbook > parses staff member with role detection`
+| | |
+|---|---|
+| **Tests** | Extract staff members with role and PIN fields |
+| **Method** | Mock STAFF sheet with staff row, call parseMenuTemplate |
+| **Pass** | result.data.staff.length === 1, staff[0].role === 'manager', staff[0].pin === '1234' |
+
+### `parseMenuTemplate — valid workbook > derives tax rate from RESTAURANT INFO`
+| | |
+|---|---|
+| **Tests** | Extract and convert tax rate from RESTAURANT INFO sheet |
+| **Method** | Mock RESTAURANT INFO with tax rate row, call parseMenuTemplate |
+| **Pass** | result.data.tax_rules[0].rate === 8.25 |
+
+## `money.test.js`
+> Pure formatter unit tests for currency, percentage, integer, and basis-point display functions.
+
+### `fmt > formats a typical dollar amount with comma separator`
+| | |
+|---|---|
+| **Tests** | Large number formatted with thousands separator and 2 decimal places |
+| **Method** | Call fmt(38417.22) |
+| **Pass** | Returns '$38,417.22' |
+
+### `fmt > formats zero`
+| | |
+|---|---|
+| **Tests** | Zero displays as $0.00 |
+| **Method** | Call fmt(0) |
+| **Pass** | Returns '$0.00' |
+
+### `fmt > treats null as zero`
+| | |
+|---|---|
+| **Tests** | Nullish values default to $0.00 |
+| **Method** | Call fmt(null) |
+| **Pass** | Returns '$0.00' |
+
+### `fmt > treats undefined as zero`
+| | |
+|---|---|
+| **Tests** | Undefined defaults to $0.00 |
+| **Method** | Call fmt(undefined) |
+| **Pass** | Returns '$0.00' |
+
+### `fmt > formats negative values with a minus sign`
+| | |
+|---|---|
+| **Tests** | Negative amount shows minus before dollar sign |
+| **Method** | Call fmt(-50) |
+| **Pass** | Returns '-$50.00' |
+
+### `fmt > signed:true prepends + for positive values`
+| | |
+|---|---|
+| **Tests** | signed option adds + prefix to positive numbers |
+| **Method** | Call fmt(2976.14, { signed: true }) |
+| **Pass** | Returns '+$2,976.14' |
+
+### `fmt > signed:true keeps minus for negative values`
+| | |
+|---|---|
+| **Tests** | signed option preserves minus for negatives |
+| **Method** | Call fmt(-50, { signed: true }) |
+| **Pass** | Returns '-$50.00' |
+
+### `fmt > signed:true shows no sign for zero`
+| | |
+|---|---|
+| **Tests** | signed option omits sign prefix for zero |
+| **Method** | Call fmt(0, { signed: true }) |
+| **Pass** | Returns '$0.00' |
+
+### `fmt > compact:true abbreviates 1k–9.9k with one decimal`
+| | |
+|---|---|
+| **Tests** | compact option shortens 1000–9999 to X.Xk notation |
+| **Method** | Call fmt(3800, { compact: true }) |
+| **Pass** | Returns '$3.8k' |
+
+### `fmt > compact:true abbreviates >= 10k with no decimal`
+| | |
+|---|---|
+| **Tests** | compact option shortens >= 10000 to Xk notation (no decimal) |
+| **Method** | Call fmt(38417.22, { compact: true }) |
+| **Pass** | Returns '$38k' |
+
+### `fmt > compact:true abbreviates exactly 10k with no decimal`
+| | |
+|---|---|
+| **Tests** | Boundary case at exactly 10000 uses no-decimal k notation |
+| **Method** | Call fmt(10000, { compact: true }) |
+| **Pass** | Returns '$10k' |
+
+### `fmt > compact:true leaves sub-1000 values unabbreviated`
+| | |
+|---|---|
+| **Tests** | compact option does not abbreviate amounts under 1000 |
+| **Method** | Call fmt(999.99, { compact: true }) |
+| **Pass** | Returns '$999.99' |
+
+### `fmt > dp:0 suppresses decimal places`
+| | |
+|---|---|
+| **Tests** | dp (decimal places) option set to 0 removes .XX suffix |
+| **Method** | Call fmt(1842, { dp: 0 }) |
+| **Pass** | Returns '$1,842' |
+
+### `fmt > dp:0 still applies comma separator`
+| | |
+|---|---|
+| **Tests** | dp:0 retains thousands grouping |
+| **Method** | Call fmt(1234567, { dp: 0 }) |
+| **Pass** | Returns '$1,234,567' |
+
+### `fmt > small value below 1 formats correctly`
+| | |
+|---|---|
+| **Tests** | Fractional amounts display with 2 decimal places |
+| **Method** | Call fmt(0.5) |
+| **Pass** | Returns '$0.50' |
+
+### `fmtPct > converts a fraction to a percentage string`
+| | |
+|---|---|
+| **Tests** | Decimal fraction multiplied by 100 and formatted as percentage |
+| **Method** | Call fmtPct(0.184) |
+| **Pass** | Returns '18.4%' |
+
+### `fmtPct > formats zero fraction as 0.0%`
+| | |
+|---|---|
+| **Tests** | Zero fraction displays as 0.0% |
+| **Method** | Call fmtPct(0) |
+| **Pass** | Returns '0.0%' |
+
+### `fmtPct > treats null as zero`
+| | |
+|---|---|
+| **Tests** | Null defaults to 0.0% |
+| **Method** | Call fmtPct(null) |
+| **Pass** | Returns '0.0%' |
+
+### `fmtPct > signed:true prepends + for positive fractions`
+| | |
+|---|---|
+| **Tests** | signed option adds + prefix to positive percentages |
+| **Method** | Call fmtPct(0.10, { signed: true }) |
+| **Pass** | Returns '+10.0%' |
+
+### `fmtPct > signed:true keeps minus for negative fractions`
+| | |
+|---|---|
+| **Tests** | signed option preserves minus for negative percentages |
+| **Method** | Call fmtPct(-0.05, { signed: true }) |
+| **Pass** | Returns '-5.0%' |
+
+### `fmtPct > signed:true shows no sign for zero`
+| | |
+|---|---|
+| **Tests** | signed option omits sign for zero percentage |
+| **Method** | Call fmtPct(0, { signed: true }) |
+| **Pass** | Returns '0.0%' |
+
+### `fmtPct > dp:2 increases decimal precision`
+| | |
+|---|---|
+| **Tests** | dp option increases decimal places from default 1 to 2 |
+| **Method** | Call fmtPct(0.1234, { dp: 2 }) |
+| **Pass** | Returns '12.34%' |
+
+### `fmtInt > comma-groups a large integer`
+| | |
+|---|---|
+| **Tests** | Large integer formatted with thousands separator |
+| **Method** | Call fmtInt(1842) |
+| **Pass** | Returns '1,842' |
+
+### `fmtInt > formats a small integer with no separator`
+| | |
+|---|---|
+| **Tests** | Integer under 1000 has no comma grouping |
+| **Method** | Call fmtInt(42) |
+| **Pass** | Returns '42' |
+
+### `fmtInt > rounds a float to the nearest integer`
+| | |
+|---|---|
+| **Tests** | Floating-point input rounded to nearest integer before formatting |
+| **Method** | Call fmtInt(1842.7) |
+| **Pass** | Returns '1,843' |
+
+### `fmtInt > formats negative integers with a minus sign`
+| | |
+|---|---|
+| **Tests** | Negative integer displays with minus sign |
+| **Method** | Call fmtInt(-5) |
+| **Pass** | Returns '-5' |
+
+### `fmtInt > signed:true prepends + for positive values`
+| | |
+|---|---|
+| **Tests** | signed option adds + prefix to positive integers |
+| **Method** | Call fmtInt(1500, { signed: true }) |
+| **Pass** | Returns '+1,500' |
+
+### `fmtInt > treats null as zero`
+| | |
+|---|---|
+| **Tests** | Null defaults to '0' |
+| **Method** | Call fmtInt(null) |
+| **Pass** | Returns '0' |
+
+### `fmtPP > formats a negative delta as negative pp (signed by default)`
+| | |
+|---|---|
+| **Tests** | Negative basis-point delta formatted as -X.Xpp (default signed) |
+| **Method** | Call fmtPP(-0.003) |
+| **Pass** | Returns '-0.3pp' |
+
+### `fmtPP > formats a positive delta with + (signed by default)`
+| | |
+|---|---|
+| **Tests** | Positive basis-point delta formatted as +X.Xpp (default signed) |
+| **Method** | Call fmtPP(0.01) |
+| **Pass** | Returns '+1.0pp' |
+
+### `fmtPP > formats zero as 0.0pp with default signed:true`
+| | |
+|---|---|
+| **Tests** | Zero basis points displays as 0.0pp without sign |
+| **Method** | Call fmtPP(0) |
+| **Pass** | Returns '0.0pp' |
+
+### `fmtPP > signed:false suppresses the + prefix`
+| | |
+|---|---|
+| **Tests** | signed:false option removes + prefix from positive values |
+| **Method** | Call fmtPP(0.05, { signed: false }) |
+| **Pass** | Returns '5.0pp' |
+
+### `fmtPP > treats null as zero`
+| | |
+|---|---|
+| **Tests** | Null defaults to '0.0pp' |
+| **Method** | Call fmtPP(null) |
+| **Pass** | Returns '0.0pp' |
