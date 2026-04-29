@@ -1492,6 +1492,8 @@ function rerenderTopArea(state) {
     state._osActive = false;
   }
 
+  var savedRecapScroll = state._scrollListEl ? state._scrollListEl.scrollTop : 0;
+
   var top = state.topAreaEl;
   top.innerHTML = '';
   state.seatEls = {};
@@ -1503,6 +1505,8 @@ function rerenderTopArea(state) {
   top.appendChild(shell.root);
 
   renderSeatsGrid(state, shell.body, shell.mode);
+  if (state._scrollListEl) state._scrollListEl.scrollTop = savedRecapScroll;
+
   renderActionBar(state);
 }
 
@@ -1547,6 +1551,7 @@ function renderSeatsGrid(state, container, mode) {
         pointerEvents: 'auto',
         touchAction:   'pan-y',
       });
+      state._scrollListEl = scrollList;
 
       for (var rsi = 0; rsi < state.seats.length; rsi++) {
         var rSeat = state.seats[rsi];

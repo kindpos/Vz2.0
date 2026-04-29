@@ -2950,15 +2950,39 @@ function _buildItemSubCard(inst, isMultiSeat) {
   var displayName = qty > 1 ? qty + '× ' + inst.name : inst.name;
 
   var namePrice = document.createElement('div');
-  namePrice.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
+  namePrice.style.cssText = 'display:flex;align-items:center;gap:4px;';
   var nameEl = document.createElement('span');
-  nameEl.style.cssText = 'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:12px;color:' + T.text + ';flex:1;';
+  nameEl.style.cssText = 'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:12px;color:' + T.text + ';flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
   nameEl.textContent = displayName;
   var priceEl = document.createElement('span');
   priceEl.style.cssText = 'font-family:' + T.fb + ';font-weight:' + T.fwBold + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;';
   priceEl.textContent = _fmtPrice(totalPrice);
   namePrice.appendChild(nameEl);
   namePrice.appendChild(priceEl);
+
+  if (!inst.sent) {
+    var xBtn = document.createElement('div');
+    xBtn.style.cssText = [
+      'width:20px;height:20px;flex-shrink:0;',
+      'display:flex;align-items:center;justify-content:center;',
+      'border-radius:4px;background:' + T.verm + '22;border:1px solid ' + T.verm + '66;',
+      'color:' + T.verm + ';font-size:13px;font-weight:bold;cursor:pointer;',
+      'pointer-events:auto;touch-action:manipulation;',
+    ].join('');
+    xBtn.textContent = '×';
+    xBtn.addEventListener('pointerup', (function(instance) {
+      return function(e) {
+        e.stopPropagation();
+        var idx = ticket.indexOf(instance);
+        if (idx !== -1) ticket.splice(idx, 1);
+        delete _expandedItems[instance.id];
+        renderTicket();
+        rebuildBottomBar();
+      };
+    })(inst));
+    namePrice.appendChild(xBtn);
+  }
+
   div.appendChild(namePrice);
 
   (inst.mods || []).forEach(function(mod) {
