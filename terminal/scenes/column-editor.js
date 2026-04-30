@@ -36,10 +36,9 @@ function deepCopyColumns(columns) {
         mods:         Array.isArray(it.mods) ? it.mods.slice() : [],
         notes:        it.notes,
         _splitRef:    it._splitRef,
-        isNewCheck:   it.isNewCheck,
       });
     }
-    copy.push({ id: sc.id, label: sc.label, items: items, isNewCheck: sc.isNewCheck });
+    copy.push({ id: sc.id, label: sc.label, items: items });
   }
   return copy;
 }
@@ -156,7 +155,10 @@ function handleItemTap(colIdx, itemIdx, state) {
 function handleColTap(colIdx, state) {
   if (state.mode === 'split')                                    toggleSplitTarget(colIdx, state);
   else if (state.mode === 'merge')                               doMerge(colIdx, state);
-  else if (state.selectedItems.length > 0)                      doMove(colIdx, state);
+  else if (state.mode === 'move') {
+    if (state.selectedItems.length > 0)                          doMove(colIdx, state);
+    else                                                         showToast('Select items first', { bg: T.gold });
+  }
 }
 
 function toggleSplitTarget(colIdx, state) {
@@ -283,27 +285,6 @@ function handleAddSeat(state) {
   renderColumns(state);
 }
 
-function handleAddCheck(state) {
-  if (state.selectedItems.length === 0) {
-    showToast('Select items first', { bg: T.gold });
-    return;
-  }
-  var n = state.columns.length + 1;
-  var label = 'CHK-' + String(n).padStart(3, '0');
-  pushLog('New check ' + label, state);
-  var sorted = state.selectedItems.slice().sort(function(a, b) {
-    return a.colIdx !== b.colIdx ? b.colIdx - a.colIdx : b.itemIdx - a.itemIdx;
-  });
-  var items = [];
-  for (var i = 0; i < sorted.length; i++) {
-    items.push(state.columns[sorted[i].colIdx].items.splice(sorted[i].itemIdx, 1)[0]);
-  }
-  items.reverse();
-  state.columns.push({ id: 'NEW-CHK-' + n, label: label, items: items, isNewCheck: true });
-  state.selectedItems = [];
-  showToast('Created ' + label, { bg: T.greenWarm });
-  renderColumns(state);
-}
 
 function handleUndo(state) {
   if (state.actionLog.length === 0) return;
@@ -403,13 +384,6 @@ function buildColumn(colIdx, state) {
   hdrTotal.style.flexShrink = '0';
   hdr.appendChild(hdrTotal);
 
-  // Wire header tap
-  (function(idx) {
-    var h = function() { handleColTap(idx, state); };
-    hdr.addEventListener('pointerup', h);
-    state.listeners.push({ el: hdr, event: 'pointerup', handler: h });
-  })(colIdx);
-
   card.appendChild(hdr);
 
   // ── Item list ─────────────────────────────────────
@@ -456,6 +430,7 @@ function buildColumn(colIdx, state) {
       row.style.pointerEvents = 'auto';
       row.style.touchAction   = 'manipulation';
       row.style.userSelect    = 'none';
+      row.dataset.itemRow     = '1';
 
       var nameSpan = document.createElement('span');
       nameSpan.textContent    = nameText;
@@ -522,6 +497,16 @@ function buildColumn(colIdx, state) {
   }
 
   card.appendChild(itemList);
+
+  // Card-level tap: fires handleColTap unless the tap landed on an item row.
+  (function(idx) {
+    var h = function(e) {
+      if (e.target.closest('[data-item-row]')) return;
+      handleColTap(idx, state);
+    };
+    card.addEventListener('pointerup', h);
+    state.listeners.push({ el: card, event: 'pointerup', handler: h });
+  })(colIdx);
 
   state.colEls.push({
     el:       card,
@@ -601,30 +586,12 @@ function buildAddCard(state) {
     return zone;
   }
 
-  // ── Top zone — + SEAT ─────────────────────────────
+  // ── + NEW SEAT zone (full height) ─────────────────
   card.appendChild(makeZone(
     T.green,
     'NEW SEAT',
     hexToRgba(T.green, 0.6),
     function() { handleAddSeat(state); }
-  ));
-
-  // ── Dashed divider ────────────────────────────────
-  var divider = document.createElement('div');
-  divider.style.height     = '1px';
-  divider.style.flexShrink = '0';
-  divider.style.background =
-    'repeating-linear-gradient(to right, ' +
-    T.border + ' 0, ' + T.border + ' 5px, ' +
-    'transparent 5px, transparent 10px)';
-  card.appendChild(divider);
-
-  // ── Bottom zone — + CHECK ─────────────────────────
-  card.appendChild(makeZone(
-    T.gold,
-    'NEW CHECK',
-    hexToRgba(T.gold, 0.6),
-    function() { handleAddCheck(state); }
   ));
 
   return card;
@@ -640,32 +607,52 @@ function renderOpsBar(state) {
   var panel = state.opsPanel;
   while (panel.firstChild) panel.removeChild(panel.firstChild);
 
-  // SPLIT — hidden while in split mode
-  if (state.mode !== 'split') {
-    var splitBtn = buildPillButton({
-      label:    'SPLIT',
-      color:    T.elec,
-      darkBg:   T.elecDk,
-      fontSize: T.fsB2,
-    });
-    splitBtn.addEventListener('pointerup', function() {
-      state.mode          = 'split';
-      state.selectedItems = [];
-      state.splitTargets  = [];
-      if (state.statusEl) state.statusEl.textContent = 'Select items · tap columns to target';
-      renderOpsBar(state);
-      renderColumns(state);
-    });
-    panel.appendChild(splitBtn);
-  }
+  // MOVE
+  var moveActive = state.mode === 'move';
+  var moveBtn = buildPillButton({
+    label:     'MOVE',
+    color:     moveActive ? T.greenWarm       : T.card,
+    darkBg:    moveActive ? T.greenWarmDk     : darkenHex(T.card, 0.35),
+    textColor: moveActive ? T.well            : T.text,
+    fontSize:  T.fsB2,
+  });
+  if (!moveActive) moveBtn.style.border = '1px solid ' + T.border;
+  moveBtn.addEventListener('pointerup', function() {
+    state.mode = 'move';
+    if (state.statusEl)
+      state.statusEl.textContent = 'Select items · tap any column to move them';
+    renderOpsBar(state);
+    renderColumns(state);
+  });
+  panel.appendChild(moveBtn);
 
-  // MERGE — neutral bg normally; gold when mode === 'merge'
+  // SPLIT
+  var splitActive = state.mode === 'split';
+  var splitBtn = buildPillButton({
+    label:     'SPLIT',
+    color:     splitActive ? T.elec           : T.card,
+    darkBg:    splitActive ? T.elecDk         : darkenHex(T.card, 0.35),
+    textColor: splitActive ? T.well           : T.text,
+    fontSize:  T.fsB2,
+  });
+  if (!splitActive) splitBtn.style.border = '1px solid ' + T.border;
+  splitBtn.addEventListener('pointerup', function() {
+    state.mode          = 'split';
+    state.selectedItems = [];
+    state.splitTargets  = [];
+    if (state.statusEl) state.statusEl.textContent = 'Select items · tap columns to target';
+    renderOpsBar(state);
+    renderColumns(state);
+  });
+  panel.appendChild(splitBtn);
+
+  // MERGE
   var mergeActive = state.mode === 'merge';
   var mergeBtn = buildPillButton({
     label:     'MERGE',
-    color:     mergeActive ? T.gold  : T.card,
-    darkBg:    mergeActive ? T.goldDk : darkenHex(T.card, 0.35),
-    textColor: mergeActive ? T.well  : T.text,
+    color:     mergeActive ? T.gold           : T.card,
+    darkBg:    mergeActive ? T.goldDk         : darkenHex(T.card, 0.35),
+    textColor: mergeActive ? T.well           : T.text,
     fontSize:  T.fsB2,
   });
   if (!mergeActive) mergeBtn.style.border = '1px solid ' + T.border;
@@ -679,10 +666,11 @@ function renderOpsBar(state) {
   // CANCEL — visible only when a mode is active (mode !== null)
   if (state.mode !== null) {
     var cancelBtn = buildPillButton({
-      label:    'CANCEL',
-      color:    T.verm,
-      darkBg:   T.vermDk,
-      fontSize: T.fsB2,
+      label:     'CANCEL',
+      color:     T.verm,
+      darkBg:    T.vermDk,
+      textColor: '#fff',
+      fontSize:  T.fsB2,
     });
     cancelBtn.addEventListener('pointerup', function() { clearMode(state); });
     panel.appendChild(cancelBtn);
@@ -691,8 +679,8 @@ function renderOpsBar(state) {
   // Status text — recreated each render; state.statusEl tracks the live node
   var statusEl = document.createElement('span');
   statusEl.style.fontFamily = T.fb;
-  statusEl.style.fontSize   = '10px';
-  statusEl.style.color      = hexToRgba(T.text, 0.6);
+  statusEl.style.fontSize   = T.fsB3;
+  statusEl.style.color      = state.mode !== null ? T.text : hexToRgba(T.text, 0.45);
   statusEl.style.flex       = '1';
   statusEl.style.minWidth   = '0';
   state.statusEl = statusEl;
@@ -868,6 +856,7 @@ defineScene({
     root.style.position      = 'absolute';
     root.style.inset         = '0';
     root.style.background    = T.bg;
+    root.style.zIndex        = String(T.zTransactional);
     root.style.display       = 'flex';
     root.style.flexDirection = 'column';
     root.style.overflow      = 'hidden';
