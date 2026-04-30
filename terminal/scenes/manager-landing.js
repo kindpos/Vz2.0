@@ -623,7 +623,7 @@ defineScene({
     gridOuter.appendChild(gridResult);
 
     var tileGrid = document.createElement('div');
-    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;flex:1;min-height:0;padding:14px 14px 10px;overflow-y:auto;scrollbar-width:none;';
+    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;flex:1;min-height:0;padding:14px 14px 10px;overflow-y:auto;scrollbar-width:none;touch-action:pan-y;pointer-events:auto;';
     gridResult.appendChild(tileGrid);
 
     // Filter footer — sits inside the card at the bottom right

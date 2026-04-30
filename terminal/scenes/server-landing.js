@@ -454,7 +454,7 @@ defineScene({
     root.appendChild(gridResult);
 
     var tileGrid = document.createElement('div');
-    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;height:100%;flex:1;overflow-y:auto;';
+    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;pointer-events:auto;';
     gridResult.appendChild(tileGrid);
 
     // Filter footer row — inside grid card, no float positioning
