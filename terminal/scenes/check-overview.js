@@ -254,7 +254,8 @@ function _adaptOrderForRecap(state) {
 
   var order = state.order || {};
   var totals = {
-    subtotal:  order.subtotal || 0,
+    subtotal:  order.gross_subtotal != null ? order.gross_subtotal : (order.subtotal || 0),
+    discount:  order.manager_discount_total || 0,
     tax:       order.tax || 0,
     cardTotal: order.total || 0,
     taxRate:   getTaxRate(),
@@ -274,6 +275,7 @@ function _adaptOrderForRecap(state) {
     seats:    adaptedSeats,
     totals: {
       subtotal:  totals.subtotal,
+      discount:  totals.discount,
       upcharges: Math.round(totalUpcharges * 100) / 100,
       tax:       totals.tax,
       paid:      Math.round(paid * 100) / 100,
@@ -1072,8 +1074,9 @@ function renderActionBar(state) {
   if (!barZone) return;
   barZone.innerHTML = '';
 
-  var order    = state.order || {};
-  var discount = getCashDiscount();
+  var order           = state.order || {};
+  var discount        = getCashDiscount();
+  var managerDiscount = order.manager_discount_total || 0;
 
   // ── Selection-aware totals ──
   // When items are selected the bar shows a filtered subtotal so the user
@@ -1142,7 +1145,7 @@ function renderActionBar(state) {
         total     = subtotal + tax;
         cashTotal = Math.round(total * (1 - discount) * 100) / 100;
       } else {
-        subtotal  = order.subtotal || 0;
+        subtotal  = order.gross_subtotal != null ? order.gross_subtotal : (order.subtotal || 0);
         tax       = order.tax != null ? order.tax : (subtotal * getTaxRate());
         total     = order.total || 0;
         cashTotal = Math.round(total * (1 - discount) * 100) / 100;
@@ -1197,6 +1200,9 @@ function renderActionBar(state) {
   }
 
   totalsBlock.appendChild(_totRow('SUBTOTAL', fmt(subtotal), T.gold));
+  if (managerDiscount > 0) {
+    totalsBlock.appendChild(_totRow('DISCOUNT', '-' + fmt(managerDiscount), T.lavender));
+  }
   totalsBlock.appendChild(_totRow('TAX',  fmt(tax),       T.gold));
   totalsBlock.appendChild(_totRow('CARD', fmt(total),     T.elec));
   totalsBlock.appendChild(_totRow('CASH', fmt(cashTotal), T.greenWarm));
@@ -3130,14 +3136,15 @@ function handlePay(state, params) {
   var cashPrice = Math.round(cardTotal * (1 - discount) * 100) / 100;
 
   SceneManager.mountWorking('payment', {
-    orderId:       state.orderId,
-    seatIds:       selectedIds,
-    seats:         seatSummary,
-    cardTotal:     cardTotal,
-    cashPrice:     cashPrice,
-    subtotal:      subtotal,
-    tax:           tax,
-    isLastPayment: isLastPayment,
+    orderId:              state.orderId,
+    seatIds:              selectedIds,
+    seats:                seatSummary,
+    cardTotal:            cardTotal,
+    cashPrice:            cashPrice,
+    subtotal:             subtotal,
+    tax:                  tax,
+    managerDiscountTotal: state.order ? (state.order.manager_discount_total || 0) : 0,
+    isLastPayment:        isLastPayment,
     returnTo:      'check-overview',
     returnParams: {
       checkId:       state.orderId,

@@ -270,8 +270,10 @@ class OrderResponse(BaseModel):
     status: str
     items: list[OrderItemResponse]
     payments: list[PaymentResponse] = []
+    gross_subtotal: Decimal
     subtotal: Decimal
     discount_total: Decimal
+    manager_discount_total: Decimal
     tax: Decimal
     total: Decimal
     amount_paid: Decimal
@@ -323,8 +325,14 @@ class OrderResponse(BaseModel):
                 )
                 for p in order.payments
             ],
+            gross_subtotal=money_round(order.gross_subtotal),
             subtotal=money_round(order.subtotal),
             discount_total=money_round(order.discount_total),
+            manager_discount_total=money_round(sum(
+                Decimal(str(d.get("amount", 0)))
+                for d in order.discounts
+                if d.get("type") != "cash_dual_pricing"
+            )),
             tax=money_round(order.tax),
             total=order.total,
             amount_paid=money_round(order.amount_paid),

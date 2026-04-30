@@ -47,6 +47,7 @@ var _checkNumEl       = null;
 var _denomTiles       = [];
 var _btn100           = null;
 var _subRow           = null;
+var _discRow          = null;
 var _taxRow           = null;
 var _cardRow          = null;
 var _cashRow          = null;
@@ -146,7 +147,7 @@ defineScene({
     _checkNumEl       = null;
     _denomTiles       = [];
     _btn100           = null;
-    _subRow = _taxRow = _cardRow = _cashRow = null;
+    _subRow = _discRow = _taxRow = _cardRow = _cashRow = null;
     _itemsScroll      = null;
     _procStatusEl     = null;
     _procAnimTimer    = null;
@@ -777,9 +778,12 @@ function buildLeftColumn(params) {
 
   // Totals block
   card.appendChild(buildDivider('10px 0'));
-  _subRow = buildDataRow('SUBTOTAL', '$0.00', T.gold);
-  _taxRow = buildDataRow('TAX',      '$0.00', T.gold);
+  _subRow  = buildDataRow('SUBTOTAL', '$0.00', T.gold);
+  _discRow = buildDataRow('DISCOUNT', '-$0.00', T.lavender);
+  _discRow.style.display = 'none';
+  _taxRow  = buildDataRow('TAX',      '$0.00', T.gold);
   card.appendChild(_subRow);
+  card.appendChild(_discRow);
   card.appendChild(_taxRow);
 
   card.appendChild(buildDivider('10px 0'));
@@ -856,15 +860,20 @@ function populateLeftCardFromSeats(seats, params) {
   // Prefer the caller's pre-computed totals — they reflect exactly the
   // seats being paid (selection-aware) and match what the operator just
   // saw on check-overview. Fall back to the line-total sum when absent.
-  var useSubtotal = (typeof params.subtotal  === 'number') ? params.subtotal  : subtotal;
-  var tax         = (typeof params.tax       === 'number') ? params.tax       : 0;
-  var cardTotal   = (typeof params.cardTotal === 'number') ? params.cardTotal : (useSubtotal + tax);
-  var cashPrice   = (typeof params.cashPrice === 'number') ? params.cashPrice : cardTotal;
+  var useSubtotal    = (typeof params.subtotal  === 'number') ? params.subtotal  : subtotal;
+  var tax            = (typeof params.tax       === 'number') ? params.tax       : 0;
+  var cardTotal      = (typeof params.cardTotal === 'number') ? params.cardTotal : (useSubtotal + tax);
+  var cashPrice      = (typeof params.cashPrice === 'number') ? params.cashPrice : cardTotal;
+  var managerDisc    = (typeof params.managerDiscountTotal === 'number') ? params.managerDiscountTotal : 0;
 
   if (!baseTotal) baseTotal = cardTotal;
 
   _renderItemRows(items);
   if (_subRow)  _subRow.setValue('$' + useSubtotal.toFixed(2));
+  if (_discRow) {
+    _discRow.style.display = managerDisc > 0 ? '' : 'none';
+    if (managerDisc > 0) _discRow.setValue('-$' + managerDisc.toFixed(2));
+  }
   if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
   if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
   if (_cashRow) _cashRow.setValue('$' + cashPrice.toFixed(2));
@@ -896,14 +905,19 @@ function populateLeftCard(order) {
       });
     });
   }
-  var tax       = (typeof order.tax === 'number') ? order.tax : 0;
-  var cardTotal = (typeof order.balance_due === 'number') ? order.balance_due : (subtotal + tax);
-  var cashPrice = Math.round(cardTotal * (1 - getCashDiscount()) * 100) / 100;
+  var tax         = (typeof order.tax === 'number') ? order.tax : 0;
+  var cardTotal   = (typeof order.balance_due === 'number') ? order.balance_due : (subtotal + tax);
+  var cashPrice   = Math.round(cardTotal * (1 - getCashDiscount()) * 100) / 100;
+  var managerDisc = typeof order.manager_discount_total === 'number' ? order.manager_discount_total : 0;
 
   if (!baseTotal) baseTotal = cardTotal;
 
   _renderItemRows(items);
   if (_subRow)  _subRow.setValue('$' + subtotal.toFixed(2));
+  if (_discRow) {
+    _discRow.style.display = managerDisc > 0 ? '' : 'none';
+    if (managerDisc > 0) _discRow.setValue('-$' + managerDisc.toFixed(2));
+  }
   if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
   if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
   if (_cashRow) _cashRow.setValue('$' + cashPrice.toFixed(2));
