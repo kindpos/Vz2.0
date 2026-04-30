@@ -1441,9 +1441,10 @@ function buildSeatSelectorCard() {
   });
 
   addBtn.addEventListener('pointerup', function() {
-    var maxSeat = 0;
-    _allSeatList.forEach(function(sn) { if (sn > maxSeat) maxSeat = sn; });
-    var newSeat = maxSeat + 1;
+    var usedSeats = {};
+    _allSeatList.forEach(function(sn) { usedSeats[sn] = true; });
+    var newSeat = 1;
+    while (usedSeats[newSeat]) newSeat++;
     if (newSeat > 99) { showToast('Maximum 99 seats', { bg: T.gold }); return; }
     _allSeatList.push(newSeat);
     _seatList.push(newSeat);

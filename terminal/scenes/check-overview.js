@@ -2541,12 +2541,13 @@ function buildAddTile(state, opts) {
 // interrupt's validation. Triggers a single persistSeats + rerender.
 function addSeatsBatch(state, n) {
   n = Math.max(1, Math.min(99, parseInt(n, 10) || 1));
-  var maxNum = 0;
-  for (var i = 0; i < state.seats.length; i++) {
-    if (state.seats[i].number > maxNum) maxNum = state.seats[i].number;
-  }
+  var used = {};
+  for (var i = 0; i < state.seats.length; i++) { used[state.seats[i].number] = true; }
+  var next = 1;
   for (var j = 0; j < n; j++) {
-    var num = maxNum + j + 1;
+    while (used[next]) next++;
+    var num = next;
+    used[next] = true;
     state.seats.push({
       id:     'S-' + String(num).padStart(3, '0'),
       number: num,
@@ -2746,11 +2747,10 @@ function getSelectedSeatIds(state) {
 }
 
 function addSeat(state) {
-  var maxNum = 0;
-  for (var i = 0; i < state.seats.length; i++) {
-    if (state.seats[i].number > maxNum) maxNum = state.seats[i].number;
-  }
-  var num = maxNum + 1;
+  var used = {};
+  for (var i = 0; i < state.seats.length; i++) { used[state.seats[i].number] = true; }
+  var num = 1;
+  while (used[num]) num++;
   state.seats.push({
     id:     'S-' + String(num).padStart(3, '0'),
     number: num,
