@@ -10,7 +10,6 @@
 //   Undo   — single undo restores previous state
 //   UndoAll — long-press undo restores original snapshot
 //   AddSeat — new column gets next sequential S-NNN label
-//   AddCheck — selected items move to a new CHK-NNN column
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { showToast } from '../components.js';
@@ -41,7 +40,8 @@ vi.mock('../../common/tokens.js', () => ({
     gold: '#gold', goldDk: '#goldDk', elec: '#elec', elecDk: '#elecDk',
     verm: '#verm', vermDk: '#vermDk', moon: '#moon', border: '#border',
     lavender: '#lav', fb: 'sans-serif', fh: 'serif', fwBold: '700',
-    fsB2: 14, fsB3: 12, fsB4: 10, pillRadius: '8px',
+    fsB2: 14, fsB3: 12, fsB4: 10, fsH4: 26, pillRadius: '8px',
+    chamferCard: 8, zTransactional: 20,
     seatPalette: ['#38bdf8', '#fb923c', '#f472b6', '#34d399'],
   },
 }));
@@ -152,6 +152,9 @@ describe('column-editor — Move', () => {
     ]);
     const state = mount(cols);
 
+    // Activate MOVE mode
+    tap(findBtn(container, 'MOVE'));
+
     // Select the item in col 0 (first child of itemList)
     const itemRow = state.colEls[0].itemList.firstElementChild;
     tap(itemRow);
@@ -171,6 +174,7 @@ describe('column-editor — Move', () => {
     ]);
     const state = mount(cols);
 
+    tap(findBtn(container, 'MOVE'));
     tap(state.colEls[0].itemList.firstElementChild);
     tap(state.colEls[1].hdr);
 
@@ -184,6 +188,7 @@ describe('column-editor — Move', () => {
     ]);
     const state = mount(cols);
 
+    tap(findBtn(container, 'MOVE'));
     tap(state.colEls[0].itemList.firstElementChild);
     tap(state.colEls[1].hdr);
 
@@ -346,6 +351,7 @@ describe('column-editor — Undo', () => {
     const state = mount(cols);
 
     // Move item from col 0 to col 1
+    tap(findBtn(container, 'MOVE'));
     tap(state.colEls[0].itemList.firstElementChild);
     tap(state.colEls[1].hdr);
     expect(state.columns[1].items).toHaveLength(1);
@@ -378,6 +384,7 @@ describe('column-editor — Undo', () => {
     const state = mount(cols);
 
     // Two moves
+    tap(findBtn(container, 'MOVE'));
     tap(state.colEls[0].itemList.firstElementChild);
     tap(state.colEls[1].hdr);
     // Re-render gives fresh colEls; after move col 1 has the item
@@ -432,38 +439,3 @@ describe('column-editor — Add seat', () => {
   });
 });
 
-describe('column-editor — Add check', () => {
-  it('moves selected items into a new CHK column', () => {
-    const cols = makeCols([
-      [{ name: 'Wine', price: 15 }, { name: 'Beer', price: 5 }],
-    ]);
-    const state = mount(cols);
-
-    // Select only the first item
-    tap(state.colEls[0].itemList.children[0]);
-
-    const addCheckZone = findZone(container, 'NEW CHECK');
-    expect(addCheckZone).not.toBeNull();
-    tap(addCheckZone);
-
-    expect(state.columns).toHaveLength(2);
-    expect(state.columns[0].items).toHaveLength(1); // Beer stays
-    expect(state.columns[1].items).toHaveLength(1); // Wine moved
-    expect(state.columns[1].items[0].name).toBe('Wine');
-    expect(state.columns[1].isNewCheck).toBe(true);
-  });
-
-  it('does nothing when no items are selected', () => {
-    const cols = makeCols([[{ name: 'Soda', price: 3 }]]);
-    const state = mount(cols);
-
-    const addCheckZone = findZone(container, 'NEW CHECK');
-    tap(addCheckZone);
-
-    expect(state.columns).toHaveLength(1);
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringContaining('Select items'),
-      expect.any(Object),
-    );
-  });
-});

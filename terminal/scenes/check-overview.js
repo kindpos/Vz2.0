@@ -3709,26 +3709,20 @@ function openEditSeats(state) {
       // Handle extra columns (new seats added inside column-editor).
       var usedNumbers = state.seats.map(function(s) { return s.number; });
       newColumns.slice(sentIndices.length).forEach(function(col) {
-        if (!col.isNewCheck) {
-          var n = 1;
-          while (usedNumbers.indexOf(n) >= 0) n++;
-          usedNumbers.push(n);
-          var newSeat = {
-            id:     'S-' + String(n).padStart(3, '0'),
-            number: n,
-            items:  col.items,
-          };
-          state.seats.push(newSeat);
-          for (var i = 0; i < col.items.length; i++) {
-            if (col.items[i].item_id) {
-              col.items[i].seat_number = n;
-              itemsToSync.push(col.items[i]);
-            }
+        var n = 1;
+        while (usedNumbers.indexOf(n) >= 0) n++;
+        usedNumbers.push(n);
+        var newSeat = {
+          id:     'S-' + String(n).padStart(3, '0'),
+          number: n,
+          items:  col.items,
+        };
+        state.seats.push(newSeat);
+        for (var i = 0; i < col.items.length; i++) {
+          if (col.items[i].item_id) {
+            col.items[i].seat_number = n;
+            itemsToSync.push(col.items[i]);
           }
-        } else {
-          // New check column — collect seat numbers and hand off to backend split.
-          var seatNums = col.items.map(function(it) { return it.seat_number; }).filter(Boolean);
-          if (seatNums.length > 0) _callSplitBySeat(state, seatNums);
         }
       });
 
