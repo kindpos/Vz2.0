@@ -4080,7 +4080,9 @@ function recallFromBackend(orderId) {
       // price field arriving here is a string. Coerce to Number at the
       // boundary — downstream code (renderTicket, sending, totals) all
       // assume numeric prices and `.toFixed()` them.
-      ticket = (order.items || []).map(function(item) {
+      ticket = (order.items || []).filter(function(item) {
+        return !item.voided;
+      }).map(function(item) {
         ticketSeq += 1;
         // Prefer server-computed effective_price (post-mods/discounts);
         // base `price` is 0 for combos/pizzas where value lives in mods.
