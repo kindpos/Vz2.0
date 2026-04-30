@@ -1927,11 +1927,15 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
 function buildSeatCard(state, seatIdx) {
   var seat = state.seats[seatIdx];
 
-  // seat-active = any item in this seat is in state.selectedItems
+  // seat-active = any item selected, or (empty seat) explicitly toggled
   var seatActive = false;
-  var selItems = state.selectedItems || {};
-  for (var ki = 0; ki < seat.items.length; ki++) {
-    if (selItems[seatIdx + ':' + ki]) { seatActive = true; break; }
+  if (seat.items.length === 0) {
+    seatActive = !!(state.selected && state.selected[seat.id]);
+  } else {
+    var selItems = state.selectedItems || {};
+    for (var ki = 0; ki < seat.items.length; ki++) {
+      if (selItems[seatIdx + ':' + ki]) { seatActive = true; break; }
+    }
   }
 
   var wrap = buildActionCard({ accent: seatActive ? T.green : T.moon });
