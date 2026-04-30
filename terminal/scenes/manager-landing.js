@@ -609,7 +609,7 @@ defineScene({
     // ─────────────────────────────────────────────
     // ── Check grid (cols 2-3, row 1) ──
     var gridOuter = document.createElement('div');
-    gridOuter.style.cssText = 'grid-column:2/4;grid-row:1;position:relative;overflow:hidden;';
+    gridOuter.style.cssText = 'grid-column:2/4;grid-row:1;position:relative;overflow:hidden;min-height:0;';
     root.appendChild(gridOuter);
 
     var gridResult = buildStaticCard({ accent: STATUS_COLORS['OPEN'].color });
