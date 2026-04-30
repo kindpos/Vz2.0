@@ -2333,7 +2333,9 @@ function buildCompactTile(state, seatIdx) {
     if (e.defaultPrevented) return;
     if (_tileSelSet.has(seatIdx)) _tileSelSet.delete(seatIdx);
     else                          _tileSelSet.add(seatIdx);
-    rerenderTopArea(state);
+    // Keep state.selected in sync so buildOrderEntryParams picks up the
+    // selection when the user taps ADD ITEMS after selecting tiles here.
+    toggleSeat(state, seat.id);
   });
 
   // Header: floods T.green when tile is selected
