@@ -409,7 +409,7 @@ defineScene({
       : [1];
     _seatList = (params.selectedSeatNumbers && params.selectedSeatNumbers.length > 0)
       ? params.selectedSeatNumbers.slice()
-      : _allSeatList.slice();
+      : [_allSeatList[0]];
     _activeSeats    = new Set(_seatList);
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
