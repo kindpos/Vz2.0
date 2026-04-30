@@ -1206,6 +1206,7 @@ function renderActionBar(state) {
   Object.assign(groupsWrap.style, {
     flex:       '1',
     display:    'flex',
+    flexWrap:   'wrap',
     alignItems: 'stretch',
     gap:        '8px',
     padding:    '8px 10px 8px 8px',
@@ -1274,7 +1275,6 @@ function renderActionBar(state) {
     flexDirection: 'column',
     padding:       '10px 12px 12px',
     gap:           '6px',
-    overflow:      'hidden',
     boxShadow:     '0 3px 0 ' + T.elecDk,
   });
 
