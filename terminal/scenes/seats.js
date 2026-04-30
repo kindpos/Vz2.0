@@ -103,14 +103,12 @@ export function orderToSeats(order, minSeats) {
         item_id:        it.item_id,
         menu_item_id:   it.menu_item_id,
         name:           it.name,
-        qty:            it.qty || 1,
+        qty:            it.quantity || it.qty || 1,
         price:          it.price || 0,
         effectivePrice: it.effective_price != null ? it.effective_price : null,
-        mods:           it.mods || [],
+        mods:           it.modifiers || it.mods || [],
         notes:          it.notes || '',
         category:       it.category,
-        // Preserve kitchen-send status so check-overview can switch the
-        // VOID button to DELETE when only pre-kitchen items are picked.
         sent_at:        it.sent_at || null,
       });
     }

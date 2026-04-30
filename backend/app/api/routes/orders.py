@@ -1060,12 +1060,6 @@ async def remove_item(
             detail=f"Item {item_id} not found in order"
         )
 
-    if target_item.sent:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Item already sent to kitchen — manager void required",
-        )
-
     event = item_removed(
         terminal_id=settings.terminal_id,
         order_id=order_id,

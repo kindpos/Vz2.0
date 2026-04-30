@@ -3242,21 +3242,39 @@ function _voidItems(state, refs) {
   // Stored in _voidTimers so unmount can cancel it.
   if (state.orderId) {
     _voidTid = setTimeout(function() {
-      for (var k = 0; k < snapshot.length; k++) {
-        var iid = snapshot[k].item.item_id;
-        if (!iid) continue;
-        fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items/' + iid, { method: 'DELETE' }, 8000);
-      }
-      // Remove voided items from local state after DELETE fires (descending to preserve indices)
-      snapshot.sort(function(a, b) {
-        if (a.seatIdx !== b.seatIdx) return b.seatIdx - a.seatIdx;
-        return b.itemIdx - a.itemIdx;
-      });
-      for (var m = 0; m < snapshot.length; m++) {
-        var sv = snapshot[m];
-        state.seats[sv.seatIdx].items.splice(sv.itemIdx, 1);
-      }
-      if (state._alive) rerenderTopArea(state);
+      var deletes = snapshot
+        .filter(function(s) { return !!s.item.item_id; })
+        .map(function(s) {
+          return fetchWithTimeout(
+            '/api/v1/orders/' + state.orderId + '/items/' + s.item.item_id,
+            { method: 'DELETE' }, 8000
+          ).then(function(r) {
+            if (!r.ok) throw new Error(r.status);
+          });
+        });
+
+      Promise.all(deletes)
+        .then(function() {
+          // All DELETEs succeeded — splice from local state descending to preserve indices.
+          snapshot.sort(function(a, b) {
+            if (a.seatIdx !== b.seatIdx) return b.seatIdx - a.seatIdx;
+            return b.itemIdx - a.itemIdx;
+          });
+          for (var m = 0; m < snapshot.length; m++) {
+            state.seats[snapshot[m].seatIdx].items.splice(snapshot[m].itemIdx, 1);
+          }
+          if (state._alive) rerenderTopArea(state);
+        })
+        .catch(function() {
+          // One or more DELETEs failed — undo the local void so the display
+          // matches backend truth rather than silently diverging.
+          if (!state._alive) return;
+          for (var j = 0; j < snapshot.length; j++) {
+            snapshot[j].item.voided = false;
+          }
+          rerenderTopArea(state);
+          showToast('Void failed — check connection', { bg: T.verm });
+        });
     }, 4200);
     state._voidTimers.push(_voidTid);
   }
