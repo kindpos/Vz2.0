@@ -730,9 +730,9 @@ defineScene({
 
 function buildLeftColumn(params) {
   var wrap = document.createElement('div');
-  wrap.style.cssText = 'width:260px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;';
+  wrap.style.cssText = 'width:300px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;';
 
-  var card = buildStaticCard({ accent: T.green, width: '260px' });
+  var card = buildStaticCard({ accent: T.green, width: '300px' });
   card.style.flex          = '1';
   card.style.display       = 'flex';
   card.style.flexDirection = 'column';
