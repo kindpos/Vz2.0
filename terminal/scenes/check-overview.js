@@ -3643,6 +3643,11 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     var r = itemRefs[i];
     lines.push(state.seats[r.seatIdx].items[r.itemIdx]);
   }
+  var hasUnsent = lines.some(function(it) { return !it.item_id; });
+  if (hasUnsent) {
+    showToast('Send items to kitchen before applying a discount.', { bg: T.gold });
+    return;
+  }
   var amount = computeDiscountAmount(lines, pct);
   var itemIds = extractItemIds(lines);
   if (amount <= 0 || !state.orderId) {
