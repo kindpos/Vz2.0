@@ -94,11 +94,12 @@ async function fetchModifierData() {
             const allGrpMods = [...mods, ...subcatMods];
 
             for (const m of allGrpMods) {
-                const mid = m.modifier_id || m.id;
+                const mid = m.modifier_id;
                 if (!mid) continue;
-                if (!modifiersById.has(mid)) {
-                    modifiersById.set(mid, {
-                        id: mid,
+                const scopedKey = `${grp.group_id}:${mid}`;
+                if (!modifiersById.has(scopedKey)) {
+                    modifiersById.set(scopedKey, {
+                        id: scopedKey,
                         name: m.name || mid,
                         base_price: parseFloat(m.price) || 0,
                         included_modifier_ids: Array.isArray(m.included_modifier_ids)
@@ -106,7 +107,7 @@ async function fetchModifierData() {
                             : [],
                     });
                 } else if (Array.isArray(m.included_modifier_ids) && m.included_modifier_ids.length) {
-                    const existing = modifiersById.get(mid);
+                    const existing = modifiersById.get(scopedKey);
                     const merged = new Set([...existing.included_modifier_ids, ...m.included_modifier_ids]);
                     existing.included_modifier_ids = Array.from(merged);
                 }
@@ -114,16 +115,21 @@ async function fetchModifierData() {
 
             const priceByOptionMap = {};
             allGrpMods.forEach(m => {
-                const mid = m.modifier_id || m.id;
+                const mid = m.modifier_id;
+                if (!mid) return;
+                const scopedKey = `${grp.group_id}:${mid}`;
                 if (m.price_by_option && Object.keys(m.price_by_option).length > 0) {
-                    priceByOptionMap[mid] = m.price_by_option;
+                    priceByOptionMap[scopedKey] = m.price_by_option;
                 }
             });
 
             groups.push({
-                id: grp.group_id || grp.id,
+                id: grp.group_id,
                 name: grp.name || '',
-                modifier_ids: allGrpMods.map(m => m.modifier_id || m.id).filter(Boolean),
+                modifier_ids: allGrpMods.map(m => {
+                    const mid = m.modifier_id;
+                    return mid ? `${grp.group_id}:${mid}` : null;
+                }).filter(Boolean),
                 min_selections: grp.min_selections ?? 0,
                 max_selections: grp.max_selections ?? 1,
                 drives_pricing: !!grp.drives_pricing,
