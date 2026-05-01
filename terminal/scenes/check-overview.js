@@ -1651,6 +1651,18 @@ function renderSeatsGrid(state, container, mode) {
       chevron.style.display    = 'inline-block';
       if (isExpanded) chevron.style.transform = 'rotate(90deg)';
       sHdrRight.appendChild(chevron);
+
+      var canDeleteRecap = rSeat.items.length === 0
+        && activeSeatCount(state.seats, state.paidSeats) > 1;
+      if (canDeleteRecap) {
+        var sDelBtn = _buildDeleteSeatX(state, rSeat.id);
+        sDelBtn.style.position  = 'relative';
+        sDelBtn.style.top       = 'auto';
+        sDelBtn.style.right     = 'auto';
+        sDelBtn.style.alignSelf = 'center';
+        sHdrRight.appendChild(sDelBtn);
+      }
+
       sHdr.appendChild(sHdrRight);
 
       (function(capturedId) {
@@ -1733,8 +1745,11 @@ function renderSeatsGrid(state, container, mode) {
       tile.style.userSelect    = 'none';
       tile.style.pointerEvents = 'auto';
       tile.style.touchAction   = 'manipulation';
+      tile.style.position      = 'relative';
       tile.style.display       = 'flex';
       tile.style.flexDirection = 'column';
+      tile.style.alignItems    = 'center';
+      tile.style.justifyContent = 'center';
       tile.style.gap           = '3px';
 
       var tNum = document.createElement('span');
@@ -1771,6 +1786,10 @@ function renderSeatsGrid(state, container, mode) {
           rerenderTopArea(state);
         });
       })(tSeat);
+
+      if (tSeat.items.length === 0 && activeSeatCount(state.seats, state.paidSeats) > 1) {
+        tile.appendChild(_buildDeleteSeatX(state, tSeat.id));
+      }
 
       tilesGrid.appendChild(tile);
     }
