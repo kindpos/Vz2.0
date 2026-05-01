@@ -1977,6 +1977,12 @@ function buildSeatCard(state, seatIdx) {
   label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   hdr.appendChild(label);
 
+  var canDelete = seat.items.length === 0
+    && activeSeatCount(state.seats, state.paidSeats) > 1;
+  if (canDelete) {
+    hdr.appendChild(_buildDeleteSeatX(state, seat.id));
+  }
+
   hdr.addEventListener('pointerup', function(e) {
     if (e.defaultPrevented) return;
     toggleSeat(state, seat.id);
@@ -2044,13 +2050,6 @@ function buildSeatCard(state, seatIdx) {
     footer.appendChild(subRow);
 
     wrap.appendChild(footer);
-  }
-
-  var canDelete = seat.items.length === 0
-    && activeSeatCount(state.seats, state.paidSeats) > 1;
-  if (canDelete) {
-    var delX = _buildDeleteSeatX(state, seat.id);
-    wrap.appendChild(delX);
   }
 
   state.seatEls[seat.id] = wrap;
@@ -2349,11 +2348,15 @@ function buildCompactTile(state, seatIdx) {
   });
 
   // Header: floods T.green when tile is selected
+  var canDelete = seat.items.length === 0
+    && activeSeatCount(state.seats, state.paidSeats) > 1;
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
     background:    tileActive ? T.green : T.well,
     padding:       '6px 10px',
     borderBottom:  '1px solid ' + T.border,
+    display:       'flex',
+    alignItems:    'center',
     pointerEvents: 'auto',
     touchAction:   'manipulation',
   });
@@ -2365,6 +2368,9 @@ function buildCompactTile(state, seatIdx) {
   });
   label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   hdr.appendChild(label);
+  if (canDelete) {
+    hdr.appendChild(_buildDeleteSeatX(state, seat.id));
+  }
   wrap.appendChild(hdr);
 
   // Body: subtotal only — no item count
@@ -2386,12 +2392,6 @@ function buildCompactTile(state, seatIdx) {
   totalEl.textContent = fmt(seatTotal(seat));
   body.appendChild(totalEl);
   wrap.appendChild(body);
-
-  var canDelete = seat.items.length === 0
-    && activeSeatCount(state.seats, state.paidSeats) > 1;
-  if (canDelete) {
-    wrap.appendChild(_buildDeleteSeatX(state, seat.id));
-  }
 
   state.seatEls[seat.id] = wrap;
   return wrap;
@@ -2560,6 +2560,7 @@ function addSeatsBatch(state, n) {
       items:  [],
     });
   }
+  state.seats.sort(function(a, b) { return a.number - b.number; });
   persistSeats(state);
   rerenderTopArea(state);
 }
@@ -2762,6 +2763,7 @@ function addSeat(state) {
     number: num,
     items:  [],
   });
+  state.seats.sort(function(a, b) { return a.number - b.number; });
   persistSeats(state);
   rerenderTopArea(state);
 }
@@ -2888,25 +2890,23 @@ function persistItemSeats(state, items) {
 function _buildDeleteSeatX(state, seatId) {
   var x = document.createElement('div');
   Object.assign(x.style, {
-    position:       'absolute',
-    top:            '5px',
-    right:          '6px',
-    width:          '24px',
-    height:         '24px',
+    marginLeft:     'auto',
+    flexShrink:     '0',
+    width:          '22px',
+    height:         '22px',
     borderRadius:   '50%',
     background:     T.verm,
     color:          '#fff',
     fontFamily:     T.fh,
     fontWeight:     T.fwBold,
-    fontSize:       '16px',
+    fontSize:       '15px',
     display:        'flex',
     alignItems:     'center',
     justifyContent: 'center',
     cursor:         'pointer',
     userSelect:     'none',
-    zIndex:         '5',
     lineHeight:     '1',
-    boxShadow:      '0 2px 6px rgba(0,0,0,0.5)',
+    boxShadow:      '0 2px 4px rgba(0,0,0,0.4)',
     pointerEvents:  'auto',
     touchAction:    'manipulation',
   });
