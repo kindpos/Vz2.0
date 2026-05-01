@@ -1263,7 +1263,7 @@ function buildMain(parentEl, params) {
   // (position:relative is set on main to contain it)
 
   // ── Seat selector card (above bottom bar) ─────────
-  if (_seatList.length > 0) {
+  if (_allSeatList.length > 0) {
     _seatSelectorEl = buildSeatSelectorCard();
     main.appendChild(_seatSelectorEl);
   }
