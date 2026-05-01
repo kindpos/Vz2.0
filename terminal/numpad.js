@@ -174,6 +174,8 @@ export function buildNumpad(opts) {
     'width:100%;height:' + cardH + 'px;',
     'filter:drop-shadow(3px 4px 0px rgba(0,0,0,0.6)) drop-shadow(0 0 16px ' + hexToRgba(chassisColor, 0.2) + ');',
   ].join('');
+  cardWrap.style.maxHeight = '85vh';
+  cardWrap.style.overflowY = 'auto';
 
   var card = document.createElement('div');
   card.style.cssText = [
