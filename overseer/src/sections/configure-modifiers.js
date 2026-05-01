@@ -1,4 +1,8 @@
 import { pushChanges } from '../services/config-push.js';
+import { fetchModifierData, EMPTY_DATA, handleSaveChanges as _handleSaveChanges } from './modifier-data.js';
+import { initPicker, buildChipTray, openPickerModal } from '../components/picker-modal.js';
+import { initConfirmDialog, showConfirmDialog } from '../components/confirm-dialog.js';
+import { T } from '../ui/tokens.js';
 
 /* ============================================
    KINDpos Overseer — Configure Modifiers
@@ -50,110 +54,18 @@ const C = {
 };
 
 /* ------------------------------------------
-   MODULE STATE
+   MODULE STATE — single const; properties mutate, binding never does.
 ------------------------------------------ */
-let currentWrapper = null;
-let modData = null;
-
-// Single bucket. Modifier edits cascade into group events
-// on save — no separate mandatory/universal bucket.
-let pendingChanges = { modifiers: [], groups: [] };
-
-let activeTab = 'modifiers'; // 'modifiers' | 'groups'
-let searchState = { modifiers: '', groups: '' };
-// 'all' | 'bundled' | 'orphan' — scoped to the Modifiers tab
-let modifierFilter = 'all';
-
-/* ------------------------------------------
-   DATA FETCH
-   Pulls from /menu (projection) + /config/menu/categories.
-   Deduplicates modifiers across groups into a flat
-   master list. No mandatory/universal fetches
-   since those endpoints no longer exist.
------------------------------------------- */
-async function fetchModifierData() {
-    try {
-        const [menuRes, catRes] = await Promise.all([
-            fetch('/api/v1/menu'),
-            fetch('/api/v1/config/menu/categories'),
-        ]);
-        const menu = menuRes.ok ? await menuRes.json() : { modifier_groups: [] };
-        const cats = catRes.ok ? await catRes.json() : [];
-
-        const modifiersById = new Map();
-        const groups = [];
-
-        for (const grp of (menu.modifier_groups || [])) {
-            // Skip any legacy hidden per-item groups from the old
-            // "included_<item_id>" pattern. These will disappear
-            // entirely once the new menu-categories.js lands.
-            if (grp.hidden) continue;
-
-            const mods = grp.modifiers || [];
-            const subcatMods = (grp.subcats || []).flatMap(sc => sc.modifiers || []);
-            const allGrpMods = [...mods, ...subcatMods];
-
-            for (const m of allGrpMods) {
-                const mid = m.modifier_id;
-                if (!mid) continue;
-                const scopedKey = `${grp.group_id}:${mid}`;
-                if (!modifiersById.has(scopedKey)) {
-                    modifiersById.set(scopedKey, {
-                        id: scopedKey,
-                        name: m.name || mid,
-                        base_price: parseFloat(m.price) || 0,
-                        included_modifier_ids: Array.isArray(m.included_modifier_ids)
-                            ? [...m.included_modifier_ids]
-                            : [],
-                    });
-                } else if (Array.isArray(m.included_modifier_ids) && m.included_modifier_ids.length) {
-                    const existing = modifiersById.get(scopedKey);
-                    const merged = new Set([...existing.included_modifier_ids, ...m.included_modifier_ids]);
-                    existing.included_modifier_ids = Array.from(merged);
-                }
-            }
-
-            const priceByOptionMap = {};
-            allGrpMods.forEach(m => {
-                const mid = m.modifier_id;
-                if (!mid) return;
-                const scopedKey = `${grp.group_id}:${mid}`;
-                if (m.price_by_option && Object.keys(m.price_by_option).length > 0) {
-                    priceByOptionMap[scopedKey] = m.price_by_option;
-                }
-            });
-
-            groups.push({
-                id: grp.group_id,
-                name: grp.name || '',
-                modifier_ids: allGrpMods.map(m => {
-                    const mid = m.modifier_id;
-                    return mid ? `${grp.group_id}:${mid}` : null;
-                }).filter(Boolean),
-                min_selections: grp.min_selections ?? 0,
-                max_selections: grp.max_selections ?? 1,
-                drives_pricing: !!grp.drives_pricing,
-                price_by_option_map: priceByOptionMap,
-                color: grp.color || null,
-                category_id: grp.category_id || null,
-            });
-        }
-
-        return {
-            modifiers: Array.from(modifiersById.values()).sort((a, b) => a.name.localeCompare(b.name)),
-            groups: groups.sort((a, b) => a.name.localeCompare(b.name)),
-            categories: cats.map(c => ({
-                id: c.category_id || c.id,
-                name: c.name || c.label,
-            })),
-        };
-    } catch (e) {
-        console.warn('[ConfigureModifiers] Failed to fetch data:', e);
-        return { modifiers: [], groups: [], categories: [] };
-    }
-}
-
-const EMPTY_DATA = { modifiers: [], groups: [], categories: [] };
+const _state = {
+    currentWrapper: null,
+    modData: null,
+    // Single bucket. Modifier edits cascade into group events
+    // on save — no separate mandatory/universal bucket.
+    pendingChanges: { modifiers: [], groups: [] },
+    activeTab: 'modifiers', // 'modifiers' | 'groups'
+    searchState: { modifiers: '', groups: '' },
+    modifierFilter: 'all', // 'all' | 'bundled' | 'orphan' — scoped to Modifiers tab
+};
 
 /* ------------------------------------------
    SMALL UTILS
@@ -162,12 +74,12 @@ function clone(obj) { return JSON.parse(JSON.stringify(obj)); }
 function formatPrice(p) { return '$' + Number(p || 0).toFixed(2); }
 
 function getPendingCount() {
-    return (pendingChanges.modifiers || []).length + (pendingChanges.groups || []).length;
+    return (_state.pendingChanges.modifiers || []).length + (_state.pendingChanges.groups || []).length;
 }
 
 function getAllWorking(collection) {
-    const base = modData[collection] || [];
-    const pending = pendingChanges[collection] || [];
+    const base = _state.modData[collection] || [];
+    const pending = _state.pendingChanges[collection] || [];
     const pendingMap = new Map(pending.map(p => [p.id, p]));
     const result = [];
     for (const b of base) {
@@ -186,20 +98,36 @@ function getAllWorking(collection) {
 }
 
 function trackChange(collection, item) {
-    if (!pendingChanges[collection]) pendingChanges[collection] = [];
-    const idx = pendingChanges[collection].findIndex(x => x.id === item.id);
-    if (idx >= 0) pendingChanges[collection][idx] = item;
-    else pendingChanges[collection].push(item);
+    if (!_state.pendingChanges[collection]) _state.pendingChanges[collection] = [];
+    const idx = _state.pendingChanges[collection].findIndex(x => x.id === item.id);
+    if (idx >= 0) _state.pendingChanges[collection][idx] = item;
+    else _state.pendingChanges[collection].push(item);
     updateFooter();
 }
 
+/**
+ * Guard: a group with min_selections >= 1 must have at least one modifier.
+ * Highlights highlightEl with T.verm, shows a toast, returns false if invalid.
+ */
+function _guardMandatoryHasModifiers(minSelections, modifierIds, groupName, highlightEl) {
+    if (minSelections >= 1 && modifierIds.length === 0) {
+        if (highlightEl) {
+            highlightEl.style.outline = `2px solid ${T.verm}`;
+            highlightEl.style.borderRadius = '8px';
+        }
+        showToast(`"${groupName || 'Group'}" requires min ${minSelections} but has no modifiers`, 'error');
+        return false;
+    }
+    return true;
+}
+
 function handleDeleteItem(collection, id) {
-    if (!pendingChanges[collection]) pendingChanges[collection] = [];
-    const idx = pendingChanges[collection].findIndex(x => x.id === id);
+    if (!_state.pendingChanges[collection]) _state.pendingChanges[collection] = [];
+    const idx = _state.pendingChanges[collection].findIndex(x => x.id === id);
     if (idx >= 0) {
-        pendingChanges[collection][idx]._deleted = true;
+        _state.pendingChanges[collection][idx]._deleted = true;
     } else {
-        pendingChanges[collection].push({ id, _deleted: true });
+        _state.pendingChanges[collection].push({ id, _deleted: true });
     }
     updateFooter();
 }
@@ -318,43 +246,47 @@ function buildTextInput(value, opts = {}) {
 
 function buildToggle(initial, onChange, opts = {}) {
     let state = !!initial;
+    let isDisabled = !!opts.disabled;
     const wrap = document.createElement('button');
     wrap.type = 'button';
-    wrap.style.cssText = `
-        width: 44px; height: 24px;
-        border-radius: 999px;
-        background: ${state ? C.greenUp : C.well};
-        border: 1px solid ${state ? C.greenUp : C.hairline};
-        position: relative;
-        cursor: pointer;
-        transition: background 0.15s ease;
-        outline: none;
-        ${opts.disabled ? 'opacity: 0.4; cursor: not-allowed;' : ''}
-    `;
-    const knob = document.createElement('span');
-    knob.style.cssText = `
-        position: absolute;
-        top: 2px;
-        left: ${state ? '22px' : '2px'};
-        width: 18px; height: 18px;
-        border-radius: 50%;
-        background: ${state ? C.well : C.textMuted};
-        transition: left 0.15s ease, background 0.15s ease;
-    `;
-    wrap.appendChild(knob);
+
+    function applyState() {
+        wrap.style.cssText = `
+            width: 44px; height: 24px;
+            border-radius: 999px;
+            background: ${state ? C.greenUp : C.well};
+            border: 1px solid ${state ? C.greenUp : C.hairline};
+            position: relative;
+            cursor: ${isDisabled ? 'not-allowed' : 'pointer'};
+            transition: background 0.15s ease;
+            outline: none;
+            ${isDisabled ? 'opacity: 0.4;' : ''}
+        `;
+        wrap.disabled = isDisabled;
+        wrap.replaceChildren();
+        const knob = document.createElement('span');
+        knob.style.cssText = `
+            position: absolute;
+            top: 2px;
+            left: ${state ? '22px' : '2px'};
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            background: ${state ? C.well : C.textMuted};
+            transition: left 0.15s ease, background 0.15s ease;
+        `;
+        wrap.appendChild(knob);
+    }
 
     wrap.setValue = (v) => {
         state = !!v;
-        wrap.style.background = state ? C.greenUp : C.well;
-        wrap.style.borderColor = state ? C.greenUp : C.hairline;
-        knob.style.left = state ? '22px' : '2px';
-        knob.style.background = state ? C.well : C.textMuted;
+        applyState();
     };
     wrap.getValue = () => state;
     wrap.setDisabled = (d) => {
+        isDisabled = !!d;
         wrap.style.opacity = d ? '0.4' : '1';
         wrap.style.cursor = d ? 'not-allowed' : 'pointer';
-        wrap.disabled = !!d;
+        wrap.disabled = isDisabled;
     };
 
     if (!opts.disabled) {
@@ -363,6 +295,7 @@ function buildToggle(initial, onChange, opts = {}) {
             if (onChange) onChange(state);
         });
     }
+    applyState();
     return wrap;
 }
 
@@ -396,95 +329,94 @@ function showToast(message, kind = 'confirm') {
 /* ------------------------------------------
    MODAL SYSTEM — stacked so pickers can layer
    on top of the modifier edit modal without
-   destroying it.
+   destroying it. Stack is local to this closure.
 ------------------------------------------ */
-const modalStack = [];
+const { openModal, closeModal, closeAllModals } = (() => {
+    const stack = [];
 
-function openModal(titleText, contentBuilder, opts = {}) {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-        position: fixed; inset: 0;
-        background: rgba(0,0,0,0.6);
-        z-index: ${500 + modalStack.length * 10};
-        display: flex; align-items: center; justify-content: center;
-        padding: 20px;
-    `;
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeModal(overlay);
-    });
+    function openModal(titleText, contentBuilder, opts = {}) {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: ${500 + stack.length * 10};
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        `;
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeModal(overlay);
+        });
 
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        background: ${C.card};
-        border-left: 4px solid ${opts.accent || C.gold};
-        border-radius: 12px;
-        max-width: ${opts.wide ? '720px' : '520px'};
-        width: 100%;
-        max-height: 90vh;
-        display: flex; flex-direction: column;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-    `;
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            background: ${C.card};
+            border-left: 4px solid ${opts.accent || C.gold};
+            border-radius: 12px;
+            max-width: ${opts.wide ? '720px' : '520px'};
+            width: 100%;
+            max-height: 90vh;
+            display: flex; flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        `;
 
-    const header = document.createElement('div');
-    header.style.cssText = `
-        padding: 20px 24px 14px;
-        border-bottom: 1px solid ${C.hairline};
-        display: flex; align-items: center; justify-content: space-between;
-    `;
-    const title = document.createElement('div');
-    title.textContent = titleText;
-    title.style.cssText = `
-        font-family: system-ui, sans-serif;
-        font-size: 18px; font-weight: 700;
-        color: ${C.text};
-    `;
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '×';
-    closeBtn.style.cssText = `
-        background: transparent; border: none;
-        color: ${C.textMuted}; font-size: 26px;
-        cursor: pointer; padding: 0 4px;
-        line-height: 1;
-    `;
-    closeBtn.addEventListener('click', () => closeModal(overlay));
-    header.appendChild(title);
-    header.appendChild(closeBtn);
-    modal.appendChild(header);
+        const header = document.createElement('div');
+        header.style.cssText = `
+            padding: 20px 24px 14px;
+            border-bottom: 1px solid ${C.hairline};
+            display: flex; align-items: center; justify-content: space-between;
+        `;
+        const title = document.createElement('div');
+        title.textContent = titleText;
+        title.style.cssText = `
+            font-family: system-ui, sans-serif;
+            font-size: 18px; font-weight: 700;
+            color: ${C.text};
+        `;
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '×';
+        closeBtn.style.cssText = `
+            background: transparent; border: none;
+            color: ${C.textMuted}; font-size: 26px;
+            cursor: pointer; padding: 0 4px;
+            line-height: 1;
+        `;
+        closeBtn.addEventListener('click', () => closeModal(overlay));
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        modal.appendChild(header);
 
-    const body = document.createElement('div');
-    body.style.cssText = `
-        padding: 20px 24px;
-        overflow-y: auto;
-        flex: 1;
-    `;
-    modal.appendChild(body);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
+        const body = document.createElement('div');
+        body.style.cssText = `
+            padding: 20px 24px;
+            overflow-y: auto;
+            flex: 1;
+        `;
+        modal.appendChild(body);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
 
-    modalStack.push(overlay);
-    contentBuilder(body, modal);
-}
-
-/**
- * Close a modal. Without an argument, closes the topmost modal. With an
- * overlay arg, closes that specific modal (used by per-modal dismiss
- * handlers). Safe to call when the stack is empty.
- */
-function closeModal(specificOverlay) {
-    if (modalStack.length === 0) return;
-    const target = specificOverlay || modalStack[modalStack.length - 1];
-    const idx = modalStack.indexOf(target);
-    if (idx === -1) return;
-    modalStack.splice(idx, 1);
-    if (target.parentNode) target.remove();
-}
-
-function closeAllModals() {
-    while (modalStack.length > 0) {
-        const overlay = modalStack.pop();
-        if (overlay.parentNode) overlay.remove();
+        stack.push(overlay);
+        contentBuilder(body, modal);
     }
-}
+
+    function closeModal(specificOverlay) {
+        if (stack.length === 0) return;
+        const target = specificOverlay || stack[stack.length - 1];
+        const idx = stack.indexOf(target);
+        if (idx === -1) return;
+        stack.splice(idx, 1);
+        if (target.parentNode) target.remove();
+    }
+
+    function closeAllModals() {
+        while (stack.length > 0) {
+            const overlay = stack.pop();
+            if (overlay.parentNode) overlay.remove();
+        }
+    }
+
+    return { openModal, closeModal, closeAllModals };
+})();
 
 function buildModalField(container, labelText, type, value, opts = {}) {
     const wrap = document.createElement('div');
@@ -529,286 +461,16 @@ function buildModalFooter(container, onSave, opts = {}) {
     container.appendChild(footer);
 }
 
-/* ------------------------------------------
-   MULTI-SELECT PICKER
-   Chip tray + "+ Add" that opens a picker modal
-   with three-state checks, search, and delta footer.
-   Used by both Group editor (pick modifiers for group)
-   and Modifier editor (pick microMODs).
------------------------------------------- */
-
-function buildChipTray(container, initialIds, sourceFn, opts = {}) {
-    const state = { ids: [...(initialIds || [])] };
-    const tray = document.createElement('div');
-    tray.style.cssText = `
-        display: flex; flex-wrap: wrap; gap: 6px;
-        margin-bottom: 10px;
-        min-height: 36px;
-        padding: 8px;
-        background: ${C.well};
-        border-radius: 6px;
-        border: 1px dashed ${C.hairline};
-    `;
-
-    function render() {
-        tray.innerHTML = '';
-        if (state.ids.length === 0) {
-            const empty = document.createElement('div');
-            empty.textContent = opts.emptyHint || 'None selected — tap + to add';
-            empty.style.cssText = `
-                font-family: ui-monospace, monospace;
-                font-size: 11px;
-                color: ${C.textDim};
-                padding: 4px 6px;
-                letter-spacing: 1.5px;
-                text-transform: uppercase;
-                font-weight: 700;
-            `;
-            tray.appendChild(empty);
-            return;
-        }
-        const all = sourceFn();
-        state.ids.forEach(id => {
-            const modifier = all.find(a => a.id === id);
-            const chip = document.createElement('span');
-            chip.style.cssText = `
-                display: inline-flex; align-items: center; gap: 6px;
-                padding: 5px 6px 5px 10px;
-                background: ${C.card};
-                border: 1px solid ${opts.accent || C.green};
-                border-radius: 999px;
-                font-family: system-ui, sans-serif;
-                font-size: 12px;
-                font-weight: 600;
-                color: ${C.text};
-            `;
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = modifier ? modifier.name : id;
-            chip.appendChild(nameSpan);
-
-            if (modifier && modifier.extra) {
-                const extra = document.createElement('span');
-                extra.textContent = modifier.extra;
-                extra.style.cssText = `color: ${C.gold}; font-family: ui-monospace, monospace; font-size: 11px;`;
-                chip.appendChild(extra);
-            }
-
-            const x = document.createElement('button');
-            x.type = 'button';
-            x.textContent = '×';
-            x.style.cssText = `
-                background: transparent; border: none;
-                color: ${C.textMuted}; cursor: pointer;
-                font-size: 14px; line-height: 1;
-                padding: 0 4px;
-            `;
-            x.addEventListener('click', () => {
-                state.ids = state.ids.filter(i => i !== id);
-                render();
-                if (opts.onChange) opts.onChange(state.ids);
-            });
-            chip.appendChild(x);
-            tray.appendChild(chip);
-        });
-    }
-
-    container.appendChild(tray);
-
-    const addBtn = buildPillButton(opts.addLabel || '+ Add', 'secondary', () => {
-        openPickerModal(state.ids, sourceFn, opts, (newIds) => {
-            state.ids = newIds;
-            render();
-            if (opts.onChange) opts.onChange(state.ids);
-        });
-    }, { small: true });
-    container.appendChild(addBtn);
-
-    render();
-    return state;
-}
-
-function openPickerModal(currentIds, sourceFn, opts, onDone) {
-    const excluded = opts.excludeIds ? new Set(opts.excludeIds()) : new Set();
-    const all = sourceFn().filter(a => !excluded.has(a.id));
-
-    openModal(opts.pickerTitle || 'Pick modifiers', (body) => {
-        const selected = new Set(currentIds);
-        const originallySelected = new Set(currentIds);
-
-        const searchWrap = document.createElement('div');
-        searchWrap.style.cssText = 'margin-bottom: 14px;';
-        const search = buildTextInput('', { placeholder: 'Search…' });
-        searchWrap.appendChild(search);
-        body.appendChild(searchWrap);
-
-        const list = document.createElement('div');
-        list.style.cssText = `
-            max-height: 360px;
-            overflow-y: auto;
-            display: flex; flex-direction: column; gap: 4px;
-            margin-bottom: 14px;
-        `;
-        body.appendChild(list);
-
-        function renderList() {
-            list.innerHTML = '';
-            const q = search.value.trim().toLowerCase();
-            const filtered = q
-                ? all.filter(a => a.name.toLowerCase().includes(q))
-                : all;
-
-            if (filtered.length === 0) {
-                const empty = document.createElement('div');
-                empty.textContent = q ? 'No matches' : 'No modifiers available';
-                empty.style.cssText = `
-                    font-family: ui-monospace, monospace;
-                    font-size: 12px;
-                    color: ${C.textDim};
-                    text-align: center;
-                    padding: 24px 0;
-                    letter-spacing: 1.5px;
-                    text-transform: uppercase;
-                `;
-                list.appendChild(empty);
-                return;
-            }
-
-            filtered.forEach(modifier => {
-                const isSelected = selected.has(modifier.id);
-                const wasSelected = originallySelected.has(modifier.id);
-                const row = document.createElement('button');
-                row.type = 'button';
-                row.style.cssText = `
-                    display: flex; align-items: center; gap: 12px;
-                    padding: 10px 14px;
-                    background: ${isSelected && !wasSelected ? 'rgba(74,222,128,0.08)'
-                                : !isSelected && wasSelected ? 'rgba(232,71,42,0.08)'
-                                : C.well};
-                    border: 1px solid ${isSelected && !wasSelected ? C.greenUp
-                                      : !isSelected && wasSelected ? C.verm
-                                      : 'transparent'};
-                    border-left: 3px solid ${isSelected ? C.green : 'transparent'};
-                    border-radius: 6px;
-                    cursor: pointer;
-                    width: 100%;
-                    text-align: left;
-                    font-family: system-ui, sans-serif;
-                    transition: background 0.1s ease;
-                `;
-
-                const box = document.createElement('div');
-                box.style.cssText = `
-                    width: 18px; height: 18px;
-                    border: 2px solid ${isSelected ? C.green : C.textDim};
-                    border-radius: 4px;
-                    display: flex; align-items: center; justify-content: center;
-                    background: ${isSelected ? C.green : 'transparent'};
-                    flex-shrink: 0;
-                `;
-                if (isSelected) {
-                    box.innerHTML = `<span style="color: ${C.well}; font-size: 13px; font-weight: 900;">✓</span>`;
-                }
-                row.appendChild(box);
-
-                const name = document.createElement('span');
-                name.textContent = modifier.name;
-                name.style.cssText = `
-                    flex: 1;
-                    color: ${C.text};
-                    font-size: 14px;
-                    font-weight: 600;
-                `;
-                row.appendChild(name);
-
-                if (modifier.extra) {
-                    const extra = document.createElement('span');
-                    extra.textContent = modifier.extra;
-                    extra.style.cssText = `
-                        color: ${C.gold};
-                        font-family: ui-monospace, monospace;
-                        font-size: 12px;
-                    `;
-                    row.appendChild(extra);
-                }
-
-                if (isSelected && !wasSelected) {
-                    const badge = document.createElement('span');
-                    badge.textContent = '+ NEW';
-                    badge.style.cssText = `
-                        font-family: ui-monospace, monospace;
-                        font-size: 9px;
-                        color: ${C.greenUp};
-                        letter-spacing: 1.5px;
-                        font-weight: 700;
-                    `;
-                    row.appendChild(badge);
-                } else if (!isSelected && wasSelected) {
-                    const badge = document.createElement('span');
-                    badge.textContent = '− REMOVE';
-                    badge.style.cssText = `
-                        font-family: ui-monospace, monospace;
-                        font-size: 9px;
-                        color: ${C.verm};
-                        letter-spacing: 1.5px;
-                        font-weight: 700;
-                    `;
-                    row.appendChild(badge);
-                }
-
-                row.addEventListener('click', () => {
-                    if (selected.has(modifier.id)) selected.delete(modifier.id);
-                    else selected.add(modifier.id);
-                    renderList();
-                    renderDelta();
-                });
-
-                list.appendChild(row);
-            });
-        }
-
-        const delta = document.createElement('div');
-        delta.style.cssText = `
-            padding: 10px 14px;
-            background: ${C.well};
-            border-radius: 6px;
-            font-family: ui-monospace, monospace;
-            font-size: 11px;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            font-weight: 700;
-            color: ${C.textMuted};
-            margin-bottom: 14px;
-        `;
-        function renderDelta() {
-            const added = [...selected].filter(id => !originallySelected.has(id)).length;
-            const removed = [...originallySelected].filter(id => !selected.has(id)).length;
-            const unchanged = [...selected].filter(id => originallySelected.has(id)).length;
-            const parts = [];
-            if (added > 0) parts.push(`<span style="color:${C.greenUp}">+${added} added</span>`);
-            if (removed > 0) parts.push(`<span style="color:${C.verm}">−${removed} removed</span>`);
-            if (parts.length === 0) parts.push(`<span style="color:${C.textDim}">no changes</span>`);
-            parts.push(`<span style="color:${C.textDim}">· ${unchanged + added} total</span>`);
-            delta.innerHTML = parts.join('  ');
-        }
-        body.appendChild(delta);
-        renderDelta();
-
-        search.addEventListener('input', renderList);
-        renderList();
-
-        buildModalFooter(body, () => {
-            onDone(Array.from(selected));
-            closeModal();
-        }, { saveLabel: 'Apply' });
-    }, { wide: true, accent: opts.accent || C.green });
-}
+// Wire picker-modal.js and confirm-dialog.js with this scene's UI primitives.
+initPicker(C, { openModal, closeModal, buildPillButton, buildTextInput, buildModalFooter });
+initConfirmDialog(C, { openModal, closeModal, buildPillButton });
 
 /* ============================================
    MAIN VIEW
 ============================================ */
 
 function buildMainView(wrapper) {
-    wrapper.innerHTML = '';
+    wrapper.replaceChildren();
 
     // Page header
     const header = document.createElement('div');
@@ -842,7 +504,7 @@ function buildMainView(wrapper) {
     content.style.cssText = 'min-height: 300px;';
     wrapper.appendChild(content);
 
-    if (activeTab === 'modifiers') buildModifiersTab(content);
+    if (_state.activeTab === 'modifiers') buildModifiersTab(content);
     else buildGroupsTab(content);
 
     // Footer
@@ -867,7 +529,7 @@ function buildTabBar(wrapper) {
     tabs.forEach(t => {
         const tab = document.createElement('button');
         tab.type = 'button';
-        const isActive = activeTab === t.id;
+        const isActive = _state.activeTab === t.id;
         tab.style.cssText = `
             flex: 1;
             padding: 10px 16px;
@@ -900,8 +562,8 @@ function buildTabBar(wrapper) {
         tab.appendChild(count);
 
         tab.addEventListener('click', () => {
-            activeTab = t.id;
-            buildMainView(currentWrapper);
+            _state.activeTab = t.id;
+            buildMainView(_state.currentWrapper);
         });
         bar.appendChild(tab);
     });
@@ -911,11 +573,11 @@ function buildTabBar(wrapper) {
 function buildSearchBar(container, collection, onChange) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom: 14px;';
-    const input = buildTextInput(searchState[collection] || '', {
+    const input = buildTextInput(_state.searchState[collection] || '', {
         placeholder: `Search ${collection}…`,
     });
     input.addEventListener('input', () => {
-        searchState[collection] = input.value;
+        _state.searchState[collection] = input.value;
         onChange();
     });
     wrap.appendChild(input);
@@ -927,7 +589,7 @@ function buildSearchBar(container, collection, onChange) {
 ============================================ */
 
 function buildModifiersTab(container) {
-    container.innerHTML = '';
+    container.replaceChildren();
 
     // Search bar first, then Add button row underneath so it reads as a
     // secondary control for the filtered list below.
@@ -1000,7 +662,7 @@ function buildModifierFilterRow(container, onChange) {
     };
 
     options.forEach(opt => {
-        const isActive = modifierFilter === opt.id;
+        const isActive = _state.modifierFilter === opt.id;
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.style.cssText = `
@@ -1035,7 +697,7 @@ function buildModifierFilterRow(container, onChange) {
         chip.appendChild(badge);
 
         chip.addEventListener('click', () => {
-            modifierFilter = opt.id;
+            _state.modifierFilter = opt.id;
             rebuild();
         });
 
@@ -1043,7 +705,7 @@ function buildModifierFilterRow(container, onChange) {
     });
 
     // Clear link — only visible when filter is non-default
-    if (modifierFilter !== 'all') {
+    if (_state.modifierFilter !== 'all') {
         const clear = document.createElement('button');
         clear.type = 'button';
         clear.textContent = '× clear';
@@ -1060,7 +722,7 @@ function buildModifierFilterRow(container, onChange) {
             margin-left: 4px;
         `;
         clear.addEventListener('click', () => {
-            modifierFilter = 'all';
+            _state.modifierFilter = 'all';
             rebuild();
         });
         row.appendChild(clear);
@@ -1072,17 +734,17 @@ function buildModifierFilterRow(container, onChange) {
 }
 
 function renderModifierList(list) {
-    list.innerHTML = '';
+    list.replaceChildren();
     const modifiers = getAllWorking('modifiers');
     const groups = getAllWorking('groups');
-    const q = (searchState.modifiers || '').trim().toLowerCase();
+    const q = (_state.searchState.modifiers || '').trim().toLowerCase();
 
     // Search + filter compose via AND. Search first (cheap string match),
     // filter second (needs group-membership lookup for orphans).
     let filtered = q ? modifiers.filter(a => a.name.toLowerCase().includes(q)) : modifiers;
-    if (modifierFilter === 'bundled') {
+    if (_state.modifierFilter === 'bundled') {
         filtered = filtered.filter(a => (a.included_modifier_ids || []).length > 0);
-    } else if (modifierFilter === 'orphan') {
+    } else if (_state.modifierFilter === 'orphan') {
         filtered = filtered.filter(a => !groups.some(g => (g.modifier_ids || []).includes(a.id)));
     }
 
@@ -1090,8 +752,8 @@ function renderModifierList(list) {
         const empty = document.createElement('div');
         let msg;
         if (modifiers.length === 0) msg = 'No modifiers yet — create one to get started';
-        else if (modifierFilter === 'bundled') msg = q ? 'No bundled matches' : 'No bundled modifiers';
-        else if (modifierFilter === 'orphan')  msg = q ? 'No orphan matches'  : 'No orphan modifiers — everything is wired up';
+        else if (_state.modifierFilter === 'bundled') msg = q ? 'No bundled matches' : 'No bundled modifiers';
+        else if (_state.modifierFilter === 'orphan')  msg = q ? 'No orphan matches'  : 'No orphan modifiers — everything is wired up';
         else msg = 'No matches';
         empty.textContent = msg;
         empty.style.cssText = `
@@ -1301,7 +963,7 @@ function openModifierModal(existing) {
             };
             trackChange('modifiers', item);
             closeModal();
-            buildMainView(currentWrapper);
+            buildMainView(_state.currentWrapper);
         }, {
             saveLabel: isEdit ? 'Save' : 'Create',
             extraLeft: deleteBtn,
@@ -1356,7 +1018,7 @@ function openOverrideModal(modifier, driverAtoms, existingOverrides, onSave) {
 ============================================ */
 
 function buildGroupsTab(container) {
-    container.innerHTML = '';
+    container.replaceChildren();
 
     const headerRow = document.createElement('div');
     headerRow.style.cssText = `
@@ -1390,10 +1052,10 @@ function buildGroupsTab(container) {
 }
 
 function renderGroupList(list) {
-    list.innerHTML = '';
+    list.replaceChildren();
     const groups = getAllWorking('groups');
     const modifiers = getAllWorking('modifiers');
-    const q = (searchState.groups || '').trim().toLowerCase();
+    const q = (_state.searchState.groups || '').trim().toLowerCase();
     const filtered = q ? groups.filter(g => g.name.toLowerCase().includes(q)) : groups;
 
     if (filtered.length === 0) {
@@ -1669,51 +1331,56 @@ function openGroupModal(existing) {
             const max = parseInt(maxInput.value, 10) || 1;
             const modifierCount = draft.modifier_ids.length;
 
-            const lines = [];
-            const issues = [];
+            hintBox.replaceChildren();
+
+            function addLine(bullet, bulletColor, text) {
+                const div = document.createElement('div');
+                const s = document.createElement('span');
+                s.textContent = bullet;
+                s.style.color = bulletColor;
+                div.appendChild(s);
+                div.appendChild(document.createTextNode(' ' + text));
+                hintBox.appendChild(div);
+            }
 
             // Wire type
             if (min >= 1) {
-                lines.push(`<span style="color:${C.gold}">■</span> MANDATORY-WIREABLE — wire to items via their edit modal`);
+                addLine('■', C.gold, 'MANDATORY-WIREABLE — wire to items via their edit modal');
             } else {
-                lines.push(`<span style="color:${C.cyan}">■</span> UNIVERSAL-WIREABLE — wire to categories via their edit modal`);
+                addLine('■', C.cyan, 'UNIVERSAL-WIREABLE — wire to categories via their edit modal');
             }
 
             // Selection shape
             if (max === 1) {
-                lines.push(`<span style="color:${C.text}">◆</span> Single-select: panel auto-dismisses on pick`);
+                addLine('◆', C.text, 'Single-select: panel auto-dismisses on pick');
             } else {
-                lines.push(`<span style="color:${C.text}">◆</span> Multi-select: checklist with DONE, picks 0 or more up to ${max}`);
+                addLine('◆', C.text, `Multi-select: checklist with DONE, picks 0 or more up to ${max}`);
             }
 
             // Drives pricing
+            const issues = [];
             if (draft.drives_pricing) {
                 if (max === 1) {
-                    lines.push(`<span style="color:${C.gold}">💲</span> Drives pricing on optional modifiers`);
+                    addLine('💲', C.gold, 'Drives pricing on optional modifiers');
                 } else {
                     issues.push(`drives_pricing requires max = 1 (can't price off a multi-select)`);
                 }
             }
 
             // Validation issues
-            if (modifierCount === 0) {
-                issues.push(`no modifiers wired yet`);
-            }
-            if (max < min) {
-                issues.push(`max (${max}) must be ≥ min (${min})`);
-            }
-            if (max > modifierCount && modifierCount > 0) {
-                issues.push(`max (${max}) exceeds modifier count (${modifierCount})`);
-            }
-            if (min > modifierCount) {
-                issues.push(`min (${min}) exceeds modifier count (${modifierCount})`);
-            }
+            if (modifierCount === 0) issues.push('no modifiers wired yet');
+            if (max < min) issues.push(`max (${max}) must be ≥ min (${min})`);
+            if (max > modifierCount && modifierCount > 0) issues.push(`max (${max}) exceeds modifier count (${modifierCount})`);
+            if (min > modifierCount) issues.push(`min (${min}) exceeds modifier count (${modifierCount})`);
 
-            const linesHtml = lines.join('<br>');
-            const issuesHtml = issues.length
-                ? `<div style="margin-top:8px;color:${C.warning}"><strong>⚠ ${issues.join(' · ')}</strong></div>`
-                : '';
-            hintBox.innerHTML = linesHtml + issuesHtml;
+            if (issues.length > 0) {
+                const issueDiv = document.createElement('div');
+                issueDiv.style.cssText = `margin-top: 8px; color: ${C.warning};`;
+                const strong = document.createElement('strong');
+                strong.textContent = `⚠ ${issues.join(' · ')}`;
+                issueDiv.appendChild(strong);
+                hintBox.appendChild(issueDiv);
+            }
 
             // Update drives_pricing toggle availability
             if (max > 1 && drivesToggle.getValue()) {
@@ -1744,7 +1411,7 @@ function openGroupModal(existing) {
         `;
 
         function updateOverridesUI() {
-            overrideSection.innerHTML = '';
+            overrideSection.replaceChildren();
             if (draft.drives_pricing) return; // Drivers don't have overrides themselves
 
             const pricingDrivers = getAllWorking('groups').filter(g => g.drives_pricing);
@@ -1821,7 +1488,7 @@ function openGroupModal(existing) {
                 () => {
                     handleDeleteItem('groups', existing.id);
                     closeModal();
-                    buildMainView(currentWrapper);
+                    buildMainView(_state.currentWrapper);
                 }
             );
         }, { small: true }) : null;
@@ -1843,6 +1510,7 @@ function openGroupModal(existing) {
                 showToast('drives_pricing requires max = 1', 'error');
                 return;
             }
+            if (!_guardMandatoryHasModifiers(min, draft.modifier_ids, name, atomSection)) return;
 
             draft.name = name;
             draft.min_selections = min;
@@ -1850,7 +1518,7 @@ function openGroupModal(existing) {
 
             trackChange('groups', draft);
             closeModal();
-            buildMainView(currentWrapper);
+            buildMainView(_state.currentWrapper);
         }, {
             saveLabel: isEdit ? 'Save' : 'Create',
             extraLeft: deleteBtn,
@@ -1900,13 +1568,13 @@ function buildFooter(wrapper) {
             `${getPendingCount()} change(s) will be lost.`,
             'Discard',
             () => {
-                pendingChanges = { modifiers: [], groups: [] };
-                buildMainView(currentWrapper);
+                _state.pendingChanges = { modifiers: [], groups: [] };
+                buildMainView(_state.currentWrapper);
             }
         );
     }, { small: true }));
 
-    const saveBtn = buildPillButton('Save Changes', 'confirm', handleSaveChanges, { small: true });
+    const saveBtn = buildPillButton('Save Changes', 'confirm', () => _handleSaveChanges(_getSaveCtx()), { small: true });
     saveBtn.id = 'configure-modifiers-save-btn';
     btnRow.appendChild(saveBtn);
 
@@ -1930,175 +1598,23 @@ function updateFooter() {
     }
 }
 
-/**
- * Save orchestrator.
- *
- * Strategy:
- *   1. Collect dirty group IDs — explicit group edits AND any groups
- *      containing a changed modifier.
- *   2. For each dirty group, rebuild its modifiers[] payload from
- *      current modifier state (merging pending modifier changes so microMOD
- *      + name + price ride through).
- *   3. Emit modifier.group_created / _updated / _deleted for each.
- *   4. No modifier-level events are emitted — modifiers exist only inside
- *      groups in the backend projection.
- *
- * Orphan modifiers (in pendingChanges.modifiers but not referenced by any
- * group) produce no events and are dropped silently on next reload.
- * The Modifiers tab shows ⚠ NO GROUP badges so operators can catch this.
- */
-async function handleSaveChanges() {
-    if (getPendingCount() === 0) return;
-
-    const events = [];
-
-    // 1. Collect dirty group IDs
-    const dirtyGroupIds = new Set();
-    (pendingChanges.groups || []).forEach(g => dirtyGroupIds.add(g.id));
-    (pendingChanges.modifiers || []).forEach(modifier => {
-        const allGroups = getAllWorking('groups');
-        allGroups.forEach(g => {
-            if ((g.modifier_ids || []).includes(modifier.id)) {
-                dirtyGroupIds.add(g.id);
-            }
-        });
-    });
-
-    // 2+3. Emit events per dirty group
-    const orphanedModifierIds = [];
-    dirtyGroupIds.forEach(gid => {
-        const pendingG = (pendingChanges.groups || []).find(g => g.id === gid);
-        const baseG = (modData.groups || []).find(g => g.id === gid);
-
-        if (pendingG?._deleted) {
-            events.push({ event_type: 'modifier.group_deleted', payload: { group_id: gid } });
-            return;
-        }
-
-        const g = pendingG || baseG;
-        if (!g) return;
-
-        const isNew = !baseG;
-        // Build modifiers[] using current modifier state
-        const workingModifiers = getAllWorking('modifiers');
-        const modifiers = (g.modifier_ids || []).map(mid => {
-            const modifier = workingModifiers.find(a => a.id === mid);
-            if (!modifier) return null;
-            const base = {
-                modifier_id: mid,
-                name: modifier.name,
-                price: modifier.base_price || 0,
-            };
-            if (modifier.included_modifier_ids && modifier.included_modifier_ids.length > 0) {
-                base.included_modifier_ids = modifier.included_modifier_ids.slice();
-            }
-            const overrides = (g.price_by_option_map || {})[mid];
-            if (overrides && Object.keys(overrides).length > 0) {
-                base.price_by_option = overrides;
-            }
-            return base;
-        }).filter(Boolean);
-
-        events.push({
-            event_type: isNew ? 'modifier.group_created' : 'modifier.group_updated',
-            payload: {
-                group_id: gid,
-                name: g.name,
-                modifier_ids: g.modifier_ids || [],
-                modifiers,
-                min_selections: g.min_selections ?? 0,
-                max_selections: g.max_selections ?? 1,
-                drives_pricing: !!g.drives_pricing,
-            },
-        });
-    });
-
-    // Detect orphaned modifiers (for warning)
-    (pendingChanges.modifiers || []).forEach(modifier => {
-        if (modifier._deleted) return;
-        const allGroups = getAllWorking('groups');
-        const referenced = allGroups.some(g => (g.modifier_ids || []).includes(modifier.id));
-        if (!referenced && !(modData.modifiers || []).some(a => a.id === modifier.id)) {
-            orphanedModifierIds.push(modifier.id);
-        }
-    });
-
-    if (events.length === 0 && orphanedModifierIds.length > 0) {
-        showToast(`${orphanedModifierIds.length} modifier(s) not in any group — add them to a group to persist`, 'warning');
-        return;
-    }
-
-    if (events.length === 0) {
-        showToast('No events to push', 'warning');
-        return;
-    }
-
-    try {
-        const result = await pushChanges(events);
-        if (!result || !result.ok) {
-            showToast('Failed to save changes', 'error');
-            return;
-        }
-    } catch (e) {
-        console.error('[ConfigureModifiers] Save failed:', e);
-        showToast('Failed to save changes', 'error');
-        return;
-    }
-
-    // Apply pending to base data
-    const modifiers = getAllWorking('modifiers');
-    modData.modifiers = modifiers;
-
-    (pendingChanges.groups || []).forEach(g => {
-        if (g._deleted) {
-            modData.groups = (modData.groups || []).filter(x => x.id !== g.id);
-        } else {
-            const idx = (modData.groups || []).findIndex(x => x.id === g.id);
-            if (idx >= 0) modData.groups[idx] = clone(g);
-            else modData.groups.push(clone(g));
-        }
-    });
-
-    pendingChanges = { modifiers: [], groups: [] };
-    buildMainView(currentWrapper);
-
-    const msg = orphanedModifierIds.length > 0
-        ? `${events.length} saved · ${orphanedModifierIds.length} orphan modifier(s) not persisted`
-        : `${events.length} change${events.length === 1 ? '' : 's'} saved`;
-    showToast(msg, orphanedModifierIds.length > 0 ? 'warning' : 'confirm');
-}
-
-/* ============================================
-   CONFIRM DIALOG
-============================================ */
-
-function showConfirmDialog(title, message, confirmLabel, onConfirm) {
-    openModal(title, (body) => {
-        const msg = document.createElement('div');
-        msg.textContent = message;
-        msg.style.cssText = `
-            font-family: system-ui, sans-serif;
-            font-size: 14px;
-            color: ${C.text};
-            line-height: 1.6;
-            margin-bottom: 10px;
-        `;
-        body.appendChild(msg);
-
-        const footer = document.createElement('div');
-        footer.style.cssText = `
-            display: flex; gap: 10px; justify-content: flex-end;
-            margin-top: 20px;
-            padding-top: 16px;
-            border-top: 1px solid ${C.hairline};
-        `;
-        footer.appendChild(buildPillButton('Cancel', 'tertiary', closeModal, { small: true }));
-        footer.appendChild(buildPillButton(confirmLabel, 'danger', () => {
-            closeModal();
-            onConfirm();
-        }, { small: true }));
-        body.appendChild(footer);
-    }, { accent: C.verm, wide: false });
+/* ------------------------------------------
+   SAVE CONTEXT BUILDER
+   Assembles the ctx object that handleSaveChanges (in
+   modifier-data.js) needs to read/write scene state.
+------------------------------------------ */
+function _getSaveCtx() {
+    return {
+        pendingChanges: _state.pendingChanges,
+        modData: _state.modData,
+        setPendingChanges: (v) => { _state.pendingChanges = v; },
+        getAllWorking,
+        getPendingCount,
+        clone,
+        showToast,
+        buildMainView,
+        currentWrapper: _state.currentWrapper,
+    };
 }
 
 /* ============================================
@@ -2113,32 +1629,32 @@ export function registerConfigureModifiers(sceneManager) {
         async onEnter(container) {
             console.log('[ConfigureModifiers] Scene loaded — initializing...');
 
-            modData = await fetchModifierData();
-            pendingChanges = { modifiers: [], groups: [] };
-            activeTab = 'modifiers';
-            searchState = { modifiers: '', groups: '' };
-            modifierFilter = 'all';
+            _state.modData = await fetchModifierData();
+            _state.pendingChanges = { modifiers: [], groups: [] };
+            _state.activeTab = 'modifiers';
+            _state.searchState = { modifiers: '', groups: '' };
+            _state.modifierFilter = 'all';
 
-            currentWrapper = document.createElement('div');
-            currentWrapper.style.cssText = `
+            _state.currentWrapper = document.createElement('div');
+            _state.currentWrapper.style.cssText = `
                 max-width: 1100px;
                 margin: 0 auto;
                 padding: 24px 20px 40px 20px;
                 background: ${C.bg};
                 min-height: 100%;
             `;
-            container.appendChild(currentWrapper);
+            container.appendChild(_state.currentWrapper);
 
-            buildMainView(currentWrapper);
+            buildMainView(_state.currentWrapper);
 
-            console.log(`[ConfigureModifiers] Loaded ${modData.modifiers.length} modifiers, ${modData.groups.length} groups.`);
+            console.log(`[ConfigureModifiers] Loaded ${_state.modData.modifiers.length} modifiers, ${_state.modData.groups.length} groups.`);
             console.log('[ConfigureModifiers] Ready.');
         },
         onExit(container) {
-            currentWrapper = null;
-            modData = null;
-            pendingChanges = { modifiers: [], groups: [] };
-            if (container) container.innerHTML = '';
+            _state.currentWrapper = null;
+            _state.modData = null;
+            _state.pendingChanges = { modifiers: [], groups: [] };
+            if (container) container.replaceChildren();
             closeAllModals();
         },
     });
