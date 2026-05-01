@@ -26,11 +26,13 @@ export function computeDiscountAmount(items, pct) {
   var amount = 0;
   for (var i = 0; i < items.length; i++) {
     var it = items[i] || {};
-    var base = it.price || 0;
+    // parseFloat guards against Decimal-as-string serialization from the
+    // backend — JSON.stringify(NaN) → null which causes a 422 on the endpoint.
+    var base = parseFloat(it.price) || 0;
     var modSum = 0;
     if (Array.isArray(it.mods)) {
       for (var m = 0; m < it.mods.length; m++) {
-        modSum += (it.mods[m] && it.mods[m].price) || 0;
+        modSum += parseFloat(it.mods[m] && it.mods[m].price) || 0;
       }
     }
     var effective = (base + modSum) * (it.qty || 1);
