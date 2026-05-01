@@ -877,17 +877,16 @@ defineScene({
           }
 
           Promise.all(checks.map(function(check) {
-            var checkId = check.checkId || check.check_id;
             return fetchWithTimeout(
-              '/api/v1/orders/' + checkId + '/' + params.action,
+              '/api/v1/orders/' + check.check_id + '/' + params.action,
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(postData),
               },
               isDiscount ? 10000 : 10000
-            ).then(function(r) { return { ok: r.ok, check_id: checkId }; })
-            .catch(function() { return { ok: false, check_id: checkId }; });
+            ).then(function(r) { return { ok: r.ok, check_id: check.check_id }; })
+            .catch(function() { return { ok: false, check_id: check.check_id }; });
           }))
           .then(function(results) {
             var result = {
