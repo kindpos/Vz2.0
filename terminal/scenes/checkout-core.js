@@ -620,6 +620,319 @@ defineScene({
   },
 });
 
+// ── Manager action (discount/void) with PIN verification ───
+// Merged two-stage interrupt: PIN entry → discount/void picker
+//
+// params:
+//   action     — 'discount' | 'void'
+//   checks     — array of check objects
+//   onConfirm  — fn(result) where result has {pin, action_data, ...}
+//   onCancel   — fn()
+//
+defineScene({
+  name: 'co-manager-action',
+  render: function(container, params) {
+    var state = {
+      stage: 1,  // 1=PIN, 2=picker
+      pin: '',
+      error: null,
+      selectedDiscount: null,
+      selectedReason: null,
+    };
+
+    var clearContent = function() {
+      while (container.firstChild) container.removeChild(container.firstChild);
+    };
+
+    var renderStage1 = function() {
+      clearContent();
+      container.style.cssText = 'display:flex;align-items:center;justify-content:center;';
+
+      var numpad = buildNumpad({
+        maxDigits: 4,
+        masked: true,
+        onSubmit: function(pin) {
+          state.pin = pin;
+          state.stage = 2;
+          state.error = null;
+          renderStage2();
+        },
+        onCancel: function() { if (params.onCancel) params.onCancel(); },
+      });
+
+      var shell = buildStaticCard({ accent: T.groups.auth.shellAccent });
+      shell.style.padding = '20px 24px';
+      shell.appendChild(numpad);
+      container.appendChild(shell);
+    };
+
+    var renderStage2 = function() {
+      clearContent();
+      container.style.cssText = [
+        'width:100%;height:100%;',
+        'display:flex;align-items:center;justify-content:center;',
+      ].join('');
+
+      var isDiscount = params.action === 'discount';
+      var shell = buildStaticCard({
+        accent: isDiscount ? T.groups.picker.shellAccent : T.groups.confirmation.shellAccentDanger,
+      });
+      shell.style.display       = 'flex';
+      shell.style.flexDirection = 'column';
+      shell.style.gap           = '14px';
+      shell.style.width         = isDiscount ? '520px' : '420px';
+      shell.style.maxWidth      = '92vw';
+      shell.style.padding       = '24px 28px 28px 32px';
+      shell.style.boxSizing     = 'border-box';
+      var panel = shell;
+
+      // Header
+      if (isDiscount) {
+        var title = document.createElement('div');
+        title.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.elec + ';letter-spacing:2px;';
+        title.textContent = 'APPLY DISCOUNT';
+        panel.appendChild(title);
+      } else {
+        var voidTitle = document.createElement('div');
+        voidTitle.style.cssText = [
+          'font-family:' + T.fh + ';font-size:14px;font-weight:700;',
+          'color:' + T.verm + ';letter-spacing:2px;text-align:center;',
+        ].join('');
+        voidTitle.textContent = 'VOID CHECK';
+        panel.appendChild(voidTitle);
+
+        var sub = document.createElement('div');
+        sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
+        sub.textContent = 'this cannot be undone';
+        panel.appendChild(sub);
+      }
+
+      // Summary
+      var checks = params.checks || [];
+      var totalAmt = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+      var summary = document.createElement('div');
+      summary.style.cssText = [
+        'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
+        'padding:10px 14px;background:' + T.well + ';border-radius:8px;',
+        'display:flex;justify-content:space-between;align-items:baseline;',
+      ].join('');
+      var sL = document.createElement('span');
+      sL.textContent = isDiscount ?
+        (checks.length + (checks.length === 1 ? ' check' : ' checks') + ' • pick a discount') :
+        ('voiding ' + checks.length + (checks.length === 1 ? ' check' : ' checks'));
+      var sR = document.createElement('span');
+      sR.style.cssText = 'font-family:' + T.fb + ';font-size:15px;font-weight:700;color:' + T.gold + ';';
+      sR.textContent = '$' + totalAmt.toFixed(2);
+      summary.appendChild(sL);
+      summary.appendChild(sR);
+      panel.appendChild(summary);
+
+      // Discount picker or void reason picker
+      if (isDiscount) {
+        // Discount tile grid
+        var grid = document.createElement('div');
+        grid.style.cssText = 'display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;';
+
+        var presets = [
+          { type: 'percent', value: 10, label: '10% OFF' },
+          { type: 'percent', value: 15, label: '15% OFF' },
+          { type: 'percent', value: 20, label: '20% OFF' },
+          { type: 'percent', value: 25, label: '25% OFF' },
+          { type: 'amount',  value:  5, label: '$5 OFF'  },
+          { type: 'amount',  value: 10, label: '$10 OFF' },
+          { type: 'amount',  value: 15, label: '$15 OFF' },
+          { type: 'comp',    value: 100, label: 'COMP'    },
+        ];
+
+        var tiles = [];
+        presets.forEach(function(preset) {
+          var tile = document.createElement('div');
+          var isSel = false;
+          var applyStyle = function() {
+            tile.style.cssText = [
+              'display:flex;align-items:center;justify-content:center;',
+              'padding:16px 8px;border-radius:10px;',
+              'background:' + (isSel ? hexToRgba(T.groups.picker.optionSelected, 0.15) : T.well) + ';',
+              'border:2px solid ' + (isSel ? T.groups.picker.optionSelected : 'transparent') + ';',
+              'font-family:' + T.fh + ';font-size:14px;font-weight:700;',
+              'color:' + (preset.type === 'comp' ? T.gold : T.text) + ';letter-spacing:0.5px;',
+              'cursor:pointer;user-select:none;-webkit-user-select:none;',
+              'pointer-events:auto;touch-action:manipulation;',
+              'transition:background 0.1s, border-color 0.1s;',
+              'min-height:56px;',
+            ].join('');
+          };
+          applyStyle();
+          tile.textContent = preset.label;
+
+          tile.addEventListener('pointerup', function() {
+            tiles.forEach(function(t) { t._deselect(); });
+            isSel = true;
+            applyStyle();
+            state.selectedDiscount = preset;
+            updateApplyStyle();
+          });
+
+          tile._deselect = function() { isSel = false; applyStyle(); };
+          tiles.push(tile);
+          grid.appendChild(tile);
+        });
+        panel.appendChild(grid);
+      } else {
+        // Reason picker
+        var reasonLabel = document.createElement('div');
+        reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;';
+        reasonLabel.textContent = 'reason';
+        panel.appendChild(reasonLabel);
+
+        var reasonList = document.createElement('div');
+        reasonList.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+
+        var reasons = [
+          'Customer walked out',
+          'Duplicate order',
+          'Wrong order',
+          'Server error',
+          'Other',
+        ];
+
+        var reasonRows = [];
+        reasons.forEach(function(reason) {
+          var row = document.createElement('div');
+          row.style.cssText = [
+            'display:flex;align-items:center;gap:8px;',
+            'padding:8px 10px;border-radius:6px;',
+            'cursor:pointer;user-select:none;-webkit-user-select:none;',
+            'pointer-events:auto;touch-action:manipulation;',
+          ].join('');
+
+          var radio = document.createElement('div');
+          var isChecked = false;
+          var updateRadio = function() {
+            radio.style.cssText = [
+              'width:18px;height:18px;border-radius:50%;flex-shrink:0;',
+              'border:2px solid ' + (isChecked ? T.groups.confirmation.optionSelected : hexToRgba(T.text, 0.3)) + ';',
+              'background:' + (isChecked ? T.groups.confirmation.optionSelected : 'transparent') + ';',
+              'transition:border-color 0.1s, background 0.1s;',
+            ].join('');
+          };
+          updateRadio();
+
+          var label = document.createElement('span');
+          label.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';flex:1;';
+          label.textContent = reason;
+
+          row.appendChild(radio);
+          row.appendChild(label);
+
+          row.addEventListener('pointerup', function() {
+            reasonRows.forEach(function(r) { r._deselect(); });
+            isChecked = true;
+            updateRadio();
+            state.selectedReason = reason;
+            updateVoidStyle();
+          });
+
+          row._deselect = function() { isChecked = false; updateRadio(); };
+          reasonRows.push(row);
+          reasonList.appendChild(row);
+        });
+        panel.appendChild(reasonList);
+      }
+
+      // Action buttons
+      var btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
+
+      var cancel = buildPillButton({
+        label:    'CANCEL',
+        variant:  isDiscount ? T.groups.picker.cancel : T.groups.confirmation.cancel,
+        fontSize: T.fsB2,
+        onClick:  function() { if (params.onCancel) params.onCancel(); },
+      });
+      cancel.style.flex            = '1';
+      cancel.style.height          = '48px';
+      cancel.style.borderRadius    = '14px';
+      cancel.style.display         = 'flex';
+      cancel.style.alignItems      = 'center';
+      cancel.style.justifyContent  = 'center';
+
+      var actionLabel = isDiscount ? 'APPLY' : 'VOID';
+      var action = buildPillButton({
+        label:    actionLabel,
+        variant:  isDiscount ? T.groups.picker.apply : T.groups.confirmation.apply,
+        fontSize: T.fsB2,
+        onClick:  function() {
+          if (isDiscount && !state.selectedDiscount) return;
+          if (!isDiscount && !state.selectedReason) return;
+
+          var checks = params.checks || [];
+          var postData = { pin: state.pin };
+
+          if (isDiscount) {
+            postData.type = state.selectedDiscount.type;
+            postData.value = state.selectedDiscount.value;
+          } else {
+            postData.reason = state.selectedReason;
+          }
+
+          Promise.all(checks.map(function(check) {
+            return fetchWithTimeout(
+              '/api/v1/orders/' + check.check_id + '/' + params.action,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(postData),
+              },
+              isDiscount ? 10000 : 10000
+            ).then(function(r) { return { ok: r.ok, check_id: check.check_id }; })
+            .catch(function() { return { ok: false, check_id: check.check_id }; });
+          }))
+          .then(function(results) {
+            var result = {
+              pin: state.pin,
+              action: params.action,
+              results: results,
+            };
+            if (isDiscount) result.discount = state.selectedDiscount;
+            else result.reason = state.selectedReason;
+            if (params.onConfirm) params.onConfirm(result);
+          })
+          .catch(function() {
+            state.error = params.action + ' failed';
+            renderStage2();
+          });
+        },
+      });
+      action.style.flex           = '1';
+      action.style.height         = '48px';
+      action.style.borderRadius   = '14px';
+      action.style.display        = 'flex';
+      action.style.alignItems     = 'center';
+      action.style.justifyContent = 'center';
+      action.setDisabled(true);
+
+      var updateApplyStyle = function() {
+        action.setDisabled(!state.selectedDiscount);
+      };
+      var updateVoidStyle = function() {
+        action.setDisabled(!state.selectedReason);
+      };
+
+      if (isDiscount) updateApplyStyle();
+      else updateVoidStyle();
+
+      btnRow.appendChild(cancel);
+      btnRow.appendChild(action);
+      panel.appendChild(btnRow);
+
+      container.appendChild(shell);
+    };
+
+    renderStage1();
+  },
+});
+
 // ── Tip adjustment transactional ─────────────────
 // params.serverId (optional), params.onDone
 

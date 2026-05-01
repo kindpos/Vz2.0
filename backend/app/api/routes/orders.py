@@ -59,6 +59,7 @@ from app.api.dependencies import get_diagnostic_collector
 from app.api.dependencies import get_ledger
 from app.core.event_ledger import EventLedger, get_open_orders
 from app.api.routes.payment_routes import get_payment_manager, _ensure_devices
+from app.api.routes.auth import validate_pin_for_operation
 from app.services.print_context_builder import PrintContextBuilder
 from app.services.overseer_config_service import OverseerConfigService
 from app.core.adapters.base_payment import TransactionRequest as TxReq
@@ -223,9 +224,10 @@ class FailPaymentRequest(BaseModel):
 
 
 class VoidOrderRequest(BaseModel):
-    """Request to void an order. Requires manager approval."""
+    """Request to void an order. Requires manager PIN verification."""
+    pin: str
     reason: str
-    approved_by: str  # Manager ID required — voids are sensitive operations
+    approved_by: Optional[str] = None  # Will be populated from PIN verification
 
 
 class OrderItemResponse(BaseModel):
@@ -1412,14 +1414,22 @@ async def reopen_order(
 async def void_order(
         order_id: str,
         request: VoidOrderRequest,
+        http_request: Request,
         ledger: EventLedger = Depends(get_ledger),
 ):
-    """Void an order. Requires manager approval (approved_by)."""
-    if not request.approved_by or not request.approved_by.strip():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Manager approval required to void an order"
+    """Void an order. Requires manager PIN verification."""
+    client_id = http_request.client.host if http_request.client else "unknown"
+
+    try:
+        pin_result = await validate_pin_for_operation(
+            pin=request.pin,
+            client_id=client_id,
+            ledger=ledger,
+            operation_name="void_order"
         )
+        approved_by = pin_result["employee_id"]
+    except HTTPException as e:
+        raise e
 
     order = await get_order_or_404(ledger, order_id)
 
@@ -1483,7 +1493,7 @@ async def void_order(
         terminal_id=settings.terminal_id,
         order_id=order_id,
         reason=request.reason,
-        approved_by=request.approved_by,
+        approved_by=approved_by,
     ))
     await ledger.append_batch(batch_events)
 
@@ -1637,10 +1647,11 @@ async def merge_orders(
 # =============================================================================
 
 class ApplyDiscountRequest(BaseModel):
+    pin: str
     discount_type: str          # e.g. "10%", "25%", "Comp (100%)"
     amount: Decimal               # dollar amount of discount
     reason: Optional[str] = None
-    approved_by: Optional[str] = None
+    approved_by: Optional[str] = None  # Will be populated from PIN verification
     item_ids: Optional[list[str]] = None  # specific items, or None for whole order
     discount_id: Optional[str] = None  # catalog reference, if applied from a named discount
     transaction_id: Optional[str] = None  # idempotency key — same ID returns existing result
@@ -1649,9 +1660,22 @@ class ApplyDiscountRequest(BaseModel):
 async def apply_discount(
         order_id: str,
         request: ApplyDiscountRequest,
+        http_request: Request,
         ledger: EventLedger = Depends(get_ledger),
 ):
-    """Apply a manager-approved discount to an order."""
+    """Apply a manager-approved discount to an order via PIN verification."""
+    client_id = http_request.client.host if http_request.client else "unknown"
+
+    try:
+        pin_result = await validate_pin_for_operation(
+            pin=request.pin,
+            client_id=client_id,
+            ledger=ledger,
+            operation_name="apply_discount"
+        )
+        approved_by = pin_result["employee_id"]
+    except HTTPException as e:
+        raise e
     events = await ledger.get_events_by_correlation(order_id)
     if not events:
         raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
@@ -1694,7 +1718,7 @@ async def apply_discount(
         "discount_type": request.discount_type,
         "amount": money_round(request.amount),
         "reason": request.reason or f"Manager discount: {request.discount_type}",
-        "approved_by": request.approved_by,
+        "approved_by": approved_by,
         "item_ids": request.item_ids,
     }
     if request.discount_id is not None:

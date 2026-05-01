@@ -1571,12 +1571,7 @@ defineScene({
                         showToast(ok.length + ' discounted, ' + failed.length + ' failed', { bg: T.warning });
                       } else {
                         var code = failed[0] && failed[0].status;
-                        showToast(
-                          code === 404
-                            ? 'Discount endpoint pending \u2014 backend work needed'
-                            : 'Discount failed \u2014 try again',
-                          { bg: T.verm }
-                        );
+                        showToast('Discount failed \u2014 try again', { bg: T.verm });
                       }
 
                       state.selectedCheckIds = [];

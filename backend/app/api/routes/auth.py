@@ -222,6 +222,64 @@ async def require_manager(request: Request) -> Optional[dict]:
     return session
 
 
+# ── PIN Validation Helper ─────────────────────────
+
+async def validate_pin_for_operation(
+    pin: str,
+    client_id: str,
+    ledger: EventLedger,
+    operation_name: str = "operation",
+) -> dict:
+    """Validate a PIN and return employee info or raise HTTPException.
+
+    Returns:
+        dict with keys: employee_id, name, roles
+
+    Raises:
+        HTTPException: on invalid PIN, rate limit, or no matching employee
+    """
+    try:
+        _check_rate_limit(client_id)
+    except HTTPException as exc:
+        if exc.status_code == 429:
+            await _record_diag(
+                category=DiagnosticCategory.SEC,
+                severity=DiagnosticSeverity.WARNING,
+                source=f"auth.validate_pin_for_operation.{operation_name}",
+                event_code="SEC-001",
+                message=f"PIN rate-limit triggered for {operation_name}",
+                context={
+                    "client_id": client_id,
+                    "operation": operation_name,
+                    "attempts_in_window": len(_attempts.get(client_id, [])),
+                    "window_seconds": WINDOW_SECONDS,
+                },
+            )
+        raise
+
+    service = OverseerConfigService(ledger)
+    employees = await service.get_employees()
+
+    submitted = pin or ""
+    for e in employees:
+        if not e.active or not e.pin:
+            continue
+        if verify_pin_hash(submitted, e.pin):
+            _attempts.pop(client_id, None)
+            return {
+                "employee_id": e.employee_id,
+                "name": e.display_name,
+                "roles": e.role_ids,
+            }
+
+    _record_attempt(client_id)
+    raise HTTPException(
+        status_code=401,
+        detail="Invalid PIN",
+        headers={"X-Error-Code": "invalid_pin"},
+    )
+
+
 # ── Routes ────────────────────────────────────────
 
 class VerifyPinRequest(BaseModel):
