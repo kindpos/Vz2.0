@@ -34,6 +34,7 @@ from app.api.routes import auth
 from app.api.routes import sync
 from app.api.routes import entomology
 from app.api.routes import day_cash
+from app.api.routes import favorites
 from app.api.routes.printing import print_queue
 
 
@@ -214,7 +215,7 @@ app.include_router(orders.router, prefix="/api/v1")
 app.include_router(system.router, prefix="/api/v1")
 app.include_router(menu.router, prefix="/api/v1")
 app.include_router(hardware.router, prefix="/api/v1")
-app.include_router(printing.router, prefix="/api/v1/print")
+app.include_router(printing.router, prefix="/api/v1")
 app.include_router(payment_routes.router, prefix="/api/v1")
 app.include_router(config.router, prefix="/api/v1")
 app.include_router(staff.router, prefix="/api/v1")
@@ -225,6 +226,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(sync.router, prefix="/api/v1")
 app.include_router(entomology.router, prefix="/api/v1")
 app.include_router(day_cash.router, prefix="/api/v1")
+app.include_router(favorites.router, prefix="/api/v1")
 
 
 # Serve frontend
