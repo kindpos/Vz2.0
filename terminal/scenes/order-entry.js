@@ -245,6 +245,7 @@ function fetchMenuFromAPI() {
         .filter(function(g) { return g.builder; })
         .sort(function(a, b) { return (a.display_order || 999) - (b.display_order || 999); });
 
+      PIZZA_BUILDER_DATA = null;
       if (builderGroups.length > 0) {
         PIZZA_BUILDER_DATA = builderGroups.map(function(g) {
           var subcats;
@@ -392,6 +393,7 @@ defineScene({
     currentCustomerName = null;
     createOrderIdemKey = null;
     modHistory     = [];
+    comboFlow      = null;
     modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], panelEl: null, hasPizza: false };
     _bottomBar     = null;
     _mainArea      = null;
@@ -496,6 +498,7 @@ defineScene({
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
     _menuFetched   = false;
+    PIZZA_BUILDER_DATA = null;
   },
 
   interrupts: {
