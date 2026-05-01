@@ -6,7 +6,8 @@ from app.models.config_events import (
     MenuItem, MenuCategory, ModifierGroup, MicroMod,
     Section, FloorPlanLayout,
     Terminal, Printer, RoutingMatrix,
-    DashboardConfig, CustomReport, AccountsMapping
+    DashboardConfig, CustomReport, AccountsMapping,
+    Option, OptionGroup, Size,
 )
 
 T = TypeVar("T")
@@ -484,5 +485,131 @@ class OverseerConfigService:
         else:
             events.sort(key=lambda x: x.sequence_number or 0)
             result = RoutingMatrix(**events[-1].payload)
+        cache.set(seq, result)
+        return result
+
+    async def get_options(self) -> List[Option]:
+        cache = self._get_cache("options")
+        seq = await self._max_seq()
+        cached = cache.get(seq)
+        if cached is not None:
+            return cached
+
+        event_types = [
+            EventType.OPTION_CREATED,
+            EventType.OPTION_UPDATED,
+            EventType.OPTION_DEACTIVATED,
+            EventType.OPTION_REACTIVATED,
+        ]
+        events: list = []
+        for et in event_types:
+            events += await self.ledger.get_events_by_type(et, limit=5000)
+        events.sort(key=lambda x: x.sequence_number or 0)
+
+        options: Dict[str, Dict[str, Any]] = {}
+        for e in events:
+            payload = e.payload
+            oid = payload.get("option_id")
+            if not oid:
+                continue
+            if e.event_type == EventType.OPTION_CREATED:
+                options[oid] = dict(payload)
+            elif oid in options:
+                if e.event_type == EventType.OPTION_UPDATED:
+                    options[oid].update(payload)
+                elif e.event_type == EventType.OPTION_DEACTIVATED:
+                    options[oid]["active"] = False
+                elif e.event_type == EventType.OPTION_REACTIVATED:
+                    options[oid]["active"] = True
+
+        result = [Option(**o) for o in options.values()]
+        cache.set(seq, result)
+        return result
+
+    async def get_option_groups(self) -> List[OptionGroup]:
+        cache = self._get_cache("option_groups")
+        seq = await self._max_seq()
+        cached = cache.get(seq)
+        if cached is not None:
+            return cached
+
+        event_types = [
+            EventType.OPTION_GROUP_CREATED,
+            EventType.OPTION_GROUP_UPDATED,
+            EventType.OPTION_GROUP_OPTION_ADDED,
+            EventType.OPTION_GROUP_OPTION_REMOVED,
+            EventType.OPTION_GROUP_DEACTIVATED,
+            EventType.OPTION_GROUP_REACTIVATED,
+        ]
+        events: list = []
+        for et in event_types:
+            events += await self.ledger.get_events_by_type(et, limit=5000)
+        events.sort(key=lambda x: x.sequence_number or 0)
+
+        groups: Dict[str, Dict[str, Any]] = {}
+        for e in events:
+            payload = e.payload
+            gid = payload.get("option_group_id")
+            if not gid:
+                continue
+            if e.event_type == EventType.OPTION_GROUP_CREATED:
+                groups[gid] = dict(payload)
+            elif gid in groups:
+                if e.event_type == EventType.OPTION_GROUP_UPDATED:
+                    groups[gid].update(payload)
+                elif e.event_type == EventType.OPTION_GROUP_OPTION_ADDED:
+                    opt_id = payload.get("option_id")
+                    ids = groups[gid].setdefault("option_ids", [])
+                    if opt_id and opt_id not in ids:
+                        ids.append(opt_id)
+                elif e.event_type == EventType.OPTION_GROUP_OPTION_REMOVED:
+                    opt_id = payload.get("option_id")
+                    ids = groups[gid].get("option_ids", [])
+                    if opt_id in ids:
+                        ids.remove(opt_id)
+                elif e.event_type == EventType.OPTION_GROUP_DEACTIVATED:
+                    groups[gid]["active"] = False
+                elif e.event_type == EventType.OPTION_GROUP_REACTIVATED:
+                    groups[gid]["active"] = True
+
+        result = [OptionGroup(**g) for g in groups.values()]
+        cache.set(seq, result)
+        return result
+
+    async def get_sizes(self) -> List[Size]:
+        cache = self._get_cache("sizes")
+        seq = await self._max_seq()
+        cached = cache.get(seq)
+        if cached is not None:
+            return cached
+
+        event_types = [
+            EventType.SIZE_CREATED,
+            EventType.SIZE_UPDATED,
+            EventType.SIZE_DEACTIVATED,
+            EventType.SIZE_REACTIVATED,
+        ]
+        events: list = []
+        for et in event_types:
+            events += await self.ledger.get_events_by_type(et, limit=5000)
+        events.sort(key=lambda x: x.sequence_number or 0)
+
+        sizes: Dict[str, Dict[str, Any]] = {}
+        for e in events:
+            payload = e.payload
+            sid = payload.get("size_id")
+            if not sid:
+                continue
+            if e.event_type == EventType.SIZE_CREATED:
+                sizes[sid] = dict(payload)
+            elif sid in sizes:
+                if e.event_type == EventType.SIZE_UPDATED:
+                    sizes[sid].update(payload)
+                elif e.event_type == EventType.SIZE_DEACTIVATED:
+                    sizes[sid]["active"] = False
+                elif e.event_type == EventType.SIZE_REACTIVATED:
+                    sizes[sid]["active"] = True
+
+        result = [Size(**s) for s in sizes.values()]
         cache.set(seq, result)
         return result

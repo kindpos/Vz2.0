@@ -32,6 +32,9 @@ class MenuState(BaseModel):
     items_by_category: Dict[str, List[Dict[str, Any]]] = {}
     tax_rules: List[Dict[str, Any]] = []
     modifier_groups: List[Dict[str, Any]] = []
+    options: Dict[str, Any] = {}
+    option_groups: Dict[str, Any] = {}
+    sizes: Dict[str, Any] = {}
 
 def _apply_group_defaults(group: Dict[str, Any]) -> None:
     """Fill in new-model fields on a modifier group projection.
@@ -64,6 +67,9 @@ def project_menu(events: List[Event]) -> MenuState:
     categories_map = {}
     items_map = {}
     modifier_groups_map = {}
+    options_map: Dict[str, Any] = {}
+    option_groups_map: Dict[str, Any] = {}
+    sizes_map: Dict[str, Any] = {}
 
     for event in events:
         payload = event.payload
@@ -153,10 +159,86 @@ def project_menu(events: List[Event]) -> MenuState:
             if group_id in modifier_groups_map:
                 del modifier_groups_map[group_id]
 
+        # ── Options ──────────────────────────────────────────────────
+        elif event.event_type == EventType.OPTION_CREATED:
+            options_map[payload['option_id']] = dict(payload)
+
+        elif event.event_type == EventType.OPTION_UPDATED:
+            oid = payload.get('option_id')
+            if oid in options_map:
+                options_map[oid].update(payload)
+
+        elif event.event_type == EventType.OPTION_DEACTIVATED:
+            oid = payload.get('option_id')
+            if oid in options_map:
+                options_map[oid]['active'] = False
+
+        elif event.event_type == EventType.OPTION_REACTIVATED:
+            oid = payload.get('option_id')
+            if oid in options_map:
+                options_map[oid]['active'] = True
+
+        # ── OptionGroups ──────────────────────────────────────────────
+        elif event.event_type == EventType.OPTION_GROUP_CREATED:
+            option_groups_map[payload['option_group_id']] = dict(payload)
+
+        elif event.event_type == EventType.OPTION_GROUP_UPDATED:
+            gid = payload.get('option_group_id')
+            if gid in option_groups_map:
+                option_groups_map[gid].update(payload)
+
+        elif event.event_type == EventType.OPTION_GROUP_OPTION_ADDED:
+            gid = payload.get('option_group_id')
+            opt_id = payload.get('option_id')
+            if gid in option_groups_map:
+                ids = option_groups_map[gid].setdefault('option_ids', [])
+                if opt_id not in ids:
+                    ids.append(opt_id)
+
+        elif event.event_type == EventType.OPTION_GROUP_OPTION_REMOVED:
+            gid = payload.get('option_group_id')
+            opt_id = payload.get('option_id')
+            if gid in option_groups_map:
+                ids = option_groups_map[gid].get('option_ids', [])
+                if opt_id in ids:
+                    ids.remove(opt_id)
+
+        elif event.event_type == EventType.OPTION_GROUP_DEACTIVATED:
+            gid = payload.get('option_group_id')
+            if gid in option_groups_map:
+                option_groups_map[gid]['active'] = False
+
+        elif event.event_type == EventType.OPTION_GROUP_REACTIVATED:
+            gid = payload.get('option_group_id')
+            if gid in option_groups_map:
+                option_groups_map[gid]['active'] = True
+
+        # ── Sizes ─────────────────────────────────────────────────────
+        elif event.event_type == EventType.SIZE_CREATED:
+            sizes_map[payload['size_id']] = dict(payload)
+
+        elif event.event_type == EventType.SIZE_UPDATED:
+            sid = payload.get('size_id')
+            if sid in sizes_map:
+                sizes_map[sid].update(payload)
+
+        elif event.event_type == EventType.SIZE_DEACTIVATED:
+            sid = payload.get('size_id')
+            if sid in sizes_map:
+                sizes_map[sid]['active'] = False
+
+        elif event.event_type == EventType.SIZE_REACTIVATED:
+            sid = payload.get('size_id')
+            if sid in sizes_map:
+                sizes_map[sid]['active'] = True
+
     # Finalize state
     state.categories = sorted(categories_map.values(), key=lambda c: c.get('display_order', 999))
     state.items = list(items_map.values())
     state.modifier_groups = list(modifier_groups_map.values())
+    state.options = options_map
+    state.option_groups = option_groups_map
+    state.sizes = sizes_map
 
     # Enrich items authored by Overseer: they carry category_id but not
     # category (the name string). The terminal's fetchMenuFromAPI matches

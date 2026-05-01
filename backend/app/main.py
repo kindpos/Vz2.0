@@ -35,6 +35,9 @@ from app.api.routes import sync
 from app.api.routes import entomology
 from app.api.routes import day_cash
 from app.api.routes import favorites
+from app.api.routes import options as options_routes
+from app.api.routes import option_groups as option_groups_routes
+from app.api.routes import sizes as sizes_routes
 from app.api.routes.printing import print_queue
 
 
@@ -227,6 +230,9 @@ app.include_router(sync.router, prefix="/api/v1")
 app.include_router(entomology.router, prefix="/api/v1")
 app.include_router(day_cash.router, prefix="/api/v1")
 app.include_router(favorites.router, prefix="/api/v1")
+app.include_router(options_routes.router, prefix="/api/v1")
+app.include_router(option_groups_routes.router, prefix="/api/v1")
+app.include_router(sizes_routes.router, prefix="/api/v1")
 
 
 # Serve frontend

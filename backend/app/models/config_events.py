@@ -272,6 +272,26 @@ class MicroMod(BaseModel):
     active: bool = True
     is_86d: bool = False
 
+# Option / OptionGroup / Size Models
+class Option(BaseModel):
+    option_id: str
+    name: str
+    price_adjustment: Decimal = Decimal("0")
+    negates_price: bool = False
+    active: bool = True
+
+class OptionGroup(BaseModel):
+    option_group_id: str
+    name: str
+    option_ids: List[str] = []
+    active: bool = True
+
+class Size(BaseModel):
+    size_id: str
+    name: str
+    price_adjustment: Decimal = Decimal("0")
+    active: bool = True
+
 # Floor Plan Models
 class TableElement(BaseModel):
     id: str

@@ -241,6 +241,26 @@ class EventType(str, Enum):
     MICROMOD_86ED = "micromod.86ed"
     MICROMOD_86_CLEARED = "micromod.86_cleared"
 
+    # ── Options (LEDGER_OPERATIONAL) ─────────────────────────────────
+    OPTION_CREATED = "option.created"
+    OPTION_UPDATED = "option.updated"
+    OPTION_DEACTIVATED = "option.deactivated"
+    OPTION_REACTIVATED = "option.reactivated"
+
+    # ── OptionGroups (LEDGER_OPERATIONAL) ────────────────────────────
+    OPTION_GROUP_CREATED = "option_group.created"
+    OPTION_GROUP_UPDATED = "option_group.updated"
+    OPTION_GROUP_OPTION_ADDED = "option_group.option_added"
+    OPTION_GROUP_OPTION_REMOVED = "option_group.option_removed"
+    OPTION_GROUP_DEACTIVATED = "option_group.deactivated"
+    OPTION_GROUP_REACTIVATED = "option_group.reactivated"
+
+    # ── Sizes (LEDGER_OPERATIONAL) ────────────────────────────────────
+    SIZE_CREATED = "size.created"
+    SIZE_UPDATED = "size.updated"
+    SIZE_DEACTIVATED = "size.deactivated"
+    SIZE_REACTIVATED = "size.reactivated"
+
     # ── Batch setup (LEDGER_OPERATIONAL) ─────────────────────────────
     RESTAURANT_CONFIGURED = "restaurant.configured"
     TAX_RULES_BATCH_CREATED = "tax_rules.batch_created"
@@ -347,6 +367,9 @@ CONFIG_EVENT_PREFIXES: tuple[str, ...] = (
     "floorplan.",
     "terminal.",
     "routing.",
+    "option.",
+    "option_group.",
+    "size.",
 )
 
 
@@ -2240,6 +2263,206 @@ def micromod_86_cleared(
         **kwargs,
     )
 
+
+# =============================================================================
+# Option / OptionGroup / Size factory functions
+# =============================================================================
+
+def option_created(
+        terminal_id: str,
+        option_id: str,
+        name: str,
+        price_adjustment: Decimal = Decimal("0"),
+        negates_price: bool = False,
+        active: bool = True,
+        **kwargs,
+) -> Event:
+    """OPTION_CREATED: register a new selectable option."""
+    return create_event(
+        event_type=EventType.OPTION_CREATED,
+        terminal_id=terminal_id,
+        payload={
+            "option_id": option_id,
+            "name": name,
+            "price_adjustment": price_adjustment,
+            "negates_price": negates_price,
+            "active": active,
+        },
+        **kwargs,
+    )
+
+
+def option_updated(
+        terminal_id: str,
+        option_id: str,
+        **fields,
+) -> Event:
+    """OPTION_UPDATED: partial-update one or more option fields."""
+    return create_event(
+        event_type=EventType.OPTION_UPDATED,
+        terminal_id=terminal_id,
+        payload={"option_id": option_id, **fields},
+    )
+
+
+def option_deactivated(terminal_id: str, option_id: str, **kwargs) -> Event:
+    """OPTION_DEACTIVATED: soft-delete an option."""
+    return create_event(
+        event_type=EventType.OPTION_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload={"option_id": option_id},
+        **kwargs,
+    )
+
+
+def option_reactivated(terminal_id: str, option_id: str, **kwargs) -> Event:
+    """OPTION_REACTIVATED: undo option_deactivated."""
+    return create_event(
+        event_type=EventType.OPTION_REACTIVATED,
+        terminal_id=terminal_id,
+        payload={"option_id": option_id},
+        **kwargs,
+    )
+
+
+def option_group_created(
+        terminal_id: str,
+        option_group_id: str,
+        name: str,
+        option_ids: Optional[list] = None,
+        active: bool = True,
+        **kwargs,
+) -> Event:
+    """OPTION_GROUP_CREATED: register a new option group."""
+    return create_event(
+        event_type=EventType.OPTION_GROUP_CREATED,
+        terminal_id=terminal_id,
+        payload={
+            "option_group_id": option_group_id,
+            "name": name,
+            "option_ids": option_ids or [],
+            "active": active,
+        },
+        **kwargs,
+    )
+
+
+def option_group_updated(
+        terminal_id: str,
+        option_group_id: str,
+        **fields,
+) -> Event:
+    """OPTION_GROUP_UPDATED: partial-update one or more option group fields."""
+    return create_event(
+        event_type=EventType.OPTION_GROUP_UPDATED,
+        terminal_id=terminal_id,
+        payload={"option_group_id": option_group_id, **fields},
+    )
+
+
+def option_group_option_added(
+        terminal_id: str,
+        option_group_id: str,
+        option_id: str,
+        **kwargs,
+) -> Event:
+    """OPTION_GROUP_OPTION_ADDED: append an option to a group's ordered list."""
+    return create_event(
+        event_type=EventType.OPTION_GROUP_OPTION_ADDED,
+        terminal_id=terminal_id,
+        payload={"option_group_id": option_group_id, "option_id": option_id},
+        **kwargs,
+    )
+
+
+def option_group_option_removed(
+        terminal_id: str,
+        option_group_id: str,
+        option_id: str,
+        **kwargs,
+) -> Event:
+    """OPTION_GROUP_OPTION_REMOVED: remove an option from a group."""
+    return create_event(
+        event_type=EventType.OPTION_GROUP_OPTION_REMOVED,
+        terminal_id=terminal_id,
+        payload={"option_group_id": option_group_id, "option_id": option_id},
+        **kwargs,
+    )
+
+
+def option_group_deactivated(terminal_id: str, option_group_id: str, **kwargs) -> Event:
+    """OPTION_GROUP_DEACTIVATED: soft-delete an option group."""
+    return create_event(
+        event_type=EventType.OPTION_GROUP_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload={"option_group_id": option_group_id},
+        **kwargs,
+    )
+
+
+def option_group_reactivated(terminal_id: str, option_group_id: str, **kwargs) -> Event:
+    """OPTION_GROUP_REACTIVATED: undo option_group_deactivated."""
+    return create_event(
+        event_type=EventType.OPTION_GROUP_REACTIVATED,
+        terminal_id=terminal_id,
+        payload={"option_group_id": option_group_id},
+        **kwargs,
+    )
+
+
+def size_created(
+        terminal_id: str,
+        size_id: str,
+        name: str,
+        price_adjustment: Decimal = Decimal("0"),
+        active: bool = True,
+        **kwargs,
+) -> Event:
+    """SIZE_CREATED: register a new size option."""
+    return create_event(
+        event_type=EventType.SIZE_CREATED,
+        terminal_id=terminal_id,
+        payload={
+            "size_id": size_id,
+            "name": name,
+            "price_adjustment": price_adjustment,
+            "active": active,
+        },
+        **kwargs,
+    )
+
+
+def size_updated(
+        terminal_id: str,
+        size_id: str,
+        **fields,
+) -> Event:
+    """SIZE_UPDATED: partial-update one or more size fields."""
+    return create_event(
+        event_type=EventType.SIZE_UPDATED,
+        terminal_id=terminal_id,
+        payload={"size_id": size_id, **fields},
+    )
+
+
+def size_deactivated(terminal_id: str, size_id: str, **kwargs) -> Event:
+    """SIZE_DEACTIVATED: soft-delete a size."""
+    return create_event(
+        event_type=EventType.SIZE_DEACTIVATED,
+        terminal_id=terminal_id,
+        payload={"size_id": size_id},
+        **kwargs,
+    )
+
+
+def size_reactivated(terminal_id: str, size_id: str, **kwargs) -> Event:
+    """SIZE_REACTIVATED: undo size_deactivated."""
+    return create_event(
+        event_type=EventType.SIZE_REACTIVATED,
+        terminal_id=terminal_id,
+        payload={"size_id": size_id},
+        **kwargs,
+    )
 
 
 def menu_import_started(
