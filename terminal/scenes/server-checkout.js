@@ -1530,126 +1530,65 @@ defineScene({
           });
         },
         onDiscountCheck: function(checks) {
-          // Discount requires manager authorization → PIN first, then picker.
-          SceneManager.interrupt('co-manager-pin', {
-            onConfirm: function() {
-              SceneManager.closeInterrupt('co-manager-pin');
-              setTimeout(function() {
-                SceneManager.interrupt('co-discount-picker', {
-                  checks: checks,
-                  onConfirm: function(discount) {
-                    SceneManager.closeInterrupt('co-discount-picker');
+          SceneManager.interrupt('co-manager-action', {
+            action: 'discount',
+            checks: checks,
+            onConfirm: function(result) {
+              SceneManager.closeInterrupt('co-manager-action');
 
-                    var discounts = checks.map(function(chk) {
-                      return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/discount', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          type: discount.type,
-                          value: discount.value,
-                          manager_pin_verified: true,
-                        }),
-                      }, 10000).then(function(r) {
-                        return { chk: chk, ok: r.ok, status: r.status };
-                      }).catch(function() {
-                        return { chk: chk, ok: false, status: 0 };
-                      });
-                    });
+              var discount = result.discount;
+              var discLabel = discount.type === 'comp'
+                ? 'Comp'
+                : discount.type === 'percent'
+                  ? discount.value + '% off'
+                  : '$' + discount.value + ' off';
 
-                    Promise.all(discounts).then(function(results) {
-                      var ok = results.filter(function(r) { return r.ok; });
-                      var failed = results.filter(function(r) { return !r.ok; });
-                      var discLabel = discount.type === 'comp'
-                        ? 'Comp'
-                        : discount.type === 'percent'
-                          ? discount.value + '% off'
-                          : '$' + discount.value + ' off';
+              var okCount = result.results.filter(function(r) { return r.ok; }).length;
+              var failCount = result.results.length - okCount;
 
-                      if (ok.length > 0 && failed.length === 0) {
-                        showToast(discLabel + ' applied to ' + ok.length + (ok.length === 1 ? ' check' : ' checks'), { bg: T.elec });
-                      } else if (ok.length > 0 && failed.length > 0) {
-                        showToast(ok.length + ' discounted, ' + failed.length + ' failed', { bg: T.warning });
-                      } else {
-                        var code = failed[0] && failed[0].status;
-                        showToast('Discount failed \u2014 try again', { bg: T.verm });
-                      }
+              if (okCount > 0 && failCount === 0) {
+                showToast(discLabel + ' applied to ' + okCount + (okCount === 1 ? ' check' : ' checks'), { bg: T.elec });
+              } else if (okCount > 0 && failCount > 0) {
+                showToast(okCount + ' discounted, ' + failCount + ' failed', { bg: T.warning });
+              } else {
+                showToast('Discount failed — try again', { bg: T.verm });
+              }
 
-                      state.selectedCheckIds = [];
-                      refresh();
-                    });
-                  },
-                  onCancel: function() {
-                    SceneManager.closeInterrupt('co-discount-picker');
-                  },
-                });
-              }, 80);
+              state.selectedCheckIds = [];
+              refresh();
             },
             onCancel: function() {
-              SceneManager.closeInterrupt('co-manager-pin');
+              SceneManager.closeInterrupt('co-manager-action');
             },
           });
         },
-        onVoidCheck: function(checks) {
-          // Void is destructive + requires manager authorization → PIN first,
-          // then a reason-required confirm. Fires one void per selected check.
-          SceneManager.interrupt('co-manager-pin', {
-            onConfirm: function() {
-              SceneManager.closeInterrupt('co-manager-pin');
-              setTimeout(function() {
-                SceneManager.interrupt('co-void-confirm', {
-                  checks: checks,
-                  onConfirm: function(reason) {
-                    SceneManager.closeInterrupt('co-void-confirm');
+                onVoidCheck: function(checks) {
+          SceneManager.interrupt('co-manager-action', {
+            action: 'void',
+            checks: checks,
+            onConfirm: function(result) {
+              SceneManager.closeInterrupt('co-manager-action');
 
-                    var voids = checks.map(function(chk) {
-                      return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/void', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          reason: reason,
-                          manager_pin_verified: true,
-                        }),
-                      }, 10000).then(function(r) {
-                        return { chk: chk, ok: r.ok, status: r.status };
-                      }).catch(function() {
-                        return { chk: chk, ok: false, status: 0 };
-                      });
-                    });
+              var okCount = result.results.filter(function(r) { return r.ok; }).length;
+              var failCount = result.results.length - okCount;
 
-                    Promise.all(voids).then(function(results) {
-                      var ok = results.filter(function(r) { return r.ok; });
-                      var failed = results.filter(function(r) { return !r.ok; });
+              if (okCount > 0 && failCount === 0) {
+                showToast('Voided ' + okCount + (okCount === 1 ? ' check' : ' checks'), { bg: T.verm });
+              } else if (okCount > 0 && failCount > 0) {
+                showToast(okCount + ' voided, ' + failCount + ' failed', { bg: T.warning });
+              } else {
+                showToast('Void failed — try again', { bg: T.verm });
+              }
 
-                      if (ok.length > 0 && failed.length === 0) {
-                        showToast('Voided ' + ok.length + (ok.length === 1 ? ' check' : ' checks'), { bg: T.verm });
-                      } else if (ok.length > 0 && failed.length > 0) {
-                        showToast(ok.length + ' voided, ' + failed.length + ' failed', { bg: T.warning });
-                      } else {
-                        var code = failed[0] && failed[0].status;
-                        showToast(
-                          code === 404
-                            ? 'Void endpoint pending \u2014 backend work needed'
-                            : 'Void failed \u2014 try again',
-                          { bg: T.verm }
-                        );
-                      }
-
-                      state.selectedCheckIds = [];
-                      refresh();
-                    });
-                  },
-                  onCancel: function() {
-                    SceneManager.closeInterrupt('co-void-confirm');
-                  },
-                });
-              }, 80);
+              state.selectedCheckIds = [];
+              refresh();
             },
             onCancel: function() {
-              SceneManager.closeInterrupt('co-manager-pin');
+              SceneManager.closeInterrupt('co-manager-action');
             },
           });
         },
-        onJumpToCard: function(cardKey) {
+                onJumpToCard: function(cardKey) {
           // Smooth-scroll middle column to the target blocker card and flash
           // a brief highlight. Cards are tagged with data-card-key.
           var target = container.querySelector('[data-card-key="' + cardKey + '"]');
