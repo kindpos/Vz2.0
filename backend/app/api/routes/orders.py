@@ -284,6 +284,36 @@ class OrderResponse(BaseModel):
     @classmethod
     def from_order(cls, order: Order) -> "OrderResponse":
         """Convert an Order projection to a response."""
+        items = []
+        for item in order.items:
+            # Calculate discount amount for this specific item
+            item_discount = Decimal("0.00")
+            if item.item_id and order.discounts:
+                for discount in order.discounts:
+                    item_ids = discount.get("item_ids")
+                    if item_ids and item.item_id in item_ids:
+                        item_discount += Decimal(str(discount.get("amount", 0)))
+
+            # Effective price = (subtotal - discount) / quantity
+            item_subtotal_after_discount = item.subtotal - item_discount
+            effective_price = money_round(item_subtotal_after_discount / item.quantity) if item.quantity > 0 else Decimal("0.00")
+
+            items.append(OrderItemResponse(
+                item_id=item.item_id,
+                menu_item_id=item.menu_item_id,
+                name=item.name,
+                price=money_round(item.price),
+                quantity=item.quantity,
+                category=item.category,
+                notes=item.notes,
+                seat_number=item.seat_number,
+                modifiers=item.modifiers,
+                subtotal=money_round(item.subtotal),
+                effective_price=effective_price,
+                added_at=item.added_at,
+                sent_at=item.sent_at,
+            ))
+
         return cls(
             order_id=order.order_id,
             check_number=order.check_number,
@@ -294,24 +324,7 @@ class OrderResponse(BaseModel):
             guest_count=order.guest_count,
             seat_numbers=list(order.seat_numbers or []),
             status=order.status,
-            items=[
-                OrderItemResponse(
-                    item_id=item.item_id,
-                    menu_item_id=item.menu_item_id,
-                    name=item.name,
-                    price=money_round(item.price),
-                    quantity=item.quantity,
-                    category=item.category,
-                    notes=item.notes,
-                    seat_number=item.seat_number,
-                    modifiers=item.modifiers,
-                    subtotal=money_round(item.subtotal),
-                    effective_price=money_round(item.subtotal / item.quantity),
-                    added_at=item.added_at,
-                    sent_at=item.sent_at,
-                )
-                for item in order.items
-            ],
+            items=items,
             payments=[
                 PaymentResponse(
                     payment_id=p.payment_id,
