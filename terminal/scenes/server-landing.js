@@ -533,31 +533,28 @@ defineScene({
         var selected = state.selectedIds.indexOf(id) !== -1;
         r.tileGrid.appendChild(buildCheckTile(order, selected, function() {
           if (state._inputIgnoreUntil > Date.now()) return;
+          var lastTap = state.selectedAt[id] || 0;
+          if (lastTap && Date.now() - lastTap <= DOUBLE_TAP_MS) {
+            state._inputIgnoreUntil = Date.now() + 200;
+            delete state.selectedAt[id];
+            SceneManager.mountWorking('check-overview', {
+              checkId:       order.order_id,
+              returnLanding: 'server-landing',
+              employeeId:    state.emp ? state.emp.id   : null,
+              employeeName:  state.emp ? state.emp.name : null,
+              pin:           state.emp ? state.emp.pin  : null,
+            });
+            return;
+          }
           var idx = state.selectedIds.indexOf(id);
           if (idx === -1) {
             state.selectedIds.push(id);
-            state.selectedAt[id] = Date.now();
-            renderTiles();
-            renderPreview();
           } else {
-            var tappedAt = state.selectedAt[id] || 0;
-            if (Date.now() - tappedAt > DOUBLE_TAP_MS) {
-              state.selectedIds.splice(idx, 1);
-              delete state.selectedAt[id];
-              renderTiles();
-              renderPreview();
-            } else {
-              state._inputIgnoreUntil = Date.now() + 200;
-              delete state.selectedAt[id];
-              SceneManager.mountWorking('check-overview', {
-                checkId:       order.order_id,
-                returnLanding: 'server-landing',
-                employeeId:    state.emp ? state.emp.id   : null,
-                employeeName:  state.emp ? state.emp.name : null,
-                pin:           state.emp ? state.emp.pin  : null,
-              });
-            }
+            state.selectedIds.splice(idx, 1);
           }
+          state.selectedAt[id] = Date.now();
+          renderTiles();
+          renderPreview();
         }));
       });
       if (state.filter === 'OPEN') {

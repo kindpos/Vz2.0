@@ -411,7 +411,7 @@ describe('terminal/scenes/server-landing', () => {
     );
   });
 
-  it('double-tap after timeout deselects the tile instead of opening check-overview', async () => {
+  it('tap after DOUBLE_TAP_MS toggles selection instead of opening check-overview', async () => {
     vi.useFakeTimers();
     const { state } = mount();
     for (let i = 0; i < 6; i++) await Promise.resolve();
@@ -430,5 +430,32 @@ describe('terminal/scenes/server-landing', () => {
     tileA.dispatchEvent(new Event('pointerup'));   // second tap — deselects
     expect(state.selectedIds).not.toContain('ord-1');
     expect(SceneManagerMock.mountWorking).not.toHaveBeenCalled();
+  });
+
+  it('double-tap on already-selected tile opens check-overview', async () => {
+    vi.useFakeTimers();
+    const { state } = mount();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    state.allOrders = TEST_ORDERS;
+    vi.advanceTimersByTime(300);   // past 200ms _inputIgnoreUntil guard
+
+    const tileA = renderTilesViaFilterCycle(state);
+    expect(tileA).toBeDefined();
+
+    // Pre-select the tile, simulating a card that was already tapped earlier
+    // (selectedAt is intentionally cleared so the prior tap is well outside
+    // the double-tap window).
+    state.selectedIds = ['ord-1'];
+    state.selectedAt = {};
+    SceneManagerMock.mountWorking.mockClear();
+
+    tileA.dispatchEvent(new Event('pointerup'));   // first tap on selected tile
+    vi.advanceTimersByTime(200);                   // still within DOUBLE_TAP_MS
+    tileA.dispatchEvent(new Event('pointerup'));   // second tap — opens
+
+    expect(SceneManagerMock.mountWorking).toHaveBeenCalledWith(
+      'check-overview',
+      expect.objectContaining({ checkId: 'ord-1' }),
+    );
   });
 });

@@ -983,37 +983,33 @@ defineScene({
         var srvColor = state.serverColorMap[order.server_id] || T.elec;
         var _fc = STATUS_COLORS[state.filter] || {};
 
-        // Tap unselected → add to selection.
-        // Tap already-selected within DOUBLE_TAP_MS → push check-overview.
-        // Tap already-selected after DOUBLE_TAP_MS → deselect.
+        // Second tap within DOUBLE_TAP_MS of any prior tap → push check-overview.
+        // Otherwise tap toggles selection and records the tap time.
         // Long-press → ensure selection contains the tile, then open edit panel.
         var onClick = function() {
           if (_inputIgnoreUntil > Date.now()) return;
+          var lastTap = state.selectedAt[id] || 0;
+          if (lastTap && Date.now() - lastTap <= DOUBLE_TAP_MS) {
+            _inputIgnoreUntil = Date.now() + 200;
+            delete state.selectedAt[id];
+            SceneManager.mountWorking('check-overview', {
+              checkId:       order.order_id,
+              returnLanding: 'manager-landing',
+              employeeId:    state.emp ? state.emp.id   : null,
+              employeeName:  state.emp ? state.emp.name : null,
+              pin:           state.emp ? state.emp.pin  : null,
+            });
+            return;
+          }
           var idx = state.selectedIds.indexOf(id);
           if (idx === -1) {
             state.selectedIds.push(id);
-            state.selectedAt[id] = Date.now();
-            renderTiles();
-            renderPreview();
           } else {
-            var tappedAt = state.selectedAt[id] || 0;
-            if (Date.now() - tappedAt > DOUBLE_TAP_MS) {
-              state.selectedIds.splice(idx, 1);
-              delete state.selectedAt[id];
-              renderTiles();
-              renderPreview();
-            } else {
-              _inputIgnoreUntil = Date.now() + 200;
-              delete state.selectedAt[id];
-              SceneManager.mountWorking('check-overview', {
-                checkId:       order.order_id,
-                returnLanding: 'manager-landing',
-                employeeId:    state.emp ? state.emp.id   : null,
-                employeeName:  state.emp ? state.emp.name : null,
-                pin:           state.emp ? state.emp.pin  : null,
-              });
-            }
+            state.selectedIds.splice(idx, 1);
           }
+          state.selectedAt[id] = Date.now();
+          renderTiles();
+          renderPreview();
         };
         var onLongPress = function(ord) {
           if (state.selectedIds.indexOf(ord.order_id) === -1) {
