@@ -780,7 +780,6 @@ function renderFooterToolbar(state) {
   });
   undoBtn.style.height   = '100%';
   undoBtn.style.position = 'relative';
-  undoBtn.style.overflow = 'hidden';
 
   var undoLabel = document.createElement('span');
   undoLabel.textContent    = 'UNDO';
@@ -817,7 +816,14 @@ function renderFooterToolbar(state) {
   undoFill.style.borderRadius    = '10px';
   undoFill.style.pointerEvents   = 'none';
   undoFill.style.zIndex          = '0';
-  undoBtn.appendChild(undoFill);
+  var undoFillWrap = document.createElement('div');
+  undoFillWrap.style.position     = 'absolute';
+  undoFillWrap.style.inset        = '0';
+  undoFillWrap.style.overflow     = 'hidden';
+  undoFillWrap.style.borderRadius = 'inherit';
+  undoFillWrap.style.pointerEvents = 'none';
+  undoFillWrap.appendChild(undoFill);
+  undoBtn.appendChild(undoFillWrap);
 
   if (state.actionLog.length === 0) { undoBtn.style.opacity = '0.4'; undoBtn.style.pointerEvents = 'none'; }
   state.undoBtnEl = undoBtn;
