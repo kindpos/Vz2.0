@@ -186,6 +186,13 @@ class MenuItem(BaseModel):
     # and atoms that come on by default (strikable with NO / ON SIDE).
     mandatory_group_ids: List[str] = []
     included_modifier_ids: List[str] = []
+    # Pricing chain: size-aware base price adjustments.
+    # Same two-key structure as ModifierOption.price_by_size.
+    price_by_size: Dict[str, Dict[str, Decimal]] = {}
+    # Per-item override of a group's default_option_group_id.
+    option_group_overrides: Dict[str, str] = {}
+    # Per-item override of a modifier's price_by_size for a specific group.
+    size_price_overrides: Dict[str, Dict[str, Decimal]] = {}
 
     def __init__(self, **data):
         if 'category_id' not in data and 'category' in data:
@@ -234,6 +241,11 @@ class ModifierOption(BaseModel):
     included_modifier_ids: List[str] = []
     active: bool = True
     is_86d: bool = False
+    # Pricing chain: size-aware price adjustments.
+    # Outer key = group_id of the drives_pricing ModifierGroup that acts as the
+    # size selector. Inner key = modifier name from that group (the "size name").
+    # Value = price adjustment for that size combination.
+    price_by_size: Dict[str, Dict[str, Decimal]] = {}
 
 class ModifierGroup(BaseModel):
     group_id: str
@@ -263,6 +275,12 @@ class ModifierGroup(BaseModel):
     hidden: bool = False
     owner_item_id: Optional[str] = None
     active: bool = True
+    # Pricing chain: optional OptionGroup that applies to modifier selections in
+    # this group. Items may override per option_group_overrides.
+    default_option_group_id: Optional[str] = None
+    # Flat fallback size adjustments keyed by size name. Used when no per-modifier
+    # price_by_size entry exists for the selected size.
+    size_price_adjustments: Dict[str, Decimal] = {}
 
 class MicroMod(BaseModel):
     micromod_id: str

@@ -261,6 +261,14 @@ class EventType(str, Enum):
     SIZE_DEACTIVATED = "size.deactivated"
     SIZE_REACTIVATED = "size.reactivated"
 
+    # ── Pricing chain (LEDGER_OPERATIONAL) ───────────────────────────
+    MODIFIER_GROUP_OPTION_GROUP_SET = "modifier.group_option_group_set"
+    MODIFIER_GROUP_SIZE_ADJUSTMENTS_UPDATED = "modifier.group_size_adjustments_updated"
+    MODIFIER_SIZE_PRICING_SET = "modifier.size_pricing_set"
+    MENU_ITEM_SIZE_PRICING_SET = "menu.item_size_pricing_set"
+    MENU_ITEM_OPTION_GROUP_OVERRIDE_SET = "menu.item_option_group_override_set"
+    MENU_ITEM_SIZE_PRICE_OVERRIDE_SET = "menu.item_size_price_override_set"
+
     # ── Batch setup (LEDGER_OPERATIONAL) ─────────────────────────────
     RESTAURANT_CONFIGURED = "restaurant.configured"
     TAX_RULES_BATCH_CREATED = "tax_rules.batch_created"
@@ -2461,6 +2469,105 @@ def size_reactivated(terminal_id: str, size_id: str, **kwargs) -> Event:
         event_type=EventType.SIZE_REACTIVATED,
         terminal_id=terminal_id,
         payload={"size_id": size_id},
+        **kwargs,
+    )
+
+
+# =============================================================================
+# Pricing chain factory functions
+# =============================================================================
+
+def modifier_group_option_group_set(
+        terminal_id: str,
+        group_id: str,
+        option_group_id: str,
+        **kwargs,
+) -> Event:
+    """MODIFIER_GROUP_OPTION_GROUP_SET: attach a default OptionGroup to a modifier group."""
+    return create_event(
+        event_type=EventType.MODIFIER_GROUP_OPTION_GROUP_SET,
+        terminal_id=terminal_id,
+        payload={"group_id": group_id, "option_group_id": option_group_id},
+        **kwargs,
+    )
+
+
+def modifier_group_size_adjustments_updated(
+        terminal_id: str,
+        group_id: str,
+        size_price_adjustments: dict,
+        **kwargs,
+) -> Event:
+    """MODIFIER_GROUP_SIZE_ADJUSTMENTS_UPDATED: replace flat size fallback adjustments on a group."""
+    return create_event(
+        event_type=EventType.MODIFIER_GROUP_SIZE_ADJUSTMENTS_UPDATED,
+        terminal_id=terminal_id,
+        payload={"group_id": group_id, "size_price_adjustments": size_price_adjustments},
+        **kwargs,
+    )
+
+
+def modifier_size_pricing_set(
+        terminal_id: str,
+        modifier_id: str,
+        group_id: str,
+        size_prices: dict,
+        **kwargs,
+) -> Event:
+    """MODIFIER_SIZE_PRICING_SET: set size-aware price adjustments for one modifier."""
+    return create_event(
+        event_type=EventType.MODIFIER_SIZE_PRICING_SET,
+        terminal_id=terminal_id,
+        payload={"modifier_id": modifier_id, "group_id": group_id, "size_prices": size_prices},
+        **kwargs,
+    )
+
+
+def menu_item_size_pricing_set(
+        terminal_id: str,
+        item_id: str,
+        group_id: str,
+        size_prices: dict,
+        **kwargs,
+) -> Event:
+    """MENU_ITEM_SIZE_PRICING_SET: set size-aware base price adjustments for one item."""
+    return create_event(
+        event_type=EventType.MENU_ITEM_SIZE_PRICING_SET,
+        terminal_id=terminal_id,
+        payload={"item_id": item_id, "group_id": group_id, "size_prices": size_prices},
+        **kwargs,
+    )
+
+
+def menu_item_option_group_override_set(
+        terminal_id: str,
+        item_id: str,
+        group_id: str,
+        option_group_id: str,
+        **kwargs,
+) -> Event:
+    """MENU_ITEM_OPTION_GROUP_OVERRIDE_SET: override which OptionGroup applies on an item."""
+    return create_event(
+        event_type=EventType.MENU_ITEM_OPTION_GROUP_OVERRIDE_SET,
+        terminal_id=terminal_id,
+        payload={"item_id": item_id, "group_id": group_id, "option_group_id": option_group_id},
+        **kwargs,
+    )
+
+
+def menu_item_size_price_override_set(
+        terminal_id: str,
+        item_id: str,
+        group_id: str,
+        size_name: str,
+        price: Decimal,
+        **kwargs,
+) -> Event:
+    """MENU_ITEM_SIZE_PRICE_OVERRIDE_SET: per-item override of a modifier size price for one size."""
+    return create_event(
+        event_type=EventType.MENU_ITEM_SIZE_PRICE_OVERRIDE_SET,
+        terminal_id=terminal_id,
+        payload={"item_id": item_id, "group_id": group_id, "size_name": size_name, "price": price},
         **kwargs,
     )
 
