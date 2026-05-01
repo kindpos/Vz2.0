@@ -48,6 +48,7 @@ vi.mock('../theme-manager.js', () => ({
   },
   hexToRgba:  (c) => c,
   darkenHex:  (c) => c,
+  lightenHex: (c) => c,
   buildCard:  () => ({
     wrap: document.createElement('div'),
     card: document.createElement('div'),
@@ -395,17 +396,16 @@ describe('terminal/scenes/check-overview — Bug 1: void-item timer cancelled on
     );
   });
 
-  it('DELETE fires when scene stays mounted past 4.2 s', async () => {
+  it('DELETE fires immediately when scene stays mounted (no undo window)', async () => {
+    // The redesign removed the 4.2 s undo window — DELETE now fires synchronously
+    // from handleVoid. The test still asserts that a void on a mounted scene
+    // produces the DELETE; just without the timer dance.
     const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'order-b1' };
     state.seats         = [{ id: 'S-001', number: 1, items: [{ item_id: 'item-1', name: 'Burger', price: 10 }] }];
     state.selectedItems = { '0:0': true };
     state.topAreaEl     = document.createElement('div');
 
     sceneDef.__handlers.handleVoid(state);
-
-    fetchWithTimeout.mockClear();
-
-    vi.advanceTimersByTime(5000);
     await Promise.resolve();
 
     expect(fetchWithTimeout).toHaveBeenCalledWith(
@@ -1211,18 +1211,20 @@ describe('terminal/scenes/check-overview — renderSeatsGrid Mode A / Mode B', (
     };
   }
 
-  it('Mode B renders a 300 px right-column tiles grid', () => {
+  it('Mode B renders a flex tiles column with a 4-column inner grid', () => {
     activeSeatCount.mockReturnValue(5);
     const state     = makeGridState(5);
     const container = document.createElement('div');
 
     sceneDef.__handlers.renderSeatsGrid(state, container, 'B');
 
-    // Right column: 300px wide grid
-    const tilesCol = Array.from(container.children)
-      .find((el) => el.style.width === '300px');
+    // Right column is the second child; the inner grid uses repeat(4, 1fr).
+    const tilesCol  = container.children[1];
     expect(tilesCol).toBeDefined();
-    expect(tilesCol.style.gridTemplateColumns).toBe('repeat(3, 1fr)');
+    // JSDOM expands `flex: 1` shorthand to `1 1 0%`.
+    expect(tilesCol.style.flex).toBe('1 1 0%');
+    const tilesGrid = tilesCol.children[0];
+    expect(tilesGrid.style.gridTemplateColumns).toBe('repeat(4, 1fr)');
   });
 
   it('Mode B renders exactly two columns (recap + tiles)', () => {
@@ -1232,12 +1234,12 @@ describe('terminal/scenes/check-overview — renderSeatsGrid Mode A / Mode B', (
 
     sceneDef.__handlers.renderSeatsGrid(state, container, 'B');
 
-    // Mode B appends exactly recapCol then tilesCol and returns
+    // Mode B appends exactly recapShell then tilesCol and returns
     expect(container.children.length).toBe(2);
-    // First child is the recap column (no fixed width)
-    expect(container.children[0].style.width).not.toBe('300px');
-    // Second child is the tiles column (300px)
-    expect(container.children[1].style.width).toBe('300px');
+    // First child is the recap column with a fixed 360px width
+    expect(container.children[0].style.width).toBe('360px');
+    // Second child is the tiles column, which fills remaining space via flex:1
+    expect(container.children[1].style.flex).toBe('1 1 0%');
   });
 
   it('Mode A renders one element per seat plus the +SEAT add tile', () => {
@@ -1261,9 +1263,11 @@ describe('terminal/scenes/check-overview — renderSeatsGrid Mode A / Mode B', (
 
     sceneDef.__handlers.renderSeatsGrid(state, container, 'B');
 
-    const tilesCol = Array.from(container.children).find((el) => el.style.width === '300px');
-    // tilesCol children: ALL SEATS btn + +SEAT tile + 5 seat tiles
-    expect(tilesCol.children.length).toBe(5 + 2);
+    // The redesign moved the +SEAT tile inside tilesGrid and dropped the
+    // ALL SEATS button: 5 seat tiles + 1 +SEAT tile = 6 grid children.
+    const tilesCol  = container.children[1];
+    const tilesGrid = tilesCol.children[0];
+    expect(tilesGrid.children.length).toBe(5 + 1);
   });
 });
 

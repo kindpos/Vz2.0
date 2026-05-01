@@ -695,7 +695,7 @@ function buildColumn(colIdx, state) {
 
   card.appendChild(itemList);
 
-  state.colEls.push({ el: card, hdr: hdr });
+  state.colEls.push({ el: card, hdr: hdr, itemList: itemList });
   return card;
 }
 

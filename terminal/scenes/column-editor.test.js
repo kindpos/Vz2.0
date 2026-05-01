@@ -60,8 +60,9 @@ vi.mock('../theme-manager.js', () => ({
     return el;
   },
   buildSectionLabel: () => document.createElement('div'),
-  hexToRgba: (c) => c,
-  darkenHex: (c) => c,
+  hexToRgba:  (c) => c,
+  darkenHex:  (c) => c,
+  lightenHex: (c) => c,
 }));
 
 vi.mock('../components.js', () => ({ showToast: vi.fn() }));
@@ -87,12 +88,16 @@ function makeCols(specs) {
   }));
 }
 
-// Find a <button> by its label text (also matches buttons whose first span holds the text)
+// Find a button-like element by its label text. The redesign builds action
+// buttons (MOVE/SPLIT/MERGE/UNDO/CANCEL/CONFIRM) as <div>s with cursor:pointer
+// rather than <button>s, so we accept either, plus the legacy nested-span case.
 function findBtn(container, text) {
-  return [...container.querySelectorAll('button')].find(
-    (b) => b.textContent === text ||
-           (b.querySelector('span') && b.querySelector('span').textContent === text),
-  );
+  return [...container.querySelectorAll('button, div')].find((b) => {
+    const matches = b.textContent === text ||
+      (b.querySelector('span') && b.querySelector('span').textContent === text);
+    if (!matches) return false;
+    return b.tagName === 'BUTTON' || b.style.cursor === 'pointer';
+  });
 }
 
 // Find an add-zone <div> (NEW SEAT / NEW CHECK) by its label text
@@ -136,7 +141,14 @@ afterEach(() => {
 function mount(columns, onSave) {
   const state = JSON.parse(JSON.stringify(sceneDef.state));
   state.listeners = [];
-  sceneDef.render(container, { columns, onSave: onSave || vi.fn() }, state);
+  // The redesign defaults visibleColIds to the first column only; pass
+  // focusedIds so multi-column tests still see every column rendered.
+  const focusedIds = columns.map((c) => c.id);
+  sceneDef.render(
+    container,
+    { columns, focusedIds, onSave: onSave || vi.fn() },
+    state,
+  );
   return state;
 }
 
@@ -208,12 +220,12 @@ describe('column-editor — Split', () => {
     ]);
     const state = mount(cols);
 
-    // Enter split mode
+    // Select the item first — auto-activates MOVE and ungates SPLIT/MERGE
+    tap(state.colEls[0].itemList.firstElementChild);
+
+    // Switch to split mode
     tap(findBtn(container, 'SPLIT'));
     expect(state.mode).toBe('split');
-
-    // Select the item
-    tap(state.colEls[0].itemList.firstElementChild);
 
     // Choose both columns as targets
     tap(state.colEls[0].hdr);
@@ -236,8 +248,8 @@ describe('column-editor — Split', () => {
     ]);
     const state = mount(cols);
 
-    tap(findBtn(container, 'SPLIT'));
     tap(state.colEls[0].itemList.firstElementChild);
+    tap(findBtn(container, 'SPLIT'));
     tap(state.colEls[0].hdr);
     tap(state.colEls[1].hdr);
     tap(findBtn(container, 'CONFIRM'));
@@ -256,8 +268,8 @@ describe('column-editor — Split', () => {
     ]);
     const state = mount(cols);
 
-    tap(findBtn(container, 'SPLIT'));
     tap(state.colEls[0].itemList.firstElementChild);
+    tap(findBtn(container, 'SPLIT'));
     tap(state.colEls[0].hdr);
     tap(state.colEls[1].hdr);
     tap(findBtn(container, 'CONFIRM'));
@@ -275,8 +287,8 @@ describe('column-editor — Split', () => {
     ]);
     const state = mount(cols);
 
-    tap(findBtn(container, 'SPLIT'));
     tap(state.colEls[0].itemList.firstElementChild);
+    tap(findBtn(container, 'SPLIT'));
     tap(state.colEls[0].hdr);
     tap(state.colEls[1].hdr);
     tap(state.colEls[2].hdr);
@@ -305,11 +317,14 @@ describe('column-editor — Merge', () => {
     ]);
     const state = mount(cols);
 
+    // Select an item to ungate MERGE
+    tap(state.colEls[0].itemList.firstElementChild);
     tap(findBtn(container, 'MERGE'));
     expect(state.mode).toBe('merge');
 
-    // Tap col 1 as the merge target
+    // Tap col 1 as the merge target, then CONFIRM
     tap(state.colEls[1].hdr);
+    tap(findBtn(container, 'CONFIRM'));
 
     expect(state.columns).toHaveLength(1);
     expect(state.columns[0].items).toHaveLength(2);
@@ -329,8 +344,11 @@ describe('column-editor — Merge', () => {
     ];
     const state = mount(raw);
 
+    // Select an item to ungate MERGE
+    tap(state.colEls[1].itemList.firstElementChild);
     tap(findBtn(container, 'MERGE'));
     tap(state.colEls[0].hdr);
+    tap(findBtn(container, 'CONFIRM'));
 
     // The two halves should be collapsed back into one item ($30.00)
     expect(state.columns[0].items).toHaveLength(1);
@@ -416,9 +434,10 @@ describe('column-editor — Add seat', () => {
     const cols = makeCols([[{ name: 'Chips', price: 2 }]]);
     const state = mount(cols);
 
-    const addSeatZone = findZone(container, 'NEW SEAT');
-    expect(addSeatZone).not.toBeNull();
-    tap(addSeatZone);
+    // Redesign: "+" button in the seat selector replaces the NEW SEAT zone.
+    const addSeatBtn = findBtn(container, '+');
+    expect(addSeatBtn).toBeDefined();
+    tap(addSeatBtn);
 
     expect(state.columns).toHaveLength(2);
     expect(state.columns[1].label).toBe('S-002');
@@ -432,8 +451,8 @@ describe('column-editor — Add seat', () => {
     ]);
     const state = mount(cols);
 
-    const addSeatZone = findZone(container, 'NEW SEAT');
-    tap(addSeatZone);
+    const addSeatBtn = findBtn(container, '+');
+    tap(addSeatBtn);
 
     expect(state.columns[2].label).toBe('S-003');
   });
