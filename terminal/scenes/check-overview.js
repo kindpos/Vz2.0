@@ -3623,8 +3623,10 @@ function handleDiscount(state) {
 }
 
 function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
+  // Track whether this is a whole-seat discount (selected by seat) vs item-level
+  var isWholeSeatDiscount = itemRefs.length === 0 && seatIds.length > 0;
   // Expand seat selections into item refs
-  if (itemRefs.length === 0 && seatIds.length > 0) {
+  if (isWholeSeatDiscount) {
     for (var s = 0; s < seatIds.length; s++) {
       var sIdx = _seatIdxById(state, seatIds[s]);
       if (sIdx < 0) continue;
@@ -3677,14 +3679,17 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
       if (_dItem.item_id) {
         state._itemDiscounts[_dItem.item_id] = { pct: pct, amount: _dAmt };
       }
-      // Per-seat cache (keyed by seat.id — more reliable fallback)
-      var _dSeat = _dRef && state.seats[_dRef.seatIdx];
-      if (_dSeat && _dSeat.id) {
-        if (!state._seatDiscounts[_dSeat.id]) {
-          state._seatDiscounts[_dSeat.id] = { pct: pct, amount: 0 };
+      // Per-seat cache only for whole-seat discounts, not item-level discounts.
+      // Item-level discounts should only be indicated via _itemDiscounts.
+      if (isWholeSeatDiscount) {
+        var _dSeat = _dRef && state.seats[_dRef.seatIdx];
+        if (_dSeat && _dSeat.id) {
+          if (!state._seatDiscounts[_dSeat.id]) {
+            state._seatDiscounts[_dSeat.id] = { pct: pct, amount: 0 };
+          }
+          state._seatDiscounts[_dSeat.id].amount =
+            Math.round((state._seatDiscounts[_dSeat.id].amount + _dAmt) * 100) / 100;
         }
-        state._seatDiscounts[_dSeat.id].amount =
-          Math.round((state._seatDiscounts[_dSeat.id].amount + _dAmt) * 100) / 100;
       }
     }
     state.selectedItems = {};
