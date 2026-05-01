@@ -121,7 +121,7 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
   btn.addEventListener('pointerdown', function() {
     if (btn._disabled) return;
     btn.style.background = darkBg;
-    btn.style.color      = o.variant === 'ghost' ? T.text : color;
+    btn.style.color      = o.variant === 'ghost' ? T.text : T.well;
     btn.style.boxShadow  = 'none';
     // Preserve existing transform (e.g. translateX(-50%) for centered buttons)
     const current = btn.style.transform || '';
