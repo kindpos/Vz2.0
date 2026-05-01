@@ -286,13 +286,21 @@ class OrderResponse(BaseModel):
         """Convert an Order projection to a response."""
         items = []
         for item in order.items:
-            # Calculate discount amount for this specific item
+            # Calculate discount amount for this specific item.
+            # When multiple items are discounted together, split the discount
+            # proportionally based on each item's subtotal.
             item_discount = Decimal("0.00")
             if item.item_id and order.discounts:
                 for discount in order.discounts:
                     item_ids = discount.get("item_ids")
                     if item_ids and item.item_id in item_ids:
-                        item_discount += Decimal(str(discount.get("amount", 0)))
+                        # Allocate discount proportionally among discounted items
+                        discount_items = [it for it in order.items
+                                        if it.item_id and it.item_id in item_ids]
+                        total_subtotal = sum((it.subtotal for it in discount_items), Decimal("0.00"))
+                        if total_subtotal > 0:
+                            item_share = item.subtotal / total_subtotal
+                            item_discount += Decimal(str(discount.get("amount", 0))) * item_share
 
             # Effective price = (subtotal - discount) / quantity
             item_subtotal_after_discount = item.subtotal - item_discount
