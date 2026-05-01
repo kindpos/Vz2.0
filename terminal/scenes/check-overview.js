@@ -43,6 +43,7 @@ import {
   buildPillButton,
   hexToRgba,
   darkenHex,
+  lightenHex,
 } from '../theme-manager.js';
 import { OrderSummary } from '../order-summary.js';
 import { buildNumpad } from '../numpad.js';
@@ -410,13 +411,17 @@ defineScene({
     bottomBarEl:   null,
     seatEls:       {},
     _lpTimers:     [],
-    _voidTimers:   [],
     _mode:         null,
     _summaryItemMap:{},
     _osActive:     false,
     _mountParams:  null,
     _seatsChain:   null,
     _refreshInFlight: false,
+    focusedSeats:  {},
+    expandedSeats: {},
+    _itemDiscounts: {},   // item_id → {pct, amount} — survives refreshOrder
+    _voidedItems:   [],   // {seatNumber, item} re-injected after every refreshOrder
+    _seatDiscounts: {},   // seat.id  → {pct, amount} — fallback when item_id absent
   },
 
   render: function(container, params, state) {
@@ -442,10 +447,14 @@ defineScene({
     state._payingSeats       = [];
     state._backConfirmed= false;
     state._lpTimers     = [];
-    state._voidTimers   = [];
     state._mode         = null;
     state._osActive     = false;
-    state._tileSelSet   = new Set();
+    state._tileSelSet   = null;       // legacy — superseded by focusedSeats
+    state.focusedSeats  = {};         // { seatId: true } — Mode B filter
+    state.expandedSeats = {};         // { seatId: true } — Mode B collapsible
+    state._itemDiscounts = {};
+    state._voidedItems   = [];        // cleared on new mount; repopulated by _applyDiscount
+    state._seatDiscounts = {};
     state._mountParams  = params;   // persistSeats() reads employee info
     state._seatsChain   = null;     // reset per mount
     state.seats = orderToSeats(null, 1);
@@ -509,10 +518,11 @@ defineScene({
 
     var bottomRow = document.createElement('div');
     Object.assign(bottomRow.style, {
-      minHeight:  '140px',
-      flexShrink: '0',
-      display:    'flex',
+      minHeight:     '140px',
+      flexShrink:    '0',
+      display:       'flex',
       pointerEvents: 'auto',
+      margin:        '0 -12px',   // break out of body padding — matches header width
     });
     body.appendChild(bottomRow);
     state.bottomBarEl = bottomRow;
@@ -559,8 +569,6 @@ defineScene({
 
     for (var t = 0; t < state._lpTimers.length; t++) clearTimeout(state._lpTimers[t]);
     state._lpTimers = [];
-    for (var v = 0; v < state._voidTimers.length; v++) clearTimeout(state._voidTimers[v]);
-    state._voidTimers = [];
   },
 
   interrupts: {
@@ -1077,22 +1085,21 @@ function renderActionBar(state) {
   var order           = state.order || {};
   var discount        = getCashDiscount();
   var managerDiscount = order.manager_discount_total || 0;
+  var bevelLt         = lightenHex(T.bg, 0.08);
+  var bevelDk         = darkenHex(T.bg, 0.2);
 
   // ── Selection-aware totals ──
-  // When items are selected the bar shows a filtered subtotal so the user
-  // can confirm what they're about to act on. The server has no endpoint
-  // for a subset total, so we derive it locally from effectivePrice —
-  // which is always a server-provided value populated during refreshOrder().
-  // The unselected path (else) trusts order.subtotal / order.total directly.
-  var itemKeys   = Object.keys(state.selectedItems || {});
-  var anyItemSel = itemKeys.length > 0;
+  var itemKeys    = Object.keys(state.selectedItems || {});
+  var anyItemSel  = itemKeys.length > 0;
+  var focusActive = !anyItemSel && Object.keys(state.focusedSeats || {}).length > 0;
   var subtotal, tax, total, cashTotal;
+
   if (anyItemSel) {
     subtotal = 0;
     for (var ki = 0; ki < itemKeys.length; ki++) {
-      var parts = itemKeys[ki].split(':');
-      var sIdx  = parseInt(parts[0], 10);
-      var iIdx  = parseInt(parts[1], 10);
+      var parts   = itemKeys[ki].split(':');
+      var sIdx    = parseInt(parts[0], 10);
+      var iIdx    = parseInt(parts[1], 10);
       var selSeat = state.seats[sIdx];
       var selItem = selSeat && selSeat.items[iIdx];
       if (!selItem || selItem.voided) continue;
@@ -1102,22 +1109,35 @@ function renderActionBar(state) {
     tax       = subtotal * getTaxRate();
     total     = subtotal + tax;
     cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+  } else if (focusActive) {
+    subtotal = 0;
+    for (var _fi = 0; _fi < state.seats.length; _fi++) {
+      var _fSeat = state.seats[_fi];
+      if (!state.focusedSeats[_fSeat.id]) continue;
+      if (state.paidSeats && state.paidSeats[_fSeat.id]) continue;
+      for (var _fii = 0; _fii < _fSeat.items.length; _fii++) {
+        var _fItem = _fSeat.items[_fii];
+        if (_fItem.voided) continue;
+        var _fPrice = _fItem.effectivePrice != null ? _fItem.effectivePrice : (_fItem.price || 0);
+        subtotal += (_fItem.qty || 0) * _fPrice;
+      }
+    }
+    subtotal  = Math.round(subtotal * 100) / 100;
+    tax       = subtotal * getTaxRate();
+    total     = subtotal + tax;
+    cashTotal = Math.round(total * (1 - discount) * 100) / 100;
   } else {
-    // Mode B tile selection: _tileSelSet filters the left recap column but does
-    // not write to state.selectedItems, so we must handle it here to make the
-    // bottom-left totals reflect only the selected seats (including tax).
-    var _tileActive = state._tileSelSet && state._tileSelSet.size > 0;
-    if (_tileActive) {
+    var _hasLocalVoid = state.seats.some(function(s) {
+      return s.items.some(function(it) { return it.voided; });
+    });
+    if (_hasLocalVoid) {
       subtotal = 0;
-      for (var _ti = 0; _ti < state.seats.length; _ti++) {
-        if (!state._tileSelSet.has(_ti)) continue;
-        var _tSeat = state.seats[_ti];
-        if (state.paidSeats && state.paidSeats[_tSeat.id]) continue;
-        for (var _tii = 0; _tii < _tSeat.items.length; _tii++) {
-          var _tItem = _tSeat.items[_tii];
-          if (_tItem.voided) continue;
-          var _tPrice = _tItem.effectivePrice != null ? _tItem.effectivePrice : (_tItem.price || 0);
-          subtotal += (_tItem.qty || 0) * _tPrice;
+      for (var _vi = 0; _vi < state.seats.length; _vi++) {
+        for (var _vj = 0; _vj < state.seats[_vi].items.length; _vj++) {
+          var _vit = state.seats[_vi].items[_vj];
+          if (_vit.voided) continue;
+          var _vp = _vit.effectivePrice != null ? _vit.effectivePrice : (_vit.price || 0);
+          subtotal += (_vit.qty || 0) * _vp;
         }
       }
       subtotal  = Math.round(subtotal * 100) / 100;
@@ -1125,258 +1145,285 @@ function renderActionBar(state) {
       total     = subtotal + tax;
       cashTotal = Math.round(total * (1 - discount) * 100) / 100;
     } else {
-      // If items are pending void locally (voided flag set, DELETE not yet fired),
-      // compute from local seats so the total reflects the void immediately.
-      var _hasLocalVoid = state.seats.some(function(s) {
-        return s.items.some(function(it) { return it.voided; });
-      });
-      if (_hasLocalVoid) {
-        subtotal = 0;
-        for (var _vi = 0; _vi < state.seats.length; _vi++) {
-          for (var _vj = 0; _vj < state.seats[_vi].items.length; _vj++) {
-            var _vit = state.seats[_vi].items[_vj];
-            if (_vit.voided) continue;
-            var _vp = _vit.effectivePrice != null ? _vit.effectivePrice : (_vit.price || 0);
-            subtotal += (_vit.qty || 0) * _vp;
-          }
-        }
-        subtotal  = Math.round(subtotal * 100) / 100;
-        tax       = subtotal * getTaxRate();
-        total     = subtotal + tax;
-        cashTotal = Math.round(total * (1 - discount) * 100) / 100;
-      } else {
-        subtotal  = order.gross_subtotal != null ? order.gross_subtotal : (order.subtotal || 0);
-        tax       = order.tax != null ? order.tax : (subtotal * getTaxRate());
-        total     = order.total || 0;
-        cashTotal = Math.round(total * (1 - discount) * 100) / 100;
-      }
+      subtotal  = order.gross_subtotal != null ? order.gross_subtotal : (order.subtotal || 0);
+      tax       = order.tax != null ? order.tax : (subtotal * getTaxRate());
+      total     = order.total || 0;
+      cashTotal = Math.round(total * (1 - discount) * 100) / 100;
     }
   }
 
-  var voidLabel = 'VOID';
-
-  var bar = buildStaticCard({ accent: T.green });
-  Object.assign(bar.style, {
-    display:    'flex',
-    alignItems: 'stretch',
-    overflow:   'hidden',
-    width:      '100%',
-    boxSizing:  'border-box',
-  });
+  // ── Bar shell ──
+  var bar = document.createElement('div');
+  bar.style.height        = '116px';
+  bar.style.flex          = '1';
+  bar.style.flexShrink    = '0';
+  bar.style.background    = T.well;
+  bar.style.borderTop     = '2px solid ' + T.border;
+  bar.style.display       = 'flex';
+  bar.style.alignItems    = 'stretch';
+  bar.style.gap           = '8px';
+  bar.style.padding       = '6px 10px';
+  bar.style.boxSizing     = 'border-box';
   barZone.appendChild(bar);
 
-  // ── Left totals block ──
-  var totalsBlock = document.createElement('div');
-  Object.assign(totalsBlock.style, {
-    width:          '196px',
-    flexShrink:     '0',
-    padding:        '12px 14px',
-    display:        'flex',
-    flexDirection:  'column',
-    justifyContent: 'center',
-    gap:            '5px',
-    borderRight:    '1px solid ' + T.border,
-  });
-  bar.appendChild(totalsBlock);
+  // ── Left totals cluster ──
+  var totalsWrap = document.createElement('div');
+  totalsWrap.style.display    = 'flex';
+  totalsWrap.style.gap        = '6px';
+  totalsWrap.style.flexShrink = '0';
+  totalsWrap.style.alignItems = 'stretch';
+
+  function _totBox(opts) {
+    var box = document.createElement('div');
+    box.style.background    = T.card;
+    box.style.borderTop     = '3px solid ' + bevelLt;
+    box.style.borderLeft    = '4px solid ' + (opts.accent || T.gold);
+    box.style.borderRight   = '3px solid ' + bevelDk;
+    box.style.borderBottom  = '3px solid ' + bevelDk;
+    box.style.borderRadius  = '8px';
+    box.style.padding       = '8px 11px';
+    box.style.display       = 'flex';
+    box.style.flexDirection = 'column';
+    box.style.justifyContent= 'center';
+    box.style.gap           = opts.gap || '4px';
+    if (opts.minWidth) box.style.minWidth = opts.minWidth;
+    if (opts.flex) box.style.flex = opts.flex;
+    return box;
+  }
 
   function _totRow(lbl, val, valColor) {
     var row = document.createElement('div');
-    Object.assign(row.style, {
-      display:        'flex',
-      justifyContent: 'space-between',
-      alignItems:     'baseline',
-    });
+    row.style.display        = 'flex';
+    row.style.justifyContent = 'space-between';
+    row.style.alignItems     = 'baseline';
+    row.style.gap            = '12px';
     var l = document.createElement('span');
-    Object.assign(l.style, { fontFamily:T.fb, fontSize:T.fsB4, color:T.text,
-      letterSpacing:'0.07em', textTransform:'uppercase' });
+    l.style.fontFamily = T.fb;
+    l.style.fontWeight = T.fwBold;
+    l.style.fontSize   = T.fsB3;
+    l.style.color      = T.text;
+    l.style.whiteSpace = 'nowrap';
     l.textContent = lbl;
     var v = document.createElement('span');
-    Object.assign(v.style, { fontFamily:T.fb, fontSize:T.fsB3,
-      fontWeight:T.fwBold, color:valColor || T.text });
+    v.style.fontFamily = T.fb;
+    v.style.fontWeight = T.fwBold;
+    v.style.fontSize   = '17px';
+    v.style.color      = valColor || T.gold;
     v.textContent = val;
-    row.appendChild(l);
-    row.appendChild(v);
+    row.appendChild(l); row.appendChild(v);
     return row;
   }
 
-  totalsBlock.appendChild(_totRow('SUBTOTAL', fmt(subtotal), T.gold));
+  // Sub/Disc/Tax box
+  var subBox = _totBox({ minWidth: '168px', gap: '4px' });
+  subBox.appendChild(_totRow('Subtotal:', fmt(subtotal), T.gold));
   if (managerDiscount > 0) {
-    totalsBlock.appendChild(_totRow('DISCOUNT', '-' + fmt(managerDiscount), T.lavender));
+    subBox.appendChild(_totRow('Discounts:', '-' + fmt(managerDiscount), T.lavender));
   }
-  totalsBlock.appendChild(_totRow('TAX',  fmt(tax),       T.gold));
-  totalsBlock.appendChild(_totRow('CARD', fmt(total),     T.elec));
-  totalsBlock.appendChild(_totRow('CASH', fmt(cashTotal), T.greenWarm));
+  subBox.appendChild(_totRow('Tax:', fmt(tax), T.gold));
+  totalsWrap.appendChild(subBox);
 
-  // ── Right action groups wrapper ──
-  var groupsWrap = document.createElement('div');
-  Object.assign(groupsWrap.style, {
-    flex:       '1',
-    display:    'flex',
-    flexWrap:   'wrap',
-    alignItems: 'stretch',
-    gap:        '8px',
-    padding:    '8px 10px 8px 8px',
-    background: T.well,
+  // Total + Cash stacked
+  var rightCol = document.createElement('div');
+  rightCol.style.display       = 'flex';
+  rightCol.style.flexDirection = 'column';
+  rightCol.style.gap           = '6px';
+
+  var totalBox = _totBox({ flex: '1', minWidth: '110px' });
+  totalBox.appendChild(_totRow('Total:', fmt(total), T.gold));
+  rightCol.appendChild(totalBox);
+
+  var cashBox = _totBox({ flex: '1', minWidth: '110px', accent: T.greenWarm });
+  cashBox.appendChild(_totRow('Cash:', fmt(cashTotal), T.greenWarm));
+  rightCol.appendChild(cashBox);
+
+  totalsWrap.appendChild(rightCol);
+  bar.appendChild(totalsWrap);
+
+  // ── Divider ──
+  var barDiv = document.createElement('div');
+  barDiv.style.width      = '1px';
+  barDiv.style.background = T.border;
+  barDiv.style.flexShrink = '0';
+  barDiv.style.margin     = '2px 0';
+  bar.appendChild(barDiv);
+
+  // ── Action grid — 4 equal buttons ──
+  var actionGrid = document.createElement('div');
+  actionGrid.style.flex                = '1';
+  actionGrid.style.display             = 'grid';
+  actionGrid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+  actionGrid.style.gap                 = '7px';
+
+  function _actBtn(opts) {
+    var btn = document.createElement('div');
+    btn.style.borderRadius   = '10px';
+    btn.style.cursor         = 'pointer';
+    btn.style.display        = 'flex';
+    btn.style.flexDirection  = 'column';
+    btn.style.alignItems     = 'center';
+    btn.style.justifyContent = 'center';
+    btn.style.fontFamily     = T.fh;
+    btn.style.fontWeight     = T.fwBold;
+    btn.style.letterSpacing  = '0.03em';
+    btn.style.userSelect     = 'none';
+    btn.style.touchAction    = 'manipulation';
+    btn.style.gap            = '3px';
+    btn.style.background     = opts.bg || T.card;
+    btn.style.boxShadow      = '0 4px 0 ' + (opts.dk || T.moonDk);
+    btn.style.color          = opts.color || T.text;
+    btn.style.border         = opts.border || 'none';
+    btn.style.transition     = 'transform 0.07s, box-shadow 0.07s';
+
+    var lbl = document.createElement('span');
+    lbl.style.fontSize   = opts.labelSize || '26px';
+    lbl.style.lineHeight = '1.2';
+    lbl.style.textAlign  = 'center';
+    lbl.textContent      = opts.label;
+    btn.appendChild(lbl);
+
+    if (opts.sub !== undefined) {
+      var sub = document.createElement('span');
+      sub.style.fontFamily = T.fb;
+      sub.style.fontSize   = T.fsB4;
+      sub.style.fontWeight = T.fwBold;
+      sub.style.opacity    = '0.65';
+      sub.style.minHeight  = '14px';
+      sub.textContent      = opts.sub || '';
+      btn.appendChild(sub);
+    }
+
+    var baseShadow  = btn.style.boxShadow;
+    var pressShadow = '0 1px 0 ' + (opts.dk || T.moonDk);
+    btn.addEventListener('pointerdown', function() {
+      btn.style.transform = 'translateY(3px)';
+      btn.style.boxShadow = pressShadow;
+    });
+    var _up = function() { btn.style.transform = 'none'; btn.style.boxShadow = baseShadow; };
+    btn.addEventListener('pointerup',     _up);
+    btn.addEventListener('pointerleave',  _up);
+    btn.addEventListener('pointercancel', _up);
+    if (opts.onClick) btn.addEventListener('pointerup', function(e) {
+      if (e.defaultPrevented) return;
+      opts.onClick();
+    });
+    return btn;
+  }
+
+  var selCount = itemKeys.length;
+  var paySubLabel = selCount > 0 ? '(' + selCount + ' items)' : '';
+
+  actionGrid.appendChild(_actBtn({
+    label:     'Pay',
+    sub:       paySubLabel,
+    bg:        T.gold,
+    dk:        T.goldDk,
+    color:     T.well,
+    onClick:   function() { handlePay(state, state._params || {}); },
+  }));
+
+  // ── Print column: Print on top, Disc + Void sub-row on bottom ──
+  var printCol = document.createElement('div');
+  printCol.style.display       = 'flex';
+  printCol.style.flexDirection = 'column';
+  printCol.style.gap           = '5px';
+
+  var printBtn = _actBtn({
+    label:   'Print',
+    bg:      T.elec,
+    dk:      T.elecDk,
+    color:   T.well,
+    onClick: function() { handlePrint(state); },
   });
-  bar.appendChild(groupsWrap);
+  printBtn.style.flex = '1';
+  printCol.appendChild(printBtn);
 
-  // ── PAY group card ──
-  var payCard = buildStaticCard({ accent: T.gold });
-  Object.assign(payCard.style, {
-    flex:          '1',
-    display:       'flex',
-    flexDirection: 'column',
-    padding:       '10px 12px 12px',
-    gap:           '6px',
-    overflow:      'hidden',
-    boxShadow:     '0 3px 0 ' + T.goldDk,
-  });
+  // Sub-row builder — shared press-state wiring
+  function _subBtn(opts) {
+    var btn = document.createElement('div');
+    btn.style.flex          = '1';
+    btn.style.borderRadius  = '8px';
+    btn.style.cursor        = 'pointer';
+    btn.style.display       = 'flex';
+    btn.style.alignItems    = 'center';
+    btn.style.justifyContent= 'center';
+    btn.style.fontFamily    = T.fh;
+    btn.style.fontWeight    = T.fwBold;
+    btn.style.fontSize      = '13px';
+    btn.style.letterSpacing = '0.04em';
+    btn.style.userSelect    = 'none';
+    btn.style.touchAction   = 'manipulation';
+    btn.style.background    = opts.bg;
+    btn.style.color         = opts.color;
+    btn.style.transition    = 'transform 0.07s, box-shadow 0.07s';
+    var baseShadow  = '0 3px 0 ' + opts.dk;
+    var pressShadow = '0 1px 0 ' + opts.dk;
+    btn.style.boxShadow = baseShadow;
+    btn.textContent = opts.label;
+    btn.addEventListener('pointerdown', function() {
+      btn.style.transform = 'translateY(2px)';
+      btn.style.boxShadow = pressShadow;
+    });
+    var _up = function() { btn.style.transform = 'none'; btn.style.boxShadow = baseShadow; };
+    btn.addEventListener('pointerup',     _up);
+    btn.addEventListener('pointerleave',  _up);
+    btn.addEventListener('pointercancel', _up);
+    if (opts.onClick) btn.addEventListener('pointerup', function(e) {
+      if (e.defaultPrevented) return;
+      opts.onClick();
+    });
+    return btn;
+  }
 
-  var payHeader = document.createElement('div');
-  Object.assign(payHeader.style, {
-    fontFamily:    T.fh,
-    fontWeight:    T.fwBold,
-    fontSize:      T.fsB4,
-    letterSpacing: '0.2em',
-    paddingLeft:   '8px',
-    marginBottom:  '3px',
-    color:         T.gold,
-  });
-  payHeader.textContent = 'PAY';
-  payCard.appendChild(payHeader);
+  var subRow = document.createElement('div');
+  subRow.style.display    = 'flex';
+  subRow.style.gap        = '5px';
+  subRow.style.flexShrink = '0';
+  subRow.style.height     = '36px';
 
-  var payBtn = buildPillButton({ label: 'PAY', color: T.gold, darkBg: T.goldDk,
-    borderRadius: '6px', padding: '0 24px',
-    onClick: function() { handlePay(state, state._params || {}); } });
-  payBtn.style.height    = '38px';
-  payBtn.style.width     = '75%';
-  payBtn.style.alignSelf = 'center';
-  payCard.appendChild(payBtn);
+  subRow.appendChild(_subBtn({
+    label:   'Disc',
+    bg:      T.lavender,
+    dk:      darkenHex(T.lavender, 0.45),
+    color:   T.well,
+    onClick: function() { handleDiscount(state); },
+  }));
 
-  var splitPayRow = document.createElement('div');
-  Object.assign(splitPayRow.style, { display: 'flex', gap: '6px' });
+  subRow.appendChild(_subBtn({
+    label:   'Void',
+    bg:      T.verm,
+    dk:      T.vermDk,
+    color:   '#fff',
+    onClick: function() { handleVoid(state); },
+  }));
 
-  var discBtn = buildPillButton({ label: 'DISCOUNTS', color: T.lavender,
-    darkBg: darkenHex(T.lavender, 0.4), borderRadius: '6px', fontSize: T.fsB3, padding: '0 12px',
-    onClick: function() { handleDiscount(state); } });
-  discBtn.style.height = '38px';
-  discBtn.style.width  = 'calc(50% - 3px)';
-  splitPayRow.appendChild(discBtn);
+  printCol.appendChild(subRow);
+  actionGrid.appendChild(printCol);
 
-  var voidBtn = buildPillButton({ label: voidLabel, color: T.verm, darkBg: T.vermDk,
-    borderRadius: '6px', fontSize: T.fsB3, padding: '0 12px' });
-  voidBtn.style.height = '38px';
-  voidBtn.style.width  = 'calc(50% - 3px)';
-  _wireLongPress(voidBtn, function() { handleVoid(state); }, 550);
-  splitPayRow.appendChild(voidBtn);
+  actionGrid.appendChild(_actBtn({
+    label:     'Edit\nSeats',
+    labelSize: '18px',
+    sub:       '',
+    bg:        T.card,
+    dk:        T.moonDk,
+    color:     T.text,
+    border:    '1px solid ' + T.border,
+    onClick:   function() { openEditSeats(state); },
+  }));
 
-  payCard.appendChild(splitPayRow);
-  groupsWrap.appendChild(payCard);
+  actionGrid.appendChild(_actBtn({
+    label:   'Add Items',
+    labelSize: '22px',
+    sub:     '',
+    bg:      T.greenWarm,
+    dk:      T.greenWarmDk,
+    color:   T.well,
+    onClick: function() { handleAddItems(state, state._params || {}); },
+  }));
 
-  // ── TERMINAL group card ──
-  var termCard = buildStaticCard({ accent: T.elec });
-  Object.assign(termCard.style, {
-    flex:          '1',
-    display:       'flex',
-    flexDirection: 'column',
-    padding:       '10px 12px 12px',
-    gap:           '6px',
-    boxShadow:     '0 3px 0 ' + T.elecDk,
-  });
-
-  var termHeader = document.createElement('div');
-  Object.assign(termHeader.style, {
-    fontFamily:    T.fh,
-    fontWeight:    T.fwBold,
-    fontSize:      T.fsB4,
-    letterSpacing: '0.2em',
-    paddingLeft:   '8px',
-    marginBottom:  '3px',
-    color:         T.elec,
-  });
-  termHeader.textContent = 'TERMINAL';
-  termCard.appendChild(termHeader);
-
-  var printBtn = buildPillButton({ label: 'PRINT', color: T.elec, darkBg: T.elecDk,
-    borderRadius: '6px', padding: '0 24px',
-    onClick: function() { handlePrint(state); } });
-  printBtn.style.height    = '38px';
-  printBtn.style.width     = '75%';
-  printBtn.style.alignSelf = 'center';
-  termCard.appendChild(printBtn);
-
-  var drawerBtn = buildPillButton({ label: 'OPEN DRAWER', color: T.moon, darkBg: T.moonDk,
-    borderRadius: '6px', padding: '0 24px',
-    onClick: function() { showToast('Drawer — coming soon', { bg: T.moon }); } });
-  drawerBtn.style.height    = '38px';
-  drawerBtn.style.width     = '75%';
-  drawerBtn.style.alignSelf = 'center';
-  termCard.appendChild(drawerBtn);
-
-  groupsWrap.appendChild(termCard);
-
-  // ── ORDER group card ──
-  var orderCard = buildStaticCard({ accent: T.moon });
-  Object.assign(orderCard.style, {
-    flex:          '1',
-    display:       'flex',
-    flexDirection: 'column',
-    padding:       '10px 12px 12px',
-    gap:           '6px',
-    overflow:      'hidden',
-    boxShadow:     '0 3px 0 ' + T.moonDk,
-  });
-
-  var orderHeader = document.createElement('div');
-  Object.assign(orderHeader.style, {
-    fontFamily:    T.fh,
-    fontWeight:    T.fwBold,
-    fontSize:      T.fsB4,
-    letterSpacing: '0.2em',
-    paddingLeft:   '8px',
-    marginBottom:  '3px',
-    color:         T.moon,
-  });
-  orderHeader.textContent = 'ORDER';
-  orderCard.appendChild(orderHeader);
-
-  var addBtn = buildPillButton({ label: 'ADD ITEMS', color: T.greenWarm, darkBg: T.greenWarmDk,
-    borderRadius: '6px', padding: '0 24px',
-    onClick: function() { handleAddItems(state, state._params || {}); } });
-  addBtn.style.height    = '38px';
-  addBtn.style.width     = '75%';
-  addBtn.style.alignSelf = 'center';
-  orderCard.appendChild(addBtn);
-
-  var splitOrderRow = document.createElement('div');
-  Object.assign(splitOrderRow.style, { display: 'flex', gap: '6px' });
-
-  var sendBtn = buildPillButton({ label: '>>> Unsent', color: T.green, darkBg: T.greenDk,
-    borderRadius: '6px', fontSize: T.fsB3, padding: '0 12px',
-    onClick: function() {
-      if (!state.orderId) { showToast('No items to send', { bg: T.gold }); return; }
-      fetchWithTimeout('/api/v1/orders/' + state.orderId + '/send', { method: 'POST' }, 8000)
-        .then(function(r) {
-          if (r.ok) showToast('Sent to kitchen', { bg: T.greenWarm });
-          else      showToast('Send failed', { bg: T.verm });
-        })
-        .catch(function() { showToast('Send failed', { bg: T.verm }); });
-    } });
-  sendBtn.style.height   = '38px';
-  sendBtn.style.flex     = '1';
-  sendBtn.style.minWidth = '0';
-  splitOrderRow.appendChild(sendBtn);
-
-  var resendBtn = buildPillButton({ label: 'RESEND', color: T.moon, darkBg: T.moonDk,
-    borderRadius: '6px', fontSize: T.fsB3, padding: '0 12px', onClick: function() { handleResend(state); } });
-  resendBtn.style.height   = '38px';
-  resendBtn.style.flex     = '1';
-  resendBtn.style.minWidth = '0';
-  splitOrderRow.appendChild(resendBtn);
-
-  orderCard.appendChild(splitOrderRow);
-  groupsWrap.appendChild(orderCard);
+  bar.appendChild(actionGrid);
 }
+
 
 
 // Fire-and-observe wrapper around POST /orders/{id}/split-by-seat.
@@ -1439,70 +1486,14 @@ function _allSeatsSelected(state) {
 function buildSeatsContainer(state) {
   var root = document.createElement('div');
   Object.assign(root.style, {
-    flex:         '1',
-    minHeight:    '0',
-    display:      'flex',
-    flexDirection:'column',
-    overflow:     'visible',
-    position:     'relative',
+    flex:          '1',
+    minHeight:     '0',
+    display:       'flex',
+    flexDirection: 'column',
+    overflow:      'visible',
+    position:      'relative',
   });
 
-  // ── Selection toolbar ──
-  // Three fixed right-aligned pills: CLEAR · MANAGE · SELECT ALL.
-  var selRow = document.createElement('div');
-  Object.assign(selRow.style, {
-    position:  'absolute',
-    top:       '-44px',
-    left:      '50%',
-    transform: 'translateX(-50%)',
-    zIndex:    '10',
-    display:   'flex',
-    alignItems:'center',
-    gap:       '8px',
-    pointerEvents: 'auto',
-  });
-
-  var clearBtn = buildPillButton({
-    label:        'CLEAR',
-    color:        T.moon,
-    darkBg:       T.moonDk,
-    fontSize:     T.fsB4,
-    padding:      '6px 14px',
-    borderRadius: '8px',
-    onClick:      function() { clearAllSelection(state); },
-  });
-  selRow.appendChild(clearBtn);
-
-  var manageBtn = buildPillButton({
-    label:        'MANAGE',
-    color:        T.moon,
-    darkBg:       T.moonDk,
-    fontSize:     T.fsB4,
-    padding:      '6px 14px',
-    borderRadius: '8px',
-    onClick:      function() { openEditSeats(state); },
-  });
-  selRow.appendChild(manageBtn);
-
-  var selAllBtn = buildPillButton({
-    label:        'SELECT ALL',
-    color:        T.elec,
-    darkBg:       T.elecDk,
-    fontSize:     T.fsB4,
-    padding:      '6px 14px',
-    borderRadius: '8px',
-    onClick:      function() { forceSelectAll(state); },
-  });
-  selRow.appendChild(selAllBtn);
-  root.appendChild(selRow);
-
-  // Layout mode:
-  //   A  1-4 active seats  — each seat gets its own flex-row column with
-  //                          a slim +SEAT rail on the right.
-  //   B  5+ active seats   — item recap on the left, compact seat tile
-  //                          grid on the right. Matches the original
-  //                          Nostalgia spec and the manager-landing
-  //                          check-grid visual.
   var activeCount = activeSeatCount(state.seats, state.paidSeats);
   var mode = activeCount <= 4 ? 'A' : 'B';
 
@@ -1510,8 +1501,8 @@ function buildSeatsContainer(state) {
   Object.assign(body.style, {
     display:       'flex',
     flexDirection: 'row',
-    gap:           '10px',
-    padding:       '12px',
+    gap:           '8px',
+    padding:       '8px',
     flex:          '1',
     minHeight:     '0',
     overflow:      'hidden',
@@ -1552,184 +1543,267 @@ function rerenderTopArea(state) {
 
 function renderSeatsGrid(state, container, mode) {
   container.innerHTML = '';
+
+  // ── Mode B: collapsible recap LEFT + tile grid RIGHT ──
   if (mode === 'B') {
-    // _tileSelSet lives on state so it survives rerenderTopArea calls
-    // triggered by tile taps — it's reset only on mount and when ALL
-    // SEATS is tapped. It does NOT write to state.selected /
-    // state.selectedItems; it only filters the left recap.
-    var _tileSelSet = state._tileSelSet || (state._tileSelSet = new Set());
+    var focusedSeats = state.focusedSeats || (state.focusedSeats = {});
+    var expandedSeats = state.expandedSeats || (state.expandedSeats = {});
+    var bevelLt = lightenHex(T.bg, 0.08);
+    var bevelDk = darkenHex(T.bg, 0.2);
 
-    // ── LEFT: scrollable recap ──
-    var recapCol = document.createElement('div');
-    Object.assign(recapCol.style, {
-      flex:          '1',
-      minWidth:      '0',
-      display:       'flex',
-      flexDirection: 'column',
-      overflow:      'hidden',
-      pointerEvents: 'auto',
+    // ── LEFT: recap shell ──────────────────────────────
+    var recapShell = document.createElement('div');
+    recapShell.style.flex          = '0 0 360px';
+    recapShell.style.width         = '360px';
+    recapShell.style.display       = 'flex';
+    recapShell.style.flexDirection = 'column';
+    recapShell.style.overflow      = 'hidden';
+    recapShell.style.background    = T.well;
+    recapShell.style.border        = '3px solid ' + bevelLt;
+    recapShell.style.borderLeft    = '3px solid ' + bevelDk;
+    recapShell.style.borderBottom  = '3px solid ' + bevelDk;
+    recapShell.style.borderRadius  = T.chamferCard + 'px';
+
+    var scrollArea = document.createElement('div');
+    scrollArea.style.display      = 'block';
+    scrollArea.style.overflowY    = 'auto';
+    scrollArea.style.flex         = '1';
+    scrollArea.style.minHeight    = '0';
+    scrollArea.style.scrollbarWidth = 'none';
+    scrollArea.style.msOverflowStyle = 'none';
+    scrollArea.style.touchAction    = 'pan-y';
+    scrollArea.style.pointerEvents  = 'auto';
+    state._scrollListEl = scrollArea;
+
+    // Determine visible seats
+    var visibleSeats = state.seats.filter(function(s) {
+      if (state.paidSeats[s.id]) return false;
+      if (Object.keys(focusedSeats).length > 0 && !focusedSeats[s.id]) return false;
+      return true;
     });
 
-    if (state._selectedPaidSeat) {
-      var paidPanel = _buildPaidRecapPanel(state, state._selectedPaidSeat);
-      paidPanel.style.flex      = '1';
-      paidPanel.style.minHeight = '0';
-      paidPanel.style.overflowY = 'auto';
-      recapCol.appendChild(paidPanel);
-    } else {
-      // Inline seat sections with _buildItemSubCard per item.
-      // _tileSelSet filters which seats are shown; empty = show all.
-      var scrollList = document.createElement('div');
-      Object.assign(scrollList.style, {
-        flex:          '1',
-        minHeight:     '0',
-        overflowY:     'auto',
-        display:       'flex',
-        flexDirection: 'column',
-        gap:           '8px',
-        padding:       '4px 2px',
-        pointerEvents: 'auto',
-        touchAction:   'pan-y',
-      });
-      state._scrollListEl = scrollList;
+    for (var rsi = 0; rsi < visibleSeats.length; rsi++) {
+      var rSeat      = visibleSeats[rsi];
+      var rSeatIdx   = state.seats.indexOf(rSeat);
+      var isExpanded = !!expandedSeats[rSeat.id];
+      var hasDisc    = _seatHasDisc(rSeat, state);
 
-      for (var rsi = 0; rsi < state.seats.length; rsi++) {
-        var rSeat = state.seats[rsi];
-        if (state.paidSeats[rSeat.id]) continue;
-        if (_tileSelSet.size > 0 && !_tileSelSet.has(rsi)) continue;
+      // Collapsible seat card
+      var sCard = document.createElement('div');
+      sCard.style.borderBottom = '1px solid ' + bevelDk;
+      sCard.style.borderLeft   = '3px solid ' + (hasDisc ? T.lavender : T.green);
 
-        var anyItemSel = false;
-        for (var rki = 0; rki < rSeat.items.length; rki++) {
-          if (state.selectedItems && state.selectedItems[rsi + ':' + rki]) {
-            anyItemSel = true; break;
-          }
-        }
+      // Seat card header
+      var sHdr = document.createElement('div');
+      sHdr.style.display         = 'flex';
+      sHdr.style.alignItems      = 'baseline';
+      sHdr.style.justifyContent  = 'space-between';
+      sHdr.style.padding         = '8px 12px';
+      sHdr.style.background      = T.well;
+      sHdr.style.cursor          = 'pointer';
+      sHdr.style.userSelect      = 'none';
+      sHdr.style.pointerEvents   = 'auto';
+      sHdr.style.touchAction     = 'manipulation';
 
-        // Seat section header (tappable — toggleSeat)
-        var secHdr = document.createElement('div');
-        Object.assign(secHdr.style, {
-          background:    T.well,
-          borderLeft:    '3px solid ' + (anyItemSel ? T.green : T.moon),
-          borderRadius:  '6px',
-          padding:       '5px 8px',
-          display:       'flex',
-          alignItems:    'center',
-          justifyContent:'space-between',
-          cursor:        'pointer',
-          pointerEvents: 'auto',
-          touchAction:   'manipulation',
-          userSelect:    'none',
-        });
-        var secLabel = document.createElement('span');
-        Object.assign(secLabel.style, {
-          fontFamily: T.fh,
-          fontWeight: T.fwBold,
-          fontSize:   '20px',
-          color:      anyItemSel ? T.green : T.moon,
-        });
-        secLabel.textContent = 'S' + (rSeat.number != null ? rSeat.number : (rsi + 1));
-        secHdr.appendChild(secLabel);
-        var secSub = document.createElement('span');
-        Object.assign(secSub.style, {
-          fontFamily: T.fb,
-          fontWeight: T.fwBold,
-          fontSize:   '11px',
-          color:      T.gold,
-        });
-        secSub.textContent = fmt(seatTotal(rSeat));
-        secHdr.appendChild(secSub);
-        (function(capturedSeatId) {
-          secHdr.addEventListener('pointerup', function(e) {
-            if (e.defaultPrevented) return;
-            toggleSeat(state, capturedSeatId);
-          });
-        })(rSeat.id);
-        scrollList.appendChild(secHdr);
+      var sHdrLeft = document.createElement('div');
+      sHdrLeft.style.display    = 'flex';
+      sHdrLeft.style.alignItems = 'baseline';
+      sHdrLeft.style.gap        = '8px';
 
-        // Indented item sub-cards
-        for (var rii = 0; rii < rSeat.items.length; rii++) {
-          var subCard = _buildItemSubCard(state, rsi, rii);
-          subCard.style.marginLeft = '24px';
-          scrollList.appendChild(subCard);
-        }
+      var sNum = document.createElement('span');
+      sNum.textContent      = 'S' + (rSeat.number != null ? rSeat.number : (rSeatIdx + 1));
+      sNum.style.fontFamily = T.fh;
+      sNum.style.fontWeight = T.fwBold;
+      sNum.style.fontSize   = '20px';
+      sNum.style.color      = hasDisc ? T.lavender : T.green;
+      sHdrLeft.appendChild(sNum);
+
+      var sSbtl = document.createElement('span');
+      sSbtl.textContent      = fmt(seatTotal(rSeat));
+      sSbtl.style.fontFamily = T.fb;
+      sSbtl.style.fontWeight = T.fwBold;
+      sSbtl.style.fontSize   = '14px';
+      sSbtl.style.color      = hasDisc ? T.lavender : T.gold;
+      sHdrLeft.appendChild(sSbtl);
+      sHdr.appendChild(sHdrLeft);
+
+      var sHdrRight = document.createElement('div');
+      sHdrRight.style.display    = 'flex';
+      sHdrRight.style.alignItems = 'baseline';
+      sHdrRight.style.gap        = '8px';
+
+      if (rSeat.name) {
+        var sPname = document.createElement('span');
+        sPname.textContent      = '"' + rSeat.name + '"';
+        sPname.style.fontFamily = T.fb;
+        sPname.style.fontSize   = T.fsB4;
+        sPname.style.color      = T.text;
+        sPname.style.fontStyle  = 'italic';
+        sHdrRight.appendChild(sPname);
       }
-      recapCol.appendChild(scrollList);
+
+      var chevron = document.createElement('span');
+      chevron.textContent      = '▸';
+      chevron.style.fontFamily = T.fb;
+      chevron.style.fontSize   = T.fsB3;
+      chevron.style.color      = T.moon;
+      chevron.style.transition = 'transform 0.15s';
+      chevron.style.display    = 'inline-block';
+      if (isExpanded) chevron.style.transform = 'rotate(90deg)';
+      sHdrRight.appendChild(chevron);
+
+      var canDeleteRecap = rSeat.items.length === 0
+        && activeSeatCount(state.seats, state.paidSeats) > 1;
+      if (canDeleteRecap) {
+        var sDelBtn = _buildDeleteSeatX(state, rSeat.id);
+        sDelBtn.style.position  = 'relative';
+        sDelBtn.style.top       = 'auto';
+        sDelBtn.style.right     = 'auto';
+        sDelBtn.style.alignSelf = 'center';
+        sHdrRight.appendChild(sDelBtn);
+      }
+
+      sHdr.appendChild(sHdrRight);
+
+      (function(capturedId) {
+        sHdr.addEventListener('pointerup', function(e) {
+          if (e.defaultPrevented) return;
+          if (state.expandedSeats[capturedId]) delete state.expandedSeats[capturedId];
+          else state.expandedSeats[capturedId] = true;
+          rerenderTopArea(state);
+        });
+      })(rSeat.id);
+      sCard.appendChild(sHdr);
+
+      // Items wrapper — collapses/expands
+      var itemsWrap = document.createElement('div');
+      itemsWrap.style.overflow      = 'hidden';
+      itemsWrap.style.maxHeight     = isExpanded ? '1500px' : '0';
+      itemsWrap.style.transition    = 'max-height 0.2s ease';
+      itemsWrap.style.pointerEvents = isExpanded ? 'auto' : 'none';
+
+      var itemsInner = document.createElement('div');
+      itemsInner.style.padding       = '6px 8px 8px';
+      itemsInner.style.display       = 'flex';
+      itemsInner.style.flexDirection = 'column';
+      itemsInner.style.gap           = '5px';
+
+      for (var rii = 0; rii < rSeat.items.length; rii++) {
+        itemsInner.appendChild(buildItemBlock(state, rSeatIdx, rii, true));
+      }
+      itemsWrap.appendChild(itemsInner);
+      sCard.appendChild(itemsWrap);
+      scrollArea.appendChild(sCard);
     }
-    container.appendChild(recapCol);
+    recapShell.appendChild(scrollArea);
+    container.appendChild(recapShell);
 
-    // ── RIGHT: 300px compact tile grid ──
+    // ── RIGHT: 480px tile grid ──────────────────────
     var tilesCol = document.createElement('div');
-    Object.assign(tilesCol.style, {
-      width:               '300px',
-      flexShrink:          '0',
-      display:             'grid',
-      gridTemplateColumns: 'repeat(3, 1fr)',
-      gridAutoRows:        'min-content',
-      alignContent:        'start',
-      gap:                 '6px',
-      overflowY:           'auto',
-      pointerEvents:       'auto',
-      touchAction:         'pan-y',
-    });
+    tilesCol.style.flex          = '1';
+    tilesCol.style.minWidth      = '0';
+    tilesCol.style.display       = 'flex';
+    tilesCol.style.flexDirection = 'column';
+    tilesCol.style.gap           = '6px';
+    tilesCol.style.minHeight     = '0';
 
-    // ALL SEATS button — spans 3 columns
-    var allSel = _tileSelSet.size === 0;
-    var allSeatsBtn = document.createElement('div');
-    Object.assign(allSeatsBtn.style, {
-      gridColumn:     '1 / -1',
-      background:     allSel ? T.elec : T.well,
-      border:         '1px solid ' + T.moon,
-      borderLeft:     '3px solid ' + (allSel ? T.elec : T.moon),
-      borderRadius:   '8px',
-      padding:        '8px',
-      textAlign:      'center',
-      cursor:         'pointer',
-      pointerEvents:  'auto',
-      touchAction:    'manipulation',
-      userSelect:     'none',
-      fontFamily:     T.fh,
-      fontWeight:     T.fwBold,
-      fontSize:       '12px',
-      color:          allSel ? T.moonText : T.moon,
-    });
-    allSeatsBtn.textContent = 'ALL SEATS';
-    allSeatsBtn.addEventListener('pointerup', function(e) {
-      if (e.defaultPrevented) return;
-      state._tileSelSet.clear();
-      rerenderTopArea(state);
-    });
-    tilesCol.appendChild(allSeatsBtn);
+    var tilesGrid = document.createElement('div');
+    tilesGrid.style.flex                 = '1';
+    tilesGrid.style.minHeight            = '0';
+    tilesGrid.style.display              = 'grid';
+    tilesGrid.style.gridTemplateColumns  = 'repeat(4, 1fr)';
+    tilesGrid.style.gap                  = '6px';
+    tilesGrid.style.overflowY            = 'auto';
+    tilesGrid.style.alignContent         = 'start';
+    tilesGrid.style.scrollbarWidth       = 'none';
+    tilesGrid.style.msOverflowStyle      = 'none';
+    tilesGrid.style.touchAction          = 'pan-y';
+    tilesGrid.style.pointerEvents        = 'auto';
+
+    // Paid tiles first
+    for (var pti = 0; pti < state.seats.length; pti++) {
+      if (!state.paidSeats[state.seats[pti].id]) continue;
+      var pTile = buildPaidCompactTile(state, pti);
+      tilesGrid.appendChild(pTile);
+    }
+
+    // Unpaid seat tiles
+    for (var ti = 0; ti < state.seats.length; ti++) {
+      if (state.paidSeats[state.seats[ti].id]) continue;
+      var tSeat    = state.seats[ti];
+      var tActive  = !!focusedSeats[tSeat.id];
+      var tHasDisc = _seatHasDisc(tSeat, state);
+
+      var tile = document.createElement('div');
+      tile.style.background    = tActive ? T.green : T.card;
+      tile.style.border        = '1px solid ' + (tActive ? T.greenDk : T.border);
+      tile.style.borderLeft    = '3px solid ' + (tActive ? T.greenDk : (tHasDisc ? T.lavender : T.green));
+      tile.style.boxShadow     = '0 2px 0 ' + (tActive ? T.greenDk : T.moonDk);
+      tile.style.borderRadius  = '8px';
+      tile.style.padding       = '8px 10px';
+      tile.style.cursor        = 'pointer';
+      tile.style.userSelect    = 'none';
+      tile.style.pointerEvents = 'auto';
+      tile.style.touchAction   = 'manipulation';
+      tile.style.position      = 'relative';
+      tile.style.display       = 'flex';
+      tile.style.flexDirection = 'column';
+      tile.style.alignItems    = 'center';
+      tile.style.justifyContent = 'center';
+      tile.style.gap           = '3px';
+
+      var tNum = document.createElement('span');
+      tNum.textContent      = 'S' + (tSeat.number != null ? tSeat.number : (ti + 1));
+      tNum.style.fontFamily = T.fh;
+      tNum.style.fontWeight = T.fwBold;
+      tNum.style.fontSize   = '18px';
+      tNum.style.color      = tActive ? T.well : T.green;
+      tile.appendChild(tNum);
+
+      if (tSeat.name) {
+        var tName = document.createElement('span');
+        tName.textContent      = '"' + tSeat.name + '"';
+        tName.style.fontFamily = T.fb;
+        tName.style.fontSize   = T.fsB4;
+        tName.style.color      = tActive ? T.well : T.text;
+        tName.style.fontStyle  = 'italic';
+        tile.appendChild(tName);
+      }
+
+      var tTotal = document.createElement('span');
+      tTotal.textContent      = fmt(seatTotal(tSeat));
+      tTotal.style.fontFamily = T.fb;
+      tTotal.style.fontWeight = T.fwBold;
+      tTotal.style.fontSize   = T.fsB3;
+      tTotal.style.color      = tActive ? T.well : T.gold;
+      tile.appendChild(tTotal);
+
+      (function(capturedSeat) {
+        tile.addEventListener('pointerup', function(e) {
+          if (e.defaultPrevented) return;
+          if (state.focusedSeats[capturedSeat.id]) delete state.focusedSeats[capturedSeat.id];
+          else state.focusedSeats[capturedSeat.id] = true;
+          rerenderTopArea(state);
+        });
+      })(tSeat);
+
+      if (tSeat.items.length === 0 && activeSeatCount(state.seats, state.paidSeats) > 1) {
+        tile.appendChild(_buildDeleteSeatX(state, tSeat.id));
+      }
+
+      tilesGrid.appendChild(tile);
+    }
 
     // +SEAT add tile
-    var addB = buildAddTile(state, { fullSize: true });
-    addB.style.flex     = '';
-    addB.style.width    = '';
-    addB.style.position = 'sticky';
-    addB.style.top      = '0';
-    addB.style.zIndex   = '1';
-    tilesCol.appendChild(addB);
+    var addTileB = buildAddTile(state, { fullSize: true });
+    tilesGrid.appendChild(addTileB);
 
-    for (var ti = 0; ti < state.seats.length; ti++) {
-      if (state.paidSeats[state.seats[ti].id]) {
-        var paidTile = buildPaidCompactTile(state, ti);
-        paidTile.style.flex  = '';
-        paidTile.style.width = '';
-        tilesCol.appendChild(paidTile);
-        continue;
-      }
-      var tile = buildCompactTile(state, ti);
-      tile.style.flex  = '';
-      tile.style.width = '';
-      tilesCol.appendChild(tile);
-    }
+    tilesCol.appendChild(tilesGrid);
     container.appendChild(tilesCol);
     return;
   }
 
   // ── Mode A: each seat is an equal flex-row column ──
-  // +SEAT tile matches seat width while there's capacity (1-3 seats);
-  // at 4 seats we're at Mode A's cap so the +SEAT shrinks to a slim
-  // rail to keep all four seat columns full-width.
   var activeCount = activeSeatCount(state.seats, state.paidSeats);
   for (var i = 0; i < state.seats.length; i++) {
     if (state.paidSeats[state.seats[i].id]) {
@@ -1768,293 +1842,511 @@ function seatAccent(/* seatIdx */) {
 //  Replaces buildItemRecap for per-item rendering.
 // ═══════════════════════════════════════════════════
 
-function _buildItemSubCard(state, seatIdx, itemIdx) {
-  var item = state.seats[seatIdx].items[itemIdx];
-  var isVoided = !!item.voided;
-  var isSel = !isVoided && !!(state.selectedItems && state.selectedItems[seatIdx + ':' + itemIdx]);
+// ═══════════════════════════════════════════════════
+//  ITEM BLOCK — Nostalgia item card + mod tree
+//  Shared between Mode A columns and Mode B recap.
+//  modeB=true → sent item uses all-4-borders green;
+//  modeB=false → sent uses left-border only.
+// ═══════════════════════════════════════════════════
 
-  var card = document.createElement('div');
-  Object.assign(card.style, {
-    background:    isVoided ? hexToRgba(T.verm, 0.08) : (isSel ? T.green : T.well),
-    border:        '1px solid ' + (isVoided ? T.verm : T.moon),
-    borderLeft:    '3px solid ' + (isVoided ? T.verm : (isSel ? T.green : T.moon)),
-    boxShadow:     '0 3px 0 '  + (isVoided ? T.vermDk : (isSel ? T.greenDk : T.moonDk)),
-    borderRadius:  '8px',
-    padding:       '5px 8px',
-    display:       'flex',
-    flexDirection: 'column',
-    gap:           '2px',
-    cursor:        isVoided ? 'default' : 'pointer',
-    pointerEvents: 'auto',
-    touchAction:   'manipulation',
-    userSelect:    'none',
-    boxSizing:     'border-box',
-    opacity:       isVoided ? '0.75' : '1',
+// Seat-level discount detection — mirrors the item-level broadened check in
+// buildItemBlock. Returns true if any item has an explicit discount object OR
+// has an effectivePrice meaningfully below its list price.
+function _seatHasDisc(seat, state) {
+  var _id = (state && state._itemDiscounts) ? state._itemDiscounts : null;
+  var _sd = (state && state._seatDiscounts) ? state._seatDiscounts : null;
+  // Fastest path: seat-level cache stamped by _applyDiscount
+  if (_sd && seat.id && _sd[seat.id]) return true;
+  return seat.items.some(function(it) {
+    if (it.discount) return true;
+    if (_id && it.item_id && _id[it.item_id]) return true;
+    var raw = it.price || 0;
+    var eff = it.effectivePrice != null ? it.effectivePrice : raw;
+    return raw > 0 && (raw - eff) > 0.005;
   });
+}
 
-  // voided badge or sent badge
-  if (isVoided) {
-    var vBadge = document.createElement('div');
-    vBadge.textContent = 'V';
-    Object.assign(vBadge.style, {
-      fontSize:      '10px',
-      fontWeight:    T.fwBold,
-      fontFamily:    T.fh,
-      color:         T.verm,
-      letterSpacing: '0.1em',
-    });
-    card.appendChild(vBadge);
-  } else if (item.sent_at) {
-    var badge = document.createElement('div');
-    badge.textContent = '>>>';
-    Object.assign(badge.style, {
-      fontSize:      '10px',
-      fontWeight:    T.fwBold,
-      fontFamily:    T.fb,
-      color:         isSel ? T.moonText : T.green,
-      letterSpacing: '0.04em',
-    });
-    card.appendChild(badge);
+function buildItemBlock(state, seatIdx, itemIdx, modeB) {
+  var item     = state.seats[seatIdx].items[itemIdx];
+  var isVoided = !!item.voided;
+  // Detect discount from explicit object OR from effectivePrice being lower than
+  // the list price — the backend may only surface the discount at the order level
+  // and not stamp a `discount` object on individual items after refresh.
+  var _rawPrice   = item.price || 0;
+  var _effPrice   = item.effectivePrice != null ? item.effectivePrice : _rawPrice;
+  var _priceDelta = Math.round((_rawPrice - _effPrice) * 100) / 100;
+  // Third/fourth detection paths: per-item and per-seat caches stamped by _applyDiscount.
+  // The seat-level cache is the more reliable fallback since it doesn't depend on item_id.
+  var _seatId     = state.seats[seatIdx] ? state.seats[seatIdx].id : null;
+  var _stateDisc  = (state._itemDiscounts && item.item_id)
+    ? (state._itemDiscounts[item.item_id] || null)
+    : null;
+  var _seatDisc   = (state._seatDiscounts && _seatId)
+    ? (state._seatDiscounts[_seatId] || null)
+    : null;
+  var isDisc      = !!(item.discount) || (_priceDelta > 0.005) || !!_stateDisc || !!_seatDisc;
+  // Prefer explicit discount object, then state cache, then price delta.
+  var _discObj    = item.discount || null;
+  var _itemCount  = state.seats[seatIdx] ? Math.max(state.seats[seatIdx].items.length, 1) : 1;
+  var _discAmt    = _discObj
+    ? (_discObj.amount || 0)
+    : _stateDisc
+    ? _stateDisc.amount
+    : _seatDisc
+    ? Math.round(_seatDisc.amount / _itemCount * 100) / 100
+    : Math.round(_priceDelta * (item.qty || 1) * 100) / 100;
+  var _discPctRaw = _discObj && _discObj.pct != null
+    ? _discObj.pct
+    : (_discObj && _discObj.label ? parseInt(_discObj.label, 10) : null);
+  if (_discPctRaw == null) _discPctRaw = _stateDisc ? _stateDisc.pct : null;
+  if (_discPctRaw == null) _discPctRaw = _seatDisc  ? _seatDisc.pct  : null;
+  if (_discPctRaw == null && _rawPrice > 0 && _priceDelta > 0.005) {
+    _discPctRaw = Math.round((_priceDelta / _rawPrice) * 100);
+  }
+  var isSent   = !!(item.sent_at || item.sent) && !isVoided;
+  var isSel    = !isVoided && !!(state.selectedItems && state.selectedItems[seatIdx + ':' + itemIdx]);
+
+  var bevelLt = lightenHex(T.bg, 0.08);
+  var bevelDk = darkenHex(T.bg, 0.2);
+
+  // ── Item card ──────────────────────────────────────
+  var card = document.createElement('div');
+  card.style.background    = isSel ? T.green : T.well;
+  card.style.borderTop     = '2px solid ' + (isSel ? T.greenDk : bevelLt);
+  card.style.borderRight   = '2px solid ' + (isSel ? T.greenDk : bevelDk);
+  card.style.borderBottom  = '2px solid ' + (isSel ? T.greenDk : bevelDk);
+  card.style.borderRadius  = '8px';
+  card.style.padding       = '6px 10px';
+  card.style.cursor        = isVoided ? 'default' : 'pointer';
+  card.style.pointerEvents = 'auto';
+  card.style.touchAction   = 'manipulation';
+  card.style.userSelect    = 'none';
+
+  // Left border priority: selected > voided > discounted > sent > default
+  var leftColor, leftShadow;
+  if (isSel) {
+    leftColor  = T.greenDk;
+    leftShadow = '0 2px 0 ' + T.greenDk;
+  } else if (isVoided) {
+    leftColor  = T.verm;
+    leftShadow = '0 2px 0 ' + T.vermDk;
+  } else if (isDisc) {
+    leftColor  = T.lavender;
+    leftShadow = '0 2px 0 ' + darkenHex(T.lavender, 0.3);
+  } else if (isSent) {
+    leftColor  = T.green;
+    leftShadow = '0 2px 0 ' + T.greenDk;
+  } else {
+    leftColor  = T.moon;
+    leftShadow = null;
+  }
+  card.style.borderLeft = '3px solid ' + leftColor;
+  if (leftShadow) card.style.boxShadow = leftShadow;
+
+  // Mode B sent: all-4-borders green (unless discounted or selected)
+  if (modeB && isSent && !isSel && !isDisc) {
+    card.style.borderTop    = '2px solid ' + T.green;
+    card.style.borderRight  = '2px solid ' + T.green;
+    card.style.borderBottom = '2px solid ' + T.green;
   }
 
-  // name + price row
-  var nameRow = document.createElement('div');
-  Object.assign(nameRow.style, {
-    display:        'flex',
-    justifyContent: 'space-between',
-    alignItems:     'baseline',
-    gap:            '6px',
-  });
+  // ── Name + price row ──
+  var mainRow = document.createElement('div');
+  mainRow.style.display        = 'flex';
+  mainRow.style.justifyContent = 'space-between';
+  mainRow.style.alignItems     = 'center';
+  mainRow.style.gap            = '6px';
+
+  // Left cluster: name + optional discount badge
+  var nameCluster = document.createElement('span');
+  nameCluster.style.display    = 'flex';
+  nameCluster.style.alignItems = 'center';
+  nameCluster.style.gap        = '6px';
+  nameCluster.style.flex       = '1';
+  nameCluster.style.minWidth   = '0';
 
   var nameEl = document.createElement('span');
-  Object.assign(nameEl.style, {
-    fontSize:   '12px',
-    fontWeight: T.fwBold,
-    fontFamily: T.fh,
-    color:      isVoided ? T.verm : (isSel ? T.moonText : T.text),
-    flex:       '1',
-    minWidth:   '0',
-  });
+  nameEl.style.fontFamily   = T.fb;
+  nameEl.style.fontWeight   = T.fwBold;
+  nameEl.style.fontSize     = modeB ? '14px' : T.fsB3;
+  nameEl.style.color        = isSel ? T.well : (isVoided ? T.moon : T.text);
+  nameEl.style.fontStyle    = isVoided ? 'italic' : 'normal';
+  nameEl.style.opacity      = isVoided ? '0.6' : '1';
+  nameEl.style.whiteSpace   = 'nowrap';
+  nameEl.style.overflow     = 'hidden';
+  nameEl.style.textOverflow = 'ellipsis';
   nameEl.textContent = (item.qty > 1 ? item.qty + '× ' : '') + item.name;
-  nameRow.appendChild(nameEl);
+  nameCluster.appendChild(nameEl);
 
-  var priceEl = document.createElement('span');
-  Object.assign(priceEl.style, {
-    fontSize:   '11px',
-    fontWeight: T.fwBold,
-    fontFamily: T.fb,
-    color:      isVoided ? T.verm : (isSel ? T.moonText : T.gold),
-    flexShrink: '0',
-  });
-  var itemPrice = item.effectivePrice != null ? item.effectivePrice : (item.price || 0);
-  priceEl.textContent = fmt((item.qty || 1) * itemPrice);
-  nameRow.appendChild(priceEl);
-  card.appendChild(nameRow);
+  // Discount percentage badge shown inline next to name when discounted
+  if (isDisc) {
+    var badgeText = _discPctRaw != null ? _discPctRaw + '% OFF' : 'DISC';
 
-  // modifier rows
-  var mods = item.mods || [];
-  for (var mi = 0; mi < mods.length; mi++) {
-    var mod = mods[mi];
-    var modRow = document.createElement('div');
-    Object.assign(modRow.style, {
-      display:     'flex',
-      alignItems:  'baseline',
-      gap:         '4px',
-      marginLeft:  '8px',
-      paddingLeft: '6px',
-      borderLeft:  '2px solid ' + hexToRgba(T.moon, 0.3),
-    });
-    var modName = document.createElement('span');
-    Object.assign(modName.style, {
-      fontSize:   '10px',
-      fontFamily: T.fb,
-      color:      isSel ? T.moonText : T.moon,
-      flex:       '1',
-    });
-    modName.textContent = mod.name || '';
-    modRow.appendChild(modName);
-    if (mod.price && mod.charged) {
-      var modPrice = document.createElement('span');
-      Object.assign(modPrice.style, {
-        fontSize:   '10px',
-        fontWeight: T.fwBold,
-        fontFamily: T.fb,
-        color:      isSel ? T.moonText : T.moon,
-      });
-      modPrice.textContent = '+' + fmt(mod.price);
-      modRow.appendChild(modPrice);
-    }
-    card.appendChild(modRow);
+    var discBadge = document.createElement('span');
+    discBadge.style.fontFamily    = T.fh;
+    discBadge.style.fontWeight    = T.fwBold;
+    discBadge.style.fontSize      = '10px';
+    discBadge.style.letterSpacing = '0.06em';
+    discBadge.style.color         = isSel ? T.well : T.lavender;
+    discBadge.style.background    = isSel ? hexToRgba(T.lavender, 0.35) : hexToRgba(T.lavender, 0.18);
+    discBadge.style.border        = '1px solid ' + (isSel ? hexToRgba(T.lavender, 0.5) : hexToRgba(T.lavender, 0.45));
+    discBadge.style.borderRadius  = '4px';
+    discBadge.style.padding       = '1px 5px';
+    discBadge.style.flexShrink    = '0';
+    discBadge.style.whiteSpace    = 'nowrap';
+    discBadge.textContent         = badgeText;
+    nameCluster.appendChild(discBadge);
   }
 
-  // discount row (item-level discount via effectivePrice being lower than price)
-  var basePrice = item.price || 0;
-  var effPrice  = item.effectivePrice != null ? item.effectivePrice : basePrice;
-  if (effPrice < basePrice && basePrice > 0) {
+  // Void badge — shown inline next to name
+  if (isVoided) {
+    var voidBadge = document.createElement('span');
+    voidBadge.style.fontFamily    = T.fh;
+    voidBadge.style.fontWeight    = T.fwBold;
+    voidBadge.style.fontSize      = '10px';
+    voidBadge.style.letterSpacing = '0.06em';
+    voidBadge.style.color         = T.verm;
+    voidBadge.style.background    = hexToRgba(T.verm, 0.12);
+    voidBadge.style.border        = '1px solid ' + hexToRgba(T.verm, 0.4);
+    voidBadge.style.borderRadius  = '4px';
+    voidBadge.style.padding       = '1px 5px';
+    voidBadge.style.flexShrink    = '0';
+    voidBadge.style.whiteSpace    = 'nowrap';
+    voidBadge.textContent         = 'VOID';
+    nameCluster.appendChild(voidBadge);
+  }
+
+  mainRow.appendChild(nameCluster);
+
+  var priceEl = document.createElement('span');
+  priceEl.style.fontFamily      = T.fb;
+  priceEl.style.fontWeight      = T.fwBold;
+  priceEl.style.fontSize        = modeB ? '14px' : T.fsB3;
+  priceEl.style.color           = isSel ? T.well : (isVoided ? T.moon : T.gold);
+  priceEl.style.flexShrink      = '0';
+  priceEl.style.textDecoration  = isVoided ? 'line-through' : 'none';
+  priceEl.style.opacity         = isVoided ? '0.6' : '1';
+  var ep = item.effectivePrice != null ? item.effectivePrice : (item.price || 0);
+  priceEl.textContent = fmt((item.qty || 1) * ep);
+  mainRow.appendChild(priceEl);
+  card.appendChild(mainRow);
+
+  // ── Discount row — original price (struck) + savings amount ──
+  if (isDisc) {
     var discRow = document.createElement('div');
-    Object.assign(discRow.style, {
-      display:     'flex',
-      alignItems:  'baseline',
-      gap:         '4px',
-      marginLeft:  '8px',
-      paddingLeft: '6px',
-      borderLeft:  '2px solid ' + hexToRgba(T.verm, 0.4),
-    });
-    var discLabel = document.createElement('span');
-    Object.assign(discLabel.style, {
-      fontSize:   '10px',
-      fontFamily: T.fb,
-      color:      isSel ? T.moonText : T.moon,
-      flex:       '1',
-    });
-    discLabel.textContent = 'DISC';
-    discRow.appendChild(discLabel);
+    discRow.style.display        = 'flex';
+    discRow.style.justifyContent = 'space-between';
+    discRow.style.alignItems     = 'baseline';
+    discRow.style.gap            = '6px';
+    discRow.style.marginTop      = '3px';
+    discRow.style.paddingTop     = '2px';
+
+    var origPrice = _rawPrice;
+    var discOrig = document.createElement('span');
+    discOrig.style.fontFamily     = T.fb;
+    discOrig.style.fontSize       = T.fsB4;
+    discOrig.style.color          = isSel ? hexToRgba(T.well, 0.6) : hexToRgba(T.lavender, 0.6);
+    discOrig.style.textDecoration = 'line-through';
+    discOrig.style.flex           = '1';
+    discOrig.textContent          = 'was ' + fmt((item.qty || 1) * origPrice);
+    discRow.appendChild(discOrig);
+
     var discAmt = document.createElement('span');
-    Object.assign(discAmt.style, {
-      fontSize:   '10px',
-      fontWeight: T.fwBold,
-      fontFamily: T.fb,
-      color:      isSel ? T.moonText : T.verm,
-    });
-    discAmt.textContent = '-' + fmt((item.qty || 1) * (basePrice - effPrice));
+    discAmt.style.fontFamily = T.fb;
+    discAmt.style.fontSize   = T.fsB4;
+    discAmt.style.fontWeight = T.fwBold;
+    discAmt.style.color      = isSel ? T.well : T.lavender;
+    discAmt.textContent      = '-' + fmt(_discAmt);
     discRow.appendChild(discAmt);
     card.appendChild(discRow);
   }
 
-  card.addEventListener('pointerup', function(e) {
-    if (e.defaultPrevented) return;
-    if (isVoided) return;
-    toggleItem(state, seatIdx, itemIdx);
-  });
+  if (!isVoided) {
+    card.addEventListener('pointerup', function(e) {
+      if (e.defaultPrevented) return;
+      toggleItem(state, seatIdx, itemIdx);
+    });
+  }
 
-  return card;
+  // ── Mod tree ──────────────────────────────────────
+  var mods = item.mods || [];
+  var block = document.createElement('div');
+  block.style.display       = 'flex';
+  block.style.flexDirection = 'column';
+  block.appendChild(card);
+
+  if (mods.length > 0) {
+    var tree = document.createElement('div');
+    tree.style.position    = 'relative';
+    tree.style.display     = 'flex';
+    tree.style.flexDirection = 'column';
+    tree.style.gap         = '3px';
+    tree.style.marginTop   = '4px';
+    tree.style.marginLeft  = '10px';
+    tree.style.paddingLeft = '16px';
+
+    // Vertical stem — always T.text
+    var stem = document.createElement('div');
+    stem.style.position   = 'absolute';
+    stem.style.left       = '6px';
+    stem.style.top        = '0';
+    stem.style.bottom     = '12px';
+    stem.style.width      = '2px';
+    stem.style.background = T.text;
+    tree.appendChild(stem);
+
+    for (var mi = 0; mi < mods.length; mi++) {
+      var mod = mods[mi];
+      var entry = document.createElement('div');
+      entry.style.position   = 'relative';
+      entry.style.display    = 'flex';
+      entry.style.alignItems = 'center';
+      entry.style.gap        = '5px';
+
+      // Horizontal branch — always T.text
+      var branch = document.createElement('div');
+      branch.style.position   = 'absolute';
+      branch.style.left       = '-10px';
+      branch.style.top        = '50%';
+      branch.style.width      = '10px';
+      branch.style.height     = '2px';
+      branch.style.background = T.text;
+      entry.appendChild(branch);
+
+      // Pill borders change by state, connectors stay white
+      var pill = document.createElement('div');
+      pill.style.flex            = '1';
+      pill.style.display         = 'flex';
+      pill.style.alignItems      = 'baseline';
+      pill.style.justifyContent  = 'space-between';
+      pill.style.gap             = '6px';
+      pill.style.padding         = '3px 8px';
+      pill.style.background      = T.card;
+      pill.style.borderRadius    = '6px';
+
+      if (isVoided) {
+        pill.style.borderLeft   = '1px solid ' + hexToRgba(T.verm, 0.5);
+        pill.style.borderTop    = '1px solid ' + hexToRgba(T.verm, 0.3);
+        pill.style.borderRight  = '1px solid ' + bevelDk;
+        pill.style.borderBottom = '1px solid ' + bevelDk;
+      } else if (isDisc) {
+        pill.style.borderLeft   = '1px solid ' + T.lavender;
+        pill.style.borderTop    = '1px solid ' + hexToRgba(T.lavender, 0.4);
+        pill.style.borderRight  = '1px solid ' + bevelDk;
+        pill.style.borderBottom = '1px solid ' + bevelDk;
+        pill.style.boxShadow    = '0 2px 0 ' + darkenHex(T.lavender, 0.3);
+      } else if (isSent) {
+        pill.style.border = '1px solid ' + hexToRgba(T.green, 0.4);
+      } else {
+        pill.style.borderTop    = '1px solid ' + bevelLt;
+        pill.style.borderLeft   = '1px solid ' + bevelLt;
+        pill.style.borderRight  = '1px solid ' + bevelDk;
+        pill.style.borderBottom = '1px solid ' + bevelDk;
+      }
+
+      var modName = document.createElement('span');
+      modName.style.fontFamily = T.fb;
+      modName.style.fontSize   = modeB ? '11px' : T.fsB4;
+      modName.style.fontStyle  = 'italic';
+      modName.style.color      = isVoided ? T.moon : T.text;
+      modName.textContent      = mod.name || '';
+      pill.appendChild(modName);
+
+      if (mod.charged && mod.price > 0) {
+        var modPrice = document.createElement('span');
+        modPrice.style.fontFamily = T.fb;
+        modPrice.style.fontSize   = modeB ? '11px' : T.fsB4;
+        modPrice.style.fontWeight = T.fwBold;
+        modPrice.style.color      = isVoided ? T.moon : T.gold;
+        modPrice.style.flexShrink = '0';
+        modPrice.textContent      = '+' + fmt(mod.price);
+        pill.appendChild(modPrice);
+      }
+
+      entry.appendChild(pill);
+      tree.appendChild(entry);
+    }
+    block.appendChild(tree);
+  }
+
+  // ── Sent-row wrapper (narrows block, adds >>> info) — Mode A only ──
+  // Mode B uses the all-4-borders treatment on the card itself instead.
+  if (isSent && !modeB) {
+    var sentRow = document.createElement('div');
+    sentRow.style.display    = 'flex';
+    sentRow.style.alignItems = 'stretch';
+
+    block.style.width    = '50%';
+    block.style.minWidth = '170px';
+
+    sentRow.appendChild(block);
+
+    var info = document.createElement('div');
+    info.style.display        = 'flex';
+    info.style.flexDirection  = 'column';
+    info.style.alignItems     = 'center';
+    info.style.justifyContent = 'center';
+    info.style.paddingLeft    = '8px';
+    info.style.gap            = '4px';
+
+    var chevron = document.createElement('span');
+    chevron.style.fontFamily    = T.fb;
+    chevron.style.fontWeight    = T.fwBold;
+    chevron.style.fontSize      = modeB ? '36px' : '18px';
+    chevron.style.color         = isDisc ? T.lavender : T.green;
+    chevron.style.letterSpacing = '0.08em';
+    chevron.style.lineHeight    = '1';
+    chevron.textContent         = '>>>';
+    info.appendChild(chevron);
+
+    if (item.sent_at) {
+      // Parse ISO or HH:MM string to a compact 12-hr time label.
+      var _sentLabel = (function(raw) {
+        var d = new Date(raw);
+        if (!isNaN(d.getTime())) {
+          var h = d.getHours(), m = d.getMinutes();
+          var ampm = h >= 12 ? 'PM' : 'AM';
+          h = h % 12 || 12;
+          return h + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+        }
+        // Fallback: already a short string (e.g. '2:15 PM')
+        return raw;
+      })(item.sent_at);
+      var sentTime = document.createElement('span');
+      sentTime.style.fontFamily  = T.fb;
+      sentTime.style.fontSize    = '11px';
+      sentTime.style.color       = isDisc ? hexToRgba(T.lavender, 0.7) : T.moon;
+      sentTime.style.whiteSpace  = 'nowrap';
+      sentTime.textContent       = _sentLabel;
+      info.appendChild(sentTime);
+    }
+
+    sentRow.appendChild(info);
+    return sentRow;   // return the row wrapper, not the block
+  }
+
+  return block;
+}
+
+function _buildItemSubCard(state, seatIdx, itemIdx) {
+  // Legacy shim — delegates to buildItemBlock for any remaining callers.
+  return buildItemBlock(state, seatIdx, itemIdx, false);
 }
 
 function buildSeatCard(state, seatIdx) {
-  var seat = state.seats[seatIdx];
+  var seat     = state.seats[seatIdx];
+  var bevelLt  = lightenHex(T.bg, 0.08);
+  var bevelDk  = darkenHex(T.bg, 0.2);
+  var hasDisc  = _seatHasDisc(seat, state);
 
-  // seat-active = any item selected, or (empty seat) explicitly toggled
-  var seatActive = false;
-  if (seat.items.length === 0) {
-    seatActive = !!(state.selected && state.selected[seat.id]);
-  } else {
-    var selItems = state.selectedItems || {};
-    for (var ki = 0; ki < seat.items.length; ki++) {
-      if (selItems[seatIdx + ':' + ki]) { seatActive = true; break; }
-    }
-  }
+  var card = document.createElement('div');
+  card.style.position      = 'relative';
+  card.style.flex          = '1';
+  card.style.minWidth      = '0';
+  card.style.display       = 'flex';
+  card.style.flexDirection = 'column';
+  card.style.overflowY     = 'auto';
+  card.style.overflowX     = 'hidden';
+  card.style.background    = T.card;
+  card.style.borderTop     = '3px solid ' + bevelLt;
+  card.style.borderLeft    = '4px solid ' + (isSeatSel ? T.greenDk : (hasDisc ? T.lavender : T.green));
+  card.style.borderRight   = '3px solid ' + bevelDk;
+  card.style.borderBottom  = '3px solid ' + bevelDk;
+  card.style.borderRadius  = T.chamferCard + 'px';
+  card.style.scrollbarWidth     = 'none';
+  card.style.msOverflowStyle    = 'none';
+  card.style.touchAction        = 'pan-y';
+  card.style.pointerEvents      = 'auto';
 
-  var wrap = buildActionCard({ accent: seatActive ? T.green : T.moon });
-  wrap.style.flex          = '1';
-  wrap.style.padding       = '0';
-  wrap.style.display       = 'flex';
-  wrap.style.flexDirection = 'column';
-  wrap.style.overflow      = 'hidden';
-  wrap.style.border        = '1px solid ' + (seatActive ? T.green : T.border);
-  wrap.style.boxShadow     = seatActive ? ('0 4px 0 ' + T.greenDk) : ('0 4px 0 ' + T.moonDk);
+  // ── Sticky header ──
+  var isSeatSel = !!(state.selected && state.selected[seat.id]);
 
-  // ── Header (tappable — toggleSeat) ──
   var hdr = document.createElement('div');
-  Object.assign(hdr.style, {
-    background:    seatActive ? T.green : T.well,
-    padding:       '8px 12px',
-    borderBottom:  '1px solid ' + T.border,
-    display:       'flex',
-    alignItems:    'center',
-    cursor:        'pointer',
-    userSelect:    'none',
-    pointerEvents: 'auto',
-    touchAction:   'manipulation',
-  });
+  hdr.style.position      = 'sticky';
+  hdr.style.top           = '0';
+  hdr.style.zIndex        = '2';
+  hdr.style.background    = isSeatSel ? T.green : T.well;
+  hdr.style.padding       = '8px 12px';
+  hdr.style.borderBottom  = '2px solid ' + (isSeatSel ? T.greenDk : bevelDk);
+  hdr.style.display       = 'flex';
+  hdr.style.alignItems    = 'baseline';
+  hdr.style.justifyContent = 'space-between';
+  hdr.style.cursor        = 'pointer';
+  hdr.style.userSelect    = 'none';
+  hdr.style.pointerEvents = 'auto';
+  hdr.style.touchAction   = 'manipulation';
+  hdr.style.flexShrink    = '0';
 
-  var label = document.createElement('div');
-  Object.assign(label.style, {
-    color:      seatActive ? T.moonText : T.moon,
-    fontFamily: T.fh,
-    fontWeight: T.fwBold,
-    fontSize:   '17px',
-  });
-  label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
-  hdr.appendChild(label);
+  var hdrLeft = document.createElement('div');
+  hdrLeft.style.display    = 'flex';
+  hdrLeft.style.alignItems = 'baseline';
+  hdrLeft.style.gap        = '8px';
+
+  var seatNum = document.createElement('span');
+  seatNum.textContent      = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
+  seatNum.style.fontFamily = T.fh;
+  seatNum.style.fontWeight = T.fwBold;
+  seatNum.style.fontSize   = '24px';
+  seatNum.style.color      = isSeatSel ? T.well : (hasDisc ? T.lavender : T.green);
+  hdrLeft.appendChild(seatNum);
+
+  var seatSbtl = document.createElement('span');
+  seatSbtl.textContent      = fmt(seatTotal(seat));
+  seatSbtl.style.fontFamily = T.fb;
+  seatSbtl.style.fontWeight = T.fwBold;
+  seatSbtl.style.fontSize   = '17px';
+  seatSbtl.style.color      = isSeatSel ? T.well : (hasDisc ? T.lavender : T.gold);
+  hdrLeft.appendChild(seatSbtl);
+  hdr.appendChild(hdrLeft);
+
+  if (seat.name) {
+    var seatPname = document.createElement('span');
+    seatPname.textContent      = '"' + seat.name + '"';
+    seatPname.style.fontFamily = T.fb;
+    seatPname.style.fontSize   = T.fsB4;
+    seatPname.style.color      = T.text;
+    seatPname.style.fontStyle  = 'italic';
+    hdr.appendChild(seatPname);
+  }
 
   hdr.addEventListener('pointerup', function(e) {
     if (e.defaultPrevented) return;
     toggleSeat(state, seat.id);
   });
-  wrap.appendChild(hdr);
+  card.appendChild(hdr);
 
-  // ── Body (scrollable item cards) ──
-  var body = document.createElement('div');
-  Object.assign(body.style, {
-    flex:          '1',
-    minHeight:     '0',
-    padding:       '8px',
-    display:       'flex',
-    flexDirection: 'column',
-    gap:           '6px',
-    overflowY:     'auto',
-  });
+  // ── Items ──
+  var itemsWrap = document.createElement('div');
+  itemsWrap.style.padding       = '6px 8px 8px';
+  itemsWrap.style.display       = 'flex';
+  itemsWrap.style.flexDirection = 'column';
+  itemsWrap.style.gap           = '5px';
 
   if (seat.items.length === 0) {
     var empty = document.createElement('div');
-    Object.assign(empty.style, {
-      flex:           '1',
-      display:        'flex',
-      alignItems:     'center',
-      justifyContent: 'center',
-      color:          T.border,
-      fontStyle:      'italic',
-      fontFamily:     T.fb,
-    });
-    empty.textContent = 'empty seat';
-    body.appendChild(empty);
+    empty.textContent      = 'empty seat';
+    empty.style.textAlign  = 'center';
+    empty.style.padding    = '20px 0';
+    empty.style.fontFamily = T.fb;
+    empty.style.fontSize   = T.fsB3;
+    empty.style.color      = T.moon;
+    empty.style.fontStyle  = 'italic';
+    itemsWrap.appendChild(empty);
   } else {
     for (var ii = 0; ii < seat.items.length; ii++) {
-      body.appendChild(_buildItemSubCard(state, seatIdx, ii));
+      itemsWrap.appendChild(buildItemBlock(state, seatIdx, ii, false));
     }
   }
-  wrap.appendChild(body);
-
-  // ── Footer (subtotal + optional disc) ──
-  if (seat.items.length > 0) {
-    var footer = document.createElement('div');
-    Object.assign(footer.style, {
-      flexShrink:    '0',
-      padding:       '6px 10px',
-      borderTop:     '1px solid ' + hexToRgba(T.border, 0.3),
-      display:       'flex',
-      flexDirection: 'column',
-      gap:           '2px',
-    });
-
-    // SUBTOTAL row
-    var subRow = document.createElement('div');
-    Object.assign(subRow.style, { display:'flex', justifyContent:'space-between', alignItems:'baseline' });
-    var subLbl = document.createElement('span');
-    Object.assign(subLbl.style, { fontFamily:T.fb, fontSize:'10px', color:T.moon, letterSpacing:'0.06em' });
-    subLbl.textContent = 'SUBTOTAL';
-    var subVal = document.createElement('span');
-    Object.assign(subVal.style, {
-      fontFamily: T.fb, fontSize:'11px', fontWeight:T.fwBold,
-      color: seatActive ? T.green : T.gold,
-    });
-    subVal.textContent = fmt(seatTotal(seat));
-    subRow.appendChild(subLbl);
-    subRow.appendChild(subVal);
-    footer.appendChild(subRow);
-
-    wrap.appendChild(footer);
-  }
+  card.appendChild(itemsWrap);
 
   var canDelete = seat.items.length === 0
     && activeSeatCount(state.seats, state.paidSeats) > 1;
   if (canDelete) {
-    var delX = _buildDeleteSeatX(state, seat.id);
-    wrap.appendChild(delX);
+    card.appendChild(_buildDeleteSeatX(state, seat.id));
   }
 
-  state.seatEls[seat.id] = wrap;
-  return wrap;
+  state.seatEls[seat.id] = card;
+  return card;
 }
 
 // ═══════════════════════════════════════════════════
@@ -2325,9 +2617,8 @@ function buildPaidSeatCard(state, seatIdx) {
 // in the recap column to the left.
 function buildCompactTile(state, seatIdx) {
   var seat = state.seats[seatIdx];
-  // Tile selection is from _tileSelSet (UI-only, not state.selected).
-  var _tileSelSet = state._tileSelSet || (state._tileSelSet = new Set());
-  var tileActive  = _tileSelSet.has(seatIdx);
+  // Tile focus uses focusedSeats (by seat ID) — filter only, no payment selection.
+  var tileActive = !!(state.focusedSeats && state.focusedSeats[seat.id]);
 
   var wrap = buildActionCard({ accent: T.moon });
   wrap.style.padding       = '0';
@@ -2341,11 +2632,9 @@ function buildCompactTile(state, seatIdx) {
 
   wrap.addEventListener('pointerup', function(e) {
     if (e.defaultPrevented) return;
-    if (_tileSelSet.has(seatIdx)) _tileSelSet.delete(seatIdx);
-    else                          _tileSelSet.add(seatIdx);
-    // Keep state.selected in sync so buildOrderEntryParams picks up the
-    // selection when the user taps ADD ITEMS after selecting tiles here.
-    toggleSeat(state, seat.id);
+    if (state.focusedSeats[seat.id]) delete state.focusedSeats[seat.id];
+    else state.focusedSeats[seat.id] = true;
+    rerenderTopArea(state);
   });
 
   // Header: floods T.green when tile is selected
@@ -2560,6 +2849,7 @@ function addSeatsBatch(state, n) {
       items:  [],
     });
   }
+  state.seats.sort(function(a, b) { return a.number - b.number; });
   persistSeats(state);
   rerenderTopArea(state);
 }
@@ -2664,10 +2954,13 @@ function _syncSelectedFromItems(state) {
     if (state.paidSeats && state.paidSeats[s2.id]) continue;
     if (!s2.items.length) continue;
     var all = true;
+    var hasSelectable = false;
     for (var j = 0; j < s2.items.length; j++) {
+      if (s2.items[j].voided) continue;
+      hasSelectable = true;
       if (!state.selectedItems[i2 + ':' + j]) { all = false; break; }
     }
-    if (all) next[s2.id] = true;
+    if (all && hasSelectable) next[s2.id] = true;
   }
   state.selected = next;
 }
@@ -2762,6 +3055,7 @@ function addSeat(state) {
     number: num,
     items:  [],
   });
+  state.seats.sort(function(a, b) { return a.number - b.number; });
   persistSeats(state);
   rerenderTopArea(state);
 }
@@ -3216,67 +3510,60 @@ function _voidItems(state, refs) {
   state.selectedItems = {};
   rerenderTopArea(state);
 
-  // Hoisted so the undo handler (defined before the setTimeout) can cancel it.
-  var _voidTid = null;
+  if (!state.orderId) return;
 
-  showToast('Voided ' + refs.length + ' item(s) — tap to undo', {
-    bg: T.verm,
-    duration: 4000,
-    onClick: function() {
-      // Cancel the pending backend DELETE — undo wins.
-      if (_voidTid !== null) {
-        clearTimeout(_voidTid);
-        var ti = state._voidTimers.indexOf(_voidTid);
-        if (ti !== -1) state._voidTimers.splice(ti, 1);
-        _voidTid = null;
+  // Fire DELETEs immediately — no undo window.
+  var deletes = snapshot
+    .filter(function(s) { return !!s.item.item_id; })
+    .map(function(s) {
+      return fetchWithTimeout(
+        '/api/v1/orders/' + state.orderId + '/items/' + s.item.item_id,
+        { method: 'DELETE' }, 8000
+      ).then(function(r) {
+        if (!r.ok) throw new Error(r.status);
+      });
+    });
+
+  Promise.all(deletes)
+    .then(function() {
+      // DELETEs confirmed. Persist voided items in _voidedItems so
+      // _injectVoidedItems restores them after every refreshOrder.
+      if (!state._voidedItems) state._voidedItems = [];
+      for (var _vi = 0; _vi < snapshot.length; _vi++) {
+        var _ve = snapshot[_vi];
+        var _vs = state.seats[_ve.seatIdx];
+        if (!_vs) continue;
+        var _dup = state._voidedItems.some(function(e) {
+          return e.item.item_id && e.item.item_id === _ve.item.item_id;
+        });
+        if (!_dup) state._voidedItems.push({ seatNumber: _vs.number, item: _ve.item });
       }
+    })
+    .catch(function() {
+      // DELETE(s) failed — roll back the local void so the display
+      // matches backend truth rather than silently diverging.
+      if (!state._alive) return;
       for (var j = 0; j < snapshot.length; j++) {
         snapshot[j].item.voided = false;
       }
       rerenderTopArea(state);
-      showToast('Void undone', { bg: T.greenWarm });
-    },
-  });
+      showToast('Void failed — check connection', { bg: T.verm });
+    });
+}
 
-  // After the undo window, commit to backend then remove from local state.
-  // Stored in _voidTimers so unmount can cancel it.
-  if (state.orderId) {
-    _voidTid = setTimeout(function() {
-      var deletes = snapshot
-        .filter(function(s) { return !!s.item.item_id; })
-        .map(function(s) {
-          return fetchWithTimeout(
-            '/api/v1/orders/' + state.orderId + '/items/' + s.item.item_id,
-            { method: 'DELETE' }, 8000
-          ).then(function(r) {
-            if (!r.ok) throw new Error(r.status);
-          });
-        });
-
-      Promise.all(deletes)
-        .then(function() {
-          // All DELETEs succeeded — splice from local state descending to preserve indices.
-          snapshot.sort(function(a, b) {
-            if (a.seatIdx !== b.seatIdx) return b.seatIdx - a.seatIdx;
-            return b.itemIdx - a.itemIdx;
-          });
-          for (var m = 0; m < snapshot.length; m++) {
-            state.seats[snapshot[m].seatIdx].items.splice(snapshot[m].itemIdx, 1);
-          }
-          if (state._alive) rerenderTopArea(state);
-        })
-        .catch(function() {
-          // One or more DELETEs failed — undo the local void so the display
-          // matches backend truth rather than silently diverging.
-          if (!state._alive) return;
-          for (var j = 0; j < snapshot.length; j++) {
-            snapshot[j].item.voided = false;
-          }
-          rerenderTopArea(state);
-          showToast('Void failed — check connection', { bg: T.verm });
-        });
-    }, 4200);
-    state._voidTimers.push(_voidTid);
+function _injectVoidedItems(state) {
+  if (!state._voidedItems || state._voidedItems.length === 0) return;
+  for (var vi = 0; vi < state._voidedItems.length; vi++) {
+    var entry = state._voidedItems[vi];
+    var seat  = null;
+    for (var si = 0; si < state.seats.length; si++) {
+      if (state.seats[si].number === entry.seatNumber) { seat = state.seats[si]; break; }
+    }
+    if (!seat) continue;
+    var already = seat.items.some(function(it) {
+      return it.item_id && it.item_id === entry.item.item_id;
+    });
+    if (!already) seat.items.push(entry.item);
   }
 }
 
@@ -3303,6 +3590,22 @@ function handleDiscount(state) {
       ctx: { orderId: state.orderId || null },
     });
     showToast('Select items or seats to discount', { bg: T.gold });
+    return;
+  }
+
+  // Skip the manager PIN interrupt when the session is already authenticated
+  // as a manager — use the logged-in employee ID as approvedBy directly.
+  // The calling scene must pass role: 'manager' in mount params for this path.
+  var _params = state._mountParams || {};
+  var _isManager = (_params.role === 'manager') || (_params.employeeRole === 'manager');
+
+  if (_isManager) {
+    SceneManager.interrupt('disc-select', {
+      onConfirm: function(opt) {
+        _applyDiscount(state, opt.pct, itemRefs, seatIds, _params.employeeId || 'manager');
+      },
+      onCancel: function() {},
+    });
     return;
   }
 
@@ -3356,6 +3659,29 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     return r.json();
   }).then(function(_discountResp) {
     if (!state._alive) return;
+    // Cache per-item discount metadata so buildItemBlock can show lavender
+    // treatment after refreshOrder (backend only updates manager_discount_total
+    // at the order level — it does not stamp effectivePrice on individual items).
+    if (!state._itemDiscounts) state._itemDiscounts = {};
+    if (!state._seatDiscounts) state._seatDiscounts = {};
+    for (var _di = 0; _di < lines.length; _di++) {
+      var _dItem = lines[_di];
+      var _dRef  = itemRefs[_di];
+      var _dAmt  = Math.round((_dItem.price || 0) * (_dItem.qty || 1) * pct / 100 * 100) / 100;
+      // Per-item cache (keyed by backend item_id)
+      if (_dItem.item_id) {
+        state._itemDiscounts[_dItem.item_id] = { pct: pct, amount: _dAmt };
+      }
+      // Per-seat cache (keyed by seat.id — more reliable fallback)
+      var _dSeat = _dRef && state.seats[_dRef.seatIdx];
+      if (_dSeat && _dSeat.id) {
+        if (!state._seatDiscounts[_dSeat.id]) {
+          state._seatDiscounts[_dSeat.id] = { pct: pct, amount: 0 };
+        }
+        state._seatDiscounts[_dSeat.id].amount =
+          Math.round((state._seatDiscounts[_dSeat.id].amount + _dAmt) * 100) / 100;
+      }
+    }
     state.selectedItems = {};
     state.selected = {};
     // Refresh from backend truth so totals, balance_due, and payment scene
@@ -3679,9 +4005,42 @@ function openEditSeats(state) {
     };
   });
 
+  // Build allColumns from all unpaid seats (for the seat selector strip)
+  var allColumns = state.seats
+    .filter(function(s) { return !state.paidSeats[s.id]; })
+    .map(function(s) {
+      return {
+        id:    s.id,
+        label: 'S' + (s.number != null ? s.number : ''),
+        items: s.items.map(function(it) {
+          return {
+            name: it.name, qty: it.qty, price: it.price,
+            item_id: it.item_id, menu_item_id: it.menu_item_id,
+            category: it.category, mods: it.mods, notes: it.notes,
+            _splitRef: it._splitRef || undefined,
+          };
+        }),
+      };
+    });
+
+  // focusedIds: selected seats, or focused seats, or first unpaid seat
+  var focusedIds;
+  var selKeys2 = Object.keys(state.selected || {});
+  if (selKeys2.length > 0) {
+    focusedIds = selKeys2;
+  } else if (Object.keys(state.focusedSeats || {}).length > 0) {
+    focusedIds = Object.keys(state.focusedSeats);
+  } else {
+    var firstUnpaid = state.seats.filter(function(s) { return !state.paidSeats[s.id]; })[0];
+    focusedIds = firstUnpaid ? [firstUnpaid.id] : [];
+  }
+
   SceneManager.openTransactional('column-editor', {
-    columns:  columns,
-    orderId:  state.orderId,
+    columns:      columns,
+    allColumns:   allColumns,
+    focusedIds:   focusedIds,
+    checkNumber:  state.checkNumber || '',
+    orderId:      state.orderId,
     onSave: function(newColumns) {
       var itemsToSync = [];
 
@@ -3898,6 +4257,7 @@ function refreshOrder(state, params) {
 
 
       state.seats = orderToSeats(order, order.guest_count || 1);
+      _injectVoidedItems(state);
 
       // Recompute paid seats from payment.seat_numbers (list of seat
       // numbers). Build seatPayments[seat.id] = [payment, ...] so the

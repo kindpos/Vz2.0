@@ -31,6 +31,7 @@ var _onSeatHeaderTap = null;
 var _expandedItems = {};
 var _itemRenderLocked = false;
 var _customTitle = null;
+var _totalsMode = 'payment';  // 'payment' (default — sub/tax + card/cash) or 'building' (order-entry — sub/tax/total, no card/cash)
 
 // Muted text helper — lowers T.text opacity for label/sub text.
 function _muted() { return hexToRgba(T.text, 0.55); }
@@ -101,7 +102,7 @@ function _build() {
 
   var checkWrap = document.createElement('div');
   checkWrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;cursor:pointer;min-width:0;touch-action:manipulation;';
-  
+
   _checkIdEl = buildSectionLabel('', hexToRgba(T.text, 0.55));
   _checkIdEl.style.fontSize = T.fsB4;
   _checkIdEl.style.letterSpacing = '0.1em';
@@ -402,11 +403,40 @@ function _renderSummary(params) {
     _summaryBox.appendChild(buildDataRow('Discount', '$' + params.discount.toFixed(2), T.gold));
   }
   _summaryBox.appendChild(buildDataRow('Tax', '$' + (params.tax || 0).toFixed(2), T.gold));
+
+  // Building mode (order-entry): emphasize TOTAL inside the summary card
+  // since the prices box is hidden. Use cardTotal when supplied (the result
+  // of computeTotals — handles discount math correctly); fall back to a
+  // local sum for callers that don't pass it.
+  if (_totalsMode === 'building') {
+    _summaryBox.appendChild(buildDivider('4px 0'));
+    var total = (params.cardTotal != null)
+      ? params.cardTotal
+      : ((params.subtotal || 0) - (params.discount || 0) + (params.tax || 0));
+    var totalRow = buildDataRow('Total', '$' + total.toFixed(2), T.gold);
+    var totalVal = totalRow.querySelector('span:last-child');
+    if (totalVal) {
+      totalVal.style.fontSize = '17px';
+      totalVal.style.fontWeight = T.fwBold;
+    }
+    _summaryBox.appendChild(totalRow);
+  }
+
   _applyWellStyle(_summaryBox);
 }
 
 function _renderPrices(params) {
   if (!_pricesBox) return;
+
+  // Building mode (order-entry): TOTAL lives in the summary box; the prices
+  // box is unused. Hide the box entirely so it doesn't take vertical space.
+  if (_totalsMode === 'building') {
+    _pricesBox.style.display = 'none';
+    _pricesBox.innerHTML = '';
+    return;
+  }
+  _pricesBox.style.display = '';
+
   _pricesBox.innerHTML = '';
   _pricesBox.appendChild(buildDataRow('CARD PRICE', '$' + (params.cardTotal || 0).toFixed(2), T.elec));
   _pricesBox.appendChild(buildDataRow('CASH PRICE', '$' + (params.cashPrice || 0).toFixed(2), T.greenWarm));
@@ -531,6 +561,7 @@ export var OrderSummary = {
     _onItemTap = params.onItemTap || null;
     _onSeatHeaderTap = params.onSeatHeaderTap || null;
     _onBack = params.onBack || null;
+    _totalsMode = params.totalsMode || 'payment';
     if (_backBtn) _backBtn.style.display = params.showBack ? 'block' : 'none';
     _customTitle = params.title || null;
     _configureForMode('order');
@@ -577,6 +608,7 @@ export var OrderSummary = {
     if (params.onNameTap !== undefined) _onNameTap = params.onNameTap;
     if (params.onItemTap !== undefined) _onItemTap = params.onItemTap;
     if (params.onSeatHeaderTap !== undefined) _onSeatHeaderTap = params.onSeatHeaderTap;
+    if (params.totalsMode !== undefined) _totalsMode = params.totalsMode;
     if (params.items && !params.skipItems) _renderItems(params.items);
     _renderSummary(params);
     _renderPrices(params);
@@ -599,6 +631,12 @@ export var OrderSummary = {
     var el = _container();
     if (!el) return;
     if (!_itemScroll) _build();
+    // Reset totals mode so a stale 'building' from a previous order-entry
+    // session can't leak into checkout's prices box (defensive — checkout
+    // doesn't use _renderSummary/_renderPrices, but the box display:none
+    // from 'building' mode WOULD persist if we don't unset it here).
+    _totalsMode = 'payment';
+    if (_pricesBox) _pricesBox.style.display = '';
     _configureForMode('checkout');
 
     if (_headerTitle && params.title) _headerTitle.textContent = params.title;

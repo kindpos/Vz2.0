@@ -37,7 +37,7 @@
 
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
-import { buildCard, buildStaticCard, buildPillButton, hexToRgba, darkenHex, buildDataRow } from '../theme-manager.js';
+import { buildCard, buildStaticCard, buildPillButton, hexToRgba, lightenHex, darkenHex, buildDataRow } from '../theme-manager.js';
 import { showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
@@ -245,7 +245,6 @@ function fetchMenuFromAPI() {
         .filter(function(g) { return g.builder; })
         .sort(function(a, b) { return (a.display_order || 999) - (b.display_order || 999); });
 
-      PIZZA_BUILDER_DATA = null;
       if (builderGroups.length > 0) {
         PIZZA_BUILDER_DATA = builderGroups.map(function(g) {
           var subcats;
@@ -326,10 +325,12 @@ var _gridEl      = null; // inner grid DOM container
 var _gridWrap    = null; // collapsible grid wrapper
 var _snakeStrip  = null; // crumb-only strip shown when mod panel open
 var _expandedItems = {}; // item id → true when mod rows are expanded
+var _collapsedSeats = new Set(); // seat numbers collapsed in multi-seat s-card view (default: all expanded)
 
 // ── Modifier Panel (slide-up) ─────────────────────
 var _modPanel      = null;   // buildKindModPanel instance
 var _modPanelItem  = null;   // ticket preview item for active panel
+var _modPanelCatColor = null; // cat color of the item being modified — used by _appendModPreview
 var _modPanelOpen  = false;  // drives grid collapse animation
 
 // ── Inject invisible scrollbar style ──
@@ -393,17 +394,18 @@ defineScene({
     currentCustomerName = null;
     createOrderIdemKey = null;
     modHistory     = [];
-    comboFlow      = null;
     modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], panelEl: null, hasPizza: false };
     _bottomBar     = null;
     _mainArea      = null;
     _modPanel      = null;
     _modPanelItem  = null;
+    _modPanelCatColor = null;
     _modPanelOpen  = false;
     _gridEl        = null;
     _gridWrap      = null;
     _snakeStrip    = null;
     _expandedItems = {};
+    _collapsedSeats = new Set();
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
     _allSeatList = (params.seatNumbers && params.seatNumbers.length > 0)
@@ -421,7 +423,9 @@ defineScene({
     container.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
 
     // Show persistent order summary panel (left column)
-    // Lock _renderItems so stale check-overview updates can't write into our ticket list
+    // Lock _renderItems so stale check-overview updates can't write into our ticket list.
+    // totalsMode 'building' suppresses card/cash price rows — order-entry is for adding items,
+    // payment math lives in check-overview. (Requires OrderSummary to honor the flag.)
     OrderSummary.show({
       title: 'ITEM RECAP',
       checkId: params.recallCheckNumber || '',
@@ -431,6 +435,7 @@ defineScene({
       tax: 0,
       cardTotal: 0,
       cashPrice: 0,
+      totalsMode: 'building',
       onNameTap: _handleNameTap,
       showBack: true,
       onBack: handleClose
@@ -471,6 +476,7 @@ defineScene({
     OrderSummary.hide();
     if (_modPanel) { _modPanel.destroy(); _modPanel = null; }
     _modPanelItem  = null;
+    _modPanelCatColor = null;
     _modPanelOpen  = false;
     ticket         = [];
     ticketSeq      = 0;
@@ -488,6 +494,7 @@ defineScene({
     _gridWrap      = null;
     _snakeStrip    = null;
     _expandedItems = {};
+    _collapsedSeats = new Set();
     snakeState     = { view:'cats', crumbs:[], catId:null, subId:null };
     favorites      = [];
     _activeSeats    = new Set();
@@ -498,7 +505,6 @@ defineScene({
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
     _menuFetched   = false;
-    PIZZA_BUILDER_DATA = null;
   },
 
   interrupts: {
@@ -920,7 +926,7 @@ function buildCrumbTile(crumb, isLast) {
 
   if (!isLast) {
     var back = document.createElement('div');
-    back.style.cssText = 'position:absolute;top:6px;right:8px;font-size:10px;color:' + hexToRgba(T.well, 0.4) + ';font-family:' + T.fb + ';pointer-events:none;';
+    back.style.cssText = 'position:absolute;top:6px;right:8px;font-size:10px;color:rgba(0,0,0,0.4);font-family:' + T.fb + ';pointer-events:none;';
     back.textContent = '◂';
     el.appendChild(back);
   }
@@ -972,7 +978,7 @@ function buildItemTile(item, catColor, isFav) {
   }
 
   var name = document.createElement('span');
-  name.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB4 + ';color:' + T.text + ';letter-spacing:0.3px;line-height:1.3;padding-right:' + (isFav ? '18px' : '0') + ';pointer-events:none;';
+  name.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:14px;color:' + T.text + ';letter-spacing:0.3px;line-height:1.3;padding-right:' + (isFav ? '18px' : '0') + ';pointer-events:none;';
   name.textContent = item.label;
   el.appendChild(name);
 
@@ -1281,199 +1287,190 @@ function buildMain(parentEl, params) {
 }
 
 // ── SEAT SELECTOR CARD ────────────────────────────
+// 8-col scrollable grid of every seat on the check. Active seats (in
+// _activeSeats) render as filled green pills; inactive as outlined green.
+// "+" tile at the end adds a new seat and selects it. ALL/NONE pills in
+// the header bulk-toggle the entire grid. No SELECTED/UNSELECTED tabs,
+// no RECALL — those belonged to the old check-isolated mental model.
 function buildSeatSelectorCard() {
-  var card = buildStaticCard({ accent: T.green });
-  card.style.flexShrink = '0';
-  card.style.margin = '0 ' + PAD + 'px ' + GAP + 'px';
-  card.style.padding = '0';
-  card.style.overflow = 'visible';
+  var bevelLt = lightenHex(T.bg, 0.08);
 
-  // (recomputed in getTabList each render so + additions are reflected)
+  // Wrapper card: bevel-chromed well, no accent bar (the seat tiles carry
+  // the color signal themselves).
+  var card = document.createElement('div');
+  card.style.cssText = [
+    'flex-shrink:0;',
+    'margin:0 ' + PAD + 'px ' + GAP + 'px;',
+    'background:' + T.well + ';',
+    'border:1px solid ' + bevelLt + ';',
+    'border-radius:10px;',
+    'display:flex;flex-direction:column;',
+    'overflow:hidden;',
+  ].join('');
 
-  // Builds a category-card-style tab chip: T.card bg, left accent bar, colored text.
-  function _buildTabChip(label, color, darkBg) {
+  // ── Header: SEATS label + ALL/NONE pills ──────────
+  var header = document.createElement('div');
+  header.style.cssText = [
+    'display:flex;align-items:center;gap:8px;',
+    'padding:8px 12px 6px;',
+  ].join('');
+
+  var lbl = document.createElement('span');
+  lbl.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-size:' + T.fsB4 + ';',
+    'font-weight:' + T.fwBold + ';',
+    'color:' + T.green + ';',
+    'letter-spacing:0.15em;',
+    'flex:1;',
+  ].join('');
+  lbl.textContent = 'SEATS';
+  header.appendChild(lbl);
+
+  // Outlined-pill builder for ALL/NONE — small, transparent fill, colored border + text.
+  function _buildBulkPill(label, color) {
     var el = document.createElement('div');
-    el._color  = color;
-    el._darkBg = darkBg;
     el.style.cssText = [
-      'display:flex;align-items:center;justify-content:center;',
-      'background:' + T.card + ';',
-      'border-left:' + T.accentBarW + ' solid ' + color + ';',
-      'border-radius:' + T.chamferBtn + 'px;',
-      'box-shadow:0 4px 0 ' + darkBg + ';',
-      'padding:5px 10px;',
+      'padding:3px 12px;',
+      'border:1.5px solid ' + color + ';',
+      'border-radius:6px;',
+      'background:transparent;',
+      'color:' + color + ';',
       'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';',
-      'color:' + color + ';letter-spacing:0.08em;text-transform:uppercase;',
-      'white-space:nowrap;cursor:pointer;user-select:none;',
+      'letter-spacing:0.15em;',
+      'cursor:pointer;user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
-      'transition:' + T.transitionFast + ';',
+      'transition:opacity 0.1s;',
     ].join('');
     el.textContent = label;
-    el.addEventListener('pointerdown', function() {
-      el.style.transform = 'translateY(1px)';
-      el.style.boxShadow = 'none';
-    });
-    var _rel = function() {
-      el.style.transform = '';
-      el.style.boxShadow = '0 4px 0 ' + el._darkBg;
-    };
-    el.addEventListener('pointerup',     _rel);
-    el.addEventListener('pointerleave',  _rel);
+    el.addEventListener('pointerdown', function() { el.style.opacity = '0.6'; });
+    var _rel = function() { el.style.opacity = '1'; };
+    el.addEventListener('pointerup', _rel);
+    el.addEventListener('pointerleave', _rel);
     el.addEventListener('pointercancel', _rel);
-    el.setColor = function(c, d) {
-      el._color  = c;
-      el._darkBg = d;
-      el.style.borderLeftColor = c;
-      el.style.color           = c;
-      el.style.boxShadow       = '0 4px 0 ' + d;
-    };
     return el;
   }
 
-  // ── Header ──────────────────────────────────────
-  var header = document.createElement('div');
-  header.style.cssText = [
-    'display:flex;align-items:center;gap:6px;',
-    'padding:7px 12px 6px;',
-    'border-bottom:1px solid ' + T.border + ';',
-  ].join('');
-
-  var selectedTab   = _buildTabChip('Selected Seats', T.green, T.greenDk);
-  var unselectedTab = _buildTabChip('Unselected', T.moon, T.moonDk);
-
-  var spacer = document.createElement('div');
-  spacer.style.flex = '1';
-
-  var addBtn    = buildPillButton({ shape:'chamfer', chamferSize:5, label:'+',      color:T.moon,  darkBg:T.moonDk, fontSize:T.fsB4, padding:'5px 10px' });
-  var allBtn    = buildPillButton({ shape:'chamfer', chamferSize:5, label:'ALL',    color:T.moon,  darkBg:T.moonDk, fontSize:T.fsB4, padding:'5px 10px' });
-  var noneBtn   = buildPillButton({ shape:'chamfer', chamferSize:5, label:'NONE',   color:T.moon,  darkBg:T.moonDk, fontSize:T.fsB4, padding:'5px 10px' });
-  var recallBtn = buildPillButton({ shape:'chamfer', chamferSize:5, label:'RECALL', color:T.elec,  darkBg:T.elecDk || T.moonDk, fontSize:T.fsB4, padding:'5px 10px' });
-
-  function _updateRecallBtn() {
-    var hasRecall = _prevSeats.size > 0;
-    recallBtn.style.opacity       = hasRecall ? '1' : '0.3';
-    recallBtn.style.pointerEvents = hasRecall ? 'auto' : 'none';
-  }
-  _updateRecallBtn();
-
-  header.appendChild(selectedTab);
-  header.appendChild(unselectedTab);
-  header.appendChild(spacer);
-  header.appendChild(recallBtn);
-  header.appendChild(addBtn);
+  var allBtn  = _buildBulkPill('ALL',  T.green);
+  var noneBtn = _buildBulkPill('NONE', T.moon);
   header.appendChild(allBtn);
   header.appendChild(noneBtn);
   card.appendChild(header);
 
-  // ── Body ──────────────────────────────────────────
+  // ── Body: 8-col scrollable grid ───────────────────
+  // grid-auto-rows fixes row height at 40px; max-height shows ~3 rows; scrolls beyond.
   var body = document.createElement('div');
   body.className = '_oe-seat-scroll';
   body.style.cssText = [
-    'display:grid;grid-template-columns:repeat(10,1fr);gap:5px;',
-    'padding:6px 12px 8px;max-height:140px;overflow-y:auto;',
+    'display:grid;grid-template-columns:repeat(8,1fr);',
+    'grid-auto-rows:40px;gap:4px;',
+    'padding:6px 8px 8px;',
+    'max-height:140px;overflow-y:auto;',
     '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
   card.appendChild(body);
 
-  function getTabList() {
-    if (_seatTab === 'unselected') {
-      return _allSeatList.filter(function(sn) { return _seatList.indexOf(sn) === -1; });
-    }
-    return _seatList;
+  function _buildSeatPill(sn, isActive) {
+    var pill = document.createElement('div');
+    pill.style.cssText = [
+      'display:flex;align-items:center;justify-content:center;',
+      'border-radius:8px;',
+      'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';',
+      'font-size:' + T.fsB2 + ';',
+      'cursor:pointer;user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;',
+      'transition:transform 0.07s;',
+      isActive
+        ? 'background:' + T.green + ';color:' + T.well + ';box-shadow:0 2px 0 ' + T.greenDk + ';'
+        : 'background:transparent;color:' + T.green + ';border:1.5px solid ' + T.green + ';',
+    ].join('');
+    pill.textContent = 'S' + sn;
+    pill.addEventListener('pointerdown', function() { pill.style.transform = 'translateY(1px)'; });
+    var _rel = function() { pill.style.transform = ''; };
+    pill.addEventListener('pointerup',     _rel);
+    pill.addEventListener('pointerleave',  _rel);
+    pill.addEventListener('pointercancel', _rel);
+    return pill;
   }
 
-  function setTab(tab) {
-    _seatTab = tab;
-    var onSelected = tab === 'selected';
-    selectedTab.setColor(onSelected ? T.green : T.moon, onSelected ? T.greenDk : T.moonDk);
-    unselectedTab.setColor(!onSelected ? T.green : T.moon, !onSelected ? T.greenDk : T.moonDk);
-    repaintSeats();
+  function _buildAddTile() {
+    var tile = document.createElement('div');
+    tile.style.cssText = [
+      'display:flex;align-items:center;justify-content:center;',
+      'border-radius:8px;',
+      'background:transparent;',
+      'border:1.5px dashed ' + T.moon + ';',
+      'color:' + T.moon + ';',
+      'font-family:' + T.fh + ';font-weight:400;font-size:24px;',
+      'cursor:pointer;user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;',
+    ].join('');
+    tile.textContent = '+';
+    return tile;
   }
 
   function repaintSeats() {
     body.innerHTML = '';
-    getTabList().forEach(function(sn) {
+    _allSeatList.forEach(function(sn) {
       var isActive = _activeSeats.has(sn);
-      var pill = buildPillButton({
-        label: 'S' + sn,
-        color: isActive ? T.green : T.moon,
-        darkBg: isActive ? T.greenDk : T.moonDk,
-        textColor: isActive ? T.well : undefined,
-        fontSize: T.fsH3,
-      });
-      pill.style.height = '64px';
-      pill.style.width = '100%';
-      pill.style.padding = '0';
-      pill.style.borderRadius = T.groups.selectionGrid.radius;
-      pill.style.display = 'flex';
-      pill.style.alignItems = 'center';
-      pill.style.justifyContent = 'center';
-      pill.addEventListener('pointerup', function() {
-        if (_autoSwitchArmed) {
-          _autoSwitchArmed = false;
-          _activeSeats = new Set([sn]);
+      var pill = _buildSeatPill(sn, isActive);
+      pill.addEventListener('pointerup', (function(seatNum) {
+        return function() {
+          // Auto-switch: after items just added, first tap on a different
+          // seat replaces the active set rather than toggling.
+          if (_autoSwitchArmed) {
+            _autoSwitchArmed = false;
+            _activeSeats = new Set([seatNum]);
+            repaintSeats();
+            renderTicket();
+            return;
+          }
+          if (_activeSeats.has(seatNum)) _activeSeats.delete(seatNum);
+          else _activeSeats.add(seatNum);
           repaintSeats();
           renderTicket();
-          return;
-        }
-        if (_activeSeats.has(sn)) {
-          var selectedActive = _seatList.filter(function(s) { return _activeSeats.has(s); });
-          if (selectedActive.length <= 1 && _seatList.indexOf(sn) !== -1) return;
-          _activeSeats.delete(sn);
-        } else {
-          _activeSeats.add(sn);
-        }
-        repaintSeats();
-        renderTicket();
-      });
+        };
+      })(sn));
       body.appendChild(pill);
     });
+
+    // Add-seat tile after all populated cells
+    var addTile = _buildAddTile();
+    addTile.addEventListener('pointerup', function() {
+      var usedSeats = {};
+      _allSeatList.forEach(function(sn) { usedSeats[sn] = true; });
+      var newSeat = 1;
+      while (usedSeats[newSeat]) newSeat++;
+      if (newSeat > 99) { showToast('Maximum 99 seats', { bg: T.gold }); return; }
+      _allSeatList.push(newSeat);
+      _seatList.push(newSeat);
+      _activeSeats.add(newSeat);
+      _autoSwitchArmed = false;
+      repaintSeats();
+      renderTicket();
+    });
+    body.appendChild(addTile);
   }
 
-  selectedTab.addEventListener('pointerup', function() { setTab('selected'); });
-  unselectedTab.addEventListener('pointerup', function() { setTab('unselected'); });
-
-  recallBtn.addEventListener('pointerup', function() {
-    if (_prevSeats.size === 0) return;
-    _prevSeats.forEach(function(sn) { _activeSeats.add(sn); });
-    _prevSeats = new Set();
-    _autoSwitchArmed = false;
-    _updateRecallBtn();
-    repaintSeats();
-    renderTicket();
-  });
-
-  addBtn.addEventListener('pointerup', function() {
-    var usedSeats = {};
-    _allSeatList.forEach(function(sn) { usedSeats[sn] = true; });
-    var newSeat = 1;
-    while (usedSeats[newSeat]) newSeat++;
-    if (newSeat > 99) { showToast('Maximum 99 seats', { bg: T.gold }); return; }
-    _allSeatList.push(newSeat);
-    _seatList.push(newSeat);
-    _activeSeats.add(newSeat);
-    setTab('selected');
-  });
-
   allBtn.addEventListener('pointerup', function() {
-    getTabList().forEach(function(sn) { _activeSeats.add(sn); });
+    _allSeatList.forEach(function(sn) { _activeSeats.add(sn); });
+    _autoSwitchArmed = false;
     repaintSeats();
     renderTicket();
   });
 
   noneBtn.addEventListener('pointerup', function() {
-    if (_seatTab === 'selected') {
-      _activeSeats = new Set(_seatList.length > 0 ? [_seatList[0]] : []);
-    } else {
-      getTabList().forEach(function(sn) { _activeSeats.delete(sn); });
-    }
+    _activeSeats.clear();
+    _autoSwitchArmed = false;
     repaintSeats();
     renderTicket();
   });
 
   repaintSeats();
   card._repaintSeats = repaintSeats;
-  card._onItemAdded = function() { _updateRecallBtn(); repaintSeats(); };
+  // Called by _pushToAllSeats after items land — refresh pill states (in
+  // case auto-switch armed) and any future add-seat hints.
+  card._onItemAdded = function() { repaintSeats(); };
   return card;
 }
 
@@ -1693,7 +1690,7 @@ function buildModifierPanel(catIds) {
     var catBtn = document.createElement('div');
     catBtn.style.cssText = [
       'flex:1;height:34px;display:flex;align-items:center;justify-content:center;',
-      'font-family:' + T.fh + ';font-size:' + T.fsB2 + ';cursor:pointer;',
+      'font-family:' + T.fh + ';font-size:20px;cursor:pointer;',
       'border:2px solid ' + cat.color + ';',
       'background:' + (isActive ? cat.color : T.card) + ';',
       'color:' + (isActive ? cat.textColor : cat.color) + ';',
@@ -1846,7 +1843,7 @@ function renderModButtonGrid(panel) {
       btn.style.cssText = [
         'display:flex;align-items:center;justify-content:center;',
         'height:52px;cursor:pointer;',
-        'font-family:' + T.fb + ';font-size:22px;font-weight:' + T.fwBold + ';',
+        'font-family:' + T.fb + ';font-size:22px;font-weight:bold;',
         'text-align:center;word-break:break-word;',
         'background:' + T.card + ';',
         'color:' + catText + ';',
@@ -2091,7 +2088,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       padding:      '8px 16px',
       fontSize:     '13px',
       height:       'auto', // let padding define it or set an explicit height if needed
-      border:       '1px solid ' + (active ? bg : hexToRgba(T.text, 0.1)),
+      border:       '1px solid ' + (active ? bg : 'rgba(255,255,255,0.1)'),
       boxShadow:    (active ? '0 4px 0 ' + hexToRgba(bg, 0.5) : '0 3px 0 ' + T.moonDk),
       whiteSpace:   'nowrap',
       width:        'auto',
@@ -2250,7 +2247,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     icn.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:22px;color:' + T.well + ';pointer-events:none;';
     icn.textContent = item.label;
     var icp = document.createElement('span');
-    icp.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.75) + ';margin-top:4px;pointer-events:none;';
+    icp.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:rgba(255,255,255,0.75);margin-top:4px;pointer-events:none;';
     icp.textContent = '$' + itemPx.toFixed(2);
     itemTile.appendChild(icn);
     itemTile.appendChild(icp);
@@ -2332,12 +2329,12 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
         var pc = _prefixColor(pfx.id);
         var btn = document.createElement('div');
         btn.style.cssText = [
-          'padding:5px 14px;border-radius:' + T.pillRadius + ';cursor:pointer;',
+          'padding:5px 14px;border-radius:999px;cursor:pointer;',
           'user-select:none;pointer-events:auto;touch-action:manipulation;',
-          'font-family:' + T.fb + ';font-weight:' + T.fwBold + ';font-size:11px;letter-spacing:1px;',
+          'font-family:' + T.fb + ';font-weight:700;font-size:11px;letter-spacing:1px;',
           'color:' + T.well + ';',
           'background:' + (isActive ? pc : T.card) + ';',
-          'border:1px solid ' + (isActive ? pc : hexToRgba(T.text, 0.1)) + ';',
+          'border:1px solid ' + (isActive ? pc : 'rgba(255,255,255,0.1)') + ';',
           'box-shadow:' + (isActive ? '0 3px 0 ' + hexToRgba(pc, 0.55) : '0 2px 0 ' + T.moonDk) + ';',
           'transition:all 100ms;white-space:nowrap;',
         ].join('');
@@ -2435,6 +2432,7 @@ function openModifierPanel(item, modConfig, catColor, enablePlacement) {
   if (!_mainArea) return;
 
   _modPanelOpen = true;
+  _modPanelCatColor = catColor || T.green;
 
   // Hide grid, seat selector, and bottom bar; snake strip stays hidden
   if (_gridWrap)       _gridWrap.style.display       = 'none';
@@ -2499,6 +2497,7 @@ function closeModifierPanel() {
     _modPanel = null;
   }
   _modPanelItem = null;
+  _modPanelCatColor = null;
   _modPanelOpen = false;
 
   // Restore grid and seat selector
@@ -2858,6 +2857,14 @@ function addToTicket(item) {
   var name  = item.label || item;
   var price = typeof item.price === 'number' ? item.price : 0;
 
+  // Empty-seat guard: if no seats are active, the new item has nowhere to
+  // route. Toast and bail rather than silently routing to seat 1 — the
+  // user explicitly hit NONE and we should respect that intent.
+  if (_activeSeats.size === 0 && !modifierSession.active) {
+    showToast('Pick a seat first', { bg: T.gold, duration: 2000 });
+    return;
+  }
+
   if (modifierSession.active) {
     // Apply modifier to all selected instances
     var selected = ticket.filter(function(i) { return i.selected; });
@@ -2927,50 +2934,199 @@ function addToTicket(item) {
   rebuildBottomBar();
 }
 
-function _buildItemSubCard(inst, isMultiSeat) {
-  var div = document.createElement('div');
-  div.style.cssText = [
-    'background:' + T.well + ';',
-    'border:1px solid ' + T.moon + ';',
-    'box-shadow:0 3px 0 ' + T.moonDk + ';',
-    'border-radius:8px;',
-    'padding:5px 8px;',
-    'display:flex;flex-direction:column;gap:2px;',
-    isMultiSeat ? 'margin-left:24px;' : '',
-    'margin-bottom:4px;',
+// Resolve an item instance to its category accent color.
+// Reads inst.category (set on every instance by addToTicket and recallFromBackend)
+// → MENU_DATA[catId].color (set by fetchMenuFromAPI from Overseer cat.color).
+// T.moon fallback covers unfetched menu, recalled items predating per-cat
+// colors, and orphan rows after a category delete.
+function _catColorForItem(inst) {
+  if (!inst || !inst.category) return T.moon;
+  var cat = getMenuCat(inst.category);
+  return (cat && cat.color) || T.moon;
+}
+
+// Build a mod tree under an item card: vertical stem + horizontal branches
+// + bevel pills. Variants change pill border color/style only — the
+// stem/branch stays T.text in default+sent so the tree-structure reading
+// holds across all states.
+//   variant 'default' — bevel pill borders (unsent items)
+//   variant 'sent'    — rgba(T.green, 0.4) pill borders
+//   variant 'preview' — dashed cat-color pill borders + dashed stem/branch
+function _buildModTree(mods, opts) {
+  opts = opts || {};
+  var variant = opts.variant || 'default';
+  var catColor = opts.catColor || T.green;
+  var bevelLt = lightenHex(T.bg, 0.08);
+  var bevelDk = darkenHex(T.bg, 0.2);
+
+  var tree = document.createElement('div');
+  tree.style.cssText = [
+    'position:relative;',
+    'display:flex;flex-direction:column;gap:3px;',
+    'margin-top:4px;margin-left:10px;',
+    'padding-left:16px;',
   ].join('');
 
-  if (inst.sent) {
-    var badge = document.createElement('div');
-    badge.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';color:' + T.green + ';';
-    badge.textContent = '>>>';
-    div.appendChild(badge);
+  // Stem — vertical line down the left of the tree. Stops 12px before the
+  // tree bottom so the last branch's horizontal segment terminates the line.
+  var stem = document.createElement('div');
+  if (variant === 'preview') {
+    stem.style.cssText = 'position:absolute;left:5px;top:0;bottom:12px;width:0;border-left:2px dashed ' + T.text + ';';
+  } else {
+    stem.style.cssText = 'position:absolute;left:6px;top:0;bottom:12px;width:2px;background:' + T.text + ';';
   }
+  tree.appendChild(stem);
+
+  mods.forEach(function(mod) {
+    var entry = document.createElement('div');
+    entry.style.cssText = 'position:relative;display:flex;align-items:center;gap:5px;';
+
+    // Branch — horizontal segment from stem to pill
+    var branch = document.createElement('div');
+    if (variant === 'preview') {
+      branch.style.cssText = 'position:absolute;left:-10px;top:50%;width:10px;height:0;border-top:2px dashed ' + T.text + ';';
+    } else {
+      branch.style.cssText = 'position:absolute;left:-10px;top:50%;width:10px;height:2px;background:' + T.text + ';';
+    }
+    entry.appendChild(branch);
+
+    // Pill
+    var pill = document.createElement('div');
+    var pillStyles = [
+      'flex:1;min-width:0;',
+      'display:flex;align-items:baseline;justify-content:space-between;gap:6px;',
+      'padding:3px 8px;',
+      'background:' + T.card + ';',
+      'border-radius:6px;',
+    ];
+    if (variant === 'sent') {
+      pillStyles.push('border:1px solid ' + hexToRgba(T.green, 0.4));
+    } else if (variant === 'preview') {
+      pillStyles.push('border:1px dashed ' + hexToRgba(catColor, 0.6));
+    } else {
+      pillStyles.push('border-top:1px solid ' + bevelLt);
+      pillStyles.push('border-left:1px solid ' + bevelLt);
+      pillStyles.push('border-right:1px solid ' + bevelDk);
+      pillStyles.push('border-bottom:1px solid ' + bevelDk);
+    }
+    pill.style.cssText = pillStyles.join(';') + ';';
+
+    var modName = document.createElement('span');
+    modName.style.cssText = [
+      'font-family:' + T.fb + ';',
+      'font-size:' + T.fsB4 + ';',
+      'font-style:italic;',
+      'color:' + T.text + ';',
+      'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+      'min-width:0;flex:1;',
+    ].join('');
+    modName.textContent = mod.name;
+    pill.appendChild(modName);
+
+    if (mod.charged && Number(mod.price) > 0) {
+      var modPrice = document.createElement('span');
+      modPrice.style.cssText = [
+        'font-family:' + T.fb + ';',
+        'font-size:' + T.fsB4 + ';',
+        'font-weight:' + T.fwBold + ';',
+        'color:' + T.gold + ';',
+        'flex-shrink:0;',
+      ].join('');
+      modPrice.textContent = '+$' + (Number(mod.price) || 0).toFixed(2);
+      pill.appendChild(modPrice);
+    }
+
+    entry.appendChild(pill);
+    tree.appendChild(entry);
+  });
+
+  return tree;
+}
+
+function _buildItemSubCard(inst, isMultiSeat) {
+  var sent = !!inst.sent;
+  var catColor = _catColorForItem(inst);
+  var bevelLt = lightenHex(T.bg, 0.08);
+  var bevelDk = darkenHex(T.bg, 0.2);
 
   var modTotal = (inst.mods || []).reduce(function(s, m) { return s + (Number(m.price) || 0); }, 0);
   var totalPrice = (Number(inst.unitPrice) || 0) + modTotal;
   var qty = inst.qty || 1;
   var displayName = qty > 1 ? qty + '× ' + inst.name : inst.name;
 
-  var namePrice = document.createElement('div');
-  namePrice.style.cssText = 'display:flex;align-items:center;gap:4px;';
-  var nameEl = document.createElement('span');
-  nameEl.style.cssText = 'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:12px;color:' + T.text + ';flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-  nameEl.textContent = displayName;
-  var priceEl = document.createElement('span');
-  priceEl.style.cssText = 'font-family:' + T.fb + ';font-weight:' + T.fwBold + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;';
-  priceEl.textContent = _fmtPrice(totalPrice);
-  namePrice.appendChild(nameEl);
-  namePrice.appendChild(priceEl);
+  // Wrapper — flex row containing item-block (card + mod tree) + optional
+  // chevron column for sent items.
+  var wrapper = document.createElement('div');
+  wrapper.style.cssText = [
+    'display:flex;align-items:stretch;gap:8px;',
+    'margin-bottom:5px;',
+    isMultiSeat ? 'margin-left:8px;' : '',
+  ].join('');
 
-  if (!inst.sent) {
+  // Item block — vertical stack of card + (optional) mod tree
+  var block = document.createElement('div');
+  block.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;';
+
+  // ── Card body ────────────────────────────────────
+  var card = document.createElement('div');
+  if (sent) {
+    // All-4 green border (Mode B treatment from check-overview)
+    card.style.cssText = [
+      'background:' + T.well + ';',
+      'border:2px solid ' + T.green + ';',
+      'border-left-width:3px;',
+      'border-radius:8px;',
+      'padding:6px 10px;',
+      'box-shadow:0 2px 0 ' + T.greenDk + ';',
+    ].join('');
+  } else {
+    // Bevel chrome with cat-color left border
+    card.style.cssText = [
+      'background:' + T.well + ';',
+      'border-top:2px solid ' + bevelLt + ';',
+      'border-right:2px solid ' + bevelDk + ';',
+      'border-bottom:2px solid ' + bevelDk + ';',
+      'border-left:3px solid ' + catColor + ';',
+      'border-radius:8px;',
+      'padding:6px 10px;',
+    ].join('');
+  }
+
+  // Main row: name + price + (× delete for unsent)
+  var mainRow = document.createElement('div');
+  mainRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
+
+  var nameEl = document.createElement('span');
+  nameEl.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-weight:' + T.fwBold + ';',
+    'font-size:' + T.fsB3 + ';',
+    'color:' + T.text + ';',
+    'flex:1;min-width:0;',
+    'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+  ].join('');
+  nameEl.textContent = displayName;
+  mainRow.appendChild(nameEl);
+
+  var priceEl = document.createElement('span');
+  priceEl.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-weight:' + T.fwBold + ';',
+    'font-size:' + T.fsB3 + ';',
+    'color:' + T.gold + ';',
+    'flex-shrink:0;',
+  ].join('');
+  priceEl.textContent = _fmtPrice(totalPrice);
+  mainRow.appendChild(priceEl);
+
+  if (!sent) {
     var xBtn = document.createElement('div');
     xBtn.style.cssText = [
       'width:22px;height:22px;flex-shrink:0;',
       'display:flex;align-items:center;justify-content:center;',
       'border-radius:4px;background:' + T.verm + ';',
-      'color:#fff;font-family:' + T.fb + ';font-size:15px;font-weight:700;cursor:pointer;',
-      'pointer-events:auto;touch-action:manipulation;',
+      'color:#fff;font-family:' + T.fb + ';font-size:15px;font-weight:' + T.fwBold + ';',
+      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
     ].join('');
     xBtn.textContent = '×';
     xBtn.addEventListener('pointerup', (function(instance) {
@@ -2983,28 +3139,59 @@ function _buildItemSubCard(inst, isMultiSeat) {
         rebuildBottomBar();
       };
     })(inst));
-    namePrice.appendChild(xBtn);
+    mainRow.appendChild(xBtn);
   }
 
-  div.appendChild(namePrice);
+  card.appendChild(mainRow);
+  block.appendChild(card);
 
-  (inst.mods || []).forEach(function(mod) {
-    var modRow = document.createElement('div');
-    modRow.style.cssText = 'display:flex;margin-left:8px;padding-left:6px;border-left:2px solid ' + hexToRgba(T.moon, 0.3) + ';';
-    var modName = document.createElement('span');
-    modName.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.moon + ';flex:1;';
-    modName.textContent = mod.name;
-    modRow.appendChild(modName);
-    if (mod.charged && mod.price > 0) {
-      var upcharge = document.createElement('span');
-      upcharge.style.cssText = 'font-family:' + T.fb + ';font-size:10px;font-weight:' + T.fwBold + ';color:' + T.moon + ';';
-      upcharge.textContent = '+$' + (Number(mod.price) || 0).toFixed(2);
-      modRow.appendChild(upcharge);
+  // ── Mod tree below card ──────────────────────────
+  if ((inst.mods || []).length > 0) {
+    block.appendChild(_buildModTree(inst.mods, {
+      variant: sent ? 'sent' : 'default',
+      catColor: catColor,
+    }));
+  }
+
+  wrapper.appendChild(block);
+
+  // ── Sent: chevron column to right ────────────────
+  if (sent) {
+    var chevCol = document.createElement('div');
+    chevCol.style.cssText = [
+      'flex:0 0 auto;min-width:48px;',
+      'display:flex;flex-direction:column;',
+      'align-items:center;justify-content:center;',
+      'padding-left:4px;gap:4px;',
+    ].join('');
+
+    var chev = document.createElement('span');
+    chev.style.cssText = [
+      'font-family:' + T.fb + ';',
+      'font-weight:' + T.fwBold + ';',
+      'font-size:18px;',
+      'color:' + T.green + ';',
+      'letter-spacing:0.08em;line-height:1;',
+    ].join('');
+    chev.textContent = '>>>';
+    chevCol.appendChild(chev);
+
+    if (inst.sent_at) {
+      var stamp = document.createElement('span');
+      stamp.style.cssText = [
+        'font-family:' + T.fb + ';',
+        'font-size:11px;',
+        'color:' + T.text + ';',
+        'font-style:italic;',
+      ].join('');
+      stamp.textContent = inst.sent_at;
+      chevCol.appendChild(stamp);
     }
-    div.appendChild(modRow);
-  });
 
-  return div;
+    wrapper.appendChild(chevCol);
+  }
+
+  return wrapper;
 }
 
 function renderTicket() {
@@ -3037,39 +3224,84 @@ function renderTicket() {
   }
 
   if (_activeSeats.size > 1) {
-    // Mode B: seat-grouped sub-cards
+    // Multi-seat: each seat rendered as collapsible s-card
+    // (matches check-overview Mode B). Default state is open;
+    // _collapsedSeats tracks any user-collapsed seats.
+    var bevelDk = darkenHex(T.bg, 0.2);
     var seatOrder = Array.from(_activeSeats).sort(function(a, b) { return a - b; });
     seatOrder.forEach(function(sn) {
       var seatItems = displayTicket.filter(function(i) { return i.seat_number === sn; });
       var seatSubtotal = seatItems.reduce(function(s, i) {
         return s + (Number(i.unitPrice) || 0) + (i.mods || []).reduce(function(ms, m) { return ms + (Number(m.price) || 0); }, 0);
       }, 0);
-      var hasItems = seatItems.length > 0;
+      var isOpen = !_collapsedSeats.has(sn);
 
-      var seatHdr = document.createElement('div');
-      seatHdr.style.cssText = [
-        'background:' + T.well + ';',
-        'border-left:3px solid ' + (hasItems ? T.green : T.moon) + ';',
-        'border-radius:6px;padding:5px 8px;',
-        'display:flex;flex-direction:row;user-select:none;',
-        'margin-bottom:4px;',
+      var sCard = document.createElement('div');
+      sCard.style.cssText = [
+        'border-bottom:1px solid ' + bevelDk + ';',
+        'border-left:3px solid ' + T.green + ';',
+        'margin-bottom:5px;',
       ].join('');
-      var seatLeft = document.createElement('span');
-      seatLeft.style.cssText = 'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:20px;color:' + (hasItems ? T.green : T.moon) + ';flex:1;';
-      seatLeft.textContent = 'S' + sn;
-      var seatRight = document.createElement('span');
-      seatRight.style.cssText = 'font-family:' + T.fb + ';font-weight:' + T.fwBold + ';font-size:' + T.fsB3 + ';color:' + T.gold + ';';
-      seatRight.textContent = _fmtPrice(seatSubtotal);
-      seatHdr.appendChild(seatLeft);
-      seatHdr.appendChild(seatRight);
-      list.appendChild(seatHdr);
+
+      var sHdr = document.createElement('div');
+      sHdr.style.cssText = [
+        'display:flex;align-items:baseline;justify-content:space-between;',
+        'padding:8px 12px;background:' + T.well + ';',
+        'cursor:pointer;user-select:none;',
+        'pointer-events:auto;touch-action:manipulation;',
+      ].join('');
+
+      var sHdrLeft = document.createElement('div');
+      sHdrLeft.style.cssText = 'display:flex;align-items:baseline;gap:8px;';
+      var sNum = document.createElement('span');
+      sNum.style.cssText = 'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:20px;color:' + T.green + ';';
+      sNum.textContent = 'S' + sn;
+      var sSbtl = document.createElement('span');
+      sSbtl.style.cssText = 'font-family:' + T.fb + ';font-weight:' + T.fwBold + ';font-size:' + T.fsB4 + ';color:' + T.gold + ';';
+      sSbtl.textContent = _fmtPrice(seatSubtotal);
+      sHdrLeft.appendChild(sNum);
+      sHdrLeft.appendChild(sSbtl);
+      sHdr.appendChild(sHdrLeft);
+
+      var sChev = document.createElement('span');
+      sChev.style.cssText = [
+        'font-family:' + T.fb + ';font-size:16px;color:' + T.moon + ';',
+        'transition:transform 0.15s;display:inline-block;',
+        'transform:' + (isOpen ? 'rotate(90deg)' : 'rotate(0deg)') + ';',
+      ].join('');
+      sChev.textContent = '▸';
+      sHdr.appendChild(sChev);
+
+      sHdr.addEventListener('pointerup', (function(seatNum) {
+        return function() {
+          if (_collapsedSeats.has(seatNum)) _collapsedSeats.delete(seatNum);
+          else _collapsedSeats.add(seatNum);
+          renderTicket();
+        };
+      })(sn));
+
+      sCard.appendChild(sHdr);
+
+      var itemsWrap = document.createElement('div');
+      itemsWrap.style.cssText = [
+        'overflow:hidden;',
+        'max-height:' + (isOpen ? '5000px' : '0') + ';',
+        'transition:max-height 0.2s ease;',
+      ].join('');
+
+      var itemsInner = document.createElement('div');
+      itemsInner.style.cssText = 'padding:6px 8px 8px;display:flex;flex-direction:column;';
 
       seatItems.forEach(function(inst) {
-        list.appendChild(_buildItemSubCard(inst, true));
+        itemsInner.appendChild(_buildItemSubCard(inst, false));
       });
+
+      itemsWrap.appendChild(itemsInner);
+      sCard.appendChild(itemsWrap);
+      list.appendChild(sCard);
     });
   } else {
-    // Single seat — sub-cards without seat headers
+    // Single seat — items render flush, no header
     displayTicket.forEach(function(inst) {
       list.appendChild(_buildItemSubCard(inst, false));
     });
@@ -3092,20 +3324,43 @@ function _appendModPreview(list) {
   var previewMods = (_modPanelItem.mods || []);
   var previewModTotal = previewMods.reduce(function(s, m) { return s + Number(m.price || 0); }, 0);
   var previewPrice = (_modPanelItem.basePrice || 0) + previewModTotal;
-  var fs = T.fsB2;
+  var catColor = _modPanelCatColor || T.green;
   var fsMod = T.fsB3;
 
+  // ── Wrapper: dashed cat-color border on all 4 sides, transparent fill,
+  // marker text (\u270E pencil) inside the name so renderTicket can scrub
+  // stale previews on next pass. Price stays gold per money rule.
   var pc = document.createElement('div');
   pc.setAttribute('data-mod-preview', '1');
-  pc.style.cssText = 'flex-shrink:0;margin-bottom:2px;background:' + T.well + ';border-left:3px solid ' + T.gold + ';';
+  pc.style.cssText = [
+    'flex-shrink:0;margin-bottom:5px;',
+    'background:' + T.well + ';',
+    'border:1.5px dashed ' + catColor + ';',
+    'border-radius:8px;',
+    'padding:6px 10px;',
+  ].join('');
 
+  // Main row: pencil + name + price
   var pRow = document.createElement('div');
-  pRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;';
+  pRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
   var pName = document.createElement('span');
-  pName.style.cssText = 'font-family:' + T.fb + ';font-size:' + fs + ';font-weight:bold;color:' + T.green + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;';
+  pName.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-weight:' + T.fwBold + ';',
+    'font-size:' + T.fsB3 + ';',
+    'color:' + T.text + ';',
+    'flex:1;min-width:0;',
+    'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+  ].join('');
   pName.textContent = '\u270E ' + _modPanelItem.itemLabel;
   var pPrice = document.createElement('span');
-  pPrice.style.cssText = 'font-family:' + T.fb + ';font-size:' + fs + ';font-weight:bold;color:' + T.gold + ';white-space:nowrap;flex-shrink:0;margin-left:6px;';
+  pPrice.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-weight:' + T.fwBold + ';',
+    'font-size:' + T.fsB3 + ';',
+    'color:' + T.gold + ';',
+    'flex-shrink:0;',
+  ].join('');
   pPrice.textContent = '$' + previewPrice.toFixed(2);
   pRow.appendChild(pName);
   pRow.appendChild(pPrice);
@@ -3122,27 +3377,30 @@ function _appendModPreview(list) {
     else wholeMods.push(pm);
   }
 
-  // Whole mods with X buttons — mint text, gold prices
-  wholeMods.forEach(function(m) {
-    var removeHandler = function() {
-      if (_modPanel && m._source != null) _modPanel.removeMod(m._source, m._idx);
-      else { var mi = _modPanelItem.mods.indexOf(m); if (mi !== -1) _modPanelItem.mods.splice(mi, 1); }
-      renderTicket();
-    };
-    pc.appendChild(buildModRowSized(m.name, m.price, fsMod, removeHandler));
-    // Show exclusion children (e.g. "NO Ketchup" under "ADD Cheeseburger")
-    if (m.children && m.children.length > 0) {
-      m.children.forEach(function(child) {
-        var childRow = buildModRowSized(child.name, child.price, '14px');
-        childRow.style.paddingLeft = '32px';
-        childRow.style.color = T.verm;
-        childRow.style.fontStyle = 'italic';
-        pc.appendChild(childRow);
-      });
-    }
-  });
+  // Whole mods → preview-variant mod tree (dashed cat-color pills + dashed stem/branch)
+  if (wholeMods.length > 0) {
+    pc.appendChild(_buildModTree(wholeMods, { variant: 'preview', catColor: catColor }));
+    // Exclusion children (e.g. "NO Ketchup" under "ADD Cheeseburger")
+    // — preserved from legacy preview; rendered as italic verm rows below the tree.
+    wholeMods.forEach(function(m) {
+      if (m.children && m.children.length > 0) {
+        m.children.forEach(function(child) {
+          var childRow = document.createElement('div');
+          childRow.style.cssText = [
+            'margin-left:36px;padding:2px 8px;',
+            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';',
+            'font-style:italic;color:' + T.verm + ';',
+          ].join('');
+          childRow.textContent = child.name;
+          pc.appendChild(childRow);
+        });
+      }
+    });
+  }
 
-  // Half-table for left/right mods
+  // Half-table for pizza left/right mods — preserved as-is; the placement UX
+  // doesn't have a clean tree-pattern equivalent yet, so it lives outside
+  // the new mod-tree treatment for now.
   if (leftMods.length > 0 || rightMods.length > 0) {
     var inst = { sent: false, mods: _modPanelItem.mods };
     pc.appendChild(buildHalfTable(leftMods, rightMods, fsMod, inst));
@@ -3172,6 +3430,7 @@ function _updateTicketTotals(filteredTicket) {
     tax: t.tax,
     cardTotal: t.cardTotal,
     cashPrice: t.cashPrice,
+    totalsMode: 'building',
   });
 }
 
@@ -3249,6 +3508,7 @@ function _wrapSwipeDelete(innerEl, onDelete) {
 
   return wrap;
 }
+
 
 // ── SEPARATOR + MOD ROW helpers ───────────────────
 function buildSeparator() {
