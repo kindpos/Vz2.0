@@ -920,7 +920,7 @@ function buildCrumbTile(crumb, isLast) {
 
   if (!isLast) {
     var back = document.createElement('div');
-    back.style.cssText = 'position:absolute;top:6px;right:8px;font-size:10px;color:rgba(0,0,0,0.4);font-family:' + T.fb + ';pointer-events:none;';
+    back.style.cssText = 'position:absolute;top:6px;right:8px;font-size:10px;color:' + hexToRgba(T.well, 0.4) + ';font-family:' + T.fb + ';pointer-events:none;';
     back.textContent = '◂';
     el.appendChild(back);
   }
@@ -972,7 +972,7 @@ function buildItemTile(item, catColor, isFav) {
   }
 
   var name = document.createElement('span');
-  name.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:14px;color:' + T.text + ';letter-spacing:0.3px;line-height:1.3;padding-right:' + (isFav ? '18px' : '0') + ';pointer-events:none;';
+  name.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB4 + ';color:' + T.text + ';letter-spacing:0.3px;line-height:1.3;padding-right:' + (isFav ? '18px' : '0') + ';pointer-events:none;';
   name.textContent = item.label;
   el.appendChild(name);
 
@@ -1693,7 +1693,7 @@ function buildModifierPanel(catIds) {
     var catBtn = document.createElement('div');
     catBtn.style.cssText = [
       'flex:1;height:34px;display:flex;align-items:center;justify-content:center;',
-      'font-family:' + T.fh + ';font-size:20px;cursor:pointer;',
+      'font-family:' + T.fh + ';font-size:' + T.fsB2 + ';cursor:pointer;',
       'border:2px solid ' + cat.color + ';',
       'background:' + (isActive ? cat.color : T.card) + ';',
       'color:' + (isActive ? cat.textColor : cat.color) + ';',
@@ -1846,7 +1846,7 @@ function renderModButtonGrid(panel) {
       btn.style.cssText = [
         'display:flex;align-items:center;justify-content:center;',
         'height:52px;cursor:pointer;',
-        'font-family:' + T.fb + ';font-size:22px;font-weight:bold;',
+        'font-family:' + T.fb + ';font-size:22px;font-weight:' + T.fwBold + ';',
         'text-align:center;word-break:break-word;',
         'background:' + T.card + ';',
         'color:' + catText + ';',
@@ -2091,7 +2091,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       padding:      '8px 16px',
       fontSize:     '13px',
       height:       'auto', // let padding define it or set an explicit height if needed
-      border:       '1px solid ' + (active ? bg : 'rgba(255,255,255,0.1)'),
+      border:       '1px solid ' + (active ? bg : hexToRgba(T.text, 0.1)),
       boxShadow:    (active ? '0 4px 0 ' + hexToRgba(bg, 0.5) : '0 3px 0 ' + T.moonDk),
       whiteSpace:   'nowrap',
       width:        'auto',
@@ -2250,7 +2250,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     icn.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:22px;color:' + T.well + ';pointer-events:none;';
     icn.textContent = item.label;
     var icp = document.createElement('span');
-    icp.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:rgba(255,255,255,0.75);margin-top:4px;pointer-events:none;';
+    icp.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.75) + ';margin-top:4px;pointer-events:none;';
     icp.textContent = '$' + itemPx.toFixed(2);
     itemTile.appendChild(icn);
     itemTile.appendChild(icp);
@@ -2332,12 +2332,12 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
         var pc = _prefixColor(pfx.id);
         var btn = document.createElement('div');
         btn.style.cssText = [
-          'padding:5px 14px;border-radius:999px;cursor:pointer;',
+          'padding:5px 14px;border-radius:' + T.pillRadius + ';cursor:pointer;',
           'user-select:none;pointer-events:auto;touch-action:manipulation;',
-          'font-family:' + T.fb + ';font-weight:700;font-size:11px;letter-spacing:1px;',
+          'font-family:' + T.fb + ';font-weight:' + T.fwBold + ';font-size:11px;letter-spacing:1px;',
           'color:' + T.well + ';',
           'background:' + (isActive ? pc : T.card) + ';',
-          'border:1px solid ' + (isActive ? pc : 'rgba(255,255,255,0.1)') + ';',
+          'border:1px solid ' + (isActive ? pc : hexToRgba(T.text, 0.1)) + ';',
           'box-shadow:' + (isActive ? '0 3px 0 ' + hexToRgba(pc, 0.55) : '0 2px 0 ' + T.moonDk) + ';',
           'transition:all 100ms;white-space:nowrap;',
         ].join('');
