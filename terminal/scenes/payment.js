@@ -38,6 +38,7 @@ var dotTimer          = null;
 // Generated lazily on first CONFIRM tap; cleared only on success so a
 // network timeout → retry sends the exact same ID the backend already saw.
 var _pendingTxId      = null;
+var _sceneMounted     = false;  // alive-guard for async callbacks (mirrors _alive in other scenes)
 
 // DOM refs
 var _modeButtons      = {};
@@ -136,6 +137,7 @@ defineScene({
     confirmProcessing = false;
     _cardController   = null;
     _pendingTxId      = null;
+    _sceneMounted     = true;
     payments          = [];
     totalPaid         = 0;
     baseTotal         = params.cardTotal || 0;
@@ -189,7 +191,8 @@ defineScene({
         fetchWithTimeout('/api/v1/orders/' + encodeURIComponent(params.orderId), {}, 10000)
           .then(function(r) { return r.ok ? r.json() : null; })
           .then(function(order) {
-            if (order && order.check_number && _checkNumEl) {
+            if (!_sceneMounted || !_checkNumEl) return;
+            if (order && order.check_number) {
               _checkNumEl.textContent = 'CHECK #' + order.check_number;
             }
           })
@@ -199,7 +202,7 @@ defineScene({
       fetchWithTimeout('/api/v1/orders/' + encodeURIComponent(params.orderId), {}, 10000)
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(order) {
-          if (!order) return;
+          if (!_sceneMounted || !order) return;
           populateLeftCard(order);
         })
         .catch(function() { /* silently skip — scene still works */ });
@@ -207,6 +210,8 @@ defineScene({
   },
 
   unmount: function() {
+    _sceneMounted  = false;
+    _pendingTxId   = null;
     SceneManager.off('split:tap', _onSplitTap);
     if (_cardController) { _cardController.abort(); _cardController = null; }
     if (dotTimer) { clearInterval(dotTimer); dotTimer = null; }
@@ -1350,6 +1355,11 @@ async function handleConfirm() {
     payments.push({ method: paymentMode, amount: paymentAmount });
     totalPaid += paymentAmount;
     _pendingTxId = null;
+
+    // Guard: scene could have been force-unmounted (e.g. logout) while the
+    // cash fetch was in-flight. Card payments are already guarded by
+    // _cardController.abort(), but fetchWithTimeout has no external abort.
+    if (!_sceneMounted) return;
 
     // Hide the back chevron now that money has been taken — a
     // back-to-check-overview here would orphan the recorded payment.
