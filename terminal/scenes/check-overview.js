@@ -2221,6 +2221,7 @@ function buildSeatCard(state, seatIdx) {
   var hasDisc  = _seatHasDisc(seat, state);
 
   var card = document.createElement('div');
+  card.style.position      = 'relative';
   card.style.flex          = '1';
   card.style.minWidth      = '0';
   card.style.display       = 'flex';
@@ -2829,6 +2830,7 @@ function addSeatsBatch(state, n) {
       items:  [],
     });
   }
+  state.seats.sort(function(a, b) { return a.number - b.number; });
   persistSeats(state);
   rerenderTopArea(state);
 }
@@ -3034,6 +3036,7 @@ function addSeat(state) {
     number: num,
     items:  [],
   });
+  state.seats.sort(function(a, b) { return a.number - b.number; });
   persistSeats(state);
   rerenderTopArea(state);
 }
