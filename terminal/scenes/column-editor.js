@@ -1,11 +1,9 @@
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
 import {
-  buildStaticCard,
-  buildPillButton,
-  buildSectionLabel,
   hexToRgba,
   darkenHex,
+  lightenHex,
 } from '../theme-manager.js';
 import { showToast } from '../components.js';
 import { entReport } from '../entomology-client.js';
@@ -13,6 +11,12 @@ import '../styles.js';
 
 function fmt(n) {
   return '$' + (n || 0).toFixed(2);
+}
+
+// Normalise seat labels — "S-001" → "S1"
+function formatSeatLabel(label) {
+  var m = label.match(/^S-?0*(\d+)$/i);
+  return m ? 'S' + m[1] : label;
 }
 
 // ─────────────────────────────────────────────────────
@@ -76,40 +80,9 @@ function projectedColTotal(colIdx, state) {
     var eff  = (src.price || 0) + modSum;
     var sp   = Math.round(eff / tgts.length * 100) / 100;
     var rem  = Math.round((eff - sp * tgts.length) * 100) / 100;
-    total += sp + (myIdx === 0 ? rem : 0);
+    total += sp + (myIdx === tgts.length - 1 ? rem : 0); // remainder → last target
   }
   return total;
-}
-
-function pushLog(label, state) {
-  state.actionLog.push({ label: label, columns: deepCopyColumns(state.columns) });
-  if (state.undoBtnEl) state.undoBtnEl.setDisabled(false);
-}
-
-function clearMode(state) {
-  state.mode         = null;
-  state.selectedItems = [];
-  state.splitTargets  = [];
-  if (state.statusEl) state.statusEl.textContent = '';
-  renderOpsBar(state);
-  renderColumns(state);
-}
-
-function clearSelection(state) {
-  state.selectedItems = [];
-  state.splitTargets  = [];
-  renderColumns(state);
-}
-
-function updatePreviewTotals(state) {
-  if (state.mode !== 'split') return;
-  for (var ci = 0; ci < state.colEls.length; ci++) {
-    var refs = state.colEls[ci];
-    if (!refs) continue;
-    refs.hdrTotal.textContent = state.selectedItems.length === 0
-      ? fmt(sumColumn(ci, state))
-      : '~' + fmt(projectedColTotal(ci, state));
-  }
 }
 
 function _collapseSplitGroups(items) {
@@ -135,42 +108,90 @@ function _collapseSplitGroups(items) {
 }
 
 // ─────────────────────────────────────────────────────
-//  Operation handlers
+//  Log + mode helpers
 // ─────────────────────────────────────────────────────
 
-function handleItemTap(colIdx, itemIdx, state) {
-  if (state.mode === 'merge') return;
-  var found = -1;
-  for (var i = 0; i < state.selectedItems.length; i++) {
-    if (state.selectedItems[i].colIdx === colIdx && state.selectedItems[i].itemIdx === itemIdx) {
-      found = i; break;
-    }
-  }
-  if (found >= 0) state.selectedItems.splice(found, 1);
-  else            state.selectedItems.push({ colIdx: colIdx, itemIdx: itemIdx });
-  if (state.mode === 'split') updatePreviewTotals(state);
-  renderColumns(state);
+function pushLog(label, state) {
+  state.actionLog.push({ label: label, columns: deepCopyColumns(state.columns) });
+  if (state.undoBtnEl) state.undoBtnEl.setDisabled(false);
 }
 
-function handleColTap(colIdx, state) {
-  if (state.mode === 'split')                                    toggleSplitTarget(colIdx, state);
-  else if (state.mode === 'merge')                               doMerge(colIdx, state);
-  else if (state.mode === 'move') {
-    if (state.selectedItems.length > 0)                          doMove(colIdx, state);
-    else                                                         showToast('Select items first', { bg: T.gold });
-  }
+function clearMode(state) {
+  state.mode          = null;
+  state.selectedItems = [];
+  state.splitTargets  = [];
+  state.mergeTarget   = null;
+  renderColumns(state);
+  renderFooterToolbar(state);
 }
+
+// ─────────────────────────────────────────────────────
+//  Interaction handlers
+// ─────────────────────────────────────────────────────
 
 function toggleSplitTarget(colIdx, state) {
   var found = state.splitTargets.indexOf(colIdx);
   if (found >= 0) state.splitTargets.splice(found, 1);
   else            state.splitTargets.push(colIdx);
-  if (state.statusEl)
-    state.statusEl.textContent =
-      'Select items · tap columns to target (' + state.splitTargets.length + ')';
-  updatePreviewTotals(state);
   renderColumns(state);
+  renderFooterToolbar(state);
 }
+
+function handleItemTap(colIdx, itemIdx, state) {
+  // In split mode tapping an item targets the column, not the item
+  if (state.mode === 'split') {
+    toggleSplitTarget(colIdx, state);
+    return;
+  }
+  if (state.mode === 'merge') return;
+
+  var found = -1;
+  for (var i = 0; i < state.selectedItems.length; i++) {
+    if (state.selectedItems[i].colIdx === colIdx &&
+        state.selectedItems[i].itemIdx === itemIdx) {
+      found = i; break;
+    }
+  }
+  if (found >= 0) state.selectedItems.splice(found, 1);
+  else            state.selectedItems.push({ colIdx: colIdx, itemIdx: itemIdx });
+
+  // Auto-activate MOVE on first item tap
+  if (state.selectedItems.length > 0 && state.mode === null) state.mode = 'move';
+  if (state.selectedItems.length === 0)                       state.mode = null;
+
+  renderColumns(state);
+  renderFooterToolbar(state);
+}
+
+function handleColTap(colIdx, state) {
+  if (state.mode === 'split') {
+    toggleSplitTarget(colIdx, state);
+  } else if (state.mode === 'merge') {
+    // Defer to CONFIRM — just record the target
+    state.mergeTarget = colIdx;
+    renderColumns(state);
+    renderFooterToolbar(state);
+  } else if (state.mode === 'move') {
+    if (state.selectedItems.length > 0) doMove(colIdx, state);
+    else showToast('Select items first', { bg: T.gold });
+  }
+}
+
+function handleConfirm(state) {
+  if (state.mode === 'split' &&
+      state.selectedItems.length > 0 &&
+      state.splitTargets.length >= 2) {
+    doSplit(state);
+  } else if (state.mode === 'merge' && state.mergeTarget !== null) {
+    doMerge(state.mergeTarget, state);
+  }
+  if (state.onSave) state.onSave(state.columns);
+  SceneManager.closeTransactional('column-editor');
+}
+
+// ─────────────────────────────────────────────────────
+//  Move / Split / Merge / Void
+// ─────────────────────────────────────────────────────
 
 function doMove(targetColIdx, state) {
   pushLog('Moved to ' + state.columns[targetColIdx].label, state);
@@ -185,35 +206,7 @@ function doMove(targetColIdx, state) {
   for (var mi = 0; mi < moved.length; mi++) state.columns[targetColIdx].items.push(moved[mi]);
   state.selectedItems = [];
   renderColumns(state);
-}
-
-function doMerge(targetColIdx, state) {
-  pushLog('Merged into ' + state.columns[targetColIdx].label, state);
-  var target = state.columns[targetColIdx];
-  var allBefore = target.items.slice();
-  for (var ci = 0; ci < state.columns.length; ci++) {
-    if (ci === targetColIdx) continue;
-    for (var ii = 0; ii < state.columns[ci].items.length; ii++) {
-      target.items.push(state.columns[ci].items[ii]);
-    }
-  }
-  // Emit diagnostic for each split group recombined
-  var refsIn = {};
-  for (var ri = 0; ri < target.items.length; ri++) {
-    var ref = target.items[ri]._splitRef;
-    if (ref) refsIn[ref] = (refsIn[ref] || 0) + 1;
-  }
-  var refKeys = Object.keys(refsIn);
-  for (var rk = 0; rk < refKeys.length; rk++) {
-    if (refsIn[refKeys[rk]] > 1) {
-      entReport({ code: 'UI-013', level: 'INFO', source: 'column-editor.merge',
-        message: 'Split item recombined: ' + refKeys[rk],
-        ctx: { split_ref: refKeys[rk] } });
-    }
-  }
-  target.items = _collapseSplitGroups(target.items);
-  state.columns = [target];
-  clearMode(state);
+  renderFooterToolbar(state);
 }
 
 function doSplit(state) {
@@ -235,35 +228,87 @@ function doSplit(state) {
     }
   }
   for (var ei = 0; ei < extracted.length; ei++) {
-    var item   = extracted[ei].item;
-    var source = extracted[ei].source;
-    var dSet   = {};
+    var item     = extracted[ei].item;
+    var source   = extracted[ei].source;
+    var dSet     = {};
     for (var tt = 0; tt < state.splitTargets.length; tt++) dSet[state.splitTargets[tt]] = true;
     if (Object.keys(dSet).length === 0) dSet[source] = true;
-    var targets = Object.keys(dSet).map(Number);
-    var n = targets.length;
-    var modSum  = Array.isArray(item.mods)
+    var targets  = Object.keys(dSet).map(Number);
+    var n        = targets.length;
+    var modSum   = Array.isArray(item.mods)
       ? item.mods.reduce(function(a, m) { return a + (m.price || 0); }, 0) : 0;
-    var eff     = (item.price || 0) + modSum;
-    var sp      = Math.round(eff / n * 100) / 100;
-    var rem     = Math.round((eff - sp * n) * 100) / 100;
+    var eff      = (item.price || 0) + modSum;
+    var sp       = Math.round(eff / n * 100) / 100;
+    var rem      = Math.round((eff - sp * n) * 100) / 100;
     var splitRef = item.item_id || ('sr-' + Date.now() + '-' + ei);
     for (var t = 0; t < n; t++) {
       var splitItem = {
-        name: item.name, qty: item.qty,
-        price: sp + (t === 0 ? rem : 0),
-        menu_item_id: item.menu_item_id, category: item.category,
-        mods: [], notes: item.notes, _splitRef: splitRef,
+        name:         item.name,
+        qty:          item.qty,
+        price:        sp + (t === n - 1 ? rem : 0),   // remainder → last target
+        menu_item_id: item.menu_item_id,
+        category:     item.category,
+        mods:         [],
+        notes:        item.notes,
+        _splitRef:    splitRef,
       };
-      if (t === 0 && item.item_id) splitItem.item_id = item.item_id;
+      if (t === n - 1 && item.item_id) splitItem.item_id = item.item_id;
       state.columns[targets[t]].items.push(splitItem);
     }
-    entReport({ code: 'UI-012', level: 'INFO', source: 'column-editor.split',
+    entReport({
+      code: 'UI-012', level: 'INFO', source: 'column-editor.split',
       message: 'Item split across ' + n + ' seat(s): ' + item.name,
-      ctx: { split_ref: splitRef, item_name: item.name, seat_count: n } });
+      ctx: { split_ref: splitRef, item_name: item.name, seat_count: n },
+    });
   }
   clearMode(state);
 }
+
+function doMerge(targetColIdx, state) {
+  pushLog('Merged into ' + state.columns[targetColIdx].label, state);
+  var target = state.columns[targetColIdx];
+  for (var ci = 0; ci < state.columns.length; ci++) {
+    if (ci === targetColIdx) continue;
+    for (var ii = 0; ii < state.columns[ci].items.length; ii++) {
+      target.items.push(state.columns[ci].items[ii]);
+    }
+  }
+  var refsIn = {};
+  for (var ri = 0; ri < target.items.length; ri++) {
+    var ref = target.items[ri]._splitRef;
+    if (ref) refsIn[ref] = (refsIn[ref] || 0) + 1;
+  }
+  var refKeys = Object.keys(refsIn);
+  for (var rk = 0; rk < refKeys.length; rk++) {
+    if (refsIn[refKeys[rk]] > 1) {
+      entReport({
+        code: 'UI-013', level: 'INFO', source: 'column-editor.merge',
+        message: 'Split item recombined: ' + refKeys[rk],
+        ctx: { split_ref: refKeys[rk] },
+      });
+    }
+  }
+  target.items = _collapseSplitGroups(target.items);
+  state.columns = [target];
+  clearMode(state);
+}
+
+function handleVoidSelected(state) {
+  if (state.selectedItems.length === 0) return;
+  pushLog('Voided items', state);
+  var sorted = state.selectedItems.slice().sort(function(a, b) {
+    return a.colIdx !== b.colIdx ? b.colIdx - a.colIdx : b.itemIdx - a.itemIdx;
+  });
+  for (var i = 0; i < sorted.length; i++) {
+    var col = state.columns[sorted[i].colIdx];
+    if (col) col.items.splice(sorted[i].itemIdx, 1);
+  }
+  clearMode(state);
+}
+
+// ─────────────────────────────────────────────────────
+//  Seat management
+// ─────────────────────────────────────────────────────
 
 function handleAddSeat(state) {
   var used = {};
@@ -275,55 +320,159 @@ function handleAddSeat(state) {
   while (used[n]) n++;
   var newCol = { id: 'NEW-' + n, label: 'S-' + String(n).padStart(3, '0'), items: [] };
   state.columns.push(newCol);
-  if (state.mode === 'split') {
-    state.splitTargets.push(state.columns.length - 1);
-    if (state.statusEl)
-      state.statusEl.textContent =
-        'Select items · tap columns to target (' + state.splitTargets.length + ')';
-  }
+  state.visibleColIds.push(newCol.id);
   showToast('Added ' + newCol.label, { bg: T.green });
   renderColumns(state);
+  renderSeatSelector(state);
 }
 
+// ─────────────────────────────────────────────────────
+//  Undo
+// ─────────────────────────────────────────────────────
 
 function handleUndo(state) {
   if (state.actionLog.length === 0) return;
   var entry = state.actionLog.pop();
-  state.columns      = entry.columns;
+  state.columns       = entry.columns;
   state.selectedItems = [];
   state.splitTargets  = [];
+  state.mergeTarget   = null;
   state.mode          = null;
   if (state.undoBtnEl) state.undoBtnEl.setDisabled(state.actionLog.length === 0);
-  renderOpsBar(state);
   renderColumns(state);
+  renderFooterToolbar(state);
 }
 
 function handleUndoAll(state) {
   if (!state.snapshot) return;
-  state.columns      = deepCopyColumns(state.snapshot);
-  state.actionLog    = [];
+  state.columns       = deepCopyColumns(state.snapshot);
+  state.actionLog     = [];
   state.selectedItems = [];
   state.splitTargets  = [];
+  state.mergeTarget   = null;
   state.mode          = null;
   if (state.undoBtnEl) state.undoBtnEl.setDisabled(true);
-  renderOpsBar(state);
   renderColumns(state);
+  renderFooterToolbar(state);
 }
 
-function handleConfirm(state) {
-  if (state.mode === 'split' && state.selectedItems.length > 0 && state.splitTargets.length > 0) {
-    doSplit(state);
+// ─────────────────────────────────────────────────────
+//  Hint + status text
+// ─────────────────────────────────────────────────────
+
+function getColHint(colIdx, state) {
+  var n = state.selectedItems.length;
+  var hasSelHere = state.selectedItems.some(function(s) { return s.colIdx === colIdx; });
+  if (state.mode === 'move') {
+    return hasSelHere ? 'Moving from this seat' : 'Tap to move selected items here';
   }
-  if (state.onSave) state.onSave(state.columns);
-  SceneManager.closeTransactional('column-editor');
+  if (state.mode === 'split') {
+    var pos = state.splitTargets.indexOf(colIdx);
+    if (pos < 0) return 'Tap to add as split target';
+    return pos === state.splitTargets.length - 1
+      ? 'Split target (receives remainder)'
+      : 'Split target ' + (pos + 1);
+  }
+  if (state.mode === 'merge') {
+    return state.mergeTarget === colIdx
+      ? 'Everything merges into this seat'
+      : 'Tap header to merge into this seat';
+  }
+  if (n > 0) return n + ' item' + (n !== 1 ? 's' : '') + ' selected — choose an action below';
+  return 'Tap items or seat header to select';
+}
+
+function getStatusText(state) {
+  var n = state.selectedItems.length;
+  var t = state.splitTargets.length;
+  if (state.mode === 'move') {
+    return n + ' item' + (n !== 1 ? 's' : '') + ' selected · tap any column to move them';
+  }
+  if (state.mode === 'split') {
+    if (t === 0) return n + ' item' + (n !== 1 ? 's' : '') + ' selected · tap seats to split across';
+    return n + ' item' + (n !== 1 ? 's' : '') + ' · splitting across ' + t + ' seat' + (t !== 1 ? 's' : '');
+  }
+  if (state.mode === 'merge') {
+    if (state.mergeTarget === null) return 'Tap a seat header to merge everything into';
+    var lbl = state.columns[state.mergeTarget] ? state.columns[state.mergeTarget].label : '';
+    return 'Tap CONFIRM to merge into ' + lbl;
+  }
+  if (n > 0) return n + ' item' + (n !== 1 ? 's' : '') + ' selected — choose an action below';
+  return 'Tap items or a seat header to select';
 }
 
 // ─────────────────────────────────────────────────────
-//  renderColumns(state)
-//
-//  Clears columnsArea and rebuilds every column card +
-//  the add card. Also re-wires all item / header taps.
+//  Act-button builder — matches Mode A action bar style
 // ─────────────────────────────────────────────────────
+
+function buildActBtn(opts) {
+  var o      = opts || {};
+  var btn    = document.createElement('div');
+  var bg     = o.bg     || T.card;
+  var dk     = o.dk     || T.moonDk;
+  var shadow = '0 4px 0 ' + dk;
+
+  btn.style.height         = o.height   || '46px';
+  btn.style.padding        = o.padding  || '0 16px';
+  btn.style.border         = o.border   || 'none';
+  btn.style.borderRadius   = '10px';
+  btn.style.background     = bg;
+  btn.style.boxShadow      = o.ghost ? ('0 3px 0 ' + dk) : shadow;
+  btn.style.color          = o.color    || T.text;
+  btn.style.fontFamily     = T.fh;
+  btn.style.fontWeight     = T.fwBold;
+  btn.style.fontSize       = o.fontSize || T.fsB3;
+  btn.style.letterSpacing  = '0.04em';
+  btn.style.display        = 'flex';
+  btn.style.alignItems     = 'center';
+  btn.style.justifyContent = 'center';
+  btn.style.cursor         = 'pointer';
+  btn.style.pointerEvents  = 'auto';
+  btn.style.touchAction    = 'manipulation';
+  btn.style.userSelect     = 'none';
+  btn.style.flexShrink     = '0';
+  btn.style.transition     = 'transform 0.07s, box-shadow 0.07s';
+  btn.style.gap            = '6px';
+  if (o.minWidth) btn.style.minWidth = o.minWidth;
+
+  if (o.label !== undefined) btn.textContent = o.label;
+
+  // Press animation
+  var baseShadow  = btn.style.boxShadow;
+  var pressShadow = '0 1px 0 ' + dk;
+
+  btn.addEventListener('pointerdown', function() {
+    btn.style.transform  = 'translateY(3px)';
+    btn.style.boxShadow  = pressShadow;
+  });
+  var _release = function() {
+    btn.style.transform = 'none';
+    btn.style.boxShadow = baseShadow;
+  };
+  btn.addEventListener('pointerup',     _release);
+  btn.addEventListener('pointerleave',  _release);
+  btn.addEventListener('pointercancel', _release);
+
+  // Expose helpers for dynamic re-styling
+  btn._baseShadow  = baseShadow;
+  btn._pressShadow = pressShadow;
+  btn.restyle = function(newBg, newDk, newColor) {
+    btn.style.background = newBg;
+    btn.style.color      = newColor || T.well;
+    baseShadow           = '0 4px 0 ' + newDk;
+    pressShadow          = '0 1px 0 ' + newDk;
+    btn.style.boxShadow  = baseShadow;
+    btn._baseShadow  = baseShadow;
+    btn._pressShadow = pressShadow;
+  };
+
+  return btn;
+}
+
+// ─────────────────────────────────────────────────────
+//  Column rendering
+// ─────────────────────────────────────────────────────
+
 function renderColumns(state) {
   var area = state.columnsArea;
   while (area.firstChild) area.removeChild(area.firstChild);
@@ -331,83 +480,163 @@ function renderColumns(state) {
   for (var ci = 0; ci < state.columns.length; ci++) {
     area.appendChild(buildColumn(ci, state));
   }
-  area.appendChild(buildAddCard(state));
 }
 
-// ─────────────────────────────────────────────────────
-//  buildColumn(colIdx, state) → card element
-//
-//  Renders one column card: header + scrollable item list.
-//  Registers the card refs in state.colEls[colIdx].
-//  Wires header tap (handleColTap) and item taps (handleItemTap).
-// ─────────────────────────────────────────────────────
 function buildColumn(colIdx, state) {
-  var col      = state.columns[colIdx];
-  var accent   = T.seatPalette[colIdx % T.seatPalette.length];
-  var isTarget = state.mode === 'split' && state.splitTargets.indexOf(colIdx) >= 0;
-  var nTargets = state.splitTargets.length;
+  var col         = state.columns[colIdx];
+  var isSplitTgt  = state.mode === 'split' && state.splitTargets.indexOf(colIdx) >= 0;
+  var isMergeTgt  = state.mode === 'merge' && state.mergeTarget === colIdx;
+  var accentColor = isSplitTgt ? T.elec : isMergeTgt ? T.greenWarm : T.green;
+  var numColor    = isSplitTgt ? T.elec : isMergeTgt ? T.greenWarm : T.green;
 
-  // ── Card shell ────────────────────────────────────
-  var card = buildStaticCard({ accent: accent });
-  card.style.padding       = '0';
-  card.style.display       = 'flex';
-  card.style.flexDirection = 'column';
-  card.style.overflow      = 'hidden';
-  card.style.minWidth      = '220px';
-  card.style.maxWidth      = '300px';
-  card.style.flexShrink    = '0';
+  // ── Card ──────────────────────────────────────────
+  var card = document.createElement('div');
+  card.style.flex            = '1';
+  card.style.minWidth        = '0';
+  card.style.display         = 'flex';
+  card.style.flexDirection   = 'column';
+  card.style.overflowY       = 'auto';
+  card.style.overflowX       = 'hidden';
+  card.style.background      = T.card;
+  card.style.borderRadius    = T.chamferCard + 'px';
+  card.style.borderTop       = '3px solid ' + lightenHex(T.bg, 0.08);
+  card.style.borderLeft      = '4px solid ' + accentColor;
+  card.style.borderRight     = '3px solid ' + darkenHex(T.bg, 0.2);
+  card.style.borderBottom    = '3px solid ' + darkenHex(T.bg, 0.2);
+  card.style.scrollbarWidth  = 'none';
+  card.style.msOverflowStyle = 'none';
+  if (isSplitTgt) card.style.boxShadow = '0 0 0 1px ' + T.elec;
+  if (isMergeTgt) card.style.boxShadow = '0 0 0 1px ' + T.greenWarm;
+
+  // Column tap for MOVE / SPLIT
+  (function(idx) {
+    var h = function(e) {
+      if (e.target.closest('[data-item-row]')) return;
+      handleColTap(idx, state);
+    };
+    card.addEventListener('pointerup', h);
+    state.listeners.push({ el: card, event: 'pointerup', handler: h });
+  })(colIdx);
 
   // ── Header ────────────────────────────────────────
   var hdr = document.createElement('div');
-  hdr.style.background     = T.well;
-  hdr.style.height         = '32px';
-  hdr.style.display        = 'flex';
-  hdr.style.alignItems     = 'center';
-  hdr.style.justifyContent = 'space-between';
-  hdr.style.padding        = '0 14px';
-  hdr.style.flexShrink     = '0';
-  hdr.style.cursor         = 'pointer';
-  hdr.style.pointerEvents  = 'auto';
-  hdr.style.touchAction    = 'manipulation';
+  hdr.style.position      = 'sticky';
+  hdr.style.top           = '0';
+  hdr.style.zIndex        = '2';
+  hdr.style.background    = T.well;
+  hdr.style.padding       = '8px 12px';
+  hdr.style.borderBottom  = '2px solid ' + darkenHex(T.bg, 0.2);
+  hdr.style.cursor        = 'pointer';
+  hdr.style.pointerEvents = 'auto';
+  hdr.style.touchAction   = 'manipulation';
+  hdr.style.flexShrink    = '0';
 
-  var hdrLabel = buildSectionLabel(col.label, T.green);
-  hdrLabel.style.flex = '1';
-  hdr.appendChild(hdrLabel);
+  var hdrTop = document.createElement('div');
+  hdrTop.style.display        = 'flex';
+  hdrTop.style.alignItems     = 'baseline';
+  hdrTop.style.justifyContent = 'space-between';
 
-  var colTotal = col.items.reduce(function(s, it) { return s + it.qty * it.price; }, 0);
-  var hdrTotal = document.createElement('span');
-  hdrTotal.textContent      = fmt(colTotal);
-  hdrTotal.style.fontFamily = T.fb;
-  hdrTotal.style.fontSize   = T.fsB3;
-  hdrTotal.style.fontWeight = T.fwBold;
-  hdrTotal.style.color      = T.gold;
-  hdrTotal.style.flexShrink = '0';
-  hdr.appendChild(hdrTotal);
+  // Left: S# + subtotal (matches Mode A seat header)
+  var hdrLeft = document.createElement('div');
+  hdrLeft.style.display    = 'flex';
+  hdrLeft.style.alignItems = 'baseline';
+  hdrLeft.style.gap        = '8px';
+
+  var seatNum = document.createElement('span');
+  seatNum.textContent      = formatSeatLabel(col.label);
+  seatNum.style.fontFamily = T.fh;
+  seatNum.style.fontWeight = T.fwBold;
+  seatNum.style.fontSize   = '24px';
+  seatNum.style.color      = numColor;
+
+  var seatSbtl = document.createElement('span');
+  seatSbtl.textContent      = fmt(sumColumn(colIdx, state));
+  seatSbtl.style.fontFamily = T.fb;
+  seatSbtl.style.fontWeight = T.fwBold;
+  seatSbtl.style.fontSize   = '17px';
+  seatSbtl.style.color      = T.gold;
+
+  hdrLeft.appendChild(seatNum);
+  hdrLeft.appendChild(seatSbtl);
+
+  var count = col.items.length;
+  var itemCount = document.createElement('span');
+  itemCount.textContent      = count === 0 ? 'empty' : count + ' item' + (count !== 1 ? 's' : '');
+  itemCount.style.fontFamily = T.fb;
+  itemCount.style.fontSize   = T.fsB4;
+  itemCount.style.color      = T.moon;
+
+  hdrTop.appendChild(hdrLeft);
+  hdrTop.appendChild(itemCount);
+  hdr.appendChild(hdrTop);
+
+  (function(idx) {
+    var h = function(e) { e.stopPropagation(); handleColTap(idx, state); };
+    hdr.addEventListener('pointerup', h);
+    state.listeners.push({ el: hdr, event: 'pointerup', handler: h });
+  })(colIdx);
 
   card.appendChild(hdr);
 
   // ── Item list ─────────────────────────────────────
   var itemList = document.createElement('div');
-  itemList.className             = 'co-scroll';
-  itemList.style.flex            = '1';
-  itemList.style.minHeight       = '0';
-  itemList.style.overflowY       = 'auto';
-  itemList.style.scrollbarWidth  = 'none';
-  itemList.style.msOverflowStyle = 'none';
-  itemList.style.display         = 'flex';
-  itemList.style.flexDirection   = 'column';
-  itemList.style.padding         = '6px';
+  itemList.style.padding       = '6px 8px 8px';
+  itemList.style.display       = 'flex';
+  itemList.style.flexDirection = 'column';
+  itemList.style.gap           = '5px';
 
+  // Split preview cards
+  if (isSplitTgt && state.splitTargets.length >= 2) {
+    var total  = state.splitTargets.length;
+    var isLast = state.splitTargets[total - 1] === colIdx;
+    state.selectedItems.forEach(function(sel) {
+      var srcItem = state.columns[sel.colIdx] && state.columns[sel.colIdx].items[sel.itemIdx];
+      if (!srcItem) return;
+      var baseCents  = Math.round((srcItem.price || 0) * (srcItem.qty || 1) * 100);
+      var share      = Math.floor(baseCents / total);
+      var priceCents = isLast ? share + (baseCents - share * total) : share;
+
+      var pc = document.createElement('div');
+      pc.style.border       = '1.5px dashed ' + T.elec;
+      pc.style.borderRadius = '8px';
+      pc.style.padding      = '5px 9px';
+
+      var lbl = document.createElement('div');
+      lbl.textContent      = 'split preview';
+      lbl.style.fontFamily = T.fb;
+      lbl.style.fontSize   = T.fsB4;
+      lbl.style.fontStyle  = 'italic';
+      lbl.style.color      = T.elec;
+      lbl.style.marginBottom = '2px';
+
+      var pr = document.createElement('div');
+      pr.style.display = 'flex'; pr.style.justifyContent = 'space-between';
+
+      var nm = document.createElement('span');
+      nm.textContent = srcItem.name;
+      nm.style.fontFamily = T.fb; nm.style.fontSize = T.fsB3; nm.style.color = T.text;
+
+      var pv = document.createElement('span');
+      pv.textContent = fmt(priceCents / 100);
+      pv.style.fontFamily = T.fb; pv.style.fontWeight = T.fwBold;
+      pv.style.fontSize = T.fsB3; pv.style.color = T.elec;
+
+      pr.appendChild(nm); pr.appendChild(pv);
+      pc.appendChild(lbl); pc.appendChild(pr);
+      itemList.appendChild(pc);
+    });
+  }
+
+  // Real items
   if (col.items.length === 0) {
     var emptyEl = document.createElement('div');
-    emptyEl.textContent          = 'Empty';
-    emptyEl.style.flex           = '1';
-    emptyEl.style.display        = 'flex';
-    emptyEl.style.alignItems     = 'center';
-    emptyEl.style.justifyContent = 'center';
-    emptyEl.style.fontFamily     = T.fb;
-    emptyEl.style.fontSize       = T.fsB3;
-    emptyEl.style.color          = T.moon;
+    emptyEl.textContent        = 'empty';
+    emptyEl.style.textAlign    = 'center';
+    emptyEl.style.padding      = '20px 0';
+    emptyEl.style.fontFamily   = T.fb;
+    emptyEl.style.fontSize     = T.fsB3;
+    emptyEl.style.color        = T.moon;
+    emptyEl.style.fontStyle    = 'italic';
     itemList.appendChild(emptyEl);
   } else {
     for (var ii = 0; ii < col.items.length; ii++) {
@@ -417,77 +646,45 @@ function buildColumn(colIdx, state) {
       var isSelected = false;
       for (var si = 0; si < state.selectedItems.length; si++) {
         if (state.selectedItems[si].colIdx === colIdx && state.selectedItems[si].itemIdx === ii) {
-          isSelected = true;
-          break;
+          isSelected = true; break;
         }
       }
 
       var row = document.createElement('div');
       row.style.display       = 'flex';
       row.style.alignItems    = 'center';
-      row.style.padding       = '6px 8px';
+      row.style.padding       = '7px 8px';
+      row.style.borderBottom  = '1px solid ' + T.border;
+      row.style.borderRadius  = '4px';
       row.style.cursor        = 'pointer';
       row.style.pointerEvents = 'auto';
       row.style.touchAction   = 'manipulation';
       row.style.userSelect    = 'none';
       row.dataset.itemRow     = '1';
+      if (isSelected) row.style.background = hexToRgba(T.green, 0.12);
 
       var nameSpan = document.createElement('span');
       nameSpan.textContent    = nameText;
       nameSpan.style.flex     = '1';
       nameSpan.style.minWidth = '0';
+      nameSpan.style.fontFamily = T.fb;
+      nameSpan.style.fontSize   = T.fsB3;
+      nameSpan.style.color      = isSelected ? T.green : T.text;
 
       var priceSpan = document.createElement('span');
       priceSpan.textContent      = fmt(item.qty * item.price);
       priceSpan.style.marginLeft = '8px';
       priceSpan.style.flexShrink = '0';
       priceSpan.style.fontFamily = T.fb;
+      priceSpan.style.fontWeight = T.fwBold;
       priceSpan.style.fontSize   = T.fsB3;
+      priceSpan.style.color      = isSelected ? T.green : T.gold;
 
-      if (isTarget) {
-        // Ghost row: column is a split destination
-        row.style.background   = hexToRgba(T.elec, 0.05);
-        row.style.borderBottom = '1px dashed ' + T.border;
-        nameSpan.style.color   = T.text;
-        priceSpan.style.color  = T.gold;
+      row.appendChild(nameSpan);
+      row.appendChild(priceSpan);
 
-        var badge = document.createElement('span');
-        badge.textContent      = '÷' + nTargets;
-        badge.style.fontFamily = T.fh;
-        badge.style.fontSize   = T.fsB4;
-        badge.style.fontWeight = T.fwBold;
-        badge.style.color      = T.elec;
-        badge.style.marginLeft = '6px';
-        badge.style.flexShrink = '0';
-
-        row.appendChild(nameSpan);
-        row.appendChild(badge);
-        row.appendChild(priceSpan);
-
-      } else if (isSelected) {
-        // Staged for move / split
-        row.style.opacity             = '0.45';
-        row.style.borderBottom        = '1px solid ' + T.border;
-        nameSpan.style.color          = T.text;
-        nameSpan.style.textDecoration = 'line-through';
-        priceSpan.style.color         = T.moon;
-
-        row.appendChild(nameSpan);
-        row.appendChild(priceSpan);
-
-      } else {
-        // Normal
-        row.style.borderBottom = '1px solid ' + T.border;
-        nameSpan.style.color   = T.text;
-        priceSpan.style.color  = T.gold;
-
-        row.appendChild(nameSpan);
-        row.appendChild(priceSpan);
-      }
-
-      // Wire item tap
       (function(cIdx, iIdx) {
-        var h = function() { handleItemTap(cIdx, iIdx, state); };
+        var h = function(e) { e.stopPropagation(); handleItemTap(cIdx, iIdx, state); };
         row.addEventListener('pointerup', h);
         state.listeners.push({ el: row, event: 'pointerup', handler: h });
       })(colIdx, ii);
@@ -498,227 +695,93 @@ function buildColumn(colIdx, state) {
 
   card.appendChild(itemList);
 
-  // Card-level tap: fires handleColTap unless the tap landed on an item row.
-  (function(idx) {
-    var h = function(e) {
-      if (e.target.closest('[data-item-row]')) return;
-      handleColTap(idx, state);
-    };
-    card.addEventListener('pointerup', h);
-    state.listeners.push({ el: card, event: 'pointerup', handler: h });
-  })(colIdx);
-
-  state.colEls.push({
-    el:       card,
-    hdr:      hdr,
-    hdrLabel: hdrLabel,
-    hdrTotal: hdrTotal,
-    itemList: itemList,
-  });
-
+  state.colEls.push({ el: card, hdr: hdr });
   return card;
 }
 
 // ─────────────────────────────────────────────────────
-//  buildAddCard(state) → card element
-//
-//  72px narrow card pinned to the right of the columns
-//  area. Top half = + SEAT (T.green), bottom half =
-//  + CHECK (T.gold), divided by a dashed gradient line.
+//  Footer toolbar
 // ─────────────────────────────────────────────────────
-function buildAddCard(state) {
-  // ── Card shell ────────────────────────────────────
-  var card = document.createElement('div');
-  card.style.width         = '72px';
-  card.style.flexShrink    = '0';
-  card.style.alignSelf     = 'stretch';
-  card.style.background    = T.card;
-  card.style.border        = '1px solid ' + T.border;
-  card.style.borderRadius  = T.chamferCard + 'px';
-  card.style.display       = 'flex';
-  card.style.flexDirection = 'column';
-  card.style.overflow      = 'hidden';
 
-  // ── Zone factory ──────────────────────────────────
-  function makeZone(plusColor, labelText, labelColor, onTap) {
-    var zone = document.createElement('div');
-    zone.style.flex           = '1';
-    zone.style.display        = 'flex';
-    zone.style.flexDirection  = 'column';
-    zone.style.alignItems     = 'center';
-    zone.style.justifyContent = 'center';
-    zone.style.gap            = '4px';
-    zone.style.cursor         = 'pointer';
-    zone.style.pointerEvents  = 'auto';
-    zone.style.touchAction    = 'manipulation';
-    zone.style.userSelect     = 'none';
+function renderFooterToolbar(state) {
+  var row = state.toolRowEl;
+  if (!row) return;
+  while (row.firstChild) row.removeChild(row.firstChild);
 
-    zone.addEventListener('mouseenter', function() {
-      zone.style.background = 'rgba(255,255,255,0.05)';
+  var hasSel = state.selectedItems.length > 0;
+
+  // Update hint bar
+  if (state.hintBarEl) state.hintBarEl.textContent = getStatusText(state);
+
+  // ── Left grid: MOVE / SPLIT / MERGE ──────────────
+  var leftGrid = document.createElement('div');
+  leftGrid.style.flex                  = '1';
+  leftGrid.style.display               = 'grid';
+  leftGrid.style.gridTemplateColumns   = 'repeat(3, 1fr)';
+  leftGrid.style.gap                   = '6px';
+
+  var tools = [
+    { id: 'move',  label: 'MOVE',  bg: T.green,    dk: T.greenDk  },
+    { id: 'split', label: 'SPLIT', bg: T.elec,     dk: T.elecDk   },
+    { id: 'merge', label: 'MERGE', bg: T.gold,     dk: T.goldDk   },
+  ];
+
+  tools.forEach(function(tool) {
+    var isActive = state.mode === tool.id;
+    var btn = buildActBtn({
+      label:    tool.label,
+      bg:       isActive ? tool.bg   : T.card,
+      dk:       isActive ? tool.dk   : T.moonDk,
+      color:    isActive ? T.well    : T.text,
+      border:   isActive ? 'none'    : '1px solid ' + T.border,
+      ghost:    !isActive,
+      fontSize: T.fsB3,
     });
-    zone.addEventListener('mouseleave', function() {
-      zone.style.background = '';
+    btn.style.height = '100%';
+    if (!hasSel) { btn.style.opacity = '0.35'; btn.style.pointerEvents = 'none'; }
+
+    btn.addEventListener('pointerup', function() {
+      if (!hasSel) return;
+      if (state.mode === tool.id) { clearMode(state); return; }
+      state.mode         = tool.id;
+      state.splitTargets = [];
+      state.mergeTarget  = null;
+      renderColumns(state);
+      renderFooterToolbar(state);
     });
-
-    var plus = document.createElement('div');
-    plus.textContent         = '+';
-    plus.style.fontFamily    = T.fh;
-    plus.style.fontSize      = T.fsH4;   // 26px
-    plus.style.fontWeight    = T.fwBold;
-    plus.style.color         = plusColor;
-    plus.style.lineHeight    = '1';
-    plus.style.pointerEvents = 'none';
-
-    var lbl = document.createElement('div');
-    lbl.textContent         = labelText;
-    lbl.style.fontFamily    = T.fh;
-    lbl.style.fontSize      = '8px';
-    lbl.style.color         = labelColor;
-    lbl.style.textAlign     = 'center';
-    lbl.style.pointerEvents = 'none';
-
-    zone.appendChild(plus);
-    zone.appendChild(lbl);
-
-    zone.addEventListener('pointerup', onTap);
-    state.listeners.push({ el: zone, event: 'pointerup', handler: onTap });
-
-    return zone;
-  }
-
-  // ── + NEW SEAT zone (full height) ─────────────────
-  card.appendChild(makeZone(
-    T.green,
-    'NEW SEAT',
-    hexToRgba(T.green, 0.6),
-    function() { handleAddSeat(state); }
-  ));
-
-  return card;
-}
-
-// ─────────────────────────────────────────────────────
-//  renderOpsBar(state)
-//
-//  Clears and rebuilds state.opsPanel with the correct
-//  pills for the current mode. Also (re)creates state.statusEl.
-// ─────────────────────────────────────────────────────
-function renderOpsBar(state) {
-  var panel = state.opsPanel;
-  while (panel.firstChild) panel.removeChild(panel.firstChild);
-
-  // MOVE
-  var moveActive = state.mode === 'move';
-  var moveBtn = buildPillButton({
-    label:     'MOVE',
-    color:     moveActive ? T.greenWarm       : T.card,
-    darkBg:    moveActive ? T.greenWarmDk     : darkenHex(T.card, 0.35),
-    textColor: moveActive ? T.well            : T.text,
-    fontSize:  T.fsB2,
+    leftGrid.appendChild(btn);
   });
-  if (!moveActive) moveBtn.style.border = '1px solid ' + T.border;
-  moveBtn.addEventListener('pointerup', function() {
-    state.mode = 'move';
-    if (state.statusEl)
-      state.statusEl.textContent = 'Select items · tap any column to move them';
-    renderOpsBar(state);
-    renderColumns(state);
+
+  row.appendChild(leftGrid);
+
+  // Divider
+  var divEl = document.createElement('div');
+  divEl.style.width      = '1px';
+  divEl.style.background = T.border;
+  divEl.style.flexShrink = '0';
+  divEl.style.margin     = '4px 0';
+  row.appendChild(divEl);
+
+  // ── Right grid: UNDO / CANCEL / CONFIRM ──────────
+  var rightGrid = document.createElement('div');
+  rightGrid.style.flex                = '1';
+  rightGrid.style.display             = 'grid';
+  rightGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+  rightGrid.style.gap                 = '6px';
+
+  // UNDO with long-press fill animation
+  var undoBtn = buildActBtn({
+    label:  'UNDO',
+    bg:     T.card,
+    dk:     T.moonDk,
+    color:  T.text,
+    border: '1px solid ' + T.border,
+    ghost:  true,
   });
-  panel.appendChild(moveBtn);
-
-  // SPLIT
-  var splitActive = state.mode === 'split';
-  var splitBtn = buildPillButton({
-    label:     'SPLIT',
-    color:     splitActive ? T.elec           : T.card,
-    darkBg:    splitActive ? T.elecDk         : darkenHex(T.card, 0.35),
-    textColor: splitActive ? T.well           : T.text,
-    fontSize:  T.fsB2,
-  });
-  if (!splitActive) splitBtn.style.border = '1px solid ' + T.border;
-  splitBtn.addEventListener('pointerup', function() {
-    state.mode          = 'split';
-    state.selectedItems = [];
-    state.splitTargets  = [];
-    if (state.statusEl) state.statusEl.textContent = 'Select items · tap columns to target';
-    renderOpsBar(state);
-    renderColumns(state);
-  });
-  panel.appendChild(splitBtn);
-
-  // MERGE
-  var mergeActive = state.mode === 'merge';
-  var mergeBtn = buildPillButton({
-    label:     'MERGE',
-    color:     mergeActive ? T.gold           : T.card,
-    darkBg:    mergeActive ? T.goldDk         : darkenHex(T.card, 0.35),
-    textColor: mergeActive ? T.well           : T.text,
-    fontSize:  T.fsB2,
-  });
-  if (!mergeActive) mergeBtn.style.border = '1px solid ' + T.border;
-  mergeBtn.addEventListener('pointerup', function() {
-    state.mode = 'merge';
-    if (state.statusEl) state.statusEl.textContent = 'Tap a column to merge all into it';
-    renderOpsBar(state);
-  });
-  panel.appendChild(mergeBtn);
-
-  // CANCEL — visible only when a mode is active (mode !== null)
-  if (state.mode !== null) {
-    var cancelBtn = buildPillButton({
-      label:     'CANCEL',
-      color:     T.verm,
-      darkBg:    T.vermDk,
-      textColor: '#fff',
-      fontSize:  T.fsB2,
-    });
-    cancelBtn.addEventListener('pointerup', function() { clearMode(state); });
-    panel.appendChild(cancelBtn);
-  }
-
-  // Status text — recreated each render; state.statusEl tracks the live node
-  var statusEl = document.createElement('span');
-  statusEl.style.fontFamily = T.fb;
-  statusEl.style.fontSize   = T.fsB3;
-  statusEl.style.color      = state.mode !== null ? T.text : hexToRgba(T.text, 0.45);
-  statusEl.style.flex       = '1';
-  statusEl.style.minWidth   = '0';
-  state.statusEl = statusEl;
-  panel.appendChild(statusEl);
-}
-
-// ─────────────────────────────────────────────────────
-//  renderBottomCluster(state) → cluster element
-//
-//  Builds the UNDO + CONFIRM pill cluster and wires the
-//  UNDO long-press (600 ms) fill animation + stubs.
-// ─────────────────────────────────────────────────────
-function renderBottomCluster(state) {
-  function track(el, event, handler) {
-    el.addEventListener(event, handler);
-    state.listeners.push({ el: el, event: event, handler: handler });
-  }
-
-  var cluster = document.createElement('div');
-  cluster.style.position = 'absolute';
-  cluster.style.bottom   = '14px';
-  cluster.style.right    = '14px';
-  cluster.style.display  = 'flex';
-  cluster.style.gap      = '8px';
-
-  // ── UNDO pill ─────────────────────────────────────
-  var undoBtn = buildPillButton({
-    label:     'UNDO',
-    color:     T.card,
-    darkBg:    darkenHex(T.card, 0.35),
-    textColor: T.text,
-    fontSize:  T.fsB2,
-  });
-  undoBtn.style.border   = '1px solid ' + T.border;
+  undoBtn.style.height   = '100%';
   undoBtn.style.position = 'relative';
   undoBtn.style.overflow = 'hidden';
 
-  // Wrap label text so it stacks above the fill layer
   var undoLabel = document.createElement('span');
   undoLabel.textContent    = 'UNDO';
   undoLabel.style.position = 'relative';
@@ -726,26 +789,24 @@ function renderBottomCluster(state) {
   undoBtn.textContent      = '';
   undoBtn.appendChild(undoLabel);
 
-  // Step counter badge
   if (state.actionLog.length > 0) {
-    var cntBadge = document.createElement('span');
-    cntBadge.textContent        = state.actionLog.length;
-    cntBadge.style.position     = 'absolute';
-    cntBadge.style.top          = '-6px';
-    cntBadge.style.right        = '-6px';
-    cntBadge.style.background   = T.elec;
-    cntBadge.style.color        = T.well;
-    cntBadge.style.borderRadius = T.pillRadius;
-    cntBadge.style.fontFamily   = T.fb;
-    cntBadge.style.fontSize     = T.fsB4;
-    cntBadge.style.fontWeight   = T.fwBold;
-    cntBadge.style.padding      = '1px 5px';
-    cntBadge.style.pointerEvents = 'none';
-    cntBadge.style.zIndex       = '2';
-    undoBtn.appendChild(cntBadge);
+    var badge = document.createElement('span');
+    badge.textContent         = state.actionLog.length;
+    badge.style.position      = 'absolute';
+    badge.style.top           = '-6px';
+    badge.style.right         = '-6px';
+    badge.style.background    = T.elec;
+    badge.style.color         = T.well;
+    badge.style.borderRadius  = T.pillRadius;
+    badge.style.fontFamily    = T.fb;
+    badge.style.fontSize      = T.fsB4;
+    badge.style.fontWeight    = T.fwBold;
+    badge.style.padding       = '1px 5px';
+    badge.style.pointerEvents = 'none';
+    badge.style.zIndex        = '2';
+    undoBtn.appendChild(badge);
   }
 
-  // Long-press fill layer (scaleX 0 → 1, T.verm)
   var undoFill = document.createElement('div');
   undoFill.style.position        = 'absolute';
   undoFill.style.inset           = '0';
@@ -753,16 +814,17 @@ function renderBottomCluster(state) {
   undoFill.style.transformOrigin = 'left center';
   undoFill.style.transform       = 'scaleX(0)';
   undoFill.style.transition      = 'none';
-  undoFill.style.borderRadius    = T.pillRadius;
+  undoFill.style.borderRadius    = '10px';
   undoFill.style.pointerEvents   = 'none';
   undoFill.style.zIndex          = '0';
   undoBtn.appendChild(undoFill);
 
-  if (state.actionLog.length === 0) undoBtn.setDisabled(true);
+  if (state.actionLog.length === 0) { undoBtn.style.opacity = '0.4'; undoBtn.style.pointerEvents = 'none'; }
   state.undoBtnEl = undoBtn;
-
-  // Long-press interaction — stored in state so unmount can cancel it
-  state._lpTimer = null;
+  undoBtn.setDisabled = function(val) {
+    undoBtn.style.opacity       = val ? '0.4' : '1';
+    undoBtn.style.pointerEvents = val ? 'none' : 'auto';
+  };
 
   function _triggerUndoAll() {
     undoFill.style.transition = 'transform 0.2s linear';
@@ -773,85 +835,598 @@ function renderBottomCluster(state) {
       handleUndoAll(state);
     }, 200);
   }
-
   function _cancelFill() {
     undoFill.style.transition = 'none';
     undoFill.style.transform  = 'scaleX(0)';
   }
-
-  track(undoBtn, 'pointerdown', function() {
-    if (undoBtn._disabled) return;
-    state._lpTimer = setTimeout(function() {
-      state._lpTimer = null;
-      _triggerUndoAll();
-    }, 600);
-  });
-
-  track(undoBtn, 'pointerup', function() {
-    if (state._lpTimer !== null) {
-      clearTimeout(state._lpTimer);
-      state._lpTimer = null;
-      handleUndo(state);
-    }
-  });
-
-  track(undoBtn, 'pointerleave', function() {
-    if (state._lpTimer !== null) {
-      clearTimeout(state._lpTimer);
-      state._lpTimer = null;
-    }
+  var lpDown = function() {
+    if (state.actionLog.length === 0) return;
+    state._lpTimer = setTimeout(function() { state._lpTimer = null; _triggerUndoAll(); }, 600);
+  };
+  var lpUp = function() {
+    if (state._lpTimer !== null) { clearTimeout(state._lpTimer); state._lpTimer = null; handleUndo(state); }
+  };
+  var lpLeave = function() {
+    if (state._lpTimer !== null) { clearTimeout(state._lpTimer); state._lpTimer = null; }
     _cancelFill();
-  });
+  };
+  undoBtn.addEventListener('pointerdown',   lpDown);
+  undoBtn.addEventListener('pointerup',     lpUp);
+  undoBtn.addEventListener('pointerleave',  lpLeave);
+  undoBtn.addEventListener('pointercancel', lpLeave);
+  state.listeners.push({ el: undoBtn, event: 'pointerdown',   handler: lpDown  });
+  state.listeners.push({ el: undoBtn, event: 'pointerup',     handler: lpUp    });
+  state.listeners.push({ el: undoBtn, event: 'pointerleave',  handler: lpLeave });
+  state.listeners.push({ el: undoBtn, event: 'pointercancel', handler: lpLeave });
+  rightGrid.appendChild(undoBtn);
 
-  track(undoBtn, 'pointercancel', function() {
-    if (state._lpTimer !== null) {
-      clearTimeout(state._lpTimer);
-      state._lpTimer = null;
-    }
-    _cancelFill();
-  });
+  // CANCEL
+  var cancelBtn = buildActBtn({ label: 'CANCEL', bg: T.verm, dk: T.vermDk, color: '#fff', fontSize: T.fsB3 });
+  cancelBtn.style.height = '100%';
+  cancelBtn.addEventListener('pointerup', function() { clearMode(state); });
+  state.listeners.push({ el: cancelBtn, event: 'pointerup', handler: function() { clearMode(state); } });
+  rightGrid.appendChild(cancelBtn);
 
-  cluster.appendChild(undoBtn);
-
-  // ── CONFIRM pill ──────────────────────────────────
-  var confirmBtn = buildPillButton({
-    label:    'CONFIRM',
-    color:    T.greenWarm,
-    darkBg:   T.greenWarmDk,
-    fontSize: T.fsB2,
-  });
+  // CONFIRM
+  var confirmBtn = buildActBtn({ label: 'CONFIRM', bg: T.greenWarm, dk: T.greenWarmDk, color: T.well, fontSize: T.fsB3 });
+  confirmBtn.style.height = '100%';
   confirmBtn.addEventListener('pointerup', function() { handleConfirm(state); });
-  cluster.appendChild(confirmBtn);
+  state.listeners.push({ el: confirmBtn, event: 'pointerup', handler: function() { handleConfirm(state); } });
+  rightGrid.appendChild(confirmBtn);
 
-  return cluster;
+  row.appendChild(rightGrid);
+
+  // Update DISC/VOID
+  if (state.discBtnEl) {
+    if (hasSel) {
+      state.discBtnEl.restyle(T.lavender, darkenHex(T.lavender, 0.3), T.well);
+      state.discBtnEl.style.border = 'none'; state.discBtnEl.style.opacity = '1'; state.discBtnEl.style.pointerEvents = 'auto';
+    } else {
+      state.discBtnEl.restyle(T.card, T.moonDk, T.lavender);
+      state.discBtnEl.style.border = '1px solid ' + T.border; state.discBtnEl.style.opacity = '0.35'; state.discBtnEl.style.pointerEvents = 'none';
+    }
+  }
+  if (state.voidBtnEl) {
+    if (hasSel) {
+      state.voidBtnEl.restyle(T.verm, T.vermDk, '#fff');
+      state.voidBtnEl.style.border = 'none'; state.voidBtnEl.style.opacity = '1'; state.voidBtnEl.style.pointerEvents = 'auto';
+    } else {
+      state.voidBtnEl.restyle(T.card, T.moonDk, T.verm);
+      state.voidBtnEl.style.border = '1px solid ' + T.border; state.voidBtnEl.style.opacity = '0.35'; state.voidBtnEl.style.pointerEvents = 'none';
+    }
+  }
 }
+
+// ─────────────────────────────────────────────────────
+//  Seat selector
+// ─────────────────────────────────────────────────────
+
+function renderSeatSelector(state) {
+  var container = state.seatSelectorEl;
+  if (!container) return;
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  var params       = state._params;
+  var manySeats    = state.allColumns.length > 5;
+  // In grid mode tiles are smaller; in strip mode they use standard act-btn height
+  var tileHeight   = manySeats ? '28px' : '46px';
+  var tileFontSize = manySeats ? '12px' : T.fsB3;
+
+  function makeSeatTile(seat) {
+    var active = state.visibleColIds.indexOf(seat.id) >= 0;
+    var tile = buildActBtn({
+      label:    formatSeatLabel(seat.label),
+      bg:       active ? T.green : T.card,
+      dk:       active ? T.greenDk : T.moonDk,
+      color:    active ? T.well : T.green,
+      border:   active ? 'none' : '1px solid ' + T.border,
+      ghost:    !active,
+      height:   tileHeight,
+      fontSize: tileFontSize,
+      minWidth: manySeats ? '0' : '48px',
+      padding:  manySeats ? '0 6px' : '0 12px',
+    });
+
+    var h = function() {
+      var idx = state.visibleColIds.indexOf(seat.id);
+      if (idx >= 0) {
+        if (state.visibleColIds.length <= 1) return;
+        state.visibleColIds.splice(idx, 1);
+        state.columns = state.columns.filter(function(c) { return c.id !== seat.id; });
+        state.selectedItems = state.selectedItems.filter(function(s) {
+          return state.columns[s.colIdx] !== undefined;
+        });
+        state.splitTargets = []; state.mergeTarget = null;
+      } else {
+        var src = (params.columns || []).filter(function(c) { return c.id === seat.id; })[0];
+        if (src) {
+          state.columns.push(deepCopyColumns([src])[0]);
+          state.visibleColIds.push(seat.id);
+        }
+      }
+      renderColumns(state);
+      renderSeatSelector(state);
+      renderFooterToolbar(state);
+    };
+    tile.addEventListener('pointerup', h);
+    state.listeners.push({ el: tile, event: 'pointerup', handler: h });
+    return tile;
+  }
+
+  // ALL tile
+  var allActive = state.visibleColIds.length === state.allColumns.length;
+  var allTile = buildActBtn({
+    label:    'ALL',
+    bg:       allActive ? T.moon : T.card,
+    dk:       T.moonDk,
+    color:    allActive ? T.well : T.text,
+    border:   allActive ? 'none' : '1px solid ' + T.border,
+    ghost:    !allActive,
+    height:   tileHeight,
+    fontSize: tileFontSize,
+    minWidth: manySeats ? '0' : '48px',
+    padding:  manySeats ? '0 6px' : '0 12px',
+  });
+  var allH = function() {
+    if (state.visibleColIds.length < state.allColumns.length) {
+      state.visibleColIds = state.allColumns.map(function(c) { return c.id; });
+      state.columns = deepCopyColumns(state._params.columns || []);
+    } else {
+      if (state.allColumns.length > 0) {
+        state.visibleColIds = [state.allColumns[0].id];
+        state.columns = deepCopyColumns([(state._params.columns || [])[0] || state.allColumns[0]]);
+      }
+    }
+    state.selectedItems = []; state.splitTargets = []; state.mergeTarget = null;
+    renderColumns(state);
+    renderSeatSelector(state);
+    renderFooterToolbar(state);
+  };
+  allTile.addEventListener('pointerup', allH);
+  state.listeners.push({ el: allTile, event: 'pointerup', handler: allH });
+
+  // + add tile
+  var addTile = buildActBtn({
+    label:    '+',
+    bg:       T.card,
+    dk:       T.greenDk,
+    color:    T.green,
+    border:   '1px solid ' + T.green,
+    ghost:    true,
+    height:   tileHeight,
+    fontSize: manySeats ? '18px' : T.fsB2,
+    minWidth: manySeats ? '0' : '48px',
+    padding:  manySeats ? '0 6px' : '0 12px',
+  });
+  var addH = function() { handleAddSeat(state); };
+  addTile.addEventListener('pointerup', addH);
+  state.listeners.push({ el: addTile, event: 'pointerup', handler: addH });
+
+  if (manySeats) {
+    // Grid mode: tiles go directly into the grid container
+    state.allColumns.forEach(function(seat) {
+      container.appendChild(makeSeatTile(seat));
+    });
+    container.appendChild(allTile);
+    container.appendChild(addTile);
+  } else {
+    // Strip mode: tiles + separator + ALL + +
+    state.allColumns.forEach(function(seat) {
+      container.appendChild(makeSeatTile(seat));
+    });
+    var sep = document.createElement('div');
+    sep.style.width      = '1px';
+    sep.style.height     = '32px';
+    sep.style.background = T.border;
+    sep.style.flexShrink = '0';
+    sep.style.margin     = '0 2px';
+    container.appendChild(sep);
+    container.appendChild(allTile);
+    container.appendChild(addTile);
+  }
+}
+
+// ─────────────────────────────────────────────────────
+//  Seat row (footer row 1)
+// ─────────────────────────────────────────────────────
+
+function buildSeatRow(state, params) {
+  var manySeats = state.allColumns.length > 5;
+  var bevelLt   = lightenHex(T.bg, 0.08);
+  var bevelDk   = darkenHex(T.bg, 0.2);
+
+  var row = document.createElement('div');
+  row.style.flex        = '1';
+  row.style.display     = 'flex';
+  row.style.alignItems  = 'center';
+  row.style.gap         = '7px';
+
+  if (!manySeats) {
+    // ── Strip: horizontal scrolling ──
+    var strip = document.createElement('div');
+    strip.style.flex            = '1';
+    strip.style.display         = 'flex';
+    strip.style.gap             = '6px';
+    strip.style.overflowX       = 'auto';
+    strip.style.scrollbarWidth  = 'none';
+    strip.style.msOverflowStyle = 'none';
+    strip.style.alignItems      = 'center';
+    state.seatSelectorEl = strip;
+    renderSeatSelector(state);
+    row.appendChild(strip);
+  }
+  // In grid mode: seatSelectorEl will be set by buildSeatGridOverlay; row 1 is just DISC/VOID
+
+  // DISC / VOID
+  var dvGroup = document.createElement('div');
+  dvGroup.style.display    = 'flex';
+  dvGroup.style.gap        = '5px';
+  dvGroup.style.flexShrink = '0';
+  if (manySeats) dvGroup.style.marginLeft = 'auto';
+
+  var discBtn = buildActBtn({
+    label:  'DISC', bg: T.card, dk: T.moonDk, color: T.lavender,
+    border: '1px solid ' + T.border, ghost: true,
+  });
+  discBtn.style.opacity       = '0.35';
+  discBtn.style.pointerEvents = 'none';
+
+  var voidBtn = buildActBtn({
+    label:  'VOID', bg: T.card, dk: T.moonDk, color: T.verm,
+    border: '1px solid ' + T.border, ghost: true,
+  });
+  voidBtn.style.opacity       = '0.35';
+  voidBtn.style.pointerEvents = 'none';
+
+  var discH = function() { openPinOverlay('discount', state); };
+  var voidH = function() { openPinOverlay('void',     state); };
+  discBtn.addEventListener('pointerup', discH);
+  voidBtn.addEventListener('pointerup', voidH);
+  state.listeners.push({ el: discBtn, event: 'pointerup', handler: discH });
+  state.listeners.push({ el: voidBtn, event: 'pointerup', handler: voidH });
+
+  state.discBtnEl = discBtn;
+  state.voidBtnEl = voidBtn;
+
+  dvGroup.appendChild(discBtn);
+  dvGroup.appendChild(voidBtn);
+  row.appendChild(dvGroup);
+
+  return row;
+}
+
+// ─────────────────────────────────────────────────────
+//  Seat grid overlay — floats above the bottom bar
+//  Position: absolute, bottom 122px, width 70%, z-index 5
+// ─────────────────────────────────────────────────────
+
+function buildSeatGridOverlay(state, params) {
+  var bevelLt = lightenHex(T.bg, 0.08);
+  var bevelDk = darkenHex(T.bg, 0.2);
+
+  var overlay = document.createElement('div');
+  overlay.style.position     = 'absolute';
+  overlay.style.bottom       = '122px';   // bar(116px) + gap(6px)
+  overlay.style.left         = '8px';
+  overlay.style.width        = '70%';
+  overlay.style.zIndex       = '5';
+  overlay.style.background   = T.well;
+  overlay.style.borderTop    = '3px solid ' + bevelLt;
+  overlay.style.borderLeft   = '3px solid ' + bevelLt;
+  overlay.style.borderRight  = '3px solid ' + bevelDk;
+  overlay.style.borderBottom = '3px solid ' + bevelDk;
+  overlay.style.borderRadius = T.chamferCard + 'px';
+  overlay.style.overflow     = 'hidden';
+  overlay.style.boxShadow    = '0 -6px 20px rgba(0,0,0,0.45)';
+
+  var grid = document.createElement('div');
+  grid.style.display             = 'grid';
+  grid.style.gridTemplateColumns = 'repeat(10, 1fr)';
+  grid.style.gap                 = '4px';
+  grid.style.padding             = '6px';
+  grid.style.overflowY           = 'auto';
+  grid.style.maxHeight           = '134px';   // 4 rows × 28px + 3 gaps + padding
+  grid.style.scrollbarWidth      = 'none';
+  grid.style.msOverflowStyle     = 'none';
+  grid.style.touchAction         = 'pan-y';
+  grid.style.pointerEvents       = 'auto';
+
+  state.seatSelectorEl = grid;
+  renderSeatSelector(state);
+  overlay.appendChild(grid);
+  return overlay;
+}
+
+// ─────────────────────────────────────────────────────
+//  Bottom bar shell (wraps seat row + tool row)
+// ─────────────────────────────────────────────────────
+
+function buildBottomBar(state, params) {
+  var bar = document.createElement('div');
+  bar.style.height      = '116px';
+  bar.style.flexShrink  = '0';
+  bar.style.background  = T.well;
+  bar.style.borderTop   = '2px solid ' + T.border;
+  bar.style.display     = 'flex';
+  bar.style.flexDirection = 'column';
+  bar.style.padding     = '6px 8px 7px';
+  bar.style.gap         = '6px';
+
+  // Row 1: seat strip (or just DISC/VOID in grid mode)
+  bar.appendChild(buildSeatRow(state, params));
+
+  // Row 2: tool row (populated by renderFooterToolbar)
+  var toolRow = document.createElement('div');
+  toolRow.style.height      = '52px';
+  toolRow.style.flexShrink  = '0';
+  toolRow.style.display     = 'flex';
+  toolRow.style.alignItems  = 'stretch';
+  toolRow.style.gap         = '8px';
+  state.toolRowEl = toolRow;
+  bar.appendChild(toolRow);
+
+  return bar;
+}
+
+// ─────────────────────────────────────────────────────
+//  Header
+// ─────────────────────────────────────────────────────
+
+function buildHeader(state, params) {
+  var hdr = document.createElement('div');
+  hdr.style.height         = '52px';   // matches Mode A
+  hdr.style.flexShrink     = '0';
+  hdr.style.background     = T.well;
+  hdr.style.borderBottom   = '2px solid ' + T.border;
+  hdr.style.display        = 'flex';
+  hdr.style.alignItems     = 'center';
+  hdr.style.padding        = '0 12px';
+  hdr.style.gap            = '10px';
+
+  var checkLabel = document.createElement('span');
+  var orderNum   = params.checkNumber || '';
+  checkLabel.textContent      = 'CHECK #' + orderNum;
+  checkLabel.style.fontFamily = T.fh;
+  checkLabel.style.fontWeight = T.fwBold;
+  checkLabel.style.fontSize   = T.fsB2;
+  checkLabel.style.color      = T.green;
+  checkLabel.style.letterSpacing = '0.06em';
+  checkLabel.style.flex       = '1';
+  hdr.appendChild(checkLabel);
+
+  // Ghost-style header buttons — matches Mode A hdr-nav
+  function makeGhostBtn(label, handler) {
+    var btn = document.createElement('div');
+    btn.textContent         = label;
+    btn.style.height        = '34px';
+    btn.style.padding       = '0 16px';
+    btn.style.background    = T.card;
+    btn.style.border        = '1px solid ' + T.border;
+    btn.style.borderBottom  = '3px solid ' + T.moonDk;
+    btn.style.borderRadius  = '8px';
+    btn.style.color         = T.text;
+    btn.style.fontFamily    = T.fh;
+    btn.style.fontWeight    = T.fwBold;
+    btn.style.fontSize      = T.fsB4;
+    btn.style.letterSpacing = '0.08em';
+    btn.style.cursor        = 'pointer';
+    btn.style.pointerEvents = 'auto';
+    btn.style.touchAction   = 'manipulation';
+    btn.style.display       = 'flex';
+    btn.style.alignItems    = 'center';
+    btn.style.transition    = 'transform 0.07s';
+    btn.addEventListener('pointerdown', function() { btn.style.transform = 'translateY(2px)'; btn.style.borderBottomWidth = '1px'; });
+    var _up = function() { btn.style.transform = 'none'; btn.style.borderBottomWidth = '3px'; };
+    btn.addEventListener('pointerup',     _up);
+    btn.addEventListener('pointerleave',  _up);
+    btn.addEventListener('pointercancel', _up);
+    if (handler) {
+      btn.addEventListener('pointerup', handler);
+      state.listeners.push({ el: btn, event: 'pointerup', handler: handler });
+    }
+    return btn;
+  }
+
+  var clearH   = function() { clearMode(state); };
+  var selAllH  = function() {
+    state.selectedItems = [];
+    for (var ci = 0; ci < state.columns.length; ci++) {
+      for (var ii = 0; ii < state.columns[ci].items.length; ii++) {
+        state.selectedItems.push({ colIdx: ci, itemIdx: ii });
+      }
+    }
+    if (state.selectedItems.length > 0) state.mode = 'move';
+    renderColumns(state);
+    renderFooterToolbar(state);
+  };
+
+  hdr.appendChild(makeGhostBtn('CLEAR',      clearH));
+  hdr.appendChild(makeGhostBtn('SELECT ALL', selAllH));
+
+  return hdr;
+}
+
+// ─────────────────────────────────────────────────────
+//  Manager PIN overlay
+// ─────────────────────────────────────────────────────
+
+function openPinOverlay(forAction, state) {
+  var scrim = document.createElement('div');
+  scrim.style.position       = 'absolute';
+  scrim.style.inset          = '0';
+  scrim.style.zIndex         = '20';
+  scrim.style.background     = hexToRgba(T.well, 0.88);
+  scrim.style.display        = 'flex';
+  scrim.style.alignItems     = 'center';
+  scrim.style.justifyContent = 'center';
+
+  var card = document.createElement('div');
+  card.style.position        = 'relative';
+  card.style.backgroundColor = T.well;
+  card.style.borderRadius    = '12px';
+  card.style.borderLeft      = '5px solid ' + T.gold;
+  card.style.borderTop       = '5px solid ' + lightenHex(T.bg, 0.08);
+  card.style.borderRight     = '5px solid ' + darkenHex(T.bg, 0.2);
+  card.style.borderBottom    = '5px solid ' + darkenHex(T.bg, 0.2);
+  card.style.boxShadow       = 'inset 0 1px 0 rgba(255,255,255,0.06), 3px 5px 0 rgba(0,0,0,0.55)';
+  card.style.width           = '340px';
+  card.style.padding         = '20px 22px 22px';
+  card.style.display         = 'flex';
+  card.style.flexDirection   = 'column';
+  card.style.gap             = '14px';
+  card.style.boxSizing       = 'border-box';
+
+  var title = document.createElement('div');
+  title.textContent         = 'MANAGER PIN';
+  title.style.fontFamily    = T.fh;
+  title.style.fontWeight    = T.fwBold;
+  title.style.fontSize      = T.fsB3;
+  title.style.letterSpacing = '0.18em';
+  title.style.color         = T.gold;
+  title.style.textAlign     = 'center';
+  card.appendChild(title);
+
+  var sub = document.createElement('div');
+  sub.textContent      = 'Required for ' + forAction;
+  sub.style.fontFamily = T.fb;
+  sub.style.fontSize   = T.fsB4;
+  sub.style.fontStyle  = 'italic';
+  sub.style.color      = T.moon;
+  sub.style.textAlign  = 'center';
+  sub.style.marginTop  = '-8px';
+  card.appendChild(sub);
+
+  var dotsRow = document.createElement('div');
+  dotsRow.style.display        = 'flex';
+  dotsRow.style.gap            = '10px';
+  dotsRow.style.justifyContent = 'center';
+  var dots = [];
+  for (var d = 0; d < 4; d++) {
+    var dot = document.createElement('div');
+    dot.style.width = '14px'; dot.style.height = '14px';
+    dot.style.borderRadius = '50%';
+    dot.style.background   = T.card;
+    dot.style.border       = '1px solid ' + T.border;
+    dotsRow.appendChild(dot); dots.push(dot);
+  }
+  card.appendChild(dotsRow);
+
+  function updateDots(entry) {
+    dots.forEach(function(dot, i) {
+      dot.style.background = i < entry.length ? T.gold : T.card;
+      dot.style.border     = '1px solid ' + (i < entry.length ? darkenHex(T.gold, 0.3) : T.border);
+    });
+  }
+
+  var entry  = '';
+  var numpad = document.createElement('div');
+  numpad.style.display             = 'grid';
+  numpad.style.gridTemplateColumns = 'repeat(3, 1fr)';
+  numpad.style.gap                 = '6px';
+
+  ['1','2','3','4','5','6','7','8','9','CLR','0','ENT'].forEach(function(k) {
+    var btn = buildActBtn({
+      label:    k,
+      bg:       T.card,
+      dk:       k === 'ENT' ? T.greenWarmDk : k === 'CLR' ? T.vermDk : T.moonDk,
+      color:    k === 'CLR' ? T.verm : k === 'ENT' ? T.greenWarm : T.green,
+      border:   'none',
+      height:   '44px',
+      ghost:    false,
+    });
+    btn.addEventListener('pointerup', function() {
+      if (k === 'CLR') { entry = ''; }
+      else if (k === 'ENT') {
+        if (entry.length >= 4) {
+          scrim.parentNode && scrim.parentNode.removeChild(scrim);
+          if (forAction === 'discount') {
+            var p = state._params;
+            if (p && p.onDiscount) p.onDiscount(state.selectedItems);
+            showToast('Discount applied', { bg: T.lavender });
+            clearMode(state);
+          } else { handleVoidSelected(state); }
+        }
+        return;
+      } else if (entry.length < 4) { entry += k; }
+      updateDots(entry);
+    });
+    numpad.appendChild(btn);
+  });
+  card.appendChild(numpad);
+
+  var cancelBtn = buildActBtn({
+    label:  'CANCEL',
+    bg:     T.card,
+    dk:     T.moonDk,
+    color:  T.moon,
+    border: '1px solid ' + T.border,
+    ghost:  true,
+    height: '38px',
+  });
+  cancelBtn.addEventListener('pointerup', function() {
+    scrim.parentNode && scrim.parentNode.removeChild(scrim);
+  });
+  card.appendChild(cancelBtn);
+
+  scrim.appendChild(card);
+  state.columnsArea.parentNode.appendChild(scrim);
+}
+
+// ─────────────────────────────────────────────────────
+//  Scene definition
+// ─────────────────────────────────────────────────────
 
 defineScene({
   name: 'column-editor',
 
   state: {
-    listeners:     [],
-    columns:       [],
-    mode:          null,
-    selectedItems: [],
-    splitTargets:  [],
-    colEls:        [],
-    opsPanel:      null,
-    columnsArea:   null,
-    statusEl:      null,
-    undoBtnEl:     null,
-    onSave:        null,
-    actionLog:     [],
-    snapshot:      null,
+    listeners:      [],
+    columns:        [],
+    allColumns:     [],
+    visibleColIds:  [],
+    mode:           null,
+    selectedItems:  [],
+    splitTargets:   [],
+    mergeTarget:    null,
+    colEls:         [],
+    columnsArea:    null,
+    toolRowEl:      null,
+    seatSelectorEl: null,
+    discBtnEl:      null,
+    voidBtnEl:      null,
+    hintBarEl:      null,
+    onSave:         null,
+    actionLog:      [],
+    snapshot:       null,
+    _lpTimer:       null,
+    _params:        null,
   },
 
   render: function(container, params, state) {
-    // ── Init state from params ────────────────────────
-    state.columns  = deepCopyColumns(params.columns || []);
-    state.snapshot = deepCopyColumns(params.columns || []);
-    state.onSave   = params.onSave || null;
+    state._params       = params;
+    state.allColumns    = params.allColumns || deepCopyColumns(params.columns || []);
+    state.visibleColIds = params.focusedIds
+      ? params.focusedIds.slice()
+      : (state.allColumns.length > 0 ? [state.allColumns[0].id] : []);
+    state.mergeTarget   = null;
+    state.onSave        = params.onSave || null;
+    state.mode          = null;
+    state.selectedItems = [];
+    state.splitTargets  = [];
+    state.actionLog     = [];
+    state._lpTimer      = null;
 
-    // ── Root ──────────────────────────────────────────
+    state.columns = deepCopyColumns(
+      (params.columns || []).filter(function(c) {
+        return state.visibleColIds.indexOf(c.id) >= 0;
+      })
+    );
+    if (state.columns.length === 0 && params.columns && params.columns.length > 0) {
+      state.columns       = deepCopyColumns([params.columns[0]]);
+      state.visibleColIds = [params.columns[0].id];
+    }
+    state.snapshot = deepCopyColumns(state.columns);
+
     var root = document.createElement('div');
     root.style.position      = 'absolute';
     root.style.inset         = '0';
@@ -862,53 +1437,50 @@ defineScene({
     root.style.overflow      = 'hidden';
     container.appendChild(root);
 
-    // ── Ops card ──────────────────────────────────────
-    var opsCard = buildStaticCard({ accent: T.green });
-    opsCard.style.margin        = '12px 12px 0';
-    opsCard.style.flexShrink    = '0';
-    opsCard.style.display       = 'flex';
-    opsCard.style.flexDirection = 'column';
+    root.appendChild(buildHeader(state, params));
 
-    opsCard.appendChild(buildSectionLabel('OPERATIONS', T.green));
+    // ── Hint bar ─────────────────────────────────────
+    var hintBar = document.createElement('div');
+    hintBar.style.height      = '28px';
+    hintBar.style.flexShrink  = '0';
+    hintBar.style.background  = T.well;
+    hintBar.style.borderBottom = '1px solid ' + darkenHex(T.bg, 0.2);
+    hintBar.style.display     = 'flex';
+    hintBar.style.alignItems  = 'center';
+    hintBar.style.padding     = '0 14px';
+    hintBar.style.fontFamily  = T.fb;
+    hintBar.style.fontSize    = T.fsB4;
+    hintBar.style.fontStyle   = 'italic';
+    hintBar.style.color       = T.text;
+    hintBar.textContent       = getStatusText(state);
+    state.hintBarEl = hintBar;
+    root.appendChild(hintBar);
 
-    var opsBody = document.createElement('div');
-    opsBody.style.display    = 'flex';
-    opsBody.style.gap        = '10px';
-    opsBody.style.alignItems = 'center';
-    opsBody.style.flexWrap   = 'wrap';
-    opsBody.style.marginTop  = '10px';
-    state.opsPanel = opsBody;
-
-    renderOpsBar(state);
-
-    opsCard.appendChild(opsBody);
-    root.appendChild(opsCard);
-
-    // ── Columns area ──────────────────────────────────
     var colsArea = document.createElement('div');
-    colsArea.style.flex            = '1';
-    colsArea.style.margin          = '12px';
-    colsArea.style.display         = 'flex';
-    colsArea.style.gap             = '10px';
-    colsArea.style.overflowX       = 'auto';
-    colsArea.style.overflowY       = 'hidden';
-    colsArea.style.scrollbarWidth  = 'none';
-    colsArea.style.msOverflowStyle = 'none';
+    colsArea.style.flex          = '1';
+    colsArea.style.minHeight     = '0';
+    colsArea.style.display       = 'flex';
+    colsArea.style.flexDirection = 'row';
+    colsArea.style.gap           = '8px';
+    colsArea.style.padding       = '8px';
+    colsArea.style.overflow      = 'hidden';
+    colsArea.style.background    = T.bg;
     state.columnsArea = colsArea;
     root.appendChild(colsArea);
 
-    // ── Bottom-right cluster ──────────────────────────
-    root.appendChild(renderBottomCluster(state));
+    root.appendChild(buildBottomBar(state, params));
 
-    // ── Initial column render ─────────────────────────
+    // In grid mode: seat selector floats above the bar as an overlay
+    if (state.allColumns.length > 5) {
+      root.appendChild(buildSeatGridOverlay(state, params));
+    }
+
     renderColumns(state);
+    renderFooterToolbar(state);
   },
 
   unmount: function(state) {
-    if (state._lpTimer !== null) {
-      clearTimeout(state._lpTimer);
-      state._lpTimer = null;
-    }
+    if (state._lpTimer !== null) { clearTimeout(state._lpTimer); state._lpTimer = null; }
     for (var i = 0; i < state.listeners.length; i++) {
       var l = state.listeners[i];
       l.el.removeEventListener(l.event, l.handler);

@@ -292,7 +292,7 @@ function activeSeatCount(seats, paidSeats) {
   return activeSeatCountHelper(seats, paidSeats);
 }
 
-// A = 1-4 active seats ┬╖ B = 5 ┬╖ C = 6+
+// A = 1-4 active seats · B = 5 · C = 6+
 function modeFor(count) {
   return layoutModeFor(count);
 }
@@ -619,7 +619,7 @@ defineScene({
         panel.appendChild(lbl);
 
         // Option pills — scene passes a semantic opt.color (T.green,
-        // T.verm, T.goldΓÇª). Unset options fall back to ghost so they
+        // T.verm, T.gold…). Unset options fall back to ghost so they
         // don't blend into the T.card shell.
         for (var oi = 0; oi < options.length; oi++) {
           (function(opt) {
@@ -1440,7 +1440,7 @@ function _callSplitBySeat(state, seatNumbers) {
     showToast('Nothing to split off', { bg: T.gold });
     return;
   }
-  showToast('Splitting into new checkΓÇª', { bg: T.elec });
+  showToast('Splitting into new check…', { bg: T.elec });
   fetchWithTimeout(
     '/api/v1/orders/' + state.orderId + '/split-by-seat',
     {
@@ -1643,7 +1643,7 @@ function renderSeatsGrid(state, container, mode) {
       }
 
       var chevron = document.createElement('span');
-      chevron.textContent      = 'Γû╕';
+      chevron.textContent      = '▸';
       chevron.style.fontFamily = T.fb;
       chevron.style.fontSize   = T.fsB3;
       chevron.style.color      = T.moon;
@@ -1956,7 +1956,7 @@ function buildItemBlock(state, seatIdx, itemIdx, modeB) {
   nameEl.style.whiteSpace   = 'nowrap';
   nameEl.style.overflow     = 'hidden';
   nameEl.style.textOverflow = 'ellipsis';
-  nameEl.textContent = (item.qty > 1 ? item.qty + '├ù ' : '') + item.name;
+  nameEl.textContent = (item.qty > 1 ? item.qty + '× ' : '') + item.name;
   nameCluster.appendChild(nameEl);
 
   // Discount percentage badge shown inline next to name when discounted
@@ -2289,12 +2289,6 @@ function buildSeatCard(state, seatIdx) {
     hdr.appendChild(seatPname);
   }
 
-  var canDelete = seat.items.length === 0
-    && activeSeatCount(state.seats, state.paidSeats) > 1;
-  if (canDelete) {
-    hdr.appendChild(_buildDeleteSeatX(state, seat.id));
-  }
-
   hdr.addEventListener('pointerup', function(e) {
     if (e.defaultPrevented) return;
     toggleSeat(state, seat.id);
@@ -2339,7 +2333,7 @@ function buildSeatCard(state, seatIdx) {
 //  PAID SEAT HELPERS — shared between Mode A cards and Mode B recap panel
 // ═══════════════════════════════════════════════════
 
-// One tappable payment row: METHOD ┬╖ $AMOUNT ┬╖ S1,S2 ┬╖ C-042
+// One tappable payment row: METHOD · $AMOUNT · S1,S2 · C-042
 function _buildPaymentRow(state, seatId, pmt) {
   var row = document.createElement('div');
   Object.assign(row.style, {
@@ -2375,7 +2369,7 @@ function _buildPaymentRow(state, seatId, pmt) {
 
   var sep1 = document.createElement('span');
   sep1.style.color   = hexToRgba(T.gold, 0.4);
-  sep1.textContent   = '┬╖';
+  sep1.textContent   = '·';
   left.appendChild(sep1);
 
   // Seat numbers this payment covers
@@ -2389,7 +2383,7 @@ function _buildPaymentRow(state, seatId, pmt) {
   if (state.checkNumber) {
     var sep2 = document.createElement('span');
     sep2.style.color   = hexToRgba(T.gold, 0.4);
-    sep2.textContent   = '┬╖';
+    sep2.textContent   = '·';
     left.appendChild(sep2);
 
     var checkEl = document.createElement('span');
@@ -2624,15 +2618,11 @@ function buildCompactTile(state, seatIdx) {
   });
 
   // Header: floods T.green when tile is selected
-  var canDelete = seat.items.length === 0
-    && activeSeatCount(state.seats, state.paidSeats) > 1;
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
     background:    tileActive ? T.green : T.well,
     padding:       '6px 10px',
     borderBottom:  '1px solid ' + T.border,
-    display:       'flex',
-    alignItems:    'center',
     pointerEvents: 'auto',
     touchAction:   'manipulation',
   });
@@ -2644,9 +2634,6 @@ function buildCompactTile(state, seatIdx) {
   });
   label.textContent = 'S' + (seat.number != null ? seat.number : (seatIdx + 1));
   hdr.appendChild(label);
-  if (canDelete) {
-    hdr.appendChild(_buildDeleteSeatX(state, seat.id));
-  }
   wrap.appendChild(hdr);
 
   // Body: subtotal only — no item count
@@ -2668,6 +2655,12 @@ function buildCompactTile(state, seatIdx) {
   totalEl.textContent = fmt(seatTotal(seat));
   body.appendChild(totalEl);
   wrap.appendChild(body);
+
+  var canDelete = seat.items.length === 0
+    && activeSeatCount(state.seats, state.paidSeats) > 1;
+  if (canDelete) {
+    wrap.appendChild(_buildDeleteSeatX(state, seat.id));
+  }
 
   state.seatEls[seat.id] = wrap;
   return wrap;
@@ -2836,7 +2829,6 @@ function addSeatsBatch(state, n) {
       items:  [],
     });
   }
-  state.seats.sort(function(a, b) { return a.number - b.number; });
   persistSeats(state);
   rerenderTopArea(state);
 }
@@ -3042,7 +3034,6 @@ function addSeat(state) {
     number: num,
     items:  [],
   });
-  state.seats.sort(function(a, b) { return a.number - b.number; });
   persistSeats(state);
   rerenderTopArea(state);
 }
@@ -3064,7 +3055,7 @@ function deleteSeat(state, seatId) {
       message: 'dead-end tap: delete a paid seat',
       ctx: { orderId: state.orderId, seatId: seatId },
     });
-    showToast('CanΓÇÖt remove a paid seat — reopen the payment first', { bg: T.gold });
+    showToast('Can’t remove a paid seat — reopen the payment first', { bg: T.gold });
     return;
   }
   if (state.seats[seatIdx].items.length > 0) {
@@ -3072,7 +3063,7 @@ function deleteSeat(state, seatId) {
     return;
   }
   if (activeSeatCount(state.seats, state.paidSeats) <= 1) {
-    showToast('CanΓÇÖt remove the only seat', { bg: T.gold });
+    showToast('Can’t remove the only seat', { bg: T.gold });
     return;
   }
   state.seats.splice(seatIdx, 1);
@@ -3165,27 +3156,29 @@ function persistItemSeats(state, items) {
   });
 }
 
-// Tiny ├ù button overlay for empty seats. Tapping removes the seat.
+// Tiny × button overlay for empty seats. Tapping removes the seat.
 function _buildDeleteSeatX(state, seatId) {
   var x = document.createElement('div');
   Object.assign(x.style, {
-    marginLeft:     'auto',
-    flexShrink:     '0',
-    width:          '22px',
-    height:         '22px',
+    position:       'absolute',
+    top:            '5px',
+    right:          '6px',
+    width:          '24px',
+    height:         '24px',
     borderRadius:   '50%',
     background:     T.verm,
     color:          '#fff',
     fontFamily:     T.fh,
     fontWeight:     T.fwBold,
-    fontSize:       '15px',
+    fontSize:       '16px',
     display:        'flex',
     alignItems:     'center',
     justifyContent: 'center',
     cursor:         'pointer',
     userSelect:     'none',
+    zIndex:         '5',
     lineHeight:     '1',
-    boxShadow:      '0 2px 4px rgba(0,0,0,0.4)',
+    boxShadow:      '0 2px 6px rgba(0,0,0,0.5)',
     pointerEvents:  'auto',
     touchAction:    'manipulation',
   });
@@ -3226,7 +3219,7 @@ function handlePrint(state) {
     return;
   }
   state._printing = true;
-  showToast('Printing receiptΓÇª', { bg: T.green });
+  showToast('Printing receipt…', { bg: T.green });
   fetchWithTimeout('/api/v1/orders/' + state.orderId + '/print/receipt', { method: 'POST' }, 8000)
     .then(function(r) {
       state._printing = false;
@@ -3253,7 +3246,7 @@ function handleResend(state) {
     return;
   }
   state._resending = true;
-  showToast('Resending to kitchenΓÇª', { bg: T.green });
+  showToast('Resending to kitchen…', { bg: T.green });
   fetchWithTimeout('/api/v1/orders/' + state.orderId + '/resend', { method: 'POST' }, 8000)
     .then(function(r) {
       state._resending = false;
@@ -3283,7 +3276,7 @@ async function _gotoOrderEntry(state, params) {
   // combine" regression. Await the refresh so seatNumbers reflects
   // the real layout before we route.
   if (state.orderId && !state.order) {
-    showToast('Loading checkΓÇª', { bg: T.gold, duration: 800 });
+    showToast('Loading check…', { bg: T.gold, duration: 800 });
     try { await refreshOrder(state, params); }
     catch (e) { /* refreshOrder already swallows; fall through to the guard */ }
   }
@@ -3293,7 +3286,7 @@ async function _gotoOrderEntry(state, params) {
   // combining-seats bug. Refuse to navigate; surface the miss to entReport
   // so the backend side of the bug is visible in diagnostics.
   if (state.orderId && !state.order) {
-    showToast('CouldnΓÇÖt load check — check network and try again', { bg: T.verm, duration: 2500 });
+    showToast('Couldn’t load check — check network and try again', { bg: T.verm, duration: 2500 });
     entReport({
       code: 'UI-005',
       source: 'check-overview._gotoOrderEntry',
@@ -3696,7 +3689,7 @@ function openItemMenu(state, seatIdx, itemIdx) {
     options: [
       { id: 'void',     label: 'Void this item',      color: T.verm      },
       { id: 'disc',     label: 'Discount this item',  color: T.gold      },
-      { id: 'move',     label: 'Move to seatΓÇª',       color: T.green     },
+      { id: 'move',     label: 'Move to seat…',       color: T.green     },
       { id: 'qty',      label: 'Change quantity',     color: T.green     },
       { id: 'note',     label: 'Add note',            color: T.green     },
       { id: 'reprint',  label: 'Reprint to kitchen',  color: T.greenWarm },
@@ -3712,7 +3705,7 @@ function openBulkMenu(state) {
     options: [
       { id: 'void',     label: 'Void selected',            color: T.verm      },
       { id: 'disc',     label: 'Discount selected',        color: T.gold      },
-      { id: 'move',     label: 'Move selected to seatΓÇª',   color: T.green     },
+      { id: 'move',     label: 'Move selected to seat…',   color: T.green     },
       { id: 'reprint',  label: 'Reprint selected',         color: T.greenWarm },
     ],
     onConfirm: function(optId) { handleBulkAction(state, optId); },
@@ -3728,9 +3721,9 @@ function openSeatMenu(state, seatId) {
     { id: 'void',     label: 'Void seat',            color: T.verm      },
     { id: 'disc',     label: 'Discount seat',        color: T.gold      },
     { id: 'rename',   label: 'Rename seat',          color: T.green     },
-    { id: 'merge',    label: 'Merge with seatΓÇª',     color: T.green     },
-    { id: 'split',    label: 'Split items acrossΓÇª',  color: T.green     },
-    { id: 'transfer', label: 'Transfer to serverΓÇª',  color: T.green     },
+    { id: 'merge',    label: 'Merge with seat…',     color: T.green     },
+    { id: 'split',    label: 'Split items across…',  color: T.green     },
+    { id: 'transfer', label: 'Transfer to server…',  color: T.green     },
   ];
   if (empty) options.push({ id: 'delete', label: 'Delete seat', color: T.verm });
 
@@ -3804,7 +3797,7 @@ function handleSeatAction(state, optId, seatId) {
 }
 
 // ── Move primitive ──
-// Shared in-memory move used by the long-press "Move to seatΓÇª" picker
+// Shared in-memory move used by the long-press "Move to seat…" picker
 // (_pickMoveTarget). refs is the [{seatIdx, itemIdx}] list the
 // selection helpers produce; targetSeatId is the destination seat.
 // Returns the count actually moved.
@@ -3889,7 +3882,7 @@ function _pickMergeTarget(state, sourceSeatId) {
   if (options.length === 0) { showToast('No other seats to merge with', { bg: T.gold }); return; }
 
   SceneManager.interrupt('co-item-menu', {
-    title:   'Merge ' + sourceSeatId + ' IntoΓÇª',
+    title:   'Merge ' + sourceSeatId + ' Into…',
     options: options,
     onConfirm: function(targetId) {
       var sIdx = _seatIdxById(state, sourceSeatId);
