@@ -92,8 +92,28 @@ function fmt(n) {
 
 // seatTotal now wraps the pure helper from ./seats.js so the
 // rendering paths and transition paths share one math implementation.
-function seatTotal(seat) {
-  return seatSubtotal(seat);
+// Pass state so cached discounts (_itemDiscounts / _seatDiscounts) are
+// subtracted — the backend does not stamp effectivePrice per item after
+// a discount POST, only updating the order-level total.
+function seatTotal(seat, state) {
+  var base = seatSubtotal(seat);
+  if (!state || !seat) return base;
+  // Whole-seat discount is the authoritative source when present — it already
+  // accumulates all per-item amounts, so don't also sum _itemDiscounts.
+  var sd = seat.id && state._seatDiscounts ? state._seatDiscounts[seat.id] : null;
+  if (sd && sd.amount) {
+    return Math.round((base - sd.amount) * 100) / 100;
+  }
+  // Item-level discounts (no seat-level entry means this is a targeted discount)
+  if (state._itemDiscounts && seat.items) {
+    for (var _i = 0; _i < seat.items.length; _i++) {
+      var _id = state._itemDiscounts[seat.items[_i].item_id];
+      if (_id && _id.amount) {
+        base = Math.round((base - _id.amount) * 100) / 100;
+      }
+    }
+  }
+  return base;
 }
 
 // ═══════════════════════════════════════════════════
@@ -189,7 +209,7 @@ function _adaptSeatForRecap(state, seatIdx) {
   return {
     seats: [{
       seatNumber: seat.number,
-      subtotal:   seatTotal(seat),
+      subtotal:   seatTotal(seat, state),
       items:      adaptedItems,
     }],
     totals: null,
@@ -227,7 +247,7 @@ function _adaptOrderForRecap(state) {
     }
     adaptedSeats.push({
       seatNumber: seat.number,
-      subtotal:   seatTotal(seat),
+      subtotal:   seatTotal(seat, state),
       items:      adaptedItems,
       _sIdx:      s,  // original state.seats index — used by the sort below
     });
@@ -301,7 +321,7 @@ function orderToSeats(order, minSeats) {
   return orderToSeatsHelper(order, minSeats);
 }
 
-function collectSummary(seats, selected, paidSeats) {
+function collectSummary(seats, selected, paidSeats, state) {
   var items = [];
   var subtotal = 0;
   var anySelected = Object.keys(selected).length > 0;
@@ -314,13 +334,8 @@ function collectSummary(seats, selected, paidSeats) {
   for (var i = 0; i < seats.length; i++) {
     if (paidSeats && paidSeats[seats[i].id]) continue;
     if (anySelected && !selected[seats[i].id]) continue;
-    var seatSub = 0;
     if (showHeaders) {
-      for (var k = 0; k < seats[i].items.length; k++) {
-        if (seats[i].items[k].voided) continue;
-        seatSub += seats[i].items[k].qty * (seats[i].items[k].effectivePrice || seats[i].items[k].price);
-      }
-      items.push({ seatHeader: true, seatId: seats[i].id, seatTotal: seatSub, seatIdx: i });
+      items.push({ seatHeader: true, seatId: seats[i].id, seatTotal: seatTotal(seats[i], state), seatIdx: i });
     }
     for (var j = 0; j < seats[i].items.length; j++) {
       var it = seats[i].items[j];
@@ -1619,7 +1634,7 @@ function renderSeatsGrid(state, container, mode) {
       sHdrLeft.appendChild(sNum);
 
       var sSbtl = document.createElement('span');
-      sSbtl.textContent      = fmt(seatTotal(rSeat));
+      sSbtl.textContent      = fmt(seatTotal(rSeat, state));
       sSbtl.style.fontFamily = T.fb;
       sSbtl.style.fontWeight = T.fwBold;
       sSbtl.style.fontSize   = '14px';
@@ -1771,7 +1786,7 @@ function renderSeatsGrid(state, container, mode) {
       }
 
       var tTotal = document.createElement('span');
-      tTotal.textContent      = fmt(seatTotal(tSeat));
+      tTotal.textContent      = fmt(seatTotal(tSeat, state));
       tTotal.style.fontFamily = T.fb;
       tTotal.style.fontWeight = T.fwBold;
       tTotal.style.fontSize   = T.fsB3;
@@ -2291,7 +2306,7 @@ function buildSeatCard(state, seatIdx) {
   hdrLeft.appendChild(seatNum);
 
   var seatSbtl = document.createElement('span');
-  seatSbtl.textContent      = fmt(seatTotal(seat));
+  seatSbtl.textContent      = fmt(seatTotal(seat, state));
   seatSbtl.style.fontFamily = T.fb;
   seatSbtl.style.fontWeight = T.fwBold;
   seatSbtl.style.fontSize   = '17px';
@@ -2477,7 +2492,7 @@ function _buildPaidRecapPanel(state, seatId) {
       fontFamily: T.fb,
       fontWeight: T.fwBold,
     });
-    totalEl.textContent = fmt(seatTotal(seat));
+    totalEl.textContent = fmt(seatTotal(seat, state));
     hdr.appendChild(totalEl);
   }
   panel.appendChild(hdr);
@@ -2554,7 +2569,7 @@ function buildPaidSeatCard(state, seatIdx) {
     fontFamily: T.fb,
     fontWeight: T.fwBold,
   });
-  subtotal.textContent = fmt(seatTotal(seat));
+  subtotal.textContent = fmt(seatTotal(seat, state));
   rightSide.appendChild(subtotal);
 
   var paidBadge = document.createElement('div');
@@ -2672,7 +2687,7 @@ function buildCompactTile(state, seatIdx) {
     fontSize:   T.fsB1,
     fontWeight: T.fwBold,
   });
-  totalEl.textContent = fmt(seatTotal(seat));
+  totalEl.textContent = fmt(seatTotal(seat, state));
   body.appendChild(totalEl);
   wrap.appendChild(body);
 
@@ -2753,7 +2768,7 @@ function buildPaidCompactTile(state, seatIdx) {
     fontSize:   T.fsB1,
     fontWeight: T.fwBold,
   });
-  totalEl.textContent = fmt(seatTotal(seat));
+  totalEl.textContent = fmt(seatTotal(seat, state));
   body.appendChild(totalEl);
   wrap.appendChild(body);
 
@@ -4116,7 +4131,7 @@ function openEditSeats(state) {
 // ═══════════════════════════════════════════════════
 
 function renderOrderSummary(state) {
-  var s = collectSummary(state.seats, state.selected, state.paidSeats);
+  var s = collectSummary(state.seats, state.selected, state.paidSeats, state);
   state._summaryItemMap = {};
 
   if (!state._osActive) {
