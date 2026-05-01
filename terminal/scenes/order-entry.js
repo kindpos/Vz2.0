@@ -1396,9 +1396,9 @@ function buildSeatSelectorCard() {
       var isActive = _activeSeats.has(sn);
       var pill = buildPillButton({
         label: 'S' + sn,
-        color: isActive ? T.green : T.moon,
+        color: isActive ? T.green : T.moonDk,
         darkBg: isActive ? T.greenDk : T.moonDk,
-        textColor: isActive ? T.well : undefined,
+        textColor: isActive ? T.well : T.moon,
         fontSize: T.fsH3,
       });
       pill.style.height = '64px';
@@ -1408,6 +1408,10 @@ function buildSeatSelectorCard() {
       pill.style.display = 'flex';
       pill.style.alignItems = 'center';
       pill.style.justifyContent = 'center';
+      if (!isActive) {
+        pill.style.border = '1px solid ' + T.moon;
+        pill.style.boxShadow = 'none';
+      }
       pill.addEventListener('pointerup', function() {
         if (_autoSwitchArmed) {
           _autoSwitchArmed = false;
