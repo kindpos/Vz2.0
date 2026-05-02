@@ -588,18 +588,93 @@ defineScene({
                 return;
               }
               SceneManager.closeGate('login');
-              var role = (data.roles || []).indexOf('manager') !== -1 ? 'manager' : 'server';
-              if (role === 'manager') {
-                SceneManager.mountWorking('manager-landing', { staff: data });
+              // Collect all service types across all roles this employee holds
+              var allServiceTypes = [];
+              (data.roles || []).forEach(function(r) {
+                (r.service_types || ['full_service']).forEach(function(st) {
+                  if (allServiceTypes.indexOf(st) === -1) allServiceTypes.push(st);
+                });
+              });
+
+              // Determine if this employee has manager-level permissions
+              var isManager = (data.roles || []).some(function(r) {
+                return r.permission_level === 'manager' || (r.permissions && r.permissions.manage_staff);
+              });
+
+              function mountForMode(mode) {
+                if (mode === 'qsr') {
+                  SceneManager.mountWorking('qsr-landing');
+                } else {
+                  // full_service — surface depends on permission level
+                  if (isManager) {
+                    SceneManager.mountWorking('manager-landing');
+                  } else {
+                    SceneManager.mountWorking('server-landing');
+                  }
+                }
+              }
+
+              if (allServiceTypes.length === 1) {
+                // Single service type — land directly, no picker
+                mountForMode(allServiceTypes[0]);
+              } else if (allServiceTypes.length > 1) {
+                // Multiple service types — show picker
+                // Store resolved data for after selection
+                var pendingRoles = data.roles;
+                SceneManager.openInterrupt('service-type-picker', {
+                  serviceTypes: allServiceTypes,
+                  onSelect: function(selectedMode) {
+                    SceneManager.closeInterrupt('service-type-picker');
+                    mountForMode(selectedMode);
+                  },
+                });
               } else {
-                SceneManager.mountWorking('server-landing', { staff: data });
+                // Fallback — no service types configured, default to full_service
+                mountForMode('full_service');
               }
             })
             .catch(function() {
               state.locked = false;
               SceneManager.closeGate('login');
-              var role = (data.roles || []).indexOf('manager') !== -1 ? 'manager' : 'server';
-              SceneManager.mountWorking(role === 'manager' ? 'manager-landing' : 'server-landing', { staff: data });
+              // Collect all service types across all roles this employee holds
+              var allServiceTypes = [];
+              (data.roles || []).forEach(function(r) {
+                (r.service_types || ['full_service']).forEach(function(st) {
+                  if (allServiceTypes.indexOf(st) === -1) allServiceTypes.push(st);
+                });
+              });
+
+              // Determine if this employee has manager-level permissions
+              var isManager = (data.roles || []).some(function(r) {
+                return r.permission_level === 'manager' || (r.permissions && r.permissions.manage_staff);
+              });
+
+              function mountForMode(mode) {
+                if (mode === 'qsr') {
+                  SceneManager.mountWorking('qsr-landing');
+                } else {
+                  if (isManager) {
+                    SceneManager.mountWorking('manager-landing');
+                  } else {
+                    SceneManager.mountWorking('server-landing');
+                  }
+                }
+              }
+
+              if (allServiceTypes.length === 1) {
+                mountForMode(allServiceTypes[0]);
+              } else if (allServiceTypes.length > 1) {
+                var pendingRoles = data.roles;
+                SceneManager.openInterrupt('service-type-picker', {
+                  serviceTypes: allServiceTypes,
+                  onSelect: function(selectedMode) {
+                    SceneManager.closeInterrupt('service-type-picker');
+                    mountForMode(selectedMode);
+                  },
+                });
+              } else {
+                mountForMode('full_service');
+              }
             });
         },
         function onFail(msg) {

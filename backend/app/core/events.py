@@ -1528,6 +1528,7 @@ def user_logged_in(
         employee_name: str,
         role: str = "",
         pool_memberships: list = None,
+        mode: Optional[str] = "",
         **kwargs
 ) -> Event:
     """Create a USER_LOGGED_IN event (clock in)."""
@@ -1539,6 +1540,7 @@ def user_logged_in(
             "employee_name": employee_name,
             "role": role,
             "pool_memberships": pool_memberships or [],
+            "mode": mode,
         },
         user_id=employee_id,
         **kwargs
