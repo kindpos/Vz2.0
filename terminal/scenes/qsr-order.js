@@ -103,6 +103,7 @@ var FS_TOTAL   = '24px';   // TOTAL hero (Outfit)
 var FS_CAT     = '16px';   // Category tile labels (Outfit)
 var FS_TILE    = '15px';   // Item grid tile names (Outfit)
 var FS_BTN     = '14px';   // Payment + action button labels (Outfit)
+var FS_BODY    = '14px';   // Body / empty-state text
 
 // ─────────────────────────────────────────────────
 //  STATE
@@ -763,18 +764,6 @@ function renderRecap() {
 // ─────────────────────────────────────────────────
 
 function buildFavoritesStrip(categories) {
-  var strip = document.createElement('div');
-  strip.style.cssText = [
-    'position:relative;',
-    'height:' + FAV_H + 'px;',
-    'width:100%;',
-    'display:flex;gap:8px;',
-    'padding:8px ' + T.scenePad + 'px;',
-    'box-sizing:border-box;',
-    'align-items:stretch;',
-  ].join('');
-  els.favStrip = strip;
-
   // Gather top 5 items across all categories by popularity field
   var allItems = [];
   for (var ci = 0; ci < categories.length; ci++) {
@@ -789,6 +778,20 @@ function buildFavoritesStrip(categories) {
     return pa - pb;
   });
   var favs = allItems.slice(0, 5);
+
+  if (favs.length === 0) return null;
+
+  var strip = document.createElement('div');
+  strip.style.cssText = [
+    'position:relative;',
+    'height:' + FAV_H + 'px;',
+    'width:100%;',
+    'display:flex;gap:8px;',
+    'padding:8px ' + T.scenePad + 'px;',
+    'box-sizing:border-box;',
+    'align-items:stretch;',
+  ].join('');
+  els.favStrip = strip;
 
   // FAVORITES label — positioned in strip top padding
   var favLabel = document.createElement('span');
@@ -865,13 +868,14 @@ function buildFavoritesStrip(categories) {
 //  CATEGORY COLUMN
 // ─────────────────────────────────────────────────
 
-function buildCategoryColumn(categories) {
+function buildCategoryColumn(categories, favH) {
+  var fH = typeof favH === 'number' ? favH : FAV_H;
   var col = document.createElement('div');
   col.style.cssText = [
     'position:absolute;',
-    'left:0;top:' + FAV_H + 'px;',
+    'left:0;top:' + fH + 'px;',
     'width:' + CAT_W + 'px;',
-    'height:' + (CONTENT_H - FAV_H) + 'px;',
+    'height:' + (CONTENT_H - fH) + 'px;',
     'overflow-y:auto;',
     'display:flex;flex-direction:column;gap:6px;',
     'padding:6px;',
@@ -950,6 +954,10 @@ function buildCategoryColumn(categories) {
     col.appendChild(tile);
   });
 
+  var filler = document.createElement('div');
+  filler.style.cssText = 'flex:1;background:' + T.well + ';';
+  col.appendChild(filler);
+
   return col;
 }
 
@@ -957,14 +965,52 @@ function buildCategoryColumn(categories) {
 //  ITEM GRID
 // ─────────────────────────────────────────────────
 
-function buildItemGrid(items) {
+function buildItemGrid(items, favH) {
+  var fH = typeof favH === 'number' ? favH : FAV_H;
   var grid = document.createElement('div');
+  els.itemGrid = grid;
+
+  if ((items || []).length === 0) {
+    grid.style.cssText = [
+      'position:absolute;',
+      'left:' + (CAT_W + 1) + 'px;',
+      'top:' + fH + 'px;',
+      'width:' + GRID_W + 'px;',
+      'height:' + (CONTENT_H - fH) + 'px;',
+      'display:flex;align-items:center;justify-content:center;',
+      'flex-direction:column;gap:12px;',
+      'box-sizing:border-box;',
+    ].join('');
+
+    var emptyIcon = document.createElement('div');
+    emptyIcon.style.cssText = [
+      'width:48px;height:48px;border-radius:50%;',
+      'border:2px dashed ' + T.border + ';',
+      'display:flex;align-items:center;justify-content:center;',
+      'font-family:' + T.fb + ';font-size:20px;color:' + T.moon + ';',
+    ].join('');
+    emptyIcon.textContent = '?';
+
+    var emptyLine1 = document.createElement('span');
+    emptyLine1.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.moon + ';';
+    emptyLine1.textContent = 'No items in this category';
+
+    var emptyLine2 = document.createElement('span');
+    emptyLine2.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.border + ';';
+    emptyLine2.textContent = 'Add items in Overseer → Menu';
+
+    grid.appendChild(emptyIcon);
+    grid.appendChild(emptyLine1);
+    grid.appendChild(emptyLine2);
+    return grid;
+  }
+
   grid.style.cssText = [
     'position:absolute;',
     'left:' + (CAT_W + 1) + 'px;',
-    'top:' + FAV_H + 'px;',
+    'top:' + fH + 'px;',
     'width:' + GRID_W + 'px;',
-    'height:' + (CONTENT_H - FAV_H) + 'px;',
+    'height:' + (CONTENT_H - fH) + 'px;',
     'display:grid;',
     'grid-template-columns:repeat(3,1fr);',
     'gap:8px;',
@@ -973,7 +1019,6 @@ function buildItemGrid(items) {
     'overflow-y:auto;',
     'align-content:start;',
   ].join('');
-  els.itemGrid = grid;
 
   (items || []).forEach(function(item) {
     var tile = document.createElement('div');
@@ -1039,6 +1084,43 @@ function buildItemGrid(items) {
 function repaintItemGrid(items) {
   if (!els.itemGrid) return;
   els.itemGrid.innerHTML = '';
+
+  if ((items || []).length === 0) {
+    els.itemGrid.style.display = 'flex';
+    els.itemGrid.style.alignItems = 'center';
+    els.itemGrid.style.justifyContent = 'center';
+    els.itemGrid.style.flexDirection = 'column';
+    els.itemGrid.style.gap = '12px';
+
+    var emptyIcon = document.createElement('div');
+    emptyIcon.style.cssText = [
+      'width:48px;height:48px;border-radius:50%;',
+      'border:2px dashed ' + T.border + ';',
+      'display:flex;align-items:center;justify-content:center;',
+      'font-family:' + T.fb + ';font-size:20px;color:' + T.moon + ';',
+    ].join('');
+    emptyIcon.textContent = '?';
+
+    var emptyLine1 = document.createElement('span');
+    emptyLine1.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.moon + ';';
+    emptyLine1.textContent = 'No items in this category';
+
+    var emptyLine2 = document.createElement('span');
+    emptyLine2.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.border + ';';
+    emptyLine2.textContent = 'Add items in Overseer → Menu';
+
+    els.itemGrid.appendChild(emptyIcon);
+    els.itemGrid.appendChild(emptyLine1);
+    els.itemGrid.appendChild(emptyLine2);
+    return;
+  }
+
+  els.itemGrid.style.display = 'grid';
+  els.itemGrid.style.alignItems = '';
+  els.itemGrid.style.justifyContent = '';
+  els.itemGrid.style.flexDirection = '';
+  els.itemGrid.style.gap = '8px';
+
   (items || []).forEach(function(item) {
     var tile = document.createElement('div');
     tile.dataset.itemKey = item.itemKey || item.key || item.name;
@@ -1416,21 +1498,27 @@ function buildRightSurface(categories) {
     'position:relative;',
   ].join('');
 
-  rightEl.appendChild(buildFavoritesStrip(categories));
+  var favEl = buildFavoritesStrip(categories);
+  var favH = favEl ? FAV_H : 0;
 
-  // Divider below favorites
-  var divider = document.createElement('div');
-  divider.style.cssText = [
-    'position:absolute;',
-    'top:' + FAV_H + 'px;left:0;',
-    'width:100%;height:1px;',
-    'background:' + T.border + ';opacity:0.5;',
-  ].join('');
-  rightEl.appendChild(divider);
+  if (favEl) {
+    rightEl.appendChild(favEl);
 
-  rightEl.appendChild(buildCategoryColumn(categories));
+    // Divider below favorites
+    var divider = document.createElement('div');
+    divider.style.cssText = [
+      'position:absolute;',
+      'top:' + favH + 'px;left:0;',
+      'width:100%;height:1px;',
+      'background:' + T.border + ';opacity:0.5;',
+    ].join('');
+    rightEl.appendChild(divider);
+  }
+
+  rightEl.appendChild(buildCategoryColumn(categories, favH));
   rightEl.appendChild(buildItemGrid(
-    categories.length > 0 ? categories[0].items : []
+    categories.length > 0 ? categories[0].items : [],
+    favH
   ));
 
   els.rightSurface = rightEl;
