@@ -203,52 +203,362 @@ function showToast(msg, type = 'success') {
 
 /* ------------------------------------------
    EVENT CONVERSION
-   Unchanged — pure data transform.
+   Pure data transform — exported for tests.
+
+   Emission order matches the dependency graph: every event
+   only references ids of entities created earlier in the
+   stream, so an in-order replay always projects cleanly.
+
+     1. store.info_updated
+     2. size.created                      (per data.sizes)
+     3. option.created                    (per data.options)
+     4. option_group.created
+        option_group.option_added         (per option in each group)
+     5. modifier.group_created            (mandatory before optional)
+        modifier.group_option_group_set   (when default OG is set)
+     6. modifier.created
+        modifier.size_pricing_set         (per group in price_by_size)
+     7. micromod.created
+        micromod.assigned_to_modifier     (per modifier in attaches_to)
+     8. menu.category_created
+     9. menu.item_created
+        menu.item_size_pricing_set
+        menu.item_option_group_override_set
+        menu.item_size_price_override_set
+    10. tax / discounts
 ------------------------------------------ */
-function convertParsedDataToEvents(data) {
+function _slugify(name) {
+    return String(name || '').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/_+$/, '')
+        .replace(/^_+/, '');
+}
+
+function _slugifyDash(name) {
+    return String(name || '').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/-+$/, '')
+        .replace(/^-+/, '');
+}
+
+export function convertParsedDataToEvents(data) {
     const events = [];
     if (!data) return events;
 
-    // Store info
-    if (data.restaurant_info && data.restaurant_info.name) {
-        events.push({
-            event_type: 'store.info_updated',
-            payload: {
-                restaurant_name: data.restaurant_info.name,
-                address: data.restaurant_info.address || '',
-                phone: data.restaurant_info.phone || '',
-                website: data.restaurant_info.website || '',
-            },
-        });
+    // Resolve name → id at conversion time so later events can reference
+    // entities created earlier in the stream.
+    const sizeIdByName        = new Map();
+    const optionIdByName      = new Map();
+    const optionGroupIdByName = new Map();
+    const modifierIdByName    = new Map();
+    const modGroupIdByName    = new Map();
+
+    /* ── 1. store.info_updated ───────────────────────────────────── */
+    const info = data.restaurant_info || {};
+    if (Object.keys(info).length > 0) {
+        const find = (k) => {
+            const target = k.toLowerCase();
+            for (const key of Object.keys(info)) {
+                if (key.toLowerCase() === target) return info[key];
+            }
+            return undefined;
+        };
+        const restaurantName = find('Restaurant Name') ?? info.name;
+        const payload = { ...info };
+        if (restaurantName) payload.restaurant_name = restaurantName;
+        events.push({ event_type: 'store.info_updated', payload });
     }
 
-    // Categories
-    (data.categories || []).forEach((cat, i) => {
-        const catId = cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+    /* ── 2. size.created ─────────────────────────────────────────── */
+    (data.sizes || []).forEach(s => {
+        const sid = s.size_id || _slugify(s.name);
+        sizeIdByName.set(s.name, sid);
         events.push({
-            event_type: 'menu.category_created',
+            event_type: 'size.created',
             payload: {
-                category_id: catId,
-                name: cat.name,
-                display_order: cat.display_order || i + 1,
-                color: cat.color || '#fcbe40',
+                size_id:          sid,
+                name:             s.name,
+                price_adjustment: s.price_adjustment,
+                active:           s.active !== false,
             },
         });
     });
 
-    // Items
+    /* ── 3. option.created ───────────────────────────────────────── */
+    (data.options || []).forEach(o => {
+        const oid = o.option_id || _slugify(o.name);
+        optionIdByName.set(o.name, oid);
+        events.push({
+            event_type: 'option.created',
+            payload: {
+                option_id:        oid,
+                name:             o.name,
+                price_adjustment: o.price_adjustment,
+                negates_price:    !!o.negates_price,
+                active:           o.active !== false,
+            },
+        });
+    });
+
+    /* ── 4. option_group.created + option_group.option_added ────── */
+    (data.option_groups || []).forEach(og => {
+        const ogid = og.option_group_id || _slugify(og.name);
+        optionGroupIdByName.set(og.name, ogid);
+        events.push({
+            event_type: 'option_group.created',
+            payload: {
+                option_group_id: ogid,
+                name:            og.name,
+                option_ids:      [],
+                active:          og.active !== false,
+            },
+        });
+        (og.option_names || []).forEach(optName => {
+            const optId = optionIdByName.get(optName);
+            if (!optId) return;
+            events.push({
+                event_type: 'option_group.option_added',
+                payload: { option_group_id: ogid, option_id: optId },
+            });
+        });
+    });
+
+    /* ── 5. modifier.group_created (mandatory then optional) ────── */
+    const modGrps = data.mod_groups || { mandatory: [], optional: [] };
+    const buildEmbeddedModifiers = (group) => (group.modifiers || []).map(modName => {
+        const mid = modifierIdByName.get(modName) || _slugify(modName);
+        // Surface a minimal {modifier_id, name} shape so the projection's
+        // group→modifier embedding has something to work with even before
+        // the standalone modifier.created events run. Price information
+        // comes from the dedicated modifier.created emission below.
+        return { modifier_id: mid, name: modName };
+    });
+
+    (modGrps.mandatory || []).forEach(g => {
+        const gid = g.group_id || _slugify(g.name);
+        modGroupIdByName.set(g.name, gid);
+        events.push({
+            event_type: 'modifier.group_created',
+            payload: {
+                group_id:        gid,
+                name:            g.name,
+                modifiers:       buildEmbeddedModifiers(g),
+                modifier_ids:    (g.modifiers || []).map(n => modifierIdByName.get(n) || _slugify(n)),
+                min_selections:  g.min || 0,
+                max_selections:  g.max || 1,
+                drives_pricing:  !!g.drives_pricing,
+                active:          g.active !== false,
+            },
+        });
+    });
+
+    (modGrps.optional || []).forEach(g => {
+        const gid = g.group_id || _slugify(g.name);
+        modGroupIdByName.set(g.name, gid);
+        events.push({
+            event_type: 'modifier.group_created',
+            payload: {
+                group_id:        gid,
+                name:            g.name,
+                modifiers:       buildEmbeddedModifiers(g),
+                modifier_ids:    (g.modifiers || []).map(n => modifierIdByName.get(n) || _slugify(n)),
+                min_selections:  g.min || 0,
+                max_selections:  g.max || 1,
+                drives_pricing:  false,
+                size_price_adjustments: g.size_price_adjustments || {},
+                active:          g.active !== false,
+            },
+        });
+        // If the optional group has a default option group, link them.
+        if (g.default_option_group_name) {
+            const ogid = optionGroupIdByName.get(g.default_option_group_name);
+            if (ogid) {
+                events.push({
+                    event_type: 'modifier.group_option_group_set',
+                    payload: { group_id: gid, option_group_id: ogid },
+                });
+            }
+        }
+    });
+
+    /* ── 6. modifier.created + modifier.size_pricing_set ────────── */
+    (data.modifiers || []).forEach(m => {
+        const mid = m.modifier_id || _slugify(m.name);
+        modifierIdByName.set(m.name, mid);
+        events.push({
+            event_type: 'modifier.created',
+            payload: {
+                modifier_id: mid,
+                name:        m.name,
+                price:       m.price,
+                active:      m.active !== false,
+            },
+        });
+        // Size-pricing per drives_pricing group keyed in m.price_by_size.
+        // Outer key is the parent group's NAME — translate to id at emit time.
+        const pbs = m.price_by_size || {};
+        Object.keys(pbs).forEach(groupName => {
+            const gid = modGroupIdByName.get(groupName);
+            if (!gid) return;
+            events.push({
+                event_type: 'modifier.size_pricing_set',
+                payload: {
+                    modifier_id: mid,
+                    group_id:    gid,
+                    size_prices: pbs[groupName] || {},
+                },
+            });
+        });
+    });
+
+    /* ── 7. micromod.created + micromod.assigned_to_modifier ────── */
+    (data.micromod_groups || []).forEach(mg => {
+        (mg.micromod_names || []).forEach(mmName => {
+            const mmid = _slugify(mmName);
+            events.push({
+                event_type: 'micromod.created',
+                payload: {
+                    micromod_id: mmid,
+                    name:        mmName,
+                    price:       '0.00',
+                    active:      mg.active !== false,
+                },
+            });
+            (mg.attaches_to || []).forEach(modName => {
+                const modId = modifierIdByName.get(modName);
+                if (!modId) return;
+                events.push({
+                    event_type: 'micromod.assigned_to_modifier',
+                    payload: { micromod_id: mmid, modifier_id: modId },
+                });
+            });
+        });
+    });
+
+    /* ── 8. menu.category_created ───────────────────────────────── */
+    (data.categories || []).forEach((cat, i) => {
+        const catId = _slugifyDash(cat.name);
+        const universalIds = (cat.optional_groups || [])
+            .map(n => modGroupIdByName.get(n))
+            .filter(Boolean);
+        events.push({
+            event_type: 'menu.category_created',
+            payload: {
+                category_id:         catId,
+                name:                cat.name,
+                display_order:       cat.display_order || i + 1,
+                color:               cat.color || '',
+                tax_rule:            cat.tax_rule || '',
+                enable_placement:    !!cat.enable_placement,
+                universal_group_ids: universalIds,
+                active:              cat.active !== false,
+            },
+        });
+    });
+
+    /* ── 9. menu.item_created + per-field events ────────────────── */
     (data.items || []).forEach((item, i) => {
-        const catId = (item.category || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+        const itemId = _slugify(item.name) || `import_item_${i}`;
+        const catId  = _slugifyDash(item.category);
+        const includedIds = (item.included_mods || [])
+            .map(n => modifierIdByName.get(n))
+            .filter(Boolean);
+        const mandatoryIds = (item.mandatory_groups || [])
+            .map(n => modGroupIdByName.get(n))
+            .filter(Boolean);
+
         events.push({
             event_type: 'menu.item_created',
             payload: {
-                item_id: item.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/_+$/, '') || `import_item_${i}`,
-                name: item.name,
-                price: parseFloat(item.price) || 0,
-                description: item.description || '',
-                category: catId || item.category || '',
-                active: item.active !== false,
-                display_order: i + 1,
+                item_id:               itemId,
+                name:                  item.name,
+                price:                 item.price,
+                category:              catId || item.category || '',
+                description:           item.description || '',
+                included_modifier_ids: includedIds,
+                mandatory_group_ids:   mandatoryIds,
+                tax_rule:              item.tax_rule || '',
+                sku:                   item.sku || '',
+                prep_time:             item.prep_time || 0,
+                allergens:             item.allergens || [],
+                notes:                 item.notes || '',
+                active:                item.active !== false,
+                display_order:         i + 1,
+            },
+        });
+
+        // 9a. Item base size pricing — keyed by mod-group NAME.
+        const pbs = item.price_by_size || {};
+        Object.keys(pbs).forEach(groupName => {
+            const gid = modGroupIdByName.get(groupName);
+            if (!gid) return;
+            events.push({
+                event_type: 'menu.item_size_pricing_set',
+                payload: { item_id: itemId, group_id: gid, size_prices: pbs[groupName] || {} },
+            });
+        });
+
+        // 9b. Per-item option group override.
+        const ogo = item.option_group_overrides || {};
+        Object.keys(ogo).forEach(groupName => {
+            const gid  = modGroupIdByName.get(groupName);
+            const ogid = optionGroupIdByName.get(ogo[groupName]);
+            if (!gid || !ogid) return;
+            events.push({
+                event_type: 'menu.item_option_group_override_set',
+                payload: { item_id: itemId, group_id: gid, option_group_id: ogid },
+            });
+        });
+
+        // 9c. Per-item size price overrides — one event per (group, size).
+        const spo = item.size_price_overrides || {};
+        Object.keys(spo).forEach(groupName => {
+            const gid = modGroupIdByName.get(groupName);
+            if (!gid) return;
+            const sizeMap = spo[groupName] || {};
+            Object.keys(sizeMap).forEach(sizeName => {
+                events.push({
+                    event_type: 'menu.item_size_price_override_set',
+                    payload: {
+                        item_id:    itemId,
+                        group_id:   gid,
+                        size_name:  sizeName,
+                        price:      sizeMap[sizeName],
+                    },
+                });
+            });
+        });
+    });
+
+    /* ── 10. Tax rules + discounts ──────────────────────────────── */
+    (data.tax_rules || []).forEach((rule, i) => {
+        events.push({
+            event_type: 'store.tax_rule_created',
+            payload: {
+                tax_rule_id: _slugify(rule.name) || `tax_rule_${i}`,
+                name:        rule.name,
+                rate:        rule.rate,
+                dine_in:     rule.dine_in !== false,
+                takeout:     rule.takeout !== false,
+                delivery:    rule.delivery !== false,
+            },
+        });
+    });
+
+    (data.discounts || []).forEach((d, i) => {
+        events.push({
+            event_type: 'discount.created',
+            payload: {
+                discount_id:       _slugify(d.name) || `discount_${i}`,
+                name:              d.name,
+                type:              d.type,
+                amount:            d.amount,
+                schedule:          d.schedule || 'Always',
+                applies_to:        d.applies_to || 'Entire Check',
+                restrictions:      d.restrictions || '',
+                requires_approval: !!d.requires_approval,
+                reason_code:       d.reason_code || '',
+                active:            d.active !== false,
             },
         });
     });
