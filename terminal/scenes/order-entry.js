@@ -2326,11 +2326,11 @@ var _PLACE_DEFS = [
 ];
 
 function _prefixColor(id) {
-  if (id === 'ADD')     return T.greenWarm;
-  if (id === 'EXTRA')   return T.elec;
-  if (id === 'NO')      return T.verm;
-  if (id === 'ON SIDE') return T.gold;
-  if (id === 'LITE')    return T.gold;
+  if (id === 'ADD')     return T.modAdd;
+  if (id === 'EXTRA')   return T.modExtra;
+  if (id === 'NO')      return T.modNo;
+  if (id === 'ON SIDE') return T.modOnSide;
+  if (id === 'LITE')    return T.modLite;
   return T.card;
 }
 
@@ -2351,11 +2351,11 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   var openSubKey = null;
 
   var PREFIX_MAP = [
-    { id:'ADD',   label:'ADD',     color:T.greenWarm, textColor:T.well, dk:T.greenWarmDk },
-    { id:'EXTRA', label:'EXTRA',   color:T.modExtra,  textColor:T.well, dk:'#92400e'     },
-    { id:'NO',    label:'NO',      color:T.verm,      textColor:'#fff', dk:T.vermDk      },
-    { id:'SIDE',  label:'ON SIDE', color:T.modOnSide, textColor:T.well, dk:'#5b21b6'     },
-    { id:'LITE',  label:'LITE',    color:T.modLite,   textColor:T.well, dk:'#92400e'     },
+    { id:'ADD',   label:'ADD',     color:T.modAdd,    textColor:T.well, dk:T.modAddDk    },
+    { id:'EXTRA', label:'EXTRA',   color:T.modExtra,  textColor:T.well, dk:T.modExtraDk  },
+    { id:'NO',    label:'NO',      color:T.modNo,     textColor:T.well, dk:T.modNoDk     },
+    { id:'SIDE',  label:'ON SIDE', color:T.modOnSide, textColor:T.well, dk:T.modOnSideDk },
+    { id:'LITE',  label:'LITE',    color:T.modLite,   textColor:T.well, dk:T.modLiteDk   },
   ];
 
   // ── Root overlay ────────────────────────────────────
@@ -2719,7 +2719,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
         var bg   = s==='NO' ? T.verm : s==='SIDE' ? T.modOnSide : T.well;
         var fg   = s==='NO' ? '#fff' : s==='SIDE' ? T.well      : T.text;
-        var shDk = s==='NO' ? T.vermDk : s==='SIDE' ? '#5b21b6' : T.moonDk;
+        var shDk = s==='NO' ? T.modNoDk : s==='SIDE' ? T.modOnSideDk : T.moonDk;
 
         tile.style.cssText = [
           'height:44px;border-radius:8px;',
