@@ -72,6 +72,7 @@ class Role(BaseModel):
     tipout_eligible: bool
     can_receive_tips: bool
     can_be_tipped_out_to: bool
+    service_types: List[str] = Field(default_factory=lambda: ['full_service'])
 
 class Employee(BaseModel):
     employee_id: str

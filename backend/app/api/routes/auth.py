@@ -331,11 +331,15 @@ async def verify_pin(
         if verify_pin_hash(submitted, e.pin):
             _attempts.pop(client_id, None)
             token = _create_token(e.employee_id, e.display_name, e.role_ids)
+            from app.services.overseer_config_service import get_roles
+            all_roles = await get_roles(ledger)
+            role_map = {r.role_id: r for r in all_roles}
+            resolved_roles = [role_map[rid] for rid in e.role_ids if rid in role_map]
             return {
                 "valid": True,
                 "employee_id": e.employee_id,
                 "name": e.display_name,
-                "roles": e.role_ids,
+                "roles": [r.dict() for r in resolved_roles],
                 "token": token,
             }
 

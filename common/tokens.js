@@ -188,6 +188,7 @@ export const T = {
     bartender: '#34d399',   // emerald
     host:      '#facc15',   // yellow
     cook:      '#f472b6',   // pink
+    cashier:   '#22d3ee',   // electric cyan (T.elec)
   },
 };
 

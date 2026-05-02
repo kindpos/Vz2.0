@@ -613,3 +613,8 @@ class OverseerConfigService:
         result = [Size(**s) for s in sizes.values()]
         cache.set(seq, result)
         return result
+
+
+async def get_roles(ledger: EventLedger) -> List[Role]:
+    """Standalone async helper so auth routes can resolve roles without instantiating the full service."""
+    return await OverseerConfigService(ledger).get_roles()

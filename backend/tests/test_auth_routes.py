@@ -100,6 +100,20 @@ class TestVerifyPin:
 
     @pytest.mark.asyncio
     async def test_correct_pin_returns_token_and_roles(self, ledger):
+        for rid, rname in [("server", "Server"), ("trainer", "Trainer")]:
+            await ledger.append(create_event(
+                event_type=EventType.EMPLOYEE_ROLE_CREATED,
+                terminal_id="T-TEST",
+                payload={
+                    "role_id": rid,
+                    "name": rname,
+                    "permission_level": "Standard",
+                    "permissions": {},
+                    "tipout_eligible": False,
+                    "can_receive_tips": False,
+                    "can_be_tipped_out_to": False,
+                },
+            ))
         await _seed_employee(
             ledger, employee_id="emp_A", pin="1234",
             display_name="Alice", roles=["server", "trainer"],
@@ -112,7 +126,8 @@ class TestVerifyPin:
         assert res["valid"] is True
         assert res["employee_id"] == "emp_A"
         assert res["name"] == "Alice"
-        assert res["roles"] == ["server", "trainer"]
+        role_ids = [r["role_id"] for r in res["roles"]]
+        assert role_ids == ["server", "trainer"]
         assert isinstance(res["token"], str) and len(res["token"]) >= 20
 
     @pytest.mark.asyncio

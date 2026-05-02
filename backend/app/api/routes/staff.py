@@ -51,6 +51,7 @@ class ClockInRequest(BaseModel):
     pin: Optional[str] = None
     role: Optional[str] = None
     pool_memberships: List[str] = []
+    mode: Optional[str] = None
 
 
 class ClockOutRequest(BaseModel):
@@ -95,6 +96,7 @@ async def clock_in(request: ClockInRequest, ledger: EventLedger = Depends(get_le
         employee_name=request.employee_name,
         role=request.role or "",
         pool_memberships=request.pool_memberships,
+        mode=request.mode or "",
         idempotency_key=f"clock_in:{request.employee_id}:{stamp}",
     )
     shift_evt = create_event(
@@ -105,6 +107,7 @@ async def clock_in(request: ClockInRequest, ledger: EventLedger = Depends(get_le
             "employee_name": request.employee_name,
             "role": request.role or "",
             "pool_memberships": request.pool_memberships,
+            "mode": request.mode or "",
         },
     )
     await ledger.append_batch([event, shift_evt])
