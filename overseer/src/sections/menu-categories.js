@@ -1,6 +1,8 @@
+import { T } from '../../../common/tokens.js';
+import { hexToRgba } from '../../../common/theme.js';
 import { pushChanges } from '../services/config-push.js';
 import {
-    C, buildScenePage, showToast, withAlpha,
+    C, buildScenePage, showToast, withAlpha, buildPillButton,
 } from '../ui/forms.js';
 import {
     buildItemPricingExtensions,
@@ -92,6 +94,8 @@ let displayState = {
     alphaSort:         false,
     reorderMode:       false,
 };
+
+let selectedItemId = null;
 
 const modalStack = [];
 
@@ -385,6 +389,7 @@ export function registerMenuCategories(sceneManager) {
         onExit(container) {
             modalStack.splice(0).forEach(o => o.parentNode && o.remove());
             bodyMount = footerMount = currentSaveBar = null;
+            selectedItemId = null;
             menuData       = { categories: [], items: [], allGroups: [], allModifiers: [], atomsById: {}, groupsById: {}, legacyHiddenGroups: {} };
             pendingChanges = { new: [], edited: [], deleted: [], itemOrderByCategory: {}, categoryOrder: null, availability: {} };
             displayState   = { searchTerm: '', filterCategory: 'all', editMode: false, availabilityFilter: 'all', alphaSort: false, reorderMode: false };
@@ -393,36 +398,320 @@ export function registerMenuCategories(sceneManager) {
     });
 }
 
-/* ─── SCENE RENDER ───────────────────────────────────────────── */
-function renderScene() {
-    if (!bodyMount) return;
-    bodyMount.innerHTML = '';
+/* ─── LEFT PANEL — item list ──────────────────────────────────── */
+function buildLeftPanel() {
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        flex: 0 0 214px;
+        background: ${T.well};
+        border-right: 1px solid ${hexToRgba(T.border, 0.5)};
+        padding: 14px 12px;
+        overflow-y: auto;
+        display: flex; flex-direction: column;
+        gap: 10px;
+    `;
 
-    bodyMount.appendChild(buildFilterRow());
+    const newBtn = buildPillButton('+ New Item', 'mint', () => {
+        openAddItemModal(displayState.filterCategory === 'all' ? '' : displayState.filterCategory);
+    }, { fullWidth: true });
+    newBtn.style.fontSize = '11px';
+    newBtn.style.padding = '8px 12px';
+    panel.appendChild(newBtn);
 
-    const cats  = getAllWorkingCategories().sort((a,b) => a.display_order - b.display_order);
+    const list = document.createElement('div');
+    list.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+
+    const cats = getAllWorkingCategories().sort((a,b) => a.display_order - b.display_order);
     const items = getAllWorkingItems();
 
     const visibleCats = displayState.filterCategory === 'all'
         ? cats
         : cats.filter(c => c.id === displayState.filterCategory);
 
-    visibleCats.forEach((cat, idx) => {
-        bodyMount.appendChild(buildCategorySection(cat, items, idx === 0, idx === visibleCats.length - 1));
-    });
-
     if (visibleCats.length === 0) {
         const empty = document.createElement('div');
+        empty.textContent = 'No categories';
         empty.style.cssText = `
-            color: ${C.textMuted}; text-align: center; padding: 40px;
-            font-family: ui-monospace, monospace; font-size: 13px;
-            letter-spacing: 1.5px; text-transform: uppercase;
+            padding: 18px 8px;
+            text-align: center;
+            font-family: ${T.fb};
+            font-size: ${T.fsB4};
+            color: ${T.moon};
         `;
-        empty.textContent = 'No categories yet — tap + Category to create one';
-        bodyMount.appendChild(empty);
+        list.appendChild(empty);
+    } else {
+        visibleCats.forEach(cat => {
+            let catItems = items.filter(i => i.category_id === cat.id);
+
+            if (displayState.availabilityFilter === 'available') {
+                catItems = catItems.filter(i => i.active);
+            } else if (displayState.availabilityFilter === 'eightysixed') {
+                catItems = catItems.filter(i => !i.active);
+            }
+
+            if (displayState.alphaSort) {
+                catItems.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            } else {
+                const pendingOrder = pendingChanges.itemOrderByCategory[cat.id];
+                if (pendingOrder) {
+                    const posMap = new Map(pendingOrder.map((id, i) => [id, i]));
+                    catItems.sort((a, b) => (posMap.get(a.id) ?? 999) - (posMap.get(b.id) ?? 999));
+                } else {
+                    catItems.sort((a, b) => (a.display_order || 999) - (b.display_order || 999));
+                }
+            }
+
+            if (displayState.searchTerm.trim()) {
+                const term = displayState.searchTerm.toLowerCase().trim();
+                catItems = catItems.filter(i =>
+                    (i.name || '').toLowerCase().includes(term)
+                    || (i.description || '').toLowerCase().includes(term)
+                );
+            }
+
+            if (catItems.length === 0) return;
+
+            const catGroup = document.createElement('div');
+            catGroup.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+
+            const catHeader = document.createElement('div');
+            catHeader.textContent = (cat.name || '').toUpperCase();
+            catHeader.style.cssText = `
+                font-family: ${T.fb};
+                font-size: 8px;
+                font-weight: ${T.fwBold};
+                color: ${T.moonDk};
+                letter-spacing: 2.5px;
+                text-transform: uppercase;
+                padding: 0 10px;
+                margin-top: 4px;
+            `;
+            catGroup.appendChild(catHeader);
+
+            catItems.forEach(item => {
+                const isSelected = selectedItemId === item.id;
+                const itemEl = document.createElement('div');
+                itemEl.style.cssText = `
+                    padding: 9px 10px;
+                    border-radius: 7px;
+                    background: ${isSelected ? hexToRgba(T.green, 0.10) : 'transparent'};
+                    cursor: pointer;
+                    transition: background 0.1s ease;
+                `;
+                if (!isSelected) {
+                    itemEl.addEventListener('mouseenter', () => {
+                        itemEl.style.background = hexToRgba(T.green, 0.05);
+                    });
+                    itemEl.addEventListener('mouseleave', () => {
+                        itemEl.style.background = 'transparent';
+                    });
+                }
+
+                const name = document.createElement('div');
+                name.textContent = item.name || '(unnamed)';
+                name.style.cssText = `
+                    font-family: ${T.fb};
+                    font-size: ${T.fsB4};
+                    font-weight: ${T.fwBold};
+                    color: ${isSelected ? T.green : T.text};
+                    margin-bottom: 2px;
+                `;
+                itemEl.appendChild(name);
+
+                const meta = document.createElement('div');
+                meta.textContent = `${formatPrice(item.price)} · ${cat.name}`;
+                meta.style.cssText = `
+                    font-family: ${T.fb};
+                    font-size: 9px;
+                    color: ${T.moonDk};
+                    letter-spacing: 0.04em;
+                `;
+                itemEl.appendChild(meta);
+
+                itemEl.addEventListener('click', () => {
+                    if (selectedItemId !== item.id) {
+                        selectedItemId = item.id;
+                        renderScene();
+                    }
+                });
+
+                catGroup.appendChild(itemEl);
+            });
+
+            list.appendChild(catGroup);
+        });
     }
 
-    bodyMount.appendChild(buildPendingFooter());
+    panel.appendChild(list);
+    return panel;
+}
+
+/* ─── RIGHT PANEL — item detail ────────────────────────────────── */
+function buildRightPanel() {
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        flex: 1 1 auto;
+        background: ${T.bg};
+        display: flex; flex-direction: column;
+        min-width: 0;
+        overflow-y: auto;
+    `;
+
+    if (!selectedItemId) {
+        const empty = document.createElement('div');
+        empty.textContent = 'Select an item to edit';
+        empty.style.cssText = `
+            flex: 1;
+            display: flex; align-items: center; justify-content: center;
+            font-family: ${T.fb};
+            font-size: ${T.fsB3};
+            color: ${T.moon};
+            padding: 40px;
+            text-align: center;
+        `;
+        panel.appendChild(empty);
+        return panel;
+    }
+
+    const item = getWorkingItem(selectedItemId);
+    if (!item) {
+        const empty = document.createElement('div');
+        empty.textContent = 'Item not found';
+        empty.style.cssText = `
+            flex: 1;
+            display: flex; align-items: center; justify-content: center;
+            font-family: ${T.fb};
+            font-size: ${T.fsB3};
+            color: ${T.moon};
+            padding: 40px;
+            text-align: center;
+        `;
+        panel.appendChild(empty);
+        return panel;
+    }
+
+    const scrollArea = document.createElement('div');
+    scrollArea.style.cssText = `
+        flex: 1; min-height: 0;
+        padding: 16px 20px 24px;
+        overflow-y: auto;
+    `;
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+        background: ${T.card};
+        border: 1px solid ${hexToRgba(T.border, 0.5)};
+        border-radius: ${T.chamferCard}px;
+        padding: 16px;
+        display: flex; flex-direction: column; gap: 12px;
+    `;
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex; align-items: center; gap: 10px; justify-content: space-between;
+    `;
+
+    const name = document.createElement('div');
+    name.textContent = item.name || '(unnamed)';
+    name.style.cssText = `
+        font-family: ${T.fh};
+        font-size: 18px;
+        font-weight: ${T.fwBold};
+        color: ${T.text};
+    `;
+    header.appendChild(name);
+
+    const editBtn = buildPillButton('Edit', 'mint', () => openEditItemModal(item.id), { small: true });
+    header.appendChild(editBtn);
+    card.appendChild(header);
+
+    const details = document.createElement('div');
+    details.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+
+    const priceRow = document.createElement('div');
+    priceRow.style.cssText = 'display: flex; justify-content: space-between;';
+    const priceLabel = document.createElement('span');
+    priceLabel.textContent = 'Price:';
+    priceLabel.style.cssText = `color: ${T.moon}; font-size: ${T.fsB4};`;
+    const priceValue = document.createElement('span');
+    priceValue.textContent = formatPrice(item.price);
+    priceValue.style.cssText = `color: ${T.gold}; font-weight: ${T.fwBold};`;
+    priceRow.appendChild(priceLabel);
+    priceRow.appendChild(priceValue);
+    details.appendChild(priceRow);
+
+    const cat = menuData.categories.find(c => c.id === item.category_id);
+    if (cat) {
+        const catRow = document.createElement('div');
+        catRow.style.cssText = 'display: flex; justify-content: space-between;';
+        const catLabel = document.createElement('span');
+        catLabel.textContent = 'Category:';
+        catLabel.style.cssText = `color: ${T.moon}; font-size: ${T.fsB4};`;
+        const catValue = document.createElement('span');
+        catValue.textContent = cat.name;
+        catValue.style.cssText = `color: ${T.text};`;
+        catRow.appendChild(catLabel);
+        catRow.appendChild(catValue);
+        details.appendChild(catRow);
+    }
+
+    if (item.description) {
+        const descRow = document.createElement('div');
+        descRow.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+        const descLabel = document.createElement('div');
+        descLabel.textContent = 'Description:';
+        descLabel.style.cssText = `color: ${T.moon}; font-size: ${T.fsB4};`;
+        const descValue = document.createElement('div');
+        descValue.textContent = item.description;
+        descValue.style.cssText = `color: ${T.text}; font-size: ${T.fsB4};`;
+        descRow.appendChild(descLabel);
+        descRow.appendChild(descValue);
+        details.appendChild(descRow);
+    }
+
+    card.appendChild(details);
+    scrollArea.appendChild(card);
+    panel.appendChild(scrollArea);
+    return panel;
+}
+
+/* ─── SCENE RENDER ───────────────────────────────────────────── */
+function renderScene() {
+    if (!bodyMount) return;
+    bodyMount.innerHTML = '';
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        gap: 0;
+    `;
+
+    const filterArea = document.createElement('div');
+    filterArea.style.cssText = `
+        padding: 12px 16px;
+        background: ${T.bg};
+        border-bottom: 1px solid ${hexToRgba(T.border, 0.5)};
+        display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    `;
+    filterArea.appendChild(buildFilterRow());
+    wrapper.appendChild(filterArea);
+
+    const panelsContainer = document.createElement('div');
+    panelsContainer.style.cssText = `
+        display: flex;
+        flex: 1;
+        min-height: 0;
+        gap: 0;
+    `;
+    panelsContainer.appendChild(buildLeftPanel());
+    panelsContainer.appendChild(buildRightPanel());
+    wrapper.appendChild(panelsContainer);
+
+    wrapper.appendChild(buildPendingFooter());
+
+    bodyMount.appendChild(wrapper);
     updateSaveBar();
 }
 
