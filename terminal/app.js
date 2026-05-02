@@ -30,6 +30,7 @@ import './scenes/server-checkout.js';
 import './scenes/close-day.js';
 import './scenes/qsr-order.js';
 import './scenes/qsr-cash.js';
+import './scenes/qsr-card.js';
 
 // ── Dev console hook ──────────────────────────────
 window._SM = SceneManager;
