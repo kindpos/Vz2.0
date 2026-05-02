@@ -603,7 +603,7 @@ defineScene({
 
               function mountForMode(mode) {
                 if (mode === 'qsr') {
-                  SceneManager.mountWorking('qsr-landing');
+                  SceneManager.mountWorking('qsr-order');
                 } else {
                   // full_service — surface depends on permission level
                   if (isManager) {
@@ -651,7 +651,7 @@ defineScene({
 
               function mountForMode(mode) {
                 if (mode === 'qsr') {
-                  SceneManager.mountWorking('qsr-landing');
+                  SceneManager.mountWorking('qsr-order');
                 } else {
                   if (isManager) {
                     SceneManager.mountWorking('manager-landing');
