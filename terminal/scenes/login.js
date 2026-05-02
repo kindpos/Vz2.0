@@ -614,24 +614,14 @@ defineScene({
                 }
               }
 
-              if (allServiceTypes.length === 1) {
-                // Single service type — land directly, no picker
-                mountForMode(allServiceTypes[0]);
-              } else if (allServiceTypes.length > 1) {
-                // Multiple service types — show picker
-                // Store resolved data for after selection
-                var pendingRoles = data.roles;
-                SceneManager.openInterrupt('service-type-picker', {
-                  serviceTypes: allServiceTypes,
-                  onSelect: function(selectedMode) {
-                    SceneManager.closeInterrupt('service-type-picker');
-                    mountForMode(selectedMode);
-                  },
-                });
-              } else {
-                // Fallback — no service types configured, default to full_service
-                mountForMode('full_service');
-              }
+              // service_types is assigned at the role level — the role a cashier
+              // clocks into determines the mode directly. No picker needed.
+              // Use the first service type from the employee's primary role.
+              // Fall back to 'full_service' if service_types is missing or empty.
+              var mode = allServiceTypes.length > 0
+                ? allServiceTypes[0]
+                : 'full_service';
+              mountForMode(mode);
             })
             .catch(function() {
               state.locked = false;
@@ -661,20 +651,14 @@ defineScene({
                 }
               }
 
-              if (allServiceTypes.length === 1) {
-                mountForMode(allServiceTypes[0]);
-              } else if (allServiceTypes.length > 1) {
-                var pendingRoles = data.roles;
-                SceneManager.openInterrupt('service-type-picker', {
-                  serviceTypes: allServiceTypes,
-                  onSelect: function(selectedMode) {
-                    SceneManager.closeInterrupt('service-type-picker');
-                    mountForMode(selectedMode);
-                  },
-                });
-              } else {
-                mountForMode('full_service');
-              }
+              // service_types is assigned at the role level — the role a cashier
+              // clocks into determines the mode directly. No picker needed.
+              // Use the first service type from the employee's primary role.
+              // Fall back to 'full_service' if service_types is missing or empty.
+              var mode = allServiceTypes.length > 0
+                ? allServiceTypes[0]
+                : 'full_service';
+              mountForMode(mode);
             });
         },
         function onFail(msg) {
