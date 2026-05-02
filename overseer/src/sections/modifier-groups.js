@@ -590,15 +590,7 @@ function buildRightPanel() {
 
     const modifier = currentModifier(group);
     if (modifier) {
-        const detailPlaceholder = document.createElement('div');
-        detailPlaceholder.textContent = `↳ Editing: ${modifier.name}`;
-        detailPlaceholder.style.cssText = `
-            padding: 16px 20px;
-            font-family: ${T.fb};
-            font-size: 11px;
-            color: ${T.moon};
-        `;
-        rightCard.appendChild(detailPlaceholder);
+        rightCard.appendChild(buildModifierDetail(group, modifier));
     }
 
     return rightCard;
@@ -969,44 +961,122 @@ function buildAddModifierChip(group) {
 ============================================ */
 
 function buildModifierDetail(group, modifier) {
+    const wrap = document.createElement('div');
+
+    const sectionLabel = document.createElement('div');
+    sectionLabel.textContent = `↳ Editing: ${modifier.name}`;
+    sectionLabel.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 8px;
+        font-weight: 700;
+        color: ${T.elec};
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin: 16px 20px 10px;
+    `;
+    wrap.appendChild(sectionLabel);
+
     const card = buildStaticCard({ accent: T.gold });
-    card.style.padding = '16px 18px 18px 22px';
+    card.style.margin = '0 14px 16px';
+    card.style.padding = '16px 20px';
 
     // Header row
     const header = document.createElement('div');
     header.style.cssText = `
-        display: flex; align-items: center; gap: 14px;
-        margin-bottom: 14px;
-        flex-wrap: wrap;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
     `;
 
-    const name = document.createElement('div');
-    name.textContent = modifier.name;
-    name.style.cssText = `
+    const nameEl = document.createElement('div');
+    nameEl.textContent = modifier.name;
+    nameEl.style.cssText = `
         font-family: ${T.fb};
         font-size: 15px;
-        font-weight: ${T.fwBold};
+        font-weight: 700;
         color: ${T.text};
-        flex: 1; min-width: 140px;
+        flex: 1;
     `;
-    header.appendChild(name);
+    header.appendChild(nameEl);
 
-    const baseLabel = document.createElement('span');
+    const baseLabel = document.createElement('div');
     baseLabel.textContent = 'Base Price';
     baseLabel.style.cssText = `
         font-family: ${T.fb};
-        font-size: 10px;
-        font-weight: ${T.fwBold};
+        font-size: 8px;
+        font-weight: 700;
         color: ${T.moon};
-        letter-spacing: 0.1em;
+        letter-spacing: 2px;
         text-transform: uppercase;
+        flex-shrink: 0;
     `;
     header.appendChild(baseLabel);
 
-    const baseInput = buildPriceInput(modifier.price);
-    const persistBase = async () => {
-        const next = parseFloat(baseInput.value) || 0;
-        if (Number(next).toFixed(2) === Number(modifier.price || 0).toFixed(2)) return;
+    const priceWrap = document.createElement('div');
+    priceWrap.style.cssText = 'display: flex; align-items: center; gap: 2px;';
+
+    const dollarSign = document.createElement('span');
+    dollarSign.textContent = '$';
+    dollarSign.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 13px;
+        font-weight: 700;
+        color: ${T.moon};
+    `;
+    priceWrap.appendChild(dollarSign);
+
+    const priceInput = document.createElement('input');
+    priceInput.type = 'text';
+    priceInput.inputMode = 'decimal';
+    const seedPrice = Number(modifier.price || 0);
+    priceInput.value = isNaN(seedPrice) ? '0.00' : seedPrice.toFixed(2);
+    priceInput.style.cssText = `
+        width: 90px;
+        box-sizing: border-box;
+        background: ${T.well};
+        border: 1px solid ${hexToRgba(T.gold, 0.3)};
+        border-radius: 6px;
+        padding: 5px 12px;
+        font-family: ${T.fb};
+        font-size: 13px;
+        font-weight: 700;
+        color: ${T.gold};
+        text-align: right;
+        outline: none;
+    `;
+
+    priceInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); priceInput.blur(); return; }
+        if (e.key.length > 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+        const isDigit = e.key >= '0' && e.key <= '9';
+        const isDecimal = e.key === '.';
+        if (!isDigit && !isDecimal) { e.preventDefault(); return; }
+        const v = priceInput.value;
+        if (isDecimal && v.includes('.')) { e.preventDefault(); return; }
+        if (isDigit && !v.includes('.') && v.length >= 2) {
+            e.preventDefault();
+            priceInput.value = v + '.' + e.key;
+            priceInput.dispatchEvent(new Event('input'));
+            return;
+        }
+        if (isDigit && v.includes('.')) {
+            const cursorPos = priceInput.selectionStart;
+            const dotIdx = v.indexOf('.');
+            const fracPart = v.slice(dotIdx + 1);
+            if (cursorPos > dotIdx && fracPart.length >= 2 && cursorPos === priceInput.selectionEnd) {
+                e.preventDefault();
+            }
+        }
+    });
+
+    priceInput.addEventListener('blur', async () => {
+        const n = parseFloat(priceInput.value);
+        priceInput.value = isNaN(n) ? '0.00' : n.toFixed(2);
+        const next = parseFloat(priceInput.value);
+        const prev = Number(modifier.price || 0);
+        if (Math.abs(next - prev) < 0.005) return;
         try {
             await apiPatch(`/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}`, {
                 price: next,
@@ -1014,43 +1084,74 @@ function buildModifierDetail(group, modifier) {
             modifier.price = next;
             await refreshAll();
         } catch (e) {
-            baseInput.value = Number(modifier.price || 0).toFixed(2);
+            priceInput.value = prev.toFixed(2);
             showToast('Failed to save base price', 'error');
         }
-    };
-    baseInput.addEventListener('blur', persistBase);
-    baseInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); baseInput.blur(); }
     });
-    header.appendChild(baseInput);
 
-    const activeToggle = buildToggle(modifier.active !== false, async (next) => {
+    priceWrap.appendChild(priceInput);
+    header.appendChild(priceWrap);
+
+    // Active toggle — 34×18px compact style
+    let activeState = modifier.active !== false;
+    const activeBtn = document.createElement('button');
+    activeBtn.type = 'button';
+
+    function applyActiveState() {
+        activeBtn.style.cssText = `
+            width: 34px;
+            height: 18px;
+            border-radius: 9px;
+            background: ${activeState ? T.greenWarm : T.moonDk};
+            border: none;
+            position: relative;
+            cursor: pointer;
+            outline: none;
+            transition: background 0.15s ease;
+            flex-shrink: 0;
+        `;
+        activeBtn.replaceChildren();
+        const knob = document.createElement('span');
+        knob.style.cssText = `
+            position: absolute;
+            top: 3px;
+            left: ${activeState ? '19px' : '3px'};
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: ${T.well};
+            transition: left 0.15s ease;
+        `;
+        activeBtn.appendChild(knob);
+    }
+    applyActiveState();
+
+    activeBtn.addEventListener('click', async () => {
+        activeState = !activeState;
+        applyActiveState();
         try {
             await apiPatch(`/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}`, {
-                active: next,
+                active: activeState,
             });
-            modifier.active = next;
+            modifier.active = activeState;
         } catch (e) {
-            activeToggle.setValue(!next);
+            activeState = !activeState;
+            applyActiveState();
             showToast('Failed to update modifier', 'error');
         }
     });
-    header.appendChild(activeToggle);
-
+    header.appendChild(activeBtn);
     card.appendChild(header);
 
     // Two-column body
     const body = document.createElement('div');
-    body.style.cssText = `
-        display: grid;
-        grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
-        gap: 18px;
-    `;
+    body.style.cssText = 'display: flex; gap: 20px; margin-top: 14px;';
     body.appendChild(buildSizePricingCol(group, modifier));
     body.appendChild(buildMicromodsCol(modifier));
     card.appendChild(body);
 
-    return card;
+    wrap.appendChild(card);
+    return wrap;
 }
 
 /* ------------------------------------------
@@ -1058,32 +1159,29 @@ function buildModifierDetail(group, modifier) {
 ------------------------------------------ */
 function buildSizePricingCol(group, modifier) {
     const col = document.createElement('div');
-    col.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+    col.style.cssText = 'display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0;';
+
+    const label = document.createElement('div');
+    label.textContent = 'Size Pricing';
+    label.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 8px;
+        font-weight: 700;
+        color: ${T.green};
+        letter-spacing: 2px;
+        text-transform: uppercase;
+    `;
+    col.appendChild(label);
 
     const drivers = _state.groups.filter(g => g.drives_pricing);
     const driver = drivers.find(g => g.group_id === group.group_id) || drivers[0] || null;
 
-    const label = document.createElement('div');
-    label.textContent = driver
-        ? `Size Pricing — ${driver.name}`
-        : 'Size Pricing';
-    label.style.cssText = `
-        font-family: ${T.fb};
-        font-size: 10px;
-        font-weight: ${T.fwBold};
-        color: ${T.green};
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        margin-bottom: 4px;
-    `;
-    col.appendChild(label);
-
     if (!driver) {
         const note = document.createElement('div');
-        note.textContent = 'No drives_pricing group exists yet — toggle Drives Pricing on a group to enable size-aware adjustments.';
+        note.textContent = 'No drives_pricing group — toggle Drives Pricing on a group to enable size-aware adjustments.';
         note.style.cssText = `
             font-family: ${T.fb};
-            font-size: ${T.fsB4};
+            font-size: 9px;
             color: ${T.moon};
             line-height: 1.5;
             padding: 10px 12px;
@@ -1094,41 +1192,10 @@ function buildSizePricingCol(group, modifier) {
         return col;
     }
 
-    const grid = document.createElement('div');
-    grid.style.cssText = `
-        background: ${T.well};
-        border-radius: 8px;
-        padding: 10px 12px;
-        display: grid;
-        grid-template-columns: 1.2fr 1fr 1fr;
-        column-gap: 10px;
-        row-gap: 6px;
-        align-items: center;
-    `;
-
-    const headers = ['Size', 'Per-unit adj', 'Total'];
-    headers.forEach((h, i) => {
-        const cell = document.createElement('div');
-        cell.textContent = h;
-        cell.style.cssText = `
-            font-family: ${T.fb};
-            font-size: 8px;
-            font-weight: ${T.fwBold};
-            color: ${T.moon};
-            letter-spacing: 2.5px;
-            text-transform: uppercase;
-            text-align: ${i === 0 ? 'left' : 'right'};
-        `;
-        grid.appendChild(cell);
-    });
-
-    // Build current size_prices map: priority is modifier.price_by_size[group_id],
-    // falling back to flat group.size_price_adjustments.
     const sizesList = (_state.sizes || []).slice();
     const driverGroupId = driver.group_id;
     const modSizeMap = (modifier.price_by_size && modifier.price_by_size[driverGroupId]) || {};
     const flatMap = (group.size_price_adjustments || {});
-
     const liveValues = {};
     sizesList.forEach(s => {
         const key = s.name;
@@ -1138,69 +1205,147 @@ function buildSizePricingCol(group, modifier) {
         else liveValues[key] = 0;
     });
 
-    sizesList.forEach((s, idx) => {
-        const rowBg = idx === 0 ? hexToRgba(T.gold, 0.04) : 'transparent';
+    const gridWrap = document.createElement('div');
+    gridWrap.style.cssText = `
+        background: ${T.well};
+        border-radius: 8px;
+        overflow: hidden;
+    `;
+
+    // Header row
+    const hdrRow = document.createElement('div');
+    hdrRow.style.cssText = `
+        display: grid;
+        grid-template-columns: 1fr 88px 70px;
+        background: ${hexToRgba(T.green, 0.05)};
+        padding: 7px 14px;
+        gap: 8px;
+        align-items: center;
+    `;
+    ['SIZE', 'ADJ', 'TOTAL'].forEach((h, i) => {
+        const cell = document.createElement('div');
+        cell.textContent = h;
+        cell.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 8px;
+            font-weight: 700;
+            color: ${T.moon};
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-align: ${i === 0 ? 'left' : 'right'};
+        `;
+        hdrRow.appendChild(cell);
+    });
+    gridWrap.appendChild(hdrRow);
+
+    sizesList.forEach(s => {
+        const row = document.createElement('div');
+        row.style.cssText = `
+            display: grid;
+            grid-template-columns: 1fr 88px 70px;
+            padding: 9px 14px;
+            gap: 8px;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        `;
 
         const nameCell = document.createElement('div');
         nameCell.textContent = s.name;
         nameCell.style.cssText = `
             font-family: ${T.fb};
             font-size: 10px;
+            font-weight: 600;
             color: ${T.moon};
-            padding: 4px 6px;
-            background: ${rowBg};
-            border-radius: ${T.chamferBtn}px;
+            text-transform: uppercase;
         `;
-        grid.appendChild(nameCell);
+        row.appendChild(nameCell);
 
-        const adjCell = document.createElement('div');
-        adjCell.style.cssText = `
-            display: flex; justify-content: flex-end;
-            background: ${rowBg};
-            padding: 2px;
-            border-radius: ${T.chamferBtn}px;
+        const adjWrap = document.createElement('div');
+        adjWrap.style.cssText = 'display: flex; justify-content: flex-end;';
+
+        const adjInput = document.createElement('input');
+        adjInput.type = 'text';
+        adjInput.inputMode = 'decimal';
+        adjInput.value = Number(liveValues[s.name] || 0).toFixed(2);
+        adjInput.style.cssText = `
+            width: 70px;
+            box-sizing: border-box;
+            background: ${T.well};
+            border: 1px solid ${T.border};
+            border-radius: 5px;
+            font-family: ${T.fb};
+            font-size: 11px;
+            font-weight: 700;
+            color: ${T.gold};
+            text-align: right;
+            padding: 4px 8px;
+            outline: none;
         `;
-        const input = buildPriceInput(liveValues[s.name], { width: '74px' });
-        const persist = async () => {
-            const next = parseFloat(input.value) || 0;
+
+        const totalCell = document.createElement('div');
+        totalCell.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 11px;
+            font-weight: 600;
+            color: ${T.gold};
+            text-align: right;
+        `;
+
+        function updateTotal() {
+            const adj = parseFloat(adjInput.value) || 0;
+            const base = Number(modifier.price || 0);
+            totalCell.textContent = '$' + (base + adj).toFixed(2);
+        }
+        updateTotal();
+
+        adjInput.addEventListener('input', updateTotal);
+        adjInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); adjInput.blur(); }
+        });
+        adjInput.addEventListener('blur', async () => {
+            const next = parseFloat(adjInput.value) || 0;
+            adjInput.value = next.toFixed(2);
+            updateTotal();
             const prev = Number(liveValues[s.name] || 0);
-            if (Number(next).toFixed(2) === prev.toFixed(2)) return;
-            const newMap = { ...liveValues, [s.name]: next };
+            if (next.toFixed(2) === prev.toFixed(2)) return;
+            const newMap = Object.fromEntries(
+                Object.entries({ ...liveValues, [s.name]: next })
+                    .map(([k, v]) => [k, Number(v).toFixed(2)])
+            );
             try {
                 await apiPut(
                     `/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}/size-pricing/${encodeURIComponent(driverGroupId)}`,
                     { size_prices: newMap },
                 );
                 liveValues[s.name] = next;
-                totalCell.textContent = fmtPrice(Number(modifier.price || 0) + next);
             } catch (e) {
-                input.value = prev.toFixed(2);
+                adjInput.value = prev.toFixed(2);
+                updateTotal();
                 showToast('Failed to save size pricing', 'error');
             }
-        };
-        input.addEventListener('blur', persist);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
         });
-        adjCell.appendChild(input);
-        grid.appendChild(adjCell);
 
-        const totalCell = document.createElement('div');
-        totalCell.textContent = fmtPrice(Number(modifier.price || 0) + Number(liveValues[s.name] || 0));
-        totalCell.style.cssText = `
-            font-family: ${T.fb};
-            font-size: ${T.fsB3};
-            font-weight: ${T.fwBold};
-            color: ${T.gold};
-            text-align: right;
-            padding: 4px 6px;
-            background: ${rowBg};
-            border-radius: ${T.chamferBtn}px;
-        `;
-        grid.appendChild(totalCell);
+        adjWrap.appendChild(adjInput);
+        row.appendChild(adjWrap);
+        row.appendChild(totalCell);
+        gridWrap.appendChild(row);
     });
 
-    col.appendChild(grid);
+    col.appendChild(gridWrap);
+
+    if (sizesList.length === 0) {
+        const note = document.createElement('div');
+        note.textContent = 'No sizes configured yet.';
+        note.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 9px;
+            color: ${T.moon};
+            padding: 10px 12px;
+            background: ${T.well};
+            border-radius: 8px;
+        `;
+        col.appendChild(note);
+    }
 
     if (drivers.length > 1) {
         const link = document.createElement('button');
@@ -1212,8 +1357,8 @@ function buildSizePricingCol(group, modifier) {
             border: none;
             color: ${T.elec};
             font-family: ${T.fb};
-            font-size: ${T.fsB4};
-            font-weight: ${T.fwBold};
+            font-size: 9px;
+            font-weight: 700;
             cursor: pointer;
             padding: 4px 0;
             margin-top: 4px;
@@ -1230,31 +1375,30 @@ function buildSizePricingCol(group, modifier) {
 ------------------------------------------ */
 function buildMicromodsCol(modifier) {
     const col = document.createElement('div');
-    col.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+    col.style.cssText = 'display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0;';
 
     const label = document.createElement('div');
     label.textContent = 'MicroMODs';
     label.style.cssText = `
         font-family: ${T.fb};
-        font-size: 10px;
-        font-weight: ${T.fwBold};
+        font-size: 8px;
+        font-weight: 700;
         color: ${T.lavender};
-        letter-spacing: 0.18em;
+        letter-spacing: 2px;
         text-transform: uppercase;
     `;
     col.appendChild(label);
 
     const note = document.createElement('div');
-    note.textContent = 'Specification-only sub-picks. Always $0.00.';
+    note.textContent = 'Specification-only. Always $0.00.';
     note.style.cssText = `
         font-family: ${T.fb};
-        font-size: ${T.fsB4};
+        font-size: 9px;
         color: ${T.moon};
-        margin-bottom: 4px;
+        margin-bottom: 10px;
     `;
     col.appendChild(note);
 
-    // Filter micromods that point at this modifier_id
     const attached = (_state.micromods || []).filter(mm => mm.modifier_id === modifier.modifier_id);
 
     if (attached.length === 0) {
@@ -1262,15 +1406,12 @@ function buildMicromodsCol(modifier) {
         empty.textContent = 'No microMODs attached';
         empty.style.cssText = `
             font-family: ${T.fb};
-            font-size: ${T.fsB4};
+            font-size: 9px;
             color: ${T.moon};
             font-style: italic;
-            padding: 6px 0;
         `;
         col.appendChild(empty);
     } else {
-        // Group by name prefix as a synthetic "group" since microMODs in this
-        // model are flat. One row per micromod.
         attached.forEach(mm => col.appendChild(buildMicromodRow(mm)));
     }
 
@@ -1283,28 +1424,24 @@ function buildMicromodsCol(modifier) {
         border: none;
         color: ${T.lavender};
         font-family: ${T.fb};
-        font-size: ${T.fsB4};
-        font-weight: ${T.fwBold};
+        font-size: 9px;
+        font-weight: 700;
         cursor: pointer;
         padding: 4px 0;
-        margin-top: 2px;
+        margin-top: 4px;
     `;
-    addLink.addEventListener('click', () => {
-        showToast('MicroMOD attach coming soon', 'ok');
-    });
+    addLink.addEventListener('click', () => showToast('MicroMOD attach coming soon', 'ok'));
     col.appendChild(addLink);
 
-    // Divider
     const divider = document.createElement('div');
     divider.style.cssText = `
         height: 1px;
-        background: ${hexToRgba(T.border, 0.5)};
-        margin: 12px 0 6px;
+        background: rgba(255,255,255,0.06);
+        margin: 12px 0;
     `;
     col.appendChild(divider);
 
     col.appendChild(buildIncludedItemsSection(modifier));
-
     return col;
 }
 
@@ -1314,69 +1451,97 @@ function buildMicromodRow(mm) {
         background: ${hexToRgba(T.lavender, 0.07)};
         border: 1px solid ${hexToRgba(T.lavender, 0.18)};
         border-radius: 7px;
-        padding: 8px 10px;
-        display: flex; align-items: center; gap: 10px;
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
     `;
 
     const textBlock = document.createElement('div');
     textBlock.style.cssText = 'flex: 1; min-width: 0;';
+
     const name = document.createElement('div');
     name.textContent = mm.name;
     name.style.cssText = `
         font-family: ${T.fb};
-        font-size: ${T.fsB4};
-        font-weight: ${T.fwBold};
+        font-size: 11px;
+        font-weight: 600;
         color: ${T.lavender};
     `;
     textBlock.appendChild(name);
+
     const sub = document.createElement('div');
-    sub.textContent = mm.values && mm.values.length
-        ? mm.values.join(', ')
-        : '—';
+    sub.textContent = mm.values && mm.values.length ? mm.values.join(', ') : '—';
     sub.style.cssText = `
         font-family: ${T.fb};
-        font-size: 10px;
+        font-size: 9px;
         color: ${T.moon};
         margin-top: 1px;
     `;
     textBlock.appendChild(sub);
     row.appendChild(textBlock);
 
-    row.appendChild(buildBadge('Prep', T.lavender));
+    const badge = document.createElement('span');
+    badge.textContent = 'Prep';
+    badge.style.cssText = `
+        background: ${hexToRgba(T.lavender, 0.16)};
+        color: ${T.lavender};
+        font-family: ${T.fb};
+        font-size: 8px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        padding: 2px 7px;
+        border-radius: 5px;
+        flex-shrink: 0;
+    `;
+    row.appendChild(badge);
 
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.textContent = 'Remove';
-    remove.style.cssText = `
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Remove';
+    removeBtn.style.cssText = `
         background: transparent;
-        border: none;
+        border: 1px solid ${T.border};
         color: ${T.moon};
         font-family: ${T.fb};
-        font-size: 10px;
-        font-weight: ${T.fwBold};
+        font-size: 8px;
+        font-weight: 700;
+        height: 22px;
+        border-radius: 6px;
+        padding: 0 9px;
         cursor: pointer;
-        padding: 2px 6px;
+        outline: none;
+        white-space: nowrap;
+        flex-shrink: 0;
     `;
-    remove.addEventListener('mouseenter', () => { remove.style.color = T.verm; });
-    remove.addEventListener('mouseleave', () => { remove.style.color = T.moon; });
-    remove.addEventListener('click', () => showToast('MicroMOD remove coming soon', 'ok'));
-    row.appendChild(remove);
+    removeBtn.addEventListener('mouseenter', () => {
+        removeBtn.style.color = T.verm;
+        removeBtn.style.borderColor = T.verm;
+    });
+    removeBtn.addEventListener('mouseleave', () => {
+        removeBtn.style.color = T.moon;
+        removeBtn.style.borderColor = T.border;
+    });
+    removeBtn.addEventListener('click', () => showToast('MicroMOD remove coming soon', 'ok'));
+    row.appendChild(removeBtn);
 
     return row;
 }
 
 function buildIncludedItemsSection(modifier) {
     const wrap = document.createElement('div');
+
     const label = document.createElement('div');
     label.textContent = 'Included in items';
     label.style.cssText = `
         font-family: ${T.fb};
-        font-size: 10px;
-        font-weight: ${T.fwBold};
+        font-size: 8px;
+        font-weight: 700;
         color: ${T.moon};
-        letter-spacing: 0.18em;
+        letter-spacing: 2px;
         text-transform: uppercase;
-        margin-bottom: 6px;
+        margin-bottom: 8px;
     `;
     wrap.appendChild(label);
 
@@ -1386,33 +1551,53 @@ function buildIncludedItemsSection(modifier) {
     );
 
     const chipRow = document.createElement('div');
-    chipRow.style.cssText = `
-        display: flex; flex-wrap: wrap; gap: 6px;
-    `;
+    chipRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
 
     if (containing.length === 0) {
         const empty = document.createElement('div');
         empty.textContent = 'Not included on any item';
         empty.style.cssText = `
             font-family: ${T.fb};
-            font-size: ${T.fsB4};
+            font-size: 9px;
             color: ${T.moon};
             font-style: italic;
         `;
         chipRow.appendChild(empty);
     } else {
+        const chipShadow = `0 3px 0 ${darkenHex(T.card, 0.35)}, inset 0 1px 0 rgba(255,255,255,0.08)`;
         containing.forEach(it => {
-            const chip = document.createElement('span');
-            chip.textContent = it.name;
+            const chip = document.createElement('div');
             chip.style.cssText = `
-                padding: 4px 10px;
-                background: ${hexToRgba(T.green, 0.10)};
-                color: ${T.green};
-                border-radius: 999px;
-                font-family: ${T.fb};
-                font-size: ${T.fsB4};
-                font-weight: ${T.fwBold};
+                position: relative;
+                background: ${T.card};
+                border-radius: 10px;
+                padding: 5px 10px 5px 12px;
+                display: inline-flex;
+                align-items: center;
+                box-shadow: ${chipShadow};
             `;
+
+            const accentBar = document.createElement('div');
+            accentBar.style.cssText = `
+                position: absolute;
+                left: 0;
+                top: 5px;
+                bottom: 5px;
+                width: 3px;
+                border-radius: 0 2px 2px 0;
+                background: ${T.moon};
+            `;
+            chip.appendChild(accentBar);
+
+            const nameEl = document.createElement('span');
+            nameEl.textContent = it.name;
+            nameEl.style.cssText = `
+                font-family: ${T.fb};
+                font-size: 10px;
+                font-weight: 600;
+                color: ${T.moon};
+            `;
+            chip.appendChild(nameEl);
             chipRow.appendChild(chip);
         });
     }
