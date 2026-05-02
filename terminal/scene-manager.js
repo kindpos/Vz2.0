@@ -533,6 +533,8 @@ export const SceneManager = {
   closeAllTransactional,
 
   interrupt:        interruptFn,
+  // `openInterrupt` is a symmetric alias for `interrupt`.
+  openInterrupt:    interruptFn,
   resolveInterrupt,
   // `closeInterrupt` is the name 20+ call sites use; forward to the same
   // implementation so both spellings work. Prefer `resolveInterrupt` going

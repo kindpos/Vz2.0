@@ -283,7 +283,7 @@ defineScene('manager-pin', {
             if (!alive) return;
             if (data.valid && (data.roles || []).indexOf('manager') !== -1) {
               var empId = data.employee_id || pinBuf;
-              SceneManager.closeInterrupt('manager-pin');
+              SceneManager.resolveInterrupt('manager-pin');
               if (params.onConfirm) params.onConfirm(empId);
             } else {
               _flashError();
@@ -465,7 +465,7 @@ defineScene('disc-select', {
     ].join('');
     cancelLink.textContent = 'cancel';
     cancelLink.addEventListener('pointerup', function() {
-      SceneManager.closeInterrupt('disc-select');
+      SceneManager.resolveInterrupt('disc-select');
       if (params.onCancel) params.onCancel();
     });
     inner.appendChild(cancelLink);
@@ -543,7 +543,7 @@ defineScene('disc-select', {
     applyBtn.addEventListener('pointerup', function() {
       if (!selectedDiscount) return;
       var disc = selectedDiscount;
-      SceneManager.closeInterrupt('disc-select');
+      SceneManager.resolveInterrupt('disc-select');
       if (params.onConfirm) params.onConfirm(disc);
     });
 
@@ -573,7 +573,7 @@ defineScene('disc-select', {
         });
         if (normalized.length === 0) {
           showToast('No discounts available');
-          SceneManager.closeInterrupt('disc-select');
+          SceneManager.resolveInterrupt('disc-select');
           if (params.onCancel) params.onCancel();
           return;
         }
@@ -582,7 +582,7 @@ defineScene('disc-select', {
       .catch(function() {
         if (!alive) return;
         showToast('Could not load discounts');
-        SceneManager.closeInterrupt('disc-select');
+        SceneManager.resolveInterrupt('disc-select');
         if (params.onCancel) params.onCancel();
       });
 
@@ -787,7 +787,7 @@ defineScene('void-reason', {
     voidBtn.addEventListener('pointerup', function() {
       if (!selectedReason) return;
       var reason = selectedReason;
-      SceneManager.closeInterrupt('void-reason');
+      SceneManager.resolveInterrupt('void-reason');
       if (params.onConfirm) params.onConfirm(reason);
     });
 
@@ -816,7 +816,7 @@ defineScene('void-reason', {
     ].join('');
     cancelLink.textContent = 'cancel';
     cancelLink.addEventListener('pointerup', function() {
-      SceneManager.closeInterrupt('void-reason');
+      SceneManager.resolveInterrupt('void-reason');
       if (params.onCancel) params.onCancel();
     });
     inner.appendChild(cancelLink);
