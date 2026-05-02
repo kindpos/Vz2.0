@@ -623,7 +623,7 @@ function buildMiddleCol(data, handlers, sceneState) {
   // Card stack — scrollable
   var cardStack = document.createElement('div');
   cardStack.style.cssText = [
-    'flex:1;overflow-y:auto;overflow-x:hidden;',
+    'flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;',
     'display:flex;flex-direction:column;gap:8px;padding-bottom:4px;',
     'touch-action:pan-y;',
     '-webkit-overflow-scrolling:touch;',

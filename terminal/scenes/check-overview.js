@@ -727,7 +727,7 @@ defineScene({
         panel.appendChild(title);
 
         var list = document.createElement('div');
-        list.style.cssText = 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;';
+        list.style.cssText = 'flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;';
 
         var loading = document.createElement('div');
         loading.style.cssText = [

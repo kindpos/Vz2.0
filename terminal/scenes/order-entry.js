@@ -2372,7 +2372,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
   // ── Scrollable content ──────────────────────────────
   var scroll = document.createElement('div');
-  scroll.style.cssText = 'flex:1;overflow-y:auto;padding:8px 14px 10px;';
+  scroll.style.cssText = 'flex:1;min-height:0;overflow-y:auto;padding:8px 14px 10px;';
   ov.appendChild(scroll);
 
   // ── DONE button ─────────────────────────────────────

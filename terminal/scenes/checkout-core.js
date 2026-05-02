@@ -248,7 +248,7 @@ export function buildExpandedCard(defs, idx, opts) {
   card.appendChild(hdr);
 
   var content = document.createElement('div');
-  content.style.cssText = 'flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:4px;';
+  content.style.cssText = 'flex:1;min-height:0;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:4px;';
   defs[idx].buildExpanded(content);
   card.appendChild(content);
 
