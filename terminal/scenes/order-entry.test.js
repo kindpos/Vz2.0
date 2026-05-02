@@ -33,28 +33,36 @@ vi.mock('../scene-manager.js', () => ({
 }));
 
 vi.mock('../../common/tokens.js', () => {
-  function deep() {
+  // Path-tagged proxy: every traversal records the dotted path, and any
+  // primitive coercion (Symbol.toPrimitive, toString, valueOf) returns it.
+  // This lets options-tier tests distinguish T.gold from T.verm via the
+  // string actually written to dataset attributes.
+  function deep(path) {
     return new Proxy({}, {
       get(_, k) {
-        if (k === Symbol.toPrimitive || k === 'toString' || k === 'valueOf') return () => '';
-        return deep();
+        if (k === Symbol.toPrimitive) return () => path || '';
+        if (k === 'toString')          return () => path || '';
+        if (k === 'valueOf')           return () => path || '';
+        return deep(path ? path + '.' + String(k) : 'T.' + String(k));
       },
     });
   }
-  return { T: deep() };
+  return { T: deep('') };
 });
 
 vi.mock('../theme-manager.js', () => {
-  const el = () => {
+  const make = (opts = {}) => {
     const d = document.createElement('div');
+    if (opts && opts.label) d.textContent = opts.label;
+    if (opts && opts.onClick) d.addEventListener('click', opts.onClick);
     d.setAccent = vi.fn();
     return d;
   };
   return {
-    buildCard:       () => ({ wrap: el(), card: el() }),
-    buildStaticCard: el,
-    buildPillButton: el,
-    buildDataRow:    el,
+    buildCard:       () => ({ wrap: make(), card: make() }),
+    buildStaticCard: make,
+    buildPillButton: make,
+    buildDataRow:    make,
     hexToRgba:  (c) => c,
     darkenHex:  (c) => c,
     lightenHex: (c) => c,
@@ -663,5 +671,217 @@ describe('terminal/scenes/order-entry — calculateItemPrice (pricing chain)', (
     // 18.99 base + (1.50 + 0.50 size = 2.00 pepperoni)
     //            + (0 cheese line — included AND None negates) = 20.99
     expect(calculateItemPrice(item, sel, pizzaMenuState())).toBe(20.99);
+  });
+});
+
+// ── Options tier UI ───────────────────────────────────────────────────────────
+//
+// Verifies the visual layer between modifier selection and microMODs:
+// resolveOptionGroupForModifier, shouldRenderOptionsRow, buildOptionsRow,
+// buildModifierBlock. The pill-rendering uses buildPillButton (which is
+// mocked to a plain div); we verify behavior via data-* attributes set
+// by buildOptionsRow on each pill.
+
+describe('terminal/scenes/order-entry — options tier UI', () => {
+  let sceneDef;
+  let h;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    await import('./order-entry.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'order-entry');
+    h = sceneDef.__handlers;
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  function makeMenuState(overrides = {}) {
+    return {
+      modifier_groups: {
+        size:      { drives_pricing: true,  default_option_group_id: null },
+        toppings:  { drives_pricing: false, default_option_group_id: 'topping_opts' },
+        plain:     { drives_pricing: false, default_option_group_id: null },
+        ...(overrides.modifier_groups || {}),
+      },
+      modifiers: {
+        size_lg:   { name: 'Large', price: 0 },
+        pepperoni: { name: 'Pepperoni', price: 1.50 },
+        cheese:    { name: 'Cheese',    price: 0 },
+        ...(overrides.modifiers || {}),
+      },
+      options: {
+        regular: { option_id: 'regular', name: 'Regular', price_adjustment: 0,    negates_price: false },
+        extra:   { option_id: 'extra',   name: 'Extra',   price_adjustment: 1.00, negates_price: false },
+        light:   { option_id: 'light',   name: 'Light',   price_adjustment: 0,    negates_price: false },
+        none:    { option_id: 'none',    name: 'None',    price_adjustment: 0,    negates_price: true  },
+        onside:  { option_id: 'onside',  name: 'On Side', price_adjustment: 0,    negates_price: false },
+        ...(overrides.options || {}),
+      },
+      option_groups: {
+        topping_opts: { option_ids: ['regular','extra','light','none','onside'], active: true },
+        ...(overrides.option_groups || {}),
+      },
+    };
+  }
+
+  // 1) Group with default_option_group_id → options row renders
+  it('1) renders an options row when the group has a default_option_group_id', () => {
+    const ms = makeMenuState();
+    const item = { id: 'pizza' };
+    expect(h.shouldRenderOptionsRow(item, 'toppings', ms)).toBe(true);
+
+    const row = h.buildOptionsRow({
+      item, groupId: 'toppings', modifierId: 'pepperoni', menuState: ms,
+    });
+    expect(row.dataset.optionsRow).toBe('1');
+    expect(row.dataset.empty).toBeUndefined();
+    // 5 options should render as pills tagged with data-option-id
+    const pills = row.querySelectorAll('[data-option-id]');
+    expect(pills.length).toBe(5);
+  });
+
+  // 2) Group without default_option_group_id → no options row
+  it('2) hides the options row when no OptionGroup resolves', () => {
+    const ms = makeMenuState();
+    const item = { id: 'pizza' };
+    expect(h.shouldRenderOptionsRow(item, 'plain', ms)).toBe(false);
+
+    const row = h.buildOptionsRow({
+      item, groupId: 'plain', modifierId: 'cheese', menuState: ms,
+    });
+    expect(row.dataset.empty).toBe('1');
+    expect(row.style.display).toBe('none');
+    expect(row.querySelectorAll('[data-option-id]').length).toBe(0);
+  });
+
+  // 3) drives_pricing group → no options row (size selectors don't get options)
+  it('3) hides the options row for drives_pricing groups', () => {
+    const ms = makeMenuState();
+    const item = { id: 'pizza' };
+    expect(h.shouldRenderOptionsRow(item, 'size', ms)).toBe(false);
+
+    const row = h.buildOptionsRow({
+      item, groupId: 'size', modifierId: 'size_lg', menuState: ms,
+    });
+    expect(row.dataset.empty).toBe('1');
+    expect(row.querySelectorAll('[data-option-id]').length).toBe(0);
+  });
+
+  // 4) Selecting "Extra" option → pill gets gold theme tag
+  it('4) selecting Extra tags the pill with the gold theme', () => {
+    const ms = makeMenuState();
+    const item = { id: 'pizza' };
+
+    let chosen = null;
+    let row = h.buildOptionsRow({
+      item, groupId: 'toppings', modifierId: 'pepperoni', menuState: ms,
+      onSelect: (id) => { chosen = id; },
+    });
+
+    // Default selection should be "Regular" (first match in option group).
+    expect(row.dataset.selectedOptionId).toBe('regular');
+    const regularPill = row.querySelector('[data-option-id="regular"]');
+    expect(regularPill.dataset.selected).toBe('1');
+
+    // Click Extra — handler reports the chosen id.
+    const extraPill = row.querySelector('[data-option-id="extra"]');
+    extraPill.click();
+    expect(chosen).toBe('extra');
+
+    // Re-render with Extra explicitly selected — pill flips to selected
+    // state and carries the gold theme tag.
+    row = h.buildOptionsRow({
+      item, groupId: 'toppings', modifierId: 'pepperoni',
+      menuState: ms, selectedOptionId: 'extra',
+    });
+    const extraSel = row.querySelector('[data-option-id="extra"]');
+    expect(extraSel.dataset.selected).toBe('1');
+    // "Extra" maps to the T.gold theme (border + text both resolve to T.gold).
+    expect(extraSel.dataset.themeBorder).toBe('T.gold');
+    expect(extraSel.dataset.themeText).toBe('T.gold');
+    // Price label shows positive upcharge.
+    expect(extraSel.dataset.priceLabel).toBe('+$1.00');
+  });
+
+  // 5) Selecting "None" (negates_price) → verm theme + price line goes to $0
+  it('5) selecting None tags verm theme and zeros the modifier line price', () => {
+    const ms = makeMenuState();
+    const item = { id: 'pizza', price: 12.00 };
+
+    const row = h.buildOptionsRow({
+      item, groupId: 'toppings', modifierId: 'pepperoni',
+      menuState: ms, selectedOptionId: 'none',
+    });
+    const nonePill = row.querySelector('[data-option-id="none"]');
+    expect(nonePill.dataset.selected).toBe('1');
+    expect(nonePill.dataset.themeBorder).toBe('T.verm');
+    expect(nonePill.dataset.themeText).toBe('T.verm');
+    // No price label for negates_price options
+    expect(nonePill.dataset.priceLabel).toBe('');
+
+    // Verify the price chain: the pepperoni line comes out as $0 and the
+    // total stays at the item base.
+    const sel = [{ group_id: 'toppings', modifier_id: 'pepperoni', option_id: 'none' }];
+    expect(h.calculateItemPrice(item, sel, ms)).toBe(12.00);
+  });
+
+  // 6) Included modifier with options row → base stays $0 even with Extra
+  it('6) included modifier renders options row but base stays $0; Extra adds option_adjustment only', () => {
+    const ms = makeMenuState();
+    const item = {
+      id: 'pizza',
+      price: 10.00,
+      included_modifier_ids: ['pepperoni'],
+    };
+
+    // Options row should still render — server still wants to indicate
+    // serving style (On Side, Mixed In, etc.) at $0 base.
+    expect(h.shouldRenderOptionsRow(item, 'toppings', ms)).toBe(true);
+    const row = h.buildOptionsRow({
+      item, groupId: 'toppings', modifierId: 'pepperoni',
+      menuState: ms, selectedOptionId: 'extra',
+    });
+    expect(row.dataset.empty).toBeUndefined();
+
+    // Base stays $0 (included). Only the option adjustment applies.
+    const sel = [{ group_id: 'toppings', modifier_id: 'pepperoni', option_id: 'extra' }];
+    // 10 base + (0 included + 1.00 extra) = 11.00
+    expect(h.calculateItemPrice(item, sel, ms)).toBe(11.00);
+
+    // None still negates to 0 even on an included modifier.
+    const sel2 = [{ group_id: 'toppings', modifier_id: 'pepperoni', option_id: 'none' }];
+    expect(h.calculateItemPrice(item, sel2, ms)).toBe(10.00);
+  });
+
+  // 7) MicroMODs render after the options row, not instead of it
+  it('7) microMODs row renders AFTER the options row', () => {
+    const ms = makeMenuState();
+    const item = { id: 'pizza' };
+
+    const block = h.buildModifierBlock({
+      label: 'Pepperoni',
+      item, groupId: 'toppings', modifierId: 'pepperoni',
+      menuState: ms,
+      includedModifierIds: ['mm_grilled', 'mm_crispy'],
+    });
+
+    const children = Array.from(block.children);
+    const tileIdx    = children.findIndex(c => c.dataset.modifierTile === '1');
+    const optionsIdx = children.findIndex(c => c.dataset.optionsRow === '1');
+    const mmIdx      = children.findIndex(c => c.dataset.micromodsRow === '1');
+
+    expect(tileIdx).toBe(0);
+    expect(optionsIdx).toBe(1);
+    expect(mmIdx).toBe(2);
+
+    // microMODs row contains one chip per included id
+    const mmRow = children[mmIdx];
+    expect(mmRow.querySelectorAll('[data-micromod-id]').length).toBe(2);
+    expect(mmRow.querySelector('[data-micromod-id="mm_grilled"]')).toBeTruthy();
+
+    // And the options row is non-empty (renders ahead of microMODs).
+    const optionsRow = children[optionsIdx];
+    expect(optionsRow.querySelectorAll('[data-option-id]').length).toBeGreaterThan(0);
   });
 });

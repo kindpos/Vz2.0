@@ -476,6 +476,177 @@ function calculateItemPrice(item, selections, menuState) {
   return Math.round(raw * 100) / 100;
 }
 
+// ═══════════════════════════════════════════════════
+//  OPTIONS TIER UI (Prompt 2)
+//
+//  Visual layer between modifier selection and microMODs.
+//  Resolved from modifier_groups[group_id].default_option_group_id
+//  (or item.option_group_overrides[group_id] when set), filtered
+//  to active option_ids in the resolved OptionGroup.
+//
+//  resolveOptionGroupForModifier(item, groupId, menuState)
+//  shouldRenderOptionsRow(item, groupId, menuState)
+//  buildOptionsRow({ item, groupId, modifierId, selectedOptionId,
+//                    menuState, onSelect }) → HTMLElement
+//  buildModifierBlock({ ...same plus label, includedModifierIds })
+//      → tile + options row + (optional) microMODs row, in that order.
+// ═══════════════════════════════════════════════════
+
+function resolveOptionGroupForModifier(item, groupId, menuState) {
+  if (!groupId || !menuState) return null;
+  var groups = menuState.modifier_groups || {};
+  var grp = groups[groupId];
+  if (!grp) return null;
+  if (grp.drives_pricing) return null; // size selectors don't get options
+  var ogOverrides = (item && item.option_group_overrides) || {};
+  var ogId = ogOverrides[groupId];
+  if (ogId == null) ogId = grp.default_option_group_id;
+  if (!ogId) return null;
+  var optGroups = menuState.option_groups || {};
+  var og = optGroups[ogId];
+  if (!og || og.active === false) return null;
+  var ids = og.option_ids || [];
+  return ids.length > 0 ? og : null;
+}
+
+function shouldRenderOptionsRow(item, groupId, menuState) {
+  return !!resolveOptionGroupForModifier(item, groupId, menuState);
+}
+
+// Theme tokens for each option label/state. Pure lookup — never mutates.
+function _optionTheme(opt) {
+  if (!opt) return { border: T.elec, text: T.elec };
+  if (opt.negates_price) return { border: T.verm, text: T.verm };
+  var name = (opt.name || '').toLowerCase().trim();
+  if (name === 'regular')                  return { border: T.green, text: T.green };
+  if (name === 'extra')                    return { border: T.gold,  text: T.gold  };
+  if (name === 'light' || name === 'lite') return { border: T.moon,  text: T.moon  };
+  if (name === 'on side' || name === 'mixed in') return { border: T.elec, text: T.elec };
+  return { border: T.elec, text: T.elec };
+}
+
+function _optionPriceLabel(opt) {
+  if (!opt || opt.negates_price) return '';
+  var v = Number(opt.price_adjustment || 0);
+  if (v > 0) return '+$' + v.toFixed(2);
+  if (v < 0) return '−$' + Math.abs(v).toFixed(2);
+  return '';
+}
+
+function _defaultSelectedOptionId(og, optionsMap) {
+  var ids = (og && og.option_ids) || [];
+  for (var i = 0; i < ids.length; i++) {
+    var o = optionsMap[ids[i]];
+    if (o && (o.name || '').toLowerCase() === 'regular') return o.option_id;
+  }
+  return null;
+}
+
+function buildOptionsRow(opts) {
+  opts = opts || {};
+  var item     = opts.item || {};
+  var groupId  = opts.groupId;
+  var menuState = opts.menuState || {};
+  var onSelect = opts.onSelect || function() {};
+
+  var row = document.createElement('div');
+  row.dataset.optionsRow = '1';
+  row.style.cssText = [
+    'display:flex;flex-wrap:wrap;gap:6px;',
+    'margin-top:6px;',
+  ].join('');
+
+  var og = resolveOptionGroupForModifier(item, groupId, menuState);
+  if (!og) {
+    row.dataset.empty = '1';
+    row.style.display = 'none';
+    return row;
+  }
+
+  var optionsMap = menuState.options || {};
+  var ids = og.option_ids || [];
+  var selectedOptionId = opts.selectedOptionId || null;
+  if (!selectedOptionId) {
+    selectedOptionId = _defaultSelectedOptionId(og, optionsMap);
+  }
+  row.dataset.selectedOptionId = selectedOptionId || '';
+
+  ids.forEach(function(oid) {
+    var opt = optionsMap[oid];
+    if (!opt || opt.active === false) return;
+    var theme = _optionTheme(opt);
+    var isSel = (opt.option_id === selectedOptionId);
+    var priceLabel = _optionPriceLabel(opt);
+    var label = priceLabel ? (opt.name + ' ' + priceLabel) : opt.name;
+
+    var pill = buildPillButton({
+      label: label,
+      // Selected pills fill with the theme color; unselected stay ghost-style.
+      variant: isSel ? undefined : 'ghost',
+      color: isSel ? theme.border : 'transparent',
+      textColor: isSel ? T.well : theme.text,
+      fontSize: '11px',
+      onClick: function() { onSelect(opt.option_id); },
+    });
+
+    // Tag with data attributes for testability + post-style border so the
+    // theme color shows through even when the pill is ghost-styled.
+    pill.dataset.optionId   = opt.option_id;
+    pill.dataset.optionName = opt.name || '';
+    pill.dataset.themeBorder = theme.border;
+    pill.dataset.themeText   = theme.text;
+    pill.dataset.selected   = isSel ? '1' : '0';
+    pill.dataset.priceLabel = priceLabel;
+    pill.style.border = '1px solid ' + theme.border;
+    if (!isSel) pill.style.color = theme.text;
+
+    row.appendChild(pill);
+  });
+
+  return row;
+}
+
+function buildModifierBlock(opts) {
+  opts = opts || {};
+  var wrap = document.createElement('div');
+  wrap.dataset.modifierBlock = '1';
+  wrap.dataset.modifierId = opts.modifierId || '';
+  wrap.dataset.groupId    = opts.groupId    || '';
+
+  // Modifier tile — minimal placeholder so the existing visual renderer
+  // is untouched. Real renderModButtonGrid still owns the production tile
+  // styling; this block exists for tests + future composition.
+  var tile = document.createElement('div');
+  tile.dataset.modifierTile = '1';
+  tile.textContent = opts.label || '';
+  wrap.appendChild(tile);
+
+  // Options row — only renders for non-drives_pricing groups with a valid
+  // OptionGroup. shouldRenderOptionsRow() returns false otherwise and
+  // buildOptionsRow short-circuits to a hidden, empty row.
+  var optionsRow = buildOptionsRow(opts);
+  wrap.appendChild(optionsRow);
+
+  // microMODs row — rendered AFTER the options row, never instead of it.
+  // Shape: included_modifier_ids ($0 spec-only sub-picks) tagged onto the
+  // modifier in the menu projection. Empty list = no row.
+  var includedIds = opts.includedModifierIds || [];
+  if (includedIds.length > 0) {
+    var mmRow = document.createElement('div');
+    mmRow.dataset.micromodsRow = '1';
+    mmRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;';
+    includedIds.forEach(function(id) {
+      var chip = document.createElement('span');
+      chip.dataset.micromodId = id;
+      chip.textContent = id;
+      mmRow.appendChild(chip);
+    });
+    wrap.appendChild(mmRow);
+  }
+
+  return wrap;
+}
+
 // ── Prefix definitions ────────────────────────────
 var PREFIXES = [
   { id: 'add',     label: 'ADD',     color: T.greenWarm, textColor: T.well },
@@ -927,6 +1098,10 @@ defineScene({
     set modifierSession(v)      { modifierSession = v; },
     applyModifier:              function(mod) { return applyModifier(mod); },
     calculateItemPrice:         function(item, selections, menuState) { return calculateItemPrice(item, selections, menuState); },
+    resolveOptionGroupForModifier: function(item, groupId, menuState) { return resolveOptionGroupForModifier(item, groupId, menuState); },
+    shouldRenderOptionsRow:     function(item, groupId, menuState) { return shouldRenderOptionsRow(item, groupId, menuState); },
+    buildOptionsRow:            function(opts) { return buildOptionsRow(opts); },
+    buildModifierBlock:         function(opts) { return buildModifierBlock(opts); },
   },
 });
 
