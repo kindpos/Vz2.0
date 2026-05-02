@@ -330,27 +330,65 @@ function buildPriceInput(value, opts = {}) {
 ============================================ */
 
 function buildLeftPanel() {
-    const panel = document.createElement('div');
-    panel.style.cssText = `
-        flex: 0 0 214px;
-        background: ${T.card};
-        border-right: 1px solid ${hexToRgba(T.border, 0.5)};
-        padding: 14px 12px;
-        overflow-y: auto;
-        display: flex; flex-direction: column;
-        gap: 10px;
-    `;
+    const leftCard = buildStaticCard({ accent: T.green });
+    leftCard.style.width = '680px';
+    leftCard.style.flexShrink = '0';
+    leftCard.style.alignSelf = 'stretch';
+    leftCard.style.minHeight = '0';
+    leftCard.style.padding = '0';
+    leftCard.style.overflow = 'hidden';
+    leftCard.style.display = 'flex';
+    leftCard.style.flexDirection = 'column';
 
-    const newBtn = buildPillButton('+ New Group', 'elec', () => {
+    const leftContent = document.createElement('div');
+    leftContent.className = 'kindpos-scrollbar-hide';
+    leftContent.style.cssText = 'flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; padding: 12px 12px 12px 20px; box-sizing: border-box;';
+    leftCard.appendChild(leftContent);
+
+    const sectionLabel = document.createElement('div');
+    sectionLabel.textContent = 'Modifier Groups';
+    sectionLabel.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 8px;
+        font-weight: 700;
+        color: ${T.moonDk};
+        letter-spacing: 2.5px;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    `;
+    leftContent.appendChild(sectionLabel);
+
+    const newBtn = document.createElement('button');
+    newBtn.type = 'button';
+    newBtn.textContent = '+ New Group';
+    newBtn.style.cssText = `
+        display: block;
+        width: 100%;
+        height: 28px;
+        background: ${T.elec};
+        color: ${T.well};
+        border: none;
+        border-radius: 8px;
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        cursor: pointer;
+        margin-bottom: 8px;
+        box-shadow: 0 3px 0 ${T.elecDk};
+        box-sizing: border-box;
+    `;
+    newBtn.addEventListener('click', () => {
         _state.showAddGroup = true;
         rebuild();
-    }, { fullWidth: true });
-    panel.appendChild(newBtn);
+    });
+    leftContent.appendChild(newBtn);
 
-    if (_state.showAddGroup) panel.appendChild(buildAddGroupForm());
+    if (_state.showAddGroup) leftContent.appendChild(buildAddGroupForm());
 
     const list = document.createElement('div');
-    list.style.cssText = 'display: flex; flex-direction: column; gap: 4px;';
+    list.style.cssText = 'display: flex; flex-direction: column;';
 
     if (_state.groups.length === 0) {
         const empty = document.createElement('div');
@@ -367,8 +405,8 @@ function buildLeftPanel() {
         _state.groups.forEach(g => list.appendChild(buildGroupListItem(g)));
     }
 
-    panel.appendChild(list);
-    return panel;
+    leftContent.appendChild(list);
+    return leftCard;
 }
 
 function buildGroupListItem(group) {
@@ -379,6 +417,7 @@ function buildGroupListItem(group) {
     item.style.cssText = `
         padding: 9px 10px;
         border-radius: 7px;
+        margin: 1px 4px;
         background: ${isSelected ? hexToRgba(T.green, 0.10) : 'transparent'};
         cursor: pointer;
         transition: background 0.1s ease;
@@ -396,9 +435,9 @@ function buildGroupListItem(group) {
     name.textContent = group.name || group.group_id;
     name.style.cssText = `
         font-family: ${T.fb};
-        font-size: ${T.fsB4};
-        font-weight: ${T.fwBold};
-        color: ${isDriver ? T.gold : (isSelected ? T.green : T.text)};
+        font-size: 11px;
+        font-weight: 600;
+        color: ${isSelected ? T.green : (isDriver ? T.gold : T.moon)};
         margin-bottom: 2px;
     `;
     item.appendChild(name);
@@ -407,18 +446,30 @@ function buildGroupListItem(group) {
     const min = group.min_selections ?? 0;
     const modCount = (group.modifiers || []).length;
     const wireType = min >= 1 ? 'Mandatory' : 'Optional';
-    const optGroupName = optionGroupName(group.default_option_group_id) || '—';
-    const metaText = isDriver
-        ? `${modCount} modifiers · Drives pricing`
-        : `${modCount} modifiers · ${wireType} · ${optGroupName}`;
-    meta.textContent = metaText;
+    const ogName = optionGroupName(group.default_option_group_id);
+
+    const metaParts = [`${modCount} modifiers · ${wireType}`];
+    if (ogName) metaParts.push(ogName);
+
     meta.style.cssText = `
         font-family: ${T.fb};
         font-size: 9px;
-        color: ${isDriver ? T.gold : T.moonDk};
+        color: ${T.moonDk};
         letter-spacing: 0.04em;
         line-height: 1.4;
+        margin-top: 1px;
     `;
+
+    if (isDriver) {
+        meta.appendChild(document.createTextNode(metaParts.join(' · ') + ' · '));
+        const pricingSpan = document.createElement('span');
+        pricingSpan.textContent = 'Drives pricing';
+        pricingSpan.style.color = T.gold;
+        meta.appendChild(pricingSpan);
+    } else {
+        meta.textContent = metaParts.join(' · ');
+    }
+
     item.appendChild(meta);
 
     item.addEventListener('click', () => {
@@ -500,49 +551,37 @@ function buildAddGroupForm() {
 }
 
 /* ============================================
-   RIGHT PANEL — group detail
+   RIGHT PANEL — placeholder
 ============================================ */
 
 function buildRightPanel() {
-    const panel = document.createElement('div');
-    panel.style.cssText = `
-        flex: 1 1 auto;
-        background: ${T.bg};
-        display: flex; flex-direction: column;
-        min-width: 0;
+    const rightCard = buildStaticCard({ accent: T.elec });
+    rightCard.className = 'kindpos-scrollbar-hide';
+    rightCard.style.flex = '1';
+    rightCard.style.padding = '0';
+    rightCard.style.overflowY = 'auto';
+    rightCard.style.position = 'sticky';
+    rightCard.style.top = '0';
+    rightCard.style.alignSelf = 'flex-start';
+    rightCard.style.maxHeight = '100%';
+    rightCard.style.scrollbarWidth = 'none';
+    rightCard.style.msOverflowStyle = 'none';
+
+    const placeholder = document.createElement('div');
+    placeholder.textContent = 'Select a modifier group';
+    placeholder.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        font-family: ${T.fb};
+        font-size: 11px;
+        color: ${T.moon};
+        text-align: center;
     `;
+    rightCard.appendChild(placeholder);
 
-    const group = currentGroup();
-    if (!group) {
-        const empty = document.createElement('div');
-        empty.textContent = 'Select a group on the left or create a new one to begin';
-        empty.style.cssText = `
-            flex: 1;
-            display: flex; align-items: center; justify-content: center;
-            font-family: ${T.fb};
-            font-size: ${T.fsB3};
-            color: ${T.moon};
-            padding: 40px;
-            text-align: center;
-        `;
-        panel.appendChild(empty);
-        return panel;
-    }
-
-    panel.appendChild(buildTopBar(group));
-    panel.appendChild(buildChipsRow(group));
-
-    const scrollArea = document.createElement('div');
-    scrollArea.style.cssText = `
-        flex: 1; min-height: 0;
-        padding: 16px 20px 24px;
-        overflow-y: auto;
-    `;
-    const modifier = currentModifier(group);
-    if (modifier) scrollArea.appendChild(buildModifierDetail(group, modifier));
-    panel.appendChild(scrollArea);
-
-    return panel;
+    return rightCard;
 }
 
 function buildTopBar(group) {
@@ -1308,8 +1347,12 @@ export function buildModifierGroupsScene(container) {
     _state.wrapper.style.cssText = `
         display: flex;
         height: 100%;
-        min-height: 100%;
+        overflow: hidden;
+        gap: 14px;
+        padding: 14px;
         background: ${T.bg};
+        box-sizing: border-box;
+        align-items: stretch;
     `;
     container.appendChild(_state.wrapper);
 
