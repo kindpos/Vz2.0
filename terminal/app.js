@@ -143,8 +143,12 @@ async function boot() {
       if (now - _backLastTap < 300) {
         _backLastTap = 0;
         var sess = getSession();
-        var landingScene = (sess && sess.roles && sess.roles[0] === 'manager')
-          ? 'manager-landing' : 'server-landing';
+        var role0 = sess && sess.roles && sess.roles[0];
+        var isManager = typeof role0 === 'string'
+          ? role0 === 'manager'
+          : !!(role0 && (role0.permission_level === 'manager' ||
+               (role0.permissions && role0.permissions.manage_staff)));
+        var landingScene = isManager ? 'manager-landing' : 'server-landing';
         SceneManager.mountWorking(landingScene, sess ? {
           emp: { id: sess.employee_id, name: sess.name },
         } : {});
@@ -176,7 +180,9 @@ async function boot() {
         var firstName = sess.name.split(' ')[0];
         greetingEl.textContent = greetingFor(d.getHours()) + ', ' + firstName + '!';
         greetingEl.style.display = '';
-        roleText.textContent = (sess.roles && sess.roles[0] ? sess.roles[0].toUpperCase() : '');
+        var role = sess.roles && sess.roles[0];
+        var roleName = typeof role === 'string' ? role : (role && (role.name || role.role_id)) || '';
+        roleText.textContent = roleName ? roleName.toUpperCase() : '';
         roleEl.style.display = roleText.textContent ? 'flex' : 'none';
       } else {
         greetingEl.style.display = 'none';
