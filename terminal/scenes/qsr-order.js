@@ -76,7 +76,7 @@ var CONTENT_H  = T.appH - T.headerH;    // 548 — below header
 // TODO: replace with GET /api/v1/menu/categories once menus are populated
 var MOCK_MENU = [
   {
-    key: 'BURGERS', label: 'Burgers', color: '#fb923c',
+    key: 'BURGERS', label: 'Burgers', color: T.modExtra,
     items: [
       { itemKey: 'burger-classic',   name: 'Classic Burger',   price: 12.50, popularity: 1 },
       { itemKey: 'burger-cheese',    name: 'Cheeseburger',     price: 13.50, popularity: 2 },
@@ -87,7 +87,7 @@ var MOCK_MENU = [
     ],
   },
   {
-    key: 'SIDES', label: 'Sides', color: '#facc15',
+    key: 'SIDES', label: 'Sides', color: T.modLite,
     items: [
       { itemKey: 'fries-sm',   name: 'Fries (Sm)',    price: 3.50, popularity: 1 },
       { itemKey: 'fries-lg',   name: 'Fries (Lg)',    price: 4.50, popularity: 2 },
@@ -96,7 +96,7 @@ var MOCK_MENU = [
     ],
   },
   {
-    key: 'DRINKS', label: 'Drinks', color: '#e879f9',
+    key: 'DRINKS', label: 'Drinks', color: T.modOnSide,
     items: [
       { itemKey: 'soda-sm',  name: 'Soda (Sm)',    price: 2.00, popularity: 1 },
       { itemKey: 'soda-lg',  name: 'Soda (Lg)',    price: 2.75, popularity: 2 },
@@ -816,7 +816,7 @@ function buildFavoritesStrip(categories) {
   var favLabel = document.createElement('span');
   favLabel.style.cssText = [
     'position:absolute;',
-    'top:2px;left:' + T.scenePad + 'px;',
+    'top:2px;left:' + T.scenePad + 'px;', /* audit: magic offset, revisit with layout anchor */
     'font-family:' + T.fb + ';',
     'font-size:' + FS_LABEL + ';',
     'color:' + T.green + ';',
