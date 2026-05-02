@@ -551,7 +551,7 @@ function buildAddGroupForm() {
 }
 
 /* ============================================
-   RIGHT PANEL — placeholder
+   RIGHT PANEL
 ============================================ */
 
 function buildRightPanel() {
@@ -567,156 +567,303 @@ function buildRightPanel() {
     rightCard.style.scrollbarWidth = 'none';
     rightCard.style.msOverflowStyle = 'none';
 
-    const placeholder = document.createElement('div');
-    placeholder.textContent = 'Select a modifier group';
-    placeholder.style.cssText = `
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 40px;
-        font-family: ${T.fb};
-        font-size: 11px;
-        color: ${T.moon};
-        text-align: center;
-    `;
-    rightCard.appendChild(placeholder);
+    const group = currentGroup();
+    if (!group) {
+        const placeholder = document.createElement('div');
+        placeholder.textContent = 'Select a modifier group';
+        placeholder.style.cssText = `
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            font-family: ${T.fb};
+            font-size: 11px;
+            color: ${T.moon};
+            text-align: center;
+        `;
+        rightCard.appendChild(placeholder);
+        return rightCard;
+    }
+
+    rightCard.appendChild(buildGroupHeaderBar(group));
+    rightCard.appendChild(buildModifierChipsRow(group));
+
+    const modifier = currentModifier(group);
+    if (modifier) {
+        const detailPlaceholder = document.createElement('div');
+        detailPlaceholder.textContent = `↳ Editing: ${modifier.name}`;
+        detailPlaceholder.style.cssText = `
+            padding: 16px 20px;
+            font-family: ${T.fb};
+            font-size: 11px;
+            color: ${T.moon};
+        `;
+        rightCard.appendChild(detailPlaceholder);
+    }
 
     return rightCard;
 }
 
-function buildTopBar(group) {
+function buildGroupHeaderBar(group) {
     const bar = document.createElement('div');
     bar.style.cssText = `
-        display: flex; align-items: center; gap: 14px;
-        padding: 12px 18px;
-        border-bottom: 1px solid ${hexToRgba(T.border, 0.5)};
-        flex-wrap: wrap;
+        background: ${T.card};
+        border-bottom: 1px solid ${hexToRgba(T.border, 0.4)};
     `;
 
-    const name = document.createElement('div');
-    name.textContent = group.name || group.group_id;
-    name.style.cssText = `
+    // Row 1: name + controls
+    const row1 = document.createElement('div');
+    row1.style.cssText = `
+        display: flex;
+        align-items: center;
+        padding: 14px 20px 0;
+    `;
+
+    const nameEl = document.createElement('div');
+    nameEl.textContent = group.name || group.group_id;
+    nameEl.style.cssText = `
         font-family: ${T.fh};
-        font-size: 17px;
-        font-weight: ${T.fwBold};
+        font-size: 16px;
+        font-weight: 700;
         color: ${T.text};
-        flex: 1; min-width: 140px;
+        flex: 1;
+        min-width: 0;
     `;
-    bar.appendChild(name);
+    row1.appendChild(nameEl);
 
-    // Drives pricing toggle
-    const driveLabel = document.createElement('div');
-    driveLabel.textContent = 'Drives Pricing';
-    driveLabel.style.cssText = `
+    const controls = document.createElement('div');
+    controls.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+    `;
+
+    // Drives Pricing compact toggle
+    const toggleWrap = document.createElement('div');
+    toggleWrap.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+
+    const toggleLabel = document.createElement('div');
+    toggleLabel.textContent = 'Drives Pricing';
+    toggleLabel.style.cssText = `
         font-family: ${T.fb};
-        font-size: ${T.fsB4};
-        font-weight: ${T.fwBold};
-        color: ${group.drives_pricing ? T.gold : T.moon};
-        letter-spacing: 0.04em;
+        font-size: 8px;
+        font-weight: 700;
+        color: ${T.moon};
+        letter-spacing: 2px;
+        text-transform: uppercase;
     `;
-    bar.appendChild(driveLabel);
+    toggleWrap.appendChild(toggleLabel);
 
-    const driveToggle = buildToggle(!!group.drives_pricing, async (next) => {
+    let driveState = !!group.drives_pricing;
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+
+    function applyToggleState() {
+        toggleBtn.style.cssText = `
+            width: 34px;
+            height: 18px;
+            border-radius: 9px;
+            background: ${driveState ? T.greenWarm : T.moonDk};
+            border: none;
+            position: relative;
+            cursor: pointer;
+            outline: none;
+            transition: background 0.15s ease;
+            flex-shrink: 0;
+        `;
+        toggleBtn.replaceChildren();
+        const knob = document.createElement('span');
+        knob.style.cssText = `
+            position: absolute;
+            top: 3px;
+            left: ${driveState ? '19px' : '3px'};
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: ${T.well};
+            transition: left 0.15s ease;
+        `;
+        toggleBtn.appendChild(knob);
+    }
+    applyToggleState();
+
+    toggleBtn.addEventListener('click', async () => {
+        driveState = !driveState;
+        applyToggleState();
         try {
             await apiPatch(`/api/v1/modifier-groups/${encodeURIComponent(group.group_id)}`, {
-                drives_pricing: next,
+                drives_pricing: driveState,
             });
             await refreshAll();
         } catch (e) {
-            driveToggle.setValue(!next);
+            driveState = !driveState;
+            applyToggleState();
             showToast('Drives pricing endpoint not available', 'error');
         }
     });
-    bar.appendChild(driveToggle);
 
-    // Default option group selector
-    const optGrpWrap = document.createElement('div');
-    optGrpWrap.style.cssText = 'display: flex; align-items: center; gap: 6px;';
-    const optGrpLabel = document.createElement('span');
-    optGrpLabel.textContent = 'Option Group';
-    optGrpLabel.style.cssText = `
+    toggleWrap.appendChild(toggleBtn);
+    controls.appendChild(toggleWrap);
+
+    // Default Option Group select
+    const selectWrap = document.createElement('div');
+    selectWrap.style.cssText = 'display: flex; flex-direction: column; gap: 3px;';
+
+    const selectLabel = document.createElement('div');
+    selectLabel.textContent = 'Default Options';
+    selectLabel.style.cssText = `
         font-family: ${T.fb};
-        font-size: 10px;
-        font-weight: ${T.fwBold};
+        font-size: 8px;
+        font-weight: 700;
         color: ${T.moon};
-        letter-spacing: 0.1em;
+        letter-spacing: 2px;
         text-transform: uppercase;
     `;
-    optGrpWrap.appendChild(optGrpLabel);
+    selectWrap.appendChild(selectLabel);
 
-    const opts = [{ value: '', label: '— None —' }].concat(
-        _state.optionGroups.map(og => ({ value: og.option_group_id, label: og.name }))
-    );
-    const selector = buildSelectMock(group.default_option_group_id || '', async (val) => {
+    const sel = document.createElement('select');
+    sel.style.cssText = `
+        appearance: none;
+        -webkit-appearance: none;
+        background: ${T.well};
+        border: 1px solid ${T.border};
+        border-radius: 6px;
+        color: ${T.elec};
+        font-family: ${T.fb};
+        font-size: 10px;
+        padding: 5px 10px;
+        cursor: pointer;
+        outline: none;
+    `;
+
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '— None —';
+    sel.appendChild(noneOpt);
+
+    _state.optionGroups.forEach(og => {
+        const opt = document.createElement('option');
+        opt.value = og.option_group_id;
+        opt.textContent = og.name;
+        if (og.option_group_id === group.default_option_group_id) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    if (!group.default_option_group_id) sel.value = '';
+
+    sel.addEventListener('change', async () => {
         try {
             await apiPost(`/api/v1/modifier-groups/${encodeURIComponent(group.group_id)}/option-group`, {
-                option_group_id: val || null,
+                option_group_id: sel.value || null,
             });
             await refreshAll();
         } catch (e) {
             showToast('Failed to set option group', 'error');
         }
-    }, opts);
-    optGrpWrap.appendChild(selector);
-    bar.appendChild(optGrpWrap);
+    });
 
-    // Min/Max badge
+    selectWrap.appendChild(sel);
+    controls.appendChild(selectWrap);
+
+    // Edit Group ghost button
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.textContent = 'Edit Group';
+    editBtn.style.cssText = `
+        background: transparent;
+        border: 1px solid ${T.border};
+        color: ${T.moon};
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        height: 28px;
+        border-radius: 8px;
+        padding: 0 14px;
+        cursor: pointer;
+        outline: none;
+        white-space: nowrap;
+    `;
+    editBtn.addEventListener('click', () => showToast('Group edit coming soon', 'ok'));
+    controls.appendChild(editBtn);
+
+    row1.appendChild(controls);
+    bar.appendChild(row1);
+
+    // Row 2: badges
+    const row2 = document.createElement('div');
+    row2.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 20px;
+    `;
+
     const min = group.min_selections ?? 0;
     const max = group.max_selections ?? 1;
-    const selText = max === 1
-        ? (min === 0 ? 'Pick 0–1' : 'Pick 1')
-        : (min === max ? `Pick ${min}` : `Pick ${min}–${max}`);
-    bar.appendChild(buildMoonBadge(selText));
+    const typeText = min >= 1
+        ? `Mandatory · 1–${max}`
+        : `Optional · 0–${max}`;
 
-    bar.appendChild(buildPillButton('Edit Group', 'ghost', () => {
-        showToast('Group edit coming soon', 'ok');
-    }, { small: true }));
+    const badgeStyle = `
+        font-family: ${T.fb};
+        font-size: 8px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        padding: 2px 8px;
+        border-radius: 5px;
+    `;
 
+    const typeBadge = document.createElement('span');
+    typeBadge.textContent = typeText;
+    typeBadge.style.cssText = badgeStyle + `
+        background: ${hexToRgba(T.moon, 0.18)};
+        color: ${T.moon};
+    `;
+    row2.appendChild(typeBadge);
+
+    if (group.drives_pricing) {
+        const driverBadge = document.createElement('span');
+        driverBadge.textContent = 'Drives Pricing';
+        driverBadge.style.cssText = badgeStyle + `
+            background: ${hexToRgba(T.gold, 0.16)};
+            color: ${T.gold};
+        `;
+        row2.appendChild(driverBadge);
+    }
+
+    bar.appendChild(row2);
     return bar;
 }
 
-function buildChipsRow(group) {
+function buildModifierChipsRow(group) {
     const strip = document.createElement('div');
     strip.style.cssText = `
         background: ${T.bg};
-        padding: 12px 18px 14px;
-        border-bottom: 1px solid ${hexToRgba(T.border, 0.5)};
+        padding: 10px 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
     `;
 
     const label = document.createElement('div');
     label.textContent = 'Modifiers in group — click to edit';
     label.style.cssText = `
         font-family: ${T.fb};
-        font-size: 10px;
-        font-weight: ${T.fwBold};
-        color: ${T.moon};
-        letter-spacing: 0.1em;
+        font-size: 8px;
+        font-weight: 700;
+        color: ${T.moonDk};
+        letter-spacing: 2px;
         text-transform: uppercase;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
     `;
     strip.appendChild(label);
 
     const chipRow = document.createElement('div');
-    chipRow.style.cssText = `
-        display: flex; flex-wrap: wrap; gap: 10px;
-    `;
+    chipRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
 
     const modifiers = group.modifiers || [];
-    if (modifiers.length === 0) {
-        const empty = document.createElement('div');
-        empty.textContent = 'No modifiers in this group yet';
-        empty.style.cssText = `
-            font-family: ${T.fb};
-            font-size: ${T.fsB4};
-            color: ${T.moon};
-            font-style: italic;
-            padding: 8px 0;
-        `;
-        chipRow.appendChild(empty);
-    } else {
-        modifiers.forEach(m => chipRow.appendChild(buildModifierChip(m)));
-    }
-
+    modifiers.forEach(m => chipRow.appendChild(buildModifierChip(m)));
     chipRow.appendChild(buildAddModifierChip(group));
     strip.appendChild(chipRow);
     return strip;
@@ -726,50 +873,54 @@ function buildModifierChip(modifier) {
     const isSelected = _state.selectedModifierId === modifier.modifier_id;
     const price = Number(modifier.price || 0);
     const accent = price > 0 ? T.gold : T.green;
+    const baseShadow = `0 4px 0 ${darkenHex(T.card, 0.35)}, inset 0 1px 0 rgba(255,255,255,0.08)`;
 
     const chip = document.createElement('div');
     chip.style.cssText = `
         position: relative;
         background: ${T.card};
-        border-radius: ${T.chamferBtn}px;
-        padding: 8px 14px 8px 18px;
+        border-radius: 10px;
+        padding: 6px 10px 6px 13px;
         cursor: pointer;
-        display: flex; align-items: center; gap: 10px;
-        box-shadow: ${isSelected
-            ? `0 4px 0 ${darkenHex(T.card, 0.35)}, inset 0 1px 0 rgba(255,255,255,0.08), 0 0 0 2px ${T.gold}`
-            : `0 4px 0 ${darkenHex(T.card, 0.35)}, inset 0 1px 0 rgba(255,255,255,0.08)`};
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: ${isSelected ? baseShadow + `, 0 0 0 1px ${T.elec}` : baseShadow};
         transition: transform 0.07s ease;
     `;
 
-    const bar = document.createElement('div');
-    bar.style.cssText = `
+    const accentBar = document.createElement('div');
+    accentBar.style.cssText = `
         position: absolute;
-        left: 0; top: 6px; bottom: 6px;
+        left: 0;
+        top: 6px;
+        bottom: 6px;
         width: 3px;
         border-radius: 0 2px 2px 0;
         background: ${accent};
-        box-shadow: 0 0 8px ${hexToRgba(accent, 0.5)};
+        box-shadow: 0 0 6px ${hexToRgba(accent, 0.5)};
     `;
-    chip.appendChild(bar);
+    chip.appendChild(accentBar);
 
-    const name = document.createElement('span');
-    name.textContent = modifier.name;
-    name.style.cssText = `
+    const nameEl = document.createElement('span');
+    nameEl.textContent = modifier.name;
+    nameEl.style.cssText = `
         font-family: ${T.fb};
-        font-size: ${T.fsB3};
-        font-weight: ${T.fwBold};
-        color: ${T.text};
+        font-size: 10px;
+        font-weight: 600;
+        color: ${price > 0 ? T.gold : T.green};
     `;
-    chip.appendChild(name);
+    chip.appendChild(nameEl);
 
     if (price > 0) {
         const priceEl = document.createElement('span');
-        priceEl.textContent = fmtPrice(price);
+        priceEl.textContent = ' ' + fmtPrice(price);
         priceEl.style.cssText = `
             font-family: ${T.fb};
-            font-size: ${T.fsB4};
-            font-weight: ${T.fwBold};
+            font-size: 10px;
+            font-weight: 600;
             color: ${T.gold};
+            opacity: 0.6;
         `;
         chip.appendChild(priceEl);
     }
@@ -790,28 +941,26 @@ function buildAddModifierChip(group) {
     chip.type = 'button';
     chip.textContent = '+ Add Modifier';
     chip.style.cssText = `
-        background: transparent;
-        border: 1px dashed ${T.elec};
-        color: ${T.elec};
-        border-radius: ${T.chamferBtn}px;
-        padding: 8px 14px;
+        position: relative;
+        background: ${T.card};
+        border: none;
+        border-radius: 10px;
+        padding: 6px 10px 6px 13px;
         font-family: ${T.fb};
-        font-size: ${T.fsB4};
-        font-weight: ${T.fwBold};
-        letter-spacing: 0.04em;
+        font-size: 10px;
+        font-weight: 600;
+        color: ${T.elec};
         cursor: pointer;
         outline: none;
-        transition: background 0.15s ease;
+        opacity: 0.4;
+        box-shadow: 0 4px 0 ${darkenHex(T.card, 0.35)}, inset 0 1px 0 rgba(255,255,255,0.08);
+        transition: opacity 0.15s ease, transform 0.07s ease;
     `;
-    chip.addEventListener('mouseenter', () => {
-        chip.style.background = hexToRgba(T.elec, 0.08);
-    });
-    chip.addEventListener('mouseleave', () => {
-        chip.style.background = 'transparent';
-    });
-    chip.addEventListener('click', () => {
-        showToast('Modifier add coming soon', 'ok');
-    });
+    chip.addEventListener('mouseenter', () => { chip.style.opacity = '0.7'; });
+    chip.addEventListener('mouseleave', () => { chip.style.opacity = '0.4'; });
+    chip.addEventListener('mousedown',  () => { chip.style.transform = 'translateY(2px)'; });
+    chip.addEventListener('mouseup',    () => { chip.style.transform = 'translateY(0)'; });
+    chip.addEventListener('click', () => showToast('Modifier add coming soon', 'ok'));
     return chip;
 }
 
