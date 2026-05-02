@@ -1039,7 +1039,7 @@ defineScene({
             background: (key === '✓') ? T.greenWarm : hexToRgba(T.text, 0.08),
             color: (key === '✓') ? T.moonText : T.text,
             fontFamily: T.fb, fontSize: T.fsB2, fontWeight: T.fwBold,
-            cursor: 'pointer',
+            cursor: 'pointer', pointerEvents: 'auto', touchAction: 'manipulation',
           });
           btn.textContent = String(key);
           btn.addEventListener('pointerup', function(e) {

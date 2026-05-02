@@ -1178,7 +1178,7 @@ function buildBottomBar(state, params) {
 //  Header
 // ─────────────────────────────────────────────────────
 
-function buildHeader(state, params) {
+function buildHeader(state, params) { /* audit: SM2 remnant — migrate to buildPillButton/buildFloatButton */
   var hdr = document.createElement('div');
   hdr.style.height         = '52px';   // matches Mode A
   hdr.style.flexShrink     = '0';
@@ -1443,7 +1443,7 @@ defineScene({
     root.style.overflow      = 'hidden';
     container.appendChild(root);
 
-    root.appendChild(buildHeader(state, params));
+    root.appendChild(buildHeader(state, params)); /* audit: SM2 remnant — migrate to buildPillButton/buildFloatButton */
 
     // ── Hint bar ─────────────────────────────────────
     var hintBar = document.createElement('div');
