@@ -1,6 +1,6 @@
 from decimal import Decimal
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
+from pydantic import BaseModel, Field, field_validator
+from typing import Dict, List, Literal, Optional
 
 class StoreInfo(BaseModel):
     restaurant_name: str = "KINDpos"
@@ -72,7 +72,20 @@ class Role(BaseModel):
     tipout_eligible: bool
     can_receive_tips: bool
     can_be_tipped_out_to: bool
-    service_types: List[str] = Field(default_factory=lambda: ['full_service'])
+    service_types: List[Literal['full_service', 'qsr']] = Field(
+        default_factory=lambda: ['full_service']
+    )
+
+    @field_validator('service_types')
+    @classmethod
+    def validate_service_types(cls, v):
+        if not v:
+            raise ValueError('service_types must contain at least one value')
+        seen = []
+        for item in v:
+            if item not in seen:
+                seen.append(item)
+        return seen
 
 class Employee(BaseModel):
     employee_id: str

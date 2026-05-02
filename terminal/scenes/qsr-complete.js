@@ -73,6 +73,9 @@ var state = {
   tipAmount:          0,
   cardLast4:          '',
   cardBrand:          '',
+  isSplit:            false,
+  payments:           [],
+  splitCount:         0,
   resetTimer:         null,
   resetSecsLeft:      RESET_SECS,
 };
@@ -250,7 +253,25 @@ function buildReceiptPanel() {
   }
 
   // Payment line
-  if (state.paymentMethod === 'cash') {
+  if (state.paymentMethod === 'split') {
+    (state.payments || []).forEach(function(p, i) {
+      var methodLabel = p.method === 'card'
+        ? ('Card' + (p.cardLast4 ? ' ····' + p.cardLast4 : ''))
+        : 'Cash';
+      addRow(
+        'Payment ' + (i + 1) + '  ' + methodLabel,
+        fmt(p.amount),
+        T.moon,
+        p.method === 'card' ? T.elec : T.greenWarm
+      );
+    });
+    if (state.tipAmount > 0) {
+      addRow('Tips', fmt(state.tipAmount), T.moon, T.elec);
+    }
+    if (state.changeDue > 0) {
+      addRow('Total change', fmt(state.changeDue), T.moon, T.greenWarm);
+    }
+  } else if (state.paymentMethod === 'cash') {
     addRow('Tendered cash', fmt(state.tendered), T.moon, T.greenWarm);
     if (state.changeDue > 0) {
       addRow('Change', fmt(state.changeDue), T.text, T.greenWarm, true);
@@ -401,6 +422,20 @@ function buildCompletionSurface() {
     }
 
     el.appendChild(cardInfo);
+  }
+
+  // Split confirmation block
+  if (state.isSplit) {
+    var splitInfo = document.createElement('div');
+    splitInfo.style.cssText = 'text-align:center;';
+    var splitLine = document.createElement('div');
+    splitLine.style.cssText = [
+      'font-family:' + T.fb + ';font-size:' + FS_BODY + ';',
+      'color:' + T.greenWarm + ';font-weight:' + T.fwBold + ';',
+    ].join('');
+    splitLine.textContent = state.splitCount + '-way split complete';
+    splitInfo.appendChild(splitLine);
+    el.appendChild(splitInfo);
   }
 
   // Kitchen ticket status row
@@ -637,6 +672,9 @@ defineScene('qsr-complete', {
     state.tipAmount          = p.tipAmount          || 0;
     state.cardLast4          = p.cardLast4          || '';
     state.cardBrand          = p.cardBrand          || '';
+    state.isSplit            = p.isSplit            || false;
+    state.payments           = p.payments           || [];
+    state.splitCount         = p.splitCount         || 0;
     state.resetSecsLeft      = RESET_SECS;
     state.resetTimer         = null;
 

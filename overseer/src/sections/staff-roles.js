@@ -300,6 +300,9 @@ function openRoleModal(role) {
         tipout_eligible:        isEdit ? (role.tipout_eligible !== false)        : true,
         can_receive_tips:       isEdit ? (role.can_receive_tips !== false)       : true,
         can_be_tipped_out_to:   isEdit ? (role.can_be_tipped_out_to !== false)   : true,
+        service_types: isEdit
+            ? (role.service_types || ['full_service'])
+            : ['full_service'],
     };
 
     const content = document.createElement('div');
@@ -459,6 +462,41 @@ function openRoleModal(role) {
     tippedWrap.appendChild(tippedGroup.wrap);
     detailsPanel.appendChild(tippedWrap);
 
+    const serviceTypesWrap = document.createElement('div');
+    serviceTypesWrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+    const serviceTypesLbl = document.createElement('div');
+    serviceTypesLbl.style.cssText = `
+        font-family: ${T.font.body};
+        font-size: ${T.fs.base}px;
+        color: ${T.textMuted};
+        font-weight: 600;
+        letter-spacing: 0.3px;
+    `;
+    serviceTypesLbl.textContent = 'Service types';
+    const serviceTypesSub = document.createElement('div');
+    serviceTypesSub.style.cssText = `
+        font-family: ${T.font.body};
+        font-size: ${T.fs.sm}px;
+        color: ${T.textMuted};
+        opacity: 0.65;
+    `;
+    serviceTypesSub.textContent = 'Which order flows this role can work';
+    const serviceTypesGroup = chipGroup({
+        options: [
+            { id: 'full_service', label: 'Full Service' },
+            { id: 'qsr', label: 'QSR' },
+        ],
+        selected: draft.service_types,
+        mode: 'multi',
+        onChange: (selected) => {
+            draft.service_types = selected.length > 0 ? selected : draft.service_types;
+        },
+    });
+    serviceTypesWrap.appendChild(serviceTypesLbl);
+    serviceTypesWrap.appendChild(serviceTypesSub);
+    serviceTypesWrap.appendChild(serviceTypesGroup.wrap);
+    detailsPanel.appendChild(serviceTypesWrap);
+
     tabPanels.details = detailsPanel;
     content.appendChild(detailsPanel);
 
@@ -564,6 +602,7 @@ function openRoleModal(role) {
                         tipout_eligible: draft.tipout_eligible,
                         can_receive_tips: draft.can_receive_tips,
                         can_be_tipped_out_to: draft.can_be_tipped_out_to,
+                        service_types: draft.service_types,
                     },
                 }]);
                 showToast(isEdit ? 'Role updated' : 'Role created', 'success');
