@@ -473,7 +473,7 @@ export function convertParsedDataToEvents(data) {
                 item_id:               itemId,
                 name:                  item.name,
                 price:                 item.price,
-                category:              catId || item.category || '',
+                category_id:           catId || item.category || '',
                 description:           item.description || '',
                 included_modifier_ids: includedIds,
                 mandatory_group_ids:   mandatoryIds,
