@@ -117,6 +117,7 @@ var state = {
   ticketName:       '',      // Optional customer name
   orderId:          null,    // Set after first item POST
   taxRate:          0.08875, // Default — overridden by store config
+  cashDiscountRate: 0.0,    // float — from StoreConfigBundle.cash_discount_rate
 };
 
 // ─────────────────────────────────────────────────
@@ -1353,7 +1354,8 @@ function buildOrderPayload() {
     subtotal:     t.subtotal,
     tax:          t.tax,
     total:        t.total,
-    taxRate:      state.taxRate,
+    taxRate:         state.taxRate,
+    cashDiscountRate: state.cashDiscountRate,
   };
 }
 
@@ -1480,6 +1482,7 @@ function fetchStoreConfig() {
       if (cfg && typeof cfg.tax_rate === 'number') {
         state.taxRate = cfg.tax_rate;
       }
+      state.cashDiscountRate = parseFloat(cfg && cfg.cash_discount_rate || 0);
     })
     .catch(function() {
       // keep default state.taxRate
