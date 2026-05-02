@@ -1553,8 +1553,8 @@ function fetchMenuData() {
           return {
             itemKey:    it.item_id,
             name:       it.name,
-            price:      it.price || 0,
-            popularity: it.display_order || 0,
+            price:      parseFloat(it.price || 0),
+            popularity: parseFloat(it.display_order || 0),
           };
         });
         return {
