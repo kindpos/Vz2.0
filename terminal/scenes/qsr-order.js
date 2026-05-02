@@ -1203,31 +1203,82 @@ function repaintCategoryColumn() {
 //  STATE MANAGEMENT
 // ─────────────────────────────────────────────────
 
-function addItem(itemKey) {
-  var found = null;
-  for (var ci = 0; ci < state.categories.length; ci++) {
-    var cat = state.categories[ci];
-    for (var ii = 0; ii < (cat.items || []).length; ii++) {
-      var it = cat.items[ii];
-      var key = it.itemKey || it.key || it.name;
-      if (key === itemKey) { found = it; break; }
-    }
-    if (found) break;
+function handleItemTap(itemKey) {
+  var activeCat = state.categories.find(function(c) {
+    return c.key === state.activeCategory;
+  });
+  var item = activeCat && activeCat.items.find(function(i) {
+    return (i.itemKey || i.key || i.name) === itemKey;
+  });
+  if (!item) return;
+
+  var hasModifiers = item.modifier_groups && item.modifier_groups.length > 0;
+
+  if (hasModifiers) {
+    SceneManager.openTransactional('item-detail', {
+      item: {
+        name:            item.name,
+        unitPrice:       parseFloat(item.price || 0),
+        itemKey:         item.itemKey || item.key || item.name,
+        modifier_groups: item.modifier_groups,
+        mods:            [],
+      },
+      onConfirm: function(configuredItem) {
+        addItem(configuredItem);
+      },
+    });
+  } else {
+    addItem({
+      name:    item.name,
+      price:   parseFloat(item.price || 0),
+      itemKey: item.itemKey || item.key || item.name,
+      mods:    [],
+    });
   }
-  if (!found) return;
+}
+
+function addItem(itemKeyOrObj) {
+  var found = null;
+  var configuredItem = null;
+
+  // If itemKeyOrObj is a string, look it up; otherwise use it directly as configured item
+  if (typeof itemKeyOrObj === 'string') {
+    var itemKey = itemKeyOrObj;
+    for (var ci = 0; ci < state.categories.length; ci++) {
+      var cat = state.categories[ci];
+      for (var ii = 0; ii < (cat.items || []).length; ii++) {
+        var it = cat.items[ii];
+        var key = it.itemKey || it.key || it.name;
+        if (key === itemKey) { found = it; break; }
+      }
+      if (found) break;
+    }
+    if (!found) return;
+
+    configuredItem = {
+      name:    found.name,
+      price:   found.price || 0,
+      itemKey: itemKey,
+      mods:    [],
+    };
+  } else {
+    configuredItem = itemKeyOrObj;
+  }
 
   // Merge with last item if same key and no mods
   var last = state.items[state.items.length - 1];
-  var lastKey = last ? (last.itemKey || last.name) : null;
-  if (last && lastKey === itemKey && (!last.mods || last.mods.length === 0)) {
+  var lastItemKey = last ? (last.itemKey || last.name) : null;
+  var thisKey = configuredItem.itemKey || configuredItem.name;
+
+  if (last && lastItemKey === thisKey && (!last.mods || last.mods.length === 0) && (!configuredItem.mods || configuredItem.mods.length === 0)) {
     last.qty += 1;
   } else {
     state.items.push({
-      name:    found.name,
-      price:   found.price || 0,
-      mods:    [],
+      name:    configuredItem.name,
+      price:   configuredItem.price || 0,
+      mods:    configuredItem.mods || [],
       qty:     1,
-      itemKey: itemKey,
+      itemKey: thisKey,
     });
   }
   renderRecap();
@@ -1275,13 +1326,13 @@ function switchCategory(key) {
 function _onGridTap(e) {
   var tile = e.target.closest('[data-item-key]');
   if (!tile) return;
-  addItem(tile.dataset.itemKey);
+  handleItemTap(tile.dataset.itemKey);
 }
 
 function _onFavTap(e) {
   var tile = e.target.closest('[data-item-key]');
   if (!tile) return;
-  addItem(tile.dataset.itemKey);
+  handleItemTap(tile.dataset.itemKey);
 }
 
 function _onCatTap(e) {

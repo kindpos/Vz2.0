@@ -5,12 +5,18 @@ import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
 import { buildPillButton, hexToRgba } from '../theme-manager.js';
 
+var state = {};
+
 defineScene({
   name: 'item-detail',
 
   render: function(container, params) {
     var inst = params.item;
     if (!inst) return;
+
+    state.item = inst;
+    state.onConfirm = (params && params.onConfirm) || null;
+    state.selectedMods = [];
 
     container.style.cssText = 'position:absolute;inset:0;background:' + T.bg + ';display:flex;flex-direction:column;padding:8px 20px 20px;';
 
@@ -38,15 +44,15 @@ defineScene({
       inst.mods.forEach(function(m) {
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid ' + T.border + ';';
-        
+
         var name = document.createElement('span');
         name.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
         name.textContent = (m.prefix ? m.prefix + ' ' : '') + m.name;
-        
+
         var val = document.createElement('span');
         val.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.green + ';' + ";font-weight:" + T.fwBold + ";";
         val.textContent = m.price > 0 ? '+$' + m.price.toFixed(2) : '';
-        
+
         row.appendChild(name);
         row.appendChild(val);
         modScroll.appendChild(row);
@@ -70,11 +76,34 @@ defineScene({
     var closeBtn = buildPillButton({
       label: 'DONE',
       variant: 'goGreen',
-      onClick: function() { SceneManager.closeTransactional('item-detail'); }
+      onClick: function() {
+        if (state.onConfirm) {
+          var configured = buildConfiguredItem();
+          SceneManager.closeTransactional('item-detail');
+          state.onConfirm(configured);
+        } else {
+          SceneManager.closeTransactional('item-detail');
+        }
+      }
     });
     footer.appendChild(closeBtn);
     container.appendChild(footer);
 
-    return function cleanup() {};
+    return function cleanup() {
+      state = {};
+    };
   }
 });
+
+function buildConfiguredItem() {
+  return {
+    name:    state.item.name,
+    price:   state.item.unitPrice,
+    itemKey: state.item.itemKey || state.item.key || '',
+    mods:    collectSelectedMods(),
+  };
+}
+
+function collectSelectedMods() {
+  return state.selectedMods || [];
+}
