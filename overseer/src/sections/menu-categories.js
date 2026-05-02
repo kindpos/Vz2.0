@@ -6,6 +6,8 @@ import {
     buildItemPricingExtensions,
     buildCategoryPricingExtensions,
 } from './pricing-extensions.js';
+import { T } from '../../../common/tokens.js';
+import { hexToRgba, darkenHex, buildStaticCard } from '../../../common/theme.js';
 
 /* ============================================
    KINDpos Overseer — Menu Categories & Items (Nostalgia, v2 merged)
@@ -45,6 +47,11 @@ const DAY_LABELS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 let bodyMount = null;
 let footerMount = null;
 let currentSaveBar = null;
+let selectedItemId = null;
+let sizesData = [];
+let optionGroupsData = [];
+let dirtyFields = {};
+let dirtyForItemId = null;
 
 let menuData = {
     categories: [],
@@ -268,7 +275,10 @@ async function fetchMenuData() {
 
 /* ─── HELPERS ────────────────────────────────────────────────── */
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
-function formatPrice(p) { return '$' + Number(p || 0).toFixed(2); }
+function formatPrice(p) {
+    const n = parseFloat(p);
+    return isNaN(n) ? '$0.00' : '$' + n.toFixed(2);
+}
 
 function getPendingCount() {
     return pendingChanges.new.length
@@ -368,16 +378,32 @@ export function registerMenuCategories(sceneManager) {
         async onEnter(container) {
             injectAnimations();
             menuData       = await fetchMenuData();
+            const [sz, og] = await Promise.all([
+                fetch('/api/v1/sizes').then(r => r.ok ? r.json() : []).catch(() => []),
+                fetch('/api/v1/option-groups').then(r => r.ok ? r.json() : []).catch(() => []),
+            ]);
+            sizesData        = Array.isArray(sz) ? sz : [];
+            optionGroupsData = Array.isArray(og) ? og : [];
             const _draft   = loadDraft();
             pendingChanges = _draft || { new: [], edited: [], deleted: [], itemOrderByCategory: {}, categoryOrder: null, availability: {} };
             displayState   = { searchTerm: '', filterCategory: 'all', editMode: false, availabilityFilter: 'all', alphaSort: false, reorderMode: false };
 
-            const { body, saveBar } = buildScenePage(container, {
-                title:     'Menu Items & Categories',
+            const { wrapper, body, saveBar } = buildScenePage(container, {
+                title:     'Items',
                 subtitle:  `${menuData.categories.length} categories · ${menuData.items.length} items`,
                 saveLabel: 'Publish Changes',
                 onSave:    handlePublish,
             });
+            if (wrapper) {
+                wrapper.style.maxWidth = 'none';
+                wrapper.style.paddingLeft = '0';
+                wrapper.style.paddingRight = '0';
+            }
+            if (saveBar && saveBar.el) {
+                saveBar.el.style.background = T.elec;
+                saveBar.el.style.color = T.well;
+                saveBar.el.style.boxShadow = `0 3px 0 ${T.elecDk}`;
+            }
             bodyMount      = body;
             currentSaveBar = saveBar;
             renderScene();
@@ -385,6 +411,11 @@ export function registerMenuCategories(sceneManager) {
         onExit(container) {
             modalStack.splice(0).forEach(o => o.parentNode && o.remove());
             bodyMount = footerMount = currentSaveBar = null;
+            selectedItemId = null;
+            sizesData = [];
+            optionGroupsData = [];
+            dirtyFields = {};
+            dirtyForItemId = null;
             menuData       = { categories: [], items: [], allGroups: [], allModifiers: [], atomsById: {}, groupsById: {}, legacyHiddenGroups: {} };
             pendingChanges = { new: [], edited: [], deleted: [], itemOrderByCategory: {}, categoryOrder: null, availability: {} };
             displayState   = { searchTerm: '', filterCategory: 'all', editMode: false, availabilityFilter: 'all', alphaSort: false, reorderMode: false };
@@ -407,8 +438,57 @@ function renderScene() {
         ? cats
         : cats.filter(c => c.id === displayState.filterCategory);
 
+    if (selectedItemId && !items.some(i => i.id === selectedItemId)) {
+        selectedItemId = null;
+    }
+    if (dirtyForItemId !== selectedItemId) {
+        dirtyForItemId = selectedItemId;
+        dirtyFields = {};
+    }
+
+    const split = document.createElement('div');
+    split.style.cssText = `
+        display: flex;
+        height: 100%;
+        overflow: hidden;
+        gap: 14px;
+        padding: 14px;
+        background: ${T.bg};
+        box-sizing: border-box;
+        align-items: stretch;
+    `;
+
+    const leftCard = buildStaticCard({ accent: T.green });
+    leftCard.style.width = '680px';
+    leftCard.style.flexShrink = '0';
+    leftCard.style.alignSelf = 'stretch';
+    leftCard.style.minHeight = '0';
+    leftCard.style.padding = '0';
+    leftCard.style.overflow = 'hidden';
+    leftCard.style.display = 'flex';
+    leftCard.style.flexDirection = 'column';
+    split.appendChild(leftCard);
+
+    const leftContent = document.createElement('div');
+    leftContent.className = 'kindpos-scrollbar-hide';
+    leftContent.style.cssText = 'flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; padding: 12px 12px 12px 20px; box-sizing: border-box;';
+    leftCard.appendChild(leftContent);
+
+    const rightCard = buildStaticCard({ accent: T.elec });
+    rightCard.className = 'kindpos-scrollbar-hide';
+    rightCard.style.flex = '1';
+    rightCard.style.padding = '0';
+    rightCard.style.overflowY = 'auto';
+    rightCard.style.position = 'sticky';
+    rightCard.style.top = '0';
+    rightCard.style.alignSelf = 'flex-start';
+    rightCard.style.maxHeight = '100%';
+    rightCard.style.scrollbarWidth = 'none';
+    rightCard.style.msOverflowStyle = 'none';
+    split.appendChild(rightCard);
+
     visibleCats.forEach((cat, idx) => {
-        bodyMount.appendChild(buildCategorySection(cat, items, idx === 0, idx === visibleCats.length - 1));
+        leftContent.appendChild(buildCategorySection(cat, items, idx === 0, idx === visibleCats.length - 1));
     });
 
     if (visibleCats.length === 0) {
@@ -419,17 +499,921 @@ function renderScene() {
             letter-spacing: 1.5px; text-transform: uppercase;
         `;
         empty.textContent = 'No categories yet — tap + Category to create one';
-        bodyMount.appendChild(empty);
+        leftContent.appendChild(empty);
     }
 
+    rightCard.appendChild(buildItemDetailPanel(items));
+
+    bodyMount.appendChild(split);
     bodyMount.appendChild(buildPendingFooter());
     updateSaveBar();
+}
+
+/* ─── ITEM DETAIL PANEL (right column) ───────────────────────── */
+function buildItemDetailPanel(items) {
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        background: ${T.card};
+        border-radius: 8px;
+        overflow: hidden;
+    `;
+
+    const item = selectedItemId ? items.find(i => i.id === selectedItemId) : null;
+    if (!item) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 11px;
+            color: ${T.moon};
+            padding: 18px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            text-align: center;
+        `;
+        empty.textContent = 'Select an item';
+        panel.appendChild(empty);
+        return panel;
+    }
+
+    panel.appendChild(buildItemDetailHeader(item));
+    panel.appendChild(buildItemDetailBody(item));
+
+    return panel;
+}
+
+function buildItemDetailBody(item) {
+    const body = document.createElement('div');
+    body.style.cssText = 'padding: 18px 22px; overflow-y: auto;';
+
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 14px;';
+    body.appendChild(grid);
+
+    const leftCol = document.createElement('div');
+    leftCol.style.cssText = 'display: flex; flex-direction: column; gap: 12px; min-width: 0;';
+    grid.appendChild(leftCol);
+
+    const rightCol = document.createElement('div');
+    rightCol.style.cssText = 'display: flex; flex-direction: column; gap: 12px; min-width: 0;';
+    grid.appendChild(rightCol);
+
+    const driverGroup = (item.mandatory_group_ids || [])
+        .map(gid => menuData.groupsById[gid])
+        .find(g => g && g.drives_pricing) || null;
+
+    buildBasePriceSection(leftCol, item, driverGroup);
+    if (driverGroup) buildItemBaseBySizeSection(leftCol, item, driverGroup);
+    buildMandatoryGroupsSection(leftCol, item);
+
+    buildIncludedModifiersSection(rightCol, item);
+    buildOptionGroupOverridesSection(rightCol, item);
+    buildSizePriceOverridesSection(rightCol, item);
+
+    body.appendChild(buildDangerZone(item));
+
+    return body;
+}
+
+function buildDangerZone(item) {
+    const wrap = document.createElement('div');
+
+    const divider = document.createElement('div');
+    divider.style.cssText = 'height: 1px; background: rgba(255,255,255,0.06); margin: 14px 0;';
+    wrap.appendChild(divider);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display: flex; align-items: center;';
+
+    const isInactive = item.active === false;
+    const eightySixBtn = document.createElement('button');
+    eightySixBtn.type = 'button';
+    eightySixBtn.textContent = isInactive ? 'RESTORE THIS ITEM' : '86 THIS ITEM';
+    eightySixBtn.style.cssText = `
+        background: ${T.verm};
+        box-shadow: 0 3px 0 ${T.vermDk};
+        border: none;
+        color: ${T.text};
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        height: 28px;
+        border-radius: 8px;
+        padding: 0 14px;
+        cursor: pointer;
+        white-space: nowrap;
+    `;
+    eightySixBtn.addEventListener('click', () => {
+        const verb = isInactive ? 'Restore' : '86';
+        if (!confirm(`${verb} "${item.name}"?`)) return;
+        toggleItemAvailability(item.id, isInactive);
+    });
+    row.appendChild(eightySixBtn);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = 'DELETE ITEM';
+    deleteBtn.style.cssText = `
+        background: transparent;
+        border: 1px solid ${T.verm};
+        color: ${T.verm};
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        height: 28px;
+        border-radius: 8px;
+        padding: 0 14px;
+        margin-left: 10px;
+        cursor: pointer;
+        white-space: nowrap;
+    `;
+    deleteBtn.addEventListener('click', () => {
+        if (!confirm(`Delete "${item.name}"? This cannot be undone.`)) return;
+        handleDelete(item.id);
+    });
+    row.appendChild(deleteBtn);
+
+    wrap.appendChild(row);
+    return wrap;
+}
+
+function buildBodyLabel(text, color) {
+    const el = document.createElement('div');
+    el.textContent = text;
+    el.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        color: ${color};
+        letter-spacing: 2.5px;
+        text-transform: uppercase;
+    `;
+    return el;
+}
+
+function buildShadowChip(label, accent) {
+    const chip = document.createElement('div');
+    chip.style.cssText = `
+        position: relative;
+        display: inline-block;
+        background: ${T.card};
+        color: ${accent};
+        font-family: ${T.fb};
+        font-size: 10px;
+        font-weight: 600;
+        padding: 6px 10px 6px 13px;
+        border-radius: 10px;
+        box-shadow: 0 4px 0 ${darkenHex(T.card, 0.35)}, inset 0 1px 0 rgba(255,255,255,0.08);
+    `;
+
+    const bar = document.createElement('div');
+    bar.style.cssText = `
+        position: absolute;
+        left: 0;
+        top: 6px;
+        bottom: 6px;
+        width: 3px;
+        border-radius: 0 2px 2px 0;
+        background: ${accent};
+        box-shadow: 0 0 8px ${hexToRgba(accent, 0.5)};
+    `;
+    chip.appendChild(bar);
+
+    const text = document.createElement('span');
+    text.textContent = label;
+    chip.appendChild(text);
+
+    return chip;
+}
+
+function buildAddLink(text, onClick) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = text;
+    btn.style.cssText = `
+        background: transparent;
+        border: none;
+        color: ${T.elec};
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        cursor: pointer;
+        padding: 0;
+        margin-top: 6px;
+        align-self: flex-start;
+        text-align: left;
+    `;
+    if (onClick) btn.addEventListener('click', onClick);
+    return btn;
+}
+
+function apiPutItem(url, body) {
+    return fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: body == null ? undefined : JSON.stringify(body),
+    }).then(r => {
+        if (!r.ok) throw new Error(`PUT ${url} → ${r.status}`);
+        return r.json();
+    });
+}
+
+function buildBasePriceSection(parent, item, driverGroup) {
+    parent.appendChild(buildBodyLabel('BASE PRICE', T.gold));
+
+    if (driverGroup) {
+        const banner = document.createElement('div');
+        banner.textContent = `$0.00 flat — ${driverGroup.name} drives item pricing`;
+        banner.style.cssText = `
+            background: ${hexToRgba(T.elec, 0.07)};
+            border: 1px solid ${hexToRgba(T.elec, 0.18)};
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-family: ${T.fb};
+            font-size: 9px;
+            color: ${T.elec};
+            line-height: 1.5;
+        `;
+        parent.appendChild(banner);
+        return;
+    }
+
+    const card = buildStaticCard({ accent: T.moon });
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display: flex; align-items: center; gap: 2px;';
+
+    const dollarLabel = document.createElement('span');
+    dollarLabel.textContent = '$';
+    dollarLabel.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 13px;
+        font-weight: 700;
+        color: ${T.moon};
+    `;
+    row.appendChild(dollarLabel);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.placeholder = '0.00';
+    const seedValue = (dirtyFields.price !== undefined)
+        ? Number(dirtyFields.price)
+        : Number(item.price || 0);
+    input.value = isNaN(seedValue) ? '0.00' : seedValue.toFixed(2);
+    input.style.cssText = `
+        width: 120px;
+        box-sizing: border-box;
+        background: ${T.well};
+        border: 1px solid ${T.border};
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-family: ${T.fb};
+        font-size: 12px;
+        font-weight: 700;
+        color: ${T.gold};
+        text-align: right;
+        outline: none;
+    `;
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key.length > 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+        const isDigit = e.key >= '0' && e.key <= '9';
+        const isDecimal = e.key === '.';
+        if (!isDigit && !isDecimal) {
+            e.preventDefault();
+            return;
+        }
+        const v = input.value;
+        if (isDecimal && v.includes('.')) {
+            e.preventDefault();
+            return;
+        }
+        if (isDigit && !v.includes('.') && v.length >= 2) {
+            e.preventDefault();
+            input.value = v + '.' + e.key;
+            input.dispatchEvent(new Event('input'));
+            return;
+        }
+        if (isDigit && v.includes('.')) {
+            const cursorPos = input.selectionStart;
+            const dotIdx = v.indexOf('.');
+            const fracPart = v.slice(dotIdx + 1);
+            if (cursorPos > dotIdx && fracPart.length >= 2 && cursorPos === input.selectionEnd) {
+                e.preventDefault();
+                return;
+            }
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        const n = parseFloat(input.value);
+        input.value = isNaN(n) ? '0.00' : n.toFixed(2);
+    });
+
+    input.addEventListener('input', () => {
+        const v = parseFloat(input.value);
+        const orig = Number(item.price || 0);
+        if (isNaN(v)) {
+            delete dirtyFields.price;
+        } else if (Math.abs(v - orig) < 0.005) {
+            delete dirtyFields.price;
+        } else {
+            dirtyFields.price = v;
+        }
+    });
+    row.appendChild(input);
+
+    card.appendChild(row);
+    parent.appendChild(card);
+}
+
+function buildItemBaseBySizeSection(parent, item, driverGroup) {
+    parent.appendChild(buildBodyLabel('ITEM BASE BY SIZE', T.gold));
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = `
+        background: ${T.well};
+        border-radius: 8px;
+        overflow: hidden;
+    `;
+
+    const head = document.createElement('div');
+    head.style.cssText = `
+        display: flex;
+        align-items: center;
+        background: ${hexToRgba(T.green, 0.05)};
+        padding: 7px 14px;
+    `;
+    const sizeHead = document.createElement('div');
+    sizeHead.textContent = 'SIZE';
+    sizeHead.style.cssText = `
+        flex: 1;
+        font-family: ${T.fb};
+        font-size: 8px;
+        font-weight: 700;
+        color: ${T.moon};
+        letter-spacing: 2px;
+        text-transform: uppercase;
+    `;
+    head.appendChild(sizeHead);
+    const priceHead = document.createElement('div');
+    priceHead.textContent = 'BASE PRICE';
+    priceHead.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 8px;
+        font-weight: 700;
+        color: ${T.moon};
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        text-align: right;
+    `;
+    head.appendChild(priceHead);
+    wrap.appendChild(head);
+
+    const seedMap = (item.price_by_size && item.price_by_size[driverGroup.id]) || {};
+    const liveValues = {};
+    sizesData.forEach(s => { liveValues[s.name] = Number(seedMap[s.name] || 0); });
+
+    if (sizesData.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = 'No sizes configured';
+        empty.style.cssText = `
+            padding: 12px 14px;
+            font-family: ${T.fb};
+            font-size: 10px;
+            color: ${T.moon};
+            font-style: italic;
+        `;
+        wrap.appendChild(empty);
+    } else {
+        sizesData.forEach((size, idx) => {
+            const isActive = idx === 0;
+            const row = document.createElement('div');
+            row.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 9px 14px;
+                border-bottom: 1px solid rgba(255,255,255,0.04);
+                background: ${isActive ? hexToRgba(T.gold, 0.04) : 'transparent'};
+            `;
+
+            const nameEl = document.createElement('div');
+            nameEl.textContent = size.name;
+            nameEl.style.cssText = `
+                flex: 1;
+                font-family: ${T.fb};
+                font-size: 10px;
+                font-weight: 600;
+                color: ${isActive ? T.gold : T.moon};
+                letter-spacing: 1px;
+                text-transform: uppercase;
+            `;
+            row.appendChild(nameEl);
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.step = '0.01';
+            input.value = Number(liveValues[size.name] || 0).toFixed(2);
+            input.style.cssText = `
+                width: 78px;
+                box-sizing: border-box;
+                background: ${T.well};
+                border: 1px solid ${T.border};
+                border-radius: 5px;
+                padding: 4px 8px;
+                font-family: ${T.fb};
+                font-size: 12px;
+                font-weight: 700;
+                color: ${T.gold};
+                text-align: right;
+                outline: none;
+            `;
+            input.addEventListener('blur', async () => {
+                const next = parseFloat(input.value) || 0;
+                const prev = Number(liveValues[size.name] || 0);
+                if (next.toFixed(2) === prev.toFixed(2)) return;
+                const newMap = { ...liveValues, [size.name]: next };
+                try {
+                    await apiPutItem(
+                        `/api/v1/menu-items/${encodeURIComponent(item.id || item.item_id)}/size-pricing/${encodeURIComponent(driverGroup.id)}`,
+                        { size_prices: newMap },
+                    );
+                    liveValues[size.name] = next;
+                } catch (e) {
+                    input.value = prev.toFixed(2);
+                    showToast('Failed to save size pricing', 'error');
+                }
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            });
+            row.appendChild(input);
+
+            wrap.appendChild(row);
+        });
+    }
+
+    parent.appendChild(wrap);
+}
+
+function buildMandatoryGroupsSection(parent, item) {
+    parent.appendChild(buildBodyLabel('MANDATORY GROUPS', T.green));
+
+    const card = buildStaticCard({ accent: T.gold });
+
+    const chipRow = document.createElement('div');
+    chipRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
+
+    const ids = item.mandatory_group_ids || [];
+    if (ids.length === 0) {
+        const empty = document.createElement('span');
+        empty.textContent = 'No mandatory groups';
+        empty.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 10px;
+            color: ${T.moon};
+            font-style: italic;
+        `;
+        chipRow.appendChild(empty);
+    } else {
+        ids.forEach(gid => {
+            const grp = menuData.groupsById[gid];
+            const label = grp ? grp.name : gid;
+            chipRow.appendChild(buildShadowChip(label, T.gold));
+        });
+    }
+    card.appendChild(chipRow);
+
+    const inner = document.createElement('div');
+    inner.style.cssText = 'display: flex; flex-direction: column;';
+    inner.appendChild(buildAddLink('+ Add Mandatory Group'));
+    card.appendChild(inner);
+
+    parent.appendChild(card);
+}
+
+function buildIncludedModifiersSection(parent, item) {
+    parent.appendChild(buildBodyLabel('INCLUDED MODIFIERS', T.green));
+
+    const card = buildStaticCard({ accent: T.elec });
+
+    const note = document.createElement('div');
+    note.textContent = 'Base $0.00 waived — option adjustments still apply';
+    note.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 9px;
+        color: ${T.moon};
+        margin-bottom: 8px;
+    `;
+    card.appendChild(note);
+
+    const chipRow = document.createElement('div');
+    chipRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
+
+    const ids = item.included_modifier_ids || [];
+    if (ids.length === 0) {
+        const empty = document.createElement('span');
+        empty.textContent = 'No included modifiers';
+        empty.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 10px;
+            color: ${T.moon};
+            font-style: italic;
+        `;
+        chipRow.appendChild(empty);
+    } else {
+        ids.forEach(mid => {
+            const m = menuData.atomsById[mid];
+            const label = m ? m.name : mid;
+            chipRow.appendChild(buildShadowChip(label, T.elec));
+        });
+    }
+    card.appendChild(chipRow);
+
+    const inner = document.createElement('div');
+    inner.style.cssText = 'display: flex; flex-direction: column;';
+    inner.appendChild(buildAddLink('+ Add Included Modifier'));
+    card.appendChild(inner);
+
+    parent.appendChild(card);
+}
+
+function buildOptionGroupOverridesSection(parent, item) {
+    parent.appendChild(buildBodyLabel('OPTION GROUP OVERRIDES', T.moon));
+
+    const card = buildStaticCard({ accent: T.moon });
+
+    const overrides = item.option_group_overrides || {};
+    const entries = Object.entries(overrides);
+
+    if (entries.length === 0) {
+        const note = document.createElement('div');
+        note.textContent = 'No overrides — using group defaults';
+        note.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 10px;
+            color: ${T.moon};
+        `;
+        card.appendChild(note);
+    } else {
+        const list = document.createElement('div');
+        list.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+
+        entries.forEach(([gid, ogId]) => {
+            const grp = menuData.groupsById[gid];
+            const groupName = grp ? grp.name : gid;
+
+            const row = document.createElement('div');
+            row.style.cssText = `
+                background: ${T.card};
+                border-radius: 8px;
+                padding: 9px 12px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            `;
+
+            const name = document.createElement('div');
+            name.textContent = groupName;
+            name.style.cssText = `
+                flex: 1;
+                font-family: ${T.fb};
+                font-size: 11px;
+                font-weight: 600;
+                color: ${T.text};
+            `;
+            row.appendChild(name);
+
+            const sel = document.createElement('select');
+            sel.style.cssText = `
+                background: ${T.well};
+                border: 1px solid ${T.border};
+                border-radius: 6px;
+                padding: 5px 10px;
+                font-family: ${T.fb};
+                font-size: 10px;
+                color: ${T.elec};
+                outline: none;
+                cursor: pointer;
+                color-scheme: dark;
+            `;
+            const noneOpt = document.createElement('option');
+            noneOpt.value = '';
+            noneOpt.textContent = '— None —';
+            sel.appendChild(noneOpt);
+            optionGroupsData.forEach(og => {
+                const opt = document.createElement('option');
+                opt.value = og.option_group_id;
+                opt.textContent = og.name;
+                if (og.option_group_id === ogId) opt.selected = true;
+                sel.appendChild(opt);
+            });
+            sel.addEventListener('change', async () => {
+                try {
+                    await apiPutItem(
+                        `/api/v1/menu-items/${encodeURIComponent(item.id || item.item_id)}/option-group-override/${encodeURIComponent(gid)}`,
+                        { option_group_id: sel.value || null },
+                    );
+                } catch (e) {
+                    showToast('Failed to save override', 'error');
+                }
+            });
+            row.appendChild(sel);
+
+            list.appendChild(row);
+        });
+
+        card.appendChild(list);
+    }
+
+    const inner = document.createElement('div');
+    inner.style.cssText = 'display: flex; flex-direction: column;';
+    inner.appendChild(buildAddLink('+ Add Override'));
+    card.appendChild(inner);
+
+    parent.appendChild(card);
+}
+
+function buildSizePriceOverridesSection(parent, item) {
+    parent.appendChild(buildBodyLabel('SIZE PRICE OVERRIDES', T.moon));
+
+    const card = buildStaticCard({ accent: T.moon });
+
+    const overrides = item.size_price_overrides || {};
+    const rows = [];
+    Object.entries(overrides).forEach(([gid, sizeMap]) => {
+        Object.entries(sizeMap || {}).forEach(([sizeName, price]) => {
+            rows.push({ gid, sizeName, price });
+        });
+    });
+
+    if (rows.length === 0) {
+        const note = document.createElement('div');
+        note.textContent = 'No size price overrides';
+        note.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 10px;
+            color: ${T.moon};
+        `;
+        card.appendChild(note);
+    } else {
+        const list = document.createElement('div');
+        list.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+
+        rows.forEach(({ gid, sizeName, price }) => {
+            const grp = menuData.groupsById[gid];
+            const groupName = grp ? grp.name : gid;
+            const baseSize = sizesData.find(s => s.name === sizeName);
+            const defaultPrice = baseSize ? Number(baseSize.price || 0) : 0;
+
+            const block = document.createElement('div');
+            block.style.cssText = `
+                background: ${T.card};
+                border-radius: 7px;
+                padding: 10px 12px;
+            `;
+
+            const labelEl = document.createElement('div');
+            labelEl.textContent = `${groupName} · ${sizeName}`;
+            labelEl.style.cssText = `
+                font-family: ${T.fb};
+                font-size: 9px;
+                font-weight: 700;
+                color: ${T.moon};
+                letter-spacing: 1px;
+                text-transform: uppercase;
+                margin-bottom: 6px;
+            `;
+            block.appendChild(labelEl);
+
+            const ctrlRow = document.createElement('div');
+            ctrlRow.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+
+            const ovrLabel = document.createElement('span');
+            ovrLabel.textContent = 'Override:';
+            ovrLabel.style.cssText = `
+                font-family: ${T.fb};
+                font-size: 10px;
+                color: ${T.moon};
+            `;
+            ctrlRow.appendChild(ovrLabel);
+
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.step = '0.01';
+            input.value = Number(price || 0).toFixed(2);
+            input.style.cssText = `
+                width: 70px;
+                box-sizing: border-box;
+                background: ${T.well};
+                border: 1px solid ${T.border};
+                border-radius: 5px;
+                padding: 4px 8px;
+                font-family: ${T.fb};
+                font-size: 12px;
+                font-weight: 700;
+                color: ${T.gold};
+                text-align: right;
+                outline: none;
+            `;
+            input.addEventListener('blur', async () => {
+                const next = parseFloat(input.value) || 0;
+                if (next.toFixed(2) === Number(price).toFixed(2)) return;
+                try {
+                    await apiPutItem(
+                        `/api/v1/menu-items/${encodeURIComponent(item.id || item.item_id)}/size-price-override/${encodeURIComponent(gid)}/${encodeURIComponent(sizeName)}`,
+                        { price: next },
+                    );
+                } catch (e) {
+                    input.value = Number(price || 0).toFixed(2);
+                    showToast('Failed to save override', 'error');
+                }
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            });
+            ctrlRow.appendChild(input);
+
+            const defaultEl = document.createElement('span');
+            defaultEl.textContent = `(default $${defaultPrice.toFixed(2)})`;
+            defaultEl.style.cssText = `
+                font-family: ${T.fb};
+                font-size: 9px;
+                color: ${T.moonDk};
+            `;
+            ctrlRow.appendChild(defaultEl);
+
+            block.appendChild(ctrlRow);
+            list.appendChild(block);
+        });
+
+        card.appendChild(list);
+    }
+
+    const inner = document.createElement('div');
+    inner.style.cssText = 'display: flex; flex-direction: column;';
+    inner.appendChild(buildAddLink('+ Add Size Price Override'));
+    card.appendChild(inner);
+
+    parent.appendChild(card);
+}
+
+function buildItemDetailHeader(item) {
+    const header = document.createElement('div');
+    header.style.cssText = `
+        height: 80px;
+        background: ${T.card};
+        border-bottom: 1px solid ${T.border};
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-sizing: border-box;
+    `;
+
+    const row1 = document.createElement('div');
+    row1.style.cssText = 'display: flex; align-items: center; gap: 12px;';
+
+    const name = document.createElement('div');
+    name.textContent = item.name || '';
+    name.style.cssText = `
+        flex: 1; min-width: 0;
+        font-family: ${T.fh};
+        font-size: 16px;
+        font-weight: 700;
+        color: ${T.text};
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    `;
+    row1.appendChild(name);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; align-items: center; justify-content: flex-end; gap: 8px;';
+
+    const deactBtn = document.createElement('button');
+    deactBtn.type = 'button';
+    deactBtn.textContent = item.active === false ? 'REACTIVATE' : 'DEACTIVATE';
+    deactBtn.style.cssText = `
+        background: transparent;
+        border: 1px solid ${T.border};
+        color: ${T.moon};
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        height: 28px;
+        border-radius: 8px;
+        padding: 0 14px;
+        cursor: pointer;
+        white-space: nowrap;
+    `;
+    deactBtn.addEventListener('click', () => {
+        toggleItemAvailability(item.id, !item.active);
+    });
+    btnRow.appendChild(deactBtn);
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.textContent = 'SAVE CHANGES';
+    saveBtn.style.cssText = `
+        background: ${T.greenWarm};
+        box-shadow: 0 3px 0 ${T.greenWarmDk};
+        border: none;
+        color: ${T.well};
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        height: 28px;
+        border-radius: 8px;
+        padding: 0 14px;
+        cursor: pointer;
+        white-space: nowrap;
+    `;
+    saveBtn.addEventListener('click', async () => {
+        const dirty = { ...dirtyFields };
+        if (Object.keys(dirty).length === 0) {
+            showToast('No changes to save');
+            return;
+        }
+        try {
+            const r = await fetch(
+                `/api/v1/menu-items/${encodeURIComponent(item.id)}`,
+                {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dirty),
+                },
+            );
+            if (!r.ok) throw new Error(`PATCH failed: ${r.status}`);
+            const idx = menuData.items.findIndex(i => i.id === item.id);
+            if (idx !== -1) {
+                menuData.items[idx] = { ...menuData.items[idx], ...dirty };
+            }
+            dirtyFields = {};
+            showToast('Item saved');
+            renderScene();
+        } catch (e) {
+            showToast('Failed to save item', 'error');
+        }
+    });
+    btnRow.appendChild(saveBtn);
+
+    row1.appendChild(btnRow);
+    header.appendChild(row1);
+
+    const row2 = document.createElement('div');
+    row2.style.cssText = 'display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
+
+    const cat = menuData.categories.find(c => c.id === item.category_id);
+    const catLabel = (cat && cat.name) || item.category_id || 'UNCATEGORISED';
+    row2.appendChild(buildItemBadge(catLabel, hexToRgba(T.lavender, 0.16), T.lavender));
+
+    const skuLabel = (item.id || '').replace(/^temp_item_/, '') || 'NEW';
+    row2.appendChild(buildItemBadge(skuLabel, hexToRgba(T.moon, 0.18), T.moon));
+
+    if (item.active !== false) {
+        row2.appendChild(buildItemBadge('ACTIVE', hexToRgba(T.green, 0.15), T.green));
+    } else {
+        row2.appendChild(buildItemBadge('INACTIVE', hexToRgba(T.verm, 0.15), T.verm));
+    }
+
+    header.appendChild(row2);
+    return header;
+}
+
+function buildItemBadge(label, bg, color) {
+    const b = document.createElement('span');
+    b.textContent = label;
+    b.style.cssText = `
+        background: ${bg};
+        color: ${color};
+        font-family: ${T.fb};
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        border-radius: 5px;
+        padding: 2px 8px;
+        white-space: nowrap;
+    `;
+    return b;
 }
 
 /* ─── FILTER ROW ─────────────────────────────────────────────── */
 function buildFilterRow() {
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; align-items: center;';
+    wrap.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 0 12px;';
 
     const search = document.createElement('input');
     search.type = 'text';
@@ -537,8 +1521,14 @@ function buildFilterRow() {
     }
 
     const addCatBtn = buildPillButton('+ Category', 'primary', () => openAddCategoryModal());
-    addCatBtn.style.padding = '8px 16px';
-    addCatBtn.style.fontSize = '11px';
+    addCatBtn.style.background = T.elec;
+    addCatBtn.style.color = T.well;
+    addCatBtn.style.boxShadow = `0 3px 0 ${T.elecDk}`;
+    addCatBtn.style.fontFamily = T.fb;
+    addCatBtn.style.fontSize = '9px';
+    addCatBtn.style.height = '28px';
+    addCatBtn.style.borderRadius = '8px';
+    addCatBtn.style.padding = '0 14px';
     wrap.appendChild(addCatBtn);
 
     return wrap;
@@ -585,7 +1575,7 @@ function buildCategorySection(cat, allItems, isFirst, isLast) {
     const header = document.createElement('div');
     header.style.cssText = `
         display: flex; align-items: center; gap: 10px;
-        padding: 10px 0 10px 12px;
+        padding: 10px 12px 10px 12px;
         border-left: 4px solid ${cat.color};
         border-bottom: 2px solid ${cat.color};
         flex-wrap: wrap;
@@ -684,11 +1674,23 @@ function buildCategorySection(cat, allItems, isFirst, isLast) {
         header.appendChild(dnBtn);
     } else {
         const editCatBtn = buildPillButton('Edit', 'ghost', () => openEditCategoryModal(cat));
-        editCatBtn.style.padding = '5px 12px'; editCatBtn.style.fontSize = '10px';
+        editCatBtn.style.fontFamily = T.fb;
+        editCatBtn.style.fontSize = '9px';
+        editCatBtn.style.height = '28px';
+        editCatBtn.style.borderRadius = '8px';
+        editCatBtn.style.padding = '0 14px';
+        editCatBtn.style.color = T.moon;
+        editCatBtn.style.border = `1px solid ${T.border}`;
         header.appendChild(editCatBtn);
 
         const addItemBtn = buildPillButton('+ Add', 'ghost', () => openAddItemModal(cat.id));
-        addItemBtn.style.padding = '5px 12px'; addItemBtn.style.fontSize = '10px';
+        addItemBtn.style.fontFamily = T.fb;
+        addItemBtn.style.fontSize = '9px';
+        addItemBtn.style.height = '28px';
+        addItemBtn.style.borderRadius = '8px';
+        addItemBtn.style.padding = '0 14px';
+        addItemBtn.style.color = T.moon;
+        addItemBtn.style.border = `1px solid ${T.border}`;
         header.appendChild(addItemBtn);
     }
 
@@ -712,7 +1714,7 @@ function buildCategorySection(cat, allItems, isFirst, isLast) {
     const grid = document.createElement('div');
     grid.style.cssText = `
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
         gap: 10px;
         margin-bottom: 8px;
         position: relative;
@@ -832,11 +1834,14 @@ function buildItemTile(item, cat, gridEl) {
         tile.appendChild(b);
     }
 
-    // Tap: open item modal (browse + edit-without-reorder)
+    // Tap: select item → renders right-panel detail view
     if (!displayState.reorderMode) {
         tile.addEventListener('click', (e) => {
             if (e.target.closest('._tile-dot')) return; // clicks on the dot handled separately
-            if (!isDeleted) openEditItemModal(item.id);
+            if (!isDeleted) {
+                selectedItemId = item.id;
+                renderScene();
+            }
         });
     }
 
@@ -1070,8 +2075,13 @@ function buildPendingFooter() {
             renderScene();
         }
     });
-    discard.style.padding = '8px 18px';
-    discard.style.fontSize = '11px';
+    discard.style.fontFamily = T.fb;
+    discard.style.fontSize = '9px';
+    discard.style.height = '28px';
+    discard.style.borderRadius = '8px';
+    discard.style.padding = '0 14px';
+    discard.style.color = T.moon;
+    discard.style.border = `1px solid ${T.border}`;
     inner.appendChild(discard);
 
     return wrap;
@@ -2565,6 +3575,7 @@ function injectAnimations() {
             from { opacity: 0; transform: translateY(-4px); }
             to   { opacity: 1; transform: none; }
         }
+        .kindpos-scrollbar-hide::-webkit-scrollbar { display: none; }
     `;
     document.head.appendChild(s);
 }

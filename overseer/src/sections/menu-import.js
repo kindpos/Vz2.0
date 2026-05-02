@@ -1267,7 +1267,7 @@ function buildPreview(wrapper) {
                     font-size: 14px;
                     font-family: ui-monospace, monospace;
                 `;
-                const priceStr = '$' + item.price.toFixed(2);
+                const priceStr = '$' + Number(item.price).toFixed(2);
 
                 const name = document.createElement('span');
                 name.style.cssText = `color: ${C.text}; flex: 1;`;
@@ -1309,7 +1309,7 @@ function buildPreview(wrapper) {
         discounts.forEach(disc => {
             const amountStr = disc.type === 'Percentage'
                 ? `${disc.amount}% off`
-                : `$${disc.amount.toFixed(2)} off`;
+                : `$${Number(disc.amount).toFixed(2)} off`;
 
             const row = document.createElement('div');
             row.style.cssText = `
