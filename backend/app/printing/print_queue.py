@@ -4,10 +4,19 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger("kindpos.printing.queue")
+
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return str(obj)
+        return super().default(obj)
+
 
 class PrintJobQueue:
     """
@@ -81,7 +90,7 @@ class PrintJobQueue:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 job_id, order_id, template_id, printer_mac,
-                copy_type, ticket_number, json.dumps(context), 'queued',
+                copy_type, ticket_number, json.dumps(context, cls=DecimalEncoder), 'queued',
                 now
             ))
             await self._db.commit()
