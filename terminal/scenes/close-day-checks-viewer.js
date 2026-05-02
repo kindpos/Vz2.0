@@ -195,7 +195,7 @@ function fetchChecksState() {
 //  HEADER — breadcrumb + day counts
 // ─────────────────────────────────────────────────
 
-function buildHeader(data) { /* audit: SM2 remnant — migrate to buildPillButton/buildFloatButton */
+function buildHeader(data) { /* audit: SM2 remnant — COMPLEX, manual migration required */
   var wrap = document.createElement('div');
   wrap.style.cssText = [
     'flex-shrink:0;display:flex;align-items:center;gap:14px;',
@@ -802,7 +802,7 @@ defineScene({
       if (!state.data) return;
       container.innerHTML = '';
 
-      container.appendChild(buildHeader(state.data)); /* audit: SM2 remnant — migrate to buildPillButton/buildFloatButton */
+      container.appendChild(buildHeader(state.data)); /* audit: SM2 remnant — COMPLEX, manual migration required */
 
       var body = document.createElement('div');
       body.style.cssText = 'flex:1;display:flex;gap:' + T.colGapSm + 'px;min-height:0;overflow:hidden;';
