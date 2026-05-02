@@ -45,6 +45,10 @@ export const T = {
   moonDk:   '#4a5059',
   moonText: '#22252a',  // label color on moon fill
 
+  // --- Header chrome ---
+  headerBg:   '#2e3236',   // card — chrome bar background
+  headerText: '#7e8896',   // moon — chrome bar label text
+
    // ── Chart semantic colors ─────────────────────────
   lavender:   '#b48efa',   // Last week / comparison period — never use for current data
   positive:   '#4ade80',   // Positive delta indicator (up arrows, gains)
@@ -180,6 +184,11 @@ export const T = {
     'DESSERTS': '#f472b6',   // pink
     'SAUCES':   '#facc15',   // yellow
   },
+
+  // --- Modifier panel accents ---
+  modExtra:  '#fb923c',   // amber — EXTRA prefix button
+  modOnSide: '#e879f9',   // fuchsia — ON SIDE prefix button
+  modLite:   '#facc15',   // yellow — LITE prefix / required-group indicators
 
   // ── Role colors ────────────────────────────────────
   roles: {
