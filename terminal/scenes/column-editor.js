@@ -1,6 +1,7 @@
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
 import {
+  buildPillButton,
   hexToRgba,
   darkenHex,
   lightenHex,
@@ -1180,7 +1181,7 @@ function buildBottomBar(state, params) {
 
 function buildHeader(state, params) {
   var hdr = document.createElement('div');
-  hdr.style.height         = '52px';   // matches Mode A
+  hdr.style.height         = T.headerH + 'px';   // matches Mode A
   hdr.style.flexShrink     = '0';
   hdr.style.background     = T.well;
   hdr.style.borderBottom   = '2px solid ' + T.border;
@@ -1200,39 +1201,6 @@ function buildHeader(state, params) {
   checkLabel.style.flex       = '1';
   hdr.appendChild(checkLabel);
 
-  // Ghost-style header buttons — matches Mode A hdr-nav
-  function makeGhostBtn(label, handler) {
-    var btn = document.createElement('div');
-    btn.textContent         = label;
-    btn.style.height        = '34px';
-    btn.style.padding       = '0 16px';
-    btn.style.background    = T.card;
-    btn.style.border        = '1px solid ' + T.border;
-    btn.style.borderBottom  = '3px solid ' + T.moonDk;
-    btn.style.borderRadius  = '8px';
-    btn.style.color         = T.text;
-    btn.style.fontFamily    = T.fh;
-    btn.style.fontWeight    = T.fwBold;
-    btn.style.fontSize      = T.fsB4;
-    btn.style.letterSpacing = '0.08em';
-    btn.style.cursor        = 'pointer';
-    btn.style.pointerEvents = 'auto';
-    btn.style.touchAction   = 'manipulation';
-    btn.style.display       = 'flex';
-    btn.style.alignItems    = 'center';
-    btn.style.transition    = 'transform 0.07s';
-    btn.addEventListener('pointerdown', function() { btn.style.transform = 'translateY(2px)'; btn.style.borderBottomWidth = '1px'; });
-    var _up = function() { btn.style.transform = 'none'; btn.style.borderBottomWidth = '3px'; };
-    btn.addEventListener('pointerup',     _up);
-    btn.addEventListener('pointerleave',  _up);
-    btn.addEventListener('pointercancel', _up);
-    if (handler) {
-      btn.addEventListener('pointerup', handler);
-      state.listeners.push({ el: btn, event: 'pointerup', handler: handler });
-    }
-    return btn;
-  }
-
   var clearH   = function() { clearMode(state); };
   var selAllH  = function() {
     state.selectedItems = [];
@@ -1246,8 +1214,13 @@ function buildHeader(state, params) {
     renderFooterToolbar(state);
   };
 
-  hdr.appendChild(makeGhostBtn('CLEAR',      clearH));
-  hdr.appendChild(makeGhostBtn('SELECT ALL', selAllH));
+  var clearBtn = buildPillButton({ label: 'CLEAR', variant: 'ghost', shape: 'chamfer', onClick: clearH });
+  clearBtn.style.fontSize = T.fsB4;
+  hdr.appendChild(clearBtn);
+
+  var selAllBtn = buildPillButton({ label: 'SELECT ALL', variant: 'ghost', shape: 'chamfer', onClick: selAllH });
+  selAllBtn.style.fontSize = T.fsB4;
+  hdr.appendChild(selAllBtn);
 
   return hdr;
 }

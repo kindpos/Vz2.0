@@ -201,7 +201,7 @@ function buildHeader(data) {
     'flex-shrink:0;display:flex;align-items:center;gap:14px;',
     'padding:10px 18px;box-sizing:border-box;height:56px;',
     'background:' + T.card + ';border-left:4px solid ' + T.lavender + ';',
-    'border-radius:10px;',
+    'border-radius:' + T.chamferCard + 'px;',
   ].join('');
 
   // Crumb + title stack
@@ -209,12 +209,12 @@ function buildHeader(data) {
   crumbWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:1px;min-width:0;';
 
   var crumb = document.createElement('div');
-  crumb.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.4;letter-spacing:1.2px;' + ";font-weight:" + T.fwBold + ";";
+  crumb.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.4;letter-spacing:1.2px;font-weight:' + T.fwBold + ';';
   crumb.textContent = 'CLOSE DAY  /';
   crumbWrap.appendChild(crumb);
 
   var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:16px;font-weight:700;color:' + T.text + ';letter-spacing:1.5px;';
+  title.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB3 + ';font-weight:' + T.fwBold + ';color:' + T.text + ';letter-spacing:1.5px;';
   title.textContent = 'OPEN CHECKS';
   crumbWrap.appendChild(title);
 
@@ -225,12 +225,12 @@ function buildHeader(data) {
   countsWrap.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:1px;text-align:right;';
 
   var openCount = document.createElement('div');
-  openCount.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.verm + ';letter-spacing:0.5px;';
+  openCount.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:' + T.fwBold + ';color:' + T.verm + ';letter-spacing:0.5px;';
   openCount.textContent = data.openChecks.length + ' OPEN';
   countsWrap.appendChild(openCount);
 
   var totalLine = document.createElement('div');
-  totalLine.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.35;letter-spacing:0.5px;' + ";font-weight:" + T.fwBold + ";";
+  totalLine.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.35;letter-spacing:0.5px;font-weight:' + T.fwBold + ';';
   totalLine.textContent = data.closedChecks.length + ' closed  \u2022  ' + data.totalCount + ' total today';
   countsWrap.appendChild(totalLine);
 
