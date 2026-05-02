@@ -1530,24 +1530,31 @@ function buildRightSurface(categories) {
 // ─────────────────────────────────────────────────
 
 function fetchMenuData() {
-  // TODO: replace with GET /api/v1/menu/categories
   return fetchWithTimeout('/api/v1/menu', {}, 10000)
     .then(function(r) { return r.json(); })
     .then(function(menu) {
+      // Group flat items list by category_id
+      var itemsByCategory = {};
+      (menu.items || []).forEach(function(it) {
+        var cid = it.category_id;
+        if (!itemsByCategory[cid]) itemsByCategory[cid] = [];
+        itemsByCategory[cid].push(it);
+      });
+
       var cats = (menu.categories || []).slice();
       cats.sort(function(a, b) {
         return (a.display_order || 999) - (b.display_order || 999);
       });
       return cats.map(function(cat) {
         var key   = (cat.name || cat.category_id || '').toUpperCase();
-        var color = T.categoryPalette[key] || T.catColor(cat.label) || T.moon;
-        var rawItems = (menu.items_by_category || {})[cat.category_id] || [];
+        var color = T.categoryPalette[key] || T.moon;
+        var rawItems = itemsByCategory[cat.category_id] || [];
         var items = rawItems.map(function(it) {
           return {
             itemKey:    it.item_id,
             name:       it.name,
             price:      it.price || 0,
-            popularity: it.display_order || 999,
+            popularity: it.display_order || 0,
           };
         });
         return {
