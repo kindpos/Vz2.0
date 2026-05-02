@@ -351,15 +351,130 @@ var _modPanelOpen  = false;  // drives grid collapse animation
 })();
 
 // ── Batch Modifier Session ───────────────────────
+// activeSizes: {group_id: size_name} — populated when the customer picks a
+// modifier from a drives_pricing group. Reset to {} on every new item /
+// modifier-session start. Read by calculateItemPrice() to apply size-aware
+// item base + per-modifier price_by_size adjustments.
 var modifierSession = {
   active: false,
   selectedItems: [],
   activePrefix: null,
   activePlacement: null,
   appliedMods: [],
+  activeSizes: {},
   panelEl: null,
   hasPizza: false,
 };
+
+// ═══════════════════════════════════════════════════
+//  PRICING CHAIN — JS port of backend/app/core/pricing.py
+//
+//  Pure function. selections is the array of current modifier picks:
+//    [{ group_id, modifier_id, option_id?, micromods?: [] }]
+//  menuState: {
+//    modifier_groups: { id → { drives_pricing, default_option_group_id, ... } },
+//    modifiers:       { id → { name, price, price_by_size? } },
+//    options:         { id → { price_adjustment, negates_price, active? } },
+//    option_groups:   { id → { option_ids[], active? } },
+//    sizes:           { id → { name } }                    // optional
+//  }
+//  Returns: a JS number rounded to 2 decimal places (ROUND_HALF_UP).
+// ═══════════════════════════════════════════════════
+function calculateItemPrice(item, selections, menuState) {
+  item = item || {};
+  selections = selections || [];
+  menuState = menuState || {};
+  var groups   = menuState.modifier_groups || {};
+  var mods     = menuState.modifiers       || {};
+  var opts     = menuState.options         || {};
+  var optGroups = menuState.option_groups  || {};
+
+  // Step 1 — Resolve active sizes (group_id → size_name)
+  var activeSizes = {};
+  for (var i = 0; i < selections.length; i++) {
+    var sel = selections[i];
+    if (!sel || !sel.group_id || !sel.modifier_id) continue;
+    var grp = groups[sel.group_id];
+    if (grp && grp.drives_pricing) {
+      var driverMod = mods[sel.modifier_id];
+      if (driverMod) activeSizes[sel.group_id] = driverMod.name;
+    }
+  }
+
+  // Step 2 — Item base price
+  var itemBase = Number(item.price) || 0;
+  var pbsItem = item.price_by_size || {};
+  for (var gid in activeSizes) {
+    if (!Object.prototype.hasOwnProperty.call(activeSizes, gid)) continue;
+    var sizeName = activeSizes[gid];
+    var grpMap = pbsItem[gid];
+    if (grpMap && grpMap[sizeName] != null) {
+      itemBase += Number(grpMap[sizeName]) || 0;
+    }
+  }
+
+  // Step 3 — Per-modifier line prices
+  var modifierLines = [];
+  var includedSet = {};
+  (item.included_modifier_ids || []).forEach(function(id) { includedSet[id] = true; });
+
+  for (var j = 0; j < selections.length; j++) {
+    var s = selections[j];
+    if (!s || !s.group_id || !s.modifier_id) continue;
+    var g = groups[s.group_id];
+    if (g && g.drives_pricing) continue; // size groups don't add a line price
+    var mod = mods[s.modifier_id];
+    if (!mod) continue;
+
+    // Base — free if included on the item
+    var base = includedSet[s.modifier_id] ? 0 : (Number(mod.price) || 0);
+
+    // Size adjustment — item.size_price_overrides wins over mod.price_by_size
+    var spo = item.size_price_overrides || {};
+    var modPbs = mod.price_by_size || {};
+    for (var gid2 in activeSizes) {
+      if (!Object.prototype.hasOwnProperty.call(activeSizes, gid2)) continue;
+      var sName = activeSizes[gid2];
+      var ovGrp = spo[gid2];
+      var override = (ovGrp && ovGrp[sName] != null) ? ovGrp[sName] : null;
+      if (override != null) {
+        base += Number(override) || 0;
+      } else {
+        var modGrp = modPbs[gid2];
+        if (modGrp && modGrp[sName] != null) {
+          base += Number(modGrp[sName]) || 0;
+        }
+      }
+    }
+
+    // Option adjustment — item override wins over group default
+    if (s.option_id) {
+      var ogOverrides = item.option_group_overrides || {};
+      var optGroupId = ogOverrides[s.group_id];
+      if (optGroupId == null && g) optGroupId = g.default_option_group_id;
+      var optGroup = optGroupId ? optGroups[optGroupId] : null;
+      if (optGroup && optGroup.active !== false) {
+        var opt = opts[s.option_id];
+        if (opt && opt.active !== false) {
+          if (opt.negates_price) {
+            modifierLines.push(0);
+            continue;
+          }
+          base += Number(opt.price_adjustment) || 0;
+        }
+      }
+    }
+
+    modifierLines.push(base);
+  }
+
+  // Step 4 — micromods always $0.00 (already excluded above via group filter)
+
+  // Step 5 — sum and round to 2dp (ROUND_HALF_UP equivalent for positive vals)
+  var raw = itemBase;
+  for (var k = 0; k < modifierLines.length; k++) raw += modifierLines[k];
+  return Math.round(raw * 100) / 100;
+}
 
 // ── Prefix definitions ────────────────────────────
 var PREFIXES = [
@@ -394,7 +509,7 @@ defineScene({
     currentCustomerName = null;
     createOrderIdemKey = null;
     modHistory     = [];
-    modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], panelEl: null, hasPizza: false };
+    modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], activeSizes: {}, panelEl: null, hasPizza: false };
     _bottomBar     = null;
     _mainArea      = null;
     _modPanel      = null;
@@ -481,7 +596,7 @@ defineScene({
     ticket         = [];
     ticketSeq      = 0;
     modHistory     = [];
-    modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], panelEl: null, hasPizza: false };
+    modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], activeSizes: {}, panelEl: null, hasPizza: false };
     comboFlow      = null;
     currentOrderId = null;
     isSending      = false;
@@ -811,6 +926,7 @@ defineScene({
     get modifierSession()       { return modifierSession; },
     set modifierSession(v)      { modifierSession = v; },
     applyModifier:              function(mod) { return applyModifier(mod); },
+    calculateItemPrice:         function(item, selections, menuState) { return calculateItemPrice(item, selections, menuState); },
   },
 });
 
@@ -1533,6 +1649,7 @@ function openModifierSession() {
   modifierSession.activePrefix = null;
   modifierSession.activePlacement = null;
   modifierSession.appliedMods = [];
+  modifierSession.activeSizes = {};
 
   // Detect pizza items for placement
   var catIds = [];
@@ -1780,6 +1897,29 @@ function applyModifier(mod) {
     modRefs: modRefs,
     logLabel: logLabel,
   });
+
+  // Active-sizes tracker — if this modifier belongs to a drives_pricing
+  // group, record its name so calculateItemPrice picks up the new size.
+  // mod.groupId is set by buildModifierPanel where available; fall back
+  // to scanning MODIFIER_GROUPS for the modifier_id.
+  var modGroupId = mod.groupId || mod.group_id;
+  if (!modGroupId && mod.id && Array.isArray(MODIFIER_GROUPS)) {
+    for (var gi = 0; gi < MODIFIER_GROUPS.length; gi++) {
+      var grpScan = MODIFIER_GROUPS[gi];
+      var members = (grpScan.modifiers || []);
+      for (var mi = 0; mi < members.length; mi++) {
+        if (members[mi].modifier_id === mod.id) { modGroupId = grpScan.group_id; break; }
+      }
+      if (modGroupId) break;
+    }
+  }
+  if (modGroupId) {
+    var grpDef = (Array.isArray(MODIFIER_GROUPS) ? MODIFIER_GROUPS : [])
+      .find(function(g) { return g && g.group_id === modGroupId; });
+    if (grpDef && grpDef.drives_pricing) {
+      modifierSession.activeSizes[modGroupId] = mod.label || mod.name;
+    }
+  }
 
   renderTicket();
   refreshModifierPanel();

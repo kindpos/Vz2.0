@@ -507,3 +507,161 @@ describe('terminal/scenes/order-entry — applyModifier prefix price contract', 
     expect(added.price).toBe(1.50);
   });
 });
+
+// ── calculateItemPrice — pricing chain port ───────────────────────────────────
+//
+// Mirrors backend/app/core/pricing.py. Pure function — given an item dict,
+// the current selections array, and a menuState shaped like the /menu
+// projection, returns the rounded line price. The seven cases below cover
+// the core paths: size-driven base, included-modifier discounts, option
+// negation, option_group_override, size_price_override, and a full
+// composite (Large pizza + Pepperoni + included Cheese with None).
+
+describe('terminal/scenes/order-entry — calculateItemPrice (pricing chain)', () => {
+  let sceneDef;
+  let calculateItemPrice;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    registeredScenes.length = 0;
+    await import('./order-entry.js');
+    sceneDef = registeredScenes.find((s) => s.name === 'order-entry');
+    calculateItemPrice = sceneDef.__handlers.calculateItemPrice;
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  // Common menu state — the "pizza shop" fixture used by most cases.
+  function pizzaMenuState(overrides = {}) {
+    return {
+      modifier_groups: {
+        size: { drives_pricing: true, default_option_group_id: null },
+        toppings: { drives_pricing: false, default_option_group_id: 'topping_opts' },
+        cheese: { drives_pricing: false, default_option_group_id: 'topping_opts' },
+        ...(overrides.modifier_groups || {}),
+      },
+      modifiers: {
+        size_lg: { name: 'Large', price: 0 },
+        pepperoni: { name: 'Pepperoni', price: 1.50, price_by_size: { size: { Large: 0.50 } } },
+        cheese_mod: { name: 'Cheese', price: 0 },
+        ...(overrides.modifiers || {}),
+      },
+      options: {
+        regular: { option_id: 'regular', price_adjustment: 0, negates_price: false },
+        extra:   { option_id: 'extra',   price_adjustment: 1.00, negates_price: false },
+        none:    { option_id: 'none',    price_adjustment: 0,    negates_price: true  },
+        ...(overrides.options || {}),
+      },
+      option_groups: {
+        topping_opts: { option_ids: ['regular','extra','none'], active: true },
+        ...(overrides.option_groups || {}),
+      },
+    };
+  }
+
+  // 1. $0 base item + Large size → itemBase = price_by_size[size][Large]
+  it('1) $0 base item + Large size selection uses price_by_size for item base', () => {
+    const item = {
+      id: 'pizza',
+      price: 0,
+      price_by_size: { size: { Large: 18.99, Medium: 14.99 } },
+    };
+    const sel = [{ group_id: 'size', modifier_id: 'size_lg' }];
+    expect(calculateItemPrice(item, sel, pizzaMenuState())).toBe(18.99);
+  });
+
+  // 2. Modifier with price_by_size, size active → correct line price
+  it('2) modifier with price_by_size adds size-aware adjustment to line', () => {
+    const item = { id: 'pizza', price: 0, price_by_size: { size: { Large: 18.99 } } };
+    const sel = [
+      { group_id: 'size', modifier_id: 'size_lg' },
+      { group_id: 'toppings', modifier_id: 'pepperoni' },
+    ];
+    // 18.99 base + (1.50 mod + 0.50 size adj) = 20.99
+    expect(calculateItemPrice(item, sel, pizzaMenuState())).toBe(20.99);
+  });
+
+  // 3. Included modifier base 0; Extra option → base 0 + option.price_adjustment
+  it('3) included modifier with Extra option: base waived, option adj applies', () => {
+    const item = {
+      id: 'pizza',
+      price: 12.00,
+      included_modifier_ids: ['pepperoni'],
+    };
+    const sel = [
+      { group_id: 'toppings', modifier_id: 'pepperoni', option_id: 'extra' },
+    ];
+    // base 12 + (0 included + 1.00 extra) = 13.00
+    expect(calculateItemPrice(item, sel, pizzaMenuState())).toBe(13.00);
+  });
+
+  // 4. None option (negates_price=true) → modifier line = 0
+  it('4) None option (negates_price=true) zeros the modifier line', () => {
+    const item = { id: 'pizza', price: 12.00 };
+    const sel = [
+      { group_id: 'toppings', modifier_id: 'pepperoni', option_id: 'none' },
+    ];
+    // base 12 + 0 (pepperoni line negated) = 12.00
+    expect(calculateItemPrice(item, sel, pizzaMenuState())).toBe(12.00);
+  });
+
+  // 5. option_group_override on item → uses overridden group not group default
+  it('5) option_group_override on item routes to a different option group', () => {
+    const ms = pizzaMenuState({
+      option_groups: {
+        topping_opts: { option_ids: ['regular','extra'], active: true },
+        special_opts: { option_ids: ['triple'], active: true },
+      },
+      options: {
+        regular: { option_id: 'regular', price_adjustment: 0, negates_price: false },
+        extra:   { option_id: 'extra',   price_adjustment: 1.00, negates_price: false },
+        triple:  { option_id: 'triple',  price_adjustment: 3.00, negates_price: false },
+      },
+    });
+    const item = {
+      id: 'pizza', price: 10.00,
+      option_group_overrides: { toppings: 'special_opts' },
+    };
+    const sel = [
+      { group_id: 'toppings', modifier_id: 'pepperoni', option_id: 'triple' },
+    ];
+    // base 10 + (1.50 mod + 3.00 triple) = 14.50
+    expect(calculateItemPrice(item, sel, ms)).toBe(14.50);
+  });
+
+  // 6. size_price_override on item → uses override not modifier default
+  it('6) size_price_override on item wins over modifier price_by_size', () => {
+    const item = {
+      id: 'pizza',
+      price: 0,
+      price_by_size: { size: { Large: 18.99 } },
+      // Override the per-size adjustment at the active size key.
+      // Spec: iterated by activeSizes — keyed by the drives_pricing group_id.
+      size_price_overrides: { size: { Large: 2.00 } },
+    };
+    const sel = [
+      { group_id: 'size', modifier_id: 'size_lg' },
+      { group_id: 'toppings', modifier_id: 'pepperoni' },
+    ];
+    // 18.99 base + (1.50 mod + 2.00 override, NOT 0.50 default) = 22.49
+    expect(calculateItemPrice(item, sel, pizzaMenuState())).toBe(22.49);
+  });
+
+  // 7. Full pizza composite — Large + Pepperoni + included Cheese with None
+  it('7) full pizza: $0 base + Large + Pepperoni + included Cheese/None = $20.99', () => {
+    const item = {
+      id: 'pizza',
+      price: 0,
+      price_by_size: { size: { Large: 18.99 } },
+      included_modifier_ids: ['cheese_mod'],
+    };
+    const sel = [
+      { group_id: 'size',     modifier_id: 'size_lg' },
+      { group_id: 'toppings', modifier_id: 'pepperoni' },
+      { group_id: 'cheese',   modifier_id: 'cheese_mod', option_id: 'none' },
+    ];
+    // 18.99 base + (1.50 + 0.50 size = 2.00 pepperoni)
+    //            + (0 cheese line — included AND None negates) = 20.99
+    expect(calculateItemPrice(item, sel, pizzaMenuState())).toBe(20.99);
+  });
+});
