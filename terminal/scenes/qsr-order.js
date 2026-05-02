@@ -100,7 +100,7 @@ var FS_ITEM    = '14px';   // Item names in recap
 var FS_MOD     = '11px';   // Modifier text in recap
 var FS_PRICE   = '14px';   // Prices
 var FS_TOTAL   = '24px';   // TOTAL hero (Outfit)
-var FS_CAT     = '16px';   // Category tile labels (Outfit)
+var FS_CAT     = '15px';   // Category tile labels (Outfit)
 var FS_TILE    = '15px';   // Item grid tile names (Outfit)
 var FS_BTN     = '14px';   // Payment + action button labels (Outfit)
 var FS_BODY    = '14px';   // Body / empty-state text
@@ -137,7 +137,6 @@ var els = {
   discBtn:       null,
   voidBtn:       null,
   paySection:    null,
-  voidLink:      null,
   categoryColumn: null,
   itemGrid:      null,
   favStrip:      null,
@@ -173,15 +172,27 @@ function ticketLabel(n) {
 }
 
 // ─────────────────────────────────────────────────
+//  REMOVE ITEM
+// ─────────────────────────────────────────────────
+
+function removeItem(idx) {
+  state.items.splice(idx, 1);
+  state.selectedIdxs = state.selectedIdxs
+    .filter(function(i) { return i !== idx; })
+    .map(function(i) { return i > idx ? i - 1 : i; });
+  renderRecap();
+}
+
+// ─────────────────────────────────────────────────
 //  ITEM ROW
 // ─────────────────────────────────────────────────
 
 function buildItemRow(item, idx, isSelected) {
   var rowW = RECAP_W - 24;
 
-  var row = document.createElement('div');
-  row.dataset.itemIdx = idx;
-  row.style.cssText = [
+  var card = document.createElement('div');
+  card.dataset.itemIdx = idx;
+  card.style.cssText = [
     'position:relative;',
     'display:flex;',
     'align-items:stretch;',
@@ -205,7 +216,7 @@ function buildItemRow(item, idx, isSelected) {
       'background:' + T.green + ';',
       'border-radius:' + T.chamferCard + 'px 0 0 ' + T.chamferCard + 'px;',
     ].join('');
-    row.appendChild(bar);
+    card.appendChild(bar);
   }
 
   // Content area
@@ -213,7 +224,7 @@ function buildItemRow(item, idx, isSelected) {
   content.style.cssText = [
     'flex:1;',
     'min-width:0;',
-    'padding:8px 10px 8px 8px;',
+    'padding:8px 36px 8px 8px;',
     'display:flex;',
     'flex-direction:column;',
     'justify-content:center;',
@@ -254,26 +265,35 @@ function buildItemRow(item, idx, isSelected) {
   topRow.appendChild(priceEl);
   content.appendChild(topRow);
 
-  // Modifier line
-  if (item.mods && item.mods.length) {
-    var modEl = document.createElement('span');
-    modEl.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + FS_MOD + ';',
-      'color:' + (isSelected ? T.greenDk : T.moon) + ';',
-    ].join('');
-    modEl.textContent = item.mods.join(', ');
-    content.appendChild(modEl);
-  }
+  card.appendChild(content);
 
-  row.appendChild(content);
+  // ✕ remove button — top-right corner
+  var removeBtn = document.createElement('div');
+  removeBtn.style.cssText = [
+    'position:absolute;top:6px;right:6px;',
+    'width:20px;height:20px;',
+    'border-radius:4px;',
+    'background:' + T.verm + ';',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'font-family:' + T.fb + ';font-size:11px;font-weight:' + T.fwBold + ';',
+    'color:#fff;',
+    'opacity:0.85;',
+    'flex-shrink:0;',
+  ].join('');
+  removeBtn.textContent = '✕';
+  removeBtn.addEventListener('pointerup', function(e) {
+    e.stopPropagation();
+    removeItem(idx);
+  });
+  card.appendChild(removeBtn);
 
   // Selection checkmark (selected only)
   if (isSelected) {
     var check = document.createElement('div');
     check.style.cssText = [
       'position:absolute;',
-      'top:8px;right:8px;',
+      'top:8px;right:30px;',
       'width:16px;height:16px;',
       'border-radius:50%;',
       'background:' + T.well + ';',
@@ -284,10 +304,80 @@ function buildItemRow(item, idx, isSelected) {
       'flex-shrink:0;',
     ].join('');
     check.textContent = '✓';
-    row.appendChild(check);
+    card.appendChild(check);
   }
 
-  return row;
+  // Snake modifier tree — rendered outside (below) the card
+  if (item.mods && item.mods.length > 0) {
+    var tree = document.createElement('div');
+    tree.style.cssText = [
+      'position:relative;',
+      'display:flex;flex-direction:column;',
+      'gap:0px;',
+      'margin-top:2px;',
+      'margin-left:12px;',
+      'padding-bottom:2px;',
+    ].join('');
+
+    var trunk = document.createElement('div');
+    trunk.style.cssText = [
+      'position:absolute;',
+      'left:10px;top:0;',
+      'width:1.5px;',
+      'height:calc(100% - 10px);',
+      'background:' + T.border + ';',
+      'opacity:0.55;',
+    ].join('');
+    tree.appendChild(trunk);
+
+    item.mods.forEach(function(mod, modIdx) {
+      var modRow = document.createElement('div');
+      modRow.style.cssText = [
+        'display:flex;align-items:center;',
+        'gap:6px;',
+        'padding:3px 0 3px 28px;',
+        'position:relative;',
+      ].join('');
+
+      var branch = document.createElement('div');
+      branch.style.cssText = [
+        'position:absolute;left:10px;top:50%;',
+        'width:14px;height:1.5px;',
+        'background:' + T.border + ';',
+        'opacity:0.55;',
+      ].join('');
+      modRow.appendChild(branch);
+
+      var modLabel = document.createElement('span');
+      modLabel.style.cssText = [
+        'font-family:' + T.fb + ';',
+        'font-weight:' + T.fwBold + ';',
+        'font-size:11px;',
+      ].join('');
+
+      var text = typeof mod === 'string' ? mod : (mod.name || mod.label || '');
+      var upper = text.toUpperCase();
+      if (upper.startsWith('NO ') || upper.startsWith('REMOVE ') || upper.startsWith('– ')) {
+        modLabel.style.color = T.verm;
+      } else if (upper.startsWith('ADD ') || upper.startsWith('EXTRA ') || upper.startsWith('+ ')) {
+        modLabel.style.color = T.green;
+      } else {
+        modLabel.style.color = T.moon;
+      }
+      modLabel.textContent = text;
+      modRow.appendChild(modLabel);
+      tree.appendChild(modRow);
+    });
+
+    var block = document.createElement('div');
+    block.style.display = 'flex';
+    block.style.flexDirection = 'column';
+    block.appendChild(card);
+    block.appendChild(tree);
+    return block;
+  }
+
+  return card;
 }
 
 // ─────────────────────────────────────────────────
@@ -371,29 +461,14 @@ function buildRecapPanel() {
   els.itemList = itemList;
   panel.appendChild(itemList);
 
-  // ── c) Void + clear link row ───────────────────
-  var voidRow = document.createElement('div');
-  voidRow.style.cssText = [
+  // ── c) Clear link row ──────────────────────────
+  var clearRow = document.createElement('div');
+  clearRow.style.cssText = [
     'display:flex;align-items:center;gap:6px;',
     'padding:4px 12px;',
     'flex-shrink:0;',
     'min-height:22px;',
   ].join('');
-
-  var voidLink = document.createElement('span');
-  voidLink.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + FS_MOD + ';',
-    'color:' + T.verm + ';',
-    'cursor:pointer;pointer-events:auto;',
-    'opacity:0;transition:opacity 0.15s;',
-  ].join('');
-  voidLink.textContent = 'void item';
-  els.voidLink = voidLink;
-
-  var midDot = document.createElement('span');
-  midDot.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_MOD + ';color:' + T.border + ';';
-  midDot.textContent = '·';
 
   var clearLink = document.createElement('span');
   clearLink.style.cssText = [
@@ -404,10 +479,8 @@ function buildRecapPanel() {
   ].join('');
   clearLink.textContent = 'clear all';
 
-  voidRow.appendChild(voidLink);
-  voidRow.appendChild(midDot);
-  voidRow.appendChild(clearLink);
-  panel.appendChild(voidRow);
+  clearRow.appendChild(clearLink);
+  panel.appendChild(clearRow);
 
   // Wire clear all link
   clearLink.addEventListener('pointerup', function() {
@@ -610,7 +683,7 @@ function buildRecapPanel() {
   payRow.appendChild(splitBtn);
   panel.appendChild(payRow);
 
-  // ── h) Action button row ───────────────────────
+  // ── h) Action button row — filled DISCOUNT / VOID ─
   var actionRow = document.createElement('div');
   actionRow.style.cssText = [
     'display:flex;gap:6px;',
@@ -618,31 +691,19 @@ function buildRecapPanel() {
     'flex-shrink:0;',
   ].join('');
 
-  function makeActionBtn(label, borderColor, textColor) {
+  function makeFilledActionBtn(label, bg, dk, textColor) {
     var wrap = document.createElement('div');
     wrap.style.cssText = [
       'flex:1;min-width:0;',
-      'position:relative;',
       'display:flex;flex-direction:column;align-items:center;gap:2px;',
-      'background:' + T.card + ';',
-      'border:1.5px solid ' + borderColor + ';',
+      'background:' + bg + ';',
+      'border:none;',
       'border-radius:' + T.chamferBtn + 'px;',
-      'padding:8px 4px 6px 8px;',
+      'padding:8px 4px 6px;',
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+      'box-shadow:0 3px 0 ' + dk + ';',
       'transition:' + T.transitionFast + ';',
-      'overflow:hidden;',
     ].join('');
-
-    // Left accent bar (shown when item selected)
-    var accentBar = document.createElement('div');
-    accentBar.style.cssText = [
-      'position:absolute;left:0;top:0;bottom:0;',
-      'width:' + T.accentBarW + ';',
-      'background:' + T.green + ';',
-      'opacity:0;transition:opacity 0.15s;',
-    ].join('');
-    wrap._accentBar = accentBar;
-    wrap.appendChild(accentBar);
 
     var lbl = document.createElement('span');
     lbl.style.cssText = [
@@ -658,7 +719,8 @@ function buildRecapPanel() {
     sub.style.cssText = [
       'font-family:' + T.fb + ';',
       'font-size:' + FS_MOD + ';',
-      'color:' + T.moon + ';',
+      'color:' + textColor + ';',
+      'opacity:0.7;',
     ].join('');
     sub.textContent = 'order level';
 
@@ -666,15 +728,29 @@ function buildRecapPanel() {
     wrap.appendChild(sub);
     wrap._subEl = sub;
 
-    wrap.addEventListener('pointerdown', function() { wrap.style.opacity = '0.8'; });
-    wrap.addEventListener('pointerup',   function() { wrap.style.opacity = '1'; });
-    wrap.addEventListener('pointerleave',function() { wrap.style.opacity = '1'; });
+    wrap.addEventListener('pointerdown', function() {
+      wrap.style.transform   = 'translateY(2px)';
+      wrap.style.boxShadow   = '0 1px 0 ' + dk;
+    });
+    wrap.addEventListener('pointerup', function() {
+      wrap.style.transform   = '';
+      wrap.style.boxShadow   = '0 3px 0 ' + dk;
+    });
+    wrap.addEventListener('pointerleave', function() {
+      wrap.style.transform   = '';
+      wrap.style.boxShadow   = '0 3px 0 ' + dk;
+    });
+    wrap.addEventListener('pointercancel', function() {
+      wrap.style.transform   = '';
+      wrap.style.boxShadow   = '0 3px 0 ' + dk;
+    });
 
     return wrap;
   }
 
-  var discBtn = makeActionBtn('DISCOUNT', T.lavender, T.lavender);
-  var voidBtn = makeActionBtn('VOID',     T.verm,     T.verm);
+  var discDk  = darkenHex(T.lavender, 0.45);
+  var discBtn = makeFilledActionBtn('DISCOUNT', T.lavender, discDk, T.well);
+  var voidBtn = makeFilledActionBtn('VOID',     T.verm,     T.vermDk, '#fff');
   els.discBtn = discBtn;
   els.voidBtn = voidBtn;
 
@@ -743,19 +819,12 @@ function renderRecap() {
   // COLLECT PAYMENT label
   if (els.paySection) els.paySection.style.opacity = hasItems ? '1' : '0';
 
-  // Void link (only when something is selected)
-  if (els.voidLink) els.voidLink.style.opacity = hasSel ? '1' : '0';
-
-  // DISCOUNT / VOID subtitle + accent bar based on selection
+  // DISCOUNT / VOID subtitle — context text only (no accent bar)
   if (els.discBtn) {
-    els.discBtn._subEl.textContent   = hasSel ? 'item selected' : 'order level';
-    els.discBtn._subEl.style.color   = hasSel ? T.green : T.moon;
-    els.discBtn._accentBar.style.opacity = hasSel ? '1' : '0';
+    els.discBtn._subEl.textContent = hasSel ? 'item selected' : 'order level';
   }
   if (els.voidBtn) {
-    els.voidBtn._subEl.textContent   = hasSel ? 'item selected' : 'order level';
-    els.voidBtn._subEl.style.color   = hasSel ? T.green : T.moon;
-    els.voidBtn._accentBar.style.opacity = hasSel ? '1' : '0';
+    els.voidBtn._subEl.textContent = hasSel ? 'item selected' : 'order level';
   }
 }
 
@@ -877,8 +946,8 @@ function buildCategoryColumn(categories, favH) {
     'width:' + CAT_W + 'px;',
     'height:' + (CONTENT_H - fH) + 'px;',
     'overflow-y:auto;',
-    'display:flex;flex-direction:column;gap:6px;',
-    'padding:6px;',
+    'display:flex;flex-direction:column;gap:8px;',
+    'padding:8px;',
     'box-sizing:border-box;',
   ].join('');
   els.categoryColumn = col;
@@ -903,38 +972,25 @@ function buildCategoryColumn(categories, favH) {
     tile.dataset.categoryKey = cat.key;
     tile.style.cssText = [
       'height:70px;',
-      'border-radius:' + T.chamferCard + 'px;',
+      'border-radius:8px;',
       'flex-shrink:0;',
-      'position:relative;',
-      'overflow:hidden;',
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
       'display:flex;flex-direction:column;align-items:center;justify-content:center;',
       'gap:2px;',
-      'transition:' + T.transitionFast + ';',
+      'transition:background 0.07s ease;',
       isActive
         ? 'background:' + catColor + ';'
-        : 'background:' + T.card + ';border:1px solid ' + T.border + ';',
+        : 'background:' + T.card + ';border:1px solid ' + T.border + ';border-left:4px solid ' + catColor + ';',
     ].join('');
-
-    // Left accent bar (inactive only)
-    if (!isActive) {
-      var bar = document.createElement('div');
-      bar.style.cssText = [
-        'position:absolute;left:0;top:0;bottom:0;',
-        'width:' + T.accentBarW + ';',
-        'background:' + catColor + ';',
-        'border-radius:' + T.chamferCard + 'px 0 0 ' + T.chamferCard + 'px;',
-      ].join('');
-      tile.appendChild(bar);
-    }
 
     var labelEl = document.createElement('span');
     labelEl.style.cssText = [
       'font-family:' + T.fh + ';',
-      'font-size:' + FS_CAT + ';',
+      'font-size:15px;',
       'font-weight:' + T.fwBold + ';',
-      'color:' + (isActive ? T.moonText : T.text) + ';',
+      'color:' + (isActive ? darkenHex(catColor, 0.5) : catColor) + ';',
       'text-align:center;',
+      'text-transform:uppercase;',
       'z-index:1;',
     ].join('');
     labelEl.textContent = cat.label;
@@ -943,7 +999,7 @@ function buildCategoryColumn(categories, favH) {
     countEl.style.cssText = [
       'font-family:' + T.fb + ';',
       'font-size:' + FS_MOD + ';',
-      'color:' + (isActive ? darkenHex(catColor, 0.4) : T.moon) + ';',
+      'color:' + (isActive ? darkenHex(catColor, 0.5) : T.moon) + ';',
       'text-align:center;',
       'z-index:1;',
     ].join('');
@@ -962,11 +1018,45 @@ function buildCategoryColumn(categories, favH) {
 }
 
 // ─────────────────────────────────────────────────
-//  ITEM GRID
+//  ITEM GRID — anchored layout
 // ─────────────────────────────────────────────────
 
-function buildItemGrid(items, favH) {
-  var fH = typeof favH === 'number' ? favH : FAV_H;
+function distributeItems(items, cols, anchorIdx, totalRows) {
+  var chunks = [];
+  var i = 0;
+  var downOffset = 0;
+  var upOffset   = -1;
+  var goingDown  = true;
+
+  chunks.push({ rowOffset: 0, items: items.slice(0, cols) });
+  i = cols;
+
+  var maxIter = (totalRows + 1) * 2 + 4;
+  var iter = 0;
+  while (i < items.length && iter < maxIter) {
+    iter++;
+    if (goingDown) {
+      downOffset++;
+      if (anchorIdx + downOffset < totalRows) {
+        chunks.push({ rowOffset: downOffset, items: items.slice(i, i + cols) });
+        i += cols;
+      }
+      goingDown = false;
+    } else {
+      if (anchorIdx + upOffset >= 0) {
+        chunks.push({ rowOffset: upOffset, items: items.slice(i, i + cols) });
+        i += cols;
+        upOffset--;
+      }
+      goingDown = true;
+    }
+  }
+  return chunks;
+}
+
+function buildItemGrid(items, favH, activeCategoryIndex, cat) {
+  var fH   = typeof favH === 'number' ? favH : FAV_H;
+  var aIdx = typeof activeCategoryIndex === 'number' ? activeCategoryIndex : 0;
   var grid = document.createElement('div');
   els.itemGrid = grid;
 
@@ -1012,66 +1102,86 @@ function buildItemGrid(items, favH) {
     'width:' + GRID_W + 'px;',
     'height:' + (CONTENT_H - fH) + 'px;',
     'display:grid;',
-    'grid-template-columns:repeat(3,1fr);',
-    'gap:8px;',
-    'padding:8px;',
+    'overflow:hidden;',
     'box-sizing:border-box;',
-    'overflow-y:auto;',
-    'align-content:start;',
   ].join('');
 
-  (items || []).forEach(function(item) {
-    var tile = document.createElement('div');
-    tile.dataset.itemKey = item.itemKey || item.key || item.name;
-    tile.style.cssText = [
-      'border-radius:' + T.chamferCard + 'px;',
-      'min-height:130px;',
-      'background:' + T.card + ';',
-      'border:1px solid ' + T.border + ';',
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;',
-      'gap:6px;',
-      'padding:12px 8px;',
-      'box-sizing:border-box;',
-      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'transition:' + T.transitionFast + ';',
+  var ROW_H    = 70;
+  var ROW_GAP  = 8;
+  var COLS     = 3;
+  var PAD      = 8;
+  var catColor = cat ? (cat.color || T.border) : T.border;
+  var totalRows = state.categories.length || 1;
+  var anchorY  = PAD + aIdx * (ROW_H + ROW_GAP);
+  var chunks   = distributeItems(items || [], COLS, aIdx, totalRows);
+
+  chunks.forEach(function(chunk) {
+    var rowY  = anchorY + chunk.rowOffset * (ROW_H + ROW_GAP);
+    var rowEl = document.createElement('div');
+    rowEl.style.cssText = [
+      'position:absolute;',
+      'top:' + rowY + 'px;',
+      'left:' + PAD + 'px;right:' + PAD + 'px;',
+      'height:' + ROW_H + 'px;',
+      'display:flex;gap:' + ROW_GAP + 'px;',
     ].join('');
 
-    var nameEl = document.createElement('span');
-    nameEl.style.cssText = [
-      'font-family:' + T.fh + ';',
-      'font-size:' + FS_TILE + ';',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.text + ';',
-      'text-align:center;',
-      'line-height:1.3;',
-      'word-break:break-word;',
-    ].join('');
-    nameEl.textContent = item.name;
+    chunk.items.forEach(function(item) {
+      var tile = document.createElement('div');
+      tile.dataset.itemKey = item.itemKey || item.key || item.name;
+      tile.style.cssText = [
+        'flex:1;min-width:0;',
+        'border-radius:8px;',
+        'height:' + ROW_H + 'px;',
+        'background:' + T.well + ';',
+        'border:2px solid ' + catColor + ';',
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+        'gap:4px;',
+        'padding:4px;',
+        'box-sizing:border-box;',
+        'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+        'transition:' + T.transitionFast + ';',
+      ].join('');
 
-    var priceEl = document.createElement('span');
-    priceEl.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + FS_PRICE + ';',
-      'color:' + T.gold + ';',
-      'text-align:center;',
-    ].join('');
-    priceEl.textContent = fmtMoney(item.price || 0);
+      var nameEl = document.createElement('span');
+      nameEl.style.cssText = [
+        'font-family:' + T.fh + ';',
+        'font-weight:' + T.fwBold + ';',
+        'font-size:14px;',
+        'color:' + T.text + ';',
+        'text-align:center;',
+        'line-height:1.2;',
+        'word-break:break-word;',
+      ].join('');
+      nameEl.textContent = item.name;
 
-    tile.appendChild(nameEl);
-    tile.appendChild(priceEl);
+      var priceEl = document.createElement('span');
+      priceEl.style.cssText = [
+        'font-family:' + T.fb + ';',
+        'font-weight:' + T.fwBold + ';',
+        'font-size:13px;',
+        'color:' + (item.price > 0 ? T.gold : T.moon) + ';',
+        'text-align:center;',
+      ].join('');
+      priceEl.textContent = item.price > 0 ? fmt(item.price) : '—';
 
-    // Tap flash
-    tile.addEventListener('pointerdown', function() {
-      tile.style.background = hexToRgba(T.green, 0.15);
+      tile.appendChild(nameEl);
+      tile.appendChild(priceEl);
+
+      tile.addEventListener('pointerdown', function() {
+        tile.style.background = hexToRgba(T.green, 0.15);
+      });
+      var restoreTile = function() {
+        setTimeout(function() { tile.style.background = T.well; }, 120);
+      };
+      tile.addEventListener('pointerup',    restoreTile);
+      tile.addEventListener('pointerleave', restoreTile);
+      tile.addEventListener('pointercancel',restoreTile);
+
+      rowEl.appendChild(tile);
     });
-    var restoreTile = function() {
-      setTimeout(function() { tile.style.background = T.card; }, 120);
-    };
-    tile.addEventListener('pointerup',    restoreTile);
-    tile.addEventListener('pointerleave', restoreTile);
-    tile.addEventListener('pointercancel',restoreTile);
 
-    grid.appendChild(tile);
+    grid.appendChild(rowEl);
   });
 
   return grid;
@@ -1081,16 +1191,18 @@ function buildItemGrid(items, favH) {
 //  REPAINT HELPERS (for switchCategory)
 // ─────────────────────────────────────────────────
 
-function repaintItemGrid(items) {
+function repaintItemGrid(items, activeCategoryIndex, cat) {
   if (!els.itemGrid) return;
+  var aIdx = typeof activeCategoryIndex === 'number' ? activeCategoryIndex : 0;
   els.itemGrid.innerHTML = '';
 
   if ((items || []).length === 0) {
-    els.itemGrid.style.display = 'flex';
-    els.itemGrid.style.alignItems = 'center';
-    els.itemGrid.style.justifyContent = 'center';
-    els.itemGrid.style.flexDirection = 'column';
-    els.itemGrid.style.gap = '12px';
+    els.itemGrid.style.display         = 'flex';
+    els.itemGrid.style.alignItems      = 'center';
+    els.itemGrid.style.justifyContent  = 'center';
+    els.itemGrid.style.flexDirection   = 'column';
+    els.itemGrid.style.gap             = '12px';
+    els.itemGrid.style.overflow        = 'hidden';
 
     var emptyIcon = document.createElement('div');
     emptyIcon.style.cssText = [
@@ -1115,63 +1227,89 @@ function repaintItemGrid(items) {
     return;
   }
 
-  els.itemGrid.style.display = 'grid';
-  els.itemGrid.style.alignItems = '';
+  els.itemGrid.style.display        = 'grid';
+  els.itemGrid.style.alignItems     = '';
   els.itemGrid.style.justifyContent = '';
-  els.itemGrid.style.flexDirection = '';
-  els.itemGrid.style.gap = '8px';
+  els.itemGrid.style.flexDirection  = '';
+  els.itemGrid.style.gap            = '';
+  els.itemGrid.style.overflow       = 'hidden';
 
-  (items || []).forEach(function(item) {
-    var tile = document.createElement('div');
-    tile.dataset.itemKey = item.itemKey || item.key || item.name;
-    tile.style.cssText = [
-      'border-radius:' + T.chamferCard + 'px;',
-      'min-height:130px;',
-      'background:' + T.card + ';',
-      'border:1px solid ' + T.border + ';',
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;',
-      'gap:6px;',
-      'padding:12px 8px;',
-      'box-sizing:border-box;',
-      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'transition:' + T.transitionFast + ';',
+  var ROW_H    = 70;
+  var ROW_GAP  = 8;
+  var COLS     = 3;
+  var PAD      = 8;
+  var catColor = cat ? (cat.color || T.border) : T.border;
+  var totalRows = state.categories.length || 1;
+  var anchorY  = PAD + aIdx * (ROW_H + ROW_GAP);
+  var chunks   = distributeItems(items || [], COLS, aIdx, totalRows);
+
+  chunks.forEach(function(chunk) {
+    var rowY  = anchorY + chunk.rowOffset * (ROW_H + ROW_GAP);
+    var rowEl = document.createElement('div');
+    rowEl.style.cssText = [
+      'position:absolute;',
+      'top:' + rowY + 'px;',
+      'left:' + PAD + 'px;right:' + PAD + 'px;',
+      'height:' + ROW_H + 'px;',
+      'display:flex;gap:' + ROW_GAP + 'px;',
     ].join('');
 
-    var nameEl = document.createElement('span');
-    nameEl.style.cssText = [
-      'font-family:' + T.fh + ';',
-      'font-size:' + FS_TILE + ';',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.text + ';',
-      'text-align:center;',
-      'line-height:1.3;',
-      'word-break:break-word;',
-    ].join('');
-    nameEl.textContent = item.name;
+    chunk.items.forEach(function(item) {
+      var tile = document.createElement('div');
+      tile.dataset.itemKey = item.itemKey || item.key || item.name;
+      tile.style.cssText = [
+        'flex:1;min-width:0;',
+        'border-radius:8px;',
+        'height:' + ROW_H + 'px;',
+        'background:' + T.well + ';',
+        'border:2px solid ' + catColor + ';',
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+        'gap:4px;',
+        'padding:4px;',
+        'box-sizing:border-box;',
+        'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+        'transition:' + T.transitionFast + ';',
+      ].join('');
 
-    var priceEl = document.createElement('span');
-    priceEl.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + FS_PRICE + ';',
-      'color:' + T.gold + ';',
-      'text-align:center;',
-    ].join('');
-    priceEl.textContent = fmtMoney(item.price || 0);
+      var nameEl = document.createElement('span');
+      nameEl.style.cssText = [
+        'font-family:' + T.fh + ';',
+        'font-weight:' + T.fwBold + ';',
+        'font-size:14px;',
+        'color:' + T.text + ';',
+        'text-align:center;',
+        'line-height:1.2;',
+        'word-break:break-word;',
+      ].join('');
+      nameEl.textContent = item.name;
 
-    tile.appendChild(nameEl);
-    tile.appendChild(priceEl);
+      var priceEl = document.createElement('span');
+      priceEl.style.cssText = [
+        'font-family:' + T.fb + ';',
+        'font-weight:' + T.fwBold + ';',
+        'font-size:13px;',
+        'color:' + (item.price > 0 ? T.gold : T.moon) + ';',
+        'text-align:center;',
+      ].join('');
+      priceEl.textContent = item.price > 0 ? fmt(item.price) : '—';
 
-    tile.addEventListener('pointerdown', function() {
-      tile.style.background = hexToRgba(T.green, 0.15);
+      tile.appendChild(nameEl);
+      tile.appendChild(priceEl);
+
+      tile.addEventListener('pointerdown', function() {
+        tile.style.background = hexToRgba(T.green, 0.15);
+      });
+      var restoreTile = function() {
+        setTimeout(function() { tile.style.background = T.well; }, 120);
+      };
+      tile.addEventListener('pointerup',    restoreTile);
+      tile.addEventListener('pointerleave', restoreTile);
+      tile.addEventListener('pointercancel',restoreTile);
+
+      rowEl.appendChild(tile);
     });
-    var restoreTile = function() {
-      setTimeout(function() { tile.style.background = T.card; }, 120);
-    };
-    tile.addEventListener('pointerup',    restoreTile);
-    tile.addEventListener('pointerleave', restoreTile);
-    tile.addEventListener('pointercancel',restoreTile);
 
-    els.itemGrid.appendChild(tile);
+    els.itemGrid.appendChild(rowEl);
   });
 }
 
@@ -1190,37 +1328,26 @@ function repaintCategoryColumn() {
     tile.dataset.categoryKey = cat.key;
     tile.style.cssText = [
       'height:70px;',
-      'border-radius:' + T.chamferCard + 'px;',
+      'border-radius:8px;',
       'flex-shrink:0;',
-      'position:relative;',
-      'overflow:hidden;',
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
       'display:flex;flex-direction:column;align-items:center;justify-content:center;',
       'gap:2px;',
-      'transition:' + T.transitionFast + ';',
+      'transition:background 0.07s ease;',
       isActive
         ? 'background:' + catColor + ';'
-        : 'background:' + T.card + ';border:1px solid ' + T.border + ';',
+        : 'background:' + T.card + ';border:1px solid ' + T.border + ';border-left:4px solid ' + catColor + ';',
     ].join('');
-
-    if (!isActive) {
-      var bar = document.createElement('div');
-      bar.style.cssText = [
-        'position:absolute;left:0;top:0;bottom:0;',
-        'width:' + T.accentBarW + ';',
-        'background:' + catColor + ';',
-        'border-radius:' + T.chamferCard + 'px 0 0 ' + T.chamferCard + 'px;',
-      ].join('');
-      tile.appendChild(bar);
-    }
 
     var labelEl = document.createElement('span');
     labelEl.style.cssText = [
       'font-family:' + T.fh + ';',
-      'font-size:' + FS_CAT + ';',
+      'font-size:15px;',
       'font-weight:' + T.fwBold + ';',
-      'color:' + (isActive ? T.moonText : T.text) + ';',
-      'text-align:center;z-index:1;',
+      'color:' + (isActive ? darkenHex(catColor, 0.5) : catColor) + ';',
+      'text-align:center;',
+      'text-transform:uppercase;',
+      'z-index:1;',
     ].join('');
     labelEl.textContent = cat.label;
 
@@ -1228,7 +1355,7 @@ function repaintCategoryColumn() {
     countEl.style.cssText = [
       'font-family:' + T.fb + ';',
       'font-size:' + FS_MOD + ';',
-      'color:' + (isActive ? darkenHex(catColor, 0.4) : T.moon) + ';',
+      'color:' + (isActive ? darkenHex(catColor, 0.5) : T.moon) + ';',
       'text-align:center;z-index:1;',
     ].join('');
     countEl.textContent = (cat.items || []).length + ' items';
@@ -1291,10 +1418,15 @@ function clearSelection() {
 function switchCategory(key) {
   state.activeCategory = key;
   var cat = null;
+  var activeCategoryIndex = 0;
   for (var i = 0; i < state.categories.length; i++) {
-    if (state.categories[i].key === key) { cat = state.categories[i]; break; }
+    if (state.categories[i].key === key) {
+      cat = state.categories[i];
+      activeCategoryIndex = i;
+      break;
+    }
   }
-  repaintItemGrid(cat ? cat.items : []);
+  repaintItemGrid(cat ? cat.items : [], activeCategoryIndex, cat);
   repaintCategoryColumn();
   // Re-wire grid tap handler after repaint
   if (els.itemGrid) {
@@ -1515,10 +1647,13 @@ function buildRightSurface(categories) {
     rightEl.appendChild(divider);
   }
 
+  var activeCat = categories.length > 0 ? categories[0] : null;
   rightEl.appendChild(buildCategoryColumn(categories, favH));
   rightEl.appendChild(buildItemGrid(
-    categories.length > 0 ? categories[0].items : [],
-    favH
+    activeCat ? activeCat.items : [],
+    favH,
+    0,
+    activeCat
   ));
 
   els.rightSurface = rightEl;
@@ -1628,7 +1763,6 @@ defineScene('qsr-order', {
     els.discBtn        = null;
     els.voidBtn        = null;
     els.paySection     = null;
-    els.voidLink       = null;
     els.categoryColumn = null;
     els.itemGrid       = null;
     els.favStrip       = null;
