@@ -46,6 +46,7 @@ import { buildSalesReportsScene,  cleanupSalesReports   } from './sections/sales
 import { buildStaffRolesScene,    cleanupStaffRoles     } from './sections/staff-roles.js';
 import { buildPayrollAttendanceScene, cleanupPayrollAttendance } from './sections/payroll-attendance.js';
 import { buildPricingSetupScene, cleanupPricingSetup } from './sections/pricing-setup.js';
+import { buildModifierGroupsScene, cleanupModifierGroups } from './sections/modifier-groups.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -396,6 +397,13 @@ function registerAllSections() {
         name: 'pricing-setup',
         mount: (container) => buildPricingSetupScene(container),
         unmount: (container) => cleanupPricingSetup(container),
+    });
+    // modifier-groups: registered above by the legacy configure-modifiers
+    // adapter; this re-registration replaces it with the two-panel rebuild.
+    SceneManager.register({
+        name: 'modifier-groups',
+        mount: (container) => buildModifierGroupsScene(container),
+        unmount: (container) => cleanupModifierGroups(container),
     });
 }
 
