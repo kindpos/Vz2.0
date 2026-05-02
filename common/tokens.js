@@ -98,6 +98,20 @@ export const T = {
   // ── Borders / structural ──────────────────────────
   border:   '#5a5f66',   // Inactive borders, dividers, separators
 
+  // ── Modifier prefix colors ────────────────────────
+  modAdd:      '#4ade80',   // alias: T.greenWarm
+  modExtra:    '#86efac',   // alias: T.green  (NOT T.elec)
+  modNo:       '#e8472a',   // alias: T.verm
+  modLite:     '#7e8896',   // alias: T.moon   (NOT T.gold)
+  modOnSide:   '#e8c84e',   // alias: T.gold
+
+  // Modifier prefix dark variants (chip background tint)
+  modAddDk:    '#14532d',
+  modExtraDk:  '#166534',
+  modNoDk:     '#7f1d1d',
+  modLiteDk:   '#374151',
+  modOnSideDk: '#78350f',
+
   // ── Typography ────────────────────────────────────
   fh:       'Outfit, sans-serif',          // Headings
   fb:       'JetBrains Mono, monospace',   // Body / UI / data
