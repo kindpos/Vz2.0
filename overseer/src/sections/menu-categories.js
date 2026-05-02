@@ -2,6 +2,10 @@ import { pushChanges } from '../services/config-push.js';
 import {
     C, buildScenePage, showToast, withAlpha,
 } from '../ui/forms.js';
+import {
+    buildItemPricingExtensions,
+    buildCategoryPricingExtensions,
+} from './pricing-extensions.js';
 
 /* ============================================
    KINDpos Overseer — Menu Categories & Items (Nostalgia, v2 merged)
@@ -1802,6 +1806,11 @@ function openItemModal(cfg) {
             if (mandTray) rebuildMandTray(item.mandatory_group_ids);
         });
 
+        // Pricing-chain extensions — appended below existing fields.
+        // Async, but appended to the live body so it streams in.
+        buildItemPricingExtensions(body, item, menuData)
+            .catch(e => console.warn('[ItemEditor] pricing extensions failed:', e));
+
         if (cfg.showActions) {
             body.appendChild(buildDivider());
             const actions = document.createElement('div');
@@ -2277,6 +2286,10 @@ function openCategoryModal(cfg) {
 
         // Initial color swatch selection
         selectColor(cat.color);
+
+        // Pricing-chain extensions — appended below existing fields.
+        buildCategoryPricingExtensions(body, cat, menuData)
+            .catch(e => console.warn('[CategoryEditor] pricing extensions failed:', e));
 
         // Delete action
         if (!cfg.isNew) {
