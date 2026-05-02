@@ -349,7 +349,7 @@ function buildLeftPanel() {
     sectionLabel.textContent = 'Modifier Groups';
     sectionLabel.style.cssText = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 11px;
         font-weight: 700;
         color: ${T.moonDk};
         letter-spacing: 2.5px;
@@ -364,13 +364,13 @@ function buildLeftPanel() {
     newBtn.style.cssText = `
         display: block;
         width: 100%;
-        height: 28px;
+        height: 36px;
         background: ${T.elec};
         color: ${T.well};
         border: none;
         border-radius: 8px;
         font-family: ${T.fb};
-        font-size: 9px;
+        font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.06em;
@@ -415,7 +415,7 @@ function buildGroupListItem(group) {
 
     const item = document.createElement('div');
     item.style.cssText = `
-        padding: 9px 10px;
+        padding: 12px 14px;
         border-radius: 7px;
         margin: 1px 4px;
         background: ${isSelected ? hexToRgba(T.green, 0.10) : 'transparent'};
@@ -435,7 +435,7 @@ function buildGroupListItem(group) {
     name.textContent = group.name || group.group_id;
     name.style.cssText = `
         font-family: ${T.fb};
-        font-size: 11px;
+        font-size: 14px;
         font-weight: 600;
         color: ${isSelected ? T.green : (isDriver ? T.gold : T.moon)};
         margin-bottom: 2px;
@@ -453,7 +453,7 @@ function buildGroupListItem(group) {
 
     meta.style.cssText = `
         font-family: ${T.fb};
-        font-size: 9px;
+        font-size: 11px;
         color: ${T.moonDk};
         letter-spacing: 0.04em;
         line-height: 1.4;
@@ -615,7 +615,7 @@ function buildGroupHeaderBar(group) {
     nameEl.textContent = group.name || group.group_id;
     nameEl.style.cssText = `
         font-family: ${T.fh};
-        font-size: 16px;
+        font-size: 22px;
         font-weight: 700;
         color: ${T.text};
         flex: 1;
@@ -639,7 +639,7 @@ function buildGroupHeaderBar(group) {
     toggleLabel.textContent = 'Drives Pricing';
     toggleLabel.style.cssText = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         color: ${T.moon};
         letter-spacing: 2px;
@@ -653,9 +653,9 @@ function buildGroupHeaderBar(group) {
 
     function applyToggleState() {
         toggleBtn.style.cssText = `
-            width: 34px;
-            height: 18px;
-            border-radius: 9px;
+            width: 44px;
+            height: 24px;
+            border-radius: 12px;
             background: ${driveState ? T.greenWarm : T.moonDk};
             border: none;
             position: relative;
@@ -668,10 +668,10 @@ function buildGroupHeaderBar(group) {
         const knob = document.createElement('span');
         knob.style.cssText = `
             position: absolute;
-            top: 3px;
-            left: ${driveState ? '19px' : '3px'};
-            width: 12px;
-            height: 12px;
+            top: 4px;
+            left: ${driveState ? '25px' : '4px'};
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
             background: ${T.well};
             transition: left 0.15s ease;
@@ -706,7 +706,7 @@ function buildGroupHeaderBar(group) {
     selectLabel.textContent = 'Default Options';
     selectLabel.style.cssText = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         color: ${T.moon};
         letter-spacing: 2px;
@@ -723,8 +723,9 @@ function buildGroupHeaderBar(group) {
         border-radius: 6px;
         color: ${T.elec};
         font-family: ${T.fb};
-        font-size: 10px;
-        padding: 5px 10px;
+        font-size: 12px;
+        height: 32px;
+        padding: 0 10px;
         cursor: pointer;
         outline: none;
     `;
@@ -766,11 +767,11 @@ function buildGroupHeaderBar(group) {
         border: 1px solid ${T.border};
         color: ${T.moon};
         font-family: ${T.fb};
-        font-size: 9px;
+        font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        height: 28px;
+        height: 36px;
         border-radius: 8px;
         padding: 0 14px;
         cursor: pointer;
@@ -800,11 +801,11 @@ function buildGroupHeaderBar(group) {
 
     const badgeStyle = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.1em;
-        padding: 2px 8px;
+        padding: 4px 10px;
         border-radius: 5px;
     `;
 
@@ -842,7 +843,7 @@ function buildModifierChipsRow(group) {
     label.textContent = 'Modifiers in group — click to edit';
     label.style.cssText = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         color: ${T.moonDk};
         letter-spacing: 2px;
@@ -872,7 +873,7 @@ function buildModifierChip(modifier) {
         position: relative;
         background: ${T.card};
         border-radius: 10px;
-        padding: 6px 10px 6px 13px;
+        padding: 8px 14px 8px 16px;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
@@ -887,7 +888,7 @@ function buildModifierChip(modifier) {
         left: 0;
         top: 6px;
         bottom: 6px;
-        width: 3px;
+        width: 4px;
         border-radius: 0 2px 2px 0;
         background: ${accent};
         box-shadow: 0 0 6px ${hexToRgba(accent, 0.5)};
@@ -898,7 +899,7 @@ function buildModifierChip(modifier) {
     nameEl.textContent = modifier.name;
     nameEl.style.cssText = `
         font-family: ${T.fb};
-        font-size: 10px;
+        font-size: 13px;
         font-weight: 600;
         color: ${price > 0 ? T.gold : T.green};
     `;
@@ -909,7 +910,7 @@ function buildModifierChip(modifier) {
         priceEl.textContent = ' ' + fmtPrice(price);
         priceEl.style.cssText = `
             font-family: ${T.fb};
-            font-size: 10px;
+            font-size: 13px;
             font-weight: 600;
             color: ${T.gold};
             opacity: 0.6;
@@ -937,9 +938,9 @@ function buildAddModifierChip(group) {
         background: ${T.card};
         border: none;
         border-radius: 10px;
-        padding: 6px 10px 6px 13px;
+        padding: 8px 14px 8px 16px;
         font-family: ${T.fb};
-        font-size: 10px;
+        font-size: 13px;
         font-weight: 600;
         color: ${T.elec};
         cursor: pointer;
@@ -967,7 +968,7 @@ function buildModifierDetail(group, modifier) {
     sectionLabel.textContent = `↳ Editing: ${modifier.name}`;
     sectionLabel.style.cssText = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         color: ${T.elec};
         letter-spacing: 2px;
@@ -1005,7 +1006,7 @@ function buildModifierDetail(group, modifier) {
     baseLabel.textContent = 'Base Price';
     baseLabel.style.cssText = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         color: ${T.moon};
         letter-spacing: 2px;
@@ -1099,9 +1100,9 @@ function buildModifierDetail(group, modifier) {
 
     function applyActiveState() {
         activeBtn.style.cssText = `
-            width: 34px;
-            height: 18px;
-            border-radius: 9px;
+            width: 44px;
+            height: 24px;
+            border-radius: 12px;
             background: ${activeState ? T.greenWarm : T.moonDk};
             border: none;
             position: relative;
@@ -1114,10 +1115,10 @@ function buildModifierDetail(group, modifier) {
         const knob = document.createElement('span');
         knob.style.cssText = `
             position: absolute;
-            top: 3px;
-            left: ${activeState ? '19px' : '3px'};
-            width: 12px;
-            height: 12px;
+            top: 4px;
+            left: ${activeState ? '25px' : '4px'};
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
             background: ${T.well};
             transition: left 0.15s ease;
@@ -1165,7 +1166,7 @@ function buildSizePricingCol(group, modifier) {
     label.textContent = 'Size Pricing';
     label.style.cssText = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         color: ${T.green};
         letter-spacing: 2px;
@@ -1227,7 +1228,7 @@ function buildSizePricingCol(group, modifier) {
         cell.textContent = h;
         cell.style.cssText = `
             font-family: ${T.fb};
-            font-size: 8px;
+            font-size: 10px;
             font-weight: 700;
             color: ${T.moon};
             letter-spacing: 2px;
@@ -1357,7 +1358,7 @@ function buildSizePricingCol(group, modifier) {
             border: none;
             color: ${T.elec};
             font-family: ${T.fb};
-            font-size: 9px;
+            font-size: 11px;
             font-weight: 700;
             cursor: pointer;
             padding: 4px 0;
@@ -1381,7 +1382,7 @@ function buildMicromodsCol(modifier) {
     label.textContent = 'MicroMODs';
     label.style.cssText = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         color: ${T.lavender};
         letter-spacing: 2px;
@@ -1424,7 +1425,7 @@ function buildMicromodsCol(modifier) {
         border: none;
         color: ${T.lavender};
         font-family: ${T.fb};
-        font-size: 9px;
+        font-size: 11px;
         font-weight: 700;
         cursor: pointer;
         padding: 4px 0;
@@ -1487,7 +1488,7 @@ function buildMicromodRow(mm) {
         background: ${hexToRgba(T.lavender, 0.16)};
         color: ${T.lavender};
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.1em;
@@ -1536,7 +1537,7 @@ function buildIncludedItemsSection(modifier) {
     label.textContent = 'Included in items';
     label.style.cssText = `
         font-family: ${T.fb};
-        font-size: 8px;
+        font-size: 10px;
         font-weight: 700;
         color: ${T.moon};
         letter-spacing: 2px;
