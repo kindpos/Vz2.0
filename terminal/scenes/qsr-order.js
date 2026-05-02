@@ -952,7 +952,7 @@ function buildCategoryColumn(categories, favH) {
     'width:' + CAT_W + 'px;',
     'height:' + (CONTENT_H - fH) + 'px;',
     'overflow-y:auto;',
-    'display:flex;flex-direction:column;gap:8px;',
+    'display:flex;flex-direction:column;gap:6px;',
     'padding:6px;',
     'box-sizing:border-box;',
   ].join('');
@@ -975,7 +975,7 @@ function buildCategoryColumn(categories, favH) {
   });
 
   var filler = document.createElement('div');
-  filler.style.cssText = 'flex:1;background:' + T.well + ';';
+  filler.style.cssText = 'flex:1;min-height:0;background:' + T.well + ';border-radius:8px;';
   col.appendChild(filler);
 
   return col;
@@ -1195,7 +1195,7 @@ function repaintCategoryColumn() {
   });
 
   var filler = document.createElement('div');
-  filler.style.cssText = 'flex:1;background:' + T.well + ';';
+  filler.style.cssText = 'flex:1;min-height:0;background:' + T.well + ';border-radius:8px;';
   els.categoryColumn.appendChild(filler);
 }
 
@@ -1203,31 +1203,19 @@ function repaintCategoryColumn() {
 //  STATE MANAGEMENT
 // ─────────────────────────────────────────────────
 
-function addItem(itemKey) {
-  var found = null;
-  for (var ci = 0; ci < state.categories.length; ci++) {
-    var cat = state.categories[ci];
-    for (var ii = 0; ii < (cat.items || []).length; ii++) {
-      var it = cat.items[ii];
-      var key = it.itemKey || it.key || it.name;
-      if (key === itemKey) { found = it; break; }
-    }
-    if (found) break;
-  }
-  if (!found) return;
-
-  // Merge with last item if same key and no mods
+function addItem(item) {
   var last = state.items[state.items.length - 1];
-  var lastKey = last ? (last.itemKey || last.name) : null;
-  if (last && lastKey === itemKey && (!last.mods || last.mods.length === 0)) {
-    last.qty += 1;
+  if (last && last.itemKey === item.itemKey
+      && (!item.mods || item.mods.length === 0)
+      && (!last.mods || last.mods.length === 0)) {
+    last.qty = (last.qty || 1) + 1;
   } else {
     state.items.push({
-      name:    found.name,
-      price:   found.price || 0,
-      mods:    [],
+      name:    item.name,
+      price:   parseFloat(item.price || 0),
+      mods:    item.mods || [],
       qty:     1,
-      itemKey: itemKey,
+      itemKey: item.itemKey,
     });
   }
   renderRecap();
@@ -1272,16 +1260,36 @@ function switchCategory(key) {
 //  TAP HANDLERS (named so they can be re-wired)
 // ─────────────────────────────────────────────────
 
+function handleItemTap(itemKey) {
+  var item = null;
+  for (var ci = 0; ci < state.categories.length; ci++) {
+    var cat = state.categories[ci];
+    for (var ii = 0; ii < (cat.items || []).length; ii++) {
+      var it = cat.items[ii];
+      if ((it.itemKey || it.key || it.name) === itemKey) { item = it; break; }
+    }
+    if (item) break;
+  }
+  if (!item) return;
+
+  var hasModifiers = item.modifier_groups && item.modifier_groups.length > 0;
+  if (hasModifiers) {
+    showToast('Modifier flow coming soon');
+  } else {
+    addItem(item);
+  }
+}
+
 function _onGridTap(e) {
   var tile = e.target.closest('[data-item-key]');
   if (!tile) return;
-  addItem(tile.dataset.itemKey);
+  handleItemTap(tile.dataset.itemKey);
 }
 
 function _onFavTap(e) {
   var tile = e.target.closest('[data-item-key]');
   if (!tile) return;
-  addItem(tile.dataset.itemKey);
+  handleItemTap(tile.dataset.itemKey);
 }
 
 function _onCatTap(e) {
