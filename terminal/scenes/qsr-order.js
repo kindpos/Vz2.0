@@ -143,6 +143,8 @@ var els = {
   totalEl:       null,
   subtotalEl:    null,
   taxEl:         null,
+  discountRowEl: null,
+  discountValEl: null,
   cashBtn:       null,
   cardBtn:       null,
   splitBtn:      null,
@@ -160,10 +162,24 @@ var els = {
 //  HELPERS
 // ─────────────────────────────────────────────────
 
+function moneyRound(x) { return Math.round(x * 100) / 100; }
+
+function totalDiscountPct(item) {
+  return (item.discounts || []).reduce(function(sum, d) {
+    return sum + (d.pct || 0);
+  }, 0);
+}
+
+function discountedPrice(item) {
+  var pct = totalDiscountPct(item);
+  if (pct <= 0) return item.price;
+  return moneyRound(item.price * (1 - pct / 100));
+}
+
 function computeTotals() {
   var subtotal = 0;
   for (var i = 0; i < state.items.length; i++) {
-    subtotal += state.items[i].price * state.items[i].qty;
+    subtotal += discountedPrice(state.items[i]) * (state.items[i].qty || 1);
   }
   var tax   = subtotal * state.taxRate;
   var total = subtotal + tax;
@@ -185,10 +201,90 @@ function ticketLabel(n) {
 }
 
 // ─────────────────────────────────────────────────
+//  DISCOUNT SUB-CARD
+// ─────────────────────────────────────────────────
+
+function buildDiscountSubCard(item, itemIdx) {
+  var wrap = document.createElement('div');
+  wrap.style.marginTop     = '2px';
+  wrap.style.marginLeft    = '8px';
+  wrap.style.background    = T.well;
+  wrap.style.borderRadius  = '6px';
+  wrap.style.border        = '1px solid ' + hexToRgba(T.lavender, 0.45);
+  wrap.style.borderLeft    = '3px solid ' + hexToRgba(T.lavender, 0.55);
+  wrap.style.padding       = '4px 8px';
+  wrap.style.display       = 'flex';
+  wrap.style.flexDirection = 'column';
+
+  var discounts = item.discounts || [];
+  discounts.forEach(function(d, di) {
+    if (di > 0) {
+      var divider = document.createElement('div');
+      divider.style.cssText = 'height:1px;background:' + T.border + ';margin:3px 0;';
+      wrap.appendChild(divider);
+    }
+
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;';
+
+    var left = document.createElement('div');
+    left.style.cssText = 'display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;';
+
+    var namePct = document.createElement('span');
+    namePct.style.cssText = [
+      'font-family:' + T.fb + ';',
+      'font-size:' + T.fsB4 + ';',
+      'font-weight:' + T.fwBold + ';',
+      'color:' + T.lavender + ';',
+    ].join('');
+    namePct.textContent = (d.name || d.label || 'Discount') + '  ' + (d.pct || 0) + '%';
+
+    var savings = document.createElement('span');
+    savings.style.cssText = [
+      'font-family:' + T.fb + ';',
+      'font-size:10px;',
+      'font-weight:' + T.fwBold + ';',
+      'color:' + T.moon + ';',
+    ].join('');
+    savings.textContent = '−' + fmt(moneyRound(item.price * (d.pct || 0) / 100));
+
+    left.appendChild(namePct);
+    left.appendChild(savings);
+
+    var removeBtn = document.createElement('div');
+    removeBtn.style.cssText = [
+      'width:18px;height:18px;',
+      'border-radius:4px;',
+      'background:' + T.verm + ';',
+      'display:flex;align-items:center;justify-content:center;',
+      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+      'font-family:' + T.fb + ';font-size:10px;font-weight:' + T.fwBold + ';',
+      'color:#fff;',
+      'flex-shrink:0;',
+    ].join('');
+    removeBtn.textContent = '✕';
+
+    ;(function(capturedIdx) {
+      removeBtn.addEventListener('pointerup', function(e) {
+        e.stopPropagation();
+        removeDiscount(itemIdx, capturedIdx);
+      });
+    })(di);
+
+    row.appendChild(left);
+    row.appendChild(removeBtn);
+    wrap.appendChild(row);
+  });
+
+  return wrap;
+}
+
+// ─────────────────────────────────────────────────
 //  ITEM ROW
 // ─────────────────────────────────────────────────
 
 function buildItemRow(item, idx, isSelected) {
+  var hasDiscount = !!(item.discounts && item.discounts.length > 0);
   var bevelLt = _lighten(T.bg, 0.08);
   var bevelDk = darkenHex(T.bg, 0.2);
 
@@ -201,7 +297,7 @@ function buildItemRow(item, idx, isSelected) {
     'border-top:2px solid '    + (isSelected ? T.greenDk : bevelLt) + ';',
     'border-right:2px solid '  + (isSelected ? T.greenDk : bevelDk) + ';',
     'border-bottom:2px solid ' + (isSelected ? T.greenDk : bevelDk) + ';',
-    'border-left:3px solid '   + (isSelected ? T.greenDk : T.moon)  + ';',
+    'border-left:3px solid '   + (isSelected ? T.greenDk : (hasDiscount ? T.lavender : T.moon)) + ';',
     'padding:6px 10px;',
     'box-shadow:' + (isSelected ? '0 2px 0 ' + T.greenDk : 'none') + ';',
     'pointer-events:auto;touch-action:manipulation;cursor:pointer;flex-shrink:0;',
@@ -223,18 +319,46 @@ function buildItemRow(item, idx, isSelected) {
   ].join('');
   nameEl.textContent = (item.qty > 1 ? item.qty + '× ' : '') + item.name;
 
-  var priceEl = document.createElement('span');
-  priceEl.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + FS_PRICE + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + (isSelected ? T.well : (item.price > 0 ? T.gold : T.moon)) + ';',
-    'flex-shrink:0;white-space:nowrap;',
-  ].join('');
-  priceEl.textContent = item.price > 0 ? fmtMoney(item.price * (item.qty || 1)) : '—';
+  var priceArea = document.createElement('div');
+  priceArea.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;white-space:nowrap;';
+
+  if (hasDiscount && !isSelected) {
+    var origPrice = document.createElement('span');
+    origPrice.style.cssText = [
+      'font-family:' + T.fb + ';',
+      'font-size:' + T.fsB4 + ';',
+      'font-weight:' + T.fwBold + ';',
+      'color:' + T.moon + ';',
+      'text-decoration:line-through;',
+    ].join('');
+    origPrice.textContent = fmt(item.price * (item.qty || 1));
+
+    var discPrice = document.createElement('span');
+    discPrice.style.cssText = [
+      'font-family:' + T.fb + ';',
+      'font-size:' + FS_PRICE + ';',
+      'font-weight:' + T.fwBold + ';',
+      'color:' + T.lavender + ';',
+    ].join('');
+    discPrice.textContent = fmt(discountedPrice(item) * (item.qty || 1));
+
+    priceArea.appendChild(origPrice);
+    priceArea.appendChild(discPrice);
+  } else {
+    var priceEl = document.createElement('span');
+    priceEl.style.cssText = [
+      'font-family:' + T.fb + ';',
+      'font-size:' + FS_PRICE + ';',
+      'font-weight:' + T.fwBold + ';',
+      'color:' + (isSelected ? T.well : (item.price > 0 ? T.gold : T.moon)) + ';',
+      'white-space:nowrap;',
+    ].join('');
+    priceEl.textContent = item.price > 0 ? fmtMoney(item.price * (item.qty || 1)) : '—';
+    priceArea.appendChild(priceEl);
+  }
 
   topRow.appendChild(nameEl);
-  topRow.appendChild(priceEl);
+  topRow.appendChild(priceArea);
   card.appendChild(topRow);
 
   // ✕ remove button — absolute top-right of card
@@ -264,6 +388,7 @@ function buildItemRow(item, idx, isSelected) {
   block.style.display = 'flex';
   block.style.flexDirection = 'column';
   block.appendChild(card);
+  if (hasDiscount) block.appendChild(buildDiscountSubCard(item, idx));
 
   // Snake mod tree — rendered below the card, not inside it.
   if (item.mods && item.mods.length > 0) {
@@ -489,6 +614,29 @@ function buildRecapPanel() {
   els.subtotalEl = sub.val;
   els.taxEl      = tax.val;
   totalsBlock.appendChild(sub.row);
+
+  var discountRowEl = document.createElement('div');
+  discountRowEl.style.cssText = 'display:none;justify-content:space-between;align-items:center;';
+  var discLbl = document.createElement('span');
+  discLbl.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-size:' + FS_ITEM + ';',
+    'color:' + T.lavender + ';',
+  ].join('') + ";font-weight:" + T.fwBold + ";";
+  discLbl.textContent = 'Discount';
+  var discVal = document.createElement('span');
+  discVal.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-size:' + FS_ITEM + ';',
+    'font-weight:' + T.fwBold + ';',
+    'color:' + T.lavender + ';',
+  ].join('');
+  discountRowEl.appendChild(discLbl);
+  discountRowEl.appendChild(discVal);
+  els.discountRowEl = discountRowEl;
+  els.discountValEl = discVal;
+  totalsBlock.appendChild(discountRowEl);
+
   totalsBlock.appendChild(tax.row);
 
   var totalDivider = document.createElement('div');
@@ -746,6 +894,20 @@ function renderRecap() {
   els.subtotalEl.textContent = fmtMoney(t.subtotal);
   els.taxEl.textContent      = fmtMoney(t.tax);
   els.totalEl.textContent    = fmtMoney(t.total);
+
+  var totalDiscountAmt = state.items.reduce(function(sum, item) {
+    var pct = totalDiscountPct(item);
+    if (pct <= 0) return sum;
+    return moneyRound(sum + moneyRound(item.price * (item.qty || 1) * pct / 100));
+  }, 0);
+  if (els.discountRowEl) {
+    if (totalDiscountAmt > 0) {
+      els.discountRowEl.style.display = 'flex';
+      els.discountValEl.textContent   = '−' + fmt(totalDiscountAmt);
+    } else {
+      els.discountRowEl.style.display = 'none';
+    }
+  }
 
   // Update payment button subtitles
   var totalStr = fmtMoney(t.total);
@@ -1270,15 +1432,19 @@ function addItem(itemKeyOrObj) {
   var lastItemKey = last ? (last.itemKey || last.name) : null;
   var thisKey = configuredItem.itemKey || configuredItem.name;
 
-  if (last && lastItemKey === thisKey && (!last.mods || last.mods.length === 0) && (!configuredItem.mods || configuredItem.mods.length === 0)) {
+  if (last && lastItemKey === thisKey &&
+      (!last.mods || last.mods.length === 0) &&
+      (!configuredItem.mods || configuredItem.mods.length === 0) &&
+      (!last.discounts || last.discounts.length === 0)) {
     last.qty += 1;
   } else {
     state.items.push({
-      name:    configuredItem.name,
-      price:   configuredItem.price || 0,
-      mods:    configuredItem.mods || [],
-      qty:     1,
-      itemKey: thisKey,
+      name:      configuredItem.name,
+      price:     parseFloat(configuredItem.price || 0),
+      mods:      configuredItem.mods || [],
+      discounts: [],
+      qty:       1,
+      itemKey:   thisKey,
     });
   }
   renderRecap();
@@ -1304,6 +1470,12 @@ function removeItem(idx) {
   state.selectedIdxs = state.selectedIdxs
     .filter(function(i) { return i !== idx; })
     .map(function(i) { return i > idx ? i - 1 : i; });
+  renderRecap();
+}
+
+function removeDiscount(itemIdx, discountIdx) {
+  if (!state.items[itemIdx]) return;
+  state.items[itemIdx].discounts.splice(discountIdx, 1);
   renderRecap();
 }
 
@@ -1645,6 +1817,8 @@ defineScene('qsr-order', {
     els.totalEl        = null;
     els.subtotalEl     = null;
     els.taxEl          = null;
+    els.discountRowEl  = null;
+    els.discountValEl  = null;
     els.cashBtn        = null;
     els.cardBtn        = null;
     els.splitBtn       = null;
