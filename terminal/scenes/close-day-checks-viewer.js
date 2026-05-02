@@ -209,7 +209,7 @@ function buildHeader(data) {
   crumbWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:1px;min-width:0;';
 
   var crumb = document.createElement('div');
-  crumb.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.4;letter-spacing:1.2px;font-weight:' + T.fwBold + ';';
+  crumb.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';opacity:0.4;letter-spacing:1.2px;font-weight:' + T.fwBold + ';';
   crumb.textContent = 'CLOSE DAY  /';
   crumbWrap.appendChild(crumb);
 
@@ -225,12 +225,12 @@ function buildHeader(data) {
   countsWrap.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:1px;text-align:right;';
 
   var openCount = document.createElement('div');
-  openCount.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:' + T.fwBold + ';color:' + T.verm + ';letter-spacing:0.5px;';
+  openCount.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';color:' + T.verm + ';letter-spacing:0.5px;';
   openCount.textContent = data.openChecks.length + ' OPEN';
   countsWrap.appendChild(openCount);
 
   var totalLine = document.createElement('div');
-  totalLine.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.35;letter-spacing:0.5px;font-weight:' + T.fwBold + ';';
+  totalLine.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';opacity:0.35;letter-spacing:0.5px;font-weight:' + T.fwBold + ';';
   totalLine.textContent = data.closedChecks.length + ' closed  \u2022  ' + data.totalCount + ' total today';
   countsWrap.appendChild(totalLine);
 
@@ -257,14 +257,14 @@ function buildReceiptCol(data, selectedChecks, allOrders, handlers) {
   var hdr = document.createElement('div');
   hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;flex-shrink:0;gap:6px;';
   var hdrTitle = document.createElement('span');
-  hdrTitle.style.cssText = 'font-family:' + T.fh + ';font-size:12px;font-weight:700;color:' + T.text + ';letter-spacing:1.8px;';
+  hdrTitle.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';color:' + T.text + ';letter-spacing:1.8px;';
   hdrTitle.textContent = showing ? 'CHECK PREVIEW' : 'RECEIPT PREVIEW';
   hdr.appendChild(hdrTitle);
 
   if (showing) {
     var dismiss = document.createElement('span');
     dismiss.style.cssText = [
-      'font-family:' + T.fb + ';font-size:18px;color:' + T.text + ';opacity:0.55;',
+      'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + T.text + ';opacity:0.55;',
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'padding:0 6px;line-height:1;',
@@ -316,11 +316,11 @@ function buildReceiptEmptyState() {
   });
 
   var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:12px;font-weight:700;color:' + T.text + ';letter-spacing:1.2px;';
+  title.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';color:' + T.text + ';letter-spacing:1.2px;';
   title.textContent = 'NOTHING SELECTED';
 
   var hint = document.createElement('div');
-  hint.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';text-align:center;line-height:1.5;' + ";font-weight:" + T.fwBold + ";";
+  hint.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';text-align:center;line-height:1.5;font-weight:' + T.fwBold + ';';
   hint.innerHTML = 'tap a check row<br/>to pin it here';
 
   wrap.appendChild(icon);
@@ -340,14 +340,14 @@ function renderCheckPreview(paper, checks, allOrders) {
     'padding-bottom:8px;border-bottom:1px solid ' + hexToRgba(T.text, 0.1) + ';margin-bottom:4px;',
   ].join('');
   var hLabel = document.createElement('div');
-  hLabel.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.elec + ';letter-spacing:1px;';
+  hLabel.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';color:' + T.elec + ';letter-spacing:1px;';
   if (isMulti) {
     hLabel.textContent = checks.length + ' CHECKS';
   } else {
     hLabel.textContent = (checks[0].tableLabel ? checks[0].tableLabel + ' \u2022 ' : '') + checkNumDisplay(checks[0]);
   }
   var hTotal = document.createElement('div');
-  hTotal.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.gold + ';';
+  hTotal.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';';
   hTotal.textContent = fmt(grandTotal);
   hdrRow.appendChild(hLabel);
   hdrRow.appendChild(hTotal);
@@ -362,19 +362,19 @@ function renderCheckPreview(paper, checks, allOrders) {
 
     if (isMulti) {
       var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + srvCol + ';letter-spacing:0.5px;margin-top:' + (idx === 0 ? '0' : '8px') + ';margin-bottom:2px;' + ";font-weight:" + T.fwBold + ";";
+      sub.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';color:' + srvCol + ';letter-spacing:0.5px;margin-top:' + (idx === 0 ? '0' : '8px') + ';margin-bottom:2px;font-weight:' + T.fwBold + ';';
       sub.textContent = checkNumDisplay(chk) + (fullOrder && fullOrder.server_name ? ' \u00B7 ' + fullOrder.server_name.split(' ')[0].toUpperCase() : '');
       paper.appendChild(sub);
     } else if (fullOrder && fullOrder.server_name) {
       var srvLbl = document.createElement('div');
-      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + srvCol + ';letter-spacing:0.5px;margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
+      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + srvCol + ';letter-spacing:0.5px;margin-bottom:4px;font-weight:' + T.fwBold + ';';
       srvLbl.textContent = fullOrder.server_name.toUpperCase();
       paper.appendChild(srvLbl);
     }
 
     if (!isMulti) {
       var metaRow = document.createElement('div');
-      metaRow.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.55;margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
+      metaRow.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';opacity:0.55;margin-bottom:4px;font-weight:' + T.fwBold + ';';
       var mL = document.createElement('span');
       mL.textContent = chk.guests ? (chk.guests + ' guest' + (chk.guests > 1 ? 's' : '')) : '\u00A0';
       var mR = document.createElement('span');
@@ -387,7 +387,7 @@ function renderCheckPreview(paper, checks, allOrders) {
     var items = (fullOrder && fullOrder.items) || [];
     if (items.length === 0) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.5;font-style:italic;padding:6px 0;' + ";font-weight:" + T.fwBold + ";";
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';opacity:0.5;font-style:italic;padding:6px 0;font-weight:' + T.fwBold + ';';
       empty.textContent = isMulti ? 'no items' : 'no items on this check';
       paper.appendChild(empty);
     } else {
@@ -399,10 +399,10 @@ function renderCheckPreview(paper, checks, allOrders) {
           'padding:3px 0;border-bottom:1px solid ' + hexToRgba(T.text, 0.06) + ';',
         ].join('');
         var nm = document.createElement('span');
-        nm.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
+        nm.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';font-weight:' + T.fwBold + ';';
         nm.textContent = (item.qty && item.qty > 1 ? item.qty + '\u00D7 ' : '') + (item.name || item.display_name || 'Item');
         var pr = document.createElement('span');
-        pr.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;' + ";font-weight:" + T.fwBold + ";";
+        pr.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.gold + ';flex-shrink:0;font-weight:' + T.fwBold + ';';
         pr.textContent = fmt((item.price || item.amount || 0) * (item.qty || 1));
         row.appendChild(nm);
         row.appendChild(pr);
@@ -410,7 +410,7 @@ function renderCheckPreview(paper, checks, allOrders) {
       });
       if (items.length > showCap) {
         var more = document.createElement('div');
-        more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.55;padding-top:2px;' + ";font-weight:" + T.fwBold + ";";
+        more.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';opacity:0.55;padding-top:2px;font-weight:' + T.fwBold + ';';
         more.textContent = '+ ' + (items.length - showCap) + ' more';
         paper.appendChild(more);
       }
@@ -425,9 +425,9 @@ function renderCheckPreview(paper, checks, allOrders) {
         var r = document.createElement('div');
         r.style.cssText = [
           'display:flex;justify-content:space-between;padding:2px 0;',
-          'font-family:' + T.fb + ';font-size:' + (emphasis ? '12px' : '11px') + ';',
+          'font-family:' + T.fb + ';font-size:' + (emphasis ? T.fsB4 : T.fsB4) + ';',
           'color:' + T.text + ';opacity:' + (emphasis ? 1 : 0.65) + ';',
-          emphasis ? 'font-weight:700;' : '',
+          emphasis ? 'font-weight:' + T.fwBold + ';' : '',
         ].join('');
         var rL = document.createElement('span');
         rL.textContent = label;
@@ -447,7 +447,7 @@ function renderCheckPreview(paper, checks, allOrders) {
     if (!isMulti) {
       var stamp = document.createElement('div');
       var stampColor = chk.status === 'open' ? T.verm : (chk.status === 'closed' ? T.greenWarm : T.warning);
-      stamp.style.cssText = 'margin-top:10px;padding-top:6px;font-family:' + T.fb + ';font-size:10px;color:' + stampColor + ';letter-spacing:3px;text-align:center;opacity:0.7;' + ";font-weight:" + T.fwBold + ";";
+      stamp.style.cssText = 'margin-top:10px;padding-top:6px;font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + stampColor + ';letter-spacing:3px;text-align:center;opacity:0.7;font-weight:' + T.fwBold + ';';
       stamp.textContent = '\u2014  ' + (chk.status || 'open').toUpperCase() + '  \u2014';
       paper.appendChild(stamp);
     }
@@ -472,12 +472,12 @@ function buildChecksListCol(data, handlers, sceneState) {
   hdr.style.cssText = 'flex-shrink:0;display:flex;justify-content:space-between;align-items:baseline;';
 
   var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.8px;';
+  title.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';color:' + T.text + ';letter-spacing:1.8px;';
   title.textContent = 'ACTIVE CHECKS';
   hdr.appendChild(title);
 
   var selCount = document.createElement('div');
-  selCount.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';letter-spacing:0.5px;' + ";font-weight:" + T.fwBold + ";";
+  selCount.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.elec + ';letter-spacing:0.5px;font-weight:' + T.fwBold + ';';
   selCount.textContent = sceneState.selectedCheckIds.length + ' of ' + data.openChecks.length + ' selected';
   hdr.appendChild(selCount);
 
@@ -498,7 +498,7 @@ function buildChecksListCol(data, handlers, sceneState) {
 
   // Bottom hint
   var hint = document.createElement('div');
-  hint.style.cssText = 'flex-shrink:0;text-align:center;font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.3;font-style:italic;' + ";font-weight:" + T.fwBold + ";";
+  hint.style.cssText = 'flex-shrink:0;text-align:center;font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';opacity:0.3;font-style:italic;font-weight:' + T.fwBold + ';';
   hint.textContent = 'tap a check to add to preview  \u2022  actions operate on selection';
   col.appendChild(hint);
 
@@ -510,11 +510,11 @@ function buildEmptyState() {
   wrap.style.cssText = 'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:0.5;';
 
   var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:16px;font-weight:700;color:' + T.greenWarm + ';letter-spacing:1.5px;';
+  title.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB3 + ';font-weight:' + T.fwBold + ';color:' + T.greenWarm + ';letter-spacing:1.5px;';
   title.textContent = 'ALL CLEAR';
 
   var hint = document.createElement('div');
-  hint.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
+  hint.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';font-weight:' + T.fwBold + ';';
   hint.textContent = 'no open checks remaining \u2014 ready to lock';
 
   wrap.appendChild(title);
@@ -542,7 +542,7 @@ function buildCheckRow(chk, handlers, sceneState) {
   check.style.cssText = [
     'flex-shrink:0;width:26px;height:26px;border-radius:50%;',
     'display:flex;align-items:center;justify-content:center;',
-    'font-family:' + T.fh + ';font-size:14px;font-weight:700;',
+    'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';',
     selected
       ? 'background:' + T.elec + ';color:' + T.well + ';'
       : 'background:transparent;border:1.5px solid ' + T.border + ';color:transparent;',
@@ -559,13 +559,13 @@ function buildCheckRow(chk, handlers, sceneState) {
   top.style.cssText = 'display:flex;align-items:baseline;gap:8px;';
 
   var ckNo = document.createElement('span');
-  ckNo.style.cssText = 'font-family:' + T.fh + ';font-size:16px;font-weight:700;color:' + T.text + ';';
+  ckNo.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB3 + ';font-weight:' + T.fwBold + ';color:' + T.text + ';';
   ckNo.textContent = checkNumDisplay(chk);
   top.appendChild(ckNo);
 
   if (chk.tableLabel) {
     var tbl = document.createElement('span');
-    tbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';opacity:0.6;' + ";font-weight:" + T.fwBold + ";";
+    tbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';opacity:0.6;font-weight:' + T.fwBold + ';';
     tbl.textContent = '\u00B7  ' + chk.tableLabel;
     top.appendChild(tbl);
   }
@@ -574,14 +574,14 @@ function buildCheckRow(chk, handlers, sceneState) {
   // Server name — colored to match the accent
   if (chk.server_name) {
     var srv = document.createElement('div');
-    srv.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + srvCol + ';font-weight:700;';
+    srv.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + srvCol + ';font-weight:' + T.fwBold + ';';
     srv.textContent = chk.server_name;
     info.appendChild(srv);
   }
 
   // Meta: guests/items + age open
   var meta = document.createElement('div');
-  meta.style.cssText = 'display:flex;align-items:baseline;gap:8px;font-family:' + T.fb + ';font-size:11px;' + ";font-weight:" + T.fwBold + ";";
+  meta.style.cssText = 'display:flex;align-items:baseline;gap:8px;font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';';
 
   var metaParts = [];
   if (chk.guests)    metaParts.push(chk.guests + ' guest' + (chk.guests > 1 ? 's' : ''));
@@ -606,7 +606,7 @@ function buildCheckRow(chk, handlers, sceneState) {
 
   // Amount — gold, large
   var amt = document.createElement('div');
-  amt.style.cssText = 'flex-shrink:0;font-family:' + T.fh + ';font-size:24px;font-weight:700;color:' + T.gold + ';';
+  amt.style.cssText = 'flex-shrink:0;font-family:' + T.fh + ';font-size:' + T.fsB1 + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';';
   amt.textContent = fmt(chk.amount || 0);
   card.appendChild(amt);
 
@@ -635,7 +635,7 @@ function buildActionsCol(data, handlers, sceneState) {
   ].join('');
 
   var label = document.createElement('div');
-  label.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + T.text + ';letter-spacing:1.8px;flex-shrink:0;';
+  label.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';color:' + T.text + ';letter-spacing:1.8px;flex-shrink:0;';
   label.textContent = 'ACTIONS';
   col.appendChild(label);
 
@@ -646,7 +646,7 @@ function buildActionsCol(data, handlers, sceneState) {
     shape: 'chamfer',
     onClick: function() { if (handlers.onBack) handlers.onBack(); },
   });
-  backBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:12px;';
+  backBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:' + T.fsB4 + ';';
   col.appendChild(backBtn);
 
   // SELECT ALL / DESELECT ALL
@@ -656,7 +656,7 @@ function buildActionsCol(data, handlers, sceneState) {
     shape: 'chamfer',
     onClick: function() { if (handlers.onToggleAll) handlers.onToggleAll(); },
   });
-  selectAllBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:11px;';
+  selectAllBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:' + T.fsB4 + ';';
   if (data.openChecks.length === 0) selectAllBtn.style.cssText += 'opacity:0.4;pointer-events:none;';
   col.appendChild(selectAllBtn);
 
@@ -665,16 +665,16 @@ function buildActionsCol(data, handlers, sceneState) {
   counter.style.cssText = [
     'padding:9px 14px;box-sizing:border-box;',
     'background:' + T.well + ';border-radius:8px;flex-shrink:0;',
-    'font-family:' + T.fb + ';font-size:13px;color:' + (hasSelection ? T.elec : T.text) + ';',
+    'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + (hasSelection ? T.elec : T.text) + ';',
     'letter-spacing:0.5px;text-align:center;',
     hasSelection ? '' : 'opacity:0.4;',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
+  ].join('') + ';font-weight:' + T.fwBold + ';';
   counter.textContent = sceneState.selectedCheckIds.length + ' of ' + data.openChecks.length + ' selected';
   col.appendChild(counter);
 
   // Group label
   var groupLabel = document.createElement('div');
-  groupLabel.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.5;letter-spacing:1.2px;margin-top:6px;flex-shrink:0;' + ";font-weight:" + T.fwBold + ";";
+  groupLabel.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';opacity:0.5;letter-spacing:1.2px;margin-top:6px;flex-shrink:0;font-weight:' + T.fwBold + ';';
   groupLabel.textContent = 'ACT ON SELECTION';
   col.appendChild(groupLabel);
 
@@ -690,7 +690,7 @@ function buildActionsCol(data, handlers, sceneState) {
     shape:   'chamfer',
     onClick: function() { if (handlers.onTransferChecks) handlers.onTransferChecks(selectedChecks); },
   });
-  transferBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:12px;';
+  transferBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:' + T.fsB4 + ';';
   if (!hasSelection) transferBtn.style.cssText += 'opacity:0.4;pointer-events:none;';
   actStack.appendChild(transferBtn);
 
@@ -701,7 +701,7 @@ function buildActionsCol(data, handlers, sceneState) {
     shape:  'chamfer',
     onClick: function() { if (handlers.onPrintCheck) handlers.onPrintCheck(selectedChecks); },
   });
-  printBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:12px;';
+  printBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:' + T.fsB4 + ';';
   if (!hasSelection) printBtn.style.cssText += 'opacity:0.4;pointer-events:none;';
   actStack.appendChild(printBtn);
 
@@ -712,7 +712,7 @@ function buildActionsCol(data, handlers, sceneState) {
     shape:  'chamfer',
     onClick: function() { if (handlers.onVoidCheck) handlers.onVoidCheck(selectedChecks); },
   });
-  voidBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:12px;';
+  voidBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:10px 14px;font-size:' + T.fsB4 + ';';
   if (!hasSelection) voidBtn.style.cssText += 'opacity:0.4;pointer-events:none;';
   actStack.appendChild(voidBtn);
 
@@ -735,12 +735,12 @@ function buildActionsCol(data, handlers, sceneState) {
       if (handlers.onCloseCheck) handlers.onCloseCheck(selectedChecks);
     },
   });
-  primaryBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:14px;font-size:15px;font-weight:700;flex-shrink:0;';
+  primaryBtn.style.cssText += 'width:100%;box-sizing:border-box;padding:14px;font-size:' + T.fsB3 + ';font-weight:' + T.fwBold + ';flex-shrink:0;';
   if (!primaryEnabled) primaryBtn.style.cssText += 'opacity:0.4;pointer-events:none;';
   col.appendChild(primaryBtn);
 
   var subtitle = document.createElement('div');
-  subtitle.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.55;text-align:center;flex-shrink:0;' + ";font-weight:" + T.fwBold + ";";
+  subtitle.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';color:' + T.text + ';opacity:0.55;text-align:center;flex-shrink:0;font-weight:' + T.fwBold + ';';
   if (singleSelection) {
     subtitle.textContent = 'opens payment  \u00B7  ' + checkNumDisplay(selectedChecks[0]);
   } else if (selectedChecks.length > 1) {
