@@ -933,7 +933,16 @@ function renderRecap() {
   // DISCOUNT / VOID subtitle reflects context (item-level vs order-level).
   // No accent bar — the filled button style replaces it.
   if (els.discBtn) {
-    els.discBtn._subEl.textContent = hasSel ? 'item selected' : 'order level';
+    var discSub;
+    if (state.selectedIdxs.length > 0) {
+      var allHaveDiscounts = state.selectedIdxs.every(function(i) {
+        return state.items[i] && (state.items[i].discounts || []).length > 0;
+      });
+      discSub = allHaveDiscounts ? 'add / remove' : 'item selected';
+    } else {
+      discSub = 'order level';
+    }
+    els.discBtn._subEl.textContent = discSub;
   }
   if (els.voidBtn) {
     els.voidBtn._subEl.textContent = hasSel ? 'item selected' : 'order level';
@@ -1568,25 +1577,7 @@ function wireHandlers() {
   if (els.discBtn) {
     els.discBtn.addEventListener('pointerup', function() {
       if (!state.items.length) return;
-      var isItemLevel = state.selectedIdxs.length > 0;
-      SceneManager.openInterrupt('manager-pin', {
-        reason: isItemLevel ? 'Discount item' : 'Discount order',
-        onConfirm: function() {
-          SceneManager.closeInterrupt('manager-pin');
-          SceneManager.openInterrupt('disc-select', {
-            orderId:       state.orderId,
-            selectedItems: isItemLevel
-              ? state.selectedIdxs.map(function(i) { return state.items[i]; })
-              : state.items,
-            onConfirm: function(discountPayload) {
-              applyDiscount(discountPayload);
-            },
-          });
-        },
-        onCancel: function() {
-          SceneManager.closeInterrupt('manager-pin');
-        },
-      });
+      handleDiscount();
     });
   }
 
@@ -1594,18 +1585,7 @@ function wireHandlers() {
   if (els.voidBtn) {
     els.voidBtn.addEventListener('pointerup', function() {
       if (!state.items.length) return;
-      var isItemLevel = state.selectedIdxs.length > 0;
-      var label = isItemLevel ? 'Void selected item(s)?' : 'Void entire order?';
-      SceneManager.openInterrupt('manager-pin', {
-        reason: label,
-        onConfirm: function() {
-          SceneManager.closeInterrupt('manager-pin');
-          executeVoid(isItemLevel);
-        },
-        onCancel: function() {
-          SceneManager.closeInterrupt('manager-pin');
-        },
-      });
+      handleVoid();
     });
   }
 }
@@ -1630,43 +1610,104 @@ function buildOrderPayload() {
 }
 
 // ─────────────────────────────────────────────────
-//  VOID EXECUTION
+//  DISCOUNT HANDLER
 // ─────────────────────────────────────────────────
 
-function executeVoid(isItemLevel) {
-  if (isItemLevel) {
-    // Remove selected items in reverse order to preserve indices
-    var idxs = state.selectedIdxs.slice().sort(function(a, b) { return b - a; });
-    idxs.forEach(function(idx) {
-      state.items.splice(idx, 1);
-    });
-    state.selectedIdxs = [];
-    renderRecap();
-    showToast('Item(s) voided');
+function handleDiscount() {
+  var targetIdxs = state.selectedIdxs.length > 0
+    ? state.selectedIdxs.slice()
+    : state.items.map(function(_, i) { return i; });
 
-    // TODO: POST void to backend when orderId is set
-    if (state.orderId) {
-      // TODO: fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items/void', ...)
-    }
-  } else {
-    state.items        = [];
-    state.selectedIdxs = [];
-    state.orderId      = null;
-    renderRecap();
-    showToast('Order voided');
-
-    // TODO: POST void to backend when orderId was set
+  if (targetIdxs.length === 0) {
+    showToast('Add items before applying a discount');
+    return;
   }
+
+  SceneManager.openInterrupt('manager-pin', {
+    context:   'discount',
+    onConfirm: function(employeeId) {
+      SceneManager.openInterrupt('disc-select', {
+        approvedBy: employeeId,
+        onConfirm:  function(discount) {
+          applyDiscount(discount, targetIdxs);
+        },
+        onCancel: function() {},
+      });
+    },
+    onCancel: function() {},
+  });
+}
+
+function applyDiscount(discount, targetIdxs) {
+  targetIdxs.forEach(function(idx) {
+    var item = state.items[idx];
+    if (!item) return;
+    var alreadyApplied = (item.discounts || []).some(function(d) {
+      return d.id === discount.id;
+    });
+    if (alreadyApplied) return;
+    if (!item.discounts) item.discounts = [];
+    item.discounts.push({ id: discount.id, name: discount.name, pct: discount.pct });
+  });
+  renderRecap();
 }
 
 // ─────────────────────────────────────────────────
-//  DISCOUNT APPLICATION (stub — wired via disc-select)
+//  VOID HANDLER
 // ─────────────────────────────────────────────────
 
-function applyDiscount(discountPayload) {
-  // Applied server-side; refresh recap or show confirmation
-  showToast('Discount applied');
+function handleVoid() {
+  var targetIdxs = state.selectedIdxs.length > 0
+    ? state.selectedIdxs.slice()
+    : state.items.map(function(_, i) { return i; });
+
+  if (targetIdxs.length === 0) {
+    showToast('Select items to void, or tap VOID with no selection to void the order');
+    return;
+  }
+
+  var firstItem = state.items[targetIdxs[0]];
+  if (!firstItem) return;
+
+  SceneManager.openInterrupt('manager-pin', {
+    context:   'void',
+    onConfirm: function(employeeId) {
+      SceneManager.openInterrupt('void-reason', {
+        item:       { name: firstItem.name, price: firstItem.price },
+        approvedBy: employeeId,
+        onConfirm:  function(reason) {
+          executeVoid(targetIdxs, reason, employeeId);
+        },
+        onCancel: function() {},
+      });
+    },
+    onCancel: function() {},
+  });
+}
+
+function executeVoid(targetIdxs, reason, approvedBy) {
+  var orderId = state.order && state.order.orderId;
+
+  targetIdxs.slice().sort(function(a, b) { return b - a; }).forEach(function(idx) {
+    if (orderId && state.items[idx]) {
+      var itemId = state.items[idx].itemId || state.items[idx].itemKey;
+      fetchWithTimeout(
+        '/api/v1/orders/' + orderId + '/items/' + itemId,
+        {
+          method: 'DELETE',
+          body:   JSON.stringify({ reason: reason, approved_by: approvedBy }),
+        },
+        5000
+      ).catch(function() {
+        showToast('Void recorded locally — sync may be needed');
+      });
+    }
+    state.items.splice(idx, 1);
+  });
+
+  state.selectedIdxs = [];
   renderRecap();
+  showToast('Item voided');
 }
 
 // ─────────────────────────────────────────────────
