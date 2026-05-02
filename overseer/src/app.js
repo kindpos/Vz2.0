@@ -45,6 +45,7 @@ import { buildHomeScene,           cleanupHome           } from './sections/home
 import { buildSalesReportsScene,  cleanupSalesReports   } from './sections/sales-reports.js';
 import { buildStaffRolesScene,    cleanupStaffRoles     } from './sections/staff-roles.js';
 import { buildPayrollAttendanceScene, cleanupPayrollAttendance } from './sections/payroll-attendance.js';
+import { buildPricingSetupScene, cleanupPricingSetup } from './sections/pricing-setup.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -90,6 +91,7 @@ const NAV = [
         subs: [
             { id: 'menu-categories',     label: 'Items & Categories' },
             { id: 'modifier-groups',      label: "Modifiers & microMODs" },
+            { id: 'pricing-setup',       label: 'Pricing Setup'     },
             { id: 'pricing-specials',    label: 'Discounts & Specials' },
             { id: 'import-excel',        label: 'Import Menu'       },
         ]
@@ -389,6 +391,11 @@ function registerAllSections() {
         name: 'floor-plan',
         mount: (container) => buildFloorPlanScene(container),
         unmount: (container) => cleanupFloorPlan(container),
+    });
+    SceneManager.register({
+        name: 'pricing-setup',
+        mount: (container) => buildPricingSetupScene(container),
+        unmount: (container) => cleanupPricingSetup(container),
     });
 }
 
