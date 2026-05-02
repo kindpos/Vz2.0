@@ -70,6 +70,8 @@ var state = {
   changeDue:           0,
   readerPending:       false,
   cancelFn:            null,
+  equalSplitCount:     0,      // 0 = manual mode, 2+ = equal split active
+  equalSplitAmounts:   [],     // pre-calculated per-person amounts (last absorbs rounding)
 };
 
 var els = {};
@@ -141,6 +143,19 @@ function buildLeftPanel() {
   hdrLabel.textContent = 'SPLIT  ' + ticketLabel();
   hdr.appendChild(hdrLabel);
   panel.appendChild(hdr);
+
+  var splitProgressLabel = document.createElement('div');
+  splitProgressLabel.style.cssText = [
+    'padding:4px 16px;flex-shrink:0;',
+    'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';color:' + T.moon + ';',
+  ].join('');
+  splitProgressLabel.style.display = state.equalSplitCount >= 2 ? '' : 'none';
+  splitProgressLabel.textContent = state.equalSplitCount >= 2
+    ? 'Split ' + state.equalSplitCount + ' ways — ' +
+      state.payments.length + ' of ' + state.equalSplitCount + ' paid'
+    : '';
+  els.splitProgressLabel = splitProgressLabel;
+  panel.appendChild(splitProgressLabel);
 
   var itemList = document.createElement('div');
   itemList.style.cssText = [
@@ -256,6 +271,11 @@ function updateLeftPanel() {
     els.remainVal.style.color = T.greenWarm;
     els.remainVal.textContent = 'Paid in full';
   }
+  if (els.splitProgressLabel && state.equalSplitCount >= 2) {
+    els.splitProgressLabel.textContent = 'Split ' + state.equalSplitCount + ' ways — ' +
+      state.payments.length + ' of ' + state.equalSplitCount + ' paid';
+    els.splitProgressLabel.style.display = '';
+  }
 }
 
 // ─────────────────────────────────────────────────
@@ -301,6 +321,29 @@ function handleSplitKey(key) {
   if (els.cardBtnSub)         els.cardBtnSub.textContent         = fmt(amt);
 }
 
+function calcEqualSplit(n) {
+  if (n < 2) return [];
+  var base = moneyRound(Math.floor(state.total * 100 / n) / 100);
+  var amounts = [];
+  var allocated = 0;
+  for (var i = 0; i < n - 1; i++) {
+    amounts.push(base);
+    allocated = moneyRound(allocated + base);
+  }
+  amounts.push(moneyRound(state.total - allocated));
+  return amounts;
+}
+
+function getConfirmedAmount() {
+  if (state.equalSplitCount >= 2) {
+    var idx = state.payments.length;
+    return state.equalSplitAmounts[idx] || state.remaining;
+  }
+  return state.splitAmountRaw
+    ? parseTendered(state.splitAmountRaw)
+    : state.remaining;
+}
+
 function buildSelectPhase() {
   var phase = document.createElement('div');
   phase.style.cssText = [
@@ -330,6 +373,157 @@ function buildSelectPhase() {
   remBlock.appendChild(remLbl);
   remBlock.appendChild(remAmt);
   col.appendChild(remBlock);
+
+  // --- Equal split section ---
+  var equalSection = document.createElement('div');
+  equalSection.style.cssText = 'display:flex;flex-direction:column;gap:6px;width:100%;';
+
+  var eqLbl = document.createElement('div');
+  eqLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_LABEL +
+    ';font-weight:' + T.fwBold + ';color:' + T.moon + ';letter-spacing:2px;';
+  eqLbl.textContent = 'SPLIT EQUALLY';
+  equalSection.appendChild(eqLbl);
+
+  var stepRow = document.createElement('div');
+  stepRow.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;';
+
+  var minusBtn = document.createElement('div');
+  minusBtn.style.cssText = [
+    'width:40px;height:40px;border-radius:' + T.chamferBtn + 'px;',
+    'background:' + T.well + ';border:1px solid ' + T.border + ';',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  var minusLbl = document.createElement('span');
+  minusLbl.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.moon + ';';
+  minusLbl.textContent = '−';
+  minusBtn.appendChild(minusLbl);
+  els.splitMinusBtn = minusBtn;
+
+  var countDisplay = document.createElement('div');
+  countDisplay.style.cssText = [
+    'flex:1;text-align:center;',
+    'font-family:' + T.fh + ';font-size:' + FS_BODY + ';',
+    'font-weight:' + T.fwBold + ';color:' + T.text + ';',
+  ].join('');
+  countDisplay.textContent = state.equalSplitCount >= 2
+    ? '÷ ' + state.equalSplitCount + ' ways'
+    : '÷ — ways';
+  els.splitCountDisplay = countDisplay;
+
+  var plusBtn = document.createElement('div');
+  plusBtn.style.cssText = [
+    'width:40px;height:40px;border-radius:' + T.chamferBtn + 'px;',
+    'background:' + T.well + ';border:1px solid ' + T.border + ';',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  var plusLbl = document.createElement('span');
+  plusLbl.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.moon + ';';
+  plusLbl.textContent = '+';
+  plusBtn.appendChild(plusLbl);
+  els.splitPlusBtn = plusBtn;
+
+  stepRow.appendChild(minusBtn);
+  stepRow.appendChild(countDisplay);
+  stepRow.appendChild(plusBtn);
+  equalSection.appendChild(stepRow);
+
+  var perPersonDisplay = document.createElement('div');
+  perPersonDisplay.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY +
+    ';color:' + T.gold + ';text-align:center;';
+  perPersonDisplay.style.display = state.equalSplitCount >= 2 ? '' : 'none';
+  perPersonDisplay.textContent = state.equalSplitCount >= 2
+    ? '~' + fmt(state.equalSplitAmounts[0] || 0) + ' per person'
+    : '';
+  els.perPersonDisplay = perPersonDisplay;
+  equalSection.appendChild(perPersonDisplay);
+
+  var applyBtn = document.createElement('div');
+  applyBtn.style.cssText = [
+    'width:100%;min-height:40px;',
+    'background:' + T.card + ';border:1.5px solid ' + T.green + ';',
+    'border-radius:' + T.chamferBtn + 'px;',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  applyBtn.style.display = state.equalSplitCount >= 2 ? '' : 'none';
+  var applyLbl = document.createElement('span');
+  applyLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BTN +
+    ';font-weight:' + T.fwBold + ';color:' + T.green + ';';
+  applyLbl.textContent = 'USE EQUAL SPLIT';
+  applyBtn.appendChild(applyLbl);
+  els.applyBtn = applyBtn;
+  equalSection.appendChild(applyBtn);
+
+  var dividerWrap = document.createElement('div');
+  dividerWrap.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;';
+  var divLeft = document.createElement('div');
+  divLeft.style.cssText = 'flex:1;height:1px;background:' + T.border + ';';
+  var divLabel = document.createElement('span');
+  divLabel.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_LABEL +
+    ';color:' + T.moon + ';white-space:nowrap;';
+  divLabel.textContent = 'OR ENTER AMOUNT';
+  var divRight = document.createElement('div');
+  divRight.style.cssText = 'flex:1;height:1px;background:' + T.border + ';';
+  dividerWrap.appendChild(divLeft);
+  dividerWrap.appendChild(divLabel);
+  dividerWrap.appendChild(divRight);
+  equalSection.appendChild(dividerWrap);
+
+  col.appendChild(equalSection);
+
+  function updateStepperState() {
+    var n = state.equalSplitCount;
+    var isMinDisabled = n <= 2;
+    var isPlusDisabled = n >= 8;
+    minusBtn.style.opacity      = isMinDisabled  ? '0.35' : '1';
+    minusBtn.style.pointerEvents = isMinDisabled  ? 'none' : 'auto';
+    plusBtn.style.opacity       = isPlusDisabled ? '0.35' : '1';
+    plusBtn.style.pointerEvents  = isPlusDisabled ? 'none' : 'auto';
+  }
+  updateStepperState();
+
+  function onEqualSplitChange() {
+    var n = state.equalSplitCount;
+    countDisplay.textContent = n >= 2 ? '÷ ' + n + ' ways' : '÷ — ways';
+    var firstAmt = state.equalSplitAmounts[0] || 0;
+    perPersonDisplay.textContent = n >= 2 ? '~' + fmt(firstAmt) + ' per person' : '';
+    perPersonDisplay.style.display = n >= 2 ? '' : 'none';
+    applyBtn.style.display = n >= 2 ? '' : 'none';
+    updateStepperState();
+    if (els.splitProgressLabel && n >= 2) {
+      els.splitProgressLabel.textContent = 'Split ' + n + ' ways — ' +
+        state.payments.length + ' of ' + n + ' paid';
+      els.splitProgressLabel.style.display = '';
+    }
+  }
+
+  minusBtn.addEventListener('pointerup', function() {
+    if (state.equalSplitCount <= 2) return;
+    state.equalSplitCount--;
+    state.equalSplitAmounts = calcEqualSplit(state.equalSplitCount);
+    onEqualSplitChange();
+  });
+
+  plusBtn.addEventListener('pointerup', function() {
+    var newN = state.equalSplitCount < 2 ? 2 : state.equalSplitCount + 1;
+    if (newN > 8) return;
+    state.equalSplitCount = newN;
+    state.equalSplitAmounts = calcEqualSplit(state.equalSplitCount);
+    onEqualSplitChange();
+  });
+
+  applyBtn.addEventListener('pointerup', function() {
+    var idx = state.payments.length;
+    var amt = state.equalSplitAmounts[idx] !== undefined
+      ? state.equalSplitAmounts[idx]
+      : state.remaining;
+    state.currentSplitAmount = amt;
+    if (els.splitAmountDisplay) els.splitAmountDisplay.textContent = fmt(amt);
+    if (els.cashBtnSub)         els.cashBtnSub.textContent         = fmt(amt);
+    if (els.cardBtnSub)         els.cardBtnSub.textContent         = fmt(amt);
+  });
 
   // b) THIS PAYMENT entry row
   var entryBlock = document.createElement('div');
@@ -426,7 +620,7 @@ function buildSelectPhase() {
   cashBtn.addEventListener('pointerup', rcash);
   cashBtn.addEventListener('pointerleave', rcash);
   cashBtn.addEventListener('pointerup', function() {
-    var amt = getSplitAmount();
+    var amt = getConfirmedAmount();
     if (amt <= 0 || amt > state.remaining) { showToast('Invalid payment amount'); return; }
     state.currentSplitAmount = amt;
     state.tenderedRaw = '';
@@ -460,7 +654,7 @@ function buildSelectPhase() {
   cardBtn.addEventListener('pointerup', rcard);
   cardBtn.addEventListener('pointerleave', rcard);
   cardBtn.addEventListener('pointerup', function() {
-    var amt = getSplitAmount();
+    var amt = getConfirmedAmount();
     if (amt <= 0 || amt > state.remaining) { showToast('Invalid payment amount'); return; }
     state.currentSplitAmount = amt;
     state.phase = 'card-reader';
@@ -994,6 +1188,12 @@ function advanceAfterPayment() {
     state.tendered           = 0;
     state.changeDue          = 0;
     state.phase              = 'select';
+    if (state.equalSplitCount >= 2 && state.remaining > 0) {
+      var nextIdx = state.payments.length;
+      state.currentSplitAmount = nextIdx < state.equalSplitAmounts.length
+        ? state.equalSplitAmounts[nextIdx]
+        : state.remaining;
+    }
     renderPhase();
   }
 }
@@ -1045,6 +1245,8 @@ defineScene('qsr-split', {
     state.changeDue          = 0;
     state.readerPending      = false;
     state.cancelFn           = null;
+    state.equalSplitCount    = 0;
+    state.equalSplitAmounts  = [];
 
     computeRemaining();
 
