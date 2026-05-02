@@ -603,7 +603,13 @@ function _registerSubScene(name, subDef) {
   });
 }
 
-export function defineScene(def) {
+export function defineScene(def, opts) {
+  // Two-arg form: defineScene('name', { mount, unmount })
+  // Used by qsr scenes — route directly to SceneManager.register.
+  if (typeof def === 'string') {
+    SceneManager.register(Object.assign({ name: def }, opts || {}));
+    return;
+  }
   if (!def || !def.name) {
     console.error('defineScene: scene must have a name');
     return;
