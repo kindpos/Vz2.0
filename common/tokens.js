@@ -116,6 +116,7 @@ export const T = {
   fwReg:    '400',
   fwMed:    '500',
   fwBold:   '700',
+  fwNormal: '700',   // intentional — all UI text is bold by design
 
   // ── Layout ────────────────────────────────────────
   appW:     1024,

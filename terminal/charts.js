@@ -150,7 +150,7 @@ export function buildStatCard(opts) {
 
   var titleEl = document.createElement('span');
   titleEl.textContent   = (o.title || '').toUpperCase();
-  titleEl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;letter-spacing:2px;color:' + T.border + ';';
+  titleEl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;letter-spacing:2px;color:' + T.border + ';' + ";font-weight:" + T.fwBold + ";";
 
   var dot = document.createElement('div');
   dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:' + color + ';box-shadow:0 0 5px ' + hexToRgba(color, 0.5) + ';';
@@ -169,7 +169,7 @@ export function buildStatCard(opts) {
 
   var deltaEl = document.createElement('div');
   deltaEl.textContent   = o.delta || '';
-  deltaEl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + (o.deltaColor || T.positive) + ';margin-bottom:4px;';
+  deltaEl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + (o.deltaColor || T.positive) + ';margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
 
   body.appendChild(valueEl);
   body.appendChild(deltaEl);
@@ -228,16 +228,16 @@ export function buildCashCardBar(opts) {
 
   var lbl = document.createElement('span');
   lbl.textContent   = 'CASH / CARD';
-  lbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.border + ';letter-spacing:1px;';
+  lbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.border + ';letter-spacing:1px;' + ";font-weight:" + T.fwBold + ";";
 
   var amounts = document.createElement('div');
   amounts.style.cssText = 'display:flex;gap:10px;';
 
   var cashAmt = document.createElement('span');
-  cashAmt.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.green + ';';
+  cashAmt.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.green + ';' + ";font-weight:" + T.fwBold + ";";
 
   var cardAmt = document.createElement('span');
-  cardAmt.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.elec + ';';
+  cardAmt.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.elec + ';' + ";font-weight:" + T.fwBold + ";";
 
   amounts.appendChild(cashAmt);
   amounts.appendChild(cardAmt);
@@ -264,10 +264,10 @@ export function buildCashCardBar(opts) {
   pctRow.style.cssText = 'display:flex;justify-content:space-between;';
 
   var cashPct = document.createElement('span');
-  cashPct.style.cssText = 'font-family:' + T.fb + ';font-size:8px;color:' + T.green + ';opacity:0.7;';
+  cashPct.style.cssText = 'font-family:' + T.fb + ';font-size:8px;color:' + T.green + ';opacity:0.7;' + ";font-weight:" + T.fwBold + ";";
 
   var cardPct = document.createElement('span');
-  cardPct.style.cssText = 'font-family:' + T.fb + ';font-size:8px;color:' + T.elec + ';opacity:0.7;';
+  cardPct.style.cssText = 'font-family:' + T.fb + ';font-size:8px;color:' + T.elec + ';opacity:0.7;' + ";font-weight:" + T.fwBold + ";";
 
   pctRow.appendChild(cashPct);
   pctRow.appendChild(cardPct);
@@ -410,14 +410,14 @@ export function buildLineCard(opts) {
 
   var colLeft = document.createElement('div');
   var colLabel = document.createElement('div');
-  colLabel.style.cssText = 'font-family:' + T.fb + ';font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:4px;';
+  colLabel.style.cssText = 'font-family:' + T.fb + ';font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
   colLabel.textContent   = o.label || '7-Day Revenue';
 
   var colValue = document.createElement('div');
   colValue.style.cssText = 'font-family:' + T.fh + ';font-size:30px;font-weight:800;color:' + T.gold + ';line-height:1;';
 
   var colDelta = document.createElement('div');
-  colDelta.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.positive + ';margin-top:3px;';
+  colDelta.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.positive + ';margin-top:3px;' + ";font-weight:" + T.fwBold + ";";
 
   colLeft.appendChild(colLabel);
   colLeft.appendChild(colValue);
@@ -427,7 +427,7 @@ export function buildLineCard(opts) {
   colRight.style.textAlign = 'right';
   var colHint = document.createElement('div');
   colHint.textContent   = 'tap to expand ↕';
-  colHint.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:rgba(255,255,255,0.18);';
+  colHint.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:rgba(255,255,255,0.18);' + ";font-weight:" + T.fwBold + ";";
   colRight.appendChild(colHint);
 
   collapsed.appendChild(colLeft);
@@ -452,13 +452,13 @@ export function buildLineCard(opts) {
   var expLeft = document.createElement('div');
   var expTitle = document.createElement('div');
   expTitle.textContent   = o.label || '7-Day Revenue';
-  expTitle.style.cssText = 'font-family:' + T.fb + ';font-size:9px;letter-spacing:2px;text-transform:uppercase;color:' + T.border + ';margin-bottom:5px;';
+  expTitle.style.cssText = 'font-family:' + T.fb + ';font-size:9px;letter-spacing:2px;text-transform:uppercase;color:' + T.border + ';margin-bottom:5px;' + ";font-weight:" + T.fwBold + ";";
 
   var expValue = document.createElement('div');
   expValue.style.cssText = 'font-family:' + T.fh + ';font-size:32px;font-weight:800;color:' + T.gold + ';line-height:1;';
 
   var expDelta = document.createElement('div');
-  expDelta.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.positive + ';margin-top:4px;';
+  expDelta.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.positive + ';margin-top:4px;' + ";font-weight:" + T.fwBold + ";";
 
   expLeft.appendChild(expTitle);
   expLeft.appendChild(expValue);
@@ -471,7 +471,7 @@ export function buildLineCard(opts) {
     'color:' + T.border + ';background:rgba(255,255,255,0.07);',
     'border:1px solid rgba(255,255,255,0.1);border-radius:4px;',
     'padding:5px 10px;cursor:pointer;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
 
   expHdr.appendChild(expLeft);
   expHdr.appendChild(closeBtn);
@@ -507,7 +507,7 @@ export function buildLineCard(opts) {
     dot.style.cssText = 'width:8px;height:8px;border-radius:2px;background:' + color + ';' + (dashed ? 'opacity:0.5;' : 'box-shadow:0 0 5px ' + hexToRgba(color, 0.4) + ';');
     var lbl = document.createElement('span');
     lbl.textContent   = label;
-    lbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.border + ';';
+    lbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.border + ';' + ";font-weight:" + T.fwBold + ";";
     item.appendChild(dot);
     item.appendChild(lbl);
     return item;
@@ -527,7 +527,7 @@ export function buildLineCard(opts) {
       'background:' + (i === 0 ? hexToRgba(T.green, 0.15) : 'rgba(255,255,255,0.06)') + ';',
       'color:' + (i === 0 ? T.green : T.border) + ';',
       'transition:background 0.15s,color 0.15s;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     tab.addEventListener('pointerup', function(e) {
       e.stopPropagation();
       rangeTabs.querySelectorAll('button').forEach(function(t) {
@@ -749,7 +749,7 @@ export function buildCOBCard(opts) {
     v.style.cssText = 'font-family:' + T.fh + ';font-size:20px;font-weight:700;color:' + color + ';';
     v.textContent   = val;
     var l  = document.createElement('div');
-    l.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.6;letter-spacing:1px;text-transform:uppercase;margin-top:1px;';
+    l.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.6;letter-spacing:1px;text-transform:uppercase;margin-top:1px;' + ";font-weight:" + T.fwBold + ";";
     l.textContent   = label;
     el.appendChild(v); el.appendChild(l);
     return { wrap: el, v: v };
@@ -771,11 +771,11 @@ export function buildCOBCard(opts) {
 
   var warnLbl = document.createElement('span');
   warnLbl.textContent   = '▲28% warn';
-  warnLbl.style.cssText = 'font-family:' + T.fb + ';font-size:8px;color:' + T.warning + ';letter-spacing:1px;';
+  warnLbl.style.cssText = 'font-family:' + T.fb + ';font-size:8px;color:' + T.warning + ';letter-spacing:1px;' + ";font-weight:" + T.fwBold + ";";
 
   var critLbl = document.createElement('span');
   critLbl.textContent   = '▲35% crit';
-  critLbl.style.cssText = 'font-family:' + T.fb + ';font-size:8px;color:' + T.verm + ';letter-spacing:1px;';
+  critLbl.style.cssText = 'font-family:' + T.fb + ';font-size:8px;color:' + T.verm + ';letter-spacing:1px;' + ";font-weight:" + T.fwBold + ";";
 
   cobLabelRow.appendChild(warnLbl);
   cobLabelRow.appendChild(critLbl);
@@ -835,7 +835,7 @@ export function buildCOBCard(opts) {
 
       var name = document.createElement('span');
       name.textContent   = (srv.name || '').split(' ')[0].toUpperCase();
-      name.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.border + ';width:52px;text-align:right;flex-shrink:0;';
+      name.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.border + ';width:52px;text-align:right;flex-shrink:0;' + ";font-weight:" + T.fwBold + ";";
 
       var track = document.createElement('div');
       track.style.cssText = 'flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;';
@@ -847,7 +847,7 @@ export function buildCOBCard(opts) {
 
       var hrs = document.createElement('span');
       hrs.textContent   = (srv.hours || 0).toFixed(1) + 'h';
-      hrs.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.border + ';width:28px;';
+      hrs.style.cssText = 'font-family:' + T.fb + ';font-size:9px;color:' + T.border + ';width:28px;' + ";font-weight:" + T.fwBold + ";";
 
       row.appendChild(name);
       row.appendChild(track);

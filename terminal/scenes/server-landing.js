@@ -121,7 +121,7 @@ function buildCheckTile(order, isSelected, onClick) {
   var guestEl = document.createElement('div');
   var guests = order.seat_count || order.guest_count || order.covers || 1;
   guestEl.textContent   = 'x' + guests;
-  guestEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.moon + ';';
+  guestEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
 
   var totalEl = document.createElement('div');
   var total = order.total != null ? fmt(order.total) : fmt((order.total_cents || 0) / 100);
@@ -149,7 +149,7 @@ function buildNewCheckTile(onClick) {
   tile.style.border         = '1px dashed ' + hexToRgba(T.groups.landing.newCheckBorder, 0.5);
 
   var plus = document.createElement('span');
-  plus.style.cssText = 'font-family:' + T.fh + ';font-size:32px;color:' + hexToRgba(T.groups.landing.newCheckBorder, 0.6) + ';pointer-events:none;';
+  plus.style.cssText = 'font-family:' + T.fh + ';font-size:32px;color:' + hexToRgba(T.groups.landing.newCheckBorder, 0.6) + ';pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
   plus.textContent = '+';
   tile.appendChild(plus);
 
@@ -177,7 +177,7 @@ function _buildCheckPreview(orders) {
   orders.forEach(function(order) {
     if (orders.length > 1) {
       var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.06em;margin-top:4px;margin-bottom:4px;';
+      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.06em;margin-top:4px;margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
       sub.textContent   = checkNum(order);
       wrap.appendChild(sub);
     }
@@ -214,7 +214,7 @@ function _buildCheckPreview(orders) {
       seatTot.style.cssText = 'font-family:' + T.fb + ';font-size:11px;font-weight:700;color:' + T.gold + ';';
       seatTot.textContent = fmt(seatSubtotal);
       var chevron = document.createElement('span');
-      chevron.style.cssText = 'font-size:10px;color:' + hexToRgba(T.text, 0.4) + ';margin-left:4px;';
+      chevron.style.cssText = 'font-size:10px;color:' + hexToRgba(T.text, 0.4) + ';margin-left:4px;' + ";font-weight:" + T.fwBold + ";";
       chevron.textContent = '▾';
       seatHdr.appendChild(seatNum);
       seatHdr.appendChild(seatLbl);
@@ -280,15 +280,15 @@ function buildTipRow(chk, onTap, isActive) {
 
   var idEl = document.createElement('div');
   idEl.textContent   = chk.checkLabel || checkNum({ order_id: chk.checkId }) || 'CHK';
-  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:12px;color:' + T.text + ';flex:1;letter-spacing:0.06em;';
+  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:12px;color:' + T.text + ';flex:1;letter-spacing:0.06em;' + ";font-weight:" + T.fwBold + ";";
 
   var amtEl = document.createElement('div');
   amtEl.textContent   = fmt(chk.amount || 0);
-  amtEl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.7;';
+  amtEl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.7;' + ";font-weight:" + T.fwBold + ";";
 
   var tipEl = document.createElement('div');
   tipEl.textContent   = adjusted ? fmt(chk.tip || 0) : '—';
-  tipEl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;min-width:44px;text-align:right;color:' + (adjusted ? T.green : T.border) + ';';
+  tipEl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;min-width:44px;text-align:right;color:' + (adjusted ? T.green : T.border) + ';' + ";font-weight:" + T.fwBold + ";";
 
   row.appendChild(dot);
   row.appendChild(idEl);
@@ -346,7 +346,7 @@ defineScene({
       'gap:10px;padding:8px 10px 32px;',
       'box-sizing:border-box;overflow:visible;',
       'font-family:' + T.fb + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     container.appendChild(root);
 
     // ─────────────────────────────────────────────
@@ -392,11 +392,11 @@ defineScene({
 
     var tabUnadj = document.createElement('div');
     tabUnadj.textContent = 'UNADJ';
-    tabUnadj.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';border-bottom:2px solid ' + T.green + ';touch-action:manipulation;pointer-events:auto;cursor:pointer;padding-bottom:2px;';
+    tabUnadj.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';border-bottom:2px solid ' + T.green + ';touch-action:manipulation;pointer-events:auto;cursor:pointer;padding-bottom:2px;' + ";font-weight:" + T.fwBold + ";";
 
     var tabAdj = document.createElement('div');
     tabAdj.textContent = 'ADJ';
-    tabAdj.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.moon + ';border-bottom:2px solid transparent;touch-action:manipulation;pointer-events:auto;cursor:pointer;padding-bottom:2px;';
+    tabAdj.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.moon + ';border-bottom:2px solid transparent;touch-action:manipulation;pointer-events:auto;cursor:pointer;padding-bottom:2px;' + ";font-weight:" + T.fwBold + ";";
 
     tipTabs.appendChild(tabUnadj);
     tipTabs.appendChild(tabAdj);
@@ -571,7 +571,7 @@ defineScene({
       if (visible.length === 0 && state.filter !== 'OPEN') {
         var empty = document.createElement('div');
         empty.textContent   = 'No ' + state.filter.toLowerCase() + ' checks';
-        empty.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';letter-spacing:0.14em;padding:8px 4px;';
+        empty.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';letter-spacing:0.14em;padding:8px 4px;' + ";font-weight:" + T.fwBold + ";";
         r.tileGrid.appendChild(empty);
       }
     }
@@ -598,7 +598,7 @@ defineScene({
       if (checks.length === 0) {
         var empty = document.createElement('div');
         empty.textContent   = 'No closed checks yet';
-        empty.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';text-align:center;padding:16px 0;letter-spacing:0.12em;';
+        empty.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';text-align:center;padding:16px 0;letter-spacing:0.12em;' + ";font-weight:" + T.fwBold + ";";
         r.tipList.appendChild(empty);
         r.tipsTotal.textContent = '$0.00';
         return;
@@ -623,7 +623,7 @@ defineScene({
       if (filtered.length === 0) {
         var emptyFilter = document.createElement('div');
         emptyFilter.textContent   = 'No ' + tipFilter.toLowerCase() + ' checks';
-        emptyFilter.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';text-align:center;padding:16px 0;letter-spacing:0.12em;';
+        emptyFilter.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';text-align:center;padding:16px 0;letter-spacing:0.12em;' + ";font-weight:" + T.fwBold + ";";
         r.tipList.appendChild(emptyFilter);
       }
 
@@ -716,7 +716,7 @@ defineScene({
       // Check label
       var checkLbl = document.createElement('div');
       checkLbl.textContent   = chk.checkLabel || checkNum({ order_id: chk.checkId }) || 'CHK';
-      checkLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.moon + ';letter-spacing:0.1em;text-align:center;';
+      checkLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.moon + ';letter-spacing:0.1em;text-align:center;' + ";font-weight:" + T.fwBold + ";";
       card.appendChild(checkLbl);
 
       // Pre-populate cents string for ADJ tab

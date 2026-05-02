@@ -43,12 +43,12 @@ export function fmt(n) {
 
 export function detailRow(label, value, valueColor) {
   var row = document.createElement('div');
-  row.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-family:' + T.fb + ';padding:2px 0;';
+  row.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;font-family:' + T.fb + ';padding:2px 0;' + ";font-weight:" + T.fwBold + ";";
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.green + ';';
+  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.green + ';' + ";font-weight:" + T.fwBold + ";";
   lbl.textContent = label;
   var val = document.createElement('span');
-  val.style.cssText = 'font-size:' + T.fsB1 + ';color:' + (valueColor || T.gold) + ';font-weight:bold;';
+  val.style.cssText = 'font-size:' + T.fsB1 + ';color:' + (valueColor || T.gold) + ';font-weight:' + T.fwBold + ';';
   val.textContent = value;
   row.appendChild(lbl);
   row.appendChild(val);
@@ -71,7 +71,7 @@ export function buildMixBar(cashPct, cardPct) {
   bar.appendChild(cashSeg);
   bar.appendChild(cardSeg);
   var labels = document.createElement('div');
-  labels.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + T.green + ';margin-top:2px;';
+  labels.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + T.green + ';margin-top:2px;' + ";font-weight:" + T.fwBold + ";";
   labels.innerHTML = '<span>Cash ' + cashPct + '%</span><span>Card ' + cardPct + '%</span>';
   var wrap = document.createElement('div');
   wrap.appendChild(bar);
@@ -105,7 +105,7 @@ export function buildCardTile(def, idx, opts) {
   var hdr = document.createElement('div');
   hdr.style.cssText = 'background:' + CHROME() + ';padding:3px 8px;flex-shrink:0;';
   var hdrTxt = document.createElement('div');
-  hdrTxt.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + (T.headerText || T.well) + ';letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;';
+  hdrTxt.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + (T.headerText || T.well) + ';letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;' + ";font-weight:" + T.fwBold + ";";
   hdrTxt.textContent = def.title;
   hdr.appendChild(hdrTxt);
   card.appendChild(hdr);
@@ -115,17 +115,17 @@ export function buildCardTile(def, idx, opts) {
   body.style.cssText = 'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;gap:1px;';
 
   var hero = document.createElement('div');
-  hero.style.cssText = 'font-family:' + T.fb + ';font-size:26px;color:' + (def.heroColor || T.gold) + ';font-weight:bold;text-align:center;';
+  hero.style.cssText = 'font-family:' + T.fb + ';font-size:26px;color:' + (def.heroColor || T.gold) + ';font-weight:' + T.fwBold + ';text-align:center;';
   hero.textContent = def.hero;
   body.appendChild(hero);
 
   var sub = document.createElement('div');
-  sub.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.green + ';text-align:center;';
+  sub.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.green + ';text-align:center;' + ";font-weight:" + T.fwBold + ";";
   sub.textContent = def.subtitle;
   body.appendChild(sub);
 
   var hint = document.createElement('div');
-  hint.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.green + ';text-align:center;margin-top:1px;';
+  hint.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.green + ';text-align:center;margin-top:1px;' + ";font-weight:" + T.fwBold + ";";
   hint.textContent = '\u25B8';
   body.appendChild(hint);
 
@@ -161,15 +161,15 @@ export function buildCardStrip(def, idx, opts) {
     'border-radius:4px;',
     'font-family:' + T.fb + ';',
     'user-select:none;-webkit-user-select:none;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
 
   var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.green + ';';
+  lbl.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.green + ';' + ";font-weight:" + T.fwBold + ";";
   lbl.textContent = def.title;
   strip.appendChild(lbl);
 
   var val = document.createElement('span');
-  val.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.elec + ';';
+  val.style.cssText = 'font-size:' + T.fsB1 + ';color:' + T.elec + ';' + ";font-weight:" + T.fwBold + ";";
   val.textContent = def.hero;
   strip.appendChild(val);
 
@@ -235,10 +235,10 @@ export function buildExpandedCard(defs, idx, opts) {
     'cursor:pointer;user-select:none;-webkit-user-select:none;',
   ].join('');
   var hTitle = document.createElement('span');
-  hTitle.style.cssText = 'font-family:' + T.fh + ';font-size:16px;color:' + (T.headerText || T.well) + ';letter-spacing:1px;';
+  hTitle.style.cssText = 'font-family:' + T.fh + ';font-size:16px;color:' + (T.headerText || T.well) + ';letter-spacing:1px;' + ";font-weight:" + T.fwBold + ";";
   hTitle.textContent = defs[idx].title;
   var hHint = document.createElement('span');
-  hHint.style.cssText = 'font-family:' + T.fh + ';font-size:16px;color:' + (T.headerText || T.well) + ';';
+  hHint.style.cssText = 'font-family:' + T.fh + ';font-size:16px;color:' + (T.headerText || T.well) + ';' + ";font-weight:" + T.fwBold + ";";
   hHint.textContent = '\u25BE';
   hdr.appendChild(hTitle);
   hdr.appendChild(hHint);
@@ -273,7 +273,7 @@ export function buildBlockerBanner(messages) {
     'display:flex;align-items:center;justify-content:center;',
     'font-family:' + T.fb + ';font-size:' + T.fsB1 + ';',
     'border-radius:4px;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
 
   if (messages && messages.length > 0) {
     el.style.background = 'rgba(255,51,85,0.1)';
@@ -384,7 +384,7 @@ export function buildTipAdjustInline(opts) {
   rightCol.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;';
 
   var hintEl = document.createElement('div');
-  hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;min-height:16px;letter-spacing:0.06em;';
+  hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;min-height:16px;letter-spacing:0.06em;' + ";font-weight:" + T.fwBold + ";";
   hintEl.textContent = 'Tap a check to adjust';
   rightCol.appendChild(hintEl);
 
@@ -448,7 +448,7 @@ export function buildTipAdjustInline(opts) {
 
     if (unadj.length === 0) {
       var done = document.createElement('div');
-      done.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.greenWarm + ';text-align:center;padding:24px 8px;letter-spacing:0.08em;';
+      done.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.greenWarm + ';text-align:center;padding:24px 8px;letter-spacing:0.08em;' + ";font-weight:" + T.fwBold + ";";
       done.textContent = '\u2713 All tips adjusted';
       listEl.appendChild(done);
       return;
@@ -470,11 +470,11 @@ export function buildTipAdjustInline(opts) {
       ].join('');
 
       var label = document.createElement('span');
-      label.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.green + ';letter-spacing:0.06em;pointer-events:none;';
+      label.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.green + ';letter-spacing:0.06em;pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
       label.textContent = check.check_num || 'CHK';
 
       var amt = document.createElement('span');
-      amt.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.gold + ';font-weight:bold;pointer-events:none;';
+      amt.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.gold + ';font-weight:' + T.fwBold + ';pointer-events:none;';
       amt.textContent = fmt(check.amount || 0);
 
       row.appendChild(label);
@@ -508,7 +508,7 @@ export function buildTipAdjustInline(opts) {
       .catch(function() {
         listEl.innerHTML = '';
         var err = document.createElement('div');
-        err.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.verm + ';padding:16px;text-align:center;';
+        err.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.verm + ';padding:16px;text-align:center;' + ";font-weight:" + T.fwBold + ";";
         err.textContent = 'Failed to load checks';
         listEl.appendChild(err);
       });
@@ -541,12 +541,12 @@ defineScene({
     shell.style.minWidth      = '280px';
 
     var lbl = document.createElement('div');
-    lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;';
+    lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB2 + ';color:' + RED + ';letter-spacing:2px;margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
     lbl.textContent = '// ZERO ALL TIPS //';
     shell.appendChild(lbl);
 
     var msg = document.createElement('div');
-    msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';text-align:center;';
+    msg.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.green + ';text-align:center;' + ";font-weight:" + T.fwBold + ";";
     msg.textContent = 'Set ' + (params.count || 0) + ' unadjusted tip(s) to $0.00?';
     shell.appendChild(msg);
 
@@ -702,7 +702,7 @@ defineScene({
         panel.appendChild(voidTitle);
 
         var sub = document.createElement('div');
-        sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
+        sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;' + ";font-weight:" + T.fwBold + ";";
         sub.textContent = 'this cannot be undone';
         panel.appendChild(sub);
       }
@@ -715,7 +715,7 @@ defineScene({
         'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
         'padding:10px 14px;background:' + T.well + ';border-radius:8px;',
         'display:flex;justify-content:space-between;align-items:baseline;',
-      ].join('');
+      ].join('') + ";font-weight:" + T.fwBold + ";";
       var sL = document.createElement('span');
       sL.textContent = isDiscount ?
         (checks.length + (checks.length === 1 ? ' check' : ' checks') + ' • pick a discount') :
@@ -781,7 +781,7 @@ defineScene({
       } else {
         // Reason picker
         var reasonLabel = document.createElement('div');
-        reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;';
+        reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;' + ";font-weight:" + T.fwBold + ";";
         reasonLabel.textContent = 'reason';
         panel.appendChild(reasonLabel);
 
@@ -819,7 +819,7 @@ defineScene({
           updateRadio();
 
           var label = document.createElement('span');
-          label.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';flex:1;';
+          label.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';flex:1;' + ";font-weight:" + T.fwBold + ";";
           label.textContent = reason;
 
           row.appendChild(radio);
@@ -950,7 +950,7 @@ defineScene({
     leftCol.style.cssText = 'flex:1;display:flex;flex-direction:column;overflow:hidden;';
 
     var header = document.createElement('div');
-    header.style.cssText = 'font-family:' + T.fh + ';font-size:18px;color:' + T.gold + ';letter-spacing:0.1em;margin-bottom:8px;';
+    header.style.cssText = 'font-family:' + T.fh + ';font-size:18px;color:' + T.gold + ';letter-spacing:0.1em;margin-bottom:8px;' + ";font-weight:" + T.fwBold + ";";
     header.textContent = 'UNADJUSTED TIPS';
     leftCol.appendChild(header);
 
@@ -964,7 +964,7 @@ defineScene({
     rightCol.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;';
 
     var hintEl = document.createElement('div');
-    hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';margin-bottom:8px;text-align:center;';
+    hintEl.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';margin-bottom:8px;text-align:center;' + ";font-weight:" + T.fwBold + ";";
     hintEl.textContent = 'Tap a check to adjust';
     rightCol.appendChild(hintEl);
 
@@ -1011,7 +1011,7 @@ defineScene({
       var unadj = _checks.filter(function(c) { return c.tip_amount == null; });
       if (unadj.length === 0) {
         var done = document.createElement('div');
-        done.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.green + ';text-align:center;padding:20px;';
+        done.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.green + ';text-align:center;padding:20px;' + ";font-weight:" + T.fwBold + ";";
         done.textContent = '\u2713 All tips adjusted';
         _listEl.appendChild(done);
         return;
@@ -1027,11 +1027,11 @@ defineScene({
           row.style.boxShadow    = 'inset 0 2px 4px rgba(0,0,0,0.35)';
 
           var label = document.createElement('span');
-          label.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.green + ';';
+          label.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.green + ';' + ";font-weight:" + T.fwBold + ";";
           label.textContent = check.check_num || 'CHK';
 
           var amt = document.createElement('span');
-          amt.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.gold + ';font-weight:bold;';
+          amt.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.gold + ';font-weight:' + T.fwBold + ';';
           amt.textContent = fmt(check.amount || 0);
 
           row.appendChild(label);
@@ -1065,7 +1065,7 @@ defineScene({
     }).catch(function() {
       _listEl.innerHTML = '';
       var err = document.createElement('div');
-      err.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.verm + ';padding:20px;text-align:center;';
+      err.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.verm + ';padding:20px;text-align:center;' + ";font-weight:" + T.fwBold + ";";
       err.textContent = 'Failed to load checks';
       _listEl.appendChild(err);
     });
@@ -1165,7 +1165,7 @@ defineScene({
 
     if (cardBrand) {
       var brand = document.createElement('div');
-      brand.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
+      brand.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;' + ";font-weight:" + T.fwBold + ";";
       brand.textContent = cardBrand;
       info.appendChild(brand);
     }
@@ -1177,7 +1177,7 @@ defineScene({
         'margin-top:4px;padding-top:6px;border-top:1px solid ' + hexToRgba(T.text, 0.1) + ';',
         'display:flex;justify-content:space-between;',
         'font-family:' + T.fb + ';font-size:12px;',
-      ].join('');
+      ].join('') + ";font-weight:" + T.fwBold + ";";
       var cLbl = document.createElement('span');
       cLbl.style.color = hexToRgba(T.text, 0.6);
       cLbl.textContent = 'current tip';
@@ -1192,7 +1192,7 @@ defineScene({
     infoCard.appendChild(info);
 
     var hint = document.createElement('div');
-    hint.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:0.5px;text-align:center;';
+    hint.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:0.5px;text-align:center;' + ";font-weight:" + T.fwBold + ";";
     hint.textContent = isEdit ? 'correct the tip amount' : 'enter tip amount';
     infoCard.appendChild(hint);
 
@@ -1280,7 +1280,7 @@ defineScene({
     panel.appendChild(title);
 
     var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;' + ";font-weight:" + T.fwBold + ";";
     sub.textContent = 'confirm these totals — this is final';
     panel.appendChild(sub);
 
@@ -1294,7 +1294,7 @@ defineScene({
     var takeRow = document.createElement('div');
     takeRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
     var takeL = document.createElement('span');
-    takeL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;';
+    takeL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;' + ";font-weight:" + T.fwBold + ";";
     takeL.textContent = 'TAKE-HOME';
     var takeR = document.createElement('span');
     takeR.style.cssText = 'font-family:' + T.fb + ';font-size:20px;font-weight:700;color:' + T.green + ';';
@@ -1310,7 +1310,7 @@ defineScene({
     var cashRow = document.createElement('div');
     cashRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
     var cashL = document.createElement('span');
-    cashL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;';
+    cashL.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;' + ";font-weight:" + T.fwBold + ";";
     cashL.textContent = 'CASH EXPECTED';
     var cashR = document.createElement('span');
     cashR.style.cssText = 'font-family:' + T.fb + ';font-size:20px;font-weight:700;color:' + T.gold + ';';
@@ -1408,7 +1408,7 @@ defineScene({
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'padding:0 4px;line-height:1;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     dismissX.textContent = '\u00D7';
     dismissX.addEventListener('pointerup', function() {
       if (params.onCancel) params.onCancel();
@@ -1426,7 +1426,7 @@ defineScene({
       'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
       'padding:10px 14px;background:' + T.well + ';border-radius:8px;',
       'display:flex;justify-content:space-between;align-items:baseline;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     var sL = document.createElement('span');
     sL.textContent = checks.length + (checks.length === 1 ? ' check' : ' checks') + ' \u2022 pick a server to receive';
     var sR = document.createElement('span');
@@ -1449,7 +1449,7 @@ defineScene({
     loading.style.cssText = [
       'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';',
       'grid-column:1 / -1;text-align:center;padding:40px 0;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     loading.textContent = 'loading servers\u2026';
     grid.appendChild(loading);
     panel.appendChild(grid);
@@ -1516,7 +1516,7 @@ defineScene({
         empty.style.cssText = [
           'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;',
           'grid-column:1 / -1;text-align:center;padding:30px 0;',
-        ].join('');
+        ].join('') + ";font-weight:" + T.fwBold + ";";
         empty.textContent = 'no other servers clocked in';
         grid.appendChild(empty);
         return;
@@ -1555,7 +1555,7 @@ defineScene({
         name.textContent = srv.name || '(unnamed)';
 
         var role = document.createElement('div');
-        role.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:0.5px;text-transform:uppercase;';
+        role.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:0.5px;text-transform:uppercase;' + ";font-weight:" + T.fwBold + ";";
         role.textContent = srv.role || 'server';
 
         tile.appendChild(badge);
@@ -1633,7 +1633,7 @@ defineScene({
       'font-family:' + T.fb + ';font-size:20px;color:' + hexToRgba(T.text, 0.6) + ';',
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;padding:0 4px;line-height:1;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     dismissX.textContent = '\u00D7';
     dismissX.addEventListener('pointerup', function() { if (params.onCancel) params.onCancel(); });
     hdrRow.appendChild(title);
@@ -1648,7 +1648,7 @@ defineScene({
       'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
       'padding:10px 14px;background:' + T.well + ';border-radius:8px;',
       'display:flex;justify-content:space-between;align-items:baseline;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     var sL = document.createElement('span');
     sL.textContent = checks.length + (checks.length === 1 ? ' check' : ' checks') + ' \u2022 pick a discount';
     var sR = document.createElement('span');
@@ -1794,7 +1794,7 @@ defineScene({
     panel.appendChild(title);
 
     var sub = document.createElement('div');
-    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
+    sub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;' + ";font-weight:" + T.fwBold + ";";
     sub.textContent = 'this cannot be undone';
     panel.appendChild(sub);
 
@@ -1806,7 +1806,7 @@ defineScene({
       'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
       'padding:10px 14px;background:' + T.well + ';border-radius:8px;',
       'display:flex;justify-content:space-between;align-items:baseline;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     var sL = document.createElement('span');
     sL.textContent = 'voiding ' + checks.length + (checks.length === 1 ? ' check' : ' checks');
     var sR = document.createElement('span');
@@ -1818,7 +1818,7 @@ defineScene({
 
     // Reason picker — radio-button list
     var reasonLabel = document.createElement('div');
-    reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;';
+    reasonLabel.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.6) + ';letter-spacing:1px;text-transform:uppercase;margin-top:4px;' + ";font-weight:" + T.fwBold + ";";
     reasonLabel.textContent = 'reason';
     panel.appendChild(reasonLabel);
 
@@ -1865,7 +1865,7 @@ defineScene({
       applyRadio();
 
       var text = document.createElement('span');
-      text.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';';
+      text.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
       text.textContent = reason;
 
       row.appendChild(radio);

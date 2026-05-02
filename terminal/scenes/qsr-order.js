@@ -46,6 +46,18 @@ import {
   hexToRgba,
   darkenHex,
 } from '../theme-manager.js';
+
+// Local lighten helper — avoids adding theme-manager mock entries downstream.
+function _lighten(hex, pct) {
+  var r = parseInt(hex.slice(1, 3), 16);
+  var g = parseInt(hex.slice(3, 5), 16);
+  var b = parseInt(hex.slice(5, 7), 16);
+  return '#' + [
+    Math.min(255, Math.round(r + (255 - r) * pct)),
+    Math.min(255, Math.round(g + (255 - g) * pct)),
+    Math.min(255, Math.round(b + (255 - b) * pct)),
+  ].map(function(c) { return c.toString(16).padStart(2, '0'); }).join('');
+}
 import { showToast } from '../components.js';
 import { fmt } from './checkout-core.js';
 import { fetchWithTimeout } from '../net.js';
@@ -64,7 +76,7 @@ var CONTENT_H  = T.appH - T.headerH;    // 548 — below header
 // TODO: replace with GET /api/v1/menu/categories once menus are populated
 var MOCK_MENU = [
   {
-    key: 'BURGERS', label: 'Burgers', color: T.categoryPalette['PIZZA'] || T.moon,
+    key: 'BURGERS', label: 'Burgers', color: '#fb923c',
     items: [
       { itemKey: 'burger-classic',   name: 'Classic Burger',   price: 12.50, popularity: 1 },
       { itemKey: 'burger-cheese',    name: 'Cheeseburger',     price: 13.50, popularity: 2 },
@@ -75,7 +87,7 @@ var MOCK_MENU = [
     ],
   },
   {
-    key: 'SIDES', label: 'Sides', color: T.categoryPalette['SIDES'] || T.moon,
+    key: 'SIDES', label: 'Sides', color: '#facc15',
     items: [
       { itemKey: 'fries-sm',   name: 'Fries (Sm)',    price: 3.50, popularity: 1 },
       { itemKey: 'fries-lg',   name: 'Fries (Lg)',    price: 4.50, popularity: 2 },
@@ -84,7 +96,7 @@ var MOCK_MENU = [
     ],
   },
   {
-    key: 'DRINKS', label: 'Drinks', color: T.categoryPalette['DRINKS'] || T.moon,
+    key: 'DRINKS', label: 'Drinks', color: '#e879f9',
     items: [
       { itemKey: 'soda-sm',  name: 'Soda (Sm)',    price: 2.00, popularity: 1 },
       { itemKey: 'soda-lg',  name: 'Soda (Lg)',    price: 2.75, popularity: 2 },
@@ -177,117 +189,151 @@ function ticketLabel(n) {
 // ─────────────────────────────────────────────────
 
 function buildItemRow(item, idx, isSelected) {
-  var rowW = RECAP_W - 24;
+  var bevelLt = _lighten(T.bg, 0.08);
+  var bevelDk = darkenHex(T.bg, 0.2);
 
-  var row = document.createElement('div');
-  row.dataset.itemIdx = idx;
-  row.style.cssText = [
+  var card = document.createElement('div');
+  card.style.cssText = [
     'position:relative;',
-    'display:flex;',
-    'align-items:stretch;',
-    'min-height:44px;',
-    'width:' + rowW + 'px;',
-    'border-radius:' + T.chamferCard + 'px;',
+    'display:flex;flex-direction:column;justify-content:center;gap:2px;',
     'background:' + (isSelected ? T.green : T.well) + ';',
-    'overflow:hidden;',
-    'pointer-events:auto;',
-    'touch-action:manipulation;',
-    'cursor:pointer;',
-    'flex-shrink:0;',
+    'border-radius:8px;',
+    'border-top:2px solid '    + (isSelected ? T.greenDk : bevelLt) + ';',
+    'border-right:2px solid '  + (isSelected ? T.greenDk : bevelDk) + ';',
+    'border-bottom:2px solid ' + (isSelected ? T.greenDk : bevelDk) + ';',
+    'border-left:3px solid '   + (isSelected ? T.greenDk : T.moon)  + ';',
+    'padding:6px 10px;',
+    'box-shadow:' + (isSelected ? '0 2px 0 ' + T.greenDk : 'none') + ';',
+    'pointer-events:auto;touch-action:manipulation;cursor:pointer;flex-shrink:0;',
   ].join('');
 
-  // Left accent bar (unselected only)
-  if (!isSelected) {
-    var bar = document.createElement('div');
-    bar.style.cssText = [
-      'width:' + T.accentBarW + ';',
-      'flex-shrink:0;',
-      'background:' + T.green + ';',
-      'border-radius:' + T.chamferCard + 'px 0 0 ' + T.chamferCard + 'px;',
-    ].join('');
-    row.appendChild(bar);
-  }
-
-  // Content area
-  var content = document.createElement('div');
-  content.style.cssText = [
-    'flex:1;',
-    'min-width:0;',
-    'padding:8px 10px 8px 8px;',
-    'display:flex;',
-    'flex-direction:column;',
-    'justify-content:center;',
-    'gap:2px;',
-  ].join('');
-
-  // Top row: name + price
+  // Top row: name + price (qty rendered inline as "qty× name")
+  // padding-right reserves space for the absolute ✕ remove button.
   var topRow = document.createElement('div');
-  topRow.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:6px;';
+  topRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:6px;padding-right:28px;';
 
   var nameEl = document.createElement('span');
   nameEl.style.cssText = [
-    'font-family:' + T.fh + ';',
+    'font-family:' + T.fb + ';',
     'font-size:' + FS_ITEM + ';',
     'font-weight:' + T.fwBold + ';',
-    'color:' + (isSelected ? T.moonText : T.text) + ';',
+    'color:' + (isSelected ? T.well : T.text) + ';',
     'flex:1;min-width:0;',
     'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
   ].join('');
-  if (item.qty > 1) {
-    nameEl.textContent = item.qty + '× ' + item.name;
-  } else {
-    nameEl.textContent = item.name;
-  }
+  nameEl.textContent = (item.qty > 1 ? item.qty + '× ' : '') + item.name;
 
   var priceEl = document.createElement('span');
   priceEl.style.cssText = [
     'font-family:' + T.fb + ';',
     'font-size:' + FS_PRICE + ';',
     'font-weight:' + T.fwBold + ';',
-    'color:' + (isSelected ? T.moonText : T.gold) + ';',
-    'flex-shrink:0;',
-    'white-space:nowrap;',
+    'color:' + (isSelected ? T.well : (item.price > 0 ? T.gold : T.moon)) + ';',
+    'flex-shrink:0;white-space:nowrap;',
   ].join('');
-  priceEl.textContent = fmtMoney(item.price * item.qty);
+  priceEl.textContent = item.price > 0 ? fmtMoney(item.price * (item.qty || 1)) : '—';
 
   topRow.appendChild(nameEl);
   topRow.appendChild(priceEl);
-  content.appendChild(topRow);
+  card.appendChild(topRow);
 
-  // Modifier line
-  if (item.mods && item.mods.length) {
-    var modEl = document.createElement('span');
-    modEl.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + FS_MOD + ';',
-      'color:' + (isSelected ? T.greenDk : T.moon) + ';',
+  // ✕ remove button — absolute top-right of card
+  var removeBtn = document.createElement('div');
+  removeBtn.style.cssText = [
+    'position:absolute;top:6px;right:6px;',
+    'width:20px;height:20px;',
+    'border-radius:4px;',
+    'background:' + T.verm + ';',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'font-family:' + T.fb + ';font-size:11px;font-weight:' + T.fwBold + ';',
+    'color:#fff;',
+    'opacity:0.85;',
+    'flex-shrink:0;',
+  ].join('');
+  removeBtn.textContent = '✕';
+  removeBtn.addEventListener('pointerup', function(e) {
+    e.stopPropagation();
+    removeItem(idx);
+  });
+  card.appendChild(removeBtn);
+
+  // Wrap card (and optional mod tree) in a flex column block.
+  var block = document.createElement('div');
+  block.dataset.itemIdx = idx;
+  block.style.display = 'flex';
+  block.style.flexDirection = 'column';
+  block.appendChild(card);
+
+  // Snake mod tree — rendered below the card, not inside it.
+  if (item.mods && item.mods.length > 0) {
+    var tree = document.createElement('div');
+    tree.style.cssText = [
+      'position:relative;',
+      'display:flex;flex-direction:column;',
+      'gap:0px;',
+      'margin-top:2px;',
+      'margin-left:12px;',
+      'padding-bottom:2px;',
     ].join('');
-    modEl.textContent = item.mods.join(', ');
-    content.appendChild(modEl);
-  }
 
-  row.appendChild(content);
-
-  // Selection checkmark (selected only)
-  if (isSelected) {
-    var check = document.createElement('div');
-    check.style.cssText = [
+    // Vertical trunk line
+    var trunk = document.createElement('div');
+    trunk.style.cssText = [
       'position:absolute;',
-      'top:8px;right:8px;',
-      'width:16px;height:16px;',
-      'border-radius:50%;',
-      'background:' + T.well + ';',
-      'display:flex;align-items:center;justify-content:center;',
-      'font-size:10px;',
-      'color:' + T.green + ';',
-      'font-weight:' + T.fwBold + ';',
-      'flex-shrink:0;',
+      'left:10px;top:0;',
+      'width:1.5px;',
+      'height:calc(100% - 10px);',
+      'background:' + T.border + ';',
+      'opacity:0.55;',
     ].join('');
-    check.textContent = '✓';
-    row.appendChild(check);
+    tree.appendChild(trunk);
+
+    item.mods.forEach(function(mod) {
+      var modRow = document.createElement('div');
+      modRow.style.cssText = [
+        'display:flex;align-items:center;',
+        'gap:6px;',
+        'padding:3px 0 3px 28px;',
+        'position:relative;',
+      ].join('');
+
+      // Horizontal branch line
+      var branch = document.createElement('div');
+      branch.style.cssText = [
+        'position:absolute;left:10px;top:50%;',
+        'width:14px;height:1.5px;',
+        'background:' + T.border + ';',
+        'opacity:0.55;',
+      ].join('');
+      modRow.appendChild(branch);
+
+      // Color-coded label by prefix
+      var modLabel = document.createElement('span');
+      modLabel.style.cssText = [
+        'font-family:' + T.fb + ';',
+        'font-weight:' + T.fwBold + ';',
+        'font-size:11px;',
+      ].join('');
+
+      var text = typeof mod === 'string' ? mod : (mod.name || mod.label || '');
+      var upper = text.toUpperCase();
+      if (upper.startsWith('NO ') || upper.startsWith('REMOVE ') || upper.startsWith('– ')) {
+        modLabel.style.color = T.verm;
+      } else if (upper.startsWith('ADD ') || upper.startsWith('EXTRA ') || upper.startsWith('+ ')) {
+        modLabel.style.color = T.green;
+      } else {
+        modLabel.style.color = T.moon;
+      }
+      modLabel.textContent = text;
+      modRow.appendChild(modLabel);
+      tree.appendChild(modRow);
+    });
+
+    block.appendChild(tree);
   }
 
-  return row;
+  return block;
 }
 
 // ─────────────────────────────────────────────────
@@ -314,19 +360,20 @@ function buildRecapPanel() {
     'height:44px;',
     'flex-shrink:0;',
     'background:' + T.well + ';',
-    'border-bottom:1px solid ' + T.border + ';',
+    'border-bottom:2px solid ' + darkenHex(T.bg, 0.2) + ';',
     'display:flex;align-items:center;',
     'justify-content:space-between;',
-    'padding:0 12px;',
+    'padding:8px 12px;',
+    'box-sizing:border-box;',
   ].join('');
 
   var orderLabel = document.createElement('span');
   orderLabel.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + FS_LABEL + ';',
+    'font-family:' + T.fh + ';',
+    'font-size:' + T.fsB2 + ';',
     'font-weight:' + T.fwBold + ';',
     'color:' + T.green + ';',
-    'letter-spacing:2px;',
+    'letter-spacing:0.15em;',
     'text-transform:uppercase;',
   ].join('');
   orderLabel.textContent = 'ORDER';
@@ -340,7 +387,7 @@ function buildRecapPanel() {
     'font-size:' + FS_LABEL + ';',
     'color:' + T.moon + ';',
     'letter-spacing:1px;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   ticketNum.textContent = ticketLabel(state.ticketNumber);
   ticketWrap.appendChild(ticketNum);
 
@@ -350,7 +397,7 @@ function buildRecapPanel() {
       'font-family:' + T.fb + ';',
       'font-size:' + FS_MOD + ';',
       'color:' + T.moon + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     nameTag.textContent = state.ticketName;
     ticketWrap.appendChild(nameTag);
   }
@@ -371,7 +418,9 @@ function buildRecapPanel() {
   els.itemList = itemList;
   panel.appendChild(itemList);
 
-  // ── c) Void + clear link row ───────────────────
+  // ── c) Clear-all link row ───────────────────────
+  // (Per-item void is now the ✕ button on each row; this row keeps
+  //  only the "clear all" link.)
   var voidRow = document.createElement('div');
   voidRow.style.cssText = [
     'display:flex;align-items:center;gap:6px;',
@@ -380,32 +429,15 @@ function buildRecapPanel() {
     'min-height:22px;',
   ].join('');
 
-  var voidLink = document.createElement('span');
-  voidLink.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + FS_MOD + ';',
-    'color:' + T.verm + ';',
-    'cursor:pointer;pointer-events:auto;',
-    'opacity:0;transition:opacity 0.15s;',
-  ].join('');
-  voidLink.textContent = 'void item';
-  els.voidLink = voidLink;
-
-  var midDot = document.createElement('span');
-  midDot.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_MOD + ';color:' + T.border + ';';
-  midDot.textContent = '·';
-
   var clearLink = document.createElement('span');
   clearLink.style.cssText = [
     'font-family:' + T.fb + ';',
     'font-size:' + FS_MOD + ';',
     'color:' + T.moon + ';',
     'cursor:pointer;pointer-events:auto;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   clearLink.textContent = 'clear all';
 
-  voidRow.appendChild(voidLink);
-  voidRow.appendChild(midDot);
   voidRow.appendChild(clearLink);
   panel.appendChild(voidRow);
 
@@ -437,7 +469,7 @@ function buildRecapPanel() {
       'font-family:' + T.fb + ';',
       'font-size:' + FS_ITEM + ';',
       'color:' + T.moon + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     lbl.textContent = labelText;
     var val = document.createElement('span');
     val.style.cssText = [
@@ -518,16 +550,18 @@ function buildRecapPanel() {
     'flex-shrink:0;',
   ].join('');
 
-  function makePayBtn(label, bg, darkBg, subColor) {
+  function makePayBtn(label, bg, dk, labelColor, subColor, extraStyles) {
     var wrap = document.createElement('div');
     wrap.style.cssText = [
       'flex:1;min-width:0;',
       'display:flex;flex-direction:column;align-items:center;gap:2px;',
       'background:' + bg + ';',
-      'border-radius:' + T.chamferBtn + 'px;',
+      'border-radius:10px;',
       'padding:8px 4px 6px;',
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'transition:' + T.transitionFast + ';',
+      'box-shadow:0 4px 0 ' + dk + ';',
+      'transition:transform 0.07s, box-shadow 0.07s;',
+      extraStyles || '',
     ].join('');
 
     var lbl = document.createElement('span');
@@ -535,7 +569,7 @@ function buildRecapPanel() {
       'font-family:' + T.fh + ';',
       'font-size:' + FS_BTN + ';',
       'font-weight:' + T.fwBold + ';',
-      'color:' + T.moonText + ';',
+      'color:' + labelColor + ';',
       'letter-spacing:0.05em;',
     ].join('');
     lbl.textContent = label;
@@ -545,6 +579,7 @@ function buildRecapPanel() {
       'font-family:' + T.fb + ';',
       'font-size:' + FS_MOD + ';',
       'color:' + subColor + ';',
+      'font-weight:' + T.fwBold + ';',
     ].join('');
     sub.textContent = '$0.00';
 
@@ -553,53 +588,33 @@ function buildRecapPanel() {
     wrap._subEl = sub;
 
     wrap.addEventListener('pointerdown', function() {
-      wrap.style.opacity = '0.8';
+      wrap.style.transform = 'translateY(3px)';
+      wrap.style.boxShadow = '0 1px 0 ' + dk;
     });
-    wrap.addEventListener('pointerup', function() {
-      wrap.style.opacity = '1';
-    });
-    wrap.addEventListener('pointerleave', function() {
-      wrap.style.opacity = '1';
-    });
+    var releasePay = function() {
+      wrap.style.transform = 'translateY(0)';
+      wrap.style.boxShadow = '0 4px 0 ' + dk;
+    };
+    wrap.addEventListener('pointerup',     releasePay);
+    wrap.addEventListener('pointerleave',  releasePay);
+    wrap.addEventListener('pointercancel', releasePay);
 
     return wrap;
   }
 
-  var cashBtn  = makePayBtn('CASH',  T.greenWarm, T.greenWarmDk, T.greenWarmDk);
-  var cardBtn  = makePayBtn('CARD',  T.elec,      T.elecDk,      T.elecDk);
-  var splitBtn = document.createElement('div');
-  splitBtn.style.cssText = [
-    'flex:1;min-width:0;',
-    'display:flex;flex-direction:column;align-items:center;gap:2px;',
-    'background:' + T.card + ';',
-    'border:1.5px solid ' + T.border + ';',
-    'border-radius:' + T.chamferBtn + 'px;',
-    'padding:8px 4px 6px;',
-    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-    'transition:' + T.transitionFast + ';',
-  ].join('');
-  var splitLbl = document.createElement('span');
-  splitLbl.style.cssText = [
-    'font-family:' + T.fh + ';',
-    'font-size:' + FS_BTN + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.text + ';',
-    'letter-spacing:0.05em;',
-  ].join('');
-  splitLbl.textContent = 'SPLIT';
-  var splitSub = document.createElement('span');
-  splitSub.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + FS_MOD + ';',
-    'color:' + T.moon + ';',
-  ].join('');
-  splitSub.textContent = '$0.00';
-  splitBtn.appendChild(splitLbl);
-  splitBtn.appendChild(splitSub);
-  splitBtn._subEl = splitSub;
-  splitBtn.addEventListener('pointerdown', function() { splitBtn.style.opacity = '0.8'; });
-  splitBtn.addEventListener('pointerup',   function() { splitBtn.style.opacity = '1'; });
-  splitBtn.addEventListener('pointerleave',function() { splitBtn.style.opacity = '1'; });
+  var cashBtn  = makePayBtn(
+    'CASH',  T.greenWarm, darkenHex(T.greenWarm, 0.25),
+    T.well, T.well
+  );
+  var cardBtn  = makePayBtn(
+    'CARD',  T.elec, darkenHex(T.elec, 0.25),
+    T.well, T.well
+  );
+  var splitBtn = makePayBtn(
+    'SPLIT', T.card, darkenHex(T.card, 0.25),
+    T.text, T.moon,
+    'border:1.5px solid ' + T.border + ';'
+  );
 
   els.cashBtn  = cashBtn;
   els.cardBtn  = cardBtn;
@@ -618,31 +633,21 @@ function buildRecapPanel() {
     'flex-shrink:0;',
   ].join('');
 
-  function makeActionBtn(label, borderColor, textColor) {
+  function makeActionBtn(label, bg, dk, textColor) {
     var wrap = document.createElement('div');
     wrap.style.cssText = [
       'flex:1;min-width:0;',
       'position:relative;',
       'display:flex;flex-direction:column;align-items:center;gap:2px;',
-      'background:' + T.card + ';',
-      'border:1.5px solid ' + borderColor + ';',
-      'border-radius:' + T.chamferBtn + 'px;',
-      'padding:8px 4px 6px 8px;',
+      'background:' + bg + ';',
+      'border:none;',
+      'border-radius:8px;',
+      'padding:8px 4px 6px;',
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'transition:' + T.transitionFast + ';',
+      'box-shadow:0 3px 0 ' + dk + ';',
+      'transition:transform 0.07s, box-shadow 0.07s;',
       'overflow:hidden;',
     ].join('');
-
-    // Left accent bar (shown when item selected)
-    var accentBar = document.createElement('div');
-    accentBar.style.cssText = [
-      'position:absolute;left:0;top:0;bottom:0;',
-      'width:' + T.accentBarW + ';',
-      'background:' + T.green + ';',
-      'opacity:0;transition:opacity 0.15s;',
-    ].join('');
-    wrap._accentBar = accentBar;
-    wrap.appendChild(accentBar);
 
     var lbl = document.createElement('span');
     lbl.style.cssText = [
@@ -658,7 +663,9 @@ function buildRecapPanel() {
     sub.style.cssText = [
       'font-family:' + T.fb + ';',
       'font-size:' + FS_MOD + ';',
-      'color:' + T.moon + ';',
+      'color:' + T.well + ';',
+      'opacity:0.7;',
+      'font-weight:' + T.fwBold + ';',
     ].join('');
     sub.textContent = 'order level';
 
@@ -666,15 +673,33 @@ function buildRecapPanel() {
     wrap.appendChild(sub);
     wrap._subEl = sub;
 
-    wrap.addEventListener('pointerdown', function() { wrap.style.opacity = '0.8'; });
-    wrap.addEventListener('pointerup',   function() { wrap.style.opacity = '1'; });
-    wrap.addEventListener('pointerleave',function() { wrap.style.opacity = '1'; });
+    wrap.addEventListener('pointerdown', function() {
+      wrap.style.transform = 'translateY(2px)';
+      wrap.style.boxShadow = '0 1px 0 ' + dk;
+    });
+    var releaseAct = function() {
+      wrap.style.transform = 'translateY(0)';
+      wrap.style.boxShadow = '0 3px 0 ' + dk;
+    };
+    wrap.addEventListener('pointerup',     releaseAct);
+    wrap.addEventListener('pointerleave',  releaseAct);
+    wrap.addEventListener('pointercancel', releaseAct);
 
     return wrap;
   }
 
-  var discBtn = makeActionBtn('DISCOUNT', T.lavender, T.lavender);
-  var voidBtn = makeActionBtn('VOID',     T.verm,     T.verm);
+  var discBtn = makeActionBtn(
+    'DISCOUNT',
+    T.lavender,
+    darkenHex(T.lavender, 0.45),
+    T.well
+  );
+  var voidBtn = makeActionBtn(
+    'VOID',
+    T.verm,
+    T.vermDk,
+    '#fff'
+  );
   els.discBtn = discBtn;
   els.voidBtn = voidBtn;
 
@@ -706,7 +731,7 @@ function renderRecap() {
       'color:' + T.moon + ';',
       'text-align:center;',
       'padding:20px;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     placeholder.textContent = 'Add items from the menu';
     els.itemList.appendChild(placeholder);
   } else {
@@ -743,19 +768,13 @@ function renderRecap() {
   // COLLECT PAYMENT label
   if (els.paySection) els.paySection.style.opacity = hasItems ? '1' : '0';
 
-  // Void link (only when something is selected)
-  if (els.voidLink) els.voidLink.style.opacity = hasSel ? '1' : '0';
-
-  // DISCOUNT / VOID subtitle + accent bar based on selection
+  // DISCOUNT / VOID subtitle reflects context (item-level vs order-level).
+  // No accent bar — the filled button style replaces it.
   if (els.discBtn) {
-    els.discBtn._subEl.textContent   = hasSel ? 'item selected' : 'order level';
-    els.discBtn._subEl.style.color   = hasSel ? T.green : T.moon;
-    els.discBtn._accentBar.style.opacity = hasSel ? '1' : '0';
+    els.discBtn._subEl.textContent = hasSel ? 'item selected' : 'order level';
   }
   if (els.voidBtn) {
-    els.voidBtn._subEl.textContent   = hasSel ? 'item selected' : 'order level';
-    els.voidBtn._subEl.style.color   = hasSel ? T.green : T.moon;
-    els.voidBtn._accentBar.style.opacity = hasSel ? '1' : '0';
+    els.voidBtn._subEl.textContent = hasSel ? 'item selected' : 'order level';
   }
 }
 
@@ -804,7 +823,7 @@ function buildFavoritesStrip(categories) {
     'letter-spacing:2px;',
     'text-transform:uppercase;',
     'pointer-events:none;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   favLabel.textContent = 'FAVORITES';
   strip.appendChild(favLabel);
 
@@ -853,7 +872,7 @@ function buildFavoritesStrip(categories) {
       'font-size:' + FS_MOD + ';',
       'color:' + T.gold + ';',
       'text-align:center;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     priceEl.textContent = fmtMoney(item.price || 0);
 
     tile.appendChild(nameEl);
@@ -868,6 +887,62 @@ function buildFavoritesStrip(categories) {
 //  CATEGORY COLUMN
 // ─────────────────────────────────────────────────
 
+function _buildCategoryTile(cat) {
+  var isActive = cat.key === state.activeCategory;
+  var catColor = cat.color || T.moon;
+  var darkText = darkenHex(catColor, 0.5);
+
+  var tile = document.createElement('div');
+  tile.dataset.categoryKey = cat.key;
+
+  var styles = [
+    'height:70px;',
+    'border-radius:8px;',
+    'flex-shrink:0;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+    'gap:2px;',
+    'transition:' + T.transitionFast + ';',
+    'box-sizing:border-box;',
+  ];
+
+  if (isActive) {
+    styles.push('background:' + catColor + ';');
+    styles.push('border:none;');
+  } else {
+    styles.push('background:' + T.card + ';');
+    styles.push('border:1px solid ' + T.border + ';');
+    styles.push('border-left:4px solid ' + catColor + ';');
+  }
+
+  tile.style.cssText = styles.join('');
+
+  var labelEl = document.createElement('span');
+  labelEl.style.cssText = [
+    'font-family:' + T.fh + ';',
+    'font-weight:' + T.fwBold + ';',
+    'font-size:15px;',
+    'color:' + (isActive ? darkText : catColor) + ';',
+    'text-align:center;',
+    'text-transform:uppercase;',
+  ].join('');
+  labelEl.textContent = cat.label;
+
+  var countEl = document.createElement('span');
+  countEl.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-weight:' + T.fwBold + ';',
+    'font-size:10px;',
+    'color:' + (isActive ? darkText : T.moon) + ';',
+    'text-align:center;',
+  ].join('');
+  countEl.textContent = (cat.items || []).length + ' items';
+
+  tile.appendChild(labelEl);
+  tile.appendChild(countEl);
+  return tile;
+}
+
 function buildCategoryColumn(categories, favH) {
   var fH = typeof favH === 'number' ? favH : FAV_H;
   var col = document.createElement('div');
@@ -877,7 +952,7 @@ function buildCategoryColumn(categories, favH) {
     'width:' + CAT_W + 'px;',
     'height:' + (CONTENT_H - fH) + 'px;',
     'overflow-y:auto;',
-    'display:flex;flex-direction:column;gap:6px;',
+    'display:flex;flex-direction:column;gap:8px;',
     'padding:6px;',
     'box-sizing:border-box;',
   ].join('');
@@ -896,62 +971,7 @@ function buildCategoryColumn(categories, favH) {
   col.appendChild(divider);
 
   categories.forEach(function(cat) {
-    var isActive = cat.key === state.activeCategory;
-    var catColor = cat.color || T.moon;
-
-    var tile = document.createElement('div');
-    tile.dataset.categoryKey = cat.key;
-    tile.style.cssText = [
-      'height:70px;',
-      'border-radius:' + T.chamferCard + 'px;',
-      'flex-shrink:0;',
-      'position:relative;',
-      'overflow:hidden;',
-      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;',
-      'gap:2px;',
-      'transition:' + T.transitionFast + ';',
-      isActive
-        ? 'background:' + catColor + ';'
-        : 'background:' + T.card + ';border:1px solid ' + T.border + ';',
-    ].join('');
-
-    // Left accent bar (inactive only)
-    if (!isActive) {
-      var bar = document.createElement('div');
-      bar.style.cssText = [
-        'position:absolute;left:0;top:0;bottom:0;',
-        'width:' + T.accentBarW + ';',
-        'background:' + catColor + ';',
-        'border-radius:' + T.chamferCard + 'px 0 0 ' + T.chamferCard + 'px;',
-      ].join('');
-      tile.appendChild(bar);
-    }
-
-    var labelEl = document.createElement('span');
-    labelEl.style.cssText = [
-      'font-family:' + T.fh + ';',
-      'font-size:' + FS_CAT + ';',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + (isActive ? T.moonText : T.text) + ';',
-      'text-align:center;',
-      'z-index:1;',
-    ].join('');
-    labelEl.textContent = cat.label;
-
-    var countEl = document.createElement('span');
-    countEl.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + FS_MOD + ';',
-      'color:' + (isActive ? darkenHex(catColor, 0.4) : T.moon) + ';',
-      'text-align:center;',
-      'z-index:1;',
-    ].join('');
-    countEl.textContent = (cat.items || []).length + ' items';
-
-    tile.appendChild(labelEl);
-    tile.appendChild(countEl);
-    col.appendChild(tile);
+    col.appendChild(_buildCategoryTile(cat));
   });
 
   var filler = document.createElement('div');
@@ -965,22 +985,125 @@ function buildCategoryColumn(categories, favH) {
 //  ITEM GRID
 // ─────────────────────────────────────────────────
 
-function buildItemGrid(items, favH) {
-  var fH = typeof favH === 'number' ? favH : FAV_H;
-  var grid = document.createElement('div');
-  els.itemGrid = grid;
+// Returns the active category and its index in state.categories.
+function _findActiveCategory() {
+  for (var i = 0; i < state.categories.length; i++) {
+    if (state.categories[i].key === state.activeCategory) {
+      return { cat: state.categories[i], idx: i };
+    }
+  }
+  return { cat: null, idx: 0 };
+}
+
+// Distribute items into grid-row chunks anchored at `anchorIdx`.
+// Returns an array of { rowOffset, items[] } where rowOffset 0 is the
+// anchor row, positive rows go down, negative rows go up.
+function distributeItems(items, cols, anchorIdx, totalRows) {
+  var chunks = [];
+  if (!items || items.length === 0) return chunks;
+
+  chunks.push({ rowOffset: 0, items: items.slice(0, cols) });
+  var i = cols;
+
+  var downOffset = 0;
+  var upOffset = -1;
+  var goingDown = true;
+  var safety = 0;
+
+  while (i < items.length && safety++ < 1000) {
+    var chunk = items.slice(i, i + cols);
+    if (goingDown) {
+      var nextDown = downOffset + 1;
+      if (anchorIdx + nextDown < totalRows) {
+        chunks.push({ rowOffset: nextDown, items: chunk });
+        downOffset = nextDown;
+        i += cols;
+      } else if (anchorIdx + upOffset < 0) {
+        break;
+      }
+      goingDown = false;
+    } else {
+      if (anchorIdx + upOffset >= 0) {
+        chunks.push({ rowOffset: upOffset, items: chunk });
+        upOffset--;
+        i += cols;
+      } else if (anchorIdx + downOffset + 1 >= totalRows) {
+        break;
+      }
+      goingDown = true;
+    }
+  }
+  return chunks;
+}
+
+function _buildItemTile(item, cat) {
+  var catColor = (cat && cat.color) || T.green;
+  var tile = document.createElement('div');
+  tile.dataset.itemKey = item.itemKey || item.key || item.name;
+  tile.style.cssText = [
+    'background:' + T.well + ';',
+    'border:2px solid ' + catColor + ';',
+    'border-radius:8px;',
+    'height:70px;',
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+    'gap:2px;',
+    'padding:4px 8px;',
+    'box-sizing:border-box;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    'transition:' + T.transitionFast + ';',
+    'overflow:hidden;',
+  ].join('');
+
+  var nameEl = document.createElement('span');
+  nameEl.style.cssText = [
+    'font-family:' + T.fh + ';',
+    'font-weight:' + T.fwBold + ';',
+    'font-size:14px;',
+    'color:' + T.text + ';',
+    'text-align:center;',
+    'line-height:1.2;',
+    'word-break:break-word;',
+  ].join('');
+  nameEl.textContent = item.name;
+
+  var priceEl = document.createElement('span');
+  priceEl.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-weight:' + T.fwBold + ';',
+    'font-size:13px;',
+    'color:' + (item.price > 0 ? T.gold : T.moon) + ';',
+    'text-align:center;',
+  ].join('');
+  priceEl.textContent = item.price > 0 ? fmt(item.price) : '—';
+
+  tile.appendChild(nameEl);
+  tile.appendChild(priceEl);
+
+  // Tap flash
+  tile.addEventListener('pointerdown', function() {
+    tile.style.background = hexToRgba(T.green, 0.15);
+  });
+  var restoreTile = function() {
+    setTimeout(function() { tile.style.background = T.well; }, 120);
+  };
+  tile.addEventListener('pointerup',    restoreTile);
+  tile.addEventListener('pointerleave', restoreTile);
+  tile.addEventListener('pointercancel',restoreTile);
+
+  return tile;
+}
+
+function _renderItemGridContents(grid, items, cat, anchorIdx) {
+  grid.innerHTML = '';
 
   if ((items || []).length === 0) {
-    grid.style.cssText = [
-      'position:absolute;',
-      'left:' + (CAT_W + 1) + 'px;',
-      'top:' + fH + 'px;',
-      'width:' + GRID_W + 'px;',
-      'height:' + (CONTENT_H - fH) + 'px;',
-      'display:flex;align-items:center;justify-content:center;',
-      'flex-direction:column;gap:12px;',
-      'box-sizing:border-box;',
-    ].join('');
+    grid.style.display = 'flex';
+    grid.style.alignItems = 'center';
+    grid.style.justifyContent = 'center';
+    grid.style.flexDirection = 'column';
+    grid.style.gap = '12px';
+    grid.style.gridTemplateColumns = '';
+    grid.style.gridAutoRows = '';
 
     var emptyIcon = document.createElement('div');
     emptyIcon.style.cssText = [
@@ -988,22 +1111,52 @@ function buildItemGrid(items, favH) {
       'border:2px dashed ' + T.border + ';',
       'display:flex;align-items:center;justify-content:center;',
       'font-family:' + T.fb + ';font-size:20px;color:' + T.moon + ';',
+      'font-weight:' + T.fwBold + ';',
     ].join('');
     emptyIcon.textContent = '?';
 
     var emptyLine1 = document.createElement('span');
-    emptyLine1.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.moon + ';';
+    emptyLine1.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.moon + ';font-weight:' + T.fwBold + ';';
     emptyLine1.textContent = 'No items in this category';
 
     var emptyLine2 = document.createElement('span');
-    emptyLine2.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.border + ';';
+    emptyLine2.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.border + ';font-weight:' + T.fwBold + ';';
     emptyLine2.textContent = 'Add items in Overseer → Menu';
 
     grid.appendChild(emptyIcon);
     grid.appendChild(emptyLine1);
     grid.appendChild(emptyLine2);
-    return grid;
+    return;
   }
+
+  grid.style.display = 'grid';
+  grid.style.gridTemplateColumns = 'repeat(3,1fr)';
+  grid.style.gridAutoRows = '70px';
+  grid.style.gap = '8px';
+  grid.style.alignItems = '';
+  grid.style.justifyContent = '';
+  grid.style.flexDirection = '';
+
+  var totalRows = state.categories.length || 1;
+  var chunks = distributeItems(items, 3, anchorIdx, totalRows);
+
+  chunks.forEach(function(chunk) {
+    var rowAbs = anchorIdx + chunk.rowOffset + 1; // 1-indexed
+    chunk.items.forEach(function(item, colIdx) {
+      var tile = _buildItemTile(item, cat);
+      tile.style.gridRowStart = String(rowAbs);
+      tile.style.gridColumnStart = String(colIdx + 1);
+      grid.appendChild(tile);
+    });
+  });
+}
+
+function buildItemGrid(items, favH, anchorIdx, cat) {
+  var fH = typeof favH === 'number' ? favH : FAV_H;
+  var idx = typeof anchorIdx === 'number' ? anchorIdx : 0;
+
+  var grid = document.createElement('div');
+  els.itemGrid = grid;
 
   grid.style.cssText = [
     'position:absolute;',
@@ -1011,69 +1164,12 @@ function buildItemGrid(items, favH) {
     'top:' + fH + 'px;',
     'width:' + GRID_W + 'px;',
     'height:' + (CONTENT_H - fH) + 'px;',
-    'display:grid;',
-    'grid-template-columns:repeat(3,1fr);',
-    'gap:8px;',
-    'padding:8px;',
     'box-sizing:border-box;',
     'overflow-y:auto;',
-    'align-content:start;',
+    'padding:6px;',
   ].join('');
 
-  (items || []).forEach(function(item) {
-    var tile = document.createElement('div');
-    tile.dataset.itemKey = item.itemKey || item.key || item.name;
-    tile.style.cssText = [
-      'border-radius:' + T.chamferCard + 'px;',
-      'min-height:130px;',
-      'background:' + T.card + ';',
-      'border:1px solid ' + T.border + ';',
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;',
-      'gap:6px;',
-      'padding:12px 8px;',
-      'box-sizing:border-box;',
-      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'transition:' + T.transitionFast + ';',
-    ].join('');
-
-    var nameEl = document.createElement('span');
-    nameEl.style.cssText = [
-      'font-family:' + T.fh + ';',
-      'font-size:' + FS_TILE + ';',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.text + ';',
-      'text-align:center;',
-      'line-height:1.3;',
-      'word-break:break-word;',
-    ].join('');
-    nameEl.textContent = item.name;
-
-    var priceEl = document.createElement('span');
-    priceEl.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + FS_PRICE + ';',
-      'color:' + T.gold + ';',
-      'text-align:center;',
-    ].join('');
-    priceEl.textContent = fmtMoney(item.price || 0);
-
-    tile.appendChild(nameEl);
-    tile.appendChild(priceEl);
-
-    // Tap flash
-    tile.addEventListener('pointerdown', function() {
-      tile.style.background = hexToRgba(T.green, 0.15);
-    });
-    var restoreTile = function() {
-      setTimeout(function() { tile.style.background = T.card; }, 120);
-    };
-    tile.addEventListener('pointerup',    restoreTile);
-    tile.addEventListener('pointerleave', restoreTile);
-    tile.addEventListener('pointercancel',restoreTile);
-
-    grid.appendChild(tile);
-  });
-
+  _renderItemGridContents(grid, items, cat, idx);
   return grid;
 }
 
@@ -1081,98 +1177,10 @@ function buildItemGrid(items, favH) {
 //  REPAINT HELPERS (for switchCategory)
 // ─────────────────────────────────────────────────
 
-function repaintItemGrid(items) {
+function repaintItemGrid(items, cat, anchorIdx) {
   if (!els.itemGrid) return;
-  els.itemGrid.innerHTML = '';
-
-  if ((items || []).length === 0) {
-    els.itemGrid.style.display = 'flex';
-    els.itemGrid.style.alignItems = 'center';
-    els.itemGrid.style.justifyContent = 'center';
-    els.itemGrid.style.flexDirection = 'column';
-    els.itemGrid.style.gap = '12px';
-
-    var emptyIcon = document.createElement('div');
-    emptyIcon.style.cssText = [
-      'width:48px;height:48px;border-radius:50%;',
-      'border:2px dashed ' + T.border + ';',
-      'display:flex;align-items:center;justify-content:center;',
-      'font-family:' + T.fb + ';font-size:20px;color:' + T.moon + ';',
-    ].join('');
-    emptyIcon.textContent = '?';
-
-    var emptyLine1 = document.createElement('span');
-    emptyLine1.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.moon + ';';
-    emptyLine1.textContent = 'No items in this category';
-
-    var emptyLine2 = document.createElement('span');
-    emptyLine2.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.border + ';';
-    emptyLine2.textContent = 'Add items in Overseer → Menu';
-
-    els.itemGrid.appendChild(emptyIcon);
-    els.itemGrid.appendChild(emptyLine1);
-    els.itemGrid.appendChild(emptyLine2);
-    return;
-  }
-
-  els.itemGrid.style.display = 'grid';
-  els.itemGrid.style.alignItems = '';
-  els.itemGrid.style.justifyContent = '';
-  els.itemGrid.style.flexDirection = '';
-  els.itemGrid.style.gap = '8px';
-
-  (items || []).forEach(function(item) {
-    var tile = document.createElement('div');
-    tile.dataset.itemKey = item.itemKey || item.key || item.name;
-    tile.style.cssText = [
-      'border-radius:' + T.chamferCard + 'px;',
-      'min-height:130px;',
-      'background:' + T.card + ';',
-      'border:1px solid ' + T.border + ';',
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;',
-      'gap:6px;',
-      'padding:12px 8px;',
-      'box-sizing:border-box;',
-      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'transition:' + T.transitionFast + ';',
-    ].join('');
-
-    var nameEl = document.createElement('span');
-    nameEl.style.cssText = [
-      'font-family:' + T.fh + ';',
-      'font-size:' + FS_TILE + ';',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.text + ';',
-      'text-align:center;',
-      'line-height:1.3;',
-      'word-break:break-word;',
-    ].join('');
-    nameEl.textContent = item.name;
-
-    var priceEl = document.createElement('span');
-    priceEl.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + FS_PRICE + ';',
-      'color:' + T.gold + ';',
-      'text-align:center;',
-    ].join('');
-    priceEl.textContent = fmtMoney(item.price || 0);
-
-    tile.appendChild(nameEl);
-    tile.appendChild(priceEl);
-
-    tile.addEventListener('pointerdown', function() {
-      tile.style.background = hexToRgba(T.green, 0.15);
-    });
-    var restoreTile = function() {
-      setTimeout(function() { tile.style.background = T.card; }, 120);
-    };
-    tile.addEventListener('pointerup',    restoreTile);
-    tile.addEventListener('pointerleave', restoreTile);
-    tile.addEventListener('pointercancel',restoreTile);
-
-    els.itemGrid.appendChild(tile);
-  });
+  var idx = typeof anchorIdx === 'number' ? anchorIdx : 0;
+  _renderItemGridContents(els.itemGrid, items, cat, idx);
 }
 
 function repaintCategoryColumn() {
@@ -1183,60 +1191,12 @@ function repaintCategoryColumn() {
   if (divider) els.categoryColumn.appendChild(divider);
 
   state.categories.forEach(function(cat) {
-    var isActive = cat.key === state.activeCategory;
-    var catColor = cat.color || T.moon;
-
-    var tile = document.createElement('div');
-    tile.dataset.categoryKey = cat.key;
-    tile.style.cssText = [
-      'height:70px;',
-      'border-radius:' + T.chamferCard + 'px;',
-      'flex-shrink:0;',
-      'position:relative;',
-      'overflow:hidden;',
-      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;',
-      'gap:2px;',
-      'transition:' + T.transitionFast + ';',
-      isActive
-        ? 'background:' + catColor + ';'
-        : 'background:' + T.card + ';border:1px solid ' + T.border + ';',
-    ].join('');
-
-    if (!isActive) {
-      var bar = document.createElement('div');
-      bar.style.cssText = [
-        'position:absolute;left:0;top:0;bottom:0;',
-        'width:' + T.accentBarW + ';',
-        'background:' + catColor + ';',
-        'border-radius:' + T.chamferCard + 'px 0 0 ' + T.chamferCard + 'px;',
-      ].join('');
-      tile.appendChild(bar);
-    }
-
-    var labelEl = document.createElement('span');
-    labelEl.style.cssText = [
-      'font-family:' + T.fh + ';',
-      'font-size:' + FS_CAT + ';',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + (isActive ? T.moonText : T.text) + ';',
-      'text-align:center;z-index:1;',
-    ].join('');
-    labelEl.textContent = cat.label;
-
-    var countEl = document.createElement('span');
-    countEl.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + FS_MOD + ';',
-      'color:' + (isActive ? darkenHex(catColor, 0.4) : T.moon) + ';',
-      'text-align:center;z-index:1;',
-    ].join('');
-    countEl.textContent = (cat.items || []).length + ' items';
-
-    tile.appendChild(labelEl);
-    tile.appendChild(countEl);
-    els.categoryColumn.appendChild(tile);
+    els.categoryColumn.appendChild(_buildCategoryTile(cat));
   });
+
+  var filler = document.createElement('div');
+  filler.style.cssText = 'flex:1;background:' + T.well + ';';
+  els.categoryColumn.appendChild(filler);
 }
 
 // ─────────────────────────────────────────────────
@@ -1288,13 +1248,18 @@ function clearSelection() {
   renderRecap();
 }
 
+function removeItem(idx) {
+  state.items.splice(idx, 1);
+  state.selectedIdxs = state.selectedIdxs
+    .filter(function(i) { return i !== idx; })
+    .map(function(i) { return i > idx ? i - 1 : i; });
+  renderRecap();
+}
+
 function switchCategory(key) {
   state.activeCategory = key;
-  var cat = null;
-  for (var i = 0; i < state.categories.length; i++) {
-    if (state.categories[i].key === key) { cat = state.categories[i]; break; }
-  }
-  repaintItemGrid(cat ? cat.items : []);
+  var found = _findActiveCategory();
+  repaintItemGrid(found.cat ? found.cat.items : [], found.cat, found.idx);
   repaintCategoryColumn();
   // Re-wire grid tap handler after repaint
   if (els.itemGrid) {
@@ -1516,9 +1481,12 @@ function buildRightSurface(categories) {
   }
 
   rightEl.appendChild(buildCategoryColumn(categories, favH));
+  var initialCat = categories.length > 0 ? categories[0] : null;
   rightEl.appendChild(buildItemGrid(
-    categories.length > 0 ? categories[0].items : [],
-    favH
+    initialCat ? initialCat.items : [],
+    favH,
+    0,
+    initialCat
   ));
 
   els.rightSurface = rightEl;
@@ -1547,7 +1515,11 @@ function fetchMenuData() {
       });
       return cats.map(function(cat) {
         var key   = (cat.name || cat.category_id || '').toUpperCase();
-        var color = T.categoryPalette[key] || T.moon;
+        // Priority: API-returned color → palette key lookup → neutral grey.
+        var color = cat.color
+          || cat.hex_color
+          || T.categoryPalette[key]
+          || T.moon;
         var rawItems = itemsByCategory[cat.category_id] || [];
         var items = rawItems.map(function(it) {
           return {

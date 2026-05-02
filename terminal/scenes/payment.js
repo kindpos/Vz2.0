@@ -261,7 +261,7 @@ defineScene({
           'font-family:' + T.fb + ';',
           'font-size:' + T.fsB2 + ';',
           'color:' + T.green + ';',
-        ].join('');
+        ].join('') + ";font-weight:" + T.fwBold + ";";
         sub.textContent = 'Remaining: $' + remaining.toFixed(2);
         shell.appendChild(sub);
 
@@ -366,7 +366,7 @@ defineScene({
           'box-shadow:0 12px 36px rgba(0,0,0,0.55);',
           'font-family:' + T.fb + ';',
           'overflow:hidden;',
-        ].join('');
+        ].join('') + ";font-weight:" + T.fwBold + ";";
 
         // Header strip
         var titleBar = document.createElement('div');
@@ -413,7 +413,7 @@ defineScene({
           'font-size:' + T.fsB2 + ';',
           'color:' + T.text + ';',
           'min-height:28px;',
-        ].join('');
+        ].join('') + ";font-weight:" + T.fwBold + ";";
         _procStatusEl.textContent = statusMessages[0];
         body.appendChild(_procStatusEl);
 
@@ -451,7 +451,7 @@ defineScene({
           'color:' + hexToRgba(T.text, 0.6) + ';',
           'text-align:center;',
           'letter-spacing:0.05em;',
-        ].join('');
+        ].join('') + ";font-weight:" + T.fwBold + ";";
         hint.textContent = 'Present card on terminal...';
         body.appendChild(hint);
 
@@ -566,7 +566,7 @@ defineScene({
           'color:' + hexToRgba(T.text, 0.6) + ';',
           'margin-top:14px;',
           'letter-spacing:0.06em;',
-        ].join('');
+        ].join('') + ";font-weight:" + T.fwBold + ";";
         chargedLine.textContent = (isCash ? 'Cash price: ' : 'Charged: ') + '$' + params.total.toFixed(2);
         card.appendChild(chargedLine);
 
@@ -578,7 +578,7 @@ defineScene({
           'letter-spacing:0.14em;',
           'margin-top:18px;',
           'text-transform:uppercase;',
-        ].join('');
+        ].join('') + ";font-weight:" + T.fwBold + ";";
         printLine.textContent = 'Receipt Printing...';
         card.appendChild(printLine);
 
@@ -618,7 +618,7 @@ defineScene({
             'color:' + hexToRgba(T.text, 0.6) + ';',
             'letter-spacing:0.12em;',
             'margin-top:4px;',
-          ].join('');
+          ].join('') + ";font-weight:" + T.fwBold + ";";
           autoHint.textContent = 'auto-logout in 8s...';
           container.appendChild(autoHint);
 
@@ -642,7 +642,7 @@ defineScene({
             'color:' + hexToRgba(T.text, 0.6) + ';',
             'letter-spacing:0.12em;',
             'margin-top:4px;',
-          ].join('');
+          ].join('') + ";font-weight:" + T.fwBold + ";";
           landingHint.textContent = 'returning to landing in 3s...';
           container.appendChild(landingHint);
 
@@ -1095,6 +1095,7 @@ function buildActionRow() {
     onClick: handleExact,
   });
   Object.assign(exact.style, {
+    fontWeight: T.fwBold,
     flex:         '1',
     height:       '60px',
     borderRadius: '14px',
@@ -1109,6 +1110,7 @@ function buildActionRow() {
     onClick: _onSplitTap,
   });
   Object.assign(split.style, {
+    fontWeight: T.fwBold,
     flex:         '1',
     height:       '60px',
     borderRadius: '14px',

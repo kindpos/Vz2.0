@@ -49,7 +49,7 @@ function _buildOverlay(el, itemName, modName, modPrice, halfPrice, currentMods, 
     'display:flex;flex-direction:column;',
     'font-family:' + T.fb + ';',
     'overflow:hidden;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
 
   // ── Header strip ──
   var header = document.createElement('div');
@@ -61,7 +61,7 @@ function _buildOverlay(el, itemName, modName, modPrice, halfPrice, currentMods, 
   ].join('');
 
   var titleSpan = document.createElement('span');
-  titleSpan.style.cssText = 'color:' + T.gold + ';font-size:' + T.fsB3 + ';font-family:' + T.fb + ';';
+  titleSpan.style.cssText = 'color:' + T.gold + ';font-size:' + T.fsB3 + ';font-family:' + T.fb + ';' + ";font-weight:" + T.fwBold + ";";
   titleSpan.textContent = itemName + '  \u2014  ' + modName;
   header.appendChild(titleSpan);
 
@@ -145,7 +145,7 @@ function _buildColumn(label, mods, wholeNames, onTap) {
     'flex:1;overflow-y:auto;',
     'font-family:' + T.fb + ';',
     'font-size:' + T.fsB3 + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
 
   if (mods.length === 0) {
     var placeholder = document.createElement('div');

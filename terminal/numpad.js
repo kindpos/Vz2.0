@@ -131,7 +131,7 @@ export function buildNumpad(opts) {
       'background:' + T.well + ';',
       'border:2px solid ' + T.verm + ';',
       'color:' + T.verm + ';',
-      'font-family:' + T.fb + ';font-size:20px;font-weight:bold;',
+      'font-family:' + T.fb + ';font-size:20px;font-weight:' + T.fwBold + ';',
       'display:flex;align-items:center;justify-content:center;',
       'cursor:pointer;',
       'clip-path:' + chamfer(6) + ';',
@@ -163,7 +163,7 @@ export function buildNumpad(opts) {
     'border-bottom:' + bevel + 'px solid ' + chassisColor + ';',
     'border-right:'  + bevel + 'px solid ' + chassisColor + ';',
     'border-radius:14px;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
 
   displayWrap.appendChild(display);
   container.appendChild(displayWrap);

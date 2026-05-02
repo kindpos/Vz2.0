@@ -25,7 +25,7 @@ function HexNav(host, _opts) {
     'font-size:' + T.fsB2 + ';',
     'color:' + T.gold + ';',
     'opacity:0.85;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   msg.textContent = 'Pizza Builder unavailable — HexNav not installed.';
   host.appendChild(msg);
   this._msg = msg;
@@ -96,7 +96,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     'display:flex;flex-direction:column;',
     'font-family:' + T.fb + ';',
     'overflow:hidden;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
 
   // ═══ PREFIX + PLACEMENT — built here, appended to bottom bar later ═══
   var prefixBtns = {};
@@ -178,7 +178,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
       'color:' + (isActive ? p.textColor : p.color) + ';',
       'border:2px solid ' + p.color + ';',
       'transition:background 80ms,color 80ms;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     btn.textContent = p.label;
     btn.addEventListener('pointerup', function(e) {
       e.stopPropagation();
@@ -283,7 +283,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
       'border-top:2px solid ' + pizzaColor + ';',
       'border-bottom:2px solid ' + pizzaColor + ';',
       'transition:background 80ms,color 80ms;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     if (i === 0) btn.style.borderLeft = '2px solid ' + pizzaColor;
     if (i === placeSegments.length - 1) btn.style.borderRight = '2px solid ' + pizzaColor;
     btn.textContent = seg.label;
@@ -341,14 +341,14 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     logWrap.innerHTML = '';
     if (appliedMods.length === 0) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:26px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:2px 0;';
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:26px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:2px 0;' + ";font-weight:" + T.fwBold + ";";
       empty.textContent = 'Tap a topping or special to build your pizza';
       logWrap.appendChild(empty);
       return;
     }
     appliedMods.forEach(function(entry, idx) {
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-family:' + T.fb + ';font-size:26px;color:' + T.gold + ';line-height:1.2;cursor:pointer;';
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-family:' + T.fb + ';font-size:26px;color:' + T.gold + ';line-height:1.2;cursor:pointer;' + ";font-weight:" + T.fwBold + ";";
       var placementTag = '';
       if (entry.placement === '1st-half') placementTag = ' [1st]';
       else if (entry.placement === '2nd-half') placementTag = ' [2nd]';
@@ -364,7 +364,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
       }
       var removeSpan = document.createElement('span');
       removeSpan.textContent = '\u2715';
-      removeSpan.style.cssText = 'color:' + T.verm + ';flex-shrink:0;font-size:24px;padding:0 2px;';
+      removeSpan.style.cssText = 'color:' + T.verm + ';flex-shrink:0;font-size:24px;padding:0 2px;' + ";font-weight:" + T.fwBold + ";";
       row.appendChild(removeSpan);
       row.addEventListener('pointerup', (function(i) {
         return function() {
@@ -378,7 +378,7 @@ function _buildOverlay(el, sizeItem, builderData, onConfirm, onCancel) {
     // RESET button
     if (appliedMods.length > 1) {
       var resetRow = document.createElement('div');
-      resetRow.style.cssText = 'margin-top:4px;padding:3px 0;text-align:center;font-family:' + T.fh + ';font-size:22px;color:' + T.verm + ';cursor:pointer;border:2px solid ' + T.verm + ';background:' + T.card + ';';
+      resetRow.style.cssText = 'margin-top:4px;padding:3px 0;text-align:center;font-family:' + T.fh + ';font-size:22px;color:' + T.verm + ';cursor:pointer;border:2px solid ' + T.verm + ';background:' + T.card + ';' + ";font-weight:" + T.fwBold + ";";
       resetRow.textContent = 'RESET ALL';
       resetRow.addEventListener('pointerup', function() {
         appliedMods.length = 0;

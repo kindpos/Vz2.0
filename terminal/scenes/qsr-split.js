@@ -25,7 +25,19 @@
 
 import { defineScene, SceneManager } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
-import { hexToRgba } from '../theme-manager.js';
+import { hexToRgba, darkenHex } from '../theme-manager.js';
+
+// Local lighten helper — avoids adding theme-manager mock entries downstream.
+function _lighten(hex, pct) {
+  var r = parseInt(hex.slice(1, 3), 16);
+  var g = parseInt(hex.slice(3, 5), 16);
+  var b = parseInt(hex.slice(5, 7), 16);
+  return '#' + [
+    Math.min(255, Math.round(r + (255 - r) * pct)),
+    Math.min(255, Math.round(g + (255 - g) * pct)),
+    Math.min(255, Math.round(b + (255 - b) * pct)),
+  ].map(function(c) { return c.toString(16).padStart(2, '0'); }).join('');
+}
 import { showToast } from '../components.js';
 import { fmt } from './checkout-core.js';
 import { fetchWithTimeout } from '../net.js';
@@ -133,13 +145,13 @@ function buildLeftPanel() {
   var hdr = document.createElement('div');
   hdr.style.cssText = [
     'height:44px;background:' + T.well + ';flex-shrink:0;',
-    'border-bottom:1px solid ' + T.border + ';',
-    'display:flex;align-items:center;padding:0 16px;',
-    'justify-content:space-between;',
+    'border-bottom:2px solid ' + darkenHex(T.bg, 0.2) + ';',
+    'display:flex;align-items:center;padding:8px 16px;',
+    'justify-content:space-between;box-sizing:border-box;',
   ].join('');
   var hdrLabel = document.createElement('span');
-  hdrLabel.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_LABEL +
-    ';font-weight:' + T.fwBold + ';color:' + T.green + ';letter-spacing:2px;';
+  hdrLabel.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB2 +
+    ';font-weight:' + T.fwBold + ';color:' + T.green + ';letter-spacing:0.15em;text-transform:uppercase;';
   hdrLabel.textContent = 'SPLIT  ' + ticketLabel();
   hdr.appendChild(hdrLabel);
   panel.appendChild(hdr);
@@ -148,7 +160,7 @@ function buildLeftPanel() {
   splitProgressLabel.style.cssText = [
     'padding:4px 16px;flex-shrink:0;',
     'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';color:' + T.moon + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   splitProgressLabel.style.display = state.equalSplitCount >= 2 ? '' : 'none';
   splitProgressLabel.textContent = state.equalSplitCount >= 2
     ? 'Split ' + state.equalSplitCount + ' ways — ' +
@@ -163,12 +175,18 @@ function buildLeftPanel() {
     'display:flex;flex-direction:column;gap:5px;',
     'border-bottom:1px solid ' + T.border + ';',
   ].join('');
+  var bevelLt = _lighten(T.bg, 0.08);
+  var bevelDk = darkenHex(T.bg, 0.2);
   (state.order.items || []).forEach(function(item) {
     var row = document.createElement('div');
     row.style.cssText = [
-      'background:' + T.well + ';border-radius:' + T.chamferCard + 'px;',
-      'border-left:' + T.accentBarW + ' solid ' + T.green + ';',
-      'padding:6px 10px;display:flex;justify-content:space-between;',
+      'background:' + T.well + ';',
+      'border-radius:8px;',
+      'border-top:2px solid ' + bevelLt + ';',
+      'border-right:2px solid ' + bevelDk + ';',
+      'border-bottom:2px solid ' + bevelDk + ';',
+      'border-left:3px solid ' + T.moon + ';',
+      'padding:6px 10px;display:flex;justify-content:space-between;align-items:center;',
     ].join('');
     var name = document.createElement('span');
     name.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_ITEM +
@@ -176,8 +194,8 @@ function buildLeftPanel() {
     name.textContent = (item.qty > 1 ? item.qty + '× ' : '') + item.name;
     var price = document.createElement('span');
     price.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_ITEM +
-      ';font-weight:' + T.fwBold + ';color:' + T.gold + ';flex-shrink:0;';
-    price.textContent = fmt(moneyRound(item.price * (item.qty || 1)));
+      ';font-weight:' + T.fwBold + ';color:' + (item.price > 0 ? T.gold : T.moon) + ';flex-shrink:0;';
+    price.textContent = item.price > 0 ? fmt(moneyRound(item.price * (item.qty || 1))) : '—';
     row.appendChild(name); row.appendChild(price);
     itemList.appendChild(row);
   });
@@ -233,7 +251,7 @@ function buildLeftPanel() {
     'font-size:' + FS_LABEL + ';color:' + T.moon + ';',
     'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
     'border-top:1px solid ' + T.border + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   cancelLink.textContent = '← cancel split';
   cancelLink.addEventListener('pointerup', function() { handleCancel(); });
   panel.appendChild(cancelLink);
@@ -246,14 +264,18 @@ function updateLeftPanel() {
   state.payments.forEach(function(p, i) {
     var row = document.createElement('div');
     row.style.cssText = [
-      'display:flex;justify-content:space-between;',
-      'background:' + T.well + ';border-radius:6px;',
+      'display:flex;justify-content:space-between;align-items:center;',
+      'background:' + T.well + ';',
+      'border-radius:8px;',
+      'border-top:2px solid ' + _lighten(T.bg, 0.08) + ';',
+      'border-right:2px solid ' + darkenHex(T.bg, 0.2) + ';',
+      'border-bottom:2px solid ' + darkenHex(T.bg, 0.2) + ';',
+      'border-left:3px solid ' + T.greenWarm + ';',
       'padding:6px 10px;',
-      'border-left:' + T.accentBarW + ' solid ' + T.greenWarm + ';',
     ].join('');
     var lbl = document.createElement('span');
     lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY +
-      ';color:' + T.greenWarm + ';';
+      ';color:' + T.greenWarm + ';' + ";font-weight:" + T.fwBold + ";";
     var methodLabel = p.method === 'card'
       ? ('Card' + (p.cardLast4 ? ' ····' + p.cardLast4 : ''))
       : 'Cash';
@@ -368,7 +390,7 @@ function buildSelectPhase() {
   remLbl.textContent = 'REMAINING';
   var remAmt = document.createElement('div');
   remAmt.style.cssText = 'font-family:' + T.fh + ';font-size:' + FS_HERO +
-    ';font-weight:' + T.fwBold + ';color:' + T.gold + ';line-height:1;';
+    ';font-weight:800;color:' + T.gold + ';line-height:1;';
   remAmt.textContent = fmt(state.remaining);
   remBlock.appendChild(remLbl);
   remBlock.appendChild(remAmt);
@@ -395,7 +417,7 @@ function buildSelectPhase() {
     'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
   ].join('');
   var minusLbl = document.createElement('span');
-  minusLbl.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.moon + ';';
+  minusLbl.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   minusLbl.textContent = '−';
   minusBtn.appendChild(minusLbl);
   els.splitMinusBtn = minusBtn;
@@ -419,7 +441,7 @@ function buildSelectPhase() {
     'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
   ].join('');
   var plusLbl = document.createElement('span');
-  plusLbl.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.moon + ';';
+  plusLbl.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   plusLbl.textContent = '+';
   plusBtn.appendChild(plusLbl);
   els.splitPlusBtn = plusBtn;
@@ -431,7 +453,7 @@ function buildSelectPhase() {
 
   var perPersonDisplay = document.createElement('div');
   perPersonDisplay.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY +
-    ';color:' + T.gold + ';text-align:center;';
+    ';color:' + T.gold + ';text-align:center;' + ";font-weight:" + T.fwBold + ";";
   perPersonDisplay.style.display = state.equalSplitCount >= 2 ? '' : 'none';
   perPersonDisplay.textContent = state.equalSplitCount >= 2
     ? '~' + fmt(state.equalSplitAmounts[0] || 0) + ' per person'
@@ -462,7 +484,7 @@ function buildSelectPhase() {
   divLeft.style.cssText = 'flex:1;height:1px;background:' + T.border + ';';
   var divLabel = document.createElement('span');
   divLabel.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_LABEL +
-    ';color:' + T.moon + ';white-space:nowrap;';
+    ';color:' + T.moon + ';white-space:nowrap;' + ";font-weight:" + T.fwBold + ";";
   divLabel.textContent = 'OR ENTER AMOUNT';
   var divRight = document.createElement('div');
   divRight.style.cssText = 'flex:1;height:1px;background:' + T.border + ';';
@@ -541,7 +563,7 @@ function buildSelectPhase() {
   ].join('');
   var entryHint = document.createElement('span');
   entryHint.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY +
-    ';color:' + T.moon + ';';
+    ';color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   entryHint.textContent = 'Amount';
   var entryAmt = document.createElement('span');
   entryAmt.style.cssText = 'font-family:' + T.fb + ';font-size:22px;' +
@@ -610,7 +632,7 @@ function buildSelectPhase() {
     ';font-weight:' + T.fwBold + ';color:' + T.moonText + ';letter-spacing:0.05em;';
   cashLbl.textContent = 'CASH';
   var cashSub = document.createElement('span');
-  cashSub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.greenWarmDk + ';';
+  cashSub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.greenWarmDk + ';' + ";font-weight:" + T.fwBold + ";";
   cashSub.textContent = fmt(getSplitAmount());
   els.cashBtnSub = cashSub;
   cashBtn.appendChild(cashLbl);
@@ -644,7 +666,7 @@ function buildSelectPhase() {
     ';font-weight:' + T.fwBold + ';color:' + T.moonText + ';letter-spacing:0.05em;';
   cardLbl.textContent = 'CARD';
   var cardSub = document.createElement('span');
-  cardSub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.elecDk + ';';
+  cardSub.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.elecDk + ';' + ";font-weight:" + T.fwBold + ";";
   cardSub.textContent = fmt(getSplitAmount());
   els.cardBtnSub = cardSub;
   cardBtn.appendChild(cardLbl);
@@ -696,11 +718,11 @@ function buildCashNumpadPhase() {
   ].join('');
   var totalLbl = document.createElement('span');
   totalLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_LABEL +
-    ';color:' + T.moon + ';letter-spacing:2px;text-transform:uppercase;';
+    ';color:' + T.moon + ';letter-spacing:2px;text-transform:uppercase;' + ";font-weight:" + T.fwBold + ";";
   totalLbl.textContent = 'AMOUNT DUE';
   var totalHero = document.createElement('span');
   totalHero.style.cssText = 'font-family:' + T.fh + ';font-size:' + FS_HERO +
-    ';font-weight:' + T.fwBold + ';color:' + T.gold + ';line-height:1;';
+    ';font-weight:800;color:' + T.gold + ';line-height:1;';
   totalHero.textContent = fmt(state.currentSplitAmount);
   totalBlock.appendChild(totalLbl);
   totalBlock.appendChild(totalHero);
@@ -716,7 +738,7 @@ function buildCashNumpadPhase() {
   ].join('');
   var tendLbl = document.createElement('span');
   tendLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY +
-    ';color:' + T.moon + ';';
+    ';color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   tendLbl.textContent = 'Tendered';
   var tendDisplay = document.createElement('span');
   tendDisplay.style.cssText = 'font-family:' + T.fb + ';font-size:22px;' +
@@ -735,7 +757,7 @@ function buildCashNumpadPhase() {
   ].join('');
   var quickLbl = document.createElement('span');
   quickLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_LABEL +
-    ';color:' + T.green + ';letter-spacing:2px;text-transform:uppercase;';
+    ';color:' + T.green + ';letter-spacing:2px;text-transform:uppercase;' + ";font-weight:" + T.fwBold + ";";
   quickLbl.textContent = 'QUICK AMOUNTS';
   quickWrap.appendChild(quickLbl);
   var tilesRow = document.createElement('div');
@@ -754,7 +776,7 @@ function buildCashNumpadPhase() {
         'font-weight:' + T.fwBold + ';color:' + T.greenWarm + ';text-transform:uppercase;';
       tl.textContent = 'EXACT';
       var bl = document.createElement('span');
-      bl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.greenWarm + ';';
+      bl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.greenWarm + ';' + ";font-weight:" + T.fwBold + ";";
       bl.textContent = fmt(p.amount);
       tile.appendChild(tl); tile.appendChild(bl);
     } else {
@@ -795,37 +817,60 @@ function buildCashNumpadPhase() {
     'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:4px 0;',
   ].join('');
 
+  var npBevelLt = _lighten(T.bg, 0.08);
+  var npBevelDk = darkenHex(T.bg, 0.2);
+  var npDigitDk = darkenHex(T.well, 0.3);
+
   [['7','8','9'],['4','5','6'],['1','2','3'],['CLR','0','ENT']].forEach(function(row) {
     row.forEach(function(k) {
       var key = document.createElement('div');
+      var dk;
       key.style.cssText = [
         'min-height:66px;border-radius:' + T.chamferKey + 'px;',
         'display:flex;align-items:center;justify-content:center;',
         'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-        'transition:' + T.transitionFast + ';',
+        'transition:transform 0.07s, box-shadow 0.07s;',
       ].join('');
       var lbl = document.createElement('span');
       if (k === 'CLR') {
-        key.style.cssText += 'background:' + T.well + ';border:1.5px solid ' + T.verm + ';';
+        dk = darkenHex(T.verm, 0.25);
+        key.style.cssText += 'background:' + T.well + ';border:1.5px solid ' + T.verm + ';box-shadow:0 3px 0 ' + dk + ';';
         lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BTN +
           ';font-weight:' + T.fwBold + ';color:' + T.verm + ';letter-spacing:0.05em;';
         lbl.textContent = 'CLR';
       } else if (k === 'ENT') {
-        key.style.cssText += 'background:' + T.greenWarm + ';';
+        dk = darkenHex(T.greenWarm, 0.25);
+        key.style.cssText += 'background:' + T.greenWarm + ';box-shadow:0 3px 0 ' + dk + ';';
         lbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BTN +
-          ';font-weight:' + T.fwBold + ';color:' + T.moonText + ';letter-spacing:0.05em;';
+          ';font-weight:' + T.fwBold + ';color:' + T.well + ';letter-spacing:0.05em;';
         lbl.textContent = 'ENT';
       } else {
-        key.style.cssText += 'background:' + T.well + ';border:1px solid ' + T.border + ';';
+        dk = npDigitDk;
+        key.style.cssText += [
+          'background:' + T.well + ';',
+          'border-top:2px solid ' + npBevelLt + ';',
+          'border-right:2px solid ' + npBevelDk + ';',
+          'border-bottom:2px solid ' + npBevelDk + ';',
+          'border-left:2px solid ' + npBevelLt + ';',
+          'box-shadow:0 3px 0 ' + dk + ';',
+        ].join('');
         lbl.style.cssText = 'font-family:' + T.fh + ';font-size:' + FS_KEY +
           ';font-weight:' + T.fwBold + ';color:' + T.green + ';';
         lbl.textContent = k;
       }
-      key.addEventListener('pointerdown', function() { key.style.opacity = '0.7'; });
-      var restore = function() { key.style.opacity = '1'; };
-      key.addEventListener('pointerup', restore);
-      key.addEventListener('pointerleave', restore);
-      key.addEventListener('pointercancel', restore);
+      (function(_dk) {
+        key.addEventListener('pointerdown', function() {
+          key.style.transform = 'translateY(2px)';
+          key.style.boxShadow = '0 1px 0 ' + _dk;
+        });
+        var restore = function() {
+          key.style.transform = 'translateY(0)';
+          key.style.boxShadow = '0 3px 0 ' + _dk;
+        };
+        key.addEventListener('pointerup', restore);
+        key.addEventListener('pointerleave', restore);
+        key.addEventListener('pointercancel', restore);
+      })(dk);
       key.addEventListener('pointerup', function() { handleCashKey(k); });
       key.appendChild(lbl);
       np.appendChild(key);
@@ -845,12 +890,12 @@ function buildCashNumpadPhase() {
   cdLbl.textContent = 'CHANGE DUE';
   var cdVal = document.createElement('span');
   cdVal.style.cssText = 'font-family:' + T.fh + ';font-size:' + FS_HERO +
-    ';font-weight:' + T.fwBold + ';color:' + T.gold + ';line-height:1;';
+    ';font-weight:800;color:' + T.gold + ';line-height:1;';
   cdVal.textContent = '—';
   els.changeDueEl = cdVal;
   var entHint = document.createElement('span');
   entHint.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_LABEL +
-    ';color:' + T.moon + ';margin-top:10px;';
+    ';color:' + T.moon + ';margin-top:10px;' + ";font-weight:" + T.fwBold + ";";
   entHint.textContent = 'ENT to confirm';
   cd.appendChild(cdLbl); cd.appendChild(cdVal); cd.appendChild(entHint);
   bottom.appendChild(cd);
@@ -973,7 +1018,7 @@ function buildCardReaderPhase() {
     'display:flex;align-items:center;justify-content:center;',
   ].join('');
   var arc = document.createElement('div');
-  arc.style.cssText = 'font-size:18px;color:' + T.elec + ';';
+  arc.style.cssText = 'font-size:18px;color:' + T.elec + ';' + ";font-weight:" + T.fwBold + ";";
   arc.textContent = '⌁';
   rings.appendChild(arc);
 
@@ -983,7 +1028,7 @@ function buildCardReaderPhase() {
   prompt.textContent = 'Tap · Insert · Swipe';
 
   var sub = document.createElement('div');
-  sub.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.moon + ';';
+  sub.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   sub.textContent = 'Present card to reader';
 
   var statusRow = document.createElement('div');
@@ -993,7 +1038,7 @@ function buildCardReaderPhase() {
   els.statusDot = dot;
   var statusText = document.createElement('span');
   statusText.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_STATUS +
-    ';color:' + T.elec + ';';
+    ';color:' + T.elec + ';' + ";font-weight:" + T.fwBold + ";";
   statusText.textContent = 'Reader ready';
   els.statusText = statusText;
   statusRow.appendChild(dot);

@@ -176,6 +176,56 @@ def project_menu(events: List[Event]) -> MenuState:
             if group_id in modifier_groups_map:
                 del modifier_groups_map[group_id]
 
+        elif event.event_type == EventType.MODIFIER_GROUP_MODIFIER_ADDED:
+            gid = payload.get('group_id')
+            mid = payload.get('modifier_id')
+            if gid in modifier_groups_map and mid:
+                mods = modifier_groups_map[gid].setdefault('modifiers', [])
+                existing = {m.get('modifier_id') for m in mods if isinstance(m, dict)}
+                if mid not in existing:
+                    mods.append({'modifier_id': mid, 'included_modifier_ids': [], 'price_by_size': {}})
+
+        elif event.event_type == EventType.MODIFIER_GROUP_MODIFIER_REMOVED:
+            gid = payload.get('group_id')
+            mid = payload.get('modifier_id')
+            if gid in modifier_groups_map and mid:
+                mods = modifier_groups_map[gid].get('modifiers', [])
+                modifier_groups_map[gid]['modifiers'] = [
+                    m for m in mods
+                    if not (isinstance(m, dict) and m.get('modifier_id') == mid)
+                ]
+
+        elif event.event_type == EventType.MICROMOD_ASSIGNED_TO_MODIFIER:
+            mid = payload.get('modifier_id')
+            micro_id = payload.get('micromod_id')
+            if mid and micro_id:
+                # A modifier may live in multiple groups — keep all copies in sync.
+                for grp in modifier_groups_map.values():
+                    for m in grp.get('modifiers', []):
+                        if isinstance(m, dict) and m.get('modifier_id') == mid:
+                            ids = m.setdefault('included_modifier_ids', [])
+                            if micro_id not in ids:
+                                ids.append(micro_id)
+                if mid in modifiers_map:
+                    ids = modifiers_map[mid].setdefault('included_modifier_ids', [])
+                    if micro_id not in ids:
+                        ids.append(micro_id)
+
+        elif event.event_type == EventType.MICROMOD_UNASSIGNED_FROM_MODIFIER:
+            mid = payload.get('modifier_id')
+            micro_id = payload.get('micromod_id')
+            if mid and micro_id:
+                for grp in modifier_groups_map.values():
+                    for m in grp.get('modifiers', []):
+                        if isinstance(m, dict) and m.get('modifier_id') == mid:
+                            ids = m.get('included_modifier_ids', [])
+                            if micro_id in ids:
+                                ids.remove(micro_id)
+                if mid in modifiers_map:
+                    ids = modifiers_map[mid].get('included_modifier_ids', [])
+                    if micro_id in ids:
+                        ids.remove(micro_id)
+
         # ── Options ──────────────────────────────────────────────────
         elif event.event_type == EventType.OPTION_CREATED:
             options_map[payload['option_id']] = dict(payload)

@@ -47,6 +47,7 @@ import { buildStaffRolesScene,    cleanupStaffRoles     } from './sections/staff
 import { buildPayrollAttendanceScene, cleanupPayrollAttendance } from './sections/payroll-attendance.js';
 import { buildPricingSetupScene, cleanupPricingSetup } from './sections/pricing-setup.js';
 import { buildModifierGroupsScene, cleanupModifierGroups } from './sections/modifier-groups.js';
+import { buildModifiersScene, cleanupModifiers } from './sections/modifiers.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -90,8 +91,9 @@ const NAV = [
         id: 'menu',
         label: 'MENU',
         subs: [
-            { id: 'menu-categories',     label: 'Items & Categories' },
-            { id: 'modifier-groups',      label: "Modifiers & microMODs" },
+            { id: 'menu-categories',     label: 'Items'             },
+            { id: 'modifiers',           label: 'Modifiers & Options' },
+            { id: 'modifier-groups',     label: 'Groups'            },
             { id: 'pricing-setup',       label: 'Pricing Setup'     },
             { id: 'pricing-specials',    label: 'Discounts & Specials' },
             { id: 'import-excel',        label: 'Import Menu'       },
@@ -404,6 +406,11 @@ function registerAllSections() {
         name: 'modifier-groups',
         mount: (container) => buildModifierGroupsScene(container),
         unmount: (container) => cleanupModifierGroups(container),
+    });
+    SceneManager.register({
+        name: 'modifiers',
+        mount: (container) => buildModifiersScene(container),
+        unmount: (container) => cleanupModifiers(container),
     });
 }
 

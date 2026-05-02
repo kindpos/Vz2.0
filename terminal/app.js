@@ -72,7 +72,7 @@ async function boot() {
     var dtDateEl = document.createElement('div');
     dtDateEl.style.cssText = [
       'font-family:\'JetBrains Mono\',monospace;',
-      'font-size:11px;color:#fff;letter-spacing:1.8px;font-weight:500;',
+      'font-size:11px;color:#fff;letter-spacing:1.8px;font-weight:' + T.fwBold + ';',
     ].join('');
     var dtTimeEl = document.createElement('div');
     dtTimeEl.style.cssText = [
@@ -84,7 +84,7 @@ async function boot() {
     // Greeting — shown only when session is active
     var greetingEl = document.createElement('div');
     greetingEl.style.cssText = [
-      'font-family:\'Outfit\',sans-serif;font-weight:600;font-size:14px;',
+      'font-family:\'Outfit\',sans-serif;font-weight:' + T.fwBold + ';font-size:14px;',
       'color:#fff;letter-spacing:0.3px;line-height:1;display:none;',
     ].join('');
 
@@ -92,7 +92,7 @@ async function boot() {
     var roleEl = document.createElement('div');
     roleEl.style.cssText = [
       'display:none;align-items:center;gap:5px;',
-      'font-family:\'JetBrains Mono\',monospace;font-weight:500;',
+      'font-family:\'JetBrains Mono\',monospace;font-weight:' + T.fwBold + ';',
       'font-size:10px;color:' + T.green + ';letter-spacing:1.4px;',
     ].join('');
     var roleDot = document.createElement('span');
@@ -126,7 +126,7 @@ async function boot() {
       'background:' + T.verm + ';',
       'color:#fff;',
       'display:none;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     backBtn.textContent = '<<<';
 
     // Logout button ("×") — always visible
@@ -134,7 +134,7 @@ async function boot() {
     exitBtn.style.cssText = btnBase + [
       'width:30px;font-size:17px;',
       'background:' + T.verm + ';color:#fff;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     exitBtn.textContent = '×';
 
     var _backLastTap = 0;

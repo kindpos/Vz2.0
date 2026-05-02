@@ -113,7 +113,7 @@ function injectStyles() {
     }
     .kh-subtitle {
       font-family: 'JetBrains Mono', monospace;
-      font-weight: 500;
+      font-weight: ${T.fwBold};
       font-size: 10px;
       color: ${textDim};
       letter-spacing: 1.6px;
@@ -134,7 +134,7 @@ function injectStyles() {
       font-size: 9px;
       color: ${textDim};
       letter-spacing: 1.8px;
-      font-weight: 500;
+      font-weight: ${T.fwBold};
     }
     .kh-datetime-time {
       font-family: 'JetBrains Mono', monospace;
@@ -146,7 +146,7 @@ function injectStyles() {
     .kh-user { display:flex; flex-direction:column; align-items:flex-start; gap:2px; }
     .kh-greeting {
       font-family: 'Outfit', sans-serif;
-      font-weight: 600;
+      font-weight: ${T.fwBold};
       font-size: 13px;
       color: ${T.text};
       line-height: 1;
@@ -154,7 +154,7 @@ function injectStyles() {
     }
     .kh-role {
       font-family: 'JetBrains Mono', monospace;
-      font-weight: 500;
+      font-weight: ${T.fwBold};
       font-size: 9px;
       color: ${T.green};
       letter-spacing: 1.4px;

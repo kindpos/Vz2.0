@@ -114,7 +114,7 @@ function _build() {
     'color:' + hexToRgba(T.text, 0.4) + ';',
     'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;',
     'text-transform:uppercase;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   checkWrap.appendChild(_checkIdEl);
   checkWrap.appendChild(_nameEl);
   checkWrap.addEventListener('pointerup', function() {
@@ -211,7 +211,7 @@ function _modRow(mod) {
     'font-family:' + T.fb + ';',
     'font-size:' + T.fsB3 + ';',
     'color:' + T.green + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   var modName = document.createElement('div');
   modName.textContent = mod.name;
   modName.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
@@ -228,7 +228,7 @@ function _halfCell(mod) {
   td.style.cssText = 'flex:1;padding:1px 2px;color:' + T.green + ';';
   if (!mod) return td;
   var nameEl = document.createElement('div');
-  nameEl.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:' + (mod.price > 0 ? '12px' : '14px') + ';';
+  nameEl.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:' + (mod.price > 0 ? '12px' : '14px') + ';' + ";font-weight:" + T.fwBold + ";";
   nameEl.textContent = mod.name;
   if (mod.price > 0) {
     var pr = document.createElement('span');
@@ -241,7 +241,7 @@ function _halfCell(mod) {
   if (mod.children && mod.children.length > 0) {
     for (var c = 0; c < mod.children.length; c++) {
       var childEl = document.createElement('div');
-      childEl.style.cssText = 'font-size:11px;color:' + T.verm + ';font-style:italic;padding-left:4px;';
+      childEl.style.cssText = 'font-size:11px;color:' + T.verm + ';font-style:italic;padding-left:4px;' + ";font-weight:" + T.fwBold + ";";
       childEl.textContent = mod.children[c].name;
       td.appendChild(childEl);
     }
@@ -370,7 +370,7 @@ function _renderItems(items) {
     var arrow = null;
     if (isCollapsible && hasMods) {
       arrow = document.createElement('span');
-      arrow.style.cssText = 'flex-shrink:0;margin-left:4px;font-size:14px;color:' + _muted() + ';cursor:pointer;';
+      arrow.style.cssText = 'flex-shrink:0;margin-left:4px;font-size:14px;color:' + _muted() + ';cursor:pointer;' + ";font-weight:" + T.fwBold + ";";
       arrow.textContent = '›';
       arrow.addEventListener('pointerup', function(e) {
         e.stopPropagation();

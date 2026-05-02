@@ -35,7 +35,19 @@
 
 import { defineScene, SceneManager } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
-import { hexToRgba } from '../theme-manager.js';
+import { hexToRgba, darkenHex } from '../theme-manager.js';
+
+// Local lighten helper — avoids adding theme-manager mock entries downstream.
+function _lighten(hex, pct) {
+  var r = parseInt(hex.slice(1, 3), 16);
+  var g = parseInt(hex.slice(3, 5), 16);
+  var b = parseInt(hex.slice(5, 7), 16);
+  return '#' + [
+    Math.min(255, Math.round(r + (255 - r) * pct)),
+    Math.min(255, Math.round(g + (255 - g) * pct)),
+    Math.min(255, Math.round(b + (255 - b) * pct)),
+  ].map(function(c) { return c.toString(16).padStart(2, '0'); }).join('');
+}
 import { showToast } from '../components.js';
 import { fmt } from './checkout-core.js';
 import { fetchWithTimeout } from '../net.js';
@@ -118,16 +130,16 @@ function buildReceiptPanel() {
   var hdr = document.createElement('div');
   hdr.style.cssText = [
     'height:44px;background:' + T.well + ';flex-shrink:0;',
-    'border-bottom:1px solid ' + T.border + ';',
-    'display:flex;align-items:center;padding:0 16px;',
-    'justify-content:space-between;',
+    'border-bottom:2px solid ' + darkenHex(T.bg, 0.2) + ';',
+    'display:flex;align-items:center;padding:8px 16px;',
+    'justify-content:space-between;box-sizing:border-box;',
   ].join('');
 
   var hdrLabel = document.createElement('span');
   hdrLabel.style.cssText = [
-    'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';',
+    'font-family:' + T.fh + ';font-size:' + T.fsB2 + ';',
     'font-weight:' + T.fwBold + ';color:' + T.greenWarm + ';',
-    'letter-spacing:2px;',
+    'letter-spacing:0.15em;text-transform:uppercase;',
   ].join('');
   hdrLabel.textContent = 'ORDER  ' + ticketLabel() + '  ·  PAID';
   hdr.appendChild(hdrLabel);
@@ -147,16 +159,22 @@ function buildReceiptPanel() {
     ph.style.cssText = [
       'font-family:' + T.fb + ';font-size:' + FS_BODY + ';',
       'color:' + T.moon + ';text-align:center;padding:20px;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     ph.textContent = 'No items';
     itemList.appendChild(ph);
   } else {
+    var bevelLt = _lighten(T.bg, 0.08);
+    var bevelDk = darkenHex(T.bg, 0.2);
     items.forEach(function(item) {
       var row = document.createElement('div');
       row.style.cssText = [
-        'background:' + T.well + ';border-radius:' + T.chamferCard + 'px;',
-        'border-left:' + T.accentBarW + ' solid ' + T.greenWarm + ';',
-        'padding:8px 10px;display:flex;justify-content:space-between;',
+        'background:' + T.well + ';',
+        'border-radius:8px;',
+        'border-top:2px solid ' + bevelLt + ';',
+        'border-right:2px solid ' + bevelDk + ';',
+        'border-bottom:2px solid ' + bevelDk + ';',
+        'border-left:3px solid ' + T.greenWarm + ';',
+        'padding:6px 10px;display:flex;justify-content:space-between;',
         'align-items:flex-start;flex-shrink:0;',
       ].join('');
 
@@ -177,7 +195,7 @@ function buildReceiptPanel() {
         mods.style.cssText = [
           'font-family:' + T.fb + ';font-size:11px;',
           'color:' + T.moon + ';',
-        ].join('');
+        ].join('') + ";font-weight:" + T.fwBold + ";";
         mods.textContent = item.mods.join('  ·  ');
         nameCol.appendChild(mods);
       }
@@ -215,7 +233,7 @@ function buildReceiptPanel() {
     l.style.cssText = [
       'font-family:' + T.fb + ';font-size:' + FS_BODY + ';',
       'color:' + (labelColor || T.moon) + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     l.textContent = label;
 
     var v = document.createElement('span');
@@ -362,7 +380,7 @@ function buildCompletionSurface() {
   ].join('');
 
   var check = document.createElement('div');
-  check.style.cssText = 'font-size:40px;color:' + T.greenWarm + ';line-height:1;';
+  check.style.cssText = 'font-size:40px;color:' + T.greenWarm + ';line-height:1;' + ";font-weight:" + T.fwBold + ";";
   check.textContent = '✓';
   checkWrap.appendChild(check);
   el.appendChild(checkWrap);
@@ -372,7 +390,7 @@ function buildCompletionSurface() {
   ticket.style.cssText = [
     'font-family:' + T.fb + ';font-size:' + FS_TICKET + ';',
     'color:' + T.moon + ';letter-spacing:2px;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   ticket.textContent = ticketLabel();
   el.appendChild(ticket);
 
@@ -416,7 +434,7 @@ function buildCompletionSurface() {
       tipLine.style.cssText = [
         'font-family:' + T.fb + ';font-size:' + FS_BODY + ';',
         'color:' + T.elec + ';margin-top:4px;',
-      ].join('');
+      ].join('') + ";font-weight:" + T.fwBold + ";";
       tipLine.textContent = 'Tip  ' + fmt(state.tipAmount);
       cardInfo.appendChild(tipLine);
     }
@@ -456,7 +474,7 @@ function buildCompletionSurface() {
   ktText.style.cssText = [
     'font-family:' + T.fb + ';font-size:' + FS_BODY + ';',
     'color:' + T.moon + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   ktText.textContent = 'Printing kitchen ticket…';
 
   els.ktDot  = ktDot;
@@ -475,7 +493,7 @@ function buildCompletionSurface() {
   progressLabel.style.cssText = [
     'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';',
     'color:' + T.moon + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   progressLabel.textContent = 'Auto-reset in ' + RESET_SECS + 's';
   els.progressLabel = progressLabel;
 

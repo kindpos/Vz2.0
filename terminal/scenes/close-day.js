@@ -346,7 +346,7 @@ function buildBlockerBanner(state) {
   title.textContent = total + ' BLOCKER' + (total > 1 ? 'S' : '') + ' \u2014 RESOLVE BEFORE LOCK';
 
   var summary = document.createElement('div');
-  summary.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.text + ';';
+  summary.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
   var parts = [];
   if (openCount)  parts.push(openCount  + ' open check'       + (openCount  > 1 ? 's' : ''));
   if (unadjCount) parts.push(unadjCount + ' unadjusted CC tip' + (unadjCount > 1 ? 's' : ''));
@@ -362,7 +362,7 @@ function buildBlockerBanner(state) {
     'background:' + T.well + ';',
     'font-family:' + T.fb + ';font-size:' + FS_META + ';color:' + T.lavender + ';',
     'letter-spacing:0.5px;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   chip.textContent = state.dateLong + '  \u2022  ' + state.timeLong;
 
   wrap.appendChild(icon);
@@ -460,10 +460,10 @@ function buildLeftCol(state, handlers) {
       var row = document.createElement('div');
       row.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
       var rL = document.createElement('div');
-      rL.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';';
+      rL.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
       rL.textContent = (r.role_name || r.name || 'Tip-Out') + ' ' + (r.percentage || 0) + '%';
       var rR = document.createElement('div');
-      rR.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';';
+      rR.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
       rR.textContent = fmt(rAmt);
       row.appendChild(rL);
       row.appendChild(rR);
@@ -582,7 +582,7 @@ function buildLeftCol(state, handlers) {
   cashAmt.style.cssText = 'font-family:' + T.fh + ';font-size:28px;font-weight:700;color:' + T.gold + ';line-height:1;';
   cashAmt.textContent = fmt(state.cashExpected);
   var cashMath = document.createElement('div');
-  cashMath.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.6;margin-top:3px;';
+  cashMath.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.text + ';opacity:0.6;margin-top:3px;' + ";font-weight:" + T.fwBold + ";";
   cashMath.textContent = fmt(state.cashSales) + ' cash − ' + fmt(state.cardTips) + ' tips';
   cashFooter.appendChild(cashLbl);
   cashFooter.appendChild(cashAmt);
@@ -748,7 +748,7 @@ function buildBatchCard(data, handlers, sceneState) {
   totalEl.style.cssText = 'font-family:' + T.fh + ';font-size:22px;font-weight:700;color:' + accent + ';';
   totalEl.textContent = fmt(data.batchTotal || 0);
   var txnEl = document.createElement('div');
-  txnEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.55) + ';';
+  txnEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + hexToRgba(T.text, 0.55) + ';' + ";font-weight:" + T.fwBold + ";";
   txnEl.textContent = (data.batchTransactions || 0) + ' transaction' + ((data.batchTransactions || 0) !== 1 ? 's' : '');
   statsRow.appendChild(totalEl);
   statsRow.appendChild(txnEl);
@@ -892,14 +892,14 @@ function _buildActiveCheckRow(chk, handlers, isSelected) {
   top.appendChild(checkLbl);
   if (chk.tableLabel) {
     var tableLbl = document.createElement('span');
-    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';';
+    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
     tableLbl.textContent = chk.tableLabel;
     top.appendChild(tableLbl);
   }
   info.appendChild(top);
 
   var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   var metaParts = [];
   if (chk.server_name) metaParts.push(chk.server_name);
   if (chk.guests) metaParts.push(chk.guests + ' guest' + (chk.guests > 1 ? 's' : ''));
@@ -941,14 +941,14 @@ function _buildClosedCheckRow(chk, handlers) {
   top.appendChild(checkLbl);
   if (chk.tableLabel) {
     var tableLbl = document.createElement('span');
-    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';';
+    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
     tableLbl.textContent = chk.tableLabel;
     top.appendChild(tableLbl);
   }
   info.appendChild(top);
 
   var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   var metaParts = [];
   if (chk.server_name) metaParts.push(chk.server_name);
   if (chk.time)        metaParts.push('closed ' + chk.time);
@@ -964,7 +964,7 @@ function _buildClosedCheckRow(chk, handlers) {
     isCard
       ? 'background:' + hexToRgba(T.elec, 0.12) + ';color:' + T.elec + ';'
       : 'background:' + hexToRgba(T.greenWarm, 0.12) + ';color:' + T.greenWarm + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   tag.textContent = isCard
     ? (chk.cardBrand || 'Card') + (chk.cardLast4 ? ' ··· ' + chk.cardLast4 : '')
     : 'Cash';
@@ -1070,7 +1070,7 @@ function buildTipsCard(state, handlers, tipFilter) {
 
   if (!hasCards) {
     var emptyAll = document.createElement('div');
-    emptyAll.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.4;text-align:center;padding:10px 0;font-style:italic;';
+    emptyAll.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.4;text-align:center;padding:10px 0;font-style:italic;' + ";font-weight:" + T.fwBold + ";";
     emptyAll.textContent = 'no card checks today';
     list.appendChild(emptyAll);
   } else {
@@ -1080,7 +1080,7 @@ function buildTipsCard(state, handlers, tipFilter) {
     });
     if (!showing.length) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.45;text-align:center;padding:10px 0;font-style:italic;';
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.45;text-align:center;padding:10px 0;font-style:italic;' + ";font-weight:" + T.fwBold + ";";
       empty.textContent = filter === 'adjusted' ? 'no adjusted tips yet' : 'all tips adjusted \u2014 ready to settle';
       list.appendChild(empty);
     }
@@ -1169,7 +1169,7 @@ function buildTipRow(chk, mode, handlers) {
   info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:1px;min-width:0;';
 
   var topLine = document.createElement('div');
-  topLine.style.cssText = 'display:flex;align-items:baseline;gap:6px;font-family:' + T.fb + ';font-size:13px;';
+  topLine.style.cssText = 'display:flex;align-items:baseline;gap:6px;font-family:' + T.fb + ';font-size:13px;' + ";font-weight:" + T.fwBold + ";";
   var name = document.createElement('span');
   name.style.cssText = 'font-weight:700;color:' + T.text + ';';
   name.textContent = chk.server_name || 'Server';
@@ -1181,7 +1181,7 @@ function buildTipRow(chk, mode, handlers) {
   info.appendChild(topLine);
 
   var botLine = document.createElement('div');
-  botLine.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.55;';
+  botLine.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';opacity:0.55;' + ";font-weight:" + T.fwBold + ";";
   botLine.textContent = 'closed' + (chk.time ? ' ' + chk.time : '') + (chk.cardBrand ? '  \u2022  ' + chk.cardBrand : '');
   info.appendChild(botLine);
 
@@ -1195,10 +1195,10 @@ function buildTipRow(chk, mode, handlers) {
   sub.textContent = fmt(chk.amount || 0);
   var tip = document.createElement('div');
   if (mode === 'adjusted') {
-    tip.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.greenWarm + ';';
+    tip.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.greenWarm + ';' + ";font-weight:" + T.fwBold + ";";
     tip.textContent = 'tip ' + fmt(chk.tip || 0);
   } else {
-    tip.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.warning + ';';
+    tip.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.warning + ';' + ";font-weight:" + T.fwBold + ";";
     tip.textContent = 'tip \u2014 pending';
   }
   nums.appendChild(sub);

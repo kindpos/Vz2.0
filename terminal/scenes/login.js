@@ -106,7 +106,7 @@ defineScene({
       'display:flex;',
       'background:' + T.bg + ';',
       'font-family:' + T.fb + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     container.appendChild(root);
 
     // ── Left panel — store branding ────────────────
@@ -135,7 +135,7 @@ defineScene({
       'color:' + hexToRgba(T.storePrimary || T.green, 0.5) + ';',
       'letter-spacing:0.15em;',
       'flex-shrink:0;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
 
     if (T.storeLogoUrl) {
       var img = document.createElement('img');
@@ -219,7 +219,7 @@ defineScene({
       'font-size:40px;',
       'color:' + T.green + ';',
       'opacity:0.65;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     timeRow.appendChild(ampmEl);
 
     var dayEl = document.createElement('div');
@@ -231,7 +231,7 @@ defineScene({
       'letter-spacing:0.06em;',
       'margin-top:6px;',
       'opacity:0.75;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     clockBlock.appendChild(dayEl);
 
     var dateEl = document.createElement('div');
@@ -243,7 +243,7 @@ defineScene({
       'letter-spacing:0.06em;',
       'margin-top:2px;',
       'opacity:0.65;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     clockBlock.appendChild(dateEl);
 
     var configBtn = buildPillButton({
@@ -312,7 +312,7 @@ defineScene({
         hdrL.textContent = 'TIMECLOCK';
         hdrL.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;letter-spacing:3px;color:' + T.well + ';';
         var hdrR = document.createElement('span');
-        hdrR.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.well + ';opacity:0.7;cursor:pointer;';
+        hdrR.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.well + ';opacity:0.7;cursor:pointer;' + ";font-weight:" + T.fwBold + ";";
         hdrR.textContent = '✕';
         hdrR.addEventListener('pointerup', _closeOverlay);
         hdr.appendChild(hdrL); hdr.appendChild(hdrR);
@@ -321,7 +321,7 @@ defineScene({
         if (!empData) {
           // No emp yet — prompt to enter PIN
           var msg = document.createElement('div');
-          msg.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;font-family:' + T.fb + ';font-size:11px;letter-spacing:2px;color:' + T.border + ';text-align:center;padding:20px;';
+          msg.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;font-family:' + T.fb + ';font-size:11px;letter-spacing:2px;color:' + T.border + ';text-align:center;padding:20px;' + ";font-weight:" + T.fwBold + ";";
           msg.textContent = 'ENTER YOUR PIN ON THE RIGHT TO CONTINUE';
           overlay.appendChild(msg);
           return;
@@ -339,7 +339,7 @@ defineScene({
 
         var sub = document.createElement('div');
         sub.textContent = 'Select a role to clock in';
-        sub.style.cssText = 'font-family:' + T.fb + ';font-size:10px;letter-spacing:2px;color:' + T.border + ';text-transform:uppercase;flex-shrink:0;';
+        sub.style.cssText = 'font-family:' + T.fb + ';font-size:10px;letter-spacing:2px;color:' + T.border + ';text-transform:uppercase;flex-shrink:0;' + ";font-weight:" + T.fwBold + ";";
         body.appendChild(sub);
 
         // Role buttons
@@ -356,7 +356,7 @@ defineScene({
         var poolSection = document.createElement('div');
         poolSection.style.cssText = 'flex-shrink:0;display:none;flex-direction:column;gap:6px;';
         var poolSectionLbl = document.createElement('div');
-        poolSectionLbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;letter-spacing:2px;color:' + T.border + ';text-transform:uppercase;';
+        poolSectionLbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;letter-spacing:2px;color:' + T.border + ';text-transform:uppercase;' + ";font-weight:" + T.fwBold + ";";
         poolSectionLbl.textContent = 'TIP POOLS — TAP TO JOIN';
         poolSection.appendChild(poolSectionLbl);
         var poolChips = document.createElement('div');
@@ -463,7 +463,7 @@ defineScene({
         hrsVal.style.cssText = 'font-family:' + T.fh + ';font-size:28px;font-weight:800;color:' + T.gold + ';';
         var hrsLbl = document.createElement('span');
         hrsLbl.textContent = 'hours this week';
-        hrsLbl.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.border + ';';
+        hrsLbl.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.border + ';' + ";font-weight:" + T.fwBold + ";";
         hrsWrap.appendChild(hrsVal); hrsWrap.appendChild(hrsLbl);
         body.appendChild(hrsWrap);
 
@@ -690,7 +690,7 @@ defineScene({
       'letter-spacing:0.2em;',
       'text-transform:uppercase;',
       'opacity:0.6;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     rightWrap.appendChild(termId);
 
     // ── Start clock ────────────────────────────────

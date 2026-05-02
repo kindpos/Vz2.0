@@ -218,11 +218,11 @@ function _buildCheckTile(order, isSelected, srvColor, onClick, onLongPress, filt
   var srvEl = document.createElement('div');
   var srvName = (order.server_name || order.server_id || '').split(' ')[0].toUpperCase();
   srvEl.textContent   = srvName;
-  srvEl.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + (srvColor || T.elec) + ';opacity:0.9;letter-spacing:0.04em;';
+  srvEl.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + (srvColor || T.elec) + ';opacity:0.9;letter-spacing:0.04em;' + ";font-weight:" + T.fwBold + ";";
 
   var cvrEl = document.createElement('div');
   cvrEl.textContent   = 'x' + (order.seat_count || 1);
-  cvrEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.moon + ';';
+  cvrEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
 
   var amtEl = document.createElement('div');
   amtEl.textContent   = fmt(order.total || 0);
@@ -295,7 +295,7 @@ function _buildNewTile(onClick) {
   tile.style.border         = '1px dashed ' + hexToRgba(T.groups.landing.newCheckBorder, 0.5);
   var plus = document.createElement('span');
   plus.style.cssText = 'font-family:' + T.fh + ';font-size:32px;color:' +
-    hexToRgba(T.groups.landing.newCheckBorder, 0.6) + ';pointer-events:none;';
+    hexToRgba(T.groups.landing.newCheckBorder, 0.6) + ';pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
   plus.textContent = '+';
   tile.appendChild(plus);
   return tile;
@@ -321,12 +321,12 @@ function _buildPreview(orders, allOrders) {
   orders.forEach(function(order) {
     if (orders.length > 1) {
       var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.06em;margin-top:4px;margin-bottom:4px;';
+      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.06em;margin-top:4px;margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
       sub.textContent   = checkNum(order) + (order.server_name ? ' · ' + order.server_name.split(' ')[0] : '');
       wrap.appendChild(sub);
     } else if (order.server_name) {
       var srvLbl = document.createElement('div');
-      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';margin-bottom:6px;letter-spacing:0.06em;';
+      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';margin-bottom:6px;letter-spacing:0.06em;' + ";font-weight:" + T.fwBold + ";";
       srvLbl.textContent   = order.server_name.toUpperCase();
       wrap.appendChild(srvLbl);
     }
@@ -363,7 +363,7 @@ function _buildPreview(orders, allOrders) {
       seatTot.style.cssText = 'font-family:' + T.fb + ';font-size:11px;font-weight:700;color:' + T.gold + ';';
       seatTot.textContent = fmt(seatSubtotal);
       var chevron = document.createElement('span');
-      chevron.style.cssText = 'font-size:10px;color:' + hexToRgba(T.text, 0.4) + ';margin-left:4px;';
+      chevron.style.cssText = 'font-size:10px;color:' + hexToRgba(T.text, 0.4) + ';margin-left:4px;' + ";font-weight:" + T.fwBold + ";";
       chevron.textContent = '▾';
       seatHdr.appendChild(seatNum);
       seatHdr.appendChild(seatLbl);
@@ -505,7 +505,7 @@ defineScene({
       'gap:10px;padding:8px 10px 32px;',
       'box-sizing:border-box;overflow:visible;',
       'font-family:' + T.fb + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     container.appendChild(root);
 
     // ─────────────────────────────────────────────
@@ -1034,7 +1034,7 @@ defineScene({
           'pointer-events:auto;touch-action:manipulation;',
         ].join('');
         var plus = document.createElement('span');
-        plus.style.cssText = 'font-family:' + T.fh + ';font-size:36px;color:' + hexToRgba(T.groups.landing.newCheckBorder, 0.6) + ';pointer-events:none;';
+        plus.style.cssText = 'font-family:' + T.fh + ';font-size:36px;color:' + hexToRgba(T.groups.landing.newCheckBorder, 0.6) + ';pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
         plus.textContent = '+';
         newTile.appendChild(plus);
         newTile.addEventListener('pointerdown',  function() {
@@ -1059,7 +1059,7 @@ defineScene({
       if (visible.length === 0 && state.filter !== 'OPEN') {
         var empty = document.createElement('div');
         empty.textContent   = 'No ' + state.filter.toLowerCase() + ' checks';
-        empty.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';letter-spacing:0.14em;padding:8px 4px;';
+        empty.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.border + ';letter-spacing:0.14em;padding:8px 4px;' + ";font-weight:" + T.fwBold + ";";
         r.tileGrid.appendChild(empty);
       }
     }
@@ -1155,7 +1155,7 @@ defineScene({
       if (servers.length === 0) {
         var empty = document.createElement('div');
         empty.textContent   = 'No servers clocked in';
-        empty.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.border + ';letter-spacing:0.12em;text-align:center;padding:8px 0;grid-column:1/-1;';
+        empty.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.border + ';letter-spacing:0.12em;text-align:center;padding:8px 0;grid-column:1/-1;' + ";font-weight:" + T.fwBold + ";";
         r.serverList.appendChild(empty);
         return;
       }

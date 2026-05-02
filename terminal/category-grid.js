@@ -148,7 +148,7 @@ export function CategoryGrid(container, opts) {
     var lbl = document.createElement('div');
     lbl.style.cssText = [
       'font-family:' + T.fh + ';',
-      'font-weight:bold;font-size:26px;line-height:1.1;',
+      'font-weight:' + T.fwBold + ';font-size:26px;line-height:1.1;',
       'color:' + labelClr + ';',
       'text-align:center;pointer-events:none;',
       'max-width:100%;',
@@ -165,7 +165,7 @@ export function CategoryGrid(container, opts) {
         'font-size:20px;margin-top:6px;',
         'color:' + T.gold + ';',
         'pointer-events:none;',
-      ].join('');
+      ].join('') + ";font-weight:" + T.fwBold + ";";
       var pv = Number(price);
       p.textContent = isNaN(pv) ? String(price) : ('$' + pv.toFixed(2));
       tile.appendChild(p);
@@ -176,7 +176,7 @@ export function CategoryGrid(container, opts) {
       back.style.cssText = [
         'position:absolute;left:0;right:0;bottom:8px;',
         'font-family:' + T.fh + ';',
-        'font-weight:bold;font-size:16px;letter-spacing:2px;',
+        'font-weight:' + T.fwBold + ';font-size:16px;letter-spacing:2px;',
         'color:' + T.well + ';',
         'text-align:center;pointer-events:none;',
       ].join('');

@@ -604,10 +604,24 @@ function buildDangerZone(item) {
         cursor: pointer;
         white-space: nowrap;
     `;
-    eightySixBtn.addEventListener('click', () => {
+    eightySixBtn.addEventListener('click', async () => {
         const verb = isInactive ? 'Restore' : '86';
         if (!confirm(`${verb} "${item.name}"?`)) return;
-        toggleItemAvailability(item.id, isInactive);
+        try {
+            if (isInactive) {
+                await apiPatchItem(item.id, { active: true });
+            } else {
+                await apiPostItem86(item.id);
+            }
+            const idx = menuData.items.findIndex(i => i.id === item.id);
+            if (idx !== -1) {
+                menuData.items[idx] = { ...menuData.items[idx], active: isInactive };
+            }
+            showToast(isInactive ? 'Item restored' : 'Item 86ed');
+            renderScene();
+        } catch (e) {
+            showToast(isInactive ? 'Failed to restore item' : 'Failed to 86 item', 'error');
+        }
     });
     row.appendChild(eightySixBtn);
 
@@ -630,9 +644,17 @@ function buildDangerZone(item) {
         cursor: pointer;
         white-space: nowrap;
     `;
-    deleteBtn.addEventListener('click', () => {
+    deleteBtn.addEventListener('click', async () => {
         if (!confirm(`Delete "${item.name}"? This cannot be undone.`)) return;
-        handleDelete(item.id);
+        try {
+            await apiDeleteItem(item.id);
+            menuData.items = menuData.items.filter(i => i.id !== item.id);
+            selectedItemId = null;
+            showToast('Item deleted');
+            renderScene();
+        } catch (e) {
+            showToast('Failed to delete item', 'error');
+        }
     });
     row.appendChild(deleteBtn);
 
@@ -723,6 +745,148 @@ function apiPutItem(url, body) {
     });
 }
 
+function apiPatchItem(itemId, patch) {
+    return fetch(`/api/v1/menu-items/${encodeURIComponent(itemId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+    }).then(r => {
+        if (!r.ok) throw new Error(`PATCH failed: ${r.status}`);
+        return r.json().catch(() => ({}));
+    });
+}
+
+function apiDeleteItem(itemId) {
+    return fetch(`/api/v1/menu-items/${encodeURIComponent(itemId)}`, {
+        method: 'DELETE',
+    }).then(r => {
+        if (!r.ok) throw new Error(`DELETE failed: ${r.status}`);
+        return r.json().catch(() => ({}));
+    });
+}
+
+function apiPostItem86(itemId) {
+    return fetch(`/api/v1/menu-items/${encodeURIComponent(itemId)}/86`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    }).then(r => {
+        if (!r.ok) throw new Error(`POST 86 failed: ${r.status}`);
+        return r.json().catch(() => ({}));
+    });
+}
+
+function openItemPicker(title, options, onSelect) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+        position: fixed; inset: 0;
+        background: rgba(26,29,32,0.75);
+        z-index: 9000;
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px;
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        background: ${T.card};
+        border-left: 4px solid ${T.elec};
+        border-radius: 12px;
+        max-width: 440px; width: 100%;
+        max-height: 70vh;
+        display: flex; flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        overflow: hidden;
+    `;
+
+    const head = document.createElement('div');
+    head.textContent = title;
+    head.style.cssText = `
+        padding: 16px 20px;
+        border-bottom: 1px solid ${T.border};
+        font-family: ${T.fb};
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        color: ${T.text};
+    `;
+    modal.appendChild(head);
+
+    const list = document.createElement('div');
+    list.style.cssText = 'padding: 8px; overflow-y: auto; flex: 1;';
+
+    if (options.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = 'Nothing available';
+        empty.style.cssText = `
+            padding: 24px;
+            text-align: center;
+            font-family: ${T.fb};
+            font-size: 11px;
+            color: ${T.moon};
+            font-style: italic;
+        `;
+        list.appendChild(empty);
+    } else {
+        options.forEach(opt => {
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.textContent = opt.label;
+            row.style.cssText = `
+                display: block;
+                width: 100%;
+                text-align: left;
+                background: transparent;
+                border: 1px solid ${T.border};
+                color: ${T.text};
+                font-family: ${T.fb};
+                font-size: 12px;
+                font-weight: 600;
+                padding: 10px 14px;
+                margin-bottom: 6px;
+                border-radius: 8px;
+                cursor: pointer;
+            `;
+            row.addEventListener('click', () => {
+                overlay.remove();
+                onSelect(opt.value);
+            });
+            list.appendChild(row);
+        });
+    }
+    modal.appendChild(list);
+
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+        padding: 12px 20px;
+        border-top: 1px solid ${T.border};
+        text-align: right;
+    `;
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'CANCEL';
+    cancelBtn.style.cssText = `
+        background: transparent;
+        border: 1px solid ${T.border};
+        color: ${T.moon};
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        height: 28px;
+        border-radius: 8px;
+        padding: 0 14px;
+        cursor: pointer;
+    `;
+    cancelBtn.addEventListener('click', () => overlay.remove());
+    footer.appendChild(cancelBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+}
+
 function buildBasePriceSection(parent, item, driverGroup) {
     parent.appendChild(buildBodyLabel('BASE PRICE', T.gold));
 
@@ -811,9 +975,22 @@ function buildBasePriceSection(parent, item, driverGroup) {
         }
     });
 
-    input.addEventListener('blur', () => {
+    input.addEventListener('blur', async () => {
         const n = parseFloat(input.value);
         input.value = isNaN(n) ? '0.00' : n.toFixed(2);
+        if (dirtyFields.price === undefined) return;
+        const priceStr = input.value;
+        try {
+            await apiPatchItem(item.id, { price: priceStr });
+            const idx = menuData.items.findIndex(i => i.id === item.id);
+            if (idx !== -1) {
+                menuData.items[idx] = { ...menuData.items[idx], price: parseFloat(priceStr) };
+            }
+            delete dirtyFields.price;
+            showToast('Price saved');
+        } catch (e) {
+            showToast('Failed to save price', 'error');
+        }
     });
 
     input.addEventListener('input', () => {
@@ -940,10 +1117,14 @@ function buildItemBaseBySizeSection(parent, item, driverGroup) {
                 const prev = Number(liveValues[size.name] || 0);
                 if (next.toFixed(2) === prev.toFixed(2)) return;
                 const newMap = { ...liveValues, [size.name]: next };
+                const stringMap = {};
+                Object.entries(newMap).forEach(([k, v]) => {
+                    stringMap[k] = Number(v).toFixed(2);
+                });
                 try {
                     await apiPutItem(
                         `/api/v1/menu-items/${encodeURIComponent(item.id || item.item_id)}/size-pricing/${encodeURIComponent(driverGroup.id)}`,
-                        { size_prices: newMap },
+                        { size_prices: stringMap },
                     );
                     liveValues[size.name] = next;
                 } catch (e) {
@@ -993,7 +1174,26 @@ function buildMandatoryGroupsSection(parent, item) {
 
     const inner = document.createElement('div');
     inner.style.cssText = 'display: flex; flex-direction: column;';
-    inner.appendChild(buildAddLink('+ Add Mandatory Group'));
+    inner.appendChild(buildAddLink('+ Add Mandatory Group', () => {
+        const existing = new Set(item.mandatory_group_ids || []);
+        const candidates = (menuData.allGroups || [])
+            .filter(g => !existing.has(g.id))
+            .map(g => ({ value: g.id, label: g.name }));
+        openItemPicker('Pick Mandatory Group', candidates, async (gid) => {
+            const newIds = [...(item.mandatory_group_ids || []), gid];
+            try {
+                await apiPatchItem(item.id, { mandatory_group_ids: newIds });
+                const idx = menuData.items.findIndex(i => i.id === item.id);
+                if (idx !== -1) {
+                    menuData.items[idx] = { ...menuData.items[idx], mandatory_group_ids: newIds };
+                }
+                showToast('Group added');
+                renderScene();
+            } catch (e) {
+                showToast('Failed to add group', 'error');
+            }
+        });
+    }));
     card.appendChild(inner);
 
     parent.appendChild(card);
@@ -1039,7 +1239,26 @@ function buildIncludedModifiersSection(parent, item) {
 
     const inner = document.createElement('div');
     inner.style.cssText = 'display: flex; flex-direction: column;';
-    inner.appendChild(buildAddLink('+ Add Included Modifier'));
+    inner.appendChild(buildAddLink('+ Add Included Modifier', () => {
+        const existing = new Set(item.included_modifier_ids || []);
+        const candidates = (menuData.allModifiers || [])
+            .filter(m => !existing.has(m.id))
+            .map(m => ({ value: m.id, label: m.name }));
+        openItemPicker('Pick Included Modifier', candidates, async (mid) => {
+            const newIds = [...(item.included_modifier_ids || []), mid];
+            try {
+                await apiPatchItem(item.id, { included_modifier_ids: newIds });
+                const idx = menuData.items.findIndex(i => i.id === item.id);
+                if (idx !== -1) {
+                    menuData.items[idx] = { ...menuData.items[idx], included_modifier_ids: newIds };
+                }
+                showToast('Modifier added');
+                renderScene();
+            } catch (e) {
+                showToast('Failed to add modifier', 'error');
+            }
+        });
+    }));
     card.appendChild(inner);
 
     parent.appendChild(card);
@@ -1135,7 +1354,34 @@ function buildOptionGroupOverridesSection(parent, item) {
 
     const inner = document.createElement('div');
     inner.style.cssText = 'display: flex; flex-direction: column;';
-    inner.appendChild(buildAddLink('+ Add Override'));
+    inner.appendChild(buildAddLink('+ Add Override', () => {
+        const existing = item.option_group_overrides || {};
+        const candidates = (menuData.allGroups || [])
+            .filter(g => !(g.id in existing))
+            .map(g => ({ value: g.id, label: g.name }));
+        openItemPicker('Pick Modifier Group', candidates, async (gid) => {
+            const firstOg = optionGroupsData[0];
+            if (!firstOg) {
+                showToast('No option groups available', 'error');
+                return;
+            }
+            try {
+                await apiPutItem(
+                    `/api/v1/menu-items/${encodeURIComponent(item.id)}/option-group-override/${encodeURIComponent(gid)}`,
+                    { option_group_id: firstOg.option_group_id },
+                );
+                const idx = menuData.items.findIndex(i => i.id === item.id);
+                if (idx !== -1) {
+                    const overrides = { ...(menuData.items[idx].option_group_overrides || {}), [gid]: firstOg.option_group_id };
+                    menuData.items[idx] = { ...menuData.items[idx], option_group_overrides: overrides };
+                }
+                showToast('Override added');
+                renderScene();
+            } catch (e) {
+                showToast('Failed to add override', 'error');
+            }
+        });
+    }));
     card.appendChild(inner);
 
     parent.appendChild(card);
@@ -1229,7 +1475,7 @@ function buildSizePriceOverridesSection(parent, item) {
                 try {
                     await apiPutItem(
                         `/api/v1/menu-items/${encodeURIComponent(item.id || item.item_id)}/size-price-override/${encodeURIComponent(gid)}/${encodeURIComponent(sizeName)}`,
-                        { price: next },
+                        { price: next.toFixed(2) },
                     );
                 } catch (e) {
                     input.value = Number(price || 0).toFixed(2);
@@ -1259,7 +1505,34 @@ function buildSizePriceOverridesSection(parent, item) {
 
     const inner = document.createElement('div');
     inner.style.cssText = 'display: flex; flex-direction: column;';
-    inner.appendChild(buildAddLink('+ Add Size Price Override'));
+    inner.appendChild(buildAddLink('+ Add Size Price Override', () => {
+        const groupOptions = (menuData.allGroups || [])
+            .map(g => ({ value: g.id, label: g.name }));
+        openItemPicker('Pick Modifier Group', groupOptions, (gid) => {
+            const sizeOptions = (sizesData || [])
+                .map(s => ({ value: s.name, label: s.name }));
+            openItemPicker('Pick Size', sizeOptions, async (sizeName) => {
+                try {
+                    await apiPutItem(
+                        `/api/v1/menu-items/${encodeURIComponent(item.id)}/size-price-override/${encodeURIComponent(gid)}/${encodeURIComponent(sizeName)}`,
+                        { price: '0.00' },
+                    );
+                    const idx = menuData.items.findIndex(i => i.id === item.id);
+                    if (idx !== -1) {
+                        const current = menuData.items[idx].size_price_overrides || {};
+                        const overrides = JSON.parse(JSON.stringify(current));
+                        if (!overrides[gid]) overrides[gid] = {};
+                        overrides[gid][sizeName] = 0;
+                        menuData.items[idx] = { ...menuData.items[idx], size_price_overrides: overrides };
+                    }
+                    showToast('Override added');
+                    renderScene();
+                } catch (e) {
+                    showToast('Failed to add override', 'error');
+                }
+            });
+        });
+    }));
     card.appendChild(inner);
 
     parent.appendChild(card);
@@ -1316,8 +1589,19 @@ function buildItemDetailHeader(item) {
         cursor: pointer;
         white-space: nowrap;
     `;
-    deactBtn.addEventListener('click', () => {
-        toggleItemAvailability(item.id, !item.active);
+    deactBtn.addEventListener('click', async () => {
+        const next = !item.active;
+        try {
+            await apiPatchItem(item.id, { active: next });
+            const idx = menuData.items.findIndex(i => i.id === item.id);
+            if (idx !== -1) {
+                menuData.items[idx] = { ...menuData.items[idx], active: next };
+            }
+            showToast(next ? 'Item reactivated' : 'Item deactivated');
+            renderScene();
+        } catch (e) {
+            showToast('Failed to update item', 'error');
+        }
     });
     btnRow.appendChild(deactBtn);
 
@@ -1346,19 +1630,17 @@ function buildItemDetailHeader(item) {
             showToast('No changes to save');
             return;
         }
+        const payload = { ...dirty };
+        if (payload.price !== undefined) {
+            const n = parseFloat(payload.price);
+            payload.price = isNaN(n) ? '0.00' : n.toFixed(2);
+        }
         try {
-            const r = await fetch(
-                `/api/v1/menu-items/${encodeURIComponent(item.id)}`,
-                {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(dirty),
-                },
-            );
-            if (!r.ok) throw new Error(`PATCH failed: ${r.status}`);
+            await apiPatchItem(item.id, payload);
+            const localPatch = { ...dirty };
             const idx = menuData.items.findIndex(i => i.id === item.id);
             if (idx !== -1) {
-                menuData.items[idx] = { ...menuData.items[idx], ...dirty };
+                menuData.items[idx] = { ...menuData.items[idx], ...localPatch };
             }
             dirtyFields = {};
             showToast('Item saved');

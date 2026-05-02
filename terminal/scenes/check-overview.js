@@ -736,7 +736,7 @@ defineScene({
           'color:' + T.text + ';',
           'opacity:0.55;',
           'text-align:center;padding:20px 0;',
-        ].join('');
+        ].join('') + ";font-weight:" + T.fwBold + ";";
         loading.textContent = 'Loading...';
         list.appendChild(loading);
         panel.appendChild(list);
@@ -771,7 +771,7 @@ defineScene({
                 'color:' + T.text + ';',
                 'opacity:0.55;',
                 'text-align:center;padding:20px 0;',
-              ].join('');
+              ].join('') + ";font-weight:" + T.fwBold + ";";
               empty.textContent = 'No other servers clocked in';
               list.appendChild(empty);
               return;
@@ -801,7 +801,7 @@ defineScene({
               'font-size:' + T.fsB3 + ';',
               'color:' + T.verm + ';',
               'text-align:center;padding:20px 0;',
-            ].join('');
+            ].join('') + ";font-weight:" + T.fwBold + ";";
             err.textContent = 'Failed to load servers';
             list.appendChild(err);
           });
@@ -988,7 +988,7 @@ defineScene({
             'color:' + T.text + ';',
             'opacity:0.55;',
             'padding:8px 0;text-align:center;',
-          ].join('');
+          ].join('') + ";font-weight:" + T.fwBold + ";";
           empty.textContent = 'No payments found for this seat';
           panel.appendChild(empty);
         } else {
@@ -1004,7 +1004,7 @@ defineScene({
                 'font-family:' + T.fb + ';',
                 'font-size:' + T.fsB2 + ';',
                 'color:' + T.text + ';',
-              ].join('');
+              ].join('') + ";font-weight:" + T.fwBold + ";";
               info.textContent = p.method.toUpperCase() + '  ' + fmt(p.amount);
               row.appendChild(info);
               var delBtn = buildPillButton({
@@ -2385,6 +2385,7 @@ function _buildPaymentRow(state, seatId, pmt) {
 
   var left = document.createElement('div');
   Object.assign(left.style, {
+    fontWeight: T.fwBold,
     display:    'flex',
     gap:        '8px',
     alignItems: 'center',
@@ -2508,6 +2509,7 @@ function _buildPaidRecapPanel(state, seatId) {
   if (payments.length === 0) {
     var empty = document.createElement('div');
     Object.assign(empty.style, {
+      fontWeight: T.fwBold,
       padding:    '20px',
       textAlign:  'center',
       color:      hexToRgba(T.gold, 0.5),
@@ -2603,6 +2605,7 @@ function buildPaidSeatCard(state, seatIdx) {
   if (payments.length === 0) {
     var empty = document.createElement('div');
     Object.assign(empty.style, {
+      fontWeight: T.fwBold,
       flex:           '1',
       display:        'flex',
       alignItems:     'center',

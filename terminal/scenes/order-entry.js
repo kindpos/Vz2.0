@@ -831,7 +831,7 @@ defineScene({
             'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
             'color:' + T.text + ';text-align:center;',
             'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
-          ].join('');
+          ].join('') + ";font-weight:" + T.fwBold + ";";
           subtitle.textContent = itemName;
           panel.appendChild(subtitle);
         }
@@ -981,6 +981,7 @@ defineScene({
         // ── Name ──
         var nameInput = document.createElement('input');
         Object.assign(nameInput.style, {
+          fontWeight: T.fwBold,
           width: '100%', boxSizing: 'border-box',
           background: hexToRgba(T.text, 0.06), border: '1px solid ' + hexToRgba(T.text, 0.18),
           borderRadius: '10px', color: T.text,
@@ -994,6 +995,7 @@ defineScene({
         // ── Category ──
         var catSelect = document.createElement('select');
         Object.assign(catSelect.style, {
+          fontWeight: T.fwBold,
           width: '100%', boxSizing: 'border-box',
           background: hexToRgba(T.text, 0.06), border: '1px solid ' + hexToRgba(T.text, 0.18),
           borderRadius: '10px', color: T.text,
@@ -1217,7 +1219,7 @@ function buildCrumbTile(crumb, isLast) {
 
   if (!isLast) {
     var back = document.createElement('div');
-    back.style.cssText = 'position:absolute;top:6px;right:8px;font-size:10px;color:rgba(0,0,0,0.4);font-family:' + T.fb + ';pointer-events:none;';
+    back.style.cssText = 'position:absolute;top:6px;right:8px;font-size:10px;color:rgba(0,0,0,0.4);font-family:' + T.fb + ';pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
     back.textContent = '◂';
     el.appendChild(back);
   }
@@ -1263,7 +1265,7 @@ function buildItemTile(item, catColor, isFav) {
 
   if (isFav) {
     var star = document.createElement('div');
-    star.style.cssText = 'position:absolute;top:7px;right:8px;color:' + T.gold + ';font-size:14px;pointer-events:none;';
+    star.style.cssText = 'position:absolute;top:7px;right:8px;color:' + T.gold + ';font-size:14px;pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
     star.textContent = '★';
     el.appendChild(star);
   }
@@ -1444,7 +1446,7 @@ function _renderPersonalGrid() {
       'grid-column:1/-1;display:flex;flex-direction:column;',
       'align-items:center;justify-content:center;height:200px;gap:10px;',
       'font-family:' + T.fh + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     empty.innerHTML = '<div style="font-size:35px;color:' + T.gold + ';opacity:0.5;pointer-events:none;">★</div><span style="pointer-events:none;">Hold any item to add it here</span>';
     _gridEl.appendChild(empty);
     return;
@@ -1692,7 +1694,7 @@ function buildSeatSelectorCard() {
       'background:transparent;',
       'border:1.5px dashed ' + T.moon + ';',
       'color:' + T.moon + ';',
-      'font-family:' + T.fh + ';font-weight:400;font-size:24px;',
+      'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:24px;',
       'cursor:pointer;user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
     ].join('');
@@ -1987,7 +1989,7 @@ function buildModifierPanel(catIds) {
       'background:' + (isActive ? cat.color : T.card) + ';',
       'color:' + (isActive ? cat.textColor : cat.color) + ';',
       'transition:background 80ms,color 80ms;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     catBtn.textContent = cat.label;
     catBtn.addEventListener('pointerup', function(e) {
       e.stopPropagation();
@@ -2158,7 +2160,7 @@ function renderModButtonGrid(panel) {
       btn.style.cssText = [
         'display:flex;align-items:center;justify-content:center;',
         'height:52px;cursor:pointer;',
-        'font-family:' + T.fb + ';font-size:22px;font-weight:bold;',
+        'font-family:' + T.fb + ';font-size:22px;font-weight:' + T.fwBold + ';',
         'text-align:center;word-break:break-word;',
         'background:' + T.card + ';',
         'color:' + catText + ';',
@@ -2194,7 +2196,7 @@ function renderAppliedModsLog(panel) {
 
   if (modifierSession.appliedMods.length === 0) {
     var empty = document.createElement('div');
-    empty.style.cssText = 'font-family:' + T.fb + ';font-size:30px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:4px 0;';
+    empty.style.cssText = 'font-family:' + T.fb + ';font-size:30px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:4px 0;' + ";font-weight:" + T.fwBold + ";";
     empty.textContent = 'No modifiers applied';
     log.appendChild(empty);
     return;
@@ -2202,13 +2204,13 @@ function renderAppliedModsLog(panel) {
 
   modifierSession.appliedMods.forEach(function(entry, idx) {
     var row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-family:' + T.fb + ';font-size:30px;color:' + T.gold + ';line-height:1.2;';
+    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-family:' + T.fb + ';font-size:30px;color:' + T.gold + ';line-height:1.2;' + ";font-weight:" + T.fwBold + ";";
     var label = document.createElement('span');
     label.textContent = entry.logLabel || (entry.prefixLabel + ' \u2192 ' + entry.modLabel);
     row.appendChild(label);
     var removeBtn = document.createElement('span');
     removeBtn.textContent = '\u2715';
-    removeBtn.style.cssText = 'color:' + T.verm + ';cursor:pointer;padding:0 4px;font-size:28px;flex-shrink:0;touch-action:manipulation;pointer-events:auto;';
+    removeBtn.style.cssText = 'color:' + T.verm + ';cursor:pointer;padding:0 4px;font-size:28px;flex-shrink:0;touch-action:manipulation;pointer-events:auto;' + ";font-weight:" + T.fwBold + ";";
     removeBtn.addEventListener('pointerup', (function(i) {
       return function(e) {
         e.stopPropagation();
@@ -2345,6 +2347,16 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   var mandState  = {};   // groupKey → { key, label, price }
   var activePrefix = 'ADD';
   var activePlacement = 'WHOLE';
+  var inclPrefix = 'NO';
+  var openSubKey = null;
+
+  var PREFIX_MAP = [
+    { id:'ADD',   label:'ADD',     color:T.greenWarm, textColor:T.well, dk:T.greenWarmDk },
+    { id:'EXTRA', label:'EXTRA',   color:T.modExtra,  textColor:T.well, dk:'#92400e'     },
+    { id:'NO',    label:'NO',      color:T.verm,      textColor:'#fff', dk:T.vermDk      },
+    { id:'SIDE',  label:'ON SIDE', color:T.modOnSide, textColor:T.well, dk:'#5b21b6'     },
+    { id:'LITE',  label:'LITE',    color:T.modLite,   textColor:T.well, dk:'#92400e'     },
+  ];
 
   // ── Root overlay ────────────────────────────────────
   var ov = document.createElement('div');
@@ -2373,49 +2385,6 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   doneBtn.disabled = mandatoryGroups.some(function(g) { return !mandState[g.key]; });
   doneWrap.appendChild(doneBtn);
   ov.appendChild(doneWrap);
-
-  // ── Helpers ─────────────────────────────────────────
-  function sectionLabel(text, color) {
-    var d = document.createElement('div');
-    d.style.cssText = [
-      'display:flex;align-items:center;gap:8px;',
-      'font-family:' + T.fb + ';font-size:10px;color:' + color + ';',
-      'letter-spacing:2px;margin-bottom:8px;margin-top:4px;',
-    ].join('');
-    var t = document.createElement('span');
-    t.textContent = text;
-    t.style.cssText = 'pointer-events:none;';
-    var line = document.createElement('div');
-    line.style.cssText = 'height:1px;flex:1;background:' + color + '33;pointer-events:none;';
-    d.appendChild(t);
-    d.appendChild(line);
-    return d;
-  }
-
-  function pill(label, bg, active, onClick) {
-    var el = buildPillButton({
-      label: label,
-      color: active ? bg : T.card,
-      darkBg: true,
-      onClick: onClick
-    });
-    Object.assign(el.style, {
-      padding:      '8px 16px',
-      fontSize:     '13px',
-      height:       'auto', // let padding define it or set an explicit height if needed
-      border:       '1px solid ' + (active ? bg : 'rgba(255,255,255,0.1)'),
-      boxShadow:    (active ? '0 4px 0 ' + hexToRgba(bg, 0.5) : '0 3px 0 ' + T.moonDk),
-      whiteSpace:   'nowrap',
-      width:        'auto',
-    });
-    return el;
-  }
-
-  function pillWrap() {
-    var d = document.createElement('div');
-    d.style.cssText = 'display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px;';
-    return d;
-  }
 
   // ── Build active item for commit ─────────────────────
   function _buildActiveItem() {
@@ -2478,11 +2447,8 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
     // 2. Included items (Pre-applied) — show even if not modified, unless removed
     includedItems.forEach(function(inc) {
-      if (removals.indexOf(inc.id) === -1) {
-        var state = inclState[inc.id] || null;
-        var label = (state === 'ON SIDE' ? 'ON SIDE ' : '') + inc.label;
-        previewMods.push({ name: label, price: 0, charged: false, prefix: null });
-      }
+      if (inclState[inc.id] !== 'ON SIDE') return;   // NO handled by removals below
+      previewMods.push({ name: 'ON SIDE ' + inc.label, price: 0, charged: false, prefix: null });
     });
 
     // 3. Removals (NO X)
@@ -2562,7 +2528,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     icn.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:22px;color:' + T.well + ';pointer-events:none;';
     icn.textContent = item.label;
     var icp = document.createElement('span');
-    icp.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:rgba(255,255,255,0.75);margin-top:4px;pointer-events:none;';
+    icp.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.well, 0.65) + ';margin-top:4px;pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
     icp.textContent = '$' + itemPx.toFixed(2);
     itemTile.appendChild(icn);
     itemTile.appendChild(icp);
@@ -2570,99 +2536,435 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     snakeCard.appendChild(itemTile);
     scroll.appendChild(snakeCard);
 
-    // ── MANDATORY GROUPS ──
-    mandatoryGroups.forEach(function(g) {
-      var mandHdr = sectionLabel('REQUIRED — ' + g.label, T.verm);
-      mandHdr.dataset.mandkey = g.key;
-      scroll.appendChild(mandHdr);
-      var wrap = pillWrap();
-      (g.options || []).forEach(function(opt) {
-        var sel = mandState[g.key] && mandState[g.key].key === (opt.key || opt.id);
-        var p = pill(opt.label, T.verm, sel, function() {
-          if (sel) { delete mandState[g.key]; }
-          else { mandState[g.key] = { key: opt.key || opt.id, label: opt.label, price: opt.price || 0 }; }
-          doneBtn.disabled = mandatoryGroups.some(function(g) { return !mandState[g.key]; });
-          renderContent();
-          var nextUnsatisfied = mandatoryGroups.find(function(g) { return !mandState[g.key]; });
-          if (nextUnsatisfied) {
-            var nextEl = scroll.querySelector('[data-mandkey="' + nextUnsatisfied.key + '"]');
-            if (nextEl) {
-              requestAnimationFrame(function() {
-                nextEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              });
-            }
-          }
-        });
-        wrap.appendChild(p);
-      });
-      scroll.appendChild(wrap);
-    });
+    // ── Accordion state ──────────────────────────
+    var defaultCard =
+      includedItems.length  > 0 ? 'included' :
+      mandatoryGroups.length > 0 ? 'mandatory' : 'optional';
+    if (!renderContent._activeCard) renderContent._activeCard = defaultCard;
+    var activeCard = renderContent._activeCard;
 
-    // ── INCLUDED ──
-    if (includedItems.length > 0) {
-      scroll.appendChild(sectionLabel('INCLUDED', hexToRgba(T.text, 0.6)));
-      var inclWrap = document.createElement('div');
-      inclWrap.style.cssText = 'display:flex;flex-direction:column;gap:7px;margin-bottom:12px;';
-      includedItems.forEach(function(inc) {
-        var state = inclState[inc.id] || null;
-        var row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
-        var lbl = document.createElement('span');
-        lbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';white-space:nowrap;flex:1 0 auto;';
-        lbl.textContent = inc.label;
-        row.appendChild(lbl);
-        var noActive = state === 'NO';
-        var noBtn = pill('NO', T.verm, noActive, function() {
-          if (inclState[inc.id] === 'NO') delete inclState[inc.id]; else inclState[inc.id] = 'NO';
-          renderContent();
-        });
-        noBtn.style.touchAction = 'manipulation';
-        noBtn.style.pointerEvents = 'auto';
-        row.appendChild(noBtn);
-        var sideActive = state === 'ON SIDE';
-        var sideBtn = pill('ON SIDE', T.gold, sideActive, function() {
-          if (inclState[inc.id] === 'ON SIDE') delete inclState[inc.id]; else inclState[inc.id] = 'ON SIDE';
-          renderContent();
-        });
-        sideBtn.style.touchAction = 'manipulation';
-        sideBtn.style.pointerEvents = 'auto';
-        row.appendChild(sideBtn);
-        inclWrap.appendChild(row);
-      });
-      scroll.appendChild(inclWrap);
+    function setActiveCard(id) {
+      renderContent._activeCard = id;
+      renderContent();
     }
 
-    // ── OPTIONS ──
-    if (optionalGroups.length > 0) {
-      scroll.appendChild(sectionLabel('OPTIONS', T.greenWarm));
+    // ── Accordion container ───────────────────────
+    var accWrap = document.createElement('div');
+    accWrap.style.cssText = [
+      'display:flex;flex-direction:column;gap:8px;',
+      'padding:8px 14px 10px;',
+    ].join('');
 
-      // Prefix toolbar
-      var pfxWrap = document.createElement('div');
-      pfxWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;';
-      _PREFIX_DEFS.forEach(function(pfx) {
-        var isActive = activePrefix === pfx.id;
-        var pc = _prefixColor(pfx.id);
-        var btn = document.createElement('div');
-        btn.style.cssText = [
-          'padding:5px 14px;border-radius:999px;cursor:pointer;',
-          'user-select:none;pointer-events:auto;touch-action:manipulation;',
-          'font-family:' + T.fb + ';font-weight:700;font-size:11px;letter-spacing:1px;',
-          'color:' + T.well + ';',
-          'background:' + (isActive ? pc : T.card) + ';',
-          'border:1px solid ' + (isActive ? pc : 'rgba(255,255,255,0.1)') + ';',
-          'box-shadow:' + (isActive ? '0 3px 0 ' + hexToRgba(pc, 0.55) : '0 2px 0 ' + T.moonDk) + ';',
-          'transition:all 100ms;white-space:nowrap;',
+    var CARD_DEFS = [
+      { id:'included',  title:'INCLUDED',  show: includedItems.length > 0 },
+      { id:'mandatory', title:'MANDATORY', show: mandatoryGroups.length > 0 },
+      { id:'optional',  title:'OPTIONS',   show: true },
+    ];
+
+    CARD_DEFS.forEach(function(def) {
+      if (!def.show) return;
+      var isExp = activeCard === def.id;
+
+      var card = document.createElement('div');
+      card.dataset.accCard = def.id;
+      card.style.cssText = [
+        'background:' + T.card + ';',
+        'border-radius:10px;overflow:hidden;flex-shrink:0;',
+        'border-left:4px solid ' + (isExp ? _accColor(def.id) : T.border) + ';',
+        'box-shadow:0 4px 12px rgba(0,0,0,0.25);',
+        'transition:border-color 0.15s;',
+        'pointer-events:auto;',
+      ].join('');
+
+      // Header
+      var hdr = document.createElement('div');
+      hdr.style.cssText = [
+        'display:flex;align-items:center;gap:10px;',
+        'padding:0 14px;height:44px;cursor:pointer;',
+        'user-select:none;touch-action:manipulation;',
+        'pointer-events:auto;',
+      ].join('');
+      hdr.addEventListener('pointerdown', function() {
+        hdr.style.background = 'rgba(255,255,255,0.03)';
+      });
+      hdr.addEventListener('pointerleave', function() {
+        hdr.style.background = '';
+      });
+      hdr.addEventListener('pointerup', function() {
+        hdr.style.background = '';
+      });
+      hdr.addEventListener('pointerup', function() { setActiveCard(def.id); });
+
+      var titleEl = document.createElement('span');
+      titleEl.style.cssText = [
+        'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';font-weight:700;',
+        'letter-spacing:2px;flex-shrink:0;',
+        'color:' + (isExp ? _accColor(def.id) : T.moon) + ';',
+      ].join('');
+      titleEl.textContent = def.title;
+      hdr.appendChild(titleEl);
+
+      // Action area (expanded only) — placeholder, filled per card below
+      var actionArea = document.createElement('div');
+      actionArea.style.cssText = 'display:flex;align-items:center;gap:5px;flex:1;';
+      actionArea.dataset.actionArea = def.id;
+      hdr.appendChild(actionArea);
+
+      // Status chip (collapsed only) — placeholder
+      var chipWrap = document.createElement('span');
+      chipWrap.dataset.chipWrap = def.id;
+      hdr.appendChild(chipWrap);
+
+      // Chevron
+      var chev = document.createElement('span');
+      chev.style.cssText = [
+        'font-size:' + T.fsB4 + ';color:' + T.border + ';margin-left:auto;',
+        'transition:transform 0.15s;flex-shrink:0;',
+        'transform:' + (isExp ? 'rotate(180deg)' : 'none') + ';',
+      ].join('');
+      chev.textContent = '▼';
+      hdr.appendChild(chev);
+
+      card.appendChild(hdr);
+
+      // Body
+      var body = document.createElement('div');
+      body.style.cssText = 'padding:8px 10px 10px;' + (isExp ? '' : 'display:none;');
+      body.dataset.cardBody = def.id;
+      card.appendChild(body);
+
+      accWrap.appendChild(card);
+
+      if (def.id === 'included') {
+        _buildInclCard(actionArea, chipWrap, body, isExp);
+      }
+      if (def.id === 'mandatory') {
+        _buildMandCard(chipWrap, body);
+      }
+      if (def.id === 'optional') {
+        _buildOptCard(actionArea, body, isExp);
+      }
+    });
+
+    scroll.appendChild(accWrap);
+
+    // ── Helper: accent color per card ────────────
+    function _accColor(id) {
+      if (id === 'optional') return T.greenWarm;
+      return catColor || T.green;
+    }
+
+    function _buildInclCard(actionArea, chipWrap, body, isExp) {
+
+      // ── Header buttons (expanded only) ───────────
+      if (isExp) {
+        ['NO','SIDE'].forEach(function(pid) {
+          var p = PREFIX_MAP.find(function(x){ return x.id === pid; });
+          var isActive = inclPrefix === pid;
+          var btn = document.createElement('button');
+          btn.style.cssText = [
+            'padding:4px 11px;border-radius:6px;',
+            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+            'letter-spacing:0.5px;cursor:pointer;white-space:nowrap;',
+            'border:1px solid ' + (isActive ? p.color : T.border) + ';',
+            'background:' + (isActive ? p.color : T.well) + ';',
+            'color:' + (isActive ? p.textColor : T.text) + ';',
+            'box-shadow:0 3px 0 ' + (isActive ? p.dk : T.moonDk) + ';',
+            'touch-action:manipulation;pointer-events:auto;',
+          ].join('');
+          btn.textContent = p.label;
+          btn.addEventListener('pointerup', function(e) {
+            e.stopPropagation();
+            inclPrefix = (inclPrefix === pid) ? null : pid;
+            renderContent();
+          });
+          actionArea.appendChild(btn);
+        });
+      }
+
+      // ── Status chip (collapsed only) ─────────────
+      if (!isExp) {
+        var nCount = Object.keys(inclState).filter(function(k){
+          return inclState[k]==='NO';}).length;
+        var sCount = Object.keys(inclState).filter(function(k){
+          return inclState[k]==='SIDE';}).length;
+        var parts = [];
+        if (nCount) parts.push(nCount + ' NO');
+        if (sCount) parts.push(sCount + ' SIDE');
+        if (parts.length) {
+          var chip = document.createElement('span');
+          chip.style.cssText = [
+            'display:inline-flex;align-items:center;gap:5px;',
+            'padding:2px 8px;border-radius:6px;white-space:nowrap;',
+            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+            'background:rgba(74,222,128,0.1);color:' + T.greenWarm + ';',
+            'border:1px solid rgba(74,222,128,0.25);',
+          ].join('');
+          chip.textContent = parts.join(' · ');
+          chipWrap.appendChild(chip);
+        }
+      }
+
+      // ── Tile grid ────────────────────────────────
+      var grid = document.createElement('div');
+      grid.style.cssText = [
+        'display:grid;',
+        'grid-template-columns:repeat(auto-fill,minmax(108px,1fr));',
+        'gap:6px;',
+      ].join('');
+
+      includedItems.forEach(function(inc) {
+        var s = inclState[inc.id] || null;
+        var tile = document.createElement('div');
+
+        var bg   = s==='NO' ? T.verm : s==='SIDE' ? T.modOnSide : T.well;
+        var fg   = s==='NO' ? '#fff' : s==='SIDE' ? T.well      : T.text;
+        var shDk = s==='NO' ? T.vermDk : s==='SIDE' ? '#5b21b6' : T.moonDk;
+
+        tile.style.cssText = [
+          'height:44px;border-radius:8px;',
+          'display:flex;flex-direction:column;',
+          'align-items:center;justify-content:center;gap:1px;',
+          'font-family:' + T.fb + ';font-weight:700;',
+          'background:' + bg + ';color:' + fg + ';',
+          'border:1px solid ' + (s ? bg : T.border) + ';',
+          'box-shadow:0 3px 0 ' + shDk + ';',
+          'cursor:pointer;touch-action:manipulation;pointer-events:auto;',
+          'transition:all 0.08s;user-select:none;',
         ].join('');
-        btn.textContent = pfx.label;
-        btn.addEventListener('pointerup', function() {
-          activePrefix = pfx.id;
+
+        if (s) {
+          var tag = document.createElement('span');
+          tag.style.cssText = 'font-size:' + T.fsB4 + ';font-weight:700;opacity:0.8;pointer-events:none;';
+          tag.textContent = s === 'SIDE' ? 'ON SIDE' : s;
+          tile.appendChild(tag);
+        }
+        var lbl = document.createElement('span');
+        lbl.style.cssText = 'font-size:' + T.fsB3 + ';pointer-events:none;';
+        lbl.textContent = inc.label;
+        tile.appendChild(lbl);
+
+        tile.addEventListener('pointerdown', function(){
+          tile.style.transform='translateY(2px)';
+          tile.style.boxShadow='0 1px 0 '+shDk;
+        });
+        tile.addEventListener('pointerup', function(){
+          tile.style.transform='';
+          tile.style.boxShadow='0 3px 0 '+shDk;
+          if (!inclPrefix) return;
+          if (inclState[inc.id]===inclPrefix) delete inclState[inc.id];
+          else inclState[inc.id]=inclPrefix;
           renderContent();
         });
-        pfxWrap.appendChild(btn);
+        tile.addEventListener('pointerleave', function(){
+          tile.style.transform='';
+          tile.style.boxShadow='0 3px 0 '+shDk;
+        });
+        grid.appendChild(tile);
       });
-      scroll.appendChild(pfxWrap);
 
-      // Placement bar — pizza only
+      body.appendChild(grid);
+    }
+
+    function _buildMandCard(chipWrap, body) {
+
+      // ── Status chip (collapsed only) ─────────────
+      if (activeCard !== 'mandatory') {
+        var pending = mandatoryGroups.filter(function(g){return !mandState[g.key];});
+        if (pending.length) {
+          var chip = document.createElement('span');
+          chip.style.cssText = [
+            'display:inline-flex;align-items:center;gap:5px;',
+            'padding:2px 8px;border-radius:6px;white-space:nowrap;',
+            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+            'background:rgba(251,191,36,0.12);color:' + T.modLite + ';',
+            'border:1px solid rgba(251,191,36,0.3);',
+          ].join('');
+          chip.textContent = pending.length + ' REQUIRED';
+          chipWrap.appendChild(chip);
+        } else {
+          mandatoryGroups.forEach(function(g) {
+            if (!mandState[g.key]) return;
+            var sc = document.createElement('span');
+            sc.style.cssText = [
+              'display:inline-flex;padding:2px 7px;border-radius:6px;',
+              'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+              'background:rgba(232,200,78,0.12);color:' + T.gold + ';',
+              'border:1px solid rgba(232,200,78,0.3);white-space:nowrap;',
+              'margin-right:4px;',
+            ].join('');
+            sc.textContent = mandState[g.key].label.toUpperCase();
+            chipWrap.appendChild(sc);
+          });
+        }
+      }
+
+      // ── Two-column tile grid ──────────────────────
+      var grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;';
+
+      mandatoryGroups.forEach(function(g) {
+        var chosen  = mandState[g.key] || null;
+        var isOpen  = openSubKey === g.key;
+
+        // Group tile
+        var tile = document.createElement('div');
+        var barColor = isOpen||chosen ? T.gold : (g.required ? T.modLite : T.border);
+        tile.style.cssText = [
+          'height:52px;border-radius:8px;position:relative;overflow:hidden;',
+          'display:flex;flex-direction:column;justify-content:center;',
+          'padding:0 12px 0 14px;cursor:pointer;',
+          'background:' + T.well + ';',
+          'border:1px solid ' + T.border + ';',
+          'box-shadow:0 3px 0 ' + T.moonDk + ';',
+          'touch-action:manipulation;pointer-events:auto;user-select:none;',
+          'transition:all 0.08s;',
+        ].join('');
+
+        // Left bar
+        var bar = document.createElement('div');
+        bar.style.cssText = [
+          'position:absolute;left:0;top:0;bottom:0;width:3px;',
+          'background:' + barColor + ';pointer-events:none;',
+        ].join('');
+        tile.appendChild(bar);
+
+        var glabel = document.createElement('div');
+        glabel.style.cssText = [
+          'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+          'letter-spacing:1.5px;pointer-events:none;',
+          'color:' + (g.required && !chosen ? T.modLite : T.moon) + ';',
+        ].join('');
+        glabel.textContent = g.label;
+        tile.appendChild(glabel);
+
+        if (chosen) {
+          var gval = document.createElement('div');
+          gval.style.cssText = [
+            'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';font-weight:700;',
+            'color:' + T.gold + ';margin-top:2px;pointer-events:none;',
+          ].join('');
+          gval.textContent = chosen.label;
+          tile.appendChild(gval);
+        } else {
+          var gpend = document.createElement('div');
+          gpend.style.cssText = [
+            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+            'font-style:italic;color:' + T.modLite + ';',
+            'margin-top:2px;pointer-events:none;',
+          ].join('');
+          gpend.textContent = 'tap to select →';
+          tile.appendChild(gpend);
+        }
+
+        tile.addEventListener('pointerdown', function(){
+          tile.style.transform='translateY(2px)';
+          tile.style.boxShadow='0 1px 0 '+T.moonDk;
+        });
+        tile.addEventListener('pointerup', function(){
+          tile.style.transform='';
+          tile.style.boxShadow='0 3px 0 '+T.moonDk;
+          openSubKey = (openSubKey===g.key) ? null : g.key;
+          renderContent();
+        });
+        tile.addEventListener('pointerleave', function(){
+          tile.style.transform='';
+          tile.style.boxShadow='0 3px 0 '+T.moonDk;
+        });
+        grid.appendChild(tile);
+
+        // Sub-card (spans both columns)
+        if (isOpen) {
+          var sub = document.createElement('div');
+          sub.style.cssText = [
+            'grid-column:1/-1;display:block;',
+            'background:rgba(34,37,42,0.85);border-radius:8px;',
+            'border:1px solid rgba(232,200,78,0.22);padding:8px;',
+          ].join('');
+
+          var subLbl = document.createElement('div');
+          subLbl.style.cssText = [
+            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+            'letter-spacing:1.5px;color:' + T.gold + ';margin-bottom:7px;',
+          ].join('');
+          subLbl.textContent = 'SELECT ' + g.label;
+          sub.appendChild(subLbl);
+
+          var subGrid = document.createElement('div');
+          subGrid.style.cssText = [
+            'display:grid;',
+            'grid-template-columns:repeat(auto-fill,minmax(100px,1fr));',
+            'gap:5px;',
+          ].join('');
+
+          (g.options || []).forEach(function(opt) {
+            var isSel = chosen && chosen.key === (opt.key||opt.id);
+            var st = document.createElement('div');
+            st.style.cssText = [
+              'height:36px;border-radius:6px;',
+              'display:flex;align-items:center;justify-content:center;',
+              'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+              'letter-spacing:0.3px;cursor:pointer;',
+              'background:' + (isSel ? T.gold  : T.card)   + ';',
+              'color:'      + (isSel ? T.well  : T.text)   + ';',
+              'border:1px solid ' + (isSel ? T.gold : T.border) + ';',
+              'box-shadow:0 2px 0 ' + (isSel ? T.goldDk : T.moonDk) + ';',
+              'touch-action:manipulation;pointer-events:auto;user-select:none;',
+              'transition:all 0.08s;',
+            ].join('');
+            st.textContent = opt.label.toUpperCase();
+            st.addEventListener('pointerup', function(e) {
+              e.stopPropagation();
+              mandState[g.key] = {
+                key:   opt.key || opt.id,
+                label: opt.label,
+                price: opt.price || 0,
+              };
+              openSubKey = null;
+              doneBtn.disabled = mandatoryGroups.some(function(g){
+                return !mandState[g.key];
+              });
+              renderContent();
+            });
+            subGrid.appendChild(st);
+          });
+
+          sub.appendChild(subGrid);
+          grid.appendChild(sub);
+        }
+      });
+
+      body.appendChild(grid);
+    }
+
+    function _buildOptCard(actionArea, body, isExp) {
+
+      // ── Prefix toolbar (expanded only) ───────────
+      if (isExp) {
+        PREFIX_MAP.forEach(function(p) {
+          var isActive = activePrefix === p.id;
+          var btn = document.createElement('button');
+          btn.style.cssText = [
+            'padding:4px 11px;border-radius:6px;',
+            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+            'letter-spacing:0.5px;cursor:pointer;white-space:nowrap;',
+            'border:1px solid ' + (isActive ? p.color : T.border) + ';',
+            'background:' + (isActive ? p.color : T.well) + ';',
+            'color:' + (isActive ? p.textColor : T.text) + ';',
+            'box-shadow:0 3px 0 ' + (isActive ? p.dk : T.moonDk) + ';',
+            'touch-action:manipulation;pointer-events:auto;',
+          ].join('');
+          btn.textContent = p.label;
+          btn.addEventListener('pointerup', function(e) {
+            e.stopPropagation();
+            activePrefix = p.id;
+            renderContent();
+          });
+          actionArea.appendChild(btn);
+        });
+      }
+
+      // ── Placement bar (pizza only) ────────────────
       if (isPizza) {
         var placeBar = document.createElement('div');
         placeBar.style.cssText = [
@@ -2676,8 +2978,8 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
             'flex:' + (pl.id === 'WHOLE' ? 2 : 1) + ';text-align:center;',
             'padding:7px 8px;border-radius:8px;cursor:pointer;',
             'pointer-events:auto;touch-action:manipulation;',
-            'font-family:' + T.fb + ';font-weight:700;font-size:10px;letter-spacing:1px;',
-            'color:' + (isActive ? T.well : hexToRgba(T.text, 0.6)) + ';',
+            'font-family:' + T.fb + ';font-weight:700;font-size:' + T.fsB4 + ';letter-spacing:1px;',
+            'color:' + (isActive ? T.well : T.moon) + ';',
             'background:' + (isActive ? catColor : 'transparent') + ';',
             'box-shadow:' + (isActive ? '0 3px 0 ' + hexToRgba(catColor, 0.55) : 'none') + ';',
             'transition:all 120ms;',
@@ -2689,44 +2991,96 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
           });
           placeBar.appendChild(seg);
         });
-        scroll.appendChild(placeBar);
+        body.appendChild(placeBar);
       }
 
-      // Option pills for each optional group
+      // ── Option tile grid ─────────────────────────
+      var outerGrid = document.createElement('div');
+      outerGrid.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+
       optionalGroups.forEach(function(g) {
-        if (g.label) scroll.appendChild(sectionLabel(g.label, T.greenWarm));
-        var optWrap = pillWrap();
+        if (g.label) {
+          var secLbl = document.createElement('div');
+          secLbl.style.cssText = [
+            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+            'letter-spacing:2px;color:' + T.greenWarm + ';',
+            'margin-top:4px;margin-bottom:2px;',
+            'display:flex;align-items:center;gap:8px;',
+          ].join('');
+          var line = document.createElement('div');
+          line.style.cssText = 'height:1px;flex:1;background:rgba(74,222,128,0.2);';
+          secLbl.textContent = g.label;
+          secLbl.appendChild(line);
+          outerGrid.appendChild(secLbl);
+        }
+
+        var tileGrid = document.createElement('div');
+        tileGrid.style.cssText = [
+          'display:grid;',
+          'grid-template-columns:repeat(auto-fill,minmax(108px,1fr));',
+          'gap:6px;',
+        ].join('');
+
         (g.options || []).forEach(function(opt) {
           var optId = opt.id || opt.key;
           var s     = optState[optId] || null;
-          var isActive = !!s;
-          var bg    = isActive ? _prefixColor(s.prefix) : T.card;
-          var lbl   = isActive ? '[' + s.prefix + ']' + (s.placement !== 'WHOLE' ? '[' + s.placement + ']' : '') + ' ' + opt.label : opt.label;
-          var p = pill(lbl, bg, isActive, function() {
-            if (isActive) { delete optState[optId]; }
-            else { optState[optId] = { prefix: activePrefix, placement: activePlacement }; }
+          var pDef  = s ? PREFIX_MAP.find(function(p){ return p.id===s.prefix; }) : null;
+
+          var bg   = pDef ? pDef.color     : T.well;
+          var fg   = pDef ? pDef.textColor : T.text;
+          var shDk = pDef ? pDef.dk        : T.moonDk;
+
+          var tile = document.createElement('div');
+          tile.style.cssText = [
+            'height:44px;border-radius:8px;',
+            'display:flex;flex-direction:column;',
+            'align-items:center;justify-content:center;gap:1px;',
+            'font-family:' + T.fb + ';font-weight:700;',
+            'background:' + bg + ';color:' + fg + ';',
+            'border:1px solid ' + (s ? bg : T.border) + ';',
+            'box-shadow:0 3px 0 ' + shDk + ';',
+            'cursor:pointer;touch-action:manipulation;pointer-events:auto;',
+            'user-select:none;transition:all 0.08s;',
+          ].join('');
+
+          if (s && pDef) {
+            var tag = document.createElement('span');
+            tag.style.cssText = 'font-size:' + T.fsB4 + ';font-weight:700;opacity:0.8;pointer-events:none;';
+            tag.textContent = pDef.label;
+            tile.appendChild(tag);
+          }
+          var lbl = document.createElement('span');
+          lbl.style.cssText = 'font-size:' + T.fsB3 + ';pointer-events:none;';
+          lbl.textContent = opt.label;
+          tile.appendChild(lbl);
+
+          tile.addEventListener('pointerdown', function(){
+            tile.style.transform='translateY(2px)';
+            tile.style.boxShadow='0 1px 0 '+shDk;
+          });
+          tile.addEventListener('pointerup', function(){
+            tile.style.transform='';
+            tile.style.boxShadow='0 3px 0 '+shDk;
+            if (optState[optId] && optState[optId].prefix===activePrefix) {
+              delete optState[optId];
+            } else {
+              optState[optId] = { prefix: activePrefix, placement: activePlacement };
+            }
             renderContent();
           });
-          optWrap.appendChild(p);
+          tile.addEventListener('pointerleave', function(){
+            tile.style.transform='';
+            tile.style.boxShadow='0 3px 0 '+shDk;
+          });
+          tileGrid.appendChild(tile);
         });
-        scroll.appendChild(optWrap);
+
+        outerGrid.appendChild(tileGrid);
       });
 
-      // Show a message if no groups configured (pizza fallback)
-      if (optionalGroups.length === 0 && includedItems.length === 0 && mandatoryGroups.length === 0) {
-        var msg = document.createElement('div');
-        msg.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:24px 0;';
-        msg.textContent = 'No modifiers configured — tap DONE to add';
-        scroll.appendChild(msg);
-      }
-    } else if (optionalGroups.length === 0 && includedItems.length === 0 && mandatoryGroups.length === 0) {
-      var msg2 = document.createElement('div');
-      msg2.style.cssText = 'font-family:' + T.fh + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:24px 0;';
-      msg2.textContent = 'No modifiers configured — tap DONE to add';
-      scroll.appendChild(msg2);
+      body.appendChild(outerGrid);
     }
 
-    requestAnimationFrame(function() { scroll.scrollTop = savedTop; });
     _buildActiveItem();
   }
 
@@ -2798,7 +3152,7 @@ function _buildSnakeStrip(item, catColor) {
   itemName.style.cssText = 'pointer-events:none;';
   itemName.textContent = item.label;
   var itemPrice = document.createElement('span');
-  itemPrice.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:rgba(255,255,255,0.7);pointer-events:none;';
+  itemPrice.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:rgba(255,255,255,0.7);pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
   itemPrice.textContent = '$' + (typeof item.price === 'number' ? item.price.toFixed(2) : '0.00');
   itemChip.appendChild(itemName);
   itemChip.appendChild(itemPrice);
@@ -3150,7 +3504,9 @@ function handleItemSelect(item) {
     if (overseerIncluded && overseerIncluded.length > 0) {
       effectiveConfig.includedItems = overseerIncluded;
     }
-    var catColor = catId ? T.catColor(catId.toUpperCase()) : T.green;
+    var catColor = (snakeState.crumbs.length > 0)
+      ? snakeState.crumbs[snakeState.crumbs.length - 1].color
+      : T.catColor(item.category || item.cat || '');
     var menuCat = catId ? getMenuCat(catId) : null;
     var enablePlacement = menuCat ? !!menuCat.enablePlacement : false;
     openModifierPanel(item, effectiveConfig, catColor, enablePlacement);
@@ -3334,7 +3690,7 @@ function _buildModTree(mods, opts) {
       'color:' + T.text + ';',
       'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
       'min-width:0;flex:1;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     modName.textContent = mod.name;
     pill.appendChild(modName);
 
@@ -3498,7 +3854,7 @@ function _buildItemSubCard(inst, isMultiSeat) {
         'font-size:11px;',
         'color:' + T.text + ';',
         'font-style:italic;',
-      ].join('');
+      ].join('') + ";font-weight:" + T.fwBold + ";";
       stamp.textContent = inst.sent_at;
       chevCol.appendChild(stamp);
     }
@@ -3530,7 +3886,7 @@ function renderTicket() {
 
   if (displayTicket.length === 0 && !_modPanelItem) {
     var hint = document.createElement('div');
-    hint.style.cssText = 'padding:20px 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';text-align:center;';
+    hint.style.cssText = 'padding:20px 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';text-align:center;' + ";font-weight:" + T.fwBold + ";";
     hint.textContent = 'Tap items to add';
     list.appendChild(hint);
     _appendModPreview(list);
@@ -3583,7 +3939,7 @@ function renderTicket() {
         'font-family:' + T.fb + ';font-size:16px;color:' + T.moon + ';',
         'transition:transform 0.15s;display:inline-block;',
         'transform:' + (isOpen ? 'rotate(90deg)' : 'rotate(0deg)') + ';',
-      ].join('');
+      ].join('') + ";font-weight:" + T.fwBold + ";";
       sChev.textContent = '▸';
       sHdr.appendChild(sChev);
 
@@ -3705,7 +4061,7 @@ function _appendModPreview(list) {
             'margin-left:36px;padding:2px 8px;',
             'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';',
             'font-style:italic;color:' + T.verm + ';',
-          ].join('');
+          ].join('') + ";font-weight:" + T.fwBold + ";";
           childRow.textContent = child.name;
           pc.appendChild(childRow);
         });
@@ -3759,7 +4115,7 @@ function _wrapSwipeDelete(innerEl, onDelete) {
 
   // Delete button behind
   var delBtn = document.createElement('div');
-  delBtn.style.cssText = 'position:absolute;right:0;top:0;bottom:0;width:' + BTN_W + 'px;display:flex;align-items:center;justify-content:center;background:' + T.verm + ';color:' + T.text + ';font-family:' + T.fh + ';font-size:' + T.fsB3 + ';letter-spacing:1px;cursor:pointer;user-select:none;';
+  delBtn.style.cssText = 'position:absolute;right:0;top:0;bottom:0;width:' + BTN_W + 'px;display:flex;align-items:center;justify-content:center;background:' + T.verm + ';color:' + T.text + ';font-family:' + T.fh + ';font-size:' + T.fsB3 + ';letter-spacing:1px;cursor:pointer;user-select:none;' + ";font-weight:" + T.fwBold + ";";
   delBtn.textContent = 'DELETE';
   wrap.appendChild(delBtn);
 
@@ -3828,7 +4184,7 @@ function _wrapSwipeDelete(innerEl, onDelete) {
 // ── SEPARATOR + MOD ROW helpers ───────────────────
 function buildSeparator() {
   var sep = document.createElement('div');
-  sep.style.cssText = 'padding:0 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.greenDk + ';letter-spacing:2px;overflow:hidden;white-space:nowrap;line-height:1;';
+  sep.style.cssText = 'padding:0 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.greenDk + ';letter-spacing:2px;overflow:hidden;white-space:nowrap;line-height:1;' + ";font-weight:" + T.fwBold + ";";
   sep.textContent = '- - - - - - - - - - - - - - - - - -';
   return sep;
 }
@@ -3838,7 +4194,7 @@ function buildModRow(name, price, dark, showPrice) {
   row.style.cssText = [
     'display:flex;justify-content:space-between;',
     'padding:2px 8px 2px 20px;',
-    'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';font-weight:bold;',
+    'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';font-weight:' + T.fwBold + ';',
     'color:' + (dark ? T.well : T.gold) + ';',
   ].join('');
   var n = document.createElement('span');
@@ -3855,7 +4211,7 @@ function buildModRowSized(name, price, fontSize, onRemove) {
   row.style.cssText = [
     'display:flex;align-items:center;',
     'padding:1px 8px 1px 16px;',
-    'font-family:' + T.fb + ';font-size:' + fontSize + ';font-weight:bold;',
+    'font-family:' + T.fb + ';font-size:' + fontSize + ';font-weight:' + T.fwBold + ';',
     'color:' + T.green + ';',
   ].join('');
   // Remove button (shown for unsent items)
@@ -3866,7 +4222,7 @@ function buildModRowSized(name, price, fontSize, onRemove) {
       'display:flex;align-items:center;justify-content:center;',
       'font-size:14px;color:' + T.verm + ';cursor:pointer;',
       'border:1px solid ' + T.verm + ';clip-path:polygon(3px 0%,calc(100% - 3px) 0%,100% 3px,100% calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,0% calc(100% - 3px),0% 3px);',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     x.textContent = '\u2715';
     x.addEventListener('pointerup', function(e) {
       e.stopPropagation();
@@ -3893,12 +4249,12 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
   var divTop = document.createElement('div');
   divTop.style.cssText = 'display:flex;border-bottom:1px solid ' + T.greenDk + ';margin-bottom:1px;';
   var hdrL = document.createElement('div');
-  hdrL.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + fontSize + ';font-weight:bold;color:' + T.gold + ';text-align:center;';
+  hdrL.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + fontSize + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';text-align:center;';
   hdrL.textContent = '1ST';
   var hdrSep = document.createElement('div');
   hdrSep.style.cssText = 'width:1px;background:' + T.greenDk + ';margin:0 4px;';
   var hdrR = document.createElement('div');
-  hdrR.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + fontSize + ';font-weight:bold;color:' + T.gold + ';text-align:center;';
+  hdrR.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + fontSize + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';text-align:center;';
   hdrR.textContent = '2ND';
   divTop.appendChild(hdrL);
   divTop.appendChild(hdrSep);
@@ -3912,7 +4268,7 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
       'display:inline-flex;align-items:center;justify-content:center;',
       'font-size:11px;color:' + T.verm + ';cursor:pointer;',
       'border:1px solid ' + T.verm + ';clip-path:polygon(3px 0%,calc(100% - 3px) 0%,100% 3px,100% calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,0% calc(100% - 3px),0% 3px);',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     x.textContent = '\u2715';
     x.addEventListener('pointerup', function(e) {
       e.stopPropagation();
@@ -3931,7 +4287,7 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
     row.style.cssText = 'display:flex;align-items:center;';
 
     var cellL = document.createElement('div');
-    cellL.style.cssText = 'flex:1;display:flex;align-items:center;font-family:' + T.fb + ';font-size:' + fontSize + ';color:' + T.green + ';padding:0 4px;';
+    cellL.style.cssText = 'flex:1;display:flex;align-items:center;font-family:' + T.fb + ';font-size:' + fontSize + ';color:' + T.green + ';padding:0 4px;' + ";font-weight:" + T.fwBold + ";";
     if (removableInst && leftMods[i]) cellL.appendChild(_makeRemoveBtn(leftMods[i]));
     var lText = document.createElement('span');
     lText.textContent = leftMods[i] ? stripPlacementPrefix(leftMods[i].name) : '';
@@ -3950,7 +4306,7 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
     sep.style.cssText = 'width:1px;align-self:stretch;background:' + T.greenDk + ';margin:0 4px;flex-shrink:0;';
 
     var cellR = document.createElement('div');
-    cellR.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:flex-end;font-family:' + T.fb + ';font-size:' + fontSize + ';color:' + T.green + ';padding:0 4px;';
+    cellR.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:flex-end;font-family:' + T.fb + ';font-size:' + fontSize + ';color:' + T.green + ';padding:0 4px;' + ";font-weight:" + T.fwBold + ";";
 
     if (rightMods[i] && rightMods[i].priceDelta) {
       var rp = rightMods[i].priceDelta;
@@ -3979,12 +4335,12 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
       var cRow = document.createElement('div');
       cRow.style.cssText = 'display:flex;align-items:center;';
       var cL = document.createElement('div');
-      cL.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + (parseInt(fontSize) - 4) + 'px;color:' + T.verm + ';font-style:italic;padding:0 4px 0 20px;';
+      cL.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + (parseInt(fontSize) - 4) + 'px;color:' + T.verm + ';font-style:italic;padding:0 4px 0 20px;' + ";font-weight:" + T.fwBold + ";";
       cL.textContent = lChildren[ci] ? lChildren[ci].name : '';
       var cSep = document.createElement('div');
       cSep.style.cssText = 'width:1px;align-self:stretch;background:' + T.greenDk + ';margin:0 4px;flex-shrink:0;';
       var cR = document.createElement('div');
-      cR.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + (parseInt(fontSize) - 4) + 'px;color:' + T.verm + ';font-style:italic;padding:0 4px 0 20px;text-align:right;';
+      cR.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + (parseInt(fontSize) - 4) + 'px;color:' + T.verm + ';font-style:italic;padding:0 4px 0 20px;text-align:right;' + ";font-weight:" + T.fwBold + ";";
       cR.textContent = rChildren[ci] ? rChildren[ci].name : '';
       cRow.appendChild(cL);
       cRow.appendChild(cSep);

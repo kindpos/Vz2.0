@@ -107,7 +107,7 @@ function _buildIfNeeded() {
     'font-size:' + T.fsB1 + ';',
     'color:' + T.text + ';',
     'outline:none;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   _input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
       _handleDone();

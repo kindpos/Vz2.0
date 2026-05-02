@@ -37,6 +37,18 @@ import {
   hexToRgba,
   darkenHex,
 } from '../theme-manager.js';
+
+// Local lighten helper — avoids adding theme-manager mock entries downstream.
+function _lighten(hex, pct) {
+  var r = parseInt(hex.slice(1, 3), 16);
+  var g = parseInt(hex.slice(3, 5), 16);
+  var b = parseInt(hex.slice(5, 7), 16);
+  return '#' + [
+    Math.min(255, Math.round(r + (255 - r) * pct)),
+    Math.min(255, Math.round(g + (255 - g) * pct)),
+    Math.min(255, Math.round(b + (255 - b) * pct)),
+  ].map(function(c) { return c.toString(16).padStart(2, '0'); }).join('');
+}
 import { showToast } from '../components.js';
 import { fmt } from './checkout-core.js';
 import { fetchWithTimeout } from '../net.js';
@@ -173,16 +185,16 @@ function buildFrozenRecap(order) {
   subHeader.style.cssText = [
     'height:44px;flex-shrink:0;',
     'background:' + T.well + ';',
-    'border-bottom:1px solid ' + T.border + ';',
+    'border-bottom:2px solid ' + darkenHex(T.bg, 0.2) + ';',
     'display:flex;align-items:center;justify-content:space-between;',
-    'padding:0 12px;z-index:1;',
+    'padding:8px 12px;z-index:1;box-sizing:border-box;',
   ].join('');
 
   var orderLabel = document.createElement('span');
   orderLabel.style.cssText = [
-    'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';',
+    'font-family:' + T.fh + ';font-size:' + T.fsB2 + ';',
     'font-weight:' + T.fwBold + ';color:' + T.green + ';',
-    'letter-spacing:2px;text-transform:uppercase;',
+    'letter-spacing:0.15em;text-transform:uppercase;',
   ].join('');
   orderLabel.textContent = 'ORDER';
 
@@ -193,14 +205,14 @@ function buildFrozenRecap(order) {
   ticketEl.style.cssText = [
     'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';',
     'color:' + T.moon + ';letter-spacing:1px;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   ticketEl.textContent = ticketLabel(order.ticketNumber);
 
   var lockedEl = document.createElement('span');
   lockedEl.style.cssText = [
     'font-family:' + T.fb + ';font-size:' + FS_MOD + ';',
     'color:' + T.moon + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   lockedEl.textContent = 'locked';
 
   rightHead.appendChild(ticketEl);
@@ -224,41 +236,31 @@ function buildFrozenRecap(order) {
     ph.style.cssText = [
       'font-family:' + T.fb + ';font-size:' + FS_MOD + ';',
       'color:' + T.moon + ';text-align:center;padding:20px;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     ph.textContent = 'No items';
     itemList.appendChild(ph);
   } else {
+    var bevelLt = _lighten(T.bg, 0.08);
+    var bevelDk = darkenHex(T.bg, 0.2);
     items.forEach(function(item) {
-      var rowW = RECAP_W - 24;
       var row = document.createElement('div');
       row.style.cssText = [
-        'position:relative;display:flex;align-items:stretch;',
-        'min-height:44px;width:' + rowW + 'px;',
-        'border-radius:' + T.chamferCard + 'px;',
-        'background:' + T.well + ';overflow:hidden;flex-shrink:0;',
-      ].join('');
-
-      var bar = document.createElement('div');
-      bar.style.cssText = [
-        'width:' + T.accentBarW + ';flex-shrink:0;',
-        'background:' + T.green + ';',
-        'border-radius:' + T.chamferCard + 'px 0 0 ' + T.chamferCard + 'px;',
-      ].join('');
-      row.appendChild(bar);
-
-      var content = document.createElement('div');
-      content.style.cssText = [
-        'flex:1;min-width:0;',
-        'padding:8px 10px 8px 8px;',
         'display:flex;flex-direction:column;justify-content:center;gap:2px;',
+        'background:' + T.well + ';',
+        'border-radius:8px;',
+        'border-top:2px solid ' + bevelLt + ';',
+        'border-right:2px solid ' + bevelDk + ';',
+        'border-bottom:2px solid ' + bevelDk + ';',
+        'border-left:3px solid ' + T.moon + ';',
+        'padding:6px 10px;flex-shrink:0;',
       ].join('');
 
       var topRow = document.createElement('div');
-      topRow.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:6px;';
+      topRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:6px;';
 
       var nameEl = document.createElement('span');
       nameEl.style.cssText = [
-        'font-family:' + T.fh + ';font-size:' + FS_ITEM + ';',
+        'font-family:' + T.fb + ';font-size:' + FS_ITEM + ';',
         'font-weight:' + T.fwBold + ';color:' + T.text + ';',
         'flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
       ].join('');
@@ -267,26 +269,25 @@ function buildFrozenRecap(order) {
       var priceEl = document.createElement('span');
       priceEl.style.cssText = [
         'font-family:' + T.fb + ';font-size:' + FS_PRICE + ';',
-        'font-weight:' + T.fwBold + ';color:' + T.gold + ';',
+        'font-weight:' + T.fwBold + ';color:' + (item.price > 0 ? T.gold : T.moon) + ';',
         'flex-shrink:0;white-space:nowrap;',
       ].join('');
-      priceEl.textContent = fmtMoney(item.price * (item.qty || 1));
+      priceEl.textContent = item.price > 0 ? fmtMoney(item.price * (item.qty || 1)) : '—';
 
       topRow.appendChild(nameEl);
       topRow.appendChild(priceEl);
-      content.appendChild(topRow);
+      row.appendChild(topRow);
 
       if (item.mods && item.mods.length) {
         var modEl = document.createElement('span');
         modEl.style.cssText = [
           'font-family:' + T.fb + ';font-size:' + FS_MOD + ';',
-          'color:' + T.moon + ';',
+          'font-weight:' + T.fwBold + ';color:' + T.moon + ';',
         ].join('');
         modEl.textContent = item.mods.join(', ');
-        content.appendChild(modEl);
+        row.appendChild(modEl);
       }
 
-      row.appendChild(content);
       itemList.appendChild(row);
     });
   }
@@ -311,7 +312,7 @@ function buildFrozenRecap(order) {
     l.style.cssText = [
       'font-family:' + T.fb + ';font-size:' + FS_ITEM + ';',
       'color:' + (lblColor || T.moon) + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     l.textContent = lbl;
     var v = document.createElement('span');
     v.style.cssText = [
@@ -357,12 +358,12 @@ function buildFrozenRecap(order) {
     var discLabel = document.createElement('span');
     discLabel.style.cssText = [
       'font-family:' + T.fb + ';font-size:' + FS_MOD + ';color:' + T.green + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     discLabel.textContent = 'Cash discount −' + (state.cashDiscountRate * 100).toFixed(1) + '%';
     var discVal = document.createElement('span');
     discVal.style.cssText = [
       'font-family:' + T.fb + ';font-size:' + FS_MOD + ';color:' + T.green + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     discVal.textContent = '−' + fmtMoney(state.cashDiscountAmount);
     discRow.appendChild(discLabel);
     discRow.appendChild(discVal);
@@ -405,7 +406,7 @@ function buildFrozenRecap(order) {
   backText.style.cssText = [
     'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';',
     'color:' + T.moon + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   backText.textContent = '← back to menu';
   backLink.appendChild(backText);
 
@@ -442,7 +443,7 @@ function buildTotalBlock() {
     cardLabel.style.cssText = [
       'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';',
       'color:' + T.moon + ';letter-spacing:2px;text-transform:uppercase;',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     cardLabel.textContent = 'CARD PRICE';
     block.appendChild(cardLabel);
 
@@ -458,7 +459,7 @@ function buildTotalBlock() {
     discBadge.style.cssText = [
       'font-family:' + T.fb + ';font-size:' + FS_DISC + ';',
       'color:' + T.green + ';',
-    ].join('');
+    ].join('') + ";font-weight:" + T.fwBold + ";";
     discBadge.textContent = (state.cashDiscountRate * 100).toFixed(1) +
       '% cash discount  −' + fmtMoney(state.cashDiscountAmount);
     block.appendChild(discBadge);
@@ -472,14 +473,14 @@ function buildTotalBlock() {
   cashTotalLabel.style.cssText = [
     'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';',
     'color:' + T.moon + ';letter-spacing:2px;text-transform:uppercase;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   cashTotalLabel.textContent = 'CASH TOTAL';
   block.appendChild(cashTotalLabel);
 
   var cashTotalHero = document.createElement('span');
   cashTotalHero.style.cssText = [
     'font-family:' + T.fh + ';font-size:' + FS_HERO + ';',
-    'font-weight:' + T.fwBold + ';color:' + T.gold + ';',
+    'font-weight:800;color:' + T.gold + ';',
     'line-height:1;',
   ].join('');
   cashTotalHero.textContent = fmtMoney(state.cashTotal);
@@ -509,7 +510,7 @@ function buildTenderedRow() {
   label.style.cssText = [
     'font-family:' + T.fb + ';font-size:' + FS_BODY + ';',
     'color:' + T.moon + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   label.textContent = 'Tendered';
 
   var display = document.createElement('span');
@@ -540,7 +541,7 @@ function buildQuickAmounts(presets) {
   sectionLbl.style.cssText = [
     'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';',
     'color:' + T.green + ';letter-spacing:2px;text-transform:uppercase;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   sectionLbl.textContent = 'QUICK AMOUNTS';
   wrap.appendChild(sectionLbl);
 
@@ -572,7 +573,7 @@ function buildQuickAmounts(presets) {
       botLine.style.cssText = [
         'font-family:' + T.fb + ';font-size:' + FS_BODY + ';',
         'color:' + T.greenWarm + ';',
-      ].join('');
+      ].join('') + ";font-weight:" + T.fwBold + ";";
       botLine.textContent = fmtMoney(p.amount);
       tile.appendChild(topLine);
       tile.appendChild(botLine);
@@ -627,24 +628,32 @@ function buildNumpad() {
     ['CLR', '0', 'ENT'],
   ];
 
+  var bevelLt = _lighten(T.bg, 0.08);
+  var bevelDk = darkenHex(T.bg, 0.2);
+  var digitDk = darkenHex(T.well, 0.3);
+
   rows.forEach(function(row) {
     row.forEach(function(k) {
       var key = document.createElement('div');
       key.dataset.key = k;
+      var dk;
+
       key.style.cssText = [
         'min-height:66px;',
         'border-radius:' + T.chamferKey + 'px;',
         'display:flex;align-items:center;justify-content:center;',
         'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-        'transition:' + T.transitionFast + ';',
+        'transition:transform 0.07s, box-shadow 0.07s;',
       ].join('');
 
       var lbl = document.createElement('span');
 
       if (k === 'CLR') {
+        dk = darkenHex(T.verm, 0.25);
         key.style.cssText += [
           'background:' + T.well + ';',
           'border:1.5px solid ' + T.verm + ';',
+          'box-shadow:0 3px 0 ' + dk + ';',
         ].join('');
         lbl.style.cssText = [
           'font-family:' + T.fb + ';font-size:' + FS_BTN + ';',
@@ -653,17 +662,26 @@ function buildNumpad() {
         ].join('');
         lbl.textContent = 'CLR';
       } else if (k === 'ENT') {
-        key.style.cssText += 'background:' + T.greenWarm + ';';
+        dk = darkenHex(T.greenWarm, 0.25);
+        key.style.cssText += [
+          'background:' + T.greenWarm + ';',
+          'box-shadow:0 3px 0 ' + dk + ';',
+        ].join('');
         lbl.style.cssText = [
           'font-family:' + T.fb + ';font-size:' + FS_BTN + ';',
-          'font-weight:' + T.fwBold + ';color:' + T.moonText + ';',
+          'font-weight:' + T.fwBold + ';color:' + T.well + ';',
           'text-transform:uppercase;letter-spacing:0.05em;',
         ].join('');
         lbl.textContent = 'ENT';
       } else {
+        dk = digitDk;
         key.style.cssText += [
           'background:' + T.well + ';',
-          'border:1px solid ' + T.border + ';',
+          'border-top:2px solid ' + bevelLt + ';',
+          'border-right:2px solid ' + bevelDk + ';',
+          'border-bottom:2px solid ' + bevelDk + ';',
+          'border-left:2px solid ' + bevelLt + ';',
+          'box-shadow:0 3px 0 ' + dk + ';',
         ].join('');
         lbl.style.cssText = [
           'font-family:' + T.fh + ';font-size:' + FS_KEY + ';',
@@ -672,14 +690,20 @@ function buildNumpad() {
         lbl.textContent = k;
       }
 
-      // Press flash
-      key.addEventListener('pointerdown', function() {
-        key.style.opacity = '0.7';
-      });
-      var restore = function() { key.style.opacity = '1'; };
-      key.addEventListener('pointerup',    restore);
-      key.addEventListener('pointerleave', restore);
-      key.addEventListener('pointercancel',restore);
+      // Press handlers — translate + reduce shadow on press, restore on release
+      (function(_dk) {
+        key.addEventListener('pointerdown', function() {
+          key.style.transform = 'translateY(2px)';
+          key.style.boxShadow = '0 1px 0 ' + _dk;
+        });
+        var release = function() {
+          key.style.transform = 'translateY(0)';
+          key.style.boxShadow = '0 3px 0 ' + _dk;
+        };
+        key.addEventListener('pointerup',     release);
+        key.addEventListener('pointerleave',  release);
+        key.addEventListener('pointercancel', release);
+      })(dk);
 
       key.appendChild(lbl);
       np.appendChild(key);
@@ -717,7 +741,7 @@ function buildChangeDue() {
   var cdValue = document.createElement('span');
   cdValue.style.cssText = [
     'font-family:' + T.fh + ';font-size:' + FS_HERO + ';',
-    'font-weight:' + T.fwBold + ';color:' + T.gold + ';',
+    'font-weight:800;color:' + T.gold + ';',
     'line-height:1;',
   ].join('');
   cdValue.textContent = '—';
@@ -728,7 +752,7 @@ function buildChangeDue() {
     'font-family:' + T.fb + ';font-size:' + FS_LABEL + ';',
     'color:' + T.moon + ';',
     'margin-top:10px;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   entHint.textContent = 'ENT to confirm';
   els.entHint = entHint;
 

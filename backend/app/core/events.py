@@ -217,6 +217,8 @@ class EventType(str, Enum):
     MODIFIER_GROUP_CREATED = "modifier.group_created"
     MODIFIER_GROUP_UPDATED = "modifier.group_updated"
     MODIFIER_GROUP_DELETED = "modifier.group_deleted"
+    MODIFIER_GROUP_MODIFIER_ADDED = "modifier.group_modifier_added"
+    MODIFIER_GROUP_MODIFIER_REMOVED = "modifier.group_modifier_removed"
     MODIFIER_CREATED = "modifier.created"
     MODIFIER_UPDATED = "modifier.updated"
     MODIFIER_PRICE_CHANGED = "modifier.price_changed"

@@ -26,6 +26,7 @@
 import { T } from '../../../common/tokens.js';
 import {
     buildStaticCard,
+    buildActionCard,
     hexToRgba,
     darkenHex,
 } from '../../../common/theme.js';
@@ -36,8 +37,15 @@ import {
 const _state = {
     container: null,
     wrapper: null,
+    contentMount: null,
+
+    activeTab: 'mod', // 'mod' | 'micromod' | 'optionGroup'
+    loadError: false,
+    addingOptionGroup: false,
+    editingGroupId: null,
 
     groups: [],
+    micromodGroups: [],
     optionGroups: [],
     options: [],
     sizes: [],
@@ -102,6 +110,114 @@ async function apiPut(url, body) {
 async function apiGetOptional(url, fallback) {
     try { return await apiGet(url); }
     catch (e) { console.warn(`[Modifiers] ${url} unavailable:`, e.message); return fallback; }
+}
+
+async function apiDelete(url) {
+    const res = await fetch(url, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`DELETE ${url} → ${res.status}`);
+    return res.json();
+}
+
+/* ------------------------------------------
+   INLINE PICKER — replaces a host element with a
+   dropdown <select> populated from an async fetch.
+   Used by Wire 1 / 3 / 5 in the spec.
+------------------------------------------ */
+async function openModifierPickerInline(host, currentIds, onPick) {
+    const original = host.textContent;
+    host.disabled = true;
+    host.textContent = 'Loading…';
+    try {
+        const all = await apiGet('/api/v1/modifiers');
+        const taken = new Set(currentIds || []);
+        const candidates = (all || [])
+            .filter(m => !taken.has(m.modifier_id) && m.active !== false);
+        host.replaceWith(buildPickerSelect(
+            candidates.length ? '+ ADD MODIFIER' : 'ALL MODIFIERS ADDED',
+            candidates.map(m => ({ value: m.modifier_id, label: m.name || m.modifier_id })),
+            onPick,
+        ));
+    } catch (e) {
+        host.disabled = false;
+        host.textContent = original;
+        showToast('Failed to load modifiers', 'error');
+    }
+}
+
+async function openMicromodGroupPickerInline(host, takenMicromodIds, onPick) {
+    const original = host.textContent;
+    host.disabled = true;
+    host.textContent = 'Loading…';
+    try {
+        const all = await apiGet('/api/v1/config/modifier-groups');
+        const groups = (all || []).filter(g => !g.hidden && isMicromodGroup(g));
+        const taken = new Set(takenMicromodIds || []);
+        // Hide groups whose modifiers are entirely already attached.
+        const candidates = groups.filter(g => {
+            const ids = (g.modifiers || []).map(m => m.modifier_id);
+            return ids.some(id => !taken.has(id));
+        });
+        host.replaceWith(buildPickerSelect(
+            candidates.length ? '+ ATTACH MICROMOD GROUP' : 'NO GROUPS AVAILABLE',
+            candidates.map(g => ({ value: g.group_id, label: g.name || g.group_id })),
+            onPick,
+        ));
+    } catch (e) {
+        host.disabled = false;
+        host.textContent = original;
+        showToast('Failed to load microMOD groups', 'error');
+    }
+}
+
+function buildPickerSelect(placeholder, options, onPick) {
+    const select = document.createElement('select');
+    select.style.cssText = `
+        background: ${T.well};
+        border: 1px solid ${T.border};
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-family: ${T.fb};
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: ${T.text};
+        cursor: pointer;
+        outline: none;
+    `;
+    const placeholderOpt = document.createElement('option');
+    placeholderOpt.value = '';
+    placeholderOpt.textContent = placeholder;
+    placeholderOpt.disabled = true;
+    placeholderOpt.selected = true;
+    select.appendChild(placeholderOpt);
+    options.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        select.appendChild(opt);
+    });
+    if (options.length === 0) select.disabled = true;
+    select.addEventListener('change', () => {
+        if (!select.value) return;
+        onPick(select.value);
+    });
+    return select;
+}
+
+function buildErrorState(retry) {
+    const el = document.createElement('div');
+    el.textContent = 'Failed to load — tap to retry';
+    el.style.cssText = `
+        padding: 40px 20px;
+        text-align: center;
+        font-family: ${T.fb};
+        font-size: 11px;
+        color: ${T.verm};
+        cursor: pointer;
+        letter-spacing: 0.08em;
+    `;
+    el.addEventListener('click', retry);
+    return el;
 }
 
 /* ------------------------------------------
@@ -346,7 +462,7 @@ function buildLeftPanel() {
     leftCard.appendChild(leftContent);
 
     const sectionLabel = document.createElement('div');
-    sectionLabel.textContent = 'Modifier Groups';
+    sectionLabel.textContent = 'Groups';
     sectionLabel.style.cssText = `
         font-family: ${T.fb};
         font-size: 11px;
@@ -354,13 +470,25 @@ function buildLeftPanel() {
         color: ${T.moonDk};
         letter-spacing: 2.5px;
         text-transform: uppercase;
-        margin-bottom: 8px;
+        margin-bottom: 2px;
     `;
     leftContent.appendChild(sectionLabel);
 
+    const subLabel = document.createElement('div');
+    subLabel.textContent = 'Mod Groups · MicroMOD Groups';
+    subLabel.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 10px;
+        font-weight: 600;
+        color: ${T.moon};
+        letter-spacing: 0.06em;
+        margin-bottom: 8px;
+    `;
+    leftContent.appendChild(subLabel);
+
     const newBtn = document.createElement('button');
     newBtn.type = 'button';
-    newBtn.textContent = '+ New Group';
+    newBtn.textContent = '+ NEW GROUP';
     newBtn.style.cssText = `
         display: block;
         width: 100%;
@@ -375,7 +503,7 @@ function buildLeftPanel() {
         text-transform: uppercase;
         letter-spacing: 0.06em;
         cursor: pointer;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
         box-shadow: 0 3px 0 ${T.elecDk};
         box-sizing: border-box;
     `;
@@ -390,14 +518,16 @@ function buildLeftPanel() {
     const list = document.createElement('div');
     list.style.cssText = 'display: flex; flex-direction: column;';
 
-    if (_state.groups.length === 0) {
+    if (_state.loadError) {
+        list.appendChild(buildErrorState(() => refreshAll()));
+    } else if (_state.groups.length === 0) {
         const empty = document.createElement('div');
-        empty.textContent = 'No groups yet';
+        empty.textContent = 'No groups yet — tap + New Group';
         empty.style.cssText = `
             padding: 18px 8px;
             text-align: center;
             font-family: ${T.fb};
-            font-size: ${T.fsB4};
+            font-size: 11px;
             color: ${T.moon};
         `;
         list.appendChild(empty);
@@ -412,33 +542,27 @@ function buildLeftPanel() {
 function buildGroupListItem(group) {
     const isSelected = _state.selectedGroupId === group.group_id;
     const isDriver = !!group.drives_pricing;
+    const accent = isDriver ? T.gold : T.green;
 
-    const item = document.createElement('div');
-    item.style.cssText = `
-        padding: 12px 14px;
-        border-radius: 7px;
-        margin: 1px 4px;
-        background: ${isSelected ? hexToRgba(T.green, 0.10) : 'transparent'};
-        cursor: pointer;
-        transition: background 0.1s ease;
-    `;
-    if (!isSelected) {
-        item.addEventListener('mouseenter', () => {
-            item.style.background = hexToRgba(T.green, 0.05);
-        });
-        item.addEventListener('mouseleave', () => {
-            item.style.background = 'transparent';
-        });
-    }
+    const item = buildActionCard({
+        accent,
+        onClick: () => {
+            if (_state.selectedGroupId !== group.group_id) {
+                _state.selectedGroupId = group.group_id;
+                _state.selectedModifierId = null;
+                rebuild();
+            }
+        },
+    });
+    item.style.margin = '4px 0';
 
     const name = document.createElement('div');
     name.textContent = group.name || group.group_id;
     name.style.cssText = `
-        font-family: ${T.fb};
+        font-family: ${T.fh};
         font-size: 14px;
-        font-weight: 600;
-        color: ${isSelected ? T.green : (isDriver ? T.gold : T.moon)};
-        margin-bottom: 2px;
+        font-weight: 700;
+        color: ${isDriver ? T.gold : T.text};
     `;
     item.appendChild(name);
 
@@ -454,10 +578,10 @@ function buildGroupListItem(group) {
     meta.style.cssText = `
         font-family: ${T.fb};
         font-size: 11px;
-        color: ${T.moonDk};
+        color: ${T.moon};
         letter-spacing: 0.04em;
         line-height: 1.4;
-        margin-top: 1px;
+        margin-top: 3px;
     `;
 
     if (isDriver) {
@@ -472,13 +596,23 @@ function buildGroupListItem(group) {
 
     item.appendChild(meta);
 
-    item.addEventListener('click', () => {
-        if (_state.selectedGroupId !== group.group_id) {
-            _state.selectedGroupId = group.group_id;
-            _state.selectedModifierId = null;
-            rebuild();
-        }
-    });
+    // Selected — keep an elec ring stamped on top of buildActionCard's
+    // internal hover/press shadows. These listeners run after the internal
+    // ones since they're added later, so they always have the final say.
+    if (isSelected) {
+        const ring = `0 0 0 1px ${T.elec}`;
+        const stampRing = () => {
+            const current = item.style.boxShadow || '';
+            if (!current.includes(ring)) {
+                item.style.boxShadow = current ? `${current}, ${ring}` : ring;
+            }
+        };
+        item.addEventListener('mouseenter', stampRing);
+        item.addEventListener('mouseleave', stampRing);
+        item.addEventListener('pointerdown', stampRing);
+        item.addEventListener('pointerup', stampRing);
+        stampRing();
+    }
 
     return item;
 }
@@ -778,7 +912,16 @@ function buildGroupHeaderBar(group) {
         outline: none;
         white-space: nowrap;
     `;
-    editBtn.addEventListener('click', () => showToast('Group edit coming soon', 'ok'));
+    editBtn.addEventListener('click', () => {
+        const next = window.prompt('Rename group', group.name || '');
+        if (next == null) return;
+        const trimmed = next.trim();
+        if (!trimmed || trimmed === (group.name || '')) return;
+        apiPatch(`/api/v1/modifier-groups/${encodeURIComponent(group.group_id)}`, { name: trimmed })
+            .then(() => refreshAll())
+            .then(() => showToast('Group renamed'))
+            .catch(() => showToast('Failed to rename group', 'error'));
+    });
     controls.appendChild(editBtn);
 
     row1.appendChild(controls);
@@ -856,13 +999,13 @@ function buildModifierChipsRow(group) {
     chipRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
 
     const modifiers = group.modifiers || [];
-    modifiers.forEach(m => chipRow.appendChild(buildModifierChip(m)));
+    modifiers.forEach(m => chipRow.appendChild(buildModifierChip(m, group)));
     chipRow.appendChild(buildAddModifierChip(group));
     strip.appendChild(chipRow);
     return strip;
 }
 
-function buildModifierChip(modifier) {
+function buildModifierChip(modifier, group) {
     const isSelected = _state.selectedModifierId === modifier.modifier_id;
     const price = Number(modifier.price || 0);
     const accent = price > 0 ? T.gold : T.green;
@@ -921,10 +1064,53 @@ function buildModifierChip(modifier) {
     chip.addEventListener('mousedown', () => { chip.style.transform = 'translateY(2px)'; });
     chip.addEventListener('mouseup',   () => { chip.style.transform = 'translateY(0)'; });
     chip.addEventListener('mouseleave',() => { chip.style.transform = 'translateY(0)'; });
-    chip.addEventListener('click', () => {
+    chip.addEventListener('click', (e) => {
+        if (e.target.closest('[data-chip-remove]')) return;
         _state.selectedModifierId = modifier.modifier_id;
         rebuild();
     });
+
+    if (group && group.group_id) {
+        const removeX = document.createElement('button');
+        removeX.type = 'button';
+        removeX.dataset.chipRemove = '1';
+        removeX.textContent = '×';
+        removeX.style.cssText = `
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: ${T.verm};
+            color: ${T.text};
+            border: none;
+            font-family: ${T.fb};
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 16px;
+            text-align: center;
+            padding: 0;
+            cursor: pointer;
+            outline: none;
+        `;
+        removeX.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const label = modifier.name || modifier.modifier_id;
+            if (!window.confirm(`Remove ${label} from this group?`)) return;
+            try {
+                await apiDelete(
+                    `/api/v1/modifier-groups/${encodeURIComponent(group.group_id)}` +
+                    `/modifiers/${encodeURIComponent(modifier.modifier_id)}`,
+                );
+                await refreshAll();
+                showToast('Modifier removed from group');
+            } catch (err) {
+                showToast('Failed to remove modifier', 'error');
+            }
+        });
+        chip.appendChild(removeX);
+    }
 
     return chip;
 }
@@ -953,7 +1139,21 @@ function buildAddModifierChip(group) {
     chip.addEventListener('mouseleave', () => { chip.style.opacity = '0.4'; });
     chip.addEventListener('mousedown',  () => { chip.style.transform = 'translateY(2px)'; });
     chip.addEventListener('mouseup',    () => { chip.style.transform = 'translateY(0)'; });
-    chip.addEventListener('click', () => showToast('Modifier add coming soon', 'ok'));
+    chip.addEventListener('click', () => {
+        const currentIds = (group.modifiers || []).map(m => m.modifier_id);
+        openModifierPickerInline(chip, currentIds, async (modifierId) => {
+            try {
+                await apiPost(
+                    `/api/v1/modifier-groups/${encodeURIComponent(group.group_id)}` +
+                    `/modifiers/${encodeURIComponent(modifierId)}`,
+                );
+                await refreshAll();
+                showToast('Modifier added to group');
+            } catch (e) {
+                showToast('Failed to add modifier', 'error');
+            }
+        });
+    });
     return chip;
 }
 
@@ -1256,7 +1456,7 @@ function buildSizePricingCol(group, modifier) {
             font-family: ${T.fb};
             font-size: 10px;
             font-weight: 600;
-            color: ${T.moon};
+            color: ${T.text};
             text-transform: uppercase;
         `;
         row.appendChild(nameCell);
@@ -1364,7 +1564,7 @@ function buildSizePricingCol(group, modifier) {
             padding: 4px 0;
             margin-top: 4px;
         `;
-        link.addEventListener('click', () => showToast('Multi-driver pricing coming soon', 'ok'));
+        link.addEventListener('click', () => showToast('Multi-driver pricing not yet wired', 'ok'));
         col.appendChild(link);
     }
 
@@ -1413,7 +1613,7 @@ function buildMicromodsCol(modifier) {
         `;
         col.appendChild(empty);
     } else {
-        attached.forEach(mm => col.appendChild(buildMicromodRow(mm)));
+        attached.forEach(mm => col.appendChild(buildMicromodRow(mm, modifier)));
     }
 
     const addLink = document.createElement('button');
@@ -1431,7 +1631,41 @@ function buildMicromodsCol(modifier) {
         padding: 4px 0;
         margin-top: 4px;
     `;
-    addLink.addEventListener('click', () => showToast('MicroMOD attach coming soon', 'ok'));
+    addLink.addEventListener('click', () => {
+        const taken = (_state.micromods || [])
+            .filter(mm => mm.modifier_id === modifier.modifier_id)
+            .map(mm => mm.micromod_id || mm.modifier_id);
+        const alreadyAttached = new Set(modifier.included_modifier_ids || []);
+        taken.forEach(id => alreadyAttached.add(id));
+
+        openMicromodGroupPickerInline(addLink, [...alreadyAttached], async (groupId) => {
+            const grp = (_state.micromodGroups || [])
+                .find(g => g.group_id === groupId);
+            if (!grp) {
+                showToast('MicroMOD group not found', 'error');
+                return;
+            }
+            const ids = (grp.modifiers || [])
+                .map(m => m.modifier_id)
+                .filter(id => id && !alreadyAttached.has(id));
+            if (ids.length === 0) {
+                showToast('Group has nothing new to attach', 'error');
+                return;
+            }
+            try {
+                for (const micromodId of ids) {
+                    await apiPost(
+                        `/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}` +
+                        `/micromods/${encodeURIComponent(micromodId)}`,
+                    );
+                }
+                await refreshAll();
+                showToast('MicroMOD group attached');
+            } catch (e) {
+                showToast('Failed to attach microMODs', 'error');
+            }
+        });
+    });
     col.appendChild(addLink);
 
     const divider = document.createElement('div');
@@ -1446,7 +1680,7 @@ function buildMicromodsCol(modifier) {
     return col;
 }
 
-function buildMicromodRow(mm) {
+function buildMicromodRow(mm, modifier) {
     const row = document.createElement('div');
     row.style.cssText = `
         background: ${hexToRgba(T.lavender, 0.07)};
@@ -1524,7 +1758,30 @@ function buildMicromodRow(mm) {
         removeBtn.style.color = T.moon;
         removeBtn.style.borderColor = T.border;
     });
-    removeBtn.addEventListener('click', () => showToast('MicroMOD remove coming soon', 'ok'));
+    removeBtn.addEventListener('click', async () => {
+        if (!modifier || !modifier.modifier_id) {
+            showToast('Cannot remove — modifier missing', 'error');
+            return;
+        }
+        const micromodId = mm.micromod_id || mm.modifier_id;
+        if (!micromodId) {
+            showToast('Cannot remove — micromod id missing', 'error');
+            return;
+        }
+        const mmLabel = mm.name || micromodId;
+        const modLabel = modifier.name || modifier.modifier_id;
+        if (!window.confirm(`Remove ${mmLabel} from ${modLabel}?`)) return;
+        try {
+            await apiDelete(
+                `/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}` +
+                `/micromods/${encodeURIComponent(micromodId)}`,
+            );
+            await refreshAll();
+            showToast('MicroMOD removed');
+        } catch (e) {
+            showToast('Failed to remove microMOD', 'error');
+        }
+    });
     row.appendChild(removeBtn);
 
     return row;
@@ -1596,7 +1853,7 @@ function buildIncludedItemsSection(modifier) {
                 font-family: ${T.fb};
                 font-size: 10px;
                 font-weight: 600;
-                color: ${T.moon};
+                color: ${T.text};
             `;
             chip.appendChild(nameEl);
             chipRow.appendChild(chip);
@@ -1626,26 +1883,868 @@ function optionGroupName(id) {
 }
 
 /* ============================================
+   TAB BAR
+============================================ */
+function buildTabBar() {
+    const bar = document.createElement('div');
+    bar.style.cssText = `
+        background: ${T.card};
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        padding: 0 20px;
+        display: flex;
+        gap: 0;
+        flex-shrink: 0;
+    `;
+
+    const tabs = [
+        { id: 'mod',         label: 'MOD GROUPS' },
+        { id: 'micromod',    label: 'MICROMOD GROUPS' },
+        { id: 'optionGroup', label: 'OPTION GROUPS' },
+    ];
+    tabs.forEach(t => bar.appendChild(buildTab(t.id, t.label)));
+    return bar;
+}
+
+function buildTab(id, label) {
+    const isActive = _state.activeTab === id;
+    const tab = document.createElement('div');
+    tab.textContent = label;
+    tab.style.cssText = `
+        padding: 14px 20px;
+        font-family: ${T.fb};
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.8px;
+        color: ${isActive ? T.elec : T.moon};
+        cursor: pointer;
+        border-bottom: 2px solid ${isActive ? T.elec : 'transparent'};
+        margin-bottom: -1px;
+        transition: color 0.15s ease, border-color 0.15s ease;
+    `;
+    tab.addEventListener('click', () => {
+        if (_state.activeTab === id) return;
+        _state.activeTab = id;
+        rebuild();
+    });
+    return tab;
+}
+
+/* ============================================
+   MICROMOD GROUPS TAB
+============================================ */
+function buildMicromodTab() {
+    const wrap = document.createElement('div');
+    wrap.className = 'kindpos-scrollbar-hide';
+    wrap.style.cssText = `
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        padding: 14px;
+        box-sizing: border-box;
+    `;
+
+    // Header row
+    const header = document.createElement('div');
+    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;';
+
+    const title = document.createElement('div');
+    title.textContent = 'MICROMOD GROUPS';
+    title.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 11px;
+        font-weight: 700;
+        color: ${T.lavender};
+        letter-spacing: 2.5px;
+        text-transform: uppercase;
+    `;
+    header.appendChild(title);
+
+    header.appendChild(buildPillButton('+ New MicroMOD Group', 'confirm', async () => {
+        const name = window.prompt('New MicroMOD Group name');
+        if (name == null) return;
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        try {
+            await apiPost('/api/v1/modifier-groups', {
+                name: trimmed,
+                modifier_ids: [],
+                modifiers: [],
+                min_selections: 0,
+                max_selections: 1,
+                drives_pricing: false,
+                template_id: 'micromod',
+            });
+            await refreshAll();
+            showToast('MicroMOD group created');
+        } catch (e) {
+            showToast('Failed to create MicroMOD group', 'error');
+        }
+    }, { small: true }));
+    wrap.appendChild(header);
+
+    // Card grid
+    const grid = document.createElement('div');
+    grid.style.cssText = `
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 14px;
+        align-items: start;
+    `;
+
+    if (_state.loadError) {
+        const errEl = buildErrorState(() => refreshAll());
+        errEl.style.gridColumn = '1 / -1';
+        grid.appendChild(errEl);
+    } else if (_state.micromodGroups.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = 'No microMOD groups yet';
+        empty.style.cssText = `
+            grid-column: 1 / -1;
+            padding: 32px 0;
+            text-align: center;
+            font-family: ${T.fb};
+            font-size: 11px;
+            color: ${T.moon};
+        `;
+        grid.appendChild(empty);
+    } else {
+        _state.micromodGroups.forEach(g => grid.appendChild(buildMicromodGroupCard(g)));
+    }
+    wrap.appendChild(grid);
+    return wrap;
+}
+
+function buildMicromodGroupCard(group) {
+    const card = buildStaticCard({ accent: T.lavender });
+    card.style.padding = '14px 16px 14px 22px';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '12px';
+
+    // Group name
+    const nameEl = document.createElement('div');
+    nameEl.textContent = group.name || group.group_id;
+    nameEl.style.cssText = `
+        font-family: ${T.fh};
+        font-size: 15px;
+        font-weight: 700;
+        color: ${T.text};
+    `;
+    card.appendChild(nameEl);
+
+    // ATTACHES TO
+    card.appendChild(buildAttachesToSection(group));
+
+    // DEFAULT OPTION GROUP select
+    card.appendChild(buildDefaultOptionGroupSection(group));
+
+    // Modifier chips
+    card.appendChild(buildMicromodModifiersSection(group));
+
+    return card;
+}
+
+function buildAttachesToSection(group) {
+    const wrap = document.createElement('div');
+
+    const label = document.createElement('div');
+    label.textContent = 'ATTACHES TO';
+    label.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        color: ${T.moon};
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+    `;
+    wrap.appendChild(label);
+
+    const chipRow = document.createElement('div');
+    chipRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
+
+    const attachIds = attachesToModifierIds(group);
+    if (attachIds.length === 0) {
+        const dash = document.createElement('span');
+        dash.textContent = '—';
+        dash.style.cssText = `font-family: ${T.fb}; font-size: 11px; color: ${T.moon};`;
+        chipRow.appendChild(dash);
+    } else {
+        attachIds.forEach(id => {
+            const name = modifierNameById(id) || id;
+            chipRow.appendChild(buildAttachChip(name));
+        });
+    }
+    wrap.appendChild(chipRow);
+    return wrap;
+}
+
+function buildAttachChip(label) {
+    const chip = document.createElement('span');
+    chip.textContent = label;
+    chip.style.cssText = `
+        display: inline-flex; align-items: center;
+        background: ${T.card};
+        color: ${T.lavender};
+        border: 1px solid ${hexToRgba(T.lavender, 0.45)};
+        border-radius: 5px;
+        padding: 3px 9px;
+        font-family: ${T.fb};
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+    `;
+    return chip;
+}
+
+function buildDefaultOptionGroupSection(group) {
+    const wrap = document.createElement('div');
+
+    const label = document.createElement('div');
+    label.textContent = 'DEFAULT OPTION GROUP';
+    label.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        color: ${T.moon};
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+    `;
+    wrap.appendChild(label);
+
+    const sel = document.createElement('select');
+    sel.style.cssText = `
+        appearance: none;
+        -webkit-appearance: none;
+        background: ${T.well};
+        border: 1px solid ${T.border};
+        border-radius: 6px;
+        color: ${T.lavender};
+        font-family: ${T.fb};
+        font-size: 12px;
+        font-weight: 700;
+        height: 32px;
+        padding: 0 12px;
+        cursor: pointer;
+        outline: none;
+        width: 100%;
+        box-sizing: border-box;
+    `;
+
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '— None —';
+    sel.appendChild(noneOpt);
+
+    _state.optionGroups.forEach(og => {
+        const opt = document.createElement('option');
+        opt.value = og.option_group_id;
+        opt.textContent = og.name;
+        if (og.option_group_id === group.default_option_group_id) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    if (!group.default_option_group_id) sel.value = '';
+
+    sel.addEventListener('change', async () => {
+        try {
+            await apiPost(`/api/v1/modifier-groups/${encodeURIComponent(group.group_id)}/option-group`, {
+                option_group_id: sel.value || null,
+            });
+            await refreshAll();
+        } catch (e) {
+            showToast('Failed to set option group', 'error');
+        }
+    });
+
+    wrap.appendChild(sel);
+    return wrap;
+}
+
+function buildMicromodModifiersSection(group) {
+    const wrap = document.createElement('div');
+
+    const label = document.createElement('div');
+    label.textContent = 'MODIFIERS IN GROUP';
+    label.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        color: ${T.moon};
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+    `;
+    wrap.appendChild(label);
+
+    const chipRow = document.createElement('div');
+    chipRow.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
+
+    const modifiers = group.modifiers || [];
+    if (modifiers.length === 0) {
+        const dash = document.createElement('span');
+        dash.textContent = '—';
+        dash.style.cssText = `font-family: ${T.fb}; font-size: 11px; color: ${T.moon};`;
+        chipRow.appendChild(dash);
+    } else {
+        modifiers.forEach(m => chipRow.appendChild(buildMicromodModifierChip(m)));
+    }
+    chipRow.appendChild(buildMicromodAddModifierChip(group));
+    wrap.appendChild(chipRow);
+    return wrap;
+}
+
+function buildMicromodAddModifierChip(group) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.textContent = '+ ADD MODIFIER';
+    chip.style.cssText = `
+        background: transparent;
+        border: 1px dashed ${hexToRgba(T.lavender, 0.6)};
+        border-radius: 5px;
+        padding: 3px 9px;
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: ${T.lavender};
+        cursor: pointer;
+        outline: none;
+    `;
+    chip.addEventListener('click', () => {
+        const currentIds = (group.modifiers || []).map(m => m.modifier_id);
+        openModifierPickerInline(chip, currentIds, async (modifierId) => {
+            try {
+                await apiPost(
+                    `/api/v1/modifier-groups/${encodeURIComponent(group.group_id)}` +
+                    `/modifiers/${encodeURIComponent(modifierId)}`,
+                );
+                await refreshAll();
+                showToast('Modifier added to group');
+            } catch (e) {
+                showToast('Failed to add modifier', 'error');
+            }
+        });
+    });
+    return chip;
+}
+
+function buildMicromodModifierChip(modifier) {
+    const baseShadow = `0 4px 0 ${darkenHex(T.card, 0.35)}, inset 0 1px 0 rgba(255,255,255,0.08)`;
+    const chip = document.createElement('div');
+    chip.style.cssText = `
+        position: relative;
+        background: ${T.card};
+        border-radius: 10px;
+        padding: 6px 12px 6px 14px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: ${baseShadow};
+    `;
+
+    const accentBar = document.createElement('div');
+    accentBar.style.cssText = `
+        position: absolute;
+        left: 0;
+        top: 5px;
+        bottom: 5px;
+        width: 3px;
+        border-radius: 0 2px 2px 0;
+        background: ${T.lavender};
+        box-shadow: 0 0 6px ${hexToRgba(T.lavender, 0.5)};
+    `;
+    chip.appendChild(accentBar);
+
+    const nameEl = document.createElement('span');
+    nameEl.textContent = modifier.name || modifier.modifier_id;
+    nameEl.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 12px;
+        font-weight: 600;
+        color: ${T.lavender};
+    `;
+    chip.appendChild(nameEl);
+    return chip;
+}
+
+/* ------------------------------------------
+   MICROMOD HELPERS
+------------------------------------------ */
+function isMicromodGroup(g) {
+    if (!g || g.hidden) return false;
+    const t = (g.template_id || '').toLowerCase();
+    return t === 'micromod' || t.includes('micromod') || g.is_micromod === true;
+}
+
+function attachesToModifierIds(group) {
+    if (Array.isArray(group.attaches_to_modifier_ids) && group.attaches_to_modifier_ids.length) {
+        return group.attaches_to_modifier_ids.slice();
+    }
+    // Derive from MicroMod records: a MicroMod whose name matches this group's
+    // name links its modifier_id to the group as an attachment.
+    const groupName = (group.name || '').trim().toLowerCase();
+    if (!groupName) return [];
+    const ids = new Set();
+    (_state.micromods || []).forEach(mm => {
+        if ((mm.name || '').trim().toLowerCase() === groupName && mm.modifier_id) {
+            ids.add(mm.modifier_id);
+        }
+    });
+    return [...ids];
+}
+
+function modifierNameById(id) {
+    if (!id) return null;
+    for (const g of _state.groups) {
+        const found = (g.modifiers || []).find(m => m.modifier_id === id);
+        if (found) return found.name;
+    }
+    for (const g of _state.micromodGroups) {
+        const found = (g.modifiers || []).find(m => m.modifier_id === id);
+        if (found) return found.name;
+    }
+    return null;
+}
+
+/* ============================================
    RENDER + LIFECYCLE
 ============================================ */
+function buildModTab() {
+    const row = document.createElement('div');
+    row.style.cssText = `
+        display: flex;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+        gap: 14px;
+        padding: 14px;
+        align-items: stretch;
+    `;
+    row.appendChild(buildLeftPanel());
+    row.appendChild(buildRightPanel());
+    return row;
+}
+
+/* ============================================
+   OPTION GROUPS TAB
+============================================ */
+function buildOptionGroupTab() {
+    const wrap = document.createElement('div');
+    wrap.className = 'kindpos-scrollbar-hide';
+    wrap.style.cssText = `
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        padding: 14px;
+        box-sizing: border-box;
+    `;
+
+    // Full-width "+ Add Option Group" mint pill.
+    const addBtn = buildPillButton('+ Add Option Group', 'confirm', () => {
+        _state.addingOptionGroup = true;
+        rebuild();
+    }, { fullWidth: true });
+    addBtn.style.marginBottom = '14px';
+    wrap.appendChild(addBtn);
+
+    if (_state.addingOptionGroup) {
+        wrap.appendChild(buildOptionGroupAddPanel());
+    }
+
+    const list = document.createElement('div');
+    list.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
+
+    if (_state.loadError) {
+        list.appendChild(buildErrorState(() => refreshAll()));
+    } else if (_state.optionGroups.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = 'No option groups yet — tap + Add';
+        empty.style.cssText = `
+            padding: 32px 0;
+            text-align: center;
+            font-family: ${T.fb};
+            font-size: 11px;
+            color: ${T.moon};
+        `;
+        list.appendChild(empty);
+    } else {
+        _state.optionGroups.forEach(og => list.appendChild(buildOptionGroupCard(og)));
+    }
+    wrap.appendChild(list);
+    return wrap;
+}
+
+function buildOptionGroupAddPanel() {
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        background: ${hexToRgba(T.lavender, 0.08)};
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    `;
+
+    const heading = document.createElement('div');
+    heading.textContent = 'NEW OPTION GROUP';
+    heading.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        color: ${T.lavender};
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+    `;
+    panel.appendChild(heading);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'e.g. Pizza Toppings';
+    input.style.cssText = `
+        padding: 7px 10px;
+        background: ${T.bg};
+        border: 1px solid ${hexToRgba(T.border, 0.5)};
+        border-radius: ${T.chamferBtn}px;
+        color: ${T.text};
+        font-family: ${T.fb};
+        font-size: 12px;
+        outline: none;
+        box-sizing: border-box;
+    `;
+    input.addEventListener('focus', () => { input.style.borderColor = T.lavender; });
+    input.addEventListener('blur', () => {
+        input.style.borderColor = hexToRgba(T.border, 0.5);
+    });
+    panel.appendChild(input);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
+    row.appendChild(buildPillButton('Cancel', 'tertiary', () => {
+        _state.addingOptionGroup = false;
+        rebuild();
+    }, { small: true }));
+    row.appendChild(buildPillButton('Create', 'confirm', async () => {
+        const name = input.value.trim();
+        if (!name) { showToast('Name is required', 'error'); return; }
+        try {
+            await apiPost('/api/v1/option-groups', { name, option_ids: [] });
+            _state.addingOptionGroup = false;
+            await refreshAll();
+            showToast('Option group created');
+        } catch (e) {
+            showToast('Failed to create option group', 'error');
+        }
+    }, { small: true }));
+    panel.appendChild(row);
+
+    return panel;
+}
+
+function buildOptionGroupCard(group) {
+    const card = buildStaticCard({ accent: T.lavender });
+    card.style.padding = '14px 18px 14px 20px';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+
+    // Row 1 — name + active toggle.
+    const row1 = document.createElement('div');
+    row1.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+
+    const nameEl = document.createElement('div');
+    nameEl.textContent = group.name || group.option_group_id;
+    nameEl.style.cssText = `
+        flex: 1;
+        font-family: ${T.fh};
+        font-size: 14px;
+        font-weight: 700;
+        color: ${T.text};
+    `;
+    row1.appendChild(nameEl);
+
+    const toggle = buildToggle(group.active !== false, async (v) => {
+        try {
+            if (v) {
+                await apiPatch(
+                    `/api/v1/option-groups/${encodeURIComponent(group.option_group_id)}`,
+                    { active: true },
+                );
+            } else {
+                if (!window.confirm(`Deactivate option group "${group.name || group.option_group_id}"?`)) {
+                    toggle.setValue(true);
+                    return;
+                }
+                await apiDelete(`/api/v1/option-groups/${encodeURIComponent(group.option_group_id)}`);
+            }
+            await refreshAll();
+        } catch (e) {
+            toggle.setValue(!v);
+            showToast('Failed to update option group', 'error');
+        }
+    });
+    row1.appendChild(toggle);
+    card.appendChild(row1);
+
+    // Row 2 — option chips with remove + an add-option picker.
+    const row2 = document.createElement('div');
+    row2.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center;';
+
+    const optionsById = new Map((_state.options || []).map(o => [o.option_id, o]));
+    const optionIds = group.option_ids || [];
+    if (optionIds.length === 0) {
+        const dash = document.createElement('span');
+        dash.textContent = 'no options';
+        dash.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 9px;
+            color: ${T.moon};
+            font-style: italic;
+        `;
+        row2.appendChild(dash);
+    } else {
+        optionIds.forEach(oid => {
+            const opt = optionsById.get(oid);
+            if (!opt) return;
+            row2.appendChild(buildOptionGroupChip(opt, async () => {
+                try {
+                    await apiDelete(
+                        `/api/v1/option-groups/${encodeURIComponent(group.option_group_id)}` +
+                        `/options/${encodeURIComponent(oid)}`,
+                    );
+                    await refreshAll();
+                } catch (e) {
+                    showToast('Failed to remove option', 'error');
+                }
+            }));
+        });
+    }
+
+    row2.appendChild(buildOptionGroupAddOptionControl(group));
+    card.appendChild(row2);
+
+    // Row 3 — "Used by:" line.
+    const row3 = document.createElement('div');
+    row3.style.cssText = 'margin-top: 6px;';
+
+    const usedByLabel = document.createElement('span');
+    usedByLabel.textContent = 'Used by: ';
+    usedByLabel.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 9px;
+        color: ${T.moon};
+    `;
+    row3.appendChild(usedByLabel);
+
+    const consumers = findGroupsUsingOptionGroup(group.option_group_id);
+    if (consumers.length === 0) {
+        const dash = document.createElement('span');
+        dash.textContent = '— unassigned —';
+        dash.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 9px;
+            color: ${T.moonDk};
+        `;
+        row3.appendChild(dash);
+    } else {
+        const names = document.createElement('span');
+        names.textContent = consumers.map(g => g.name || g.group_id).join(', ');
+        names.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 9px;
+            color: ${T.elec};
+        `;
+        row3.appendChild(names);
+    }
+    card.appendChild(row3);
+
+    return card;
+}
+
+function buildOptionGroupChip(option, onRemove) {
+    const negates = !!option.negates_price;
+    const baseColor = negates ? T.verm : T.lavender;
+    const adj = Number(option.price_adjustment || 0);
+
+    const chip = document.createElement('span');
+    chip.style.cssText = `
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: ${T.card};
+        color: ${baseColor};
+        border: 1px solid ${baseColor};
+        border-radius: 5px;
+        padding: 3px 9px;
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+    `;
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = option.name || option.option_id;
+    chip.appendChild(nameSpan);
+
+    if (adj !== 0) {
+        const adjSpan = document.createElement('span');
+        if (adj > 0) {
+            adjSpan.textContent = '+$' + adj.toFixed(2);
+            adjSpan.style.color = T.gold;
+        } else {
+            adjSpan.textContent = '−$' + Math.abs(adj).toFixed(2);
+            adjSpan.style.color = T.verm;
+        }
+        chip.appendChild(adjSpan);
+    }
+
+    if (onRemove) {
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.textContent = '×';
+        x.style.cssText = `
+            background: transparent;
+            border: none;
+            color: ${baseColor};
+            font-family: ${T.fb};
+            font-size: 12px;
+            line-height: 1;
+            padding: 0 2px;
+            margin-left: 2px;
+            cursor: pointer;
+            outline: none;
+        `;
+        x.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onRemove();
+        });
+        chip.appendChild(x);
+    }
+    return chip;
+}
+
+function buildOptionGroupAddOptionControl(group) {
+    const taken = new Set(group.option_ids || []);
+    const candidates = (_state.options || []).filter(
+        o => !taken.has(o.option_id) && o.active !== false,
+    );
+
+    const select = document.createElement('select');
+    select.style.cssText = `
+        appearance: none;
+        -webkit-appearance: none;
+        background: transparent;
+        border: 1px dashed ${hexToRgba(T.lavender, 0.6)};
+        border-radius: 5px;
+        padding: 3px 9px;
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: ${T.lavender};
+        cursor: pointer;
+        outline: none;
+    `;
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = candidates.length ? '+ ADD OPTION' : 'ALL OPTIONS ADDED';
+    placeholder.disabled = candidates.length === 0;
+    placeholder.selected = true;
+    select.appendChild(placeholder);
+
+    candidates.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.option_id;
+        opt.textContent = o.name || o.option_id;
+        select.appendChild(opt);
+    });
+
+    if (candidates.length === 0) select.disabled = true;
+
+    select.addEventListener('change', async () => {
+        const oid = select.value;
+        if (!oid) return;
+        try {
+            await apiPost(
+                `/api/v1/option-groups/${encodeURIComponent(group.option_group_id)}` +
+                `/options/${encodeURIComponent(oid)}`,
+            );
+            await refreshAll();
+        } catch (e) {
+            showToast('Failed to add option', 'error');
+            select.value = '';
+        }
+    });
+    return select;
+}
+
+function findGroupsUsingOptionGroup(ogId) {
+    if (!ogId) return [];
+    const consumers = [];
+    [..._state.groups, ..._state.micromodGroups].forEach(g => {
+        if (g.default_option_group_id === ogId) consumers.push(g);
+    });
+    return consumers;
+}
+
 function rebuild() {
-    if (!_state.wrapper) return;
-    _state.wrapper.replaceChildren();
-    _state.wrapper.appendChild(buildLeftPanel());
-    _state.wrapper.appendChild(buildRightPanel());
+    if (!_state.contentMount) return;
+    _state.contentMount.replaceChildren();
+    if (_state.activeTab === 'micromod') {
+        _state.contentMount.appendChild(buildMicromodTab());
+    } else if (_state.activeTab === 'optionGroup') {
+        _state.contentMount.appendChild(buildOptionGroupTab());
+    } else {
+        _state.contentMount.appendChild(buildModTab());
+    }
+    // Refresh tab bar so the active border updates.
+    if (_state.tabBarMount) {
+        _state.tabBarMount.replaceChildren(buildTabBar());
+    }
 }
 
 async function refreshAll() {
+    _state.loadError = false;
+    let groups, micromodGroups, optionGroups, options, sizes, micromods, items;
     try {
-        const [groups, optionGroups, options, sizes, micromods, items] = await Promise.all([
-            apiGetOptional('/api/v1/config/modifier-groups', []),
-            apiGetOptional('/api/v1/option-groups', []),
-            apiGetOptional('/api/v1/options', []),
+        [groups, micromodGroups, optionGroups, options, sizes, micromods, items] = await Promise.all([
+            apiGet('/api/v1/config/modifier-groups'),
+            apiGetOptional('/api/v1/modifier-groups?type=micromod', []),
+            apiGet('/api/v1/option-groups'),
+            apiGet('/api/v1/options'),
             apiGetOptional('/api/v1/sizes', []),
             apiGetOptional('/api/v1/config/micromods', []),
             apiGetOptional('/api/v1/config/menu/items', []),
         ]);
-        _state.groups = (groups || []).filter(g => !g.hidden);
+    } catch (e) {
+        console.error('[Modifiers] Refresh failed:', e);
+        _state.loadError = true;
+        _state.groups = [];
+        _state.micromodGroups = [];
+        _state.optionGroups = [];
+        _state.options = [];
+        _state.sizes = [];
+        _state.micromods = [];
+        _state.items = [];
+        rebuild();
+        return;
+    }
+    try {
+        _state.groups = (groups || []).filter(g => !g.hidden && !isMicromodGroup(g));
+        // If the backend honors ?type=micromod the response is the canonical
+        // list. If not (filter is silently ignored), filter the same payload
+        // by template_id on the client so the tab does not duplicate Mod Groups.
+        const micromodSource = (Array.isArray(micromodGroups) && micromodGroups.length)
+            ? micromodGroups
+            : (groups || []);
+        _state.micromodGroups = micromodSource.filter(g => !g.hidden && isMicromodGroup(g));
         _state.optionGroups = optionGroups || [];
         _state.options = options || [];
         _state.sizes = sizes || [];
@@ -1672,24 +2771,34 @@ async function refreshAll() {
 
 export function buildModifierGroupsScene(container) {
     _state.container = container;
+    _state.activeTab = 'mod';
     _state.selectedGroupId = null;
     _state.selectedModifierId = null;
     _state.showAddGroup = false;
+    _state.addingOptionGroup = false;
+    _state.editingGroupId = null;
+    _state.loadError = false;
 
     container.replaceChildren();
 
     _state.wrapper = document.createElement('div');
     _state.wrapper.style.cssText = `
         display: flex;
+        flex-direction: column;
         height: 100%;
         overflow: hidden;
-        gap: 14px;
-        padding: 14px;
         background: ${T.bg};
         box-sizing: border-box;
-        align-items: stretch;
     `;
     container.appendChild(_state.wrapper);
+
+    _state.tabBarMount = document.createElement('div');
+    _state.tabBarMount.appendChild(buildTabBar());
+    _state.wrapper.appendChild(_state.tabBarMount);
+
+    _state.contentMount = document.createElement('div');
+    _state.contentMount.style.cssText = 'flex: 1; min-height: 0; display: flex; flex-direction: column;';
+    _state.wrapper.appendChild(_state.contentMount);
 
     rebuild();
     refreshAll().catch(e => console.error('[Modifiers] Initial load failed:', e));
@@ -1699,7 +2808,11 @@ export function cleanupModifierGroups(container) {
     if (container) container.replaceChildren();
     _state.container = null;
     _state.wrapper = null;
+    _state.contentMount = null;
+    _state.tabBarMount = null;
+    _state.activeTab = 'mod';
     _state.groups = [];
+    _state.micromodGroups = [];
     _state.optionGroups = [];
     _state.options = [];
     _state.sizes = [];
@@ -1708,4 +2821,7 @@ export function cleanupModifierGroups(container) {
     _state.selectedGroupId = null;
     _state.selectedModifierId = null;
     _state.showAddGroup = false;
+    _state.addingOptionGroup = false;
+    _state.editingGroupId = null;
+    _state.loadError = false;
 }

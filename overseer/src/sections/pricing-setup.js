@@ -1,12 +1,11 @@
 /* ============================================
    KINDpos Overseer — Pricing Setup
 
-   Three tabs over the pricing-vocabulary primitives that
-   feed the modifier system:
-     1. Sizes          — GET/POST /api/v1/sizes
-     2. Options        — GET/POST /api/v1/options
-     3. Option Groups  — GET/POST /api/v1/option-groups
-                         + POST /api/v1/option-groups/{id}/options/{opt_id}
+   Sizes — GET/POST /api/v1/sizes
+
+   Options and Option Groups now live on other screens
+   (Modifiers and Groups respectively); Pricing Setup is
+   the Sizes vocabulary.
 
    Every visual value flows from common/tokens.js. No
    hardcoded hex anywhere in this file.
@@ -16,7 +15,6 @@ import { T } from '../../../common/tokens.js';
 import {
     buildStaticCard,
     hexToRgba,
-    darkenHex,
 } from '../../../common/theme.js';
 
 /* ------------------------------------------
@@ -25,18 +23,11 @@ import {
 const _state = {
     container: null,
     wrapper: null,
-    activeTab: 'sizes',         // 'sizes' | 'options' | 'option-groups'
     sizes: [],
-    options: [],
-    optionGroups: [],
     showAddForm: false,
+    editingSizeId: null,
+    loadError: false,
 };
-
-const TAB_DEFS = [
-    { id: 'sizes',          label: 'Sizes',          singular: 'Size'   },
-    { id: 'options',        label: 'Options',        singular: 'Option' },
-    { id: 'option-groups',  label: 'Option Groups',  singular: 'Group'  },
-];
 
 /* ------------------------------------------
    FORMATTERS / UTILS
@@ -48,19 +39,6 @@ function formatPriceAdjustment(n) {
     if (v > 0) return '+ ' + formatPrice(v);
     if (v < 0) return '− ' + formatPrice(Math.abs(v));
     return formatPrice(0);
-}
-
-function priceAccent(value, negates) {
-    if (negates) return T.verm;
-    if (Number(value || 0) !== 0) return T.gold;
-    return T.moon;
-}
-
-function priceColor(value, negates) {
-    if (negates) return T.verm;
-    const v = Number(value || 0);
-    if (v !== 0) return T.gold;
-    return T.moon;
 }
 
 /* ------------------------------------------
@@ -92,15 +70,7 @@ async function apiPatch(url, body) {
     return res.json();
 }
 
-async function apiDelete(url) {
-    const res = await fetch(url, { method: 'DELETE' });
-    if (!res.ok) throw new Error(`DELETE ${url} → ${res.status}`);
-    return res.json();
-}
-
-async function fetchSizes()        { return apiGet('/api/v1/sizes'); }
-async function fetchOptions()      { return apiGet('/api/v1/options'); }
-async function fetchOptionGroups() { return apiGet('/api/v1/option-groups'); }
+async function fetchSizes() { return apiGet('/api/v1/sizes'); }
 
 /* ------------------------------------------
    TOAST (uses tokens for color)
@@ -293,7 +263,7 @@ function buildBadge(text, color) {
 }
 
 /* ------------------------------------------
-   INFO BANNER — appears on every tab
+   INFO BANNER
 ------------------------------------------ */
 function buildInfoBanner(text) {
     const el = document.createElement('div');
@@ -312,90 +282,8 @@ function buildInfoBanner(text) {
     return el;
 }
 
-/* ------------------------------------------
-   MODIFIER TILE — small option chip used inside Option Groups.
-   Matches the buildActionCard visual pattern: depth-only,
-   no flat border anywhere.
------------------------------------------- */
-function buildOptionChip(option, opts = {}) {
-    const accent = priceAccent(option.price_adjustment, option.negates_price);
-
-    const el = document.createElement('div');
-    el.style.cssText = `
-        position: relative;
-        background: ${T.card};
-        border-radius: ${T.chamferBtn}px;
-        padding: 10px 14px 10px 18px;
-        box-shadow: 0 4px 0 ${darkenHex(T.card, 0.35)},
-                    inset 0 1px 0 rgba(255,255,255,0.08);
-        display: flex; align-items: center; gap: 10px;
-    `;
-
-    const bar = document.createElement('div');
-    bar.style.cssText = `
-        position: absolute;
-        left: 0; top: 6px; bottom: 6px;
-        width: 3px;
-        border-radius: 0 2px 2px 0;
-        background: ${accent};
-        box-shadow: 0 0 8px ${hexToRgba(accent, 0.5)};
-    `;
-    el.appendChild(bar);
-
-    const name = document.createElement('span');
-    name.textContent = option.name;
-    name.style.cssText = `
-        flex: 1;
-        font-family: ${T.fb};
-        font-size: ${T.fsB3};
-        font-weight: ${T.fwBold};
-        color: ${T.text};
-    `;
-    el.appendChild(name);
-
-    if (option.negates_price) {
-        el.appendChild(buildBadge('Negates', T.verm));
-    } else {
-        const v = Number(option.price_adjustment || 0);
-        const priceEl = document.createElement('span');
-        priceEl.textContent = formatPriceAdjustment(v);
-        priceEl.style.cssText = `
-            font-family: ${T.fb};
-            font-size: ${T.fsB4};
-            font-weight: ${T.fwBold};
-            color: ${priceColor(v, false)};
-        `;
-        el.appendChild(priceEl);
-    }
-
-    if (opts.onRemove) {
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.textContent = '×';
-        remove.style.cssText = `
-            background: transparent;
-            border: none;
-            color: ${T.moon};
-            font-size: ${T.fsB1};
-            line-height: 1;
-            padding: 0 4px;
-            cursor: pointer;
-            font-family: ${T.fb};
-        `;
-        remove.addEventListener('click', (e) => {
-            e.stopPropagation();
-            opts.onRemove();
-        });
-        remove.addEventListener('mouseenter', () => { remove.style.color = T.verm; });
-        remove.addEventListener('mouseleave', () => { remove.style.color = T.moon; });
-        el.appendChild(remove);
-    }
-
-    return el;
-}
-
 /* ============================================
-   PAGE FRAME — header, tab bar, body, info banner.
+   PAGE FRAME — header.
 ============================================ */
 
 function buildPageHeader(wrapper) {
@@ -429,8 +317,7 @@ function buildPageHeader(wrapper) {
     titleBlock.appendChild(sub);
     header.appendChild(titleBlock);
 
-    const activeDef = TAB_DEFS.find(t => t.id === _state.activeTab);
-    const addBtn = buildPillButton(`+ Add ${activeDef.singular}`, 'primary', () => {
+    const addBtn = buildPillButton('+ Add Size', 'primary', () => {
         _state.showAddForm = true;
         rebuild();
     });
@@ -440,55 +327,8 @@ function buildPageHeader(wrapper) {
     wrapper.appendChild(header);
 }
 
-function buildTabBar(wrapper) {
-    const bar = document.createElement('div');
-    bar.style.cssText = `
-        display: flex; gap: 4px;
-        margin-bottom: 18px;
-        border-bottom: 1px solid ${hexToRgba(T.border, 0.5)};
-    `;
-
-    TAB_DEFS.forEach(t => {
-        const isActive = _state.activeTab === t.id;
-        const tab = document.createElement('button');
-        tab.type = 'button';
-        tab.textContent = t.label;
-        tab.style.cssText = `
-            background: transparent;
-            border: none;
-            padding: 12px 22px;
-            font-family: ${T.fb};
-            font-size: ${T.fsB3};
-            font-weight: ${T.fwBold};
-            letter-spacing: 0.04em;
-            color: ${isActive ? T.elec : T.moon};
-            cursor: pointer;
-            position: relative;
-            border-bottom: 2px solid ${isActive ? T.elec : 'transparent'};
-            margin-bottom: -1px;
-            transition: color 0.15s ease, border-color 0.15s ease;
-        `;
-        tab.addEventListener('mouseenter', () => {
-            if (!isActive) tab.style.color = T.text;
-        });
-        tab.addEventListener('mouseleave', () => {
-            if (!isActive) tab.style.color = T.moon;
-        });
-        tab.addEventListener('click', () => {
-            if (_state.activeTab !== t.id) {
-                _state.activeTab = t.id;
-                _state.showAddForm = false;
-                rebuild();
-            }
-        });
-        bar.appendChild(tab);
-    });
-
-    wrapper.appendChild(bar);
-}
-
 /* ============================================
-   TAB 1 — SIZES
+   SIZES
 ============================================ */
 
 function buildSizesTab(content) {
@@ -496,11 +336,16 @@ function buildSizesTab(content) {
         'Sizes scale item base prices. A positive Price Adjustment is added on top of the item price for that size.'
     ));
 
+    if (_state.loadError) {
+        content.appendChild(buildErrorState(() => refreshSizes()));
+        return;
+    }
+
     const list = document.createElement('div');
     list.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
 
     if (_state.sizes.length === 0) {
-        list.appendChild(buildEmptyState('No sizes yet — tap + Add Size to begin'));
+        list.appendChild(buildEmptyState('No sizes yet — tap + Add Size'));
     } else {
         _state.sizes.forEach(size => list.appendChild(buildSizeCard(size)));
     }
@@ -517,6 +362,11 @@ function buildSizeCard(size) {
         accent: adj > 0 ? T.gold : T.moon,
     });
     card.style.padding = '14px 18px 14px 22px';
+
+    if (_state.editingSizeId === size.size_id) {
+        card.appendChild(buildSizeEditForm(size));
+        return card;
+    }
 
     const row = document.createElement('div');
     row.style.cssText = `
@@ -567,7 +417,7 @@ function buildSizeCard(size) {
     const toggle = buildToggle(size.active !== false, async (next) => {
         try {
             await apiPatch(`/api/v1/sizes/${encodeURIComponent(size.size_id)}`, { active: next });
-            await refreshActiveTab();
+            await refreshSizes();
         } catch (e) {
             toggle.setValue(!next);
             showToast('Failed to update size', 'error');
@@ -576,12 +426,80 @@ function buildSizeCard(size) {
     row.appendChild(toggle);
 
     const editBtn = buildPillButton('Edit', 'ghost', () => {
-        showToast('Edit coming soon', 'ok');
+        _state.editingSizeId = size.size_id;
+        _state.showAddForm = false;
+        rebuild();
     }, { small: true });
     row.appendChild(editBtn);
 
     card.appendChild(row);
     return card;
+}
+
+function buildSizeEditForm(size) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
+
+    const heading = document.createElement('div');
+    heading.textContent = `Edit ${size.name}`;
+    heading.style.cssText = `
+        font-family: ${T.fb};
+        font-size: ${T.fsB3};
+        font-weight: ${T.fwBold};
+        color: ${T.elec};
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    `;
+    wrap.appendChild(heading);
+
+    const nameInput = buildTextInput(size.name || '', { placeholder: 'Size name' });
+    const priceInput = buildTextInput(
+        Number(size.price_adjustment || 0).toString(),
+        { type: 'number', step: '0.01' },
+    );
+
+    const fields = document.createElement('div');
+    fields.style.cssText = 'display: grid; grid-template-columns: 1fr 160px; gap: 10px;';
+    fields.appendChild(nameInput);
+    fields.appendChild(priceInput);
+    wrap.appendChild(fields);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = `
+        display: flex; gap: 10px; justify-content: flex-end;
+        padding-top: 10px;
+        border-top: 1px solid ${hexToRgba(T.border, 0.5)};
+    `;
+    actions.appendChild(buildPillButton('Cancel', 'tertiary', () => {
+        _state.editingSizeId = null;
+        rebuild();
+    }, { small: true }));
+    actions.appendChild(buildPillButton('Save', 'confirm', async () => {
+        const newName = nameInput.value.trim();
+        const newAdj = parseFloat(priceInput.value);
+        if (!newName) { showToast('Name is required', 'error'); return; }
+        const body = {};
+        if (newName !== (size.name || '')) body.name = newName;
+        if (!isNaN(newAdj) && Math.abs(newAdj - Number(size.price_adjustment || 0)) >= 0.005) {
+            body.price_adjustment = newAdj;
+        }
+        if (Object.keys(body).length === 0) {
+            _state.editingSizeId = null;
+            rebuild();
+            return;
+        }
+        try {
+            await apiPatch(`/api/v1/sizes/${encodeURIComponent(size.size_id)}`, body);
+            _state.editingSizeId = null;
+            await refreshSizes();
+            showToast('Size saved');
+        } catch (e) {
+            showToast('Failed to save size', 'error');
+        }
+    }, { small: true }));
+    wrap.appendChild(actions);
+
+    return wrap;
 }
 
 function buildSizeAddForm() {
@@ -601,7 +519,7 @@ function buildSizeAddForm() {
                 price_adjustment: parseFloat(priceInput.value) || 0,
             });
             _state.showAddForm = false;
-            await refreshActiveTab();
+            await refreshSizes();
             showToast('Size added');
         } catch (e) {
             showToast('Failed to create size', 'error');
@@ -611,396 +529,9 @@ function buildSizeAddForm() {
     return form;
 }
 
-/* ============================================
-   TAB 2 — OPTIONS
-============================================ */
-
-function buildOptionsTab(content) {
-    content.appendChild(buildInfoBanner(
-        'Options are reusable pricing modifiers. A negating option zeros out the base price (e.g. "No Cheese" on a Pizza topping).'
-    ));
-
-    const list = document.createElement('div');
-    list.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
-
-    if (_state.options.length === 0) {
-        list.appendChild(buildEmptyState('No options yet — tap + Add Option to begin'));
-    } else {
-        _state.options.forEach(option => list.appendChild(buildOptionCard(option)));
-    }
-    content.appendChild(list);
-
-    if (_state.showAddForm) {
-        content.appendChild(buildOptionAddForm());
-    }
-}
-
-function buildOptionCard(option) {
-    const adj = Number(option.price_adjustment || 0);
-    const accent = priceAccent(adj, option.negates_price);
-    const card = buildStaticCard({ accent });
-    card.style.padding = '14px 18px 14px 22px';
-
-    const row = document.createElement('div');
-    row.style.cssText = `
-        display: flex; align-items: center; gap: 14px;
-        flex-wrap: wrap;
-    `;
-
-    const nameBlock = document.createElement('div');
-    nameBlock.style.cssText = 'flex: 1; min-width: 160px;';
-
-    const name = document.createElement('div');
-    name.textContent = option.name;
-    name.style.cssText = `
-        font-family: ${T.fb};
-        font-size: ${T.fsB3};
-        font-weight: ${T.fwBold};
-        color: ${T.text};
-        margin-bottom: 4px;
-    `;
-    nameBlock.appendChild(name);
-
-    const sub = document.createElement('div');
-    sub.style.cssText = `
-        font-family: ${T.fb};
-        font-size: ${T.fsB4};
-        color: ${priceColor(adj, option.negates_price)};
-    `;
-    sub.textContent = option.negates_price
-        ? 'Zeros the base price'
-        : (adj === 0 ? 'No price change' : formatPriceAdjustment(adj));
-    nameBlock.appendChild(sub);
-
-    row.appendChild(nameBlock);
-
-    if (option.negates_price) {
-        row.appendChild(buildBadge('Negates', T.verm));
-    }
-
-    const toggle = buildToggle(option.active !== false, async (next) => {
-        try {
-            await apiPatch(`/api/v1/options/${encodeURIComponent(option.option_id)}`, { active: next });
-            await refreshActiveTab();
-        } catch (e) {
-            toggle.setValue(!next);
-            showToast('Failed to update option', 'error');
-        }
-    });
-    row.appendChild(toggle);
-
-    const editBtn = buildPillButton('Edit', 'ghost', () => {
-        showToast('Edit coming soon', 'ok');
-    }, { small: true });
-    row.appendChild(editBtn);
-
-    card.appendChild(row);
-    return card;
-}
-
-function buildOptionAddForm() {
-    const form = buildAddFormShell('Add Option');
-
-    const nameInput = buildField(form, 'Name *', buildTextInput('', { placeholder: 'e.g. Pepperoni, No Cheese…' }));
-    const priceInput = buildField(form, 'Price Adjustment',
-        buildTextInput('0', { type: 'number', step: '0.01' }),
-        'Decimal — applied when this option is selected');
-
-    // Negates Price toggle row
-    const toggleRow = document.createElement('div');
-    toggleRow.style.cssText = `
-        display: flex; align-items: center; gap: 14px;
-        padding: 12px 14px;
-        background: ${T.well};
-        border-radius: ${T.chamferBtn}px;
-        margin-bottom: 14px;
-    `;
-    const toggleLabel = document.createElement('div');
-    toggleLabel.style.cssText = 'flex: 1;';
-    const toggleLabelTitle = document.createElement('div');
-    toggleLabelTitle.textContent = 'Negates Price';
-    toggleLabelTitle.style.cssText = `
-        font-family: ${T.fb};
-        font-size: ${T.fsB3};
-        font-weight: ${T.fwBold};
-        color: ${T.text};
-        margin-bottom: 2px;
-    `;
-    const toggleLabelHint = document.createElement('div');
-    toggleLabelHint.textContent = 'Zeros out the base price (e.g. "No Cheese")';
-    toggleLabelHint.style.cssText = `
-        font-family: ${T.fb};
-        font-size: ${T.fsB4};
-        color: ${T.moon};
-    `;
-    toggleLabel.appendChild(toggleLabelTitle);
-    toggleLabel.appendChild(toggleLabelHint);
-    toggleRow.appendChild(toggleLabel);
-    const negatesToggle = buildToggle(false, () => {});
-    toggleRow.appendChild(negatesToggle);
-    form.appendChild(toggleRow);
-
-    buildFormActions(form, async () => {
-        const name = nameInput.value.trim();
-        if (!name) { showToast('Name is required', 'error'); return; }
-        try {
-            await apiPost('/api/v1/options', {
-                name,
-                price_adjustment: parseFloat(priceInput.value) || 0,
-                negates_price: negatesToggle.getValue(),
-            });
-            _state.showAddForm = false;
-            await refreshActiveTab();
-            showToast('Option added');
-        } catch (e) {
-            showToast('Failed to create option', 'error');
-        }
-    });
-
-    return form;
-}
-
-/* ============================================
-   TAB 3 — OPTION GROUPS
-============================================ */
-
-function buildOptionGroupsTab(content) {
-    content.appendChild(buildInfoBanner(
-        'Option Groups bundle related options for reuse — e.g. a "Pizza Toppings" group containing Pepperoni, Mushrooms, Olives.'
-    ));
-
-    const list = document.createElement('div');
-    list.style.cssText = 'display: flex; flex-direction: column; gap: 14px;';
-
-    if (_state.optionGroups.length === 0) {
-        list.appendChild(buildEmptyState('No option groups yet — tap + Add Group to begin'));
-    } else {
-        _state.optionGroups.forEach(group => list.appendChild(buildOptionGroupCard(group)));
-    }
-    content.appendChild(list);
-
-    if (_state.showAddForm) {
-        content.appendChild(buildOptionGroupAddForm());
-    }
-}
-
-function buildOptionGroupCard(group) {
-    const card = buildStaticCard({ accent: T.green });
-    card.style.padding = '16px 18px 14px 22px';
-
-    // Header row — name, count badge, toggle, edit button
-    const headerRow = document.createElement('div');
-    headerRow.style.cssText = `
-        display: flex; align-items: center; gap: 14px;
-        margin-bottom: 12px;
-        flex-wrap: wrap;
-    `;
-
-    const nameBlock = document.createElement('div');
-    nameBlock.style.cssText = 'flex: 1; min-width: 160px;';
-    const name = document.createElement('div');
-    name.textContent = group.name;
-    name.style.cssText = `
-        font-family: ${T.fb};
-        font-size: ${T.fsB3};
-        font-weight: ${T.fwBold};
-        color: ${T.text};
-    `;
-    nameBlock.appendChild(name);
-    headerRow.appendChild(nameBlock);
-
-    const optionIds = group.option_ids || [];
-    const countBadge = buildBadge(
-        `${optionIds.length} option${optionIds.length === 1 ? '' : 's'}`,
-        T.green,
-    );
-    headerRow.appendChild(countBadge);
-
-    const toggle = buildToggle(group.active !== false, async (next) => {
-        try {
-            await apiPatch(`/api/v1/option-groups/${encodeURIComponent(group.option_group_id)}`, { active: next });
-            await refreshActiveTab();
-        } catch (e) {
-            toggle.setValue(!next);
-            showToast('Failed to update group', 'error');
-        }
-    });
-    headerRow.appendChild(toggle);
-
-    const editBtn = buildPillButton('Edit', 'ghost', () => {
-        showToast('Edit coming soon', 'ok');
-    }, { small: true });
-    headerRow.appendChild(editBtn);
-
-    card.appendChild(headerRow);
-
-    // Mini option chips inside the group
-    const optionsList = document.createElement('div');
-    optionsList.style.cssText = `
-        display: flex; flex-direction: column; gap: 8px;
-        margin-bottom: 12px;
-    `;
-
-    const optionsById = new Map(_state.options.map(o => [o.option_id, o]));
-    if (optionIds.length === 0) {
-        const empty = document.createElement('div');
-        empty.textContent = 'No options yet';
-        empty.style.cssText = `
-            font-family: ${T.fb};
-            font-size: ${T.fsB4};
-            color: ${T.moon};
-            font-style: italic;
-            padding: 6px 0;
-        `;
-        optionsList.appendChild(empty);
-    } else {
-        optionIds.forEach(oid => {
-            const opt = optionsById.get(oid);
-            if (!opt) return;
-            optionsList.appendChild(buildOptionChip(opt, {
-                onRemove: async () => {
-                    try {
-                        await apiDelete(`/api/v1/option-groups/${encodeURIComponent(group.option_group_id)}/options/${encodeURIComponent(oid)}`);
-                        await refreshActiveTab();
-                    } catch (e) {
-                        showToast('Failed to remove option', 'error');
-                    }
-                },
-            }));
-        });
-    }
-    card.appendChild(optionsList);
-
-    // + Add Option link / inline picker
-    card.appendChild(buildAddOptionPicker(group));
-
-    return card;
-}
-
-function buildAddOptionPicker(group) {
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'margin-top: 4px;';
-
-    let pickerOpen = false;
-    let pickerEl = null;
-
-    const link = document.createElement('button');
-    link.type = 'button';
-    link.textContent = '+ Add Option';
-    link.style.cssText = `
-        background: transparent;
-        border: none;
-        padding: 4px 0;
-        font-family: ${T.fb};
-        font-size: ${T.fsB4};
-        font-weight: ${T.fwBold};
-        color: ${T.elec};
-        cursor: pointer;
-        letter-spacing: 0.04em;
-    `;
-    link.addEventListener('click', () => {
-        pickerOpen = !pickerOpen;
-        renderPicker();
-    });
-    wrap.appendChild(link);
-
-    const pickerSlot = document.createElement('div');
-    wrap.appendChild(pickerSlot);
-
-    function renderPicker() {
-        pickerSlot.replaceChildren();
-        if (!pickerOpen) return;
-
-        const taken = new Set(group.option_ids || []);
-        const candidates = _state.options.filter(o => !taken.has(o.option_id) && o.active !== false);
-
-        pickerEl = document.createElement('div');
-        pickerEl.style.cssText = `
-            margin-top: 10px;
-            padding: 12px;
-            background: ${T.well};
-            border-radius: ${T.chamferBtn}px;
-            display: flex; flex-wrap: wrap; gap: 8px;
-        `;
-
-        if (candidates.length === 0) {
-            const empty = document.createElement('div');
-            empty.textContent = 'All options are already in this group';
-            empty.style.cssText = `
-                font-family: ${T.fb};
-                font-size: ${T.fsB4};
-                color: ${T.moon};
-                padding: 4px 8px;
-            `;
-            pickerEl.appendChild(empty);
-        } else {
-            candidates.forEach(opt => {
-                const accent = priceAccent(opt.price_adjustment, opt.negates_price);
-                const chip = document.createElement('button');
-                chip.type = 'button';
-                chip.textContent = opt.name;
-                chip.style.cssText = `
-                    padding: 6px 12px;
-                    background: transparent;
-                    border: 1px solid ${accent};
-                    border-radius: 999px;
-                    font-family: ${T.fb};
-                    font-size: ${T.fsB4};
-                    font-weight: ${T.fwBold};
-                    color: ${accent};
-                    cursor: pointer;
-                    transition: background 0.15s ease, color 0.15s ease;
-                `;
-                chip.addEventListener('mouseenter', () => {
-                    chip.style.background = hexToRgba(accent, 0.16);
-                });
-                chip.addEventListener('mouseleave', () => {
-                    chip.style.background = 'transparent';
-                });
-                chip.addEventListener('click', async () => {
-                    chip.disabled = true;
-                    try {
-                        await apiPost(`/api/v1/option-groups/${encodeURIComponent(group.option_group_id)}/options/${encodeURIComponent(opt.option_id)}`);
-                        await refreshActiveTab();
-                    } catch (e) {
-                        chip.disabled = false;
-                        showToast('Failed to add option', 'error');
-                    }
-                });
-                pickerEl.appendChild(chip);
-            });
-        }
-        pickerSlot.appendChild(pickerEl);
-    }
-
-    return wrap;
-}
-
-function buildOptionGroupAddForm() {
-    const form = buildAddFormShell('Add Option Group');
-
-    const nameInput = buildField(form, 'Name *',
-        buildTextInput('', { placeholder: 'e.g. Pizza Toppings, Drink Sizes…' }));
-
-    buildFormActions(form, async () => {
-        const name = nameInput.value.trim();
-        if (!name) { showToast('Name is required', 'error'); return; }
-        try {
-            await apiPost('/api/v1/option-groups', { name, option_ids: [] });
-            _state.showAddForm = false;
-            await refreshActiveTab();
-            showToast('Option group added');
-        } catch (e) {
-            showToast('Failed to create group', 'error');
-        }
-    });
-
-    return form;
-}
-
 /* ------------------------------------------
    FORM PRIMITIVES — shared shell for the
-   inline Add forms across all three tabs.
+   inline Add form.
 ------------------------------------------ */
 
 function buildAddFormShell(title) {
@@ -1090,6 +621,25 @@ function buildEmptyState(text) {
     return el;
 }
 
+/* ------------------------------------------
+   ERROR STATE — clickable to retry
+------------------------------------------ */
+function buildErrorState(retry) {
+    const el = document.createElement('div');
+    el.textContent = 'Failed to load — tap to retry';
+    el.style.cssText = `
+        padding: 40px 20px;
+        text-align: center;
+        font-family: ${T.fb};
+        font-size: ${T.fsB3};
+        color: ${T.verm};
+        cursor: pointer;
+        letter-spacing: 0.08em;
+    `;
+    el.addEventListener('click', retry);
+    return el;
+}
+
 /* ============================================
    RENDER + LIFECYCLE
 ============================================ */
@@ -1099,45 +649,32 @@ function rebuild() {
     _state.wrapper.replaceChildren();
 
     buildPageHeader(_state.wrapper);
-    buildTabBar(_state.wrapper);
 
     const content = document.createElement('div');
     content.style.cssText = 'min-height: 240px;';
     _state.wrapper.appendChild(content);
 
-    if (_state.activeTab === 'sizes')              buildSizesTab(content);
-    else if (_state.activeTab === 'options')       buildOptionsTab(content);
-    else if (_state.activeTab === 'option-groups') buildOptionGroupsTab(content);
+    buildSizesTab(content);
 }
 
-async function refreshActiveTab() {
+async function refreshSizes() {
+    _state.loadError = false;
     try {
-        if (_state.activeTab === 'sizes') {
-            _state.sizes = await fetchSizes();
-        } else if (_state.activeTab === 'options') {
-            _state.options = await fetchOptions();
-        } else if (_state.activeTab === 'option-groups') {
-            // Option groups need both lists — render mini option chips by id.
-            const [groups, options] = await Promise.all([
-                fetchOptionGroups(),
-                fetchOptions(),
-            ]);
-            _state.optionGroups = groups;
-            _state.options = options;
-        }
+        _state.sizes = await fetchSizes();
     } catch (e) {
         console.error('[PricingSetup] Refresh failed:', e);
+        _state.loadError = true;
+        _state.sizes = [];
     }
     rebuild();
 }
 
 export function buildPricingSetupScene(container) {
     _state.container = container;
-    _state.activeTab = 'sizes';
     _state.showAddForm = false;
+    _state.editingSizeId = null;
+    _state.loadError = false;
     _state.sizes = [];
-    _state.options = [];
-    _state.optionGroups = [];
 
     container.replaceChildren();
 
@@ -1152,7 +689,7 @@ export function buildPricingSetupScene(container) {
     container.appendChild(_state.wrapper);
 
     rebuild();
-    refreshActiveTab().catch(e => console.error('[PricingSetup] Initial load failed:', e));
+    refreshSizes().catch(e => console.error('[PricingSetup] Initial load failed:', e));
 }
 
 export function cleanupPricingSetup(container) {
@@ -1160,7 +697,7 @@ export function cleanupPricingSetup(container) {
     _state.container = null;
     _state.wrapper = null;
     _state.sizes = [];
-    _state.options = [];
-    _state.optionGroups = [];
     _state.showAddForm = false;
+    _state.editingSizeId = null;
+    _state.loadError = false;
 }

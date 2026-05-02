@@ -187,7 +187,7 @@ function buildBlockerBanner(state, startTime) {
   title.textContent = blockerCount + ' BLOCKER' + (blockerCount > 1 ? 'S' : '') + ' \u2014 RESOLVE TO CHECK OUT';
 
   var summary = document.createElement('div');
-  summary.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.text + ';';
+  summary.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
   var parts = [];
   if (state.openChecks.length > 0) parts.push(state.openChecks.length + ' open check' + (state.openChecks.length > 1 ? 's' : ''));
   if (state.unadjustedChecks.length > 0) parts.push(state.unadjustedChecks.length + ' unadjusted CC tip' + (state.unadjustedChecks.length > 1 ? 's' : ''));
@@ -203,7 +203,7 @@ function buildBlockerBanner(state, startTime) {
     'background:' + T.well + ';',
     'font-family:' + T.fb + ';font-size:' + FS_META + ';color:' + T.lavender + ';',
     'letter-spacing:0.5px;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   timer.dataset.flsa = '1';
   timer.textContent = 'still on the clock \u2022 0m 00s';
   var startedAt = startTime || Date.now();
@@ -261,12 +261,12 @@ function renderCheckPreview(paper, checks, allOrders) {
     if (isMulti) {
       // Sub-header per check — check label + server in smaller type
       var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.5px;margin-top:' + (idx === 0 ? '0' : '8px') + ';margin-bottom:2px;';
+      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.5px;margin-top:' + (idx === 0 ? '0' : '8px') + ';margin-bottom:2px;' + ";font-weight:" + T.fwBold + ";";
       sub.textContent = (chk.checkLabel || chk.checkId) + (fullOrder && fullOrder.server_name ? ' \u00B7 ' + fullOrder.server_name.split(' ')[0].toUpperCase() : '');
       paper.appendChild(sub);
     } else if (fullOrder && fullOrder.server_name) {
       var srvLbl = document.createElement('div');
-      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';letter-spacing:0.5px;margin-bottom:4px;';
+      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';letter-spacing:0.5px;margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
       srvLbl.textContent = fullOrder.server_name.toUpperCase();
       paper.appendChild(srvLbl);
     }
@@ -274,7 +274,7 @@ function renderCheckPreview(paper, checks, allOrders) {
     // Meta row (only for single — collapsed on multi to save space)
     if (!isMulti) {
       var metaRow = document.createElement('div');
-      metaRow.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';margin-bottom:4px;';
+      metaRow.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
       var mL = document.createElement('span');
       mL.textContent = chk.guests ? (chk.guests + ' guest' + (chk.guests > 1 ? 's' : '')) : '\u00A0';
       var mR = document.createElement('span');
@@ -288,7 +288,7 @@ function renderCheckPreview(paper, checks, allOrders) {
 
     if (items.length === 0) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;padding:6px 0;';
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;padding:6px 0;' + ";font-weight:" + T.fwBold + ";";
       empty.textContent = isMulti ? 'no items' : 'no items on this check';
       paper.appendChild(empty);
     } else {
@@ -302,10 +302,10 @@ function renderCheckPreview(paper, checks, allOrders) {
           'padding:3px 0;border-bottom:1px solid ' + hexToRgba(T.text, 0.06) + ';',
         ].join('');
         var nm = document.createElement('span');
-        nm.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';';
+        nm.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
         nm.textContent = (item.qty && item.qty > 1 ? item.qty + '\u00D7 ' : '') + (item.name || 'Item');
         var pr = document.createElement('span');
-        pr.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;';
+        pr.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;' + ";font-weight:" + T.fwBold + ";";
         pr.textContent = fmt((item.price || 0) * (item.qty || 1));
         row.appendChild(nm);
         row.appendChild(pr);
@@ -313,7 +313,7 @@ function renderCheckPreview(paper, checks, allOrders) {
       });
       if (items.length > showCap) {
         var more = document.createElement('div');
-        more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + hexToRgba(T.text, 0.6) + ';padding-top:2px;opacity:0.6;';
+        more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + hexToRgba(T.text, 0.6) + ';padding-top:2px;opacity:0.6;' + ";font-weight:" + T.fwBold + ";";
         more.textContent = '+ ' + (items.length - showCap) + ' more';
         paper.appendChild(more);
       }
@@ -401,7 +401,7 @@ function buildLeftCol(state, handlers) {
   heroValue.textContent = fmt(state.takeHome);
 
   var heroMeta = document.createElement('div');
-  heroMeta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  heroMeta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   heroMeta.textContent = 'tips − tipout';
 
   heroWrap.appendChild(heroLabel);
@@ -443,7 +443,7 @@ function buildLeftCol(state, handlers) {
     roleName.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
     roleName.textContent = r.role || r.name || 'Role';
     var basis = document.createElement('div');
-    basis.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.moon + ';';
+    basis.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
     basis.textContent = (r.percentage || 0) + '% · ' + (r.category || r.basis || 'Net Sales');
     var ruleAmt = document.createElement('div');
     ruleAmt.style.cssText = 'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.verm + ';';
@@ -567,7 +567,7 @@ function buildLeftCol(state, handlers) {
   cfMath.style.cssText = [
     'display:flex;flex-direction:row;gap:6px;align-items:baseline;',
     'font-family:' + T.fb + ';font-size:11px;',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
 
   [
     { text: fmt(state.cashSales), color: T.text, bold: true },
@@ -786,14 +786,14 @@ function _buildActiveCheckRow(chk, handlers, isSelected) {
   top.appendChild(checkLbl);
   if (chk.tableLabel) {
     var tableLbl = document.createElement('span');
-    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';';
+    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
     tableLbl.textContent = chk.tableLabel;
     top.appendChild(tableLbl);
   }
   info.appendChild(top);
 
   var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   var metaParts = [];
   if (chk.guests) metaParts.push(chk.guests + ' guest' + (chk.guests > 1 ? 's' : ''));
   if (chk.time) metaParts.push('opened ' + chk.time);
@@ -835,14 +835,14 @@ function _buildClosedCheckRow(chk, handlers) {
   top.appendChild(checkLbl);
   if (chk.tableLabel) {
     var tableLbl = document.createElement('span');
-    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';';
+    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
     tableLbl.textContent = chk.tableLabel;
     top.appendChild(tableLbl);
   }
   info.appendChild(top);
 
   var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';';
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
   var metaParts = [];
   if (chk.time) metaParts.push('closed ' + chk.time);
   if (chk.tip != null) metaParts.push('tip ' + fmt(chk.tip));
@@ -858,7 +858,7 @@ function _buildClosedCheckRow(chk, handlers) {
     isCard
       ? 'background:' + hexToRgba(T.elec, 0.12) + ';color:' + T.elec + ';'
       : 'background:' + hexToRgba(T.greenWarm, 0.12) + ';color:' + T.greenWarm + ';',
-  ].join('');
+  ].join('') + ";font-weight:" + T.fwBold + ";";
   tag.textContent = isCard
     ? (chk.cardBrand || 'Card') + (chk.cardLast4 ? ' ··· ' + chk.cardLast4 : '')
     : 'Cash';
@@ -959,7 +959,7 @@ function buildTipsCard(state, handlers, tipFilter) {
 
   if (!hasCards) {
     var emptyAll = document.createElement('div');
-    emptyAll.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.4;text-align:center;padding:10px 0;font-style:italic;';
+    emptyAll.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.4;text-align:center;padding:10px 0;font-style:italic;' + ";font-weight:" + T.fwBold + ";";
     emptyAll.textContent = 'no card checks today';
     list.appendChild(emptyAll);
   } else {
@@ -970,7 +970,7 @@ function buildTipsCard(state, handlers, tipFilter) {
     });
     if (!showing.length) {
       var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.45;text-align:center;padding:10px 0;font-style:italic;';
+      empty.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.45;text-align:center;padding:10px 0;font-style:italic;' + ";font-weight:" + T.fwBold + ";";
       empty.textContent = tipFilter === 'adjusted' ? 'no adjusted tips yet' : 'all tips adjusted \u2014 ready to finalize';
       list.appendChild(empty);
     }
@@ -1023,7 +1023,7 @@ function buildTipRow(chk, mode, handlers) {
   label.style.cssText = 'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + T.text + ';';
   label.textContent = (chk.tableLabel ? chk.tableLabel + ' \u2022 ' : '') + 'Check ' + (chk.checkLabel || chk.checkId);
   var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';';
+  meta.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';' + ";font-weight:" + T.fwBold + ";";
   meta.textContent = 'closed ' + (chk.time || '') + (chk.cardBrand ? ' \u2022 ' + chk.cardBrand : '');
   info.appendChild(label);
   info.appendChild(meta);
@@ -1031,16 +1031,16 @@ function buildTipRow(chk, mode, handlers) {
   var amtCol = document.createElement('div');
   amtCol.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px;';
   var sub = document.createElement('div');
-  sub.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';';
+  sub.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';' + ";font-weight:" + T.fwBold + ";";
   sub.innerHTML = '<span style="color:' + hexToRgba(T.text, 0.6) + ';margin-right:8px;">subtotal</span><span style="font-weight:700;color:' + T.gold + ';">' + fmt(chk.amount || 0) + '</span>';
   var tip = document.createElement('div');
 
   if (mode === 'adjusted') {
     // Show the actual tip amount already entered
-    tip.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.green + ';';
+    tip.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.green + ';' + ";font-weight:" + T.fwBold + ";";
     tip.innerHTML = '<span style="color:' + hexToRgba(T.text, 0.6) + ';margin-right:8px;">tip</span><span style="font-weight:700;color:' + T.green + ';">' + fmt(chk.tip || 0) + '</span>';
   } else {
-    tip.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.warning + ';';
+    tip.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.warning + ';' + ";font-weight:" + T.fwBold + ";";
     tip.innerHTML = '<span style="color:' + T.warning + ';margin-right:8px;">tip</span><span style="font-weight:700;">\u2014 pending</span>';
   }
 
@@ -1262,10 +1262,10 @@ defineScene({
         t.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.verm + ';letter-spacing:2px;';
         t.textContent = 'CHECKOUT UNAVAILABLE';
         var m = document.createElement('div');
-        m.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';line-height:1.5;';
+        m.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';line-height:1.5;' + ";font-weight:" + T.fwBold + ";";
         m.textContent = 'Your session is missing an employee ID. Log out and log back in to refresh it.';
         var d = document.createElement('div');
-        d.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;margin-top:6px;';
+        d.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;margin-top:6px;' + ";font-weight:" + T.fwBold + ";";
         d.textContent = (err && err.message) || '';
         errCard.appendChild(t);
         errCard.appendChild(m);
