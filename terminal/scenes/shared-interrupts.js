@@ -39,6 +39,7 @@ defineScene('manager-pin', {
     let pinBuf     = '';
     let pinError   = false;
     let submitting = false;
+    let timeoutId  = null;
 
     container.style.cssText = [
       'width:100%;height:100%;',
@@ -287,6 +288,7 @@ defineScene('manager-pin', {
             if (!alive) return;
             if (data.valid && (data.roles || []).indexOf('manager') !== -1) {
               const empId = data.employee_id || pinBuf;
+              clearTimeout(timeoutId);
               SceneManager.resolveInterrupt('manager-pin');
               if (params.onConfirm) params.onConfirm(empId);
             } else {
@@ -342,13 +344,22 @@ defineScene('manager-pin', {
     ].join('');
     cancelLink.textContent = 'cancel';
     cancelLink.addEventListener('pointerup', () => {
+      clearTimeout(timeoutId);
       if (params.onCancel) params.onCancel();
     });
     container.appendChild(cancelLink);
 
     updateDots();
 
-    return () => { alive = false; };
+    timeoutId = setTimeout(() => {
+      if (!alive) return;
+      pinBuf = '';
+      SceneManager.resolveInterrupt('manager-pin');
+      if (params.onCancel) params.onCancel();
+      showToast('PIN entry timed out.', { bg: T.gold });
+    }, 30000);
+
+    return () => { alive = false; clearTimeout(timeoutId); };
   },
 
   unmount: () => {},

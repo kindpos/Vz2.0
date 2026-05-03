@@ -364,6 +364,7 @@ describe('terminal/scenes/check-overview — Bug 1: void-item timer cancelled on
     vi.useFakeTimers();
     vi.resetModules();
     registeredScenes.length = 0;
+    interruptCalls.length = 0;
     const netMod     = await import('../net.js');
     fetchWithTimeout = netMod.fetchWithTimeout;
     await import('./check-overview.js');
@@ -408,6 +409,13 @@ describe('terminal/scenes/check-overview — Bug 1: void-item timer cancelled on
     state.topAreaEl     = document.createElement('div');
 
     sceneDef.__handlers.handleVoid(state);
+
+    // FIX 11: handleVoid now requires manager PIN before voiding.
+    // Simulate a successful PIN confirmation so _voidItems executes.
+    const pinCall = interruptCalls.find((c) => c.name === 'manager-pin');
+    expect(pinCall).toBeDefined();
+    pinCall.params.onConfirm();
+
     await Promise.resolve();
 
     expect(fetchWithTimeout).toHaveBeenCalledWith(

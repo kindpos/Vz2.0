@@ -433,8 +433,10 @@ defineScene({
     focusedSeats:  {},
     expandedSeats: {},
     _itemDiscounts: {},   // item_id → {pct, amount} — survives refreshOrder
-    _voidedItems:   [],   // {seatNumber, item} re-injected after every refreshOrder
-    _seatDiscounts: {},   // seat.id  → {pct, amount} — fallback when item_id absent
+    _voidedItems:      [],    // {seatNumber, item} re-injected after every refreshOrder
+    _seatDiscounts:    {},    // seat.id  → {pct, amount} — fallback when item_id absent
+    _paymentInProgress: false,
+    _voidInProgress:    false,
   },
 
   render: (container, params, state) => {
@@ -3346,6 +3348,16 @@ async function _gotoOrderEntry(state, params) {
 // ═══════════════════════════════════════════════════
 
 function handlePay(state, params) {
+  if (state._paymentInProgress) {
+    showToast('Payment already in progress.', { bg: T.gold });
+    return;
+  }
+
+  if (state._voidInProgress) {
+    showToast('Please wait — void is still processing.', { bg: T.gold });
+    return;
+  }
+
   if (!state.orderId) {
     entReport({
       code: 'UI-007', level: 'INFO',
@@ -3445,28 +3457,57 @@ function handlePay(state, params) {
   const cardTotal = Math.round((subtotal + tax) * 100) / 100;
   const cashPrice = Math.round(cardTotal * (1 - discount) * 100) / 100;
 
-  SceneManager.mountWorking('payment', {
-    orderId:              state.orderId,
-    seatIds:              selectedIds,
-    seats:                seatSummary,
-    cardTotal:            cardTotal,
-    cashPrice:            cashPrice,
-    subtotal:             subtotal,
-    tax:                  tax,
-    managerDiscountTotal: state.order ? (state.order.manager_discount_total || 0) : 0,
-    isLastPayment:        isLastPayment,
-    returnTo:      'check-overview',
-    returnParams: {
-      checkId:       state.orderId,
-      returnLanding: params.returnLanding,
-      employeeId:    params.employeeId,
-      employeeName:  params.employeeName,
-      pin:           params.pin,
-    },
-    employeeId:   params.employeeId,
-    employeeName: params.employeeName,
-    pin:          params.pin,
-  });
+  // Pre-flight: verify balance_due > 0 and order still open before mounting
+  // the payment scene. Uses the freshest server state to avoid launching
+  // payment against a check that was just closed or fully paid elsewhere.
+  fetchWithTimeout(`/api/v1/orders/${state.orderId}`, { cache: 'no-store' }, 10000)
+    .then((r) => r.ok ? r.json() : null)
+    .then((freshOrder) => {
+      state._payingInProgress = false;
+      if (!state._alive) return;
+      if (!freshOrder) {
+        showToast('Could not verify check — try again', { bg: T.verm });
+        return;
+      }
+      const freshStatus = freshOrder.status || '';
+      if (freshStatus === 'closed' || freshStatus === 'paid') {
+        showToast('Check already settled', { bg: T.gold });
+        return;
+      }
+      if (!(freshOrder.balance_due > 0)) {
+        showToast('Nothing is owed on this check', { bg: T.gold });
+        return;
+      }
+      state._paymentInProgress = true;
+      SceneManager.mountWorking('payment', {
+        orderId:              state.orderId,
+        seatIds:              selectedIds,
+        seats:                seatSummary,
+        cardTotal:            cardTotal,
+        cashPrice:            cashPrice,
+        subtotal:             subtotal,
+        tax:                  tax,
+        managerDiscountTotal: freshOrder.manager_discount_total || 0,
+        isLastPayment:        isLastPayment,
+        returnTo:      'check-overview',
+        returnParams: {
+          checkId:       state.orderId,
+          returnLanding: params.returnLanding,
+          employeeId:    params.employeeId,
+          employeeName:  params.employeeName,
+          pin:           params.pin,
+        },
+        employeeId:   params.employeeId,
+        employeeName: params.employeeName,
+        pin:          params.pin,
+        onComplete:   () => { state._paymentInProgress = false; },
+        onCancel:     () => { state._paymentInProgress = false; },
+      });
+    })
+    .catch(() => {
+      state._payingInProgress = false;
+      showToast('Could not verify check — try again', { bg: T.verm });
+    });
 }
 
 // ═══════════════════════════════════════════════════
@@ -3474,6 +3515,12 @@ function handlePay(state, params) {
 // ═══════════════════════════════════════════════════
 
 function handleVoid(state) {
+  const orderStatus = state.order && state.order.status;
+  if (orderStatus === 'closed' || orderStatus === 'paid') {
+    showToast('Cannot void items on a closed check.', { bg: T.verm });
+    return;
+  }
+
   let itemRefs = getSelectedItemRefs(state);
   let seatIds  = getSelectedSeatIds(state);
 
@@ -3511,7 +3558,34 @@ function handleVoid(state) {
     return;
   }
 
-  _voidItems(state, itemRefs);
+  // Filter out already-voided items before showing the PIN challenge.
+  const nonVoidedRefs = itemRefs.filter((r) => {
+    const item = state.seats[r.seatIdx] && state.seats[r.seatIdx].items[r.itemIdx];
+    return item && !item.voided;
+  });
+  if (nonVoidedRefs.length === 0) {
+    showToast('Selected items are already voided.', { bg: T.gold });
+    return;
+  }
+
+  state._voidInProgress = true;
+  SceneManager.interrupt('manager-pin', {
+    context: 'void',
+    onConfirm: () => {
+      const paidSeats = state.paidSeats || {};
+      const hasPaid = nonVoidedRefs.some((r) => {
+        const seat = state.seats[r.seatIdx];
+        return seat && paidSeats[seat.id];
+      });
+      if (hasPaid) {
+        state._voidInProgress = false;
+        showToast('Cannot void items on a paid seat.', { bg: T.verm });
+        return;
+      }
+      _voidItems(state, nonVoidedRefs);
+    },
+    onCancel: () => { state._voidInProgress = false; },
+  });
 }
 
 function _voidItems(state, refs) {
@@ -3519,7 +3593,8 @@ function _voidItems(state, refs) {
   for (let i = 0; i < refs.length; i++) {
     let r = refs[i];
     const item = state.seats[r.seatIdx].items[r.itemIdx];
-    snapshot.push({ seatIdx: r.seatIdx, itemIdx: r.itemIdx, item });
+    const alreadyVoided = !!item.voided;
+    snapshot.push({ seatIdx: r.seatIdx, itemIdx: r.itemIdx, item, alreadyVoided });
     item.voided = true;
   }
 
@@ -3528,9 +3603,13 @@ function _voidItems(state, refs) {
 
   if (!state.orderId) return;
 
+  // Snapshot order and totals state before DELETEs fire so we can fully
+  // restore the display — not just item voided flags — if any DELETE fails.
+  const preVoidSnapshot = JSON.parse(JSON.stringify(state.order));
+
   // Fire DELETEs immediately — no undo window.
   const deletes = snapshot
-    .filter((s) => !!s.item.item_id)
+    .filter((s) => !!s.item.item_id && !s.alreadyVoided)
     .map((s) => {
       return fetchWithTimeout(
         `/api/v1/orders/${state.orderId}/items/${s.item.item_id}`,
@@ -3540,28 +3619,40 @@ function _voidItems(state, refs) {
       });
     });
 
-  Promise.all(deletes)
-    .then(() => {
-      // DELETEs confirmed. Persist voided items in _voidedItems so
-      // _injectVoidedItems restores them after every refreshOrder.
-      if (!state._voidedItems) state._voidedItems = [];
-      for (let _vi = 0; _vi < snapshot.length; _vi++) {
-        const _ve = snapshot[_vi];
-        const _vs = state.seats[_ve.seatIdx];
-        if (!_vs) continue;
-        const _dup = state._voidedItems.some((e) => e.item.item_id && e.item.item_id === _ve.item.item_id);
-        if (!_dup) state._voidedItems.push({ seatNumber: _vs.number, item: _ve.item });
+  Promise.allSettled(deletes)
+    .then((results) => {
+      const anyFailed = results.some((r) => r.status === 'rejected');
+      if (anyFailed) {
+        state._voidInProgress = false;
+        // Restore order state and clear voided flags so the display
+        // rolls back to match backend truth.
+        state.order = preVoidSnapshot;
+        for (let j = 0; j < snapshot.length; j++) {
+          snapshot[j].item.voided = false;
+        }
+        entReport({
+          code:    'VOID_DELETE_FAILED',
+          level:   'ERROR',
+          source:  'check-overview._voidItems',
+          message: 'One or more void DELETE requests failed — order display rolled back',
+          ctx:     { orderId: state.orderId },
+        });
+        if (!state._alive) return;
+        rerenderTopArea(state);
+        showToast('Void failed — please try again.', { bg: T.verm });
+      } else {
+        state._voidInProgress = false;
+        // All DELETEs confirmed. Persist voided items in _voidedItems so
+        // _injectVoidedItems restores them after every refreshOrder.
+        if (!state._voidedItems) state._voidedItems = [];
+        for (let _vi = 0; _vi < snapshot.length; _vi++) {
+          const _ve = snapshot[_vi];
+          const _vs = state.seats[_ve.seatIdx];
+          if (!_vs) continue;
+          const _dup = state._voidedItems.some((e) => e.item.item_id && e.item.item_id === _ve.item.item_id);
+          if (!_dup) state._voidedItems.push({ seatNumber: _vs.number, item: _ve.item });
+        }
       }
-    })
-    .catch(() => {
-      // DELETE(s) failed — roll back the local void so the display
-      // matches backend truth rather than silently diverging.
-      if (!state._alive) return;
-      for (let j = 0; j < snapshot.length; j++) {
-        snapshot[j].item.voided = false;
-      }
-      rerenderTopArea(state);
-      showToast('Void failed — check connection', { bg: T.verm });
     });
 }
 
