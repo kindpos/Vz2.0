@@ -20,46 +20,26 @@ const PAD     = T.scenePad;
 const GAP     = T.colGapSm;
 const API     = '/api/v1';
 
-// ── Scene state ───────────────────────────────────
-let sceneEl           = null;
-let sceneData         = {};
-let enteredAmount     = 0;
-let denomAccum        = 0;
-let numpadStr         = '';
-let paymentMode       = 'card';
-let confirmProcessing = false;
-let _cardController   = null;
-let payments          = [];
-let totalPaid         = 0;
-let baseTotal         = 0;
-let numpadRef         = null;
-let dotTimer          = null;
-// Idempotency key for the in-flight payment attempt (cash or card).
-// Generated lazily on first CONFIRM tap; cleared only on success so a
-// network timeout → retry sends the exact same ID the backend already saw.
-let _pendingTxId      = null;
-let _sceneMounted     = false;  // alive-guard for async callbacks (mirrors _alive in other scenes)
+// Single module-level state reference — replaced on each render, cleared on unmount.
+let _state = null;
 
-// DOM refs
-let _modeButtons      = {};
-let _chevronEl        = null;
-let _balanceValueEl   = null;
-let _checkNumEl       = null;
-let _denomTiles       = [];
-let _btn100           = null;
-let _subRow           = null;
-let _discRow          = null;
-let _taxRow           = null;
-let _cardRow          = null;
-let _cashRow          = null;
-let _itemsScroll      = null;
-
-// Card processing overlay state
-let _procStatusEl     = null;
-let _procAnimTimer    = null;
-
-// Change-due timer
-let _changeDueTimer   = null;
+// Lazily initializes _state with all defaults — used only by the __handlers
+// test seam so tests can inject state without calling render().
+function _ensureState() {
+  if (!_state) {
+    _state = {
+      sceneEl: null, sceneData: {}, enteredAmount: 0, denomAccum: 0,
+      numpadStr: '', paymentMode: 'card', confirmProcessing: false,
+      _cardController: null, _pendingTxId: null, _sceneMounted: false,
+      payments: [], totalPaid: 0, baseTotal: 0, numpadRef: null,
+      dotTimer: null, _modeButtons: {}, _chevronEl: null, _balanceValueEl: null,
+      _checkNumEl: null, _denomTiles: [], _btn100: null,
+      _subRow: null, _discRow: null, _taxRow: null, _cardRow: null,
+      _cashRow: null, _itemsScroll: null, _procStatusEl: null,
+      _procAnimTimer: null, _changeDueTimer: null,
+    };
+  }
+}
 
 // Split tap handler (bound to event bus)
 function _onSplitTap() { showSplitPopup(); }
@@ -128,31 +108,39 @@ defineScene({
 
   render: (container, params) => {
     params = params || {};
-    sceneEl           = container;
-    sceneData         = params;
-    enteredAmount     = 0;
-    denomAccum        = 0;
-    numpadStr         = '';
-    paymentMode       = params.paymentMode || 'card';
-    confirmProcessing = false;
-    _cardController   = null;
-    _pendingTxId      = null;
-    _sceneMounted     = true;
-    payments          = [];
-    totalPaid         = 0;
-    baseTotal         = params.cardTotal || 0;
-    numpadRef         = null;
-    dotTimer          = null;
-    _modeButtons      = {};
-    _chevronEl        = null;
-    _balanceValueEl   = null;
-    _checkNumEl       = null;
-    _denomTiles       = [];
-    _btn100           = null;
-    _subRow = _discRow = _taxRow = _cardRow = _cashRow = null;
-    _itemsScroll      = null;
-    _procStatusEl     = null;
-    _procAnimTimer    = null;
+    const state = {
+      sceneEl:           container,
+      sceneData:         params,
+      enteredAmount:     0,
+      denomAccum:        0,
+      numpadStr:         '',
+      paymentMode:       params.paymentMode || 'card',
+      confirmProcessing: false,
+      _cardController:   null,
+      _pendingTxId:      null,
+      _sceneMounted:     true,
+      payments:          [],
+      totalPaid:         0,
+      baseTotal:         params.cardTotal || 0,
+      numpadRef:         null,
+      dotTimer:          null,
+      _modeButtons:      {},
+      _chevronEl:        null,
+      _balanceValueEl:   null,
+      _checkNumEl:       null,
+      _denomTiles:       [],
+      _btn100:           null,
+      _subRow:           null,
+      _discRow:          null,
+      _taxRow:           null,
+      _cardRow:          null,
+      _cashRow:          null,
+      _itemsScroll:      null,
+      _procStatusEl:     null,
+      _procAnimTimer:    null,
+      _changeDueTimer:   null,
+    };
+    _state = state;
 
     container.style.cssText = [
       'width:100%;height:100%;',
@@ -167,13 +155,13 @@ defineScene({
     container.appendChild(buildRightColumn(params));
 
     // Paint active mode now that toggle buttons and denom tiles both exist.
-    setPaymentMode(paymentMode);
+    setPaymentMode(state.paymentMode);
     updateSplitDisplay();
 
     if (window._header && window._header.setBackHandler) {
       window._header.setBackHandler(() => {
-        if (confirmProcessing) return;
-        _returnToParent(sceneData);
+        if (state.confirmProcessing) return;
+        _returnToParent(state.sceneData);
       });
     }
 
@@ -191,9 +179,9 @@ defineScene({
         fetchWithTimeout(`/api/v1/orders/${encodeURIComponent(params.orderId)}`, {}, 10000)
           .then((r) => r.ok ? r.json() : null)
           .then((order) => {
-            if (!_sceneMounted || !_checkNumEl) return;
+            if (!_state || !_state._sceneMounted || !_state._checkNumEl) return;
             if (order && order.check_number) {
-              _checkNumEl.textContent = `CHECK #${order.check_number}`;
+              _state._checkNumEl.textContent = `CHECK #${order.check_number}`;
             }
           })
           .catch(() => { /* keep the derived fallback */ });
@@ -202,7 +190,7 @@ defineScene({
       fetchWithTimeout(`/api/v1/orders/${encodeURIComponent(params.orderId)}`, {}, 10000)
         .then((r) => r.ok ? r.json() : null)
         .then((order) => {
-          if (!_sceneMounted || !order) return;
+          if (!_state || !_state._sceneMounted || !order) return;
           populateLeftCard(order);
         })
         .catch(() => { /* silently skip — scene still works */ });
@@ -210,16 +198,19 @@ defineScene({
   },
 
   unmount: () => {
-    _sceneMounted  = false;
-    _pendingTxId   = null;
+    if (_state) {
+      _state._sceneMounted = false;
+      _state._pendingTxId  = null;
+    }
     SceneManager.off('split:tap', _onSplitTap);
-    if (_cardController) { _cardController.abort(); _cardController = null; }
-    if (dotTimer) { clearInterval(dotTimer); dotTimer = null; }
-    if (_procAnimTimer) { clearInterval(_procAnimTimer); _procAnimTimer = null; }
+    if (_state && _state._cardController) { _state._cardController.abort(); _state._cardController = null; }
+    if (_state && _state.dotTimer) { clearInterval(_state.dotTimer); _state.dotTimer = null; }
+    if (_state && _state._procAnimTimer) { clearInterval(_state._procAnimTimer); _state._procAnimTimer = null; }
     if (OrderSummary && OrderSummary.hide) OrderSummary.hide();
     if (window._header && window._header.setBackHandler) {
       window._header.setBackHandler(null);
     }
+    _state = null;
   },
 
   events: {
@@ -386,7 +377,7 @@ defineScene({
           `color:${T.well};`,
           'border-radius:8px;',
         ].join('');
-        icon.textContent = '\u25C8';
+        icon.textContent = '◈';
 
         const titleText = document.createElement('span');
         titleText.style.cssText = [
@@ -397,7 +388,7 @@ defineScene({
           'letter-spacing:0.08em;',
           'text-transform:uppercase;',
         ].join('');
-        titleText.textContent = `Card Payment \u2014 $${amount.toFixed(2)}`;
+        titleText.textContent = `Card Payment — $${amount.toFixed(2)}`;
 
         titleBar.appendChild(icon);
         titleBar.appendChild(titleText);
@@ -407,15 +398,16 @@ defineScene({
         const body = document.createElement('div');
         body.style.cssText = 'padding:24px 24px 22px;display:flex;flex-direction:column;gap:14px;';
 
-        _procStatusEl = document.createElement('div');
-        _procStatusEl.style.cssText = [
+        if (_state) _state._procStatusEl = document.createElement('div');
+        const procStatusEl = _state ? _state._procStatusEl : document.createElement('div');
+        procStatusEl.style.cssText = [
           `font-family:${T.fb};`,
           `font-size:${T.fsB2};`,
           `color:${T.text};`,
           'min-height:28px;',
         ].join('') + `;font-weight:${T.fwBold};`;
-        _procStatusEl.textContent = statusMessages[0];
-        body.appendChild(_procStatusEl);
+        procStatusEl.textContent = statusMessages[0];
+        body.appendChild(procStatusEl);
 
         // Progress bar: rounded well with gold segments inside.
         const progContainer = document.createElement('div');
@@ -458,25 +450,28 @@ defineScene({
         card.appendChild(body);
         container.appendChild(card);
 
-        _procAnimTimer = setInterval(() => {
+        const animTimer = setInterval(() => {
           if (segIdx < TOTAL_SEGS) {
             segments[segIdx].style.opacity = '1';
             segIdx++;
           }
           if (segIdx % 4 === 0 && msgIdx < statusMessages.length - 1) {
             msgIdx++;
-            if (_procStatusEl) _procStatusEl.textContent = statusMessages[msgIdx];
+            if (_state && _state._procStatusEl) _state._procStatusEl.textContent = statusMessages[msgIdx];
           }
           if (segIdx >= TOTAL_SEGS) {
             segIdx = 0;
             segments.forEach((s) => { s.style.opacity = '0'; });
           }
         }, 200);
+        if (_state) _state._procAnimTimer = animTimer;
       },
       unmount: () => {
-        if (_procAnimTimer) clearInterval(_procAnimTimer);
-        _procAnimTimer = null;
-        _procStatusEl = null;
+        if (_state && _state._procAnimTimer) clearInterval(_state._procAnimTimer);
+        if (_state) {
+          _state._procAnimTimer = null;
+          _state._procStatusEl  = null;
+        }
       },
     },
 
@@ -484,7 +479,7 @@ defineScene({
       render: (container, params) => {
         params = params || {};
         let returned = false;
-        _changeDueTimer = null;
+        if (_state) _state._changeDueTimer = null;
 
 
         container.style.cssText = [
@@ -623,16 +618,17 @@ defineScene({
           container.appendChild(autoHint);
 
           let countdown = 8;
-          _changeDueTimer = setInterval(() => {
+          const cdTimer = setInterval(() => {
             countdown--;
             if (countdown <= 0) {
-              clearInterval(_changeDueTimer);
-              _changeDueTimer = null;
+              clearInterval(cdTimer);
+              if (_state) _state._changeDueTimer = null;
               doReturn('login');
             } else {
               autoHint.textContent = `auto-logout in ${countdown}s...`;
             }
           }, 1000);
+          if (_state) _state._changeDueTimer = cdTimer;
         } else if (params.isLastPayment) {
           // Final seat paid — auto-return to landing after a short flash.
           const landingHint = document.createElement('div');
@@ -647,24 +643,26 @@ defineScene({
           container.appendChild(landingHint);
 
           let lcount = 3;
-          _changeDueTimer = setInterval(() => {
+          const lcTimer = setInterval(() => {
             lcount--;
             if (lcount <= 0) {
-              clearInterval(_changeDueTimer);
-              _changeDueTimer = null;
+              clearInterval(lcTimer);
+              if (_state) _state._changeDueTimer = null;
               doReturn('landing');
             } else {
               landingHint.textContent = `returning to landing in ${lcount}s...`;
             }
           }, 1000);
+          if (_state) _state._changeDueTimer = lcTimer;
         }
 
         function doReturn(target) {
           if (returned) return;
           returned = true;
-          if (_changeDueTimer) { clearInterval(_changeDueTimer); _changeDueTimer = null; }
+          if (_state && _state._changeDueTimer) { clearInterval(_state._changeDueTimer); _state._changeDueTimer = null; }
           const activeScene = SceneManager.getActiveWorking();
           SceneManager.closeAllTransactional();
+          const sd = _state ? _state.sceneData : {};
           if (target === 'login') {
             OrderSummary.hide();
             SceneManager.unmountWorking(activeScene);
@@ -672,25 +670,25 @@ defineScene({
           } else if (target === 'check-overview') {
             OrderSummary.hide();
             SceneManager.mountWorking('check-overview', {
-              checkId:       sceneData.orderId,
-              returnLanding: sceneData.returnLanding
-                || (sceneData.returnParams && sceneData.returnParams.returnLanding)
+              checkId:       sd.orderId,
+              returnLanding: sd.returnLanding
+                || (sd.returnParams && sd.returnParams.returnLanding)
                 || null,
-              employeeId:    sceneData.employeeId,
-              employeeName:  sceneData.employeeName,
-              pin:           sceneData.pin,
+              employeeId:    sd.employeeId,
+              employeeName:  sd.employeeName,
+              pin:           sd.pin,
             });
           } else if (target === 'landing') {
             OrderSummary.hide();
             SceneManager.unmountWorking(activeScene);
-            const landingScene = sceneData.returnLanding
-              || (sceneData.returnParams && sceneData.returnParams.returnLanding)
+            const landingScene = sd.returnLanding
+              || (sd.returnParams && sd.returnParams.returnLanding)
               || 'server-landing';
             SceneManager.mountWorking(landingScene, {
               emp: {
-                id:   sceneData.employeeId,
-                name: sceneData.employeeName,
-                pin:  sceneData.pin,
+                id:   sd.employeeId,
+                name: sd.employeeName,
+                pin:  sd.pin,
               },
             });
           } else if (activeScene === 'check-overview') {
@@ -699,32 +697,32 @@ defineScene({
             // Quick-service flow — start a fresh check for the same server.
             OrderSummary.hide();
             SceneManager.mountWorking('order-entry', {
-              employeeId:   sceneData.employeeId,
-              employeeName: sceneData.employeeName,
-              pin:          sceneData.pin,
-              returnLanding: sceneData.returnLanding
-                || (sceneData.returnParams && sceneData.returnParams.returnLanding)
+              employeeId:   sd.employeeId,
+              employeeName: sd.employeeName,
+              pin:          sd.pin,
+              returnLanding: sd.returnLanding
+                || (sd.returnParams && sd.returnParams.returnLanding)
                 || null,
             });
           }
         }
       },
       unmount: () => {
-        if (_changeDueTimer) { clearInterval(_changeDueTimer); _changeDueTimer = null; }
+        if (_state && _state._changeDueTimer) { clearInterval(_state._changeDueTimer); _state._changeDueTimer = null; }
       },
     },
   },
 
   // Test seam — only referenced in *.test.js files.
   __handlers: {
-    get pendingTxId()         { return _pendingTxId; },
-    get confirmProcessing()   { return confirmProcessing; },
-    get payments()            { return payments; },
-    set sceneData(v)          { sceneData = v; },
-    set enteredAmount(v)      { enteredAmount = v; },
-    set paymentMode(v)        { paymentMode = v; },
-    set totalPaid(v)          { totalPaid = v; },
-    set baseTotal(v)          { baseTotal = v; },
+    get pendingTxId()         { return _state ? _state._pendingTxId : null; },
+    get confirmProcessing()   { return _state ? _state.confirmProcessing : false; },
+    get payments()            { return _state ? _state.payments : []; },
+    set sceneData(v)          { _ensureState(); _state.sceneData = v; },
+    set enteredAmount(v)      { _ensureState(); _state.enteredAmount = v; },
+    set paymentMode(v)        { _ensureState(); _state.paymentMode = v; },
+    set totalPaid(v)          { _ensureState(); _state.totalPaid = v; },
+    set baseTotal(v)          { _ensureState(); _state.baseTotal = v; },
     handleConfirm:            () => handleConfirm(),
   },
 });
@@ -749,20 +747,20 @@ function buildLeftColumn(params) {
   const header = document.createElement('div');
   header.style.cssText = 'flex-shrink:0;display:flex;align-items:center;gap:10px;margin-bottom:10px;';
 
-  _chevronEl = document.createElement('div');
-  _chevronEl.textContent         = '◄';
-  _chevronEl.style.fontFamily    = T.fh;
-  _chevronEl.style.fontSize      = T.fsB2;
-  _chevronEl.style.color         = T.green;
-  _chevronEl.style.cursor        = 'pointer';
-  _chevronEl.style.userSelect    = 'none';
-  _chevronEl.style.touchAction   = 'manipulation';
-  _chevronEl.style.padding       = '2px 6px';
-  _chevronEl.addEventListener('pointerup', () => {
-    if (confirmProcessing) return;
-    _returnToParent(sceneData);
+  _state._chevronEl = document.createElement('div');
+  _state._chevronEl.textContent         = '◄';
+  _state._chevronEl.style.fontFamily    = T.fh;
+  _state._chevronEl.style.fontSize      = T.fsB2;
+  _state._chevronEl.style.color         = T.green;
+  _state._chevronEl.style.cursor        = 'pointer';
+  _state._chevronEl.style.userSelect    = 'none';
+  _state._chevronEl.style.touchAction   = 'manipulation';
+  _state._chevronEl.style.padding       = '2px 6px';
+  _state._chevronEl.addEventListener('pointerup', () => {
+    if (_state.confirmProcessing) return;
+    _returnToParent(_state.sceneData);
   });
-  header.appendChild(_chevronEl);
+  header.appendChild(_state._chevronEl);
 
   const title = document.createElement('div');
   title.textContent         = 'ORDER RECAP';
@@ -777,36 +775,36 @@ function buildLeftColumn(params) {
   card.appendChild(header);
 
   // Items scroll
-  _itemsScroll = document.createElement('div');
-  _itemsScroll.style.cssText = 'flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;';
-  card.appendChild(_itemsScroll);
+  _state._itemsScroll = document.createElement('div');
+  _state._itemsScroll.style.cssText = 'flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;';
+  card.appendChild(_state._itemsScroll);
 
   // Totals block
   card.appendChild(buildDivider('10px 0'));
-  _subRow  = buildDataRow('SUBTOTAL', '$0.00', T.gold);
-  _discRow = buildDataRow('DISCOUNT', '-$0.00', T.lavender);
-  _discRow.style.display = 'none';
-  _taxRow  = buildDataRow('TAX',      '$0.00', T.gold);
-  card.appendChild(_subRow);
-  card.appendChild(_discRow);
-  card.appendChild(_taxRow);
+  _state._subRow  = buildDataRow('SUBTOTAL', '$0.00', T.gold);
+  _state._discRow = buildDataRow('DISCOUNT', '-$0.00', T.lavender);
+  _state._discRow.style.display = 'none';
+  _state._taxRow  = buildDataRow('TAX',      '$0.00', T.gold);
+  card.appendChild(_state._subRow);
+  card.appendChild(_state._discRow);
+  card.appendChild(_state._taxRow);
 
   card.appendChild(buildDivider('10px 0'));
-  _cardRow = buildDataRow('CARD PRICE', '$0.00', T.elec);
-  _cashRow = buildDataRow('CASH PRICE', '$0.00', T.greenWarm);
-  card.appendChild(_cardRow);
-  card.appendChild(_cashRow);
+  _state._cardRow = buildDataRow('CARD PRICE', '$0.00', T.elec);
+  _state._cashRow = buildDataRow('CASH PRICE', '$0.00', T.greenWarm);
+  card.appendChild(_state._cardRow);
+  card.appendChild(_state._cashRow);
 
   wrap.appendChild(card);
 
-  if (totalPaid > 0 && _chevronEl) _chevronEl.style.display = 'none';
+  if (_state.totalPaid > 0 && _state._chevronEl) _state._chevronEl.style.display = 'none';
   return wrap;
 }
 
 // Render { qty, name, price: lineTotal } rows into the scrollable recap.
 function _renderItemRows(items) {
-  if (!_itemsScroll) return;
-  _itemsScroll.innerHTML = '';
+  if (!_state._itemsScroll) return;
+  _state._itemsScroll.innerHTML = '';
   items.forEach((it) => {
     let row = document.createElement('div');
     row.style.cssText = [
@@ -835,7 +833,7 @@ function _renderItemRows(items) {
     right.style.flexShrink = '0';
     row.appendChild(right);
 
-    _itemsScroll.appendChild(row);
+    _state._itemsScroll.appendChild(row);
   });
 }
 
@@ -871,19 +869,19 @@ function populateLeftCardFromSeats(seats, params) {
   let cashPrice      = (typeof params.cashPrice === 'number') ? params.cashPrice : cardTotal;
   let managerDisc    = (typeof params.managerDiscountTotal === 'number') ? params.managerDiscountTotal : 0;
 
-  if (!baseTotal) baseTotal = cardTotal;
+  if (!_state.baseTotal) _state.baseTotal = cardTotal;
 
   _renderItemRows(items);
-  if (_subRow)  _subRow.setValue(`$${useSubtotal.toFixed(2)}`);
-  if (_discRow) {
-    _discRow.style.display = managerDisc > 0 ? '' : 'none';
-    if (managerDisc > 0) _discRow.setValue(`-$${managerDisc.toFixed(2)}`);
+  if (_state._subRow)  _state._subRow.setValue(`$${useSubtotal.toFixed(2)}`);
+  if (_state._discRow) {
+    _state._discRow.style.display = managerDisc > 0 ? '' : 'none';
+    if (managerDisc > 0) _state._discRow.setValue(`-$${managerDisc.toFixed(2)}`);
   }
-  if (_taxRow)  _taxRow.setValue(`$${tax.toFixed(2)}`);
-  if (_cardRow) _cardRow.setValue(`$${cardTotal.toFixed(2)}`);
-  if (_cashRow) _cashRow.setValue(`$${cashPrice.toFixed(2)}`);
-  if (_checkNumEl && !_checkNumEl.textContent) {
-    _checkNumEl.textContent = _deriveCheckLabel(params);
+  if (_state._taxRow)  _state._taxRow.setValue(`$${tax.toFixed(2)}`);
+  if (_state._cardRow) _state._cardRow.setValue(`$${cardTotal.toFixed(2)}`);
+  if (_state._cashRow) _state._cashRow.setValue(`$${cashPrice.toFixed(2)}`);
+  if (_state._checkNumEl && !_state._checkNumEl.textContent) {
+    _state._checkNumEl.textContent = _deriveCheckLabel(params);
   }
 
   updateSplitDisplay();
@@ -915,19 +913,19 @@ function populateLeftCard(order) {
   const cashPrice   = Math.round(cardTotal * (1 - getCashDiscount()) * 100) / 100;
   const managerDisc = typeof order.manager_discount_total === 'number' ? order.manager_discount_total : 0;
 
-  if (!baseTotal) baseTotal = cardTotal;
+  if (!_state.baseTotal) _state.baseTotal = cardTotal;
 
   _renderItemRows(items);
-  if (_subRow)  _subRow.setValue(`$${subtotal.toFixed(2)}`);
-  if (_discRow) {
-    _discRow.style.display = managerDisc > 0 ? '' : 'none';
-    if (managerDisc > 0) _discRow.setValue(`-$${managerDisc.toFixed(2)}`);
+  if (_state._subRow)  _state._subRow.setValue(`$${subtotal.toFixed(2)}`);
+  if (_state._discRow) {
+    _state._discRow.style.display = managerDisc > 0 ? '' : 'none';
+    if (managerDisc > 0) _state._discRow.setValue(`-$${managerDisc.toFixed(2)}`);
   }
-  if (_taxRow)  _taxRow.setValue(`$${tax.toFixed(2)}`);
-  if (_cardRow) _cardRow.setValue(`$${cardTotal.toFixed(2)}`);
-  if (_cashRow) _cashRow.setValue(`$${cashPrice.toFixed(2)}`);
-  if (_checkNumEl) {
-    _checkNumEl.textContent = order.check_number
+  if (_state._taxRow)  _state._taxRow.setValue(`$${tax.toFixed(2)}`);
+  if (_state._cardRow) _state._cardRow.setValue(`$${cardTotal.toFixed(2)}`);
+  if (_state._cashRow) _state._cashRow.setValue(`$${cashPrice.toFixed(2)}`);
+  if (_state._checkNumEl) {
+    _state._checkNumEl.textContent = order.check_number
       ? `CHECK #${order.check_number}`
       : _deriveCheckLabel({ orderId: order.order_id });
   }
@@ -962,9 +960,9 @@ function buildCenterColumn(params) {
   grid.appendChild(buildDenomTile(50));
   col.appendChild(grid);
 
-  _btn100 = buildDenomTile(100, { fullWidth: true });
-  _btn100.style.height = '64px';
-  col.appendChild(_btn100);
+  _state._btn100 = buildDenomTile(100, { fullWidth: true });
+  _state._btn100.style.height = '64px';
+  col.appendChild(_state._btn100);
 
   col.appendChild(buildActionRow());
   col.appendChild(buildBalanceStrip());
@@ -991,7 +989,7 @@ function buildModeToggle(mode, label, color, dkColor) {
   });
   btn.style.flex   = '1';
   btn.style.height = '48px';
-  _modeButtons[mode] = { el: btn, color, dk: dkColor };
+  _state._modeButtons[mode] = { el: btn, color, dk: dkColor };
 
   // buildPillButton's pointerleave handler repaints the pill to its
   // "default fill" — which on an inactive toggle wrongly reads as
@@ -999,7 +997,7 @@ function buildModeToggle(mode, label, color, dkColor) {
   // setPaymentMode after every pointer event so our own active /
   // inactive paint wins and only an actual tap changes the state.
   ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => {
-    btn.addEventListener(ev, () => { setPaymentMode(paymentMode); });
+    btn.addEventListener(ev, () => { setPaymentMode(_state.paymentMode); });
   });
 
   return btn;
@@ -1023,22 +1021,22 @@ function buildBalanceStrip() {
   label.style.textTransform = 'uppercase';
   card.appendChild(label);
 
-  _checkNumEl = document.createElement('span');
-  _checkNumEl.style.fontFamily    = T.fb;
-  _checkNumEl.style.fontSize      = T.fsB3;
-  _checkNumEl.style.color         = T.moon;
-  _checkNumEl.style.letterSpacing = '0.12em';
-  _checkNumEl.textContent = _deriveCheckLabel(sceneData);
-  card.appendChild(_checkNumEl);
+  _state._checkNumEl = document.createElement('span');
+  _state._checkNumEl.style.fontFamily    = T.fb;
+  _state._checkNumEl.style.fontSize      = T.fsB3;
+  _state._checkNumEl.style.color         = T.moon;
+  _state._checkNumEl.style.letterSpacing = '0.12em';
+  _state._checkNumEl.textContent = _deriveCheckLabel(_state.sceneData);
+  card.appendChild(_state._checkNumEl);
 
-  _balanceValueEl = document.createElement('span');
-  _balanceValueEl.style.fontFamily = T.fh;
-  _balanceValueEl.style.fontSize   = T.fsB2;
-  _balanceValueEl.style.fontWeight = T.fwBold;
-  _balanceValueEl.style.color      = T.gold;
-  _balanceValueEl.style.textShadow = `0 0 8px ${hexToRgba(T.gold, 0.35)}`;
-  _balanceValueEl.textContent      = `$${getRemainingBalance().toFixed(2)}`;
-  card.appendChild(_balanceValueEl);
+  _state._balanceValueEl = document.createElement('span');
+  _state._balanceValueEl.style.fontFamily = T.fh;
+  _state._balanceValueEl.style.fontSize   = T.fsB2;
+  _state._balanceValueEl.style.fontWeight = T.fwBold;
+  _state._balanceValueEl.style.color      = T.gold;
+  _state._balanceValueEl.style.textShadow = `0 0 8px ${hexToRgba(T.gold, 0.35)}`;
+  _state._balanceValueEl.textContent      = `$${getRemainingBalance().toFixed(2)}`;
+  card.appendChild(_state._balanceValueEl);
 
   return card;
 }
@@ -1078,7 +1076,7 @@ function buildDenomTile(val, opts) {
     }, 180);
   });
 
-  if (!opts.fullWidth) _denomTiles.push(tile);
+  if (!opts.fullWidth) _state._denomTiles.push(tile);
   return tile;
 }
 
@@ -1151,17 +1149,17 @@ function buildRightColumn() {
       const n = parseInt(digits || '0', 10) || 0;
       return `$${(n / 100).toFixed(2)}`;
     },
-    canSubmit: () => enteredAmount > 0,
+    canSubmit: () => _state.enteredAmount > 0,
     onChange:  (pin) => {
-      numpadStr     = pin;
-      denomAccum    = 0;
-      enteredAmount = (parseInt(pin || '0', 10) || 0) / 100;
+      _state.numpadStr     = pin;
+      _state.denomAccum    = 0;
+      _state.enteredAmount = (parseInt(pin || '0', 10) || 0) / 100;
       updateSplitDisplay();
     },
     onSubmit: () => { handleConfirm(); },
   });
 
-  numpadRef = pad;
+  _state.numpadRef = pad;
   col.appendChild(pad);
   return col;
 }
@@ -1172,11 +1170,11 @@ function buildRightColumn() {
 // ═══════════════════════════════════════════════════
 
 function setPaymentMode(mode) {
-  paymentMode = mode;
+  _state.paymentMode = mode;
 
   // Paint each tender toggle: active = filled + glow, inactive = ghost.
-  Object.keys(_modeButtons).forEach((m) => {
-    const b = _modeButtons[m];
+  Object.keys(_state._modeButtons).forEach((m) => {
+    const b = _state._modeButtons[m];
     if (!b || !b.el) return;
     const isActive = (m === mode);
     const el = b.el;
@@ -1203,12 +1201,12 @@ function setPaymentMode(mode) {
 // ═══════════════════════════════════════════════════
 
 function handleDenomination(val) {
-  denomAccum += val;
-  numpadStr = '';
-  enteredAmount = denomAccum;
-  if (numpadRef) {
-    numpadRef.setPin('');
-    numpadRef.setHint(`$${denomAccum.toFixed(2)}`, T.gold);
+  _state.denomAccum += val;
+  _state.numpadStr = '';
+  _state.enteredAmount = _state.denomAccum;
+  if (_state.numpadRef) {
+    _state.numpadRef.setPin('');
+    _state.numpadRef.setHint(`$${_state.denomAccum.toFixed(2)}`, T.gold);
   }
   updateSplitDisplay();
 }
@@ -1219,15 +1217,15 @@ function handleExact() {
     showToast('Nothing due', { bg: T.gold, duration: 1500 });
     return;
   }
-  enteredAmount = remaining;
-  denomAccum = 0;
+  _state.enteredAmount = remaining;
+  _state.denomAccum = 0;
   // Populate the numpad's digit buffer with the remaining amount in cents
   // so the display reads the same as if the user typed it manually — then
   // pressing `ent` submits via the normal path.
   const cents = Math.round(remaining * 100).toString();
-  numpadStr = cents;
-  if (numpadRef) {
-    numpadRef.setPin(cents);
+  _state.numpadStr = cents;
+  if (_state.numpadRef) {
+    _state.numpadRef.setPin(cents);
   }
   updateSplitDisplay();
 }
@@ -1238,12 +1236,12 @@ function handleExact() {
 // ═══════════════════════════════════════════════════
 
 function getRemainingBalance() {
-  return Math.max(0, baseTotal - totalPaid);
+  return Math.max(0, _state.baseTotal - _state.totalPaid);
 }
 
 function updateSplitDisplay() {
-  if (_balanceValueEl) {
-    _balanceValueEl.textContent = `$${getRemainingBalance().toFixed(2)}`;
+  if (_state._balanceValueEl) {
+    _state._balanceValueEl.textContent = `$${getRemainingBalance().toFixed(2)}`;
   }
 }
 
@@ -1253,22 +1251,22 @@ function updateSplitDisplay() {
 // ═══════════════════════════════════════════════════
 
 async function handleConfirm() {
-  if (confirmProcessing) return;
-  confirmProcessing = true;
+  if (_state.confirmProcessing) return;
+  _state.confirmProcessing = true;
 
   let remaining = getRemainingBalance();
-  const isCash = paymentMode === 'cash';
-  const paymentAmount = Math.min(enteredAmount, remaining);
-  const change = isCash ? Math.max(0, enteredAmount - paymentAmount) : 0;
+  const isCash = _state.paymentMode === 'cash';
+  const paymentAmount = Math.min(_state.enteredAmount, remaining);
+  const change = isCash ? Math.max(0, _state.enteredAmount - paymentAmount) : 0;
   let proc = null;
 
   if (paymentAmount <= 0) {
-    confirmProcessing = false;
+    _state.confirmProcessing = false;
     return;
   }
 
-  if (!_pendingTxId) {
-    _pendingTxId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+  if (!_state._pendingTxId) {
+    _state._pendingTxId = (typeof crypto !== 'undefined' && crypto.randomUUID)
       ? crypto.randomUUID()
       : `tx_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
   }
@@ -1280,10 +1278,10 @@ async function handleConfirm() {
     // Without seat_numbers the backend can't tag the payment to specific
     // seats, so check-overview wouldn't render them as paid (gold) on return.
     let seatNumbers = null;
-    if (Array.isArray(sceneData.seatNumbers) && sceneData.seatNumbers.length) {
-      seatNumbers = sceneData.seatNumbers.slice();
-    } else if (Array.isArray(sceneData.seats) && sceneData.seats.length) {
-      seatNumbers = sceneData.seats
+    if (Array.isArray(_state.sceneData.seatNumbers) && _state.sceneData.seatNumbers.length) {
+      seatNumbers = _state.sceneData.seatNumbers.slice();
+    } else if (Array.isArray(_state.sceneData.seats) && _state.sceneData.seats.length) {
+      seatNumbers = _state.sceneData.seats
         .map((s) => s && typeof s.number === 'number' ? s.number : null)
         .filter((n) => n !== null);
       if (seatNumbers.length === 0) seatNumbers = null;
@@ -1291,11 +1289,11 @@ async function handleConfirm() {
 
     if (isCash) {
       const cashBody = {
-          order_id:       sceneData.orderId,
+          order_id:       _state.sceneData.orderId,
           amount:         paymentAmount,
           tip:            0.0,
           payment_method: 'cash',
-          transaction_id: _pendingTxId,
+          transaction_id: _state._pendingTxId,
       };
       if (seatNumbers) cashBody.seat_numbers = seatNumbers;
       let res = await fetchWithTimeout(API + '/payments/cash', {
@@ -1305,20 +1303,20 @@ async function handleConfirm() {
       }, 20000);
       if (!res.ok) {
         let err = await res.json().catch(() => { return {}; });
-        confirmProcessing = false;
+        _state.confirmProcessing = false;
         showToast(err.detail || 'Cash payment failed', { bg: T.verm });
         return;
       }
     } else {
       proc = showProcessingOverlay(paymentAmount);
 
-      _cardController = new AbortController();
-      const controller = _cardController;
+      _state._cardController = new AbortController();
+      const controller = _state._cardController;
       const cardTimeout = setTimeout(() => { controller.abort(); }, 95000);
 
       const saleBody = {
-          transaction_id: _pendingTxId,
-          order_id:       sceneData.orderId,
+          transaction_id: _state._pendingTxId,
+          order_id:       _state.sceneData.orderId,
           amount:         paymentAmount,
           terminal_id:    'terminal_01',
       };
@@ -1336,7 +1334,7 @@ async function handleConfirm() {
       });
 
       clearTimeout(cardTimeout);
-      _cardController = null;
+      _state._cardController = null;
       if (proc) proc.dismiss();
 
       if (!res.ok) {
@@ -1344,8 +1342,8 @@ async function handleConfirm() {
         const errType = res.status === 402 ? 'DECLINED'
                     : res.status === 400 ? 'CANCELLED'
                     : 'ERROR';
-        confirmProcessing = false;
-        showToast(err.detail || `Payment failed \u2014 ${errType}`, { bg: T.verm });
+        _state.confirmProcessing = false;
+        showToast(err.detail || `Payment failed — ${errType}`, { bg: T.verm });
         return;
       }
     }
@@ -1354,51 +1352,51 @@ async function handleConfirm() {
     queueReceipt('customer');
     if (!isCash) queueReceipt('merchant');
 
-    payments.push({ method: paymentMode, amount: paymentAmount });
-    totalPaid += paymentAmount;
-    _pendingTxId = null;
+    _state.payments.push({ method: _state.paymentMode, amount: paymentAmount });
+    _state.totalPaid += paymentAmount;
+    _state._pendingTxId = null;
 
     // Guard: scene could have been force-unmounted (e.g. logout) while the
     // cash fetch was in-flight. Card payments are already guarded by
     // _cardController.abort(), but fetchWithTimeout has no external abort.
-    if (!_sceneMounted) return;
+    if (!_state._sceneMounted) return;
 
     // Hide the back chevron now that money has been taken — a
     // back-to-check-overview here would orphan the recorded payment.
-    if (_chevronEl) _chevronEl.style.display = 'none';
+    if (_state._chevronEl) _state._chevronEl.style.display = 'none';
 
     const newRemaining = getRemainingBalance();
-    confirmProcessing = false;
+    _state.confirmProcessing = false;
 
     if (newRemaining < 0.005) {
       activateResult(change);
     } else {
-      enteredAmount = 0;
-      denomAccum = 0;
-      numpadStr = '';
-      if (numpadRef) numpadRef.clear();
+      _state.enteredAmount = 0;
+      _state.denomAccum = 0;
+      _state.numpadStr = '';
+      if (_state.numpadRef) _state.numpadRef.clear();
       updateSplitDisplay();
       showToast(
-        `$${paymentAmount.toFixed(2)} ${paymentMode} \u2014 $${newRemaining.toFixed(2)} remaining`,
+        `$${paymentAmount.toFixed(2)} ${_state.paymentMode} — $${newRemaining.toFixed(2)} remaining`,
         { bg: T.greenWarm, duration: 3000 }
       );
     }
 
   } catch (err) {
     if (proc) proc.dismiss();
-    confirmProcessing = false;
-    showToast('Connection error \u2014 check terminal', { bg: T.verm });
+    _state.confirmProcessing = false;
+    showToast('Connection error — check terminal', { bg: T.verm });
   }
 }
 
 function queueReceipt(copyType) {
   // 15s abort guard — a hung printer endpoint used to leave this promise
   // dangling forever with no error surfaced to the operator.
-  fetchWithTimeout(API + `/print/receipt/${sceneData.orderId}?copy_type=${copyType}`, { method: 'POST' }, 15000)
+  fetchWithTimeout(API + `/print/receipt/${_state.sceneData.orderId}?copy_type=${copyType}`, { method: 'POST' }, 15000)
     .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
     .catch((err) => {
       console.warn(`[KINDpos] Receipt print failed (${copyType}):`, err);
-      showToast('Receipt print failed \u2014 check printer');
+      showToast('Receipt print failed — check printer');
     });
 }
 
@@ -1408,12 +1406,12 @@ function queueReceipt(copyType) {
 // ═══════════════════════════════════════════════════
 
 function activateResult(change) {
-  const lastPayment = payments[payments.length - 1] || {};
+  const lastPayment = _state.payments[_state.payments.length - 1] || {};
   let remaining = getRemainingBalance();
   const isFullyPaid = remaining < 0.005;
 
   SceneManager.closeAllTransactional();
-  SceneManager.emit('payment:complete', { orderId: sceneData.orderId });
+  SceneManager.emit('payment:complete', { orderId: _state.sceneData.orderId });
 
   if (isFullyPaid) {
     // Whole check settled → hand off to the change-due transactional,
@@ -1421,14 +1419,14 @@ function activateResult(change) {
     SceneManager.openTransactional('pc-change-due', {
       paymentMode:   lastPayment.method,
       change:        change,
-      total:         baseTotal,
-      isLastPayment: sceneData.isLastPayment,
+      total:         _state.baseTotal,
+      isLastPayment: _state.sceneData.isLastPayment,
     });
   } else {
     // Partial payment (more seats / amount remaining) → return to
     // check-overview so operator can continue paying. Gold-headered
     // paid seats will show their settled state.
-    _returnToParent(sceneData);
+    _returnToParent(_state.sceneData);
   }
 }
 
@@ -1444,10 +1442,10 @@ function showSplitPopup() {
   SceneManager.interrupt('split-select', {
     remaining: remaining,
     onConfirm: (amount) => {
-      denomAccum = 0;
-      enteredAmount = amount;
-      numpadStr = '';
-      if (numpadRef) numpadRef.setHint(`$${amount.toFixed(2)}`, T.gold);
+      _state.denomAccum = 0;
+      _state.enteredAmount = amount;
+      _state.numpadStr = '';
+      if (_state.numpadRef) _state.numpadRef.setHint(`$${amount.toFixed(2)}`, T.gold);
       updateSplitDisplay();
     },
   });
@@ -1461,11 +1459,13 @@ function showSplitPopup() {
 function showProcessingOverlay(amount) {
   SceneManager.openTransactional('pc-card-processing', { amount });
   return {
-    updateStatus: (msg) => { if (_procStatusEl) _procStatusEl.textContent = msg; },
+    updateStatus: (msg) => { if (_state && _state._procStatusEl) _state._procStatusEl.textContent = msg; },
     dismiss: () => {
-      if (_procAnimTimer) clearInterval(_procAnimTimer);
-      _procAnimTimer = null;
-      _procStatusEl = null;
+      if (_state && _state._procAnimTimer) clearInterval(_state._procAnimTimer);
+      if (_state) {
+        _state._procAnimTimer = null;
+        _state._procStatusEl = null;
+      }
       SceneManager.closeTransactional('pc-card-processing');
     },
   };
