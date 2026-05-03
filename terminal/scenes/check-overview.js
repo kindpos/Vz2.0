@@ -4277,6 +4277,14 @@ function refreshOrder(state, params) {
       state.checkNumber  = order.check_number || '';
       state.customerName = order.customer_name || '';
 
+      if (!order || !Array.isArray(order.items)) {
+        entReport({
+          code:    'CHECK_OVERVIEW_NO_ITEMS',
+          source:  'check-overview',
+          message: 'order.items missing or not array',
+        });
+        return;
+      }
 
       state.seats = orderToSeats(order, order.guest_count || 1);
       _injectVoidedItems(state);
