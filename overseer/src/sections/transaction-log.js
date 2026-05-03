@@ -7,9 +7,47 @@ let _clearAllBtn      = null;
 let _activeTagsEl     = null;
 let _resultCountEl    = null;
 let _summaryStrip     = null;
+let _currentPage      = 1;
 
 export let _pillValues    = {};
 export let _activeFilters = [];
+
+// ─── Fetch ────────────────────────────────────────────────────────────
+async function fetchJson(url, signal) {
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new Error(`${url} ${res.status}`);
+    return res.json();
+}
+
+function buildTransactionsUrl() {
+    const from = document.getElementById('tl-date-from');
+    const to   = document.getElementById('tl-date-to');
+    const params = new URLSearchParams();
+    if (from && from.value) params.set('date_from', from.value);
+    if (to   && to.value)   params.set('date_to',   to.value);
+
+    _activeFilters.forEach(f => {
+        const v = f.value;
+        switch (f.group) {
+            case 'daypart':
+                params.append('day_part', v.toLowerCase().replace(/ /g, '_'));
+                break;
+            case 'ordertype':
+                params.append('order_type', v.toLowerCase().replace(/-/g, '_'));
+                break;
+            case 'payment':
+                params.append('payment_method', v.toLowerCase());
+                break;
+            case 'server':
+                params.append('server_id', v.toLowerCase());
+                break;
+        }
+    });
+
+    params.set('page', _currentPage);
+    params.set('page_size', 50);
+    return `/api/v1/reports/transactions?${params.toString()}`;
+}
 
 // ─── Lifecycle ────────────────────────────────────────────────────────
 function still() { return _currentContainer !== null; }
@@ -28,10 +66,33 @@ export function unmount() {
 }
 
 async function loadTransactions() {
-    // TODO Chunk 3: fetch /api/v1/reports/transactions and render
+    const container = _currentContainer;
     if (!still()) return;
-    renderPage(_currentContainer);
+    renderSkeleton(container);
+    const signal = _abortController.signal;
+    const url = buildTransactionsUrl();
+    const [txResult, empResult] = await Promise.allSettled([
+        fetchJson(url, signal),
+        fetchJson('/api/v1/config/employees', signal),
+    ]);
+    if (!still()) return;
+    if (txResult.status === 'rejected') {
+        renderError(container, txResult.reason);
+        return;
+    }
+    const data      = txResult.value;
+    const employees = empResult.status === 'fulfilled' ? empResult.value : [];
+    populateServerChips(employees);
+    renderPage_data(container, data, employees);
 }
+
+function renderError(container, err) {
+    container.textContent = 'Error: ' + err.message;
+}
+
+function populateServerChips(employees) { /* TODO 3b */ }
+
+function renderPage_data(container, data, employees) { /* TODO 3b */ }
 
 // ─── Skeleton (loading state) ─────────────────────────────────────────
 function renderSkeleton(container) {
@@ -362,10 +423,14 @@ function renderFilterBar(container) {
     const arrowSpan = document.createElement('span');
     arrowSpan.style.cssText = `color: ${T.muted}; font-size: 12px;`;
     arrowSpan.textContent = '→';
+    const dateFrom = _makeDateInput(todayStr);
+    dateFrom.id = 'tl-date-from';
+    const dateTo = _makeDateInput(todayStr);
+    dateTo.id = 'tl-date-to';
     dateGroup.appendChild(dateLbl);
-    dateGroup.appendChild(_makeDateInput(todayStr));
+    dateGroup.appendChild(dateFrom);
     dateGroup.appendChild(arrowSpan);
-    dateGroup.appendChild(_makeDateInput(todayStr));
+    dateGroup.appendChild(dateTo);
     row1.appendChild(dateGroup);
     row1.appendChild(_makeDivider());
 
@@ -532,4 +597,6 @@ function updateFilterSummary() {
         }
         if (_summaryStrip) _summaryStrip.style.display = 'none';
     }
+    _currentPage = 1;
+    loadTransactions();
 }
