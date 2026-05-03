@@ -179,6 +179,47 @@ async def auth_required(request: Request) -> Optional[dict]:
 
 
 _MANAGER_ROLES = {"manager", "admin", "owner"}
+_OWNER_ROLES = {"owner", "admin"}
+
+
+async def require_owner(request: Request) -> Optional[dict]:
+    """Route-level dependency: session must carry an owner/admin role.
+    Same soft/strict split as `require_manager`:
+      - enforced + no token          → 401 + SEC-005
+      - enforced + token w/o owner   → 403 + SEC-006
+      - soft     + no token          → SEC-005, allow, return None
+      - soft     + token w/o owner   → SEC-006, allow, return session
+    """
+    session = _extract_session(request)
+    if session is None:
+        await _record_diag(
+            category=DiagnosticCategory.SEC,
+            severity=DiagnosticSeverity.WARNING,
+            source=f"auth.owner.{request.url.path}",
+            event_code="SEC-005",
+            message="Owner required but no valid token",
+            context={"path": request.url.path, "method": request.method},
+        )
+        if getattr(_settings, "auth_enforced", True):
+            raise HTTPException(status_code=401, detail="Authentication required")
+        return None
+    if any(r in _OWNER_ROLES for r in (session.get("roles") or [])):
+        return session
+    await _record_diag(
+        category=DiagnosticCategory.SEC,
+        severity=DiagnosticSeverity.ERROR,
+        source=f"auth.owner.{request.url.path}",
+        event_code="SEC-006",
+        message="Owner role required but session lacks it",
+        context={
+            "path": request.url.path,
+            "session_employee_id": session.get("employee_id"),
+            "session_roles": session.get("roles") or [],
+        },
+    )
+    if getattr(_settings, "auth_enforced", True):
+        raise HTTPException(status_code=403, detail="Manager authorization required")
+    return session
 
 
 async def require_manager(request: Request) -> Optional[dict]:
