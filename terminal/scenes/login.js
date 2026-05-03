@@ -608,7 +608,7 @@ defineScene({
             });
 
             // Determine if this employee has manager-level permissions
-            const isManager = (data.roles || []).some((r) => r.permission_level === 'manager' || (r.permissions && r.permissions.manage_staff));
+            const isManager = (data.roles || []).some((r) => r.permission_level?.toLowerCase() === 'manager' || (r.permissions && r.permissions.manage_staff));
 
             function mountForMode(mode) {
               if (mode === 'qsr') {
@@ -643,7 +643,7 @@ defineScene({
             });
 
             // Determine if this employee has manager-level permissions
-            const isManager = (data.roles || []).some((r) => r.permission_level === 'manager' || (r.permissions && r.permissions.manage_staff));
+            const isManager = (data.roles || []).some((r) => r.permission_level?.toLowerCase() === 'manager' || (r.permissions && r.permissions.manage_staff));
 
             function mountForMode(mode) {
               if (mode === 'qsr') {
