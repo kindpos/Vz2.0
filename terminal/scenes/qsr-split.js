@@ -41,6 +41,7 @@ function _lighten(hex, pct) {
 import { showToast } from '../components.js';
 import { fmt } from './checkout-core.js';
 import { fetchWithTimeout } from '../net.js';
+import { entReport } from '../entomology-client.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS
@@ -84,6 +85,10 @@ var state = {
   cancelFn:            null,
   equalSplitCount:     0,      // 0 = manual mode, 2+ = equal split active
   equalSplitAmounts:   [],     // pre-calculated per-person amounts (last absorbs rounding)
+  completedSplitKeys:  [],     // idempotency keys of successfully posted parts
+  currentPaymentKey:   null,   // key for the in-flight part (used for retry)
+  failedPayment:       null,   // payment object awaiting retry
+  failedPartIndex:     0,      // state.payments.length at the time of failure
 };
 
 var els = {};
@@ -321,6 +326,7 @@ function renderPhase() {
     els.rightPanel.appendChild(buildCardReaderPhase());
     initiateCardPayment();
   }
+  if (state.phase === 'recovery')    els.rightPanel.appendChild(buildRecoveryPhase());
 }
 
 // ─────────────────────────────────────────────────
@@ -932,6 +938,8 @@ function handleCashConfirm() {
     showToast('Tendered is less than this payment amount');
     return;
   }
+  var key = 'split-' + ((state.order && state.order.orderId) || 'local') + '-part' + state.payments.length + '-' + Date.now();
+  state.currentPaymentKey = key;
   var payment = {
     method:    'cash',
     amount:    state.currentSplitAmount,
@@ -939,8 +947,19 @@ function handleCashConfirm() {
     changeDue: moneyRound(state.tendered - state.currentSplitAmount),
     tax:       allocateTax(),
   };
-  postPartialPayment(payment, function(ok) {
-    if (!ok) return;
+  state.failedPayment   = payment;
+  state.failedPartIndex = state.payments.length;
+  postPartialPayment(payment, key, function(ok) {
+    if (!ok) {
+      entReport({ code: 'QSR_SPLIT_PARTIAL_FAILURE', source: 'qsr-split',
+        message: 'Cash split part ' + (state.failedPartIndex + 1) + ' failed to record',
+        ctx: { orderId: state.order && state.order.orderId, partIndex: state.failedPartIndex },
+        level: 'error' });
+      state.phase = 'recovery';
+      renderPhase();
+      return;
+    }
+    state.failedPayment = null;
     state.payments.push(payment);
     updateLeftPanel();
     if (payment.changeDue > 0) {
@@ -1066,8 +1085,10 @@ function buildCardReaderPhase() {
   cancelBtn.appendChild(cancelLbl);
   cancelBtn.addEventListener('pointerup', function() {
     if (state.cancelFn) { state.cancelFn(); state.cancelFn = null; }
-    state.readerPending = false;
-    state.phase = 'select';
+    state.readerPending     = false;
+    state.currentPaymentKey = null;
+    state.failedPayment     = null;
+    state.phase             = 'select';
     renderPhase();
   });
   els.cancelBtn = cancelBtn;
@@ -1159,8 +1180,21 @@ function handleCardResponse(response) {
     tax:            allocateTax(),
   };
 
-  postPartialPayment(payment, function(ok) {
-    if (!ok) return;
+  var key = 'split-' + ((state.order && state.order.orderId) || 'local') + '-part' + state.payments.length + '-' + Date.now();
+  state.currentPaymentKey = key;
+  state.failedPayment     = payment;
+  state.failedPartIndex   = state.payments.length;
+  postPartialPayment(payment, key, function(ok) {
+    if (!ok) {
+      entReport({ code: 'QSR_SPLIT_PARTIAL_FAILURE', source: 'qsr-split',
+        message: 'Card split part ' + (state.failedPartIndex + 1) + ' failed to record',
+        ctx: { orderId: state.order && state.order.orderId, partIndex: state.failedPartIndex },
+        level: 'error' });
+      state.phase = 'recovery';
+      renderPhase();
+      return;
+    }
+    state.failedPayment = null;
     state.payments.push(payment);
     updateLeftPanel();
     advanceAfterPayment();
@@ -1171,16 +1205,21 @@ function handleCardResponse(response) {
 //  PARTIAL PAYMENT POST
 // ─────────────────────────────────────────────────
 
-function postPartialPayment(payment, callback) {
+function postPartialPayment(payment, key, callback) {
   var orderId = state.order && state.order.orderId;
   if (!orderId) { callback(true); return; }
+
+  // Skip if already successfully posted — prevents double-charge on retry
+  if (key && state.completedSplitKeys.indexOf(key) >= 0) { callback(true); return; }
+
+  var body = Object.assign({}, payment, { idempotency_key: key || null });
 
   fetchWithTimeout(
     '/api/v1/orders/' + orderId + '/payments',
     {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payment),
+      body:    JSON.stringify(body),
     },
     8000
   )
@@ -1191,6 +1230,7 @@ function postPartialPayment(payment, callback) {
       callback(false);
       return;
     }
+    if (key) state.completedSplitKeys.push(key);
     callback(true);
   })
   .catch(function() {
@@ -1224,6 +1264,7 @@ function allocateTax() {
 
 function advanceAfterPayment() {
   computeRemaining();
+  state.currentPaymentKey = null;
   if (state.remaining <= 0) {
     routeToComplete();
   } else {
@@ -1272,6 +1313,99 @@ function routeToComplete() {
 }
 
 // ─────────────────────────────────────────────────
+//  RECOVERY PHASE — shown when a partial payment POST fails
+// ─────────────────────────────────────────────────
+
+function buildRecoveryPhase() {
+  var phase = document.createElement('div');
+  phase.style.cssText = [
+    'width:100%;height:100%;display:flex;flex-direction:column;',
+    'align-items:center;justify-content:center;gap:16px;',
+    'padding:24px;box-sizing:border-box;',
+  ].join('');
+
+  var icon = document.createElement('div');
+  icon.style.cssText = 'font-size:40px;';
+  icon.textContent = '⚠';
+
+  var title = document.createElement('div');
+  title.style.cssText = 'font-family:' + T.fh + ';font-size:22px;' +
+    'font-weight:' + T.fwBold + ';color:' + T.verm + ';text-align:center;';
+  title.textContent = 'Payment not recorded';
+
+  var paidCount = state.payments.length;
+  var desc = document.createElement('div');
+  desc.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY +
+    ';font-weight:' + T.fwBold + ';color:' + T.moon + ';text-align:center;line-height:1.5;';
+  desc.textContent = paidCount > 0
+    ? paidCount + ' of ' + (paidCount + 1) + ' payments recorded. Part ' + (paidCount + 1) + ' failed to save.'
+    : 'Payment part 1 failed to save.';
+
+  var retryBtn = document.createElement('div');
+  retryBtn.style.cssText = [
+    'width:280px;min-height:52px;background:' + T.greenWarm + ';',
+    'border-radius:' + T.chamferBtn + 'px;',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  var retryLbl = document.createElement('span');
+  retryLbl.style.cssText = 'font-family:' + T.fh + ';font-size:' + FS_BTN +
+    ';font-weight:' + T.fwBold + ';color:' + T.moonText + ';letter-spacing:0.05em;';
+  retryLbl.textContent = 'RETRY PAYMENT';
+  retryBtn.appendChild(retryLbl);
+  retryBtn.addEventListener('pointerup', function() { handleSplitRetry(); });
+
+  var cancelBtn = document.createElement('div');
+  cancelBtn.style.cssText = [
+    'width:280px;min-height:44px;',
+    'border:1.5px solid ' + T.verm + ';border-radius:' + T.chamferBtn + 'px;',
+    'background:' + T.card + ';',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  var cancelLbl = document.createElement('span');
+  cancelLbl.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BTN +
+    ';font-weight:' + T.fwBold + ';color:' + T.verm + ';';
+  cancelLbl.textContent = 'Cancel — go to split select';
+  cancelBtn.appendChild(cancelLbl);
+  cancelBtn.addEventListener('pointerup', function() { handleSplitRecoveryCancel(); });
+
+  phase.appendChild(icon);
+  phase.appendChild(title);
+  phase.appendChild(desc);
+  phase.appendChild(retryBtn);
+  phase.appendChild(cancelBtn);
+  return phase;
+}
+
+function handleSplitRetry() {
+  var payment = state.failedPayment;
+  if (!payment) { state.phase = 'select'; renderPhase(); return; }
+  postPartialPayment(payment, state.currentPaymentKey, function(ok) {
+    if (!ok) {
+      state.phase = 'recovery';
+      renderPhase();
+      return;
+    }
+    state.failedPayment = null;
+    state.payments.push(payment);
+    updateLeftPanel();
+    if (payment.changeDue > 0) {
+      showToast('Change due: ' + fmt(payment.changeDue));
+    }
+    advanceAfterPayment();
+  });
+}
+
+function handleSplitRecoveryCancel() {
+  showToast('Partial payment recorded. Continue split from remaining balance.');
+  state.failedPayment     = null;
+  state.currentPaymentKey = null;
+  state.phase             = 'select';
+  renderPhase();
+}
+
+// ─────────────────────────────────────────────────
 //  SCENE REGISTRATION
 // ─────────────────────────────────────────────────
 
@@ -1292,6 +1426,10 @@ defineScene('qsr-split', {
     state.cancelFn           = null;
     state.equalSplitCount    = 0;
     state.equalSplitAmounts  = [];
+    state.completedSplitKeys = [];
+    state.currentPaymentKey  = null;
+    state.failedPayment      = null;
+    state.failedPartIndex    = 0;
 
     computeRemaining();
 
