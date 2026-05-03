@@ -30,7 +30,7 @@ function _ensureState() {
     _state = {
       sceneEl: null, sceneData: {}, enteredAmount: 0, denomAccum: 0,
       numpadStr: '', paymentMode: 'card', confirmProcessing: false,
-      _cardController: null, _pendingTxId: null, _sceneMounted: false,
+      _cardController: null, _pendingTxId: null, _cashTxId: null, _sceneMounted: false,
       payments: [], totalPaid: 0, baseTotal: 0, numpadRef: null,
       dotTimer: null, _modeButtons: {}, _chevronEl: null, _balanceValueEl: null,
       _checkNumEl: null, _denomTiles: [], _btn100: null,
@@ -118,6 +118,7 @@ defineScene({
       confirmProcessing: false,
       _cardController:   null,
       _pendingTxId:      null,
+      _cashTxId:         null,
       _sceneMounted:     true,
       payments:          [],
       totalPaid:         0,
@@ -1299,12 +1300,16 @@ async function handleConfirm() {
     }
 
     if (isCash) {
+      const txId = `cash-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+      if (_state._cashTxId) return;
+      _state._cashTxId = txId;
       const cashBody = {
-          order_id:       _state.sceneData.orderId,
-          amount:         paymentAmount,
-          tip:            0.0,
-          payment_method: 'cash',
-          transaction_id: _state._pendingTxId,
+          order_id:        _state.sceneData.orderId,
+          amount:          paymentAmount,
+          tip:             0.0,
+          payment_method:  'cash',
+          transaction_id:  _state._pendingTxId,
+          idempotency_key: txId,
       };
       if (seatNumbers) cashBody.seat_numbers = seatNumbers;
       let res = await fetchWithTimeout(API + '/payments/cash', {
@@ -1315,6 +1320,7 @@ async function handleConfirm() {
       if (!res.ok) {
         let err = await res.json().catch(() => { return {}; });
         _state.confirmProcessing = false;
+        _state._cashTxId = null;
         showToast(err.detail || 'Cash payment failed', { bg: T.verm });
         return;
       }
@@ -1366,6 +1372,7 @@ async function handleConfirm() {
     _state.payments.push({ method: _state.paymentMode, amount: paymentAmount });
     _state.totalPaid += paymentAmount;
     _state._pendingTxId = null;
+    _state._cashTxId = null;
 
     // Guard: scene could have been force-unmounted (e.g. logout) while the
     // cash fetch was in-flight. Card payments are already guarded by
@@ -1396,6 +1403,7 @@ async function handleConfirm() {
   } catch (err) {
     if (proc) proc.dismiss();
     _state.confirmProcessing = false;
+    _state._cashTxId = null;
     showToast('Connection error — check terminal', { bg: T.verm });
   }
 }
