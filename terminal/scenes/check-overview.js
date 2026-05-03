@@ -3514,6 +3514,15 @@ function handleVoid(state) {
   SceneManager.interrupt('manager-pin', {
     context: 'void',
     onConfirm: () => {
+      const paidSeats = state.paidSeats || {};
+      const hasPaid = itemRefs.some((r) => {
+        const seat = state.seats[r.seatIdx];
+        return seat && paidSeats[seat.id];
+      });
+      if (hasPaid) {
+        showToast('Cannot void items on a paid seat.', { bg: T.verm });
+        return;
+      }
       _voidItems(state, itemRefs);
     },
     onCancel: () => {},
