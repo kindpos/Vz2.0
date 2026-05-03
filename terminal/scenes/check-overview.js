@@ -435,8 +435,9 @@ defineScene({
     _itemDiscounts: {},   // item_id → {pct, amount} — survives refreshOrder
     _voidedItems:      [],    // {seatNumber, item} re-injected after every refreshOrder
     _seatDiscounts:    {},    // seat.id  → {pct, amount} — fallback when item_id absent
-    _paymentInProgress: false,
-    _voidInProgress:    false,
+    _paymentInProgress:  false,
+    _voidInProgress:     false,
+    _discountInProgress: false,
   },
 
   render: (container, params, state) => {
@@ -3682,6 +3683,11 @@ function _seatIdxById(state, seatId) {
 // ═══════════════════════════════════════════════════
 
 function handleDiscount(state) {
+  if (state._discountInProgress) {
+    showToast('Discount already being applied.', { bg: T.gold });
+    return;
+  }
+
   const itemRefs = getSelectedItemRefs(state);
   const seatIds  = getSelectedSeatIds(state);
 
@@ -3703,25 +3709,27 @@ function handleDiscount(state) {
   const _isManager = (_params.role === 'manager') || (_params.employeeRole === 'manager');
 
   if (_isManager) {
+    state._discountInProgress = true;
     SceneManager.interrupt('disc-select', {
       onConfirm: (opt) => {
         _applyDiscount(state, opt.pct, itemRefs, seatIds, _params.employeeId || 'manager');
       },
-      onCancel: () => {},
+      onCancel: () => { state._discountInProgress = false; },
     });
     return;
   }
 
+  state._discountInProgress = true;
   SceneManager.interrupt('disc-pin', {
     onConfirm: (approvedBy) => {
       SceneManager.interrupt('disc-select', {
         onConfirm: (opt) => {
           _applyDiscount(state, opt.pct, itemRefs, seatIds, approvedBy);
         },
-        onCancel: () => {},
+        onCancel: () => { state._discountInProgress = false; },
       });
     },
-    onCancel: () => {},
+    onCancel: () => { state._discountInProgress = false; },
   });
 }
 
@@ -3750,24 +3758,31 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
   }
   const hasUnsent = lines.some((it) => !it.item_id);
   if (hasUnsent) {
+    state._discountInProgress = false;
     showToast('Send items to kitchen before applying a discount.', { bg: T.gold });
     return;
   }
   const amount = computeDiscountAmount(lines, pct);
   const itemIds = extractItemIds(lines);
   if (amount <= 0 || !state.orderId) {
+    state._discountInProgress = false;
     showToast('Discount has no selected items', { bg: T.gold });
     return;
   }
 
+  const discountTxId = `disc-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  const discountBody = buildDiscountBody(pct, amount, itemIds, approvedBy);
+  discountBody.idempotency_key = discountTxId;
+
   fetchWithTimeout(`/api/v1/orders/${state.orderId}/discount`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(buildDiscountBody(pct, amount, itemIds, approvedBy)),
+    body:    JSON.stringify(discountBody),
   }, 15000).then((r) => {
     if (!r.ok) return r.json().then((d) => { throw new Error(d.detail || `HTTP ${r.status}`); });
     return r.json();
   }).then((_discountResp) => {
+    state._discountInProgress = false;
     if (!state._alive) return;
     // Cache per-item discount metadata so buildItemBlock can show lavender
     // treatment after refreshOrder (backend only updates manager_discount_total
@@ -3804,6 +3819,7 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     if (typeof refreshOrder === 'function') refreshOrder(state, {});
     showToast(pct + '% discount applied', { bg: T.greenWarm });
   }).catch((err) => {
+    state._discountInProgress = false;
     showToast(`Discount failed: ${(err && err.message ? err.message : 'unknown')}`, { bg: T.verm });
   });
 }
