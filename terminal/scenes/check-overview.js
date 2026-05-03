@@ -436,6 +436,7 @@ defineScene({
     _voidedItems:      [],    // {seatNumber, item} re-injected after every refreshOrder
     _seatDiscounts:    {},    // seat.id  → {pct, amount} — fallback when item_id absent
     _paymentInProgress: false,
+    _voidInProgress:    false,
   },
 
   render: (container, params, state) => {
@@ -3352,6 +3353,11 @@ function handlePay(state, params) {
     return;
   }
 
+  if (state._voidInProgress) {
+    showToast('Please wait — void is still processing.', { bg: T.gold });
+    return;
+  }
+
   if (!state.orderId) {
     entReport({
       code: 'UI-007', level: 'INFO',
@@ -3562,6 +3568,7 @@ function handleVoid(state) {
     return;
   }
 
+  state._voidInProgress = true;
   SceneManager.interrupt('manager-pin', {
     context: 'void',
     onConfirm: () => {
@@ -3571,12 +3578,13 @@ function handleVoid(state) {
         return seat && paidSeats[seat.id];
       });
       if (hasPaid) {
+        state._voidInProgress = false;
         showToast('Cannot void items on a paid seat.', { bg: T.verm });
         return;
       }
       _voidItems(state, nonVoidedRefs);
     },
-    onCancel: () => {},
+    onCancel: () => { state._voidInProgress = false; },
   });
 }
 
@@ -3609,6 +3617,7 @@ function _voidItems(state, refs) {
 
   Promise.all(deletes)
     .then(() => {
+      state._voidInProgress = false;
       // DELETEs confirmed. Persist voided items in _voidedItems so
       // _injectVoidedItems restores them after every refreshOrder.
       if (!state._voidedItems) state._voidedItems = [];
@@ -3621,6 +3630,7 @@ function _voidItems(state, refs) {
       }
     })
     .catch(() => {
+      state._voidInProgress = false;
       // DELETE(s) failed — roll back the local void so the display
       // matches backend truth rather than silently diverging.
       if (!state._alive) return;
