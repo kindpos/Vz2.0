@@ -1621,7 +1621,6 @@ function buildRightSurface(categories) {
     'height:' + CONTENT_H + 'px;',
     'background:' + T.bg + ';',
     'overflow:hidden;',
-    'position:relative;',
   ].join('');
 
   var favH = 0;
