@@ -9,7 +9,11 @@ let _activeTagsEl     = null;
 let _resultCountEl    = null;
 let _summaryStrip     = null;
 let _currentPage      = 1;
+let _activeTab        = 'transactions';
+let _lastData         = null;
 let _tabRowEl         = null;
+let _tabEls           = {};
+let _tabBadgeEls      = {};
 let _tableWrapEl      = null;
 let _modalEl          = null;
 let _modalOrderId     = null;
@@ -92,6 +96,7 @@ export function unmount() {
 }
 
 async function loadTransactions() {
+    _activeTab = 'transactions';
     const container = _currentContainer;
     if (!still()) return;
     renderSkeleton(container);
@@ -108,6 +113,7 @@ async function loadTransactions() {
     }
     const data      = txResult.value;
     const employees = empResult.status === 'fulfilled' ? empResult.value : [];
+    _lastData = data;
     populateServerChips(employees);
     renderPage_data(container, data, employees);
 }
@@ -207,7 +213,9 @@ function renderTabs(container, data) {
         { id: 'voids',        label: 'Voids',        count: data.void_count     || 0 },
     ];
 
-    _tabRowEl = document.createElement('div');
+    _tabRowEl    = document.createElement('div');
+    _tabEls      = {};
+    _tabBadgeEls = {};
     _tabRowEl.style.cssText = `
         display: flex;
         border-bottom: 1.5px solid ${T.border};
@@ -215,13 +223,14 @@ function renderTabs(container, data) {
     `;
 
     tabs.forEach(tab => {
-        const isActive = tab.id === 'transactions';
+        const isActive = tab.id === _activeTab;
+        const color = tab.id === 'transactions' ? T.green : tab.id === 'discounts' ? T.lavender : T.verm;
         const btn = document.createElement('button');
         btn.style.cssText = `
             background: none;
             border: none;
-            border-bottom: 2px solid ${isActive ? T.green : 'transparent'};
-            color: ${isActive ? T.green : T.muted};
+            border-bottom: 2px solid ${isActive ? color : 'transparent'};
+            color: ${isActive ? color : T.muted};
             font-family: ${T.fb};
             font-size: 13px;
             padding: 10px 16px;
@@ -237,8 +246,8 @@ function renderTabs(container, data) {
 
         const badge = document.createElement('span');
         badge.style.cssText = `
-            background: ${isActive ? withAlpha(T.green, 0.15) : T.well};
-            color: ${isActive ? T.green : T.muted};
+            background: ${isActive ? withAlpha(color, 0.15) : T.well};
+            color: ${isActive ? color : T.muted};
             border-radius: 999px;
             font-size: 10px;
             padding: 1px 7px;
@@ -249,9 +258,15 @@ function renderTabs(container, data) {
         btn.appendChild(labelSpan);
         btn.appendChild(badge);
 
-        if (!isActive) {
-            btn.addEventListener('click', () => console.log('tab:', tab.id));
-        }
+        _tabEls[tab.id]      = btn;
+        _tabBadgeEls[tab.id] = badge;
+
+        btn.addEventListener('click', () => {
+            if (tab.id === _activeTab) return;
+            _activeTab = tab.id;
+            setActiveTab(tab.id);
+            renderTabContent(_tableWrapEl, _lastData);
+        });
 
         _tabRowEl.appendChild(btn);
     });
@@ -575,6 +590,365 @@ function renderPagination(container, data) {
 
     footer.appendChild(controls);
     _tableWrapEl.appendChild(footer);
+}
+
+// ─── Tab switching ────────────────────────────────────────────────────
+function setActiveTab(tabId) {
+    const colors = { transactions: T.green, discounts: T.lavender, voids: T.verm };
+    ['transactions', 'discounts', 'voids'].forEach(id => {
+        const btn   = _tabEls[id];
+        const badge = _tabBadgeEls[id];
+        if (!btn || !badge) return;
+        const isActive = id === tabId;
+        const color = colors[id];
+        btn.style.color        = isActive ? color : T.muted;
+        btn.style.borderBottom = `2px solid ${isActive ? color : 'transparent'}`;
+        badge.style.background = isActive ? withAlpha(color, 0.15) : T.well;
+        badge.style.color      = isActive ? color : T.muted;
+    });
+}
+
+function renderTabContent(wrapEl, data) {
+    if (!data) return;
+    if (wrapEl && wrapEl.parentNode) wrapEl.parentNode.removeChild(wrapEl);
+    switch (_activeTab) {
+        case 'transactions':
+            renderTable(_currentContainer, data.results || []);
+            renderPagination(_tableWrapEl, data);
+            break;
+        case 'discounts':
+            renderDiscountsTable(_currentContainer, data.discounts || []);
+            renderDiscountsPagination(_tableWrapEl, data);
+            break;
+        case 'voids':
+            renderVoidsTable(_currentContainer, data.voids || []);
+            renderVoidsPagination(_tableWrapEl, data);
+            break;
+    }
+}
+
+function _makeTabTable(container) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = `
+        background: ${T.card};
+        border: 1px solid ${T.border};
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 0 24px 24px;
+    `;
+    _tableWrapEl = wrap;
+    container.appendChild(wrap);
+    return wrap;
+}
+
+function _makeTabEmpty(text) {
+    const el = document.createElement('div');
+    el.style.cssText = `
+        text-align: center;
+        padding: 60px 20px;
+        color: ${T.muted};
+        font-family: ${T.fb};
+        font-size: 13px;
+    `;
+    el.textContent = text;
+    return el;
+}
+
+function _makeTabThead(wrap, cols) {
+    const table = document.createElement('table');
+    table.style.cssText = 'width: 100%; border-collapse: collapse;';
+    const thead = document.createElement('thead');
+    thead.style.cssText = `background: ${T.well}; border-bottom: 1px solid ${T.border};`;
+    const hRow = document.createElement('tr');
+    cols.forEach(col => {
+        const th = document.createElement('th');
+        th.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: ${T.muted};
+            padding: 11px 16px;
+            text-align: ${col.align || 'left'};
+        `;
+        th.textContent = col.label;
+        hRow.appendChild(th);
+    });
+    thead.appendChild(hRow);
+    table.appendChild(thead);
+    wrap.appendChild(table);
+    return table;
+}
+
+function _makeBadge(color, text) {
+    const b = document.createElement('span');
+    b.style.cssText = `
+        background: ${withAlpha(color, 0.1)};
+        border: 1px solid ${withAlpha(color, 0.3)};
+        color: ${color};
+        border-radius: 4px;
+        font-family: ${T.fb};
+        font-size: 10px;
+        text-transform: uppercase;
+        padding: 2px 7px;
+    `;
+    b.textContent = text;
+    return b;
+}
+
+function _makeSrvChip(row, idx) {
+    const flex = document.createElement('div');
+    flex.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+    const dot = document.createElement('span');
+    dot.style.cssText = `
+        width: 7px; height: 7px;
+        border-radius: 50%;
+        background: ${_SRV_PALETTE[idx % _SRV_PALETTE.length]};
+        flex-shrink: 0;
+        display: inline-block;
+    `;
+    flex.appendChild(dot);
+    flex.appendChild(document.createTextNode(row.server_name || '—'));
+    return flex;
+}
+
+function renderDiscountsTable(container, rows) {
+    const wrap = _makeTabTable(container);
+
+    if (rows.length === 0) {
+        wrap.appendChild(_makeTabEmpty('No discounts for the current filters'));
+        return;
+    }
+
+    const cols = [
+        { label: 'Check #' },
+        { label: 'Time' },
+        { label: 'Server' },
+        { label: 'Discount Type' },
+        { label: 'Auth By' },
+        { label: 'Original',     align: 'right' },
+        { label: 'Discount Amt', align: 'right' },
+        { label: 'Net Total',    align: 'right' },
+        { label: 'Status' },
+    ];
+    const table = _makeTabThead(wrap, cols);
+    const tbody = document.createElement('tbody');
+
+    rows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = `border-bottom: 1px solid rgba(255,255,255,0.06);`;
+        tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(255,255,255,0.025)'; });
+        tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+
+        const td = (css = '') => {
+            const c = document.createElement('td');
+            c.style.cssText = `padding: 11px 16px; ${css}`;
+            return c;
+        };
+
+        // Check #
+        const checkTd = td();
+        const checkSpan = document.createElement('span');
+        checkSpan.style.cssText = `color: ${T.elec}; font-weight: 700; cursor: pointer; font-family: ${T.fb}; font-size: 13px;`;
+        checkSpan.textContent = row.order_id || '—';
+        checkSpan.addEventListener('click', () => openModal(row));
+        checkTd.appendChild(checkSpan);
+        tr.appendChild(checkTd);
+
+        // Time
+        const timeTd = td(`color: ${T.muted}; font-family: ${T.fb};`);
+        timeTd.textContent = row.applied_at ? formatTime(row.applied_at) : '—';
+        tr.appendChild(timeTd);
+
+        // Server
+        const srvTd = td();
+        srvTd.appendChild(_makeSrvChip(row, idx));
+        tr.appendChild(srvTd);
+
+        // Discount Type
+        const dtTd = td();
+        const dtName = document.createElement('div');
+        dtName.style.cssText = `font-weight: 500; color: ${T.text}; font-size: 12.5px;`;
+        dtName.textContent = row.discount_type || '—';
+        dtTd.appendChild(dtName);
+        if (row.reason) {
+            const sub = document.createElement('div');
+            sub.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 11px; margin-top: 2px;`;
+            sub.textContent = row.reason;
+            dtTd.appendChild(sub);
+        }
+        tr.appendChild(dtTd);
+
+        // Auth By
+        const authTd = td(`color: ${T.muted}; font-family: ${T.fb};`);
+        authTd.textContent = row.approved_by || '—';
+        tr.appendChild(authTd);
+
+        // Original
+        const origTd = td(`text-align: right; color: ${T.gold};`);
+        origTd.textContent = row.subtotal != null ? fmt(row.subtotal) : '—';
+        tr.appendChild(origTd);
+
+        // Discount Amt
+        const discTd = td(`text-align: right; color: ${T.lavender}; font-weight: 500;`);
+        discTd.textContent = row.amount != null ? '–' + fmt(row.amount) : '—';
+        tr.appendChild(discTd);
+
+        // Net Total
+        const netTd = td(`text-align: right; color: ${T.gold};`);
+        const net = (row.subtotal || 0) - (row.amount || 0);
+        netTd.textContent = fmt(net);
+        tr.appendChild(netTd);
+
+        // Status
+        const statusTd = td();
+        const isComped = (row.amount || 0) >= (row.subtotal || 0);
+        statusTd.appendChild(_makeBadge(isComped ? _MOON : T.lavender, isComped ? 'Comped' : 'Applied'));
+        tr.appendChild(statusTd);
+
+        tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+}
+
+function renderVoidsTable(container, rows) {
+    const wrap = _makeTabTable(container);
+
+    if (rows.length === 0) {
+        wrap.appendChild(_makeTabEmpty('No voids for the current filters'));
+        return;
+    }
+
+    const cols = [
+        { label: 'Check #' },
+        { label: 'Time' },
+        { label: 'Server' },
+        { label: 'Item Voided' },
+        { label: 'Qty',      align: 'center' },
+        { label: 'Reason' },
+        { label: 'Auth By' },
+        { label: 'Void Amt', align: 'right' },
+        { label: 'Type' },
+    ];
+    const table = _makeTabThead(wrap, cols);
+    const tbody = document.createElement('tbody');
+
+    rows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = `border-bottom: 1px solid rgba(255,255,255,0.06);`;
+        tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(255,255,255,0.025)'; });
+        tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+
+        const td = (css = '') => {
+            const c = document.createElement('td');
+            c.style.cssText = `padding: 11px 16px; ${css}`;
+            return c;
+        };
+
+        // Check #
+        const checkTd = td();
+        const checkSpan = document.createElement('span');
+        checkSpan.style.cssText = `color: ${T.verm}; font-weight: 700; cursor: pointer; font-family: ${T.fb}; font-size: 13px;`;
+        checkSpan.textContent = row.order_id || '—';
+        checkSpan.addEventListener('click', () => openModal(row));
+        checkTd.appendChild(checkSpan);
+        tr.appendChild(checkTd);
+
+        // Time
+        const timeTd = td(`color: ${T.muted}; font-family: ${T.fb};`);
+        timeTd.textContent = row.voided_at ? formatTime(row.voided_at) : '—';
+        tr.appendChild(timeTd);
+
+        // Server
+        const srvTd = td();
+        srvTd.appendChild(_makeSrvChip(row, idx));
+        tr.appendChild(srvTd);
+
+        // Item Voided
+        const itemTd = td();
+        const itemName = document.createElement('div');
+        itemName.style.cssText = `font-weight: 500; color: ${T.text}; font-size: 12.5px;`;
+        itemName.textContent = row.item_name || '—';
+        itemTd.appendChild(itemName);
+        if (row.item_notes) {
+            const sub = document.createElement('div');
+            sub.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 11px; margin-top: 2px;`;
+            sub.textContent = row.item_notes;
+            itemTd.appendChild(sub);
+        }
+        tr.appendChild(itemTd);
+
+        // Qty
+        const qtyTd = td(`text-align: center; color: ${T.muted};`);
+        qtyTd.textContent = row.quantity != null ? String(row.quantity) : '—';
+        tr.appendChild(qtyTd);
+
+        // Reason
+        const reasonTd = td(`color: ${T.muted}; font-size: 12px;`);
+        reasonTd.textContent = row.reason || '—';
+        tr.appendChild(reasonTd);
+
+        // Auth By
+        const authTd = td(`color: ${T.muted}; font-family: ${T.fb};`);
+        authTd.textContent = row.approved_by || '—';
+        tr.appendChild(authTd);
+
+        // Void Amt
+        const amtTd = td(`text-align: right; color: ${T.verm}; font-weight: 500;`);
+        amtTd.textContent = row.amount != null ? '–' + fmt(row.amount) : '—';
+        tr.appendChild(amtTd);
+
+        // Type badge
+        const typeTd = td();
+        const isCheck = row.void_type === 'check';
+        typeTd.appendChild(_makeBadge(isCheck ? T.verm : _MOON, isCheck ? 'Check Void' : 'Item Void'));
+        tr.appendChild(typeTd);
+
+        tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+}
+
+function renderDiscountsPagination(wrapEl, data) {
+    if (!wrapEl) return;
+    const rows = data.discounts || [];
+    const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+        background: ${T.well};
+        border-top: 1px solid ${T.border};
+        padding: 14px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    `;
+    const info = document.createElement('span');
+    info.style.cssText = `font-family: ${T.fb}; font-size: 11px; color: ${T.muted};`;
+    info.textContent = `Showing all ${rows.length} discounts · Total: ${fmt(total)}`;
+    footer.appendChild(info);
+    wrapEl.appendChild(footer);
+}
+
+function renderVoidsPagination(wrapEl, data) {
+    if (!wrapEl) return;
+    const rows = data.voids || [];
+    const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+        background: ${T.well};
+        border-top: 1px solid ${T.border};
+        padding: 14px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    `;
+    const info = document.createElement('span');
+    info.style.cssText = `font-family: ${T.fb}; font-size: 11px; color: ${T.muted};`;
+    info.textContent = `Showing all ${rows.length} voids · Total: ${fmt(total)}`;
+    footer.appendChild(info);
+    wrapEl.appendChild(footer);
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────
