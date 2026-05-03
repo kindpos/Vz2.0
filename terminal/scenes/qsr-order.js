@@ -1290,12 +1290,15 @@ function handleItemTap(itemKey) {
   var hasModifiers = item.modifier_groups && item.modifier_groups.length > 0;
 
   if (hasModifiers) {
+    // FIX A: pass navContainer so panel mounts inside the menu nav card
+    var itemWithCat = Object.assign({}, item, { category_name: activeCat ? activeCat.label : '' });
     openQsrModifierSelector(
-      item,
+      itemWithCat,
       (activeCat && activeCat.color) || T.green,
       function(configuredItem) {
         addItem(configuredItem);
-      }
+      },
+      els.rightSurface
     );
   } else {
     addItem({
