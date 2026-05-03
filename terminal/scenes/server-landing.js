@@ -450,9 +450,18 @@ defineScene({
     tipHdr.appendChild(tipHdrRow);
 
     var tipsTotal = document.createElement('div');
-    tipsTotal.style.cssText = 'font-family:' + T.fh + ';font-size:28px;font-weight:700;color:' + T.gold + ';text-shadow:0 0 14px ' + hexToRgba(T.gold, 0.4) + ';';
-    tipsTotal.textContent   = '$0.00';
+    tipsTotal.style.cssText = 'font-family:' + T.fh + ';font-size:28px;font-weight:700;'
+      + 'color:' + T.gold + ';text-shadow:0 0 14px ' + hexToRgba(T.gold, 0.4) + ';';
+    tipsTotal.textContent = '$0.00';
     tipHdr.appendChild(tipsTotal);
+
+    // Take-home line — gross tips minus tipout
+    var takeHomeLine = document.createElement('div');
+    takeHomeLine.style.cssText = 'font-family:' + T.fb + ';font-size:11px;font-weight:700;'
+      + 'color:' + T.greenWarm + ';letter-spacing:0.08em;margin-top:2px;';
+    takeHomeLine.textContent = 'after tipout $0.00';
+    tipHdr.appendChild(takeHomeLine);
+
     tipResult.appendChild(tipHdr);
 
     // Scrollable tip rows
@@ -460,7 +469,21 @@ defineScene({
     tipList.style.cssText = 'flex:1;overflow-y:auto;min-height:0;padding:6px 10px;display:flex;flex-direction:column;gap:2px;';
     tipResult.appendChild(tipList);
 
-    // Checkout pill — always enabled, greenWarm variant
+    // Unadj chip — sits below tip list, hidden when count is 0
+    var unadjChip = document.createElement('div');
+    unadjChip.style.cssText = 'display:none;align-items:center;gap:6px;'
+      + 'padding:0 14px 8px;flex-shrink:0;';
+    var unadjDot = document.createElement('div');
+    unadjDot.style.cssText = 'width:6px;height:6px;border-radius:50%;background:' + T.verm + ';flex-shrink:0;';
+    var unadjText = document.createElement('span');
+    unadjText.style.cssText = 'font-family:' + T.fb + ';font-size:10px;font-weight:700;'
+      + 'color:' + T.verm + ';letter-spacing:0.1em;';
+    unadjText.textContent = '0 UNADJ REMAINING';
+    unadjChip.appendChild(unadjDot);
+    unadjChip.appendChild(unadjText);
+    tipResult.appendChild(unadjChip);
+
+    // Checkout pill — always enabled, lavender variant
     var checkoutBtn = buildPillButton({ label: 'CHECKOUT', color: T.lavender, darkBg: darkenHex(T.lavender, 0.35) });
     checkoutBtn.style.marginTop = '10px';
     checkoutBtn.style.padding   = '10px 28px';
@@ -596,7 +619,8 @@ defineScene({
     // Store refs for live updates
     state._refs = {
       tileGrid,
-      tipList, tipsTotal, tipResult, checkoutBtn, filterBtn,
+      tipList, tipsTotal, takeHomeLine, unadjChip, unadjText,
+      tipResult, checkoutBtn, filterBtn,
       tipSparkBg, scGuests, scAvg, scTables, scTurn, srvSalesOverview,
       previewSlide, prevContent, prevActions,
     };
@@ -869,6 +893,19 @@ defineScene({
       }
 
       r.tipsTotal.textContent = fmt(total);
+
+      // Take-home line
+      var takeHome = total - (total * state.tipoutRate);
+      r.takeHomeLine.textContent = 'after tipout ' + fmt(takeHome);
+
+      // Unadj chip
+      if (unadj > 0) {
+        r.unadjText.textContent   = unadj + ' UNADJ REMAINING';
+        r.unadjChip.style.display = 'flex';
+      } else {
+        r.unadjChip.style.display = 'none';
+      }
+
       r.tipResult.setAccent(unadj > 0 ? T.verm : T.groups.landing.infoAccent);
     }
 
