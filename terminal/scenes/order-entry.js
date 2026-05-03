@@ -3421,7 +3421,7 @@ function getModCat(id) {
 
 function handleItemSelect(item) {
   let name  = item.label || item;
-  let price = typeof item.price === 'number' ? item.price : 0;
+  let price = Number(item.price) || 0;
 
   // ── Combo flow: picking side or soda ──
   if (comboFlow) {
@@ -3530,7 +3530,7 @@ function handleItemSelect(item) {
 
 function addToTicket(item) {
   const name  = item.label || item;
-  const price = typeof item.price === 'number' ? item.price : 0;
+  const price = Number(item.price) || 0;
 
   // Empty-seat guard: if no seats are active, the new item has nowhere to
   // route. Toast and bail rather than silently routing to seat 1 — the
