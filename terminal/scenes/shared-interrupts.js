@@ -288,7 +288,14 @@ defineScene('manager-pin', {
           })
           .then((data) => {
             if (!alive) return;
-            if (data.valid && (data.roles || []).indexOf('manager') !== -1) {
+            const roles = data.roles || [];
+            const isManager = roles.some((r) =>
+              (typeof r === 'string')
+                ? (r === 'manager' || r === 'admin' || r === 'owner')
+                : (r.role_id === 'manager' || r.id === 'manager' ||
+                   r.role_id === 'admin' || r.role_id === 'owner')
+            );
+            if (data.valid && isManager) {
               const empId = data.employee_id || pinBuf;
               attempts = 0;
               clearTimeout(timeoutId);
