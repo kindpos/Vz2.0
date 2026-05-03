@@ -86,6 +86,7 @@ var state = {
   tenderedRaw:        '',     // string — numpad input buffer e.g. '3000'
   tendered:           0,      // float — tenderedRaw / 100
   changeDue:          0,      // float — moneyRound(tendered − cashTotal)
+  _submitting:        false,  // true from ENT tap until response resolves
 };
 
 var els = {};   // DOM refs populated in mount()
@@ -853,6 +854,8 @@ function handlePreset(amount) {
 }
 
 function handleConfirm() {
+  if (state._submitting) return;
+
   // Guard: tendered must cover cashTotal
   if (state.tendered < state.cashTotal) {
     showToast('Tendered amount is less than cash total');
@@ -860,6 +863,7 @@ function handleConfirm() {
   }
 
   var orderId = state.order && state.order.orderId;
+  var txId = 'qsr-cash-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 
   var payload = {
     method:               'cash',
@@ -870,10 +874,11 @@ function handleConfirm() {
     cash_discount_rate:   state.cashDiscountRate,
     cash_discount_amount: state.cashDiscountAmount,
     tax:                  state.order.tax || 0,
+    idempotency_key:      txId,
   };
 
   if (orderId) {
-    // Disable numpad during POST to prevent double-submit
+    state._submitting = true;
     els.numpad.style.pointerEvents = 'none';
 
     fetchWithTimeout(
@@ -889,6 +894,7 @@ function handleConfirm() {
     .then(function(data) {
       if (data.ok === false) {
         showToast(data.detail || 'Payment failed');
+        state._submitting = false;
         els.numpad.style.pointerEvents = 'auto';
         return;
       }
@@ -896,6 +902,7 @@ function handleConfirm() {
     })
     .catch(function() {
       showToast('Network error — please try again');
+      state._submitting = false;
       els.numpad.style.pointerEvents = 'auto';
     });
   } else {
@@ -944,6 +951,7 @@ defineScene('qsr-cash', {
     state.tenderedRaw      = '';
     state.tendered         = 0;
     state.changeDue        = 0;
+    state._submitting      = false;
 
     computeCash();
 

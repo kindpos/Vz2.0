@@ -64,6 +64,7 @@ var state = {
   chargeAmount:     0,      // order.total — what the reader charges
   readerPending:    false,  // true while waiting for reader response
   cancelFn:         null,   // set by reader integration in Chunk 2
+  _submitting:      false,  // true from first POST until response resolves
 };
 
 var els = {};
@@ -503,21 +504,27 @@ function setReaderStatus(text, color) {
 
 function initiateReaderPayment() {
   if (!state.order) return;
+  if (state._submitting || state.readerPending) return;
+  state._submitting = true;
 
   state.readerPending = true;
   setReaderStatus('Processing…', T.warning);
+  if (els.cancelBtn) els.cancelBtn.style.pointerEvents = 'none';
 
   var controller = new AbortController();
   state.cancelFn = function() {
     controller.abort();
     state.readerPending = false;
+    state._submitting = false;
   };
 
   var orderId = state.order.orderId;
+  var txId = 'qsr-card-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
   var payload = {
-    order_id:    orderId || '',
-    amount:      state.chargeAmount,
-    terminal_id: 'T-001',   // default mapping registered in payment_routes
+    order_id:        orderId || '',
+    amount:          state.chargeAmount,
+    terminal_id:     'T-001',   // default mapping registered in payment_routes
+    idempotency_key: txId,
   };
 
   fetch('/api/v1/payments/sale', {
@@ -542,6 +549,7 @@ function initiateReaderPayment() {
       // Cancelled by operator — navigation away already handled by cancelFn caller
       return;
     }
+    state._submitting = false;
     setReaderStatus(err.message || 'Connection error', T.verm);
     state.readerPending = false;
     showToast('Reader error — try again or use cash');
@@ -551,6 +559,7 @@ function initiateReaderPayment() {
 
 function handlePaymentResponse(result) {
   state.readerPending = false;
+  state._submitting = false;
 
   if (!result || result.status !== 'APPROVED') {
     var msg = (result && result.processor_message) || 'Payment declined';
@@ -629,6 +638,7 @@ defineScene('qsr-card', {
     state.chargeAmount  = Number(state.order.total) || 0;
     state.readerPending = false;
     state.cancelFn      = null;
+    state._submitting   = false;
 
     var recapEl = buildFrozenRecap(state.order);
     var rightEl = buildRightSurface();
