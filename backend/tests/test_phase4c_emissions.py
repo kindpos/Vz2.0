@@ -19,7 +19,29 @@ from app.core.events import (
     item_added,
     payment_initiated,
     payment_confirmed,
+    create_event,
 )
+from types import SimpleNamespace
+
+
+def _mock_request():
+    return SimpleNamespace(client=SimpleNamespace(host="test"))
+
+
+async def _seed_manager_0000(ledger):
+    await ledger.append(create_event(
+        event_type=EventType.EMPLOYEE_CREATED,
+        terminal_id="OVERSEER",
+        payload={
+            "employee_id": "mgr-test",
+            "first_name": "Test",
+            "last_name": "Manager",
+            "display_name": "Test Manager",
+            "pin": "0000",
+            "role_ids": ["manager"],
+            "active": True,
+        },
+    ))
 
 
 TEST_DB = Path("./data/test_phase4c.db")
@@ -53,12 +75,14 @@ async def _seed_order(ledger, order_id: str, price: Decimal = Decimal("20.00")):
 async def test_void_discount_emits_discount_voided_and_refunds_amount(ledger):
     oid = "order_void_disc_1"
     await _seed_order(ledger, oid)
+    await _seed_manager_0000(ledger)
     await orders_mod.apply_discount(
         order_id=oid,
         request=ApplyDiscountRequest(
             discount_type="10%", amount=Decimal("2.00"),
-            approved_by="mgr_a", discount_id="d-1",
+            pin="0000", discount_id="d-1",
         ),
+        http_request=_mock_request(),
         ledger=ledger,
     )
     before = await orders_mod.get_order_or_404(ledger, oid)

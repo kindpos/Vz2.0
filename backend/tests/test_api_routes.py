@@ -24,6 +24,23 @@ from app.core.event_ledger import EventLedger
 from app.core.events import EventType, create_event
 from app.api import dependencies as deps
 
+
+async def _seed_manager_0000(ledger):
+    """Seed a manager employee with PIN '0000' (plaintext) for test PIN flows."""
+    await ledger.append(create_event(
+        event_type=EventType.EMPLOYEE_CREATED,
+        terminal_id="OVERSEER",
+        payload={
+            "employee_id": "mgr-test",
+            "first_name": "Test",
+            "last_name": "Manager",
+            "display_name": "Test Manager",
+            "pin": "0000",
+            "role_ids": ["manager"],
+            "active": True,
+        },
+    ))
+
 # ─── Test database ──────────────────────────────────
 TEST_DB = Path("./data/test_api_routes.db")
 
@@ -488,8 +505,9 @@ async def test_void_order(client, ledger):
         "table": "T-7", "server_id": "srv-01", "server_name": "Maria",
     })
     oid = resp.json()["order_id"]
+    await _seed_manager_0000(ledger)
     resp = await client.post(f"/api/v1/orders/{oid}/void", json={
-        "reason": "Customer left", "approved_by": "mgr-01",
+        "reason": "Customer left", "pin": "0000",
     })
     assert resp.status_code == 200
     assert resp.json()["status"] == "voided"
@@ -500,13 +518,14 @@ async def test_void_order(client, ledger):
 
 
 @pytest.mark.asyncio
-async def test_list_and_filter_orders(client):
+async def test_list_and_filter_orders(client, ledger):
     """GET /api/v1/orders with status filter."""
     # Create two orders
     await client.post("/api/v1/orders", json={"table": "T-1", "server_id": "s1", "server_name": "A"})
     resp2 = await client.post("/api/v1/orders", json={"table": "T-2", "server_id": "s2", "server_name": "B"})
     oid2 = resp2.json()["order_id"]
-    await client.post(f"/api/v1/orders/{oid2}/void", json={"reason": "test", "approved_by": "mgr-1"})
+    await _seed_manager_0000(ledger)
+    await client.post(f"/api/v1/orders/{oid2}/void", json={"reason": "test", "pin": "0000"})
 
     # All orders
     resp = await client.get("/api/v1/orders")

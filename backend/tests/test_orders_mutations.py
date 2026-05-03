@@ -34,9 +34,31 @@ from app.core.events import (
     payment_initiated,
 )
 from app.core.projections import project_order
+from app.core.events import create_event
+from types import SimpleNamespace
 
 
 TEST_DB = Path("./data/test_orders_mutations.db")
+
+
+def _mock_request():
+    return SimpleNamespace(client=SimpleNamespace(host="test"))
+
+
+async def _seed_manager_0000(ledger):
+    await ledger.append(create_event(
+        event_type=EventType.EMPLOYEE_CREATED,
+        terminal_id="OVERSEER",
+        payload={
+            "employee_id": "mgr-test",
+            "first_name": "Test",
+            "last_name": "Manager",
+            "display_name": "Test Manager",
+            "pin": "0000",
+            "role_ids": ["manager"],
+            "active": True,
+        },
+    ))
 TERMINAL = "terminal_mut"
 
 
@@ -338,12 +360,14 @@ class TestApplyDiscount:
     async def test_discount_reduces_total(self, ledger):
         await _open_order_with_items(ledger, order_id="oD",
                                       items=[("Item", 30.00, 1)])
+        await _seed_manager_0000(ledger)
         res = await orders_mod.apply_discount(
             "oD",
             orders_mod.ApplyDiscountRequest(
                 discount_type="10%", amount=3.00, reason="loyalty",
-                approved_by="mgr",
+                pin="0000",
             ),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         assert res.subtotal == Decimal("27.00")
@@ -368,13 +392,15 @@ class TestApplyDiscount:
             terminal_id=TERMINAL, order_id="oDc", total=Decimal("10.00"),
         ))
 
+        await _seed_manager_0000(ledger)
         with pytest.raises(HTTPException) as exc:
             await orders_mod.apply_discount(
                 "oDc",
                 orders_mod.ApplyDiscountRequest(
                     discount_type="5%", amount=1.00, reason="late",
-                    approved_by="mgr",
+                    pin="0000",
                 ),
+                http_request=_mock_request(),
                 ledger=ledger,
             )
         assert exc.value.status_code == 400
@@ -392,13 +418,15 @@ class TestApplyDiscount:
             amount=20.00, method="card",
         ))
 
+        await _seed_manager_0000(ledger)
         with pytest.raises(HTTPException) as exc:
             await orders_mod.apply_discount(
                 "oDp",
                 orders_mod.ApplyDiscountRequest(
                     discount_type="comp", amount=2.00, reason="test",
-                    approved_by="mgr",
+                    pin="0000",
                 ),
+                http_request=_mock_request(),
                 ledger=ledger,
             )
         assert exc.value.status_code == 400
@@ -638,12 +666,14 @@ class TestVoidOrder:
     async def test_void_sets_status_and_records_reason(self, ledger):
         await _open_order_with_items(ledger, order_id="oV",
                                       items=[("X", 10.00, 1)])
+        await _seed_manager_0000(ledger)
         res = await orders_mod.void_order(
             "oV",
             orders_mod.VoidOrderRequest(
                 reason="customer changed mind",
-                approved_by="mgr_1",
+                pin="0000",
             ),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         assert res.status == "voided"
@@ -656,15 +686,18 @@ class TestVoidOrder:
         """Voiding an already-voided order is a 400, not a silent re-emit."""
         await _open_order_with_items(ledger, order_id="oVV",
                                       items=[("X", 10.00, 1)])
+        await _seed_manager_0000(ledger)
         await orders_mod.void_order(
             "oVV",
-            orders_mod.VoidOrderRequest(reason="first", approved_by="mgr"),
+            orders_mod.VoidOrderRequest(reason="first", pin="0000"),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         with pytest.raises(HTTPException) as exc:
             await orders_mod.void_order(
                 "oVV",
-                orders_mod.VoidOrderRequest(reason="second", approved_by="mgr"),
+                orders_mod.VoidOrderRequest(reason="second", pin="0000"),
+                http_request=_mock_request(),
                 ledger=ledger,
             )
         assert exc.value.status_code == 400
@@ -676,10 +709,11 @@ class TestVoidOrder:
         with pytest.raises(HTTPException) as exc:
             await orders_mod.void_order(
                 "oVa",
-                orders_mod.VoidOrderRequest(reason="x", approved_by=""),
+                orders_mod.VoidOrderRequest(reason="x", pin="wrong-pin"),
+                http_request=_mock_request(),
                 ledger=ledger,
             )
-        assert exc.value.status_code == 403
+        assert exc.value.status_code == 401
 
 
 # ═══════════════════════════════════════════════════════════════════════════

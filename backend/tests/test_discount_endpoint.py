@@ -21,7 +21,28 @@ from app.api.routes import orders as orders_mod
 from app.api.routes.orders import ApplyDiscountRequest
 from app.config import settings
 from app.core.event_ledger import EventLedger
-from app.core.events import EventType, order_created, item_added
+from app.core.events import EventType, order_created, item_added, create_event
+from types import SimpleNamespace
+
+
+def _mock_request():
+    return SimpleNamespace(client=SimpleNamespace(host="test"))
+
+
+async def _seed_manager_0000(ledger):
+    await ledger.append(create_event(
+        event_type=EventType.EMPLOYEE_CREATED,
+        terminal_id="OVERSEER",
+        payload={
+            "employee_id": "mgr-test",
+            "first_name": "Test",
+            "last_name": "Manager",
+            "display_name": "Test Manager",
+            "pin": "0000",
+            "role_ids": ["manager"],
+            "active": True,
+        },
+    ))
 
 
 TEST_DB = Path("./data/test_discount_endpoint.db")
@@ -69,6 +90,7 @@ class TestDiscountEndpoint:
     async def test_happy_path_emits_event_and_reduces_balance(self, ledger, monkeypatch):
         monkeypatch.setattr(settings, "tax_rate", 0.0)
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
 
         res = await orders_mod.apply_discount(
             order_id=oid,
@@ -76,8 +98,9 @@ class TestDiscountEndpoint:
                 discount_type="10%",
                 amount=Decimal("2.00"),
                 reason="Manager 10% discount",
-                approved_by="mgr_A",
+                pin="0000",
             ),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         assert res.discount_total == Decimal("2.00")
@@ -86,20 +109,22 @@ class TestDiscountEndpoint:
         # Ledger now has a DISCOUNT_APPROVED event.
         events = await ledger.get_events_by_type(EventType.DISCOUNT_APPROVED)
         assert len(events) == 1
-        assert events[0].payload["approved_by"] == "mgr_A"
+        assert events[0].payload["approved_by"] == "mgr-test"
         assert events[0].payload["discount_type"] == "10%"
 
     @pytest.mark.asyncio
     async def test_precision_gate_rejects_3dp_amount(self, ledger):
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
         with pytest.raises(HTTPException) as exc:
             await orders_mod.apply_discount(
                 order_id=oid,
                 request=ApplyDiscountRequest(
                     discount_type="5%",
                     amount=Decimal("1.234"),
-                    approved_by="mgr_A",
+                    pin="0000",
                 ),
+                http_request=_mock_request(),
                 ledger=ledger,
             )
         assert exc.value.status_code == 400
@@ -109,6 +134,7 @@ class TestDiscountEndpoint:
     async def test_rejects_when_payment_pending(self, ledger):
         from app.core.events import payment_initiated
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
         # Emit a PAYMENT_INITIATED with no resolution → order has a
         # pending payment; discount must be blocked while the device
         # could still settle.
@@ -125,8 +151,9 @@ class TestDiscountEndpoint:
                 request=ApplyDiscountRequest(
                     discount_type="10%",
                     amount=Decimal("2.00"),
-                    approved_by="mgr_A",
+                    pin="0000",
                 ),
+                http_request=_mock_request(),
                 ledger=ledger,
             )
         assert exc.value.status_code == 400
@@ -136,6 +163,7 @@ class TestDiscountEndpoint:
     async def test_rejects_on_closed_order(self, ledger):
         from app.core.events import order_closed
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
         await ledger.append(order_closed(
             terminal_id=TERMINAL, order_id=oid, total=20.00,
         ))
@@ -145,8 +173,9 @@ class TestDiscountEndpoint:
                 request=ApplyDiscountRequest(
                     discount_type="10%",
                     amount=Decimal("2.00"),
-                    approved_by="mgr_A",
+                    pin="0000",
                 ),
+                http_request=_mock_request(),
                 ledger=ledger,
             )
         assert exc.value.status_code == 400
@@ -158,19 +187,22 @@ class TestDiscountEndpoint:
         "single discount only" change is a conscious choice."""
         monkeypatch.setattr(settings, "tax_rate", 0.0)
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
 
         await orders_mod.apply_discount(
             order_id=oid,
             request=ApplyDiscountRequest(
-                discount_type="10%", amount=Decimal("2.00"), approved_by="mgr_A",
+                discount_type="10%", amount=Decimal("2.00"), pin="0000",
             ),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         res = await orders_mod.apply_discount(
             order_id=oid,
             request=ApplyDiscountRequest(
-                discount_type="5%", amount=Decimal("1.00"), approved_by="mgr_A",
+                discount_type="5%", amount=Decimal("1.00"), pin="0000",
             ),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         assert res.discount_total == Decimal("3.00")
@@ -180,6 +212,7 @@ class TestDiscountEndpoint:
     async def test_rejects_on_voided_order(self, ledger):
         from app.core.events import order_voided
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
         await ledger.append(order_voided(
             terminal_id=TERMINAL, order_id=oid, reason="test void",
         ))
@@ -189,8 +222,9 @@ class TestDiscountEndpoint:
                 request=ApplyDiscountRequest(
                     discount_type="10%",
                     amount=Decimal("2.00"),
-                    approved_by="mgr_A",
+                    pin="0000",
                 ),
+                http_request=_mock_request(),
                 ledger=ledger,
             )
         assert exc.value.status_code == 400
@@ -202,15 +236,16 @@ class TestDiscountEndpoint:
         DISCOUNT_APPROVED event and must return the current order state."""
         monkeypatch.setattr(settings, "tax_rate", 0.0)
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
 
         req = ApplyDiscountRequest(
             discount_type="10%",
             amount=Decimal("2.00"),
-            approved_by="mgr_A",
+            pin="0000",
             transaction_id="disc-idem-001",
         )
-        r1 = await orders_mod.apply_discount(order_id=oid, request=req, ledger=ledger)
-        r2 = await orders_mod.apply_discount(order_id=oid, request=req, ledger=ledger)
+        r1 = await orders_mod.apply_discount(order_id=oid, request=req, http_request=_mock_request(), ledger=ledger)
+        r2 = await orders_mod.apply_discount(order_id=oid, request=req, http_request=_mock_request(), ledger=ledger)
 
         assert r1.discount_total == Decimal("2.00")
         assert r2.discount_total == Decimal("2.00")
@@ -220,14 +255,16 @@ class TestDiscountEndpoint:
     @pytest.mark.asyncio
     async def test_transaction_id_stored_in_event(self, ledger):
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
         await orders_mod.apply_discount(
             order_id=oid,
             request=ApplyDiscountRequest(
                 discount_type="10%",
                 amount=Decimal("2.00"),
-                approved_by="mgr_A",
+                pin="0000",
                 transaction_id="disc-store-001",
             ),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         events = await ledger.get_events_by_type(EventType.DISCOUNT_APPROVED)
@@ -238,21 +275,24 @@ class TestDiscountEndpoint:
         """Two distinct IDs → two distinct events → cumulative discount."""
         monkeypatch.setattr(settings, "tax_rate", 0.0)
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
 
         await orders_mod.apply_discount(
             order_id=oid,
             request=ApplyDiscountRequest(
                 discount_type="10%", amount=Decimal("2.00"),
-                approved_by="mgr_A", transaction_id="disc-A",
+                pin="0000", transaction_id="disc-A",
             ),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         r = await orders_mod.apply_discount(
             order_id=oid,
             request=ApplyDiscountRequest(
                 discount_type="5%", amount=Decimal("1.00"),
-                approved_by="mgr_A", transaction_id="disc-B",
+                pin="0000", transaction_id="disc-B",
             ),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         assert r.discount_total == Decimal("3.00")
@@ -264,11 +304,13 @@ class TestDiscountEndpoint:
         """Legacy callers without a transaction_id must still succeed."""
         monkeypatch.setattr(settings, "tax_rate", 0.0)
         oid = await _open_order_with_item(ledger)
+        await _seed_manager_0000(ledger)
         res = await orders_mod.apply_discount(
             order_id=oid,
             request=ApplyDiscountRequest(
-                discount_type="10%", amount=Decimal("2.00"), approved_by="mgr_A",
+                discount_type="10%", amount=Decimal("2.00"), pin="0000",
             ),
+            http_request=_mock_request(),
             ledger=ledger,
         )
         assert res.discount_total == Decimal("2.00")

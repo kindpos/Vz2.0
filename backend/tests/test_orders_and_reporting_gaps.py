@@ -38,8 +38,30 @@ from app.core.events import (
     payment_initiated,
 )
 from app.core.projections import project_order
+from types import SimpleNamespace
 
 TEST_DB = Path("./data/test_orders_and_reporting_gaps.db")
+
+
+def _mock_request():
+    return SimpleNamespace(client=SimpleNamespace(host="test"))
+
+
+async def _seed_manager_0000(ledger):
+    from app.core.events import create_event
+    await ledger.append(create_event(
+        event_type=EventType.EMPLOYEE_CREATED,
+        terminal_id="OVERSEER",
+        payload={
+            "employee_id": "mgr-test",
+            "first_name": "Test",
+            "last_name": "Manager",
+            "display_name": "Test Manager",
+            "pin": "0000",
+            "role_ids": ["manager"],
+            "active": True,
+        },
+    ))
 TERMINAL = settings.terminal_id
 TODAY = date.today().isoformat()
 
@@ -232,18 +254,18 @@ async def test_close_day_emits_day_closed_event(ledger):
 
 @pytest.mark.asyncio
 async def test_void_order_403_without_approved_by(ledger):
-    """void_order requires approved_by — empty string → 403."""
+    """void_order requires a valid PIN — invalid PIN → 401."""
     oid = "void-no-mgr"
     await _seed_open_order(ledger, oid)
 
     with pytest.raises(HTTPException) as exc:
         await void_order(
             oid,
-            VoidOrderRequest(reason="test", approved_by=""),
+            VoidOrderRequest(reason="test", pin="wrong-pin"),
+            http_request=_mock_request(),
             ledger=ledger,
         )
-    assert exc.value.status_code == 403
-    assert "approval" in exc.value.detail.lower()
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -251,6 +273,7 @@ async def test_void_order_400_already_voided(ledger):
     """Voiding an already-voided order → 400."""
     oid = "void-already-voided"
     await _seed_open_order(ledger, oid)
+    await _seed_manager_0000(ledger)
     await ledger.append(order_voided(
         terminal_id=TERMINAL, order_id=oid,
         reason="first void", approved_by="mgr",
@@ -259,7 +282,8 @@ async def test_void_order_400_already_voided(ledger):
     with pytest.raises(HTTPException) as exc:
         await void_order(
             oid,
-            VoidOrderRequest(reason="second void", approved_by="mgr"),
+            VoidOrderRequest(reason="second void", pin="0000"),
+            http_request=_mock_request(),
             ledger=ledger,
         )
     assert exc.value.status_code == 400
@@ -271,12 +295,14 @@ async def test_void_order_400_already_closed(ledger):
     """Voiding a closed order → 400."""
     oid = "void-already-closed"
     await _seed_open_order(ledger, oid, amount=Decimal("10.00"))
+    await _seed_manager_0000(ledger)
     await ledger.append(order_closed(terminal_id=TERMINAL, order_id=oid, total=Decimal("10.00")))
 
     with pytest.raises(HTTPException) as exc:
         await void_order(
             oid,
-            VoidOrderRequest(reason="test", approved_by="mgr"),
+            VoidOrderRequest(reason="test", pin="0000"),
+            http_request=_mock_request(),
             ledger=ledger,
         )
     assert exc.value.status_code == 400
@@ -288,10 +314,12 @@ async def test_void_order_happy_path_emits_order_voided(ledger):
     """Voiding an open order with no card payments succeeds and emits ORDER_VOIDED."""
     oid = "void-happy"
     await _seed_open_order(ledger, oid)
+    await _seed_manager_0000(ledger)
 
     result = await void_order(
         oid,
-        VoidOrderRequest(reason="customer cancelled", approved_by="mgr-1"),
+        VoidOrderRequest(reason="customer cancelled", pin="0000"),
+        http_request=_mock_request(),
         ledger=ledger,
     )
     assert result.status == "voided"
@@ -299,16 +327,18 @@ async def test_void_order_happy_path_emits_order_voided(ledger):
     events = await ledger.get_events_by_correlation(oid)
     void_evts = [e for e in events if e.event_type == EventType.ORDER_VOIDED]
     assert len(void_evts) == 1
-    assert void_evts[0].payload.get("approved_by") == "mgr-1"
+    assert void_evts[0].payload.get("approved_by") == "mgr-test"
 
 
 @pytest.mark.asyncio
 async def test_void_order_404_for_missing_order(ledger):
     """void_order on a nonexistent order → 404."""
+    await _seed_manager_0000(ledger)
     with pytest.raises(HTTPException) as exc:
         await void_order(
             "no-such-order",
-            VoidOrderRequest(reason="test", approved_by="mgr"),
+            VoidOrderRequest(reason="test", pin="0000"),
+            http_request=_mock_request(),
             ledger=ledger,
         )
     assert exc.value.status_code == 404

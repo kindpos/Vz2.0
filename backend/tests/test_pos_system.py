@@ -45,6 +45,28 @@ from app.core.events import (
 )
 from app.core.projections import project_order, project_orders, Order
 from app.core.money import money_round
+from types import SimpleNamespace
+
+
+def _mock_request():
+    return SimpleNamespace(client=SimpleNamespace(host="test"))
+
+
+async def _seed_manager_0000(ledger):
+    from app.core.events import create_event
+    await ledger.append(create_event(
+        event_type=EventType.EMPLOYEE_CREATED,
+        terminal_id="OVERSEER",
+        payload={
+            "employee_id": "mgr-test",
+            "first_name": "Test",
+            "last_name": "Manager",
+            "display_name": "Test Manager",
+            "pin": "0000",
+            "role_ids": ["manager"],
+            "active": True,
+        },
+    ))
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -395,7 +417,7 @@ class TestTransactionFlow:
 
     @pytest.mark.asyncio
     async def test_void_api_rejects_without_manager(self, ledger):
-        """Void API route requires approved_by — rejects empty string."""
+        """Void API route requires valid PIN — rejects wrong PIN with 401."""
         from fastapi import HTTPException
         from app.api.routes.orders import void_order, VoidOrderRequest
 
@@ -403,12 +425,10 @@ class TestTransactionFlow:
         await _create_order(ledger, oid)
         await _add_item(ledger, oid, "i1", "Burger", 10.00)
 
-        # Pydantic now requires approved_by as a non-optional str,
-        # but even if passed as empty the route rejects it
         with pytest.raises(HTTPException) as exc_info:
-            req = VoidOrderRequest(reason="test void", approved_by="")
-            await void_order(oid, req, ledger)
-        assert exc_info.value.status_code == 403
+            req = VoidOrderRequest(reason="test void", pin="wrong-pin")
+            await void_order(oid, req, http_request=_mock_request(), ledger=ledger)
+        assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
     async def test_reopen_after_close(self, ledger):
@@ -1197,7 +1217,7 @@ class TestUserFlowPermissions:
 
     @pytest.mark.asyncio
     async def test_void_api_enforces_manager_approval(self, ledger):
-        """Void API route now enforces approved_by — returns 403 without it."""
+        """Void API route enforces PIN — returns 401 without valid PIN."""
         from fastapi import HTTPException
         from app.api.routes.orders import void_order, VoidOrderRequest
 
@@ -1205,13 +1225,14 @@ class TestUserFlowPermissions:
         await _create_order(ledger, oid)
         await _add_item(ledger, oid, "i1", "Burger", 10.00)
 
-        # Empty string rejected
+        # Wrong PIN rejected
         with pytest.raises(HTTPException) as exc_info:
-            req = VoidOrderRequest(reason="test", approved_by="   ")
-            await void_order(oid, req, ledger)
-        assert exc_info.value.status_code == 403
+            req = VoidOrderRequest(reason="test", pin="wrong-pin")
+            await void_order(oid, req, http_request=_mock_request(), ledger=ledger)
+        assert exc_info.value.status_code == 401
 
-        # With valid manager ID it works
-        req = VoidOrderRequest(reason="test", approved_by="mgr-1")
-        result = await void_order(oid, req, ledger)
+        # With valid PIN it works
+        await _seed_manager_0000(ledger)
+        req = VoidOrderRequest(reason="test", pin="0000")
+        result = await void_order(oid, req, http_request=_mock_request(), ledger=ledger)
         assert result.status == "voided"
