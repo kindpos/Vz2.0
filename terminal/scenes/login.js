@@ -55,6 +55,10 @@ function _startClock(timeEl, dateEl, dayEl) {
 // ── Auth ──────────────────────────────────────────
 async function _attemptLogin(pin, onSuccess, onFail) {
   try {
+    if (pin.length !== PIN_LENGTH || !/^\d+$/.test(pin)) {
+      onFail('INVALID PIN');
+      return;
+    }
     console.log('[login] attempting auth...');
     const res = await fetchWithTimeout('/api/v1/auth/verify-pin', {
       method:  'POST',
@@ -67,18 +71,15 @@ async function _attemptLogin(pin, onSuccess, onFail) {
       onFail('TOO MANY ATTEMPTS');
       return;
     }
-    if (res.ok) {
-      const data = await res.json();
-      if (data.valid) {
-        // Persist the bearer token so auth-client can attach it to every
-        // subsequent /api/* request. Without this the server-side auth
-        // gates never see a valid session and (under KINDPOS_AUTH_ENFORCED
-        // = true) would start returning 401.
-        setToken(data);
-        onSuccess(data);
-      } else {
-        onFail();
-      }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.valid) {
+      // Persist the bearer token so auth-client can attach it to every
+      // subsequent /api/* request. Without this the server-side auth
+      // gates never see a valid session and (under KINDPOS_AUTH_ENFORCED
+      // = true) would start returning 401.
+      setToken(data);
+      onSuccess(data);
     } else {
       onFail();
     }
