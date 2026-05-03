@@ -10,6 +10,11 @@ let _resultCountEl    = null;
 let _summaryStrip     = null;
 let _currentPage      = 1;
 let _tabRowEl         = null;
+let _tableWrapEl      = null;
+
+// Fallbacks for tokens not yet in tokens.js
+const _MOON        = T.moon        || T.lavender;
+const _SRV_PALETTE = T.srvPalette  || [T.elec, T.green, T.gold, T.lavender, T.verm, T.mint];
 
 export let _pillValues    = {};
 export let _activeFilters = [];
@@ -191,7 +196,223 @@ function renderPage_data(container, data, employees) {
     renderPagination(container, data);
 }
 
-function renderTable(c, r) { /* TODO 3c */ }
+function renderTable(container, rows) {
+    _tableWrapEl = document.createElement('div');
+    _tableWrapEl.style.cssText = `
+        background: ${T.card};
+        border: 1px solid ${T.border};
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 0 24px 24px;
+    `;
+
+    if (rows.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `
+            text-align: center;
+            padding: 60px 20px;
+            color: ${T.muted};
+            font-family: ${T.fb};
+            font-size: 13px;
+        `;
+        empty.textContent = 'No transactions match the current filters';
+        _tableWrapEl.appendChild(empty);
+        container.appendChild(_tableWrapEl);
+        return;
+    }
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width: 100%; border-collapse: collapse;';
+
+    // thead
+    const thead = document.createElement('thead');
+    thead.style.cssText = `background: ${T.well}; border-bottom: 1px solid ${T.border};`;
+    const headerRow = document.createElement('tr');
+    const cols = [
+        { label: 'Check #',    align: 'left'  },
+        { label: 'Time',       align: 'left'  },
+        { label: 'Server',     align: 'left'  },
+        { label: 'Order Type', align: 'left'  },
+        { label: 'Day Part',   align: 'left'  },
+        { label: 'Items',      align: 'left'  },
+        { label: 'Subtotal',   align: 'right' },
+        { label: 'Discount',   align: 'right' },
+        { label: 'Tax',        align: 'right' },
+        { label: 'Total',      align: 'right' },
+        { label: 'Tip',        align: 'right' },
+        { label: 'Payment',    align: 'left'  },
+        { label: 'Last 4',     align: 'right' },
+    ];
+    cols.forEach(col => {
+        const th = document.createElement('th');
+        th.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: ${T.muted};
+            padding: 11px 16px;
+            text-align: ${col.align};
+        `;
+        th.textContent = col.label;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // tbody
+    const tbody = document.createElement('tbody');
+    rows.forEach((row, idx) => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = `border-bottom: 1px solid rgba(255,255,255,0.06);${row.voided ? ' opacity: 0.55;' : ''}`;
+        tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(255,255,255,0.025)'; });
+        tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+
+        const td = (css = '') => {
+            const cell = document.createElement('td');
+            cell.style.cssText = `padding: 11px 16px; ${css}`;
+            return cell;
+        };
+
+        // Check #
+        const checkTd = td();
+        const checkSpan = document.createElement('span');
+        checkSpan.style.cssText = `
+            color: ${row.voided ? T.verm : T.elec};
+            font-weight: 700;
+            cursor: pointer;
+            font-family: ${T.fb};
+            font-size: 13px;
+        `;
+        checkSpan.dataset.orderId = row.order_id;
+        checkSpan.textContent = row.order_id || '—';
+        checkSpan.addEventListener('click', () => console.log('open check', row.order_id));
+        checkTd.appendChild(checkSpan);
+        tr.appendChild(checkTd);
+
+        // Time
+        const timeTd = td(`color: ${T.muted}; font-family: ${T.fb};`);
+        if (row.closed_at) {
+            const d = new Date(row.closed_at);
+            let h = d.getHours();
+            const m = String(d.getMinutes()).padStart(2, '0');
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            timeTd.textContent = `${h}:${m} ${ampm}`;
+        } else {
+            timeTd.textContent = '—';
+        }
+        tr.appendChild(timeTd);
+
+        // Server
+        const serverTd = td();
+        const serverFlex = document.createElement('div');
+        serverFlex.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+        const dotColor = _SRV_PALETTE[idx % _SRV_PALETTE.length];
+        const dot = document.createElement('span');
+        dot.style.cssText = `
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: ${dotColor};
+            flex-shrink: 0;
+            display: inline-block;
+        `;
+        serverFlex.appendChild(dot);
+        serverFlex.appendChild(document.createTextNode(row.server_name || '—'));
+        serverTd.appendChild(serverFlex);
+        tr.appendChild(serverTd);
+
+        // Order Type
+        const otTd = td();
+        const otBadge = document.createElement('span');
+        const ot = (row.order_type || '').toLowerCase().replace('_', '-');
+        const otColor = ot === 'dine-in' ? T.green : ot === 'bar' ? T.elec : _MOON;
+        otBadge.style.cssText = `
+            background: ${withAlpha(otColor, 0.1)};
+            border: 1px solid ${withAlpha(otColor, 0.3)};
+            color: ${otColor};
+            border-radius: 4px;
+            font-family: ${T.fb};
+            font-size: 10px;
+            text-transform: uppercase;
+            padding: 2px 7px;
+        `;
+        otBadge.textContent = row.order_type || '—';
+        otTd.appendChild(otBadge);
+        tr.appendChild(otTd);
+
+        // Day Part
+        const dpTd = td(`color: ${T.muted}; font-family: ${T.fb};`);
+        dpTd.textContent = row.day_part || '—';
+        tr.appendChild(dpTd);
+
+        // Items
+        const itemsTd = td(`text-align: center; color: ${T.muted};`);
+        itemsTd.textContent = row.item_count != null ? String(row.item_count) : '—';
+        tr.appendChild(itemsTd);
+
+        // Subtotal
+        const subtotalTd = td(`text-align: right; color: ${T.gold}; font-weight: 500;`);
+        subtotalTd.textContent = row.subtotal != null ? fmt(row.subtotal) : '—';
+        tr.appendChild(subtotalTd);
+
+        // Discount
+        const discTd = td('text-align: right;');
+        if (row.discount_total > 0) {
+            discTd.style.color = T.lavender;
+            discTd.textContent = '–' + fmt(row.discount_total);
+        } else {
+            discTd.style.color = T.muted;
+            discTd.textContent = '—';
+        }
+        tr.appendChild(discTd);
+
+        // Tax
+        const taxTd = td(`text-align: right; color: ${T.muted};`);
+        taxTd.textContent = row.tax != null ? fmt(row.tax) : '—';
+        tr.appendChild(taxTd);
+
+        // Total
+        const totalTd = td(`text-align: right; color: ${T.gold}; font-weight: 500;`);
+        totalTd.textContent = row.total != null ? fmt(row.total) : '—';
+        tr.appendChild(totalTd);
+
+        // Tip
+        const tipTd = td(`text-align: right; color: ${T.green}; font-weight: 500;`);
+        tipTd.textContent = row.tip_total != null ? fmt(row.tip_total) : '—';
+        tr.appendChild(tipTd);
+
+        // Payment
+        const payTd = td();
+        const payBadge = document.createElement('span');
+        const pm = (row.payment_method || '').toLowerCase();
+        const pmColor = pm === 'cash' ? T.green : pm === 'card' ? T.elec : pm === 'split' ? T.gold : _MOON;
+        payBadge.style.cssText = `
+            background: ${withAlpha(pmColor, 0.1)};
+            border: 1px solid ${withAlpha(pmColor, 0.3)};
+            color: ${pmColor};
+            border-radius: 4px;
+            font-family: ${T.fb};
+            font-size: 10px;
+            text-transform: uppercase;
+            padding: 2px 7px;
+        `;
+        payBadge.textContent = row.payment_method || '—';
+        payTd.appendChild(payBadge);
+        tr.appendChild(payTd);
+
+        // Last 4
+        const last4Td = td(`text-align: right; color: ${T.muted}; font-family: ${T.fb};`);
+        last4Td.textContent = row.card_last_four || '—';
+        tr.appendChild(last4Td);
+
+        tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    _tableWrapEl.appendChild(table);
+    container.appendChild(_tableWrapEl);
+}
 
 function renderPagination(c, d) { /* TODO 3d */ }
 
