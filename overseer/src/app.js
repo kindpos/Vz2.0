@@ -48,6 +48,7 @@ import { buildPayrollAttendanceScene, cleanupPayrollAttendance } from './section
 import { buildPricingSetupScene, cleanupPricingSetup } from './sections/pricing-setup.js';
 import { buildModifierGroupsScene, cleanupModifierGroups } from './sections/modifier-groups.js';
 import { buildModifiersScene, cleanupModifiers } from './sections/modifiers.js';
+import mountTransactionLog, { unmount as unmountTransactionLog } from './sections/transaction-log.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -82,6 +83,7 @@ const NAV = [
         id: 'reporting',
         label: 'REPORTING',
         subs: [
+            { id: 'transaction-log',  label: 'Transaction Log'  },
             { id: 'sales-reports',    label: 'Sales Reports'    },
             { id: 'labor-reports',    label: 'Labor Reports'    },
             { id: 'menu-performance', label: 'Menu Performance' },
@@ -411,6 +413,11 @@ function registerAllSections() {
         name: 'modifiers',
         mount: (container) => buildModifiersScene(container),
         unmount: (container) => cleanupModifiers(container),
+    });
+    SceneManager.register({
+        name: 'transaction-log',
+        mount: (container) => mountTransactionLog(container),
+        unmount: () => unmountTransactionLog(),
     });
 }
 
