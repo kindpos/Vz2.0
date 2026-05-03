@@ -21,6 +21,7 @@
 // ═══════════════════════════════════════════════════
 
 import { fetchWithTimeout } from './net.js';
+import { entReport } from './entomology-client.js';
 
 // Defaults kick in when the browser hasn't yet heard back from
 // /api/v1/config/pricing. They match the long-standing POS defaults
@@ -46,6 +47,12 @@ function _loadRates() {
       }
       _loaded = true;
     } catch (e) {
+      entReport({
+        code:    'PRICING_LOAD_FAILED',
+        source:  'pricing._loadRates',
+        message: `Failed to load /api/v1/config/pricing — ${e && e.message ? e.message : String(e)}`,
+        ctx:     { error: e && e.message ? e.message : String(e) },
+      });
       _loaded = true; /* keep defaults */
     }
   })();
