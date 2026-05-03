@@ -1095,6 +1095,48 @@ async def add_item(
             order = await get_order_or_404(ledger, order_id)
             return OrderResponse.from_order(order)
 
+    # Validate mandatory modifier group requirements before accepting the item.
+    # A user exploiting devtools could bypass the UI gate and submit an item
+    # without required modifiers. This backend check ensures mandatory groups
+    # are satisfied regardless of how the request was constructed.
+    try:
+        config_service = OverseerConfigService(ledger)
+        menu_items = await config_service.get_menu_items()
+        menu_item = next(
+            (m for m in menu_items if m.item_id == request.menu_item_id),
+            None,
+        )
+
+        # Only validate if the item exists in the menu (custom line items have no menu_item_id match)
+        if menu_item is not None and menu_item.mandatory_group_ids:
+            modifier_groups = await config_service.get_modifier_groups()
+            group_by_id = {g.group_id: g for g in modifier_groups}
+
+            # Get the names of submitted modifiers for matching
+            submitted_mod_names = {m.name for m in (request.modifiers or [])}
+
+            # Validate each mandatory group
+            for mandatory_gid in menu_item.mandatory_group_ids:
+                group = group_by_id.get(mandatory_gid)
+                if group is None or group.min_selections == 0:
+                    continue
+
+                # Count how many submitted modifiers are in this group
+                group_mod_names = {m.name for m in (group.modifiers or [])}
+                selected_count = len(submitted_mod_names & group_mod_names)
+
+                if selected_count < group.min_selections:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Item '{request.name}' missing required modifier group '{group.name}' ({group.min_selections} required, {selected_count} provided)",
+                    )
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Config projection unavailable — fail open so a broken config lookup
+        # doesn't block a live service.
+        _logger.debug("Modifier group validation skipped due to config lookup error: %s", str(e))
+
     item_id = f"item_{uuid.uuid4().hex[:8]}"
 
     batch_events: list = [item_added(
