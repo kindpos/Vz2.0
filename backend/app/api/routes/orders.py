@@ -1137,7 +1137,8 @@ async def add_item(
     return OrderResponse.from_order(order)
 
 
-@router.delete("/{order_id}/items/{item_id}", response_model=OrderResponse)
+@router.delete("/{order_id}/items/{item_id}", response_model=OrderResponse,
+               dependencies=[Depends(require_manager)])
 async def remove_item(
         order_id: str,
         item_id: str,
@@ -1489,7 +1490,8 @@ async def reopen_order(
     return OrderResponse.from_order(order)
 
 
-@router.post("/{order_id}/void", response_model=OrderResponse)
+@router.post("/{order_id}/void", response_model=OrderResponse,
+             dependencies=[Depends(require_manager)])
 async def void_order(
         order_id: str,
         request: VoidOrderRequest,
@@ -1735,7 +1737,8 @@ class ApplyDiscountRequest(BaseModel):
     discount_id: Optional[str] = None  # catalog reference, if applied from a named discount
     transaction_id: Optional[str] = None  # idempotency key — same ID returns existing result
 
-@router.post("/{order_id}/discount", response_model=OrderResponse)
+@router.post("/{order_id}/discount", response_model=OrderResponse,
+             dependencies=[Depends(require_manager)])
 async def apply_discount(
         order_id: str,
         request: ApplyDiscountRequest,
@@ -1941,7 +1944,7 @@ async def send_order(
 # CLOSE BATCH
 # =============================================================================
 
-@router.post("/close-batch")
+@router.post("/close-batch", dependencies=[Depends(require_manager)])
 async def close_batch(ledger: EventLedger = Depends(get_ledger)):
     """Close all open orders, compute batch totals, and emit settlement events."""
     open_ids = await get_open_orders(ledger)
