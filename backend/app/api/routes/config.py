@@ -29,7 +29,7 @@ from app.models.config_events import (
 from app.config import settings
 from app.services.store_config_service import StoreConfigService
 from app.services.overseer_config_service import OverseerConfigService
-from app.api.routes.auth import auth_required, require_manager
+from app.api.routes.auth import auth_required, require_manager, require_owner
 from app.core.pin_hash import ensure_hashed_pin
 
 _log = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ async def broadcast_config_update(sections: List[str]):
     _log.info("config.updated sections=%s (terminals pick up via /config/version poll)", sections)
 
 
-@router.get("/version")
+@router.get("/version", dependencies=[Depends(require_manager)])
 async def get_config_version(ledger: EventLedger = Depends(get_ledger)):
     """Cheap poll endpoint terminals use to detect config changes.
 
@@ -104,7 +104,7 @@ async def get_config_version(ledger: EventLedger = Depends(get_ledger)):
     return {"version": latest, "prefixes": list(CONFIG_EVENT_PREFIXES)}
 
 
-@router.get("/pricing")
+@router.get("/pricing", dependencies=[Depends(require_manager)])
 async def get_pricing(ledger: EventLedger = Depends(get_ledger)):
     """Return canonical pricing constants from ledger (or env defaults)."""
     tax_rate = settings.tax_rate
@@ -132,86 +132,86 @@ async def get_pricing(ledger: EventLedger = Depends(get_ledger)):
     }
 
 
-@router.get("/store", response_model=StoreConfigBundle)
+@router.get("/store", response_model=StoreConfigBundle, dependencies=[Depends(require_manager)])
 async def get_store_config(ledger: EventLedger = Depends(get_ledger)):
     service = StoreConfigService(ledger)
     return await service.get_projected_config()
 
 
 # New Overseer Endpoints
-@router.get("/roles", response_model=List[Role])
+@router.get("/roles", response_model=List[Role], dependencies=[Depends(require_manager)])
 async def get_roles(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_roles()
 
 
-@router.get("/employees", response_model=List[Employee])
+@router.get("/employees", response_model=List[Employee], dependencies=[Depends(require_manager)])
 async def get_employees(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_employees()
 
 
-@router.get("/tipout", response_model=List[TipoutRule])
+@router.get("/tipout", response_model=List[TipoutRule], dependencies=[Depends(require_manager)])
 async def get_tipout(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_tipout_rules()
 
 
-@router.get("/tip_pools", response_model=List[TipPool])
+@router.get("/tip_pools", response_model=List[TipPool], dependencies=[Depends(require_manager)])
 async def get_tip_pools(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_tip_pools()
 
 
-@router.get("/menu/categories", response_model=List[MenuCategory])
+@router.get("/menu/categories", response_model=List[MenuCategory], dependencies=[Depends(require_manager)])
 async def get_menu_categories(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_menu_categories()
 
 
-@router.get("/menu/items", response_model=List[MenuItem])
+@router.get("/menu/items", response_model=List[MenuItem], dependencies=[Depends(require_manager)])
 async def get_menu_items(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_menu_items()
 
 
-@router.get("/modifier-groups", response_model=List[ModifierGroup])
+@router.get("/modifier-groups", response_model=List[ModifierGroup], dependencies=[Depends(require_manager)])
 async def get_modifier_groups(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_modifier_groups()
 
 
-@router.get("/micromods", response_model=List[MicroMod])
+@router.get("/micromods", response_model=List[MicroMod], dependencies=[Depends(require_manager)])
 async def get_micromods(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_micromods()
 
 
-@router.get("/floorplan/sections", response_model=List[Section])
+@router.get("/floorplan/sections", response_model=List[Section], dependencies=[Depends(require_manager)])
 async def get_floorplan_sections(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_floorplan_sections()
 
 
-@router.get("/floorplan", response_model=FloorPlanLayout)
+@router.get("/floorplan", response_model=FloorPlanLayout, dependencies=[Depends(require_manager)])
 async def get_floorplan(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_floorplan_layout()
 
 
-@router.get("/terminals", response_model=List[Terminal])
+@router.get("/terminals", response_model=List[Terminal], dependencies=[Depends(require_manager)])
 async def get_terminals(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_terminals()
 
 
-@router.get("/routing", response_model=RoutingMatrix)
+@router.get("/routing", response_model=RoutingMatrix, dependencies=[Depends(require_manager)])
 async def get_routing(ledger: EventLedger = Depends(get_ledger)):
     service = OverseerConfigService(ledger)
     return await service.get_routing_matrix()
 
 
-@router.post("/store/logo", dependencies=[Depends(require_manager)])
+@router.post("/store/logo", dependencies=[Depends(require_owner)])
 async def upload_store_logo(
         req: LogoUploadRequest,
         background_tasks: BackgroundTasks,
@@ -252,7 +252,7 @@ async def upload_store_logo(
             "logo_url": f"/api/v1/config/store/logo?v={event.sequence_number}"}
 
 
-@router.get("/store/logo")
+@router.get("/store/logo", dependencies=[Depends(require_manager)])
 async def get_store_logo(ledger: EventLedger = Depends(get_ledger)):
     """Stream the most recently uploaded store logo, if any."""
     events = await ledger.get_events_by_type(EventType.STORE_BRANDING_UPDATED, limit=200)
@@ -273,7 +273,7 @@ async def get_store_logo(ledger: EventLedger = Depends(get_ledger)):
     return Response(content=data, media_type=mime_type)
 
 
-@router.post("/store/info", dependencies=[Depends(require_manager)])
+@router.post("/store/info", dependencies=[Depends(require_owner)])
 async def update_store_info(info: StoreInfo, background_tasks: BackgroundTasks,
                             ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
@@ -286,7 +286,7 @@ async def update_store_info(info: StoreInfo, background_tasks: BackgroundTasks,
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/store/cc-rate", dependencies=[Depends(require_manager)])
+@router.post("/store/cc-rate", dependencies=[Depends(require_owner)])
 async def update_cc_rate(rate: CCProcessingRate, background_tasks: BackgroundTasks,
                          ledger: EventLedger = Depends(get_ledger)):
     _TWO_DP = Decimal("0.01")
@@ -318,7 +318,7 @@ def _is_menu_import_event(etype: str) -> bool:
     return False
 
 
-@router.post("/push", dependencies=[Depends(require_manager)])
+@router.post("/push", dependencies=[Depends(require_owner)])
 async def push_changes(changes: List[PendingChange], background_tasks: BackgroundTasks,
                        ledger: EventLedger = Depends(get_ledger)):
     events = []
@@ -420,7 +420,7 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
     }
 
 
-@router.post("/menu/86", dependencies=[Depends(require_manager)])
+@router.post("/menu/86", dependencies=[Depends(require_owner)])
 async def item_86(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     if not item_id or not item_id.strip():
         raise HTTPException(status_code=422, detail="item_id must not be empty")
@@ -442,7 +442,7 @@ async def item_86(item_id: str, background_tasks: BackgroundTasks, ledger: Event
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/menu/restore", dependencies=[Depends(require_manager)])
+@router.post("/menu/restore", dependencies=[Depends(require_owner)])
 async def item_restore(item_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     if not item_id or not item_id.strip():
         raise HTTPException(status_code=422, detail="item_id must not be empty")
@@ -463,7 +463,7 @@ async def item_restore(item_id: str, background_tasks: BackgroundTasks, ledger: 
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/roles", dependencies=[Depends(require_manager)])
+@router.post("/roles", dependencies=[Depends(require_owner)])
 async def create_role(role: Role, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.EMPLOYEE_ROLE_CREATED,
@@ -475,7 +475,7 @@ async def create_role(role: Role, background_tasks: BackgroundTasks, ledger: Eve
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.put("/roles/{role_id}", dependencies=[Depends(require_manager)])
+@router.put("/roles/{role_id}", dependencies=[Depends(require_owner)])
 async def update_role(role_id: str, role: Role, background_tasks: BackgroundTasks,
                       ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
@@ -488,7 +488,7 @@ async def update_role(role_id: str, role: Role, background_tasks: BackgroundTask
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.delete("/roles/{role_id}", dependencies=[Depends(require_manager)])
+@router.delete("/roles/{role_id}", dependencies=[Depends(require_owner)])
 async def delete_role(role_id: str, background_tasks: BackgroundTasks, ledger: EventLedger = Depends(get_ledger)):
     event = create_event(
         event_type=EventType.EMPLOYEE_ROLE_DELETED,
@@ -500,7 +500,7 @@ async def delete_role(role_id: str, background_tasks: BackgroundTasks, ledger: E
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.post("/employees", dependencies=[Depends(require_manager)])
+@router.post("/employees", dependencies=[Depends(require_owner)])
 async def create_employee(employee: Employee, background_tasks: BackgroundTasks,
                           ledger: EventLedger = Depends(get_ledger)):
     # In a real system, we'd use employee.created event,
@@ -543,7 +543,7 @@ async def create_employee(employee: Employee, background_tasks: BackgroundTasks,
     return {"status": "ok", "event_id": event.sequence_number}
 
 
-@router.get("/terminal-bundle")
+@router.get("/terminal-bundle", dependencies=[Depends(require_manager)])
 async def get_terminal_bundle(ledger: EventLedger = Depends(get_ledger)):
     store_service = StoreConfigService(ledger)
     overseer_service = OverseerConfigService(ledger)

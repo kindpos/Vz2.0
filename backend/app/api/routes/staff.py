@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
 from app.api.dependencies import get_ledger
-from app.api.routes.auth import require_manager
+from app.api.routes.auth import require_manager, require_owner
 from app.core.event_ledger import EventLedger
 from app.core.events import (
     user_logged_in,
@@ -74,7 +74,7 @@ async def _clocked_in_ids(ledger: EventLedger) -> set:
     return clocked_in
 
 
-@router.post("/clock-in")
+@router.post("/clock-in", dependencies=[Depends(require_owner)])
 async def clock_in(request: ClockInRequest, ledger: EventLedger = Depends(get_ledger)):
     """Record a staff clock-in event."""
     if request.employee_id in await _clocked_in_ids(ledger):
@@ -119,7 +119,7 @@ async def clock_in(request: ClockInRequest, ledger: EventLedger = Depends(get_le
     }
 
 
-@router.post("/clock-out")
+@router.post("/clock-out", dependencies=[Depends(require_owner)])
 async def clock_out(request: ClockOutRequest, ledger: EventLedger = Depends(get_ledger)):
     """Record a staff clock-out event."""
     if request.employee_id not in await _clocked_in_ids(ledger):
@@ -180,7 +180,7 @@ class DeclareCashTipsRequest(BaseModel):
     amount: Decimal
 
 
-@router.post("/declare-cash-tips", dependencies=[Depends(require_manager)])
+@router.post("/declare-cash-tips", dependencies=[Depends(require_owner)])
 async def declare_cash_tips(
     request: DeclareCashTipsRequest,
     ledger: EventLedger = Depends(get_ledger),
