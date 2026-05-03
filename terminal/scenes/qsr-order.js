@@ -68,7 +68,7 @@ import { fetchWithTimeout } from '../net.js';
 
 var RECAP_W    = T.pcLeftW;              // 340 — left panel, fixed
 var RIGHT_W    = T.appW - RECAP_W - 1;  // 683 — right working surface
-var FAV_H      = 88;                     // Favorites strip height
+var FAV_H      = 0;                      // Favorites strip height (removed)
 var CAT_W      = 160;                    // Category column width
 var GRID_W     = RIGHT_W - CAT_W - 1;   // Item grid width
 var CONTENT_H  = T.appH - T.headerH;    // 548 — below header
@@ -154,7 +154,6 @@ var els = {
   voidLink:      null,
   categoryColumn: null,
   itemGrid:      null,
-  favStrip:      null,
   rightSurface:  null,
 };
 
@@ -950,108 +949,11 @@ function renderRecap() {
 }
 
 // ─────────────────────────────────────────────────
-//  FAVORITES STRIP
+//  FAVORITES STRIP (REMOVED)
 // ─────────────────────────────────────────────────
 
 function buildFavoritesStrip(categories) {
-  // Gather top 5 items across all categories by popularity field
-  var allItems = [];
-  for (var ci = 0; ci < categories.length; ci++) {
-    var cat = categories[ci];
-    for (var ii = 0; ii < (cat.items || []).length; ii++) {
-      allItems.push(cat.items[ii]);
-    }
-  }
-  allItems.sort(function(a, b) {
-    var pa = typeof a.popularity === 'number' ? a.popularity : 999;
-    var pb = typeof b.popularity === 'number' ? b.popularity : 999;
-    return pa - pb;
-  });
-  var favs = allItems.slice(0, 5);
-
-  if (favs.length === 0) return null;
-
-  var strip = document.createElement('div');
-  strip.style.cssText = [
-    'position:relative;',
-    'height:' + FAV_H + 'px;',
-    'width:100%;',
-    'display:flex;gap:8px;',
-    'padding:8px ' + T.scenePad + 'px;',
-    'box-sizing:border-box;',
-    'align-items:stretch;',
-  ].join('');
-  els.favStrip = strip;
-
-  // FAVORITES label — positioned in strip top padding
-  var favLabel = document.createElement('span');
-  favLabel.style.cssText = [
-    'position:absolute;',
-    'top:2px;left:' + T.scenePad + 'px;',
-    'font-family:' + T.fb + ';',
-    'font-size:' + FS_LABEL + ';',
-    'color:' + T.green + ';',
-    'letter-spacing:2px;',
-    'text-transform:uppercase;',
-    'pointer-events:none;',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
-  favLabel.textContent = 'FAVORITES';
-  strip.appendChild(favLabel);
-
-  favs.forEach(function(item) {
-    var tile = document.createElement('div');
-    tile.dataset.itemKey = item.itemKey || item.key || item.name;
-    tile.style.cssText = [
-      'flex:1;min-width:0;',
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;',
-      'background:' + T.card + ';',
-      'border-radius:' + T.chamferCard + 'px;',
-      'border:1px solid ' + T.green + ';',
-      'position:relative;',
-      'overflow:hidden;',
-      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'gap:2px;',
-      'padding:4px;',
-    ].join('');
-
-    // Green top accent bar
-    var topBar = document.createElement('div');
-    topBar.style.cssText = [
-      'position:absolute;top:0;left:0;right:0;',
-      'height:' + T.accentBarW + ';',
-      'background:' + T.green + ';',
-      'border-radius:' + T.chamferCard + 'px ' + T.chamferCard + 'px 0 0;',
-    ].join('');
-    tile.appendChild(topBar);
-
-    var nameEl = document.createElement('span');
-    nameEl.style.cssText = [
-      'font-family:' + T.fh + ';',
-      'font-size:' + FS_TILE + ';',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.text + ';',
-      'text-align:center;',
-      'line-height:1.2;',
-      'word-break:break-word;',
-      'margin-top:4px;',
-    ].join('');
-    nameEl.textContent = item.name;
-
-    var priceEl = document.createElement('span');
-    priceEl.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + FS_MOD + ';',
-      'color:' + T.gold + ';',
-      'text-align:center;',
-    ].join('') + ";font-weight:" + T.fwBold + ";";
-    priceEl.textContent = fmtMoney(item.price || 0);
-
-    tile.appendChild(nameEl);
-    tile.appendChild(priceEl);
-    strip.appendChild(tile);
-  });
-
-  return strip;
+  return null;  // Favorites strip removed
 }
 
 // ─────────────────────────────────────────────────
@@ -1115,15 +1017,15 @@ function _buildCategoryTile(cat) {
 }
 
 function buildCategoryColumn(categories, favH) {
-  var fH = typeof favH === 'number' ? favH : FAV_H;
+  var fH = typeof favH === 'number' ? favH : 0;
   var col = document.createElement('div');
   col.style.cssText = [
     'position:absolute;',
-    'left:0;top:' + fH + 'px;',
+    'left:0;top:' + T.headerH + 'px;',
     'width:' + CAT_W + 'px;',
-    'height:' + (CONTENT_H - fH) + 'px;',
+    'height:' + (T.appH - T.headerH) + 'px;',
     'overflow-y:auto;',
-    'display:flex;flex-direction:column;gap:8px;',
+    'display:flex;flex-direction:column;gap:6px;',
     'padding:6px;',
     'box-sizing:border-box;',
   ].join('');
@@ -1323,7 +1225,7 @@ function _renderItemGridContents(grid, items, cat, anchorIdx) {
 }
 
 function buildItemGrid(items, favH, anchorIdx, cat) {
-  var fH = typeof favH === 'number' ? favH : FAV_H;
+  var fH = typeof favH === 'number' ? favH : 0;
   var idx = typeof anchorIdx === 'number' ? anchorIdx : 0;
 
   var grid = document.createElement('div');
@@ -1331,10 +1233,10 @@ function buildItemGrid(items, favH, anchorIdx, cat) {
 
   grid.style.cssText = [
     'position:absolute;',
-    'left:' + (CAT_W + 1) + 'px;',
-    'top:' + fH + 'px;',
+    'left:' + (T.pcLeftW + 1 + CAT_W + 1) + 'px;',
+    'top:' + T.headerH + 'px;',
     'width:' + GRID_W + 'px;',
-    'height:' + (CONTENT_H - fH) + 'px;',
+    'height:' + (T.appH - T.headerH) + 'px;',
     'box-sizing:border-box;',
     'overflow-y:auto;',
     'padding:6px;',
@@ -1543,11 +1445,6 @@ function wireHandlers() {
     els.itemGrid.addEventListener('pointerup', _onGridTap);
   }
 
-  // Favorites strip — add item
-  if (els.favStrip) {
-    els.favStrip.addEventListener('pointerup', _onFavTap);
-  }
-
   // Category column — switch category
   if (els.categoryColumn) {
     els.categoryColumn.addEventListener('pointerup', _onCatTap);
@@ -1727,22 +1624,7 @@ function buildRightSurface(categories) {
     'position:relative;',
   ].join('');
 
-  var favEl = buildFavoritesStrip(categories);
-  var favH = favEl ? FAV_H : 0;
-
-  if (favEl) {
-    rightEl.appendChild(favEl);
-
-    // Divider below favorites
-    var divider = document.createElement('div');
-    divider.style.cssText = [
-      'position:absolute;',
-      'top:' + favH + 'px;left:0;',
-      'width:100%;height:1px;',
-      'background:' + T.border + ';opacity:0.5;',
-    ].join('');
-    rightEl.appendChild(divider);
-  }
+  var favH = 0;
 
   rightEl.appendChild(buildCategoryColumn(categories, favH));
   var initialCat = categories.length > 0 ? categories[0] : null;
@@ -1773,6 +1655,12 @@ function fetchMenuData() {
         itemsByCategory[cid].push(it);
       });
 
+      // Build modifier_groups lookup by id
+      var modGroupsById = {};
+      (menu.modifier_groups || []).forEach(function(grp) {
+        if (grp.group_id) modGroupsById[grp.group_id] = grp;
+      });
+
       var cats = (menu.categories || []).slice();
       cats.sort(function(a, b) {
         return (a.display_order || 999) - (b.display_order || 999);
@@ -1786,11 +1674,20 @@ function fetchMenuData() {
           || T.moon;
         var rawItems = itemsByCategory[cat.category_id] || [];
         var items = rawItems.map(function(it) {
+          // Resolve modifier_groups from mandatory_group_ids
+          var modGroups = [];
+          var mandatoryIds = it.mandatory_group_ids || [];
+          mandatoryIds.forEach(function(gid) {
+            if (modGroupsById[gid]) {
+              modGroups.push(modGroupsById[gid]);
+            }
+          });
           return {
-            itemKey:    it.item_id,
-            name:       it.name,
-            price:      parseFloat(it.price || 0),
-            popularity: parseFloat(it.display_order || 0),
+            itemKey:        it.item_id,
+            name:           it.name,
+            price:          parseFloat(it.price || 0),
+            popularity:     parseFloat(it.display_order || 0),
+            modifier_groups: modGroups,
           };
         });
         return {
@@ -1869,7 +1766,6 @@ defineScene('qsr-order', {
     els.voidLink       = null;
     els.categoryColumn = null;
     els.itemGrid       = null;
-    els.favStrip       = null;
     els.rightSurface   = null;
   },
 });
