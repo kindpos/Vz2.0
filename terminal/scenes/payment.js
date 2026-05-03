@@ -121,7 +121,7 @@ defineScene({
       _sceneMounted:     true,
       payments:          [],
       totalPaid:         0,
-      baseTotal:         params.cardTotal || 0,
+      baseTotal:         Number(params.cardTotal) || 0,
       numpadRef:         null,
       dotTimer:          null,
       _modeButtons:      {},
@@ -221,7 +221,7 @@ defineScene({
     'split-select': {
       render: (container, params) => {
         params = params || {};
-        let remaining = params.remaining || 0;
+        let remaining = Number(params.remaining) || 0;
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;pointer-events:auto;';
 
@@ -331,7 +331,7 @@ defineScene({
     'pc-card-processing': {
       render: (container, params) => {
         params = params || {};
-        const amount = params.amount || 0;
+        const amount = Number(params.amount) || 0;
         const TOTAL_SEGS = 22;
         const segments = [];
         let segIdx = 0;

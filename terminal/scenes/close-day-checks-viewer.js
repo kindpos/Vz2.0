@@ -322,7 +322,7 @@ function buildReceiptEmptyState() {
 
 function renderCheckPreview(paper, checks, allOrders) {
   var isMulti = checks.length > 1;
-  var grandTotal = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+  var grandTotal = checks.reduce(function(s, c) { return s + (Number(c.amount) || 0); }, 0);
 
   // Header — "N CHECKS" + grand total on multi, check label + amount on single.
   var hdrRow = document.createElement('div');

@@ -32,9 +32,9 @@ defineScene({
       var extra = 0;
       modifierGroups.forEach(function(grp) {
         var gid = grp.group_id || grp.id || grp.name;
-        (selections[gid] || []).forEach(function(s) { extra += s.price || 0; });
+        (selections[gid] || []).forEach(function(s) { extra += Number(s.price) || 0; });
       });
-      return (item.unitPrice || 0) + extra;
+      return (Number(item.unitPrice) || 0) + extra;
     }
 
     // ── Layout ───────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ defineScene({
       'color:' + T.gold + ';',
       'margin-top:4px;',
     ].join('');
-    priceEl.textContent = '$' + (item.unitPrice || 0).toFixed(2);
+    priceEl.textContent = '$' + (Number(item.unitPrice) || 0).toFixed(2);
 
     header.appendChild(nameEl);
     header.appendChild(priceEl);

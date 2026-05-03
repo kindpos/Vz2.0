@@ -519,7 +519,7 @@ defineScene({
             const r = await fetchWithTimeout(`/api/v1/reports/labor-summary?date=${ds}&server_id=${encodeURIComponent(empId)}`, {}, 10000);
             const d = await r.json();
             if (_overlayClosed) return;
-            hrsVal.textContent = `${(d.weekly_hours||d.total_hours||0).toFixed(2)}h`;
+            hrsVal.textContent = `${(Number(d.weekly_hours ?? d.total_hours) || 0).toFixed(2)}h`;
           } catch (e) {
             if (_overlayClosed) return;
             hrsVal.textContent = '0.00h';
@@ -543,7 +543,7 @@ defineScene({
             _closeOverlay();
             SceneManager.closeGate('login');
             const dest = selectedRole === 'manager' ? 'manager-landing' : 'server-landing';
-            SceneManager.mountWorking(dest, { staff: emp });
+            SceneManager.mountWorking(dest, { staff: empData });
           } catch (e) {
             showToast(e.message||'Clock-in failed', { bg: T.verm, duration: 3000 });
             clockInBtn.style.opacity = '1'; clockInBtn.style.pointerEvents = 'auto';

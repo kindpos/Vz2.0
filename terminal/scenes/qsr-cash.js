@@ -939,8 +939,8 @@ function wireHandlers() {
 defineScene('qsr-cash', {
   mount: function(container, params) {
     state.order            = (params && params.order) || {};
-    state.total            = state.order.total            || 0;
-    state.cashDiscountRate = state.order.cashDiscountRate || 0;
+    state.total            = Number(state.order.total) || 0;
+    state.cashDiscountRate = Number(state.order.cashDiscountRate) || 0;
     state.tenderedRaw      = '';
     state.tendered         = 0;
     state.changeDue        = 0;

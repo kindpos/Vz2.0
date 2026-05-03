@@ -86,12 +86,12 @@ export function fetchServerState(params) {
     });
 
     const rate = rules.reduce((s, r) => s + (r.percentage || 0), 0) / 100;
-    const netSales = d.net_sales || 0;
-    const cashSales = d.cash_total || 0;
-    const cardSales = d.card_sales || 0;
-    const cardTips  = d.card_tips  || 0;
+    const netSales = Number(d.net_sales) || 0;
+    const cashSales = Number(d.cash_total) || 0;
+    const cardSales = Number(d.card_sales) || 0;
+    const cardTips  = Number(d.card_tips) || 0;
     const tipOutTotal = netSales * rate;
-    const takeHome = (cardTips + (d.cash_tips || 0)) - tipOutTotal;
+    const takeHome = (cardTips + (Number(d.cash_tips) || 0)) - tipOutTotal;
     const cashExpected = cashSales - cardTips;
 
     // Build a lookup so check rows can show table label and guest count,
@@ -231,7 +231,7 @@ function buildBlockerBanner(state, startTime) {
 
 function renderCheckPreview(paper, checks, allOrders) {
   const isMulti = checks.length > 1;
-  const grandTotal = checks.reduce((s, c) => s + (c.amount || 0), 0);
+  const grandTotal = checks.reduce((s, c) => s + (Number(c.amount) || 0), 0);
 
   // Header row — "N CHECKS" + total when multi, else single check label
   const hdrRow = document.createElement('div');

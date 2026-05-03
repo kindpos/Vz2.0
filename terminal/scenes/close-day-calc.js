@@ -22,7 +22,7 @@
  */
 export function computeCashExpected(daySummary) {
   var d = daySummary || {};
-  return (d.cash_total || 0) - (d.card_tips || 0);
+  return (Number(d.cash_total) || 0) - (Number(d.card_tips) || 0);
 }
 
 /**

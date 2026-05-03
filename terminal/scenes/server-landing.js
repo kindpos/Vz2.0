@@ -203,7 +203,7 @@ function buildNewCheckTile(onClick) {
 function _buildCheckPreview(orders) {
   const wrap = document.createElement('div');
 
-  let total = orders.reduce((s, o) => s + (o.total || 0), 0);
+  let total = orders.reduce((s, o) => s + (Number(o.total) || 0), 0);
   const hdr = document.createElement('div');
   hdr.style.cssText = `display:flex;justify-content:space-between;align-items:baseline;padding-bottom:8px;border-bottom:2px solid ${T.green};margin-bottom:8px;`;
   const hLabel = document.createElement('div');
@@ -277,7 +277,6 @@ function _buildCheckPreview(orders) {
       wrap.appendChild(seatBody);
 
       seatMap[sn].forEach((item) => {
-        console.log('[preview item]', JSON.stringify(item));
         let card = document.createElement('div');
         card.style.cssText = `background:${T.card};border:1px solid ${T.moon};border-top:2px solid ${T.moon};border-radius:6px;margin-bottom:5px;margin-left:14px;overflow:hidden;`;
 
@@ -1051,7 +1050,7 @@ defineScene({
       let unadj    = 0;
       const filtered = [];
       checks.forEach((chk) => {
-        if (chk.adjusted) total += (chk.tip || 0);
+        if (chk.adjusted) total += (Number(chk.tip) || 0);
         else unadj++;
         if (tipFilter === 'UNADJ' && !chk.adjusted) filtered.push(chk);
         if (tipFilter === 'ADJ'   &&  chk.adjusted) filtered.push(chk);
@@ -1116,7 +1115,7 @@ defineScene({
       if (closedChecks.length > 1) {
         const cumulative = [];
         let running = 0;
-        closedChecks.forEach((c) => { running += c.tip || 0; cumulative.push(running); });
+        closedChecks.forEach((c) => { running += Number(c.tip) || 0; cumulative.push(running); });
         r.tipSparkBg.update(cumulative);
       }
     }
@@ -1129,13 +1128,13 @@ defineScene({
       let adjTips = 0;
       let unadj   = 0;
       checks.forEach((c) => {
-        if (c.adjusted) adjTips += (c.tip || 0);
+        if (c.adjusted) adjTips += (Number(c.tip) || 0);
         else unadj++;
       });
 
       const tipoutAmt = adjTips * (state.tipoutRate || 0);
       const takeHome  = adjTips - tipoutAmt;
-      const cashOut   = sd.cash_sales || sd.cash_total || 0;
+      const cashOut   = Number(sd.cash_sales || sd.cash_total) || 0;
       const tipoutPct = Math.round((state.tipoutRate || 0) * 100);
 
       r.shiftHeroVal.textContent           = fmt(takeHome);

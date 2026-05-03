@@ -96,7 +96,7 @@ function moneyRound(x) { return Math.round(x * 100) / 100; }
 
 function computeRemaining() {
   var paid = state.payments.reduce(function(s, p) {
-    return moneyRound(s + (p.amount || 0));
+    return moneyRound(s + (Number(p.amount) || 0));
   }, 0);
   state.remaining = moneyRound(state.total - paid);
   if (state.remaining < 0) state.remaining = 0;
@@ -1205,12 +1205,12 @@ function postPartialPayment(payment, callback) {
 
 function allocateTax() {
   var paidSoFar = state.payments.reduce(function(s, p) {
-    return moneyRound(s + (p.amount || 0));
+    return moneyRound(s + (Number(p.amount) || 0));
   }, 0);
   var isLast = moneyRound(paidSoFar + state.currentSplitAmount) >= state.total;
   if (isLast) {
     var allocatedSoFar = state.payments.reduce(function(s, p) {
-      return moneyRound(s + (p.tax || 0));
+      return moneyRound(s + (Number(p.tax) || 0));
     }, 0);
     return moneyRound((state.order.tax || 0) - allocatedSoFar);
   }
@@ -1279,8 +1279,8 @@ defineScene('qsr-split', {
   mount: function(container, params) {
     var p = params || {};
     state.order              = p.order || {};
-    state.total              = state.order.total || 0;
-    state.cashDiscountRate   = state.order.cashDiscountRate || 0;
+    state.total              = Number(state.order.total) || 0;
+    state.cashDiscountRate   = Number(state.order.cashDiscountRate) || 0;
     state.payments           = [];
     state.phase              = 'select';
     state.splitAmountRaw     = '';

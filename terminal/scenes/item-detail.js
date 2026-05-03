@@ -51,7 +51,7 @@ defineScene({
 
         var val = document.createElement('span');
         val.style.cssText = 'font-family:' + T.fb + ';font-size:16px;color:' + T.green + ';' + ";font-weight:" + T.fwBold + ";";
-        val.textContent = m.price > 0 ? '+$' + m.price.toFixed(2) : '';
+        const _mp = Number(m.price) || 0; val.textContent = _mp > 0 ? '+$' + _mp.toFixed(2) : '';
 
         row.appendChild(name);
         row.appendChild(val);

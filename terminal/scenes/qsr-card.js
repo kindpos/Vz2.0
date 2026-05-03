@@ -626,7 +626,7 @@ function handleCancel() {
 defineScene('qsr-card', {
   mount: function(container, params) {
     state.order         = (params && params.order) || {};
-    state.chargeAmount  = state.order.total || 0;
+    state.chargeAmount  = Number(state.order.total) || 0;
     state.readerPending = false;
     state.cancelFn      = null;
 

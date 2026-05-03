@@ -158,9 +158,9 @@ function fetchCloseDayState(params) {
     var rawOrders = Array.isArray(results[3]) ? results[3] : [];
     var lastWeek  = results[4] || {};
 
-    var netSales  = d.net_sales || 0;
-    var cardTips  = d.card_tips || 0;
-    var cashTips  = d.cash_tips || 0;
+    var netSales  = Number(d.net_sales) || 0;
+    var cardTips  = Number(d.card_tips) || 0;
+    var cashTips  = Number(d.cash_tips) || 0;
     var grossTips = cardTips + cashTips;
 
     // ── Tip-out calc (preserved from pre-rebuild close-day.js) ──
@@ -246,7 +246,7 @@ function fetchCloseDayState(params) {
     var adjustedChecks   = closedCardChecks.filter(function(c) { return  c.adjusted; });
 
     // Last-week comparison for the Sales vertical bars
-    var lastWeekSales = lastWeek.net_sales || 0;
+    var lastWeekSales = Number(lastWeek.net_sales) || 0;
     var salesDelta    = null;
     if (lastWeekSales > 0) salesDelta = ((netSales - lastWeekSales) / lastWeekSales) * 100;
 
@@ -260,18 +260,18 @@ function fetchCloseDayState(params) {
       managerId:     (params.staff && (params.staff.id || params.staff.employee_id)) || null,
 
       // Revenue
-      grossSales:    d.gross_sales    || 0,
-      voidsTotal:    d.void_total     || 0, voidsCount: d.void_count     || 0,
-      discTotal:     d.discount_total || 0, discCount:  d.discount_count || 0,
+      grossSales:    Number(d.gross_sales) || 0,
+      voidsTotal:    Number(d.void_total) || 0, voidsCount: d.void_count || 0,
+      discTotal:     Number(d.discount_total) || 0, discCount: d.discount_count || 0,
       netSales:      netSales,
-      taxCollected:  d.tax_total      || 0,
+      taxCollected:  Number(d.tax_total) || 0,
       lastWeekSales: lastWeekSales,
       salesDelta:    salesDelta,
 
       // Payments
-      cashSales:     d.cash_total || 0, cashCount: d.cash_count || 0,
-      cardSales:     d.card_total || 0, cardCount: d.card_count || 0,
-      totalPayments: (d.cash_total || 0) + (d.card_total || 0),
+      cashSales:     Number(d.cash_total) || 0, cashCount: d.cash_count || 0,
+      cardSales:     Number(d.card_total) || 0, cardCount: d.card_count || 0,
+      totalPayments: (Number(d.cash_total) || 0) + (Number(d.card_total) || 0),
 
       // Tips
       totalTips:     d.total_tips || grossTips,
@@ -297,7 +297,7 @@ function fetchCloseDayState(params) {
 
       // CC Batch
       batchTransactions: d.card_count || 0,
-      batchTotal:        d.card_total || 0,
+      batchTotal:        Number(d.card_total) || 0,
 
       // Cash drawer: cash collected minus CC tips paid out to servers from drawer
       cashExpected:     computeCashExpected(d),

@@ -709,7 +709,7 @@ defineScene({
 
       // Summary
       var checks = params.checks || [];
-      var totalAmt = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+      var totalAmt = checks.reduce(function(s, c) { return s + (Number(c.amount) || 0); }, 0);
       var summary = document.createElement('div');
       summary.style.cssText = [
         'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
@@ -1095,7 +1095,7 @@ defineScene({
     var checkId    = chk.check_id    || chk.checkId    || '';
     var checkLabel = chk.check_label || chk.checkLabel || checkId;
     var paymentId  = chk.payment_id  || chk.paymentId  || null;
-    var amount     = chk.amount      || 0;
+    var amount     = Number(chk.amount) || 0;
     var tableLabel = chk.table_label || chk.tableLabel || '';
     var cardBrand  = chk.card_brand  || chk.cardBrand  || '';
     // Initial tip value as cents-string so the numpad can pre-fill from it.
@@ -1420,7 +1420,7 @@ defineScene({
 
     // Summary of what's being transferred
     var checks = params.checks || [];
-    var totalAmt = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+    var totalAmt = checks.reduce(function(s, c) { return s + (Number(c.amount) || 0); }, 0);
     var summary = document.createElement('div');
     summary.style.cssText = [
       'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
@@ -1642,7 +1642,7 @@ defineScene({
 
     // Summary
     var checks = params.checks || [];
-    var totalAmt = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+    var totalAmt = checks.reduce(function(s, c) { return s + (Number(c.amount) || 0); }, 0);
     var summary = document.createElement('div');
     summary.style.cssText = [
       'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',
@@ -1800,7 +1800,7 @@ defineScene({
 
     // Summary of what's being voided
     var checks = params.checks || [];
-    var totalAmt = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+    var totalAmt = checks.reduce(function(s, c) { return s + (Number(c.amount) || 0); }, 0);
     var summary = document.createElement('div');
     summary.style.cssText = [
       'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';',

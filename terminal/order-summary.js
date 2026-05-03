@@ -228,7 +228,7 @@ function _modRow(mod) {
   modName.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
   const modPrice = document.createElement('div');
   modPrice.style.cssText = `text-align:right;color:${T.gold};`;
-  modPrice.textContent = mod.price > 0 ? `+$${mod.price.toFixed(2)}` : '';
+  const _modP = Number(mod.price) || 0; modPrice.textContent = _modP > 0 ? `+$${_modP.toFixed(2)}` : '';
   modRow.appendChild(modName);
   modRow.appendChild(modPrice);
   return modRow;
@@ -239,12 +239,13 @@ function _halfCell(mod) {
   td.style.cssText = `flex:1;padding:1px 2px;color:${T.green};`;
   if (!mod) return td;
   const nameEl = document.createElement('div');
-  nameEl.style.cssText = `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:${(mod.price > 0 ? '12px' : '14px')};;font-weight:${T.fwBold};`;
+  const _hp = Number(mod.price) || 0;
+  nameEl.style.cssText = `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:${(_hp > 0 ? '12px' : '14px')};;font-weight:${T.fwBold};`;
   nameEl.textContent = mod.name;
-  if (mod.price > 0) {
+  if (_hp > 0) {
     const pr = document.createElement('span');
     pr.style.color = T.gold;
-    pr.textContent = ` +$${mod.price.toFixed(2)}`;
+    pr.textContent = ` +$${_hp.toFixed(2)}`;
     nameEl.appendChild(pr);
   }
   td.appendChild(nameEl);
@@ -306,7 +307,7 @@ function _renderItems(items) {
 
       let total = document.createElement('div');
       total.style.cssText = `font-family:${T.fb};font-size:${T.fsB3};font-weight:${T.fwBold};color:${T.gold};`;
-      total.textContent = `$${(item.seatTotal || 0).toFixed(2)}`;
+      total.textContent = `$${(Number(item.seatTotal) || 0).toFixed(2)}`;
 
       meta.appendChild(label);
       meta.appendChild(total);
@@ -375,7 +376,7 @@ function _renderItems(items) {
     lblContainer.appendChild(nameSpan);
 
     // Set the price
-    row.setValue(`$${((item.unitPrice || 0) * (item.qty || 1)).toFixed(2)}`);
+    row.setValue(`$${((Number(item.unitPrice) || 0) * (Number(item.qty) || 1)).toFixed(2)}`);
 
     // Info chevron only in collapsible mode
     let arrow = null;
@@ -409,11 +410,12 @@ function _renderItems(items) {
 function _renderSummary(params) {
   if (!_state || !_state._summaryBox) return;
   _state._summaryBox.innerHTML = '';
-  _state._summaryBox.appendChild(buildDataRow('Subtotal', `$${(params.subtotal || 0).toFixed(2)}`, T.gold));
-  if (params.discount && params.discount > 0) {
-    _state._summaryBox.appendChild(buildDataRow('Discount', `$${params.discount.toFixed(2)}`, T.gold));
+  _state._summaryBox.appendChild(buildDataRow('Subtotal', `$${(Number(params.subtotal) || 0).toFixed(2)}`, T.gold));
+  const _disc = Number(params.discount) || 0;
+  if (_disc > 0) {
+    _state._summaryBox.appendChild(buildDataRow('Discount', `$${_disc.toFixed(2)}`, T.gold));
   }
-  _state._summaryBox.appendChild(buildDataRow('Tax', `$${(params.tax || 0).toFixed(2)}`, T.gold));
+  _state._summaryBox.appendChild(buildDataRow('Tax', `$${(Number(params.tax) || 0).toFixed(2)}`, T.gold));
 
   // Building mode (order-entry): emphasize TOTAL inside the summary card
   // since the prices box is hidden. Use cardTotal when supplied (the result
@@ -422,8 +424,8 @@ function _renderSummary(params) {
   if (_state._totalsMode === 'building') {
     _state._summaryBox.appendChild(buildDivider('4px 0'));
     const total = (params.cardTotal != null)
-      ? params.cardTotal
-      : ((params.subtotal || 0) - (params.discount || 0) + (params.tax || 0));
+      ? (Number(params.cardTotal) || 0)
+      : ((Number(params.subtotal) || 0) - (Number(params.discount) || 0) + (Number(params.tax) || 0));
     const totalRow = buildDataRow('Total', `$${total.toFixed(2)}`, T.gold);
     const totalVal = totalRow.querySelector('span:last-child');
     if (totalVal) {
@@ -449,15 +451,15 @@ function _renderPrices(params) {
   _state._pricesBox.style.display = '';
 
   _state._pricesBox.innerHTML = '';
-  _state._pricesBox.appendChild(buildDataRow('CARD PRICE', `$${(params.cardTotal || 0).toFixed(2)}`, T.elec));
-  _state._pricesBox.appendChild(buildDataRow('CASH PRICE', `$${(params.cashPrice || 0).toFixed(2)}`, T.greenWarm));
+  _state._pricesBox.appendChild(buildDataRow('CARD PRICE', `$${(Number(params.cardTotal) || 0).toFixed(2)}`, T.elec));
+  _state._pricesBox.appendChild(buildDataRow('CASH PRICE', `$${(Number(params.cashPrice) || 0).toFixed(2)}`, T.greenWarm));
 
   // Dynamic split-progress rows (hidden until partial payment)
   _state._paidRow = buildDataRow('Paid', '$0.00', T.elec);
   _state._paidRow.style.display = 'none';
   _state._pricesBox.appendChild(_state._paidRow);
 
-  _state._remainRow = buildDataRow('Remaining', `$${(params.cardTotal || 0).toFixed(2)}`, T.elec);
+  _state._remainRow = buildDataRow('Remaining', `$${(Number(params.cardTotal) || 0).toFixed(2)}`, T.elec);
   _state._remainRow.style.display = 'none';
   _state._pricesBox.appendChild(_state._remainRow);
 
@@ -524,8 +526,8 @@ function _renderCheckoutBreakdown(params) {
 function _renderCheckoutSummary(params) {
   if (!_state || !_state._summaryBox) return;
   _state._summaryBox.innerHTML = '';
-  _state._summaryBox.appendChild(buildDataRow('Cash Sales', `$${(params.cashSales || 0).toFixed(2)}`, T.gold));
-  _state._summaryBox.appendChild(buildDataRow('Tips', `$${(params.tips || 0).toFixed(2)}`, T.gold));
+  _state._summaryBox.appendChild(buildDataRow('Cash Sales', `$${(Number(params.cashSales) || 0).toFixed(2)}`, T.gold));
+  _state._summaryBox.appendChild(buildDataRow('Tips', `$${(Number(params.tips) || 0).toFixed(2)}`, T.gold));
   _applyWellStyle(_state._summaryBox);
 }
 
@@ -538,7 +540,7 @@ function _renderCashExpected(params) {
   label.style.marginBottom = '2px';
   _state._pricesBox.appendChild(label);
 
-  const heroVal = `$${(params.cashExpected || 0).toFixed(2)}`;
+  const heroVal = `$${(Number(params.cashExpected) || 0).toFixed(2)}`;
   const hero = buildDataRow('', heroVal, T.gold);
   hero.style.borderBottom = 'none';
   const lblPart = hero.querySelector('span:first-child');
@@ -642,11 +644,11 @@ export const OrderSummary = {
     if (!_state) return;
     if (_state._paidRow) {
       _state._paidRow.style.display = 'flex';
-      _state._paidRow.setValue(`$${(opts.totalPaid || 0).toFixed(2)}`);
+      _state._paidRow.setValue(`$${(Number(opts.totalPaid) || 0).toFixed(2)}`);
     }
     if (_state._remainRow) {
       _state._remainRow.style.display = 'flex';
-      _state._remainRow.setValue(`$${(opts.remaining || 0).toFixed(2)}`);
+      _state._remainRow.setValue(`$${(Number(opts.remaining) || 0).toFixed(2)}`);
     }
   },
 

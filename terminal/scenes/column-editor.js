@@ -11,7 +11,7 @@ import { entReport } from '../entomology-client.js';
 import '../styles.js';
 
 function fmt(n) {
-  return '$' + (n || 0).toFixed(2);
+  return '$' + (Number(n) || 0).toFixed(2);
 }
 
 // Normalise seat labels — "S-001" → "S1"

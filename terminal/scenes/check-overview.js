@@ -139,7 +139,7 @@ function _adaptMod(raw) {
     prefix:    pp.prefix,
     name:      pp.clean,
     mandatory: pp.prefix === null,
-    upcharge:  raw.charged ? (raw.price || 0) : 0,
+    upcharge:  raw.charged ? (Number(raw.price) || 0) : 0,
     microMods: (raw.children || []).map(_adaptMod),
   };
 }
@@ -149,7 +149,7 @@ function _adaptHalfItem(raw) {
   return {
     prefix:   pp.prefix,
     name:     pp.clean,
-    upcharge: raw.charged ? (raw.price || 0) : 0,
+    upcharge: raw.charged ? (Number(raw.price) || 0) : 0,
   };
 }
 
@@ -171,7 +171,7 @@ function _adaptItem(it) {
   return {
     name:          it.name,
     qty:           it.qty || 1,
-    price:         it.effectivePrice != null ? it.effectivePrice : (it.price || 0),
+    price:         Number(it.effectivePrice != null ? it.effectivePrice : (it.price || 0)) || 0,
     categoryColor: T.catColor(it.category),
     sent:          !!(it.sent_at || it.sent),
     mods:          mods,
@@ -283,7 +283,7 @@ function _adaptOrderForRecap(state) {
   let paid = 0;
   if (Array.isArray(order.payments)) {
     for (let p = 0; p < order.payments.length; p++) {
-      paid += order.payments[p].amount || 0;
+      paid += Number(order.payments[p].amount) || 0;
     }
   }
 

@@ -102,15 +102,15 @@ function _wireSalesData(state, day, orders, labor) {
   }
 
   state.salesData = {
-    net_sales:     day.net_sales    || 0,
-    cash_total:    day.cash_total   || 0,
-    card_total:    day.card_total   || 0,
-    avg_check:     day.check_avg    || day.avg_check || 0,
+    net_sales:     Number(day.net_sales) || 0,
+    cash_total:    Number(day.cash_total) || 0,
+    card_total:    Number(day.card_total) || 0,
+    avg_check:     Number(day.check_avg || day.avg_check) || 0,
     total_covers:  day.guest_count  || 0,
     active_checks: (orders || []).filter((o) => o.status === 'open').length,
-    labor_cob:     labor.cob_percent || 0,
-    labor_hours:   labor.total_hours || 0,
-    labor_cost:    labor.labor_cost  || 0,
+    labor_cob:     Number(labor.cob_percent) || 0,
+    labor_hours:   Number(labor.total_hours) || 0,
+    labor_cost:    Number(labor.labor_cost) || 0,
     staff_count:   labor.staff_count || 0,
     sparkData:     sparkData,
   };
@@ -127,7 +127,7 @@ function _wireOrders(state, orders) {
       status:        o.status,
       items:         o.items    || [],
       payments:      o.payments || [],
-      total:         o.total    || o.subtotal || 0,
+      total:         Number(o.total || o.subtotal) || 0,
       seat_count:    o.seat_count || o.covers || o.guest_count || 1,
     };
   });
@@ -302,7 +302,7 @@ function _buildNewTile(onClick) {
 function _buildPreview(orders, allOrders) {
   const wrap = document.createElement('div');
 
-  const total = orders.reduce((s, o) => s + (o.total || 0), 0);
+  const total = orders.reduce((s, o) => s + (Number(o.total) || 0), 0);
   const hdr = document.createElement('div');
   hdr.style.cssText = `display:flex;justify-content:space-between;align-items:baseline;padding-bottom:8px;border-bottom:2px solid ${T.green};margin-bottom:8px;`;
   const hLabel = document.createElement('div');
