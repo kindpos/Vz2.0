@@ -67,6 +67,18 @@ function fmtTurnTime(minutes) {
   return m + ':' + String(s).padStart(2, '0');
 }
 
+function orderAgeMinutes(order) {
+  var ts = order.opened_at || order.created_at;
+  if (!ts) return 0;
+  return Math.round((Date.now() - new Date(ts).getTime()) / 60000);
+}
+
+function ageColor(minutes) {
+  if (minutes > 90) return T.verm;
+  if (minutes > 45) return T.gold;
+  return T.green;
+}
+
 // ── Data fetching ─────────────────────────────────
 function fetchAllData(state) {
   var sid = encodeURIComponent((state.emp || {}).id || '');
@@ -101,8 +113,11 @@ function fetchAllData(state) {
 
 // ── Check tile ────────────────────────────────────
 function buildCheckTile(order, isSelected, onClick) {
+  var age = orderAgeMinutes(order);
+  var tc  = isSelected ? T.gold : ageColor(age);
+
   var tile = buildActionCard({
-    accent:  isSelected ? T.gold : T.border,
+    accent:  tc,
     onClick: onClick,
   });
   tile.style.width          = '110px';
@@ -111,22 +126,53 @@ function buildCheckTile(order, isSelected, onClick) {
   tile.style.display        = 'flex';
   tile.style.flexDirection  = 'column';
   tile.style.justifyContent = 'space-between';
-  tile.style.padding        = '12px 14px';
-  if (isSelected) tile.style.background = hexToRgba(T.gold, 0.10);
+  tile.style.padding        = '10px 12px';
+  tile.style.position       = 'relative';
+  tile.style.boxSizing      = 'border-box';
+  tile.style.background     = isSelected
+    ? hexToRgba(T.gold, 0.10)
+    : hexToRgba(tc, 0.04);
+  tile.style.boxShadow      = isSelected
+    ? '0 0 12px ' + hexToRgba(T.gold, 0.20)
+    : '0 0 6px '  + hexToRgba(tc, 0.15);
 
   var idEl = document.createElement('div');
   idEl.textContent   = checkNum(order);
-  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + (isSelected ? T.gold : T.text) + ';letter-spacing:0.06em;';
+  idEl.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;'
+    + 'color:' + (isSelected ? T.gold : T.text) + ';letter-spacing:0.06em;';
 
   var guestEl = document.createElement('div');
   var guests = order.seat_count || order.guest_count || order.covers || 1;
   guestEl.textContent   = 'x' + guests;
-  guestEl.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
+  guestEl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;font-weight:'
+    + T.fwBold + ';color:' + T.moon + ';';
 
   var totalEl = document.createElement('div');
-  var total = order.total != null ? fmt(order.total) : fmt((order.total_cents || 0) / 100);
+  var total = order.total != null
+    ? fmt(parseFloat(order.total) || 0)
+    : fmt((order.total_cents || 0) / 100);
   totalEl.textContent   = total;
-  totalEl.style.cssText = 'font-family:' + T.fh + ';font-size:16px;font-weight:700;color:' + T.gold + ';text-shadow:0 0 8px ' + hexToRgba(T.gold, 0.35) + ';';
+  totalEl.style.cssText = 'font-family:' + T.fh + ';font-size:16px;font-weight:700;'
+    + 'color:' + T.gold + ';text-shadow:0 0 8px ' + hexToRgba(T.gold, 0.35) + ';';
+
+  // Time badge — bottom-right corner
+  if (age > 0) {
+    var badge = document.createElement('div');
+    var ageStr = age < 60
+      ? age + 'm'
+      : Math.floor(age / 60) + ':' + String(age % 60).padStart(2, '0');
+    badge.textContent   = ageStr;
+    badge.style.cssText = [
+      'position:absolute;bottom:7px;right:8px;',
+      'font-family:' + T.fb + ';font-size:9px;font-weight:700;',
+      'color:' + tc + ';letter-spacing:0.06em;',
+      'background:' + hexToRgba(tc, 0.12) + ';',
+      'border:1px solid ' + hexToRgba(tc, 0.35) + ';',
+      'border-radius:4px;padding:1px 4px;',
+      'pointer-events:none;',
+    ].join('');
+    tile.appendChild(badge);
+  }
 
   tile.appendChild(idEl);
   tile.appendChild(guestEl);
