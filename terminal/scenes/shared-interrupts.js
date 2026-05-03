@@ -15,6 +15,7 @@ import { T } from '../../common/tokens.js';
 import { lightenHex, darkenHex } from '../theme-manager.js';
 import { fetchWithTimeout } from '../net.js';
 import { showToast } from '../components.js';
+import { entReport } from '../entomology-client.js';
 
 // ═══════════════════════════════════════════════════
 //  1. manager-pin
@@ -278,7 +279,10 @@ defineScene('manager-pin', {
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ pin: pinBuf }),
         }, 10000)
-          .then((r) => r.json())
+          .then((r) => {
+            if (!r.ok) throw new Error(r.status);
+            return r.json();
+          })
           .then((data) => {
             if (!alive) return;
             if (data.valid && (data.roles || []).indexOf('manager') !== -1) {
@@ -289,8 +293,14 @@ defineScene('manager-pin', {
               _flashError();
             }
           })
-          .catch(() => {
+          .catch((err) => {
             if (!alive) return;
+            entReport({
+              code:    'PIN_SUBMIT_ERROR',
+              source:  'shared-interrupts.manager-pin',
+              message: `PIN verification failed — ${err && err.message ? err.message : String(err)}`,
+              ctx:     { error: err && err.message ? err.message : String(err) },
+            });
             _flashError();
           });
         return;
