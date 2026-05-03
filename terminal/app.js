@@ -33,6 +33,7 @@ import './scenes/qsr-cash.js';
 import './scenes/qsr-card.js';
 import './scenes/qsr-complete.js';
 import './scenes/qsr-split.js';
+import './scenes/qsr-modifier-selector.js';
 import './scenes/shared-interrupts.js';
 
 // ── Dev console hook ──────────────────────────────

@@ -1021,7 +1021,7 @@ function buildCategoryColumn(categories, favH) {
   var col = document.createElement('div');
   col.style.cssText = [
     'position:absolute;',
-    'left:0;top:' + T.headerH + 'px;',
+    'left:0;top:0;',
     'width:' + CAT_W + 'px;',
     'height:' + (T.appH - T.headerH) + 'px;',
     'overflow-y:auto;',
@@ -1233,8 +1233,8 @@ function buildItemGrid(items, favH, anchorIdx, cat) {
 
   grid.style.cssText = [
     'position:absolute;',
-    'left:' + (T.pcLeftW + 1 + CAT_W + 1) + 'px;',
-    'top:' + T.headerH + 'px;',
+    'left:' + (CAT_W + 1) + 'px;',
+    'top:0;',
     'width:' + GRID_W + 'px;',
     'height:' + (T.appH - T.headerH) + 'px;',
     'box-sizing:border-box;',
@@ -1288,7 +1288,7 @@ function handleItemTap(itemKey) {
   var hasModifiers = item.modifier_groups && item.modifier_groups.length > 0;
 
   if (hasModifiers) {
-    SceneManager.openTransactional('item-detail', {
+    SceneManager.openTransactional('qsr-modifier-selector', {
       item: {
         name:            item.name,
         unitPrice:       parseFloat(item.price || 0),
@@ -1296,6 +1296,7 @@ function handleItemTap(itemKey) {
         modifier_groups: item.modifier_groups,
         mods:            [],
       },
+      catColor: (activeCat && activeCat.color) || T.green,
       onConfirm: function(configuredItem) {
         addItem(configuredItem);
       },
