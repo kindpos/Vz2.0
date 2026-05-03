@@ -467,10 +467,9 @@ function buildItemRow(item, idx, isSelected) {
 function buildRecapPanel() {
   var panel = document.createElement('div');
   panel.style.cssText = [
-    'position:absolute;',
-    'left:0;top:' + T.headerH + 'px;',
+    'flex:0 0 ' + RECAP_W + 'px;',
     'width:' + RECAP_W + 'px;',
-    'height:' + CONTENT_H + 'px;',
+    'height:100%;',
     'background:' + T.card + ';',
     'border-right:1px solid ' + T.border + ';',
     'display:flex;flex-direction:column;',
@@ -1023,7 +1022,7 @@ function buildCategoryColumn(categories, favH) {
     'position:absolute;',
     'left:0;top:0;',
     'width:' + CAT_W + 'px;',
-    'height:' + (T.appH - T.headerH) + 'px;',
+    'height:100%;',
     'overflow-y:auto;',
     'display:flex;flex-direction:column;gap:6px;',
     'padding:6px;',
@@ -1236,7 +1235,7 @@ function buildItemGrid(items, favH, anchorIdx, cat) {
     'left:' + (CAT_W + 1) + 'px;',
     'top:0;',
     'width:' + GRID_W + 'px;',
-    'height:' + (T.appH - T.headerH) + 'px;',
+    'height:100%;',
     'box-sizing:border-box;',
     'overflow-y:auto;',
     'padding:6px;',
@@ -1615,11 +1614,10 @@ function executeVoid(targetIdxs, reason, approvedBy) {
 function buildRightSurface(categories) {
   var rightEl = document.createElement('div');
   rightEl.style.cssText = [
-    'position:absolute;',
-    'left:' + (RECAP_W + 1) + 'px;',
-    'top:' + T.headerH + 'px;',
-    'width:' + RIGHT_W + 'px;',
-    'height:' + CONTENT_H + 'px;',
+    'flex:1;',
+    'min-width:0;',
+    'height:100%;',
+    'position:relative;',
     'background:' + T.bg + ';',
     'overflow:hidden;',
   ].join('');
@@ -1741,8 +1739,15 @@ defineScene('qsr-order', {
     // Build layout with real data
     var recapEl = buildRecapPanel();
     var rightEl = buildRightSurface(categories);
-    container.appendChild(recapEl);
-    container.appendChild(rightEl);
+    var root = document.createElement('div');
+    root.style.cssText = [
+      'position:absolute;inset:0;',
+      'display:flex;flex-direction:row;',
+      'overflow:hidden;',
+    ].join('');
+    container.appendChild(root);
+    root.appendChild(recapEl);
+    root.appendChild(rightEl);
 
     // Wire all tap handlers
     wireHandlers();
