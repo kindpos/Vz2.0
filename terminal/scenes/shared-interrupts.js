@@ -293,7 +293,7 @@ defineScene('manager-pin', {
               attempts = 0;
               clearTimeout(timeoutId);
               SceneManager.resolveInterrupt('manager-pin');
-              if (params.onConfirm) params.onConfirm(empId);
+              if (params.onConfirm) params.onConfirm(pinBuf, empId);
             } else {
               _flashError();
             }
