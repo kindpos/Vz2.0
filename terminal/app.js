@@ -29,6 +29,7 @@ import './scenes/payment.js';
 import './scenes/server-checkout.js';
 import './scenes/close-day.js';
 import './scenes/qsr-order.js';
+import './scenes/qsr-modifier-selector.js';
 import './scenes/qsr-cash.js';
 import './scenes/qsr-card.js';
 import './scenes/qsr-complete.js';

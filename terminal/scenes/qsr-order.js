@@ -1288,17 +1288,19 @@ function handleItemTap(itemKey) {
   var hasModifiers = item.modifier_groups && item.modifier_groups.length > 0;
 
   if (hasModifiers) {
-    SceneManager.openTransactional('item-detail', {
+    var catColor = (activeCat && activeCat.color) || T.green;
+    SceneManager.openTransactional('qsr-modifier-selector', {
       item: {
         name:            item.name,
         unitPrice:       parseFloat(item.price || 0),
         itemKey:         item.itemKey || item.key || item.name,
         modifier_groups: item.modifier_groups,
-        mods:            [],
       },
+      catColor:  catColor,
       onConfirm: function(configuredItem) {
         addItem(configuredItem);
       },
+      onCancel: function() {},
     });
   } else {
     addItem({
