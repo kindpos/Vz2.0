@@ -40,6 +40,8 @@ defineScene('manager-pin', {
     let pinError   = false;
     let submitting = false;
     let timeoutId  = null;
+    let attempts   = 0;
+    let lockoutId  = null;
 
     container.style.cssText = [
       'width:100%;height:100%;',
@@ -288,6 +290,7 @@ defineScene('manager-pin', {
             if (!alive) return;
             if (data.valid && (data.roles || []).indexOf('manager') !== -1) {
               const empId = data.employee_id || pinBuf;
+              attempts = 0;
               clearTimeout(timeoutId);
               SceneManager.resolveInterrupt('manager-pin');
               if (params.onConfirm) params.onConfirm(empId);
@@ -315,6 +318,24 @@ defineScene('manager-pin', {
       }
     });
 
+    function _lockout(secs) {
+      chassis.style.pointerEvents = 'none';
+      let remaining = secs;
+      subtitle.textContent = `Too many attempts. Try again in ${remaining}s.`;
+      lockoutId = setInterval(() => {
+        if (!alive) { clearInterval(lockoutId); lockoutId = null; return; }
+        remaining--;
+        if (remaining <= 0) {
+          clearInterval(lockoutId);
+          lockoutId = null;
+          subtitle.textContent = 'Manager PIN required';
+          chassis.style.pointerEvents = 'auto';
+        } else {
+          subtitle.textContent = `Too many attempts. Try again in ${remaining}s.`;
+        }
+      }, 1000);
+    }
+
     function _flashError() {
       pinError = true;
       updateDots();
@@ -323,8 +344,34 @@ defineScene('manager-pin', {
         pinError   = false;
         pinBuf     = '';
         submitting = false;
-        chassis.style.pointerEvents = 'auto';
         updateDots();
+
+        attempts++;
+
+        if (attempts >= 10) {
+          clearTimeout(timeoutId);
+          SceneManager.resolveInterrupt('manager-pin');
+          if (params.onCancel) params.onCancel();
+          entReport({
+            code:    'PIN_MAX_ATTEMPTS',
+            source:  'shared-interrupts.manager-pin',
+            message: 'Manager PIN locked after 10 failed attempts',
+            ctx:     {},
+          });
+          showToast('PIN entry locked. Manager required.', { bg: T.verm });
+          return;
+        }
+
+        const lockSecs = attempts === 4 ? 5
+                       : attempts === 5 ? 15
+                       : attempts >= 6  ? 30
+                       : 0;
+
+        if (lockSecs > 0) {
+          _lockout(lockSecs);
+        } else {
+          chassis.style.pointerEvents = 'auto';
+        }
       }, 600);
     }
 
@@ -359,7 +406,7 @@ defineScene('manager-pin', {
       showToast('PIN entry timed out.', { bg: T.gold });
     }, 30000);
 
-    return () => { alive = false; clearTimeout(timeoutId); };
+    return () => { alive = false; clearTimeout(timeoutId); clearInterval(lockoutId); };
   },
 
   unmount: () => {},
