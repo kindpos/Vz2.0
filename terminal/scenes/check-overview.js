@@ -3474,6 +3474,12 @@ function handlePay(state, params) {
 // ═══════════════════════════════════════════════════
 
 function handleVoid(state) {
+  const orderStatus = state.order && state.order.status;
+  if (orderStatus === 'closed' || orderStatus === 'paid') {
+    showToast('Cannot void items on a closed check.', { bg: T.verm });
+    return;
+  }
+
   let itemRefs = getSelectedItemRefs(state);
   let seatIds  = getSelectedSeatIds(state);
 
