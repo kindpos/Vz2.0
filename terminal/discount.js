@@ -23,19 +23,19 @@
  * @returns {number}       Dollar amount, 2dp.
  */
 export function computeDiscountAmount(items, pct) {
-  var amount = 0;
-  for (var i = 0; i < items.length; i++) {
-    var it = items[i] || {};
+  let amount = 0;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i] || {};
     // parseFloat guards against Decimal-as-string serialization from the
     // backend — JSON.stringify(NaN) → null which causes a 422 on the endpoint.
-    var base = parseFloat(it.price) || 0;
-    var modSum = 0;
+    const base = parseFloat(it.price) || 0;
+    let modSum = 0;
     if (Array.isArray(it.mods)) {
-      for (var m = 0; m < it.mods.length; m++) {
+      for (let m = 0; m < it.mods.length; m++) {
         modSum += parseFloat(it.mods[m] && it.mods[m].price) || 0;
       }
     }
-    var effective = (base + modSum) * (it.qty || 1);
+    const effective = (base + modSum) * (it.qty || 1);
     amount += effective * (pct / 100);
   }
   // Matches backend _validate_2dp: reject anything beyond 2dp. Also dodges
@@ -51,8 +51,8 @@ export function computeDiscountAmount(items, pct) {
  * @returns {Array<string>}
  */
 export function extractItemIds(items) {
-  var ids = [];
-  for (var i = 0; i < items.length; i++) {
+  const ids = [];
+  for (let i = 0; i < items.length; i++) {
     if (items[i] && items[i].item_id) ids.push(items[i].item_id);
   }
   return ids;
@@ -69,9 +69,9 @@ export function extractItemIds(items) {
  */
 export function buildDiscountBody(pct, amount, itemIds, approvedBy) {
   return {
-    discount_type: pct + '%',
-    amount:        amount,
-    reason:        'Manager ' + pct + '% discount',
+    discount_type: `${pct}%`,
+    amount,
+    reason:        `Manager ${pct}% discount`,
     approved_by:   approvedBy || null,
     item_ids:      itemIds && itemIds.length ? itemIds : null,
   };

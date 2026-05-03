@@ -23,21 +23,21 @@ import { showToast } from '../components.js';
 // ═══════════════════════════════════════════════════
 
 defineScene('manager-pin', {
-  mount: function(container, params) {
+  mount: (container, params) => {
     params = params || {};
 
-    var ctx         = params.context;
-    var accentColor = ctx === 'discount' ? T.lavender
+    const ctx         = params.context;
+    const accentColor = ctx === 'discount' ? T.lavender
                     : ctx === 'void'     ? T.verm
                     :                      T.green;
-    var titleText   = ctx === 'discount' ? 'APPLY DISCOUNT'
+    const titleText   = ctx === 'discount' ? 'APPLY DISCOUNT'
                     : ctx === 'void'     ? 'VOID ITEM'
                     :                      'MANAGER PIN';
 
-    var alive      = true;
-    var pinBuf     = '';
-    var pinError   = false;
-    var submitting = false;
+    let alive      = true;
+    let pinBuf     = '';
+    let pinError   = false;
+    let submitting = false;
 
     container.style.cssText = [
       'width:100%;height:100%;',
@@ -47,26 +47,26 @@ defineScene('manager-pin', {
     ].join('');
 
     // ── Modal card ──
-    var modal = document.createElement('div');
+    let modal = document.createElement('div');
     modal.style.cssText = [
       'width:360px;',
-      'background:' + T.card + ';',
-      'border-radius:' + T.chamferCard + 'px;',
+      `background:${T.card};`,
+      `border-radius:${T.chamferCard}px;`,
       'overflow:hidden;',
       'display:flex;flex-direction:column;align-items:stretch;',
     ].join('');
 
     // Top accent bar
-    var accentBar = document.createElement('div');
+    let accentBar = document.createElement('div');
     accentBar.style.cssText = [
       'width:100%;height:4px;',
-      'background:' + accentColor + ';',
+      `background:${accentColor};`,
       'flex-shrink:0;',
     ].join('');
     modal.appendChild(accentBar);
 
     // Inner content wrapper
-    var inner = document.createElement('div');
+    let inner = document.createElement('div');
     inner.style.cssText = [
       'display:flex;flex-direction:column;align-items:center;',
       'gap:14px;',
@@ -75,12 +75,12 @@ defineScene('manager-pin', {
     ].join('');
 
     // Title
-    var title = document.createElement('div');
+    let title = document.createElement('div');
     title.style.cssText = [
-      'font-family:' + T.fh + ';',
+      `font-family:${T.fh};`,
       'font-size:18px;',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + accentColor + ';',
+      `font-weight:${T.fwBold};`,
+      `color:${accentColor};`,
       'text-align:center;',
       'letter-spacing:1px;',
       'text-transform:uppercase;',
@@ -89,12 +89,12 @@ defineScene('manager-pin', {
     inner.appendChild(title);
 
     // Subtitle
-    var subtitle = document.createElement('div');
+    const subtitle = document.createElement('div');
     subtitle.style.cssText = [
-      'font-family:' + T.fb + ';',
+      `font-family:${T.fb};`,
       'font-size:11px;',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.moon + ';',
+      `font-weight:${T.fwBold};`,
+      `color:${T.moon};`,
       'text-align:center;',
       'margin-top:-8px;',
     ].join('');
@@ -102,24 +102,24 @@ defineScene('manager-pin', {
     inner.appendChild(subtitle);
 
     // PIN dot trough
-    var trough = document.createElement('div');
+    const trough = document.createElement('div');
     trough.style.cssText = [
       'display:flex;flex-direction:row;align-items:center;justify-content:center;',
       'gap:12px;',
-      'background:' + T.well + ';',
+      `background:${T.well};`,
       'border-radius:8px;',
       'padding:10px 20px;',
       'width:100%;box-sizing:border-box;',
     ].join('');
 
-    var dots = [];
-    for (var di = 0; di < 4; di++) {
-      var dot = document.createElement('div');
+    const dots = [];
+    for (let di = 0; di < 4; di++) {
+      const dot = document.createElement('div');
       dot.style.cssText = [
         'width:16px;height:16px;',
         'border-radius:50%;',
-        'background:' + T.bg + ';',
-        'border:1.5px solid ' + T.border + ';',
+        `background:${T.bg};`,
+        `border:1.5px solid ${T.border};`,
         'transition:background 0.1s,border-color 0.1s;',
         'flex-shrink:0;',
       ].join('');
@@ -129,7 +129,7 @@ defineScene('manager-pin', {
     inner.appendChild(trough);
 
     function updateDots() {
-      for (var i = 0; i < 4; i++) {
+      for (let i = 0; i < 4; i++) {
         if (pinError) {
           dots[i].style.background   = T.verm;
           dots[i].style.borderColor  = T.verm;
@@ -144,13 +144,13 @@ defineScene('manager-pin', {
     }
 
     // Numpad chassis
-    var bevelLt = lightenHex(T.bg, 0.08);
-    var bevelDk = darkenHex(T.bg, 0.2);
+    const bevelLt = lightenHex(T.bg, 0.08);
+    const bevelDk = darkenHex(T.bg, 0.2);
 
-    var chassis = document.createElement('div');
+    const chassis = document.createElement('div');
     chassis.style.cssText = [
-      'background:' + T.well + ';',
-      'border-radius:' + T.chamferWell + 'px;',
+      `background:${T.well};`,
+      `border-radius:${T.chamferWell}px;`,
       'padding:10px;',
       'display:grid;',
       'grid-template-columns:repeat(3,1fr);',
@@ -158,34 +158,34 @@ defineScene('manager-pin', {
       'width:100%;box-sizing:border-box;',
     ].join('');
 
-    var keyRows = [
+    const keyRows = [
       ['7', '8', '9'],
       ['4', '5', '6'],
       ['1', '2', '3'],
       ['CLR', '0', 'ENT'],
     ];
 
-    keyRows.forEach(function(row) {
-      row.forEach(function(k) {
-        var key = document.createElement('div');
+    keyRows.forEach((row) => {
+      row.forEach((k) => {
+        let key = document.createElement('div');
         key.dataset.key = k;
-        var shadowDk;
+        let shadowDk;
 
         if (k === 'CLR') {
           shadowDk = T.vermDk;
           key.style.cssText = [
             'min-height:56px;',
-            'border-radius:' + T.chamferKey + 'px;',
-            'background:' + T.verm + ';',
+            `border-radius:${T.chamferKey}px;`,
+            `background:${T.verm};`,
             'display:flex;align-items:center;justify-content:center;',
             'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-            'box-shadow:0 3px 0 ' + shadowDk + ';',
+            `box-shadow:0 3px 0 ${shadowDk};`,
             'transition:transform 0.07s,box-shadow 0.07s;',
           ].join('');
-          var lbl = document.createElement('span');
+          let lbl = document.createElement('span');
           lbl.style.cssText = [
-            'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-            'font-weight:' + T.fwBold + ';color:#fff;pointer-events:none;',
+            `font-family:${T.fb};font-size:${T.fsB3};`,
+            `font-weight:${T.fwBold};color:#fff;pointer-events:none;`,
           ].join('');
           lbl.textContent = 'CLR';
           key.appendChild(lbl);
@@ -194,17 +194,17 @@ defineScene('manager-pin', {
           shadowDk = T.greenWarmDk;
           key.style.cssText = [
             'min-height:56px;',
-            'border-radius:' + T.chamferKey + 'px;',
-            'background:' + T.greenWarm + ';',
+            `border-radius:${T.chamferKey}px;`,
+            `background:${T.greenWarm};`,
             'display:flex;align-items:center;justify-content:center;',
             'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-            'box-shadow:0 3px 0 ' + shadowDk + ';',
+            `box-shadow:0 3px 0 ${shadowDk};`,
             'transition:transform 0.07s,box-shadow 0.07s;',
           ].join('');
-          var lbl = document.createElement('span');
+          let lbl = document.createElement('span');
           lbl.style.cssText = [
-            'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-            'font-weight:' + T.fwBold + ';color:' + T.moonText + ';pointer-events:none;',
+            `font-family:${T.fb};font-size:${T.fsB3};`,
+            `font-weight:${T.fwBold};color:${T.moonText};pointer-events:none;`,
           ].join('');
           lbl.textContent = 'ENT';
           key.appendChild(lbl);
@@ -213,33 +213,33 @@ defineScene('manager-pin', {
           shadowDk = darkenHex(T.green, 0.35);
           key.style.cssText = [
             'min-height:56px;',
-            'border-radius:' + T.chamferKey + 'px;',
-            'background:' + T.green + ';',
-            'border-top:2px solid ' + bevelLt + ';',
-            'border-bottom:2px solid ' + bevelDk + ';',
+            `border-radius:${T.chamferKey}px;`,
+            `background:${T.green};`,
+            `border-top:2px solid ${bevelLt};`,
+            `border-bottom:2px solid ${bevelDk};`,
             'display:flex;align-items:center;justify-content:center;',
             'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-            'box-shadow:0 3px 0 ' + shadowDk + ';',
+            `box-shadow:0 3px 0 ${shadowDk};`,
             'transition:transform 0.07s,box-shadow 0.07s;',
           ].join('');
-          var lbl = document.createElement('span');
+          const lbl = document.createElement('span');
           lbl.style.cssText = [
-            'font-family:' + T.fh + ';font-size:24px;',
-            'font-weight:800;color:' + T.moonText + ';pointer-events:none;',
+            `font-family:${T.fh};font-size:24px;`,
+            `font-weight:800;color:${T.moonText};pointer-events:none;`,
           ].join('');
           lbl.textContent = k;
           key.appendChild(lbl);
         }
 
         // Press animation (IIFE captures shadowDk per key)
-        ;(function(sd) {
-          key.addEventListener('pointerdown', function() {
+        ;((sd) => {
+          key.addEventListener('pointerdown', () => {
             key.style.transform = 'translateY(2px)';
-            key.style.boxShadow = '0 1px 0 ' + sd;
+            key.style.boxShadow = `0 1px 0 ${sd}`;
           });
-          var release = function() {
+          const release = () => {
             key.style.transform = '';
-            key.style.boxShadow = '0 3px 0 ' + sd;
+            key.style.boxShadow = `0 3px 0 ${sd}`;
           };
           key.addEventListener('pointerup',     release);
           key.addEventListener('pointerleave',  release);
@@ -251,15 +251,15 @@ defineScene('manager-pin', {
     });
 
     // Tap delegation on chassis
-    chassis.addEventListener('pointerup', function(e) {
-      var target = e.target;
-      var key = null;
+    chassis.addEventListener('pointerup', (e) => {
+      let target = e.target;
+      let key = null;
       while (target && target !== chassis) {
         if (target.dataset && target.dataset.key) { key = target; break; }
         target = target.parentElement;
       }
       if (!key) return;
-      var k = key.dataset.key;
+      const k = key.dataset.key;
 
       if (k === 'CLR') {
         pinBuf   = '';
@@ -278,18 +278,18 @@ defineScene('manager-pin', {
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ pin: pinBuf }),
         }, 10000)
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
+          .then((r) => r.json())
+          .then((data) => {
             if (!alive) return;
             if (data.valid && (data.roles || []).indexOf('manager') !== -1) {
-              var empId = data.employee_id || pinBuf;
+              const empId = data.employee_id || pinBuf;
               SceneManager.resolveInterrupt('manager-pin');
               if (params.onConfirm) params.onConfirm(empId);
             } else {
               _flashError();
             }
           })
-          .catch(function() {
+          .catch(() => {
             if (!alive) return;
             _flashError();
           });
@@ -306,7 +306,7 @@ defineScene('manager-pin', {
     function _flashError() {
       pinError = true;
       updateDots();
-      setTimeout(function() {
+      setTimeout(() => {
         if (!alive) return;
         pinError   = false;
         pinBuf     = '';
@@ -321,27 +321,27 @@ defineScene('manager-pin', {
     container.appendChild(modal);
 
     // Cancel link — below the modal card
-    var cancelLink = document.createElement('div');
+    let cancelLink = document.createElement('div');
     cancelLink.style.cssText = [
-      'font-family:' + T.fb + ';',
+      `font-family:${T.fb};`,
       'font-size:11px;',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.moon + ';',
+      `font-weight:${T.fwBold};`,
+      `color:${T.moon};`,
       'text-align:center;',
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
     ].join('');
     cancelLink.textContent = 'cancel';
-    cancelLink.addEventListener('pointerup', function() {
+    cancelLink.addEventListener('pointerup', () => {
       if (params.onCancel) params.onCancel();
     });
     container.appendChild(cancelLink);
 
     updateDots();
 
-    return function() { alive = false; };
+    return () => { alive = false; };
   },
 
-  unmount: function() {},
+  unmount: () => {},
 });
 
 // ═══════════════════════════════════════════════════
@@ -351,11 +351,11 @@ defineScene('manager-pin', {
 // ═══════════════════════════════════════════════════
 
 defineScene('disc-select', {
-  mount: function(container, params) {
+  mount: (container, params) => {
     params = params || {};
 
-    var alive            = true;
-    var selectedDiscount = null;
+    let alive            = true;
+    let selectedDiscount = null;
 
     container.style.cssText = [
       'width:100%;height:100%;',
@@ -364,22 +364,22 @@ defineScene('disc-select', {
     ].join('');
 
     // ── Modal card ──
-    var modal = document.createElement('div');
+    let modal = document.createElement('div');
     modal.style.cssText = [
       'width:360px;',
-      'background:' + T.card + ';',
-      'border-radius:' + T.chamferCard + 'px;',
+      `background:${T.card};`,
+      `border-radius:${T.chamferCard}px;`,
       'overflow:hidden;',
       'display:flex;flex-direction:column;align-items:stretch;',
     ].join('');
 
     // Top accent bar
-    var accentBar = document.createElement('div');
-    accentBar.style.cssText = 'width:100%;height:4px;background:' + T.lavender + ';flex-shrink:0;';
+    let accentBar = document.createElement('div');
+    accentBar.style.cssText = `width:100%;height:4px;background:${T.lavender};flex-shrink:0;`;
     modal.appendChild(accentBar);
 
     // Inner
-    var inner = document.createElement('div');
+    let inner = document.createElement('div');
     inner.style.cssText = [
       'display:flex;flex-direction:column;align-items:stretch;',
       'gap:12px;',
@@ -388,12 +388,12 @@ defineScene('disc-select', {
     ].join('');
 
     // Title
-    var title = document.createElement('div');
+    let title = document.createElement('div');
     title.style.cssText = [
-      'font-family:' + T.fh + ';',
+      `font-family:${T.fh};`,
       'font-size:18px;',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.lavender + ';',
+      `font-weight:${T.fwBold};`,
+      `color:${T.lavender};`,
       'text-align:center;',
       'letter-spacing:1px;',
       'text-transform:uppercase;',
@@ -402,33 +402,33 @@ defineScene('disc-select', {
     inner.appendChild(title);
 
     // Approved badge
-    var badge = document.createElement('div');
+    let badge = document.createElement('div');
     badge.style.cssText = [
       'display:flex;flex-direction:row;align-items:center;justify-content:center;',
       'gap:6px;',
-      'background:' + T.well + ';',
+      `background:${T.well};`,
       'border-radius:6px;',
       'padding:5px 10px;',
       'align-self:center;',
     ].join('');
-    var badgeDot = document.createElement('div');
+    let badgeDot = document.createElement('div');
     badgeDot.style.cssText = [
       'width:6px;height:6px;border-radius:50%;',
-      'background:' + T.green + ';',
+      `background:${T.green};`,
       'flex-shrink:0;',
     ].join('');
-    var badgeText = document.createElement('span');
+    let badgeText = document.createElement('span');
     badgeText.style.cssText = [
-      'font-family:' + T.fb + ';font-size:11px;',
-      'font-weight:' + T.fwBold + ';color:' + T.green + ';',
+      `font-family:${T.fb};font-size:11px;`,
+      `font-weight:${T.fwBold};color:${T.green};`,
     ].join('');
-    badgeText.textContent = 'Approved · ' + (params.approvedBy || '');
+    badgeText.textContent = `Approved · ${(params.approvedBy || '')}`;
     badge.appendChild(badgeDot);
     badge.appendChild(badgeText);
     inner.appendChild(badge);
 
     // Tile grid (populated after fetch)
-    var tileGrid = document.createElement('div');
+    const tileGrid = document.createElement('div');
     tileGrid.style.cssText = [
       'display:grid;',
       'grid-template-columns:1fr 1fr;',
@@ -437,34 +437,34 @@ defineScene('disc-select', {
     inner.appendChild(tileGrid);
 
     // APPLY button
-    var applyBtn = document.createElement('div');
+    const applyBtn = document.createElement('div');
     applyBtn.style.cssText = [
       'width:100%;border-radius:8px;',
       'padding:12px 10px;',
       'box-sizing:border-box;',
       'text-align:center;',
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-      'font-weight:' + T.fwBold + ';',
-      'background:' + T.well + ';',
-      'border:1px solid ' + T.border + ';',
-      'color:' + T.moon + ';',
+      `font-family:${T.fb};font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};`,
+      `background:${T.well};`,
+      `border:1px solid ${T.border};`,
+      `color:${T.moon};`,
       'transition:background 0.1s,color 0.1s;',
     ].join('');
     applyBtn.textContent = 'SELECT A DISCOUNT';
     inner.appendChild(applyBtn);
 
     // Cancel link
-    var cancelLink = document.createElement('div');
+    let cancelLink = document.createElement('div');
     cancelLink.style.cssText = [
       'text-align:center;',
-      'font-family:' + T.fb + ';font-size:11px;',
-      'font-weight:' + T.fwBold + ';color:' + T.moon + ';',
+      `font-family:${T.fb};font-size:11px;`,
+      `font-weight:${T.fwBold};color:${T.moon};`,
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
       'margin-top:2px;',
     ].join('');
     cancelLink.textContent = 'cancel';
-    cancelLink.addEventListener('pointerup', function() {
+    cancelLink.addEventListener('pointerup', () => {
       SceneManager.resolveInterrupt('disc-select');
       if (params.onCancel) params.onCancel();
     });
@@ -476,12 +476,12 @@ defineScene('disc-select', {
     function _updateApplyBtn() {
       if (selectedDiscount) {
         applyBtn.style.background   = T.lavender;
-        applyBtn.style.border       = '1px solid ' + T.lavender;
+        applyBtn.style.border       = `1px solid ${T.lavender}`;
         applyBtn.style.color        = T.moonText;
-        applyBtn.textContent        = 'APPLY  ' + selectedDiscount.name + '  ' + selectedDiscount.pct + '%';
+        applyBtn.textContent        = `APPLY  ${selectedDiscount.name}  ${selectedDiscount.pct}%`;
       } else {
         applyBtn.style.background   = T.well;
-        applyBtn.style.border       = '1px solid ' + T.border;
+        applyBtn.style.border       = `1px solid ${T.border}`;
         applyBtn.style.color        = T.moon;
         applyBtn.textContent        = 'SELECT A DISCOUNT';
       }
@@ -489,42 +489,42 @@ defineScene('disc-select', {
 
     function _buildTiles(discounts) {
       tileGrid.innerHTML = '';
-      discounts.forEach(function(disc) {
-        var tile = document.createElement('div');
+      discounts.forEach((disc) => {
+        let tile = document.createElement('div');
         tile.style.cssText = [
           'border-radius:8px;',
           'padding:10px;',
           'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
           'display:flex;flex-direction:column;gap:4px;',
-          'background:' + T.well + ';',
-          'border:1px solid ' + T.border + ';',
+          `background:${T.well};`,
+          `border:1px solid ${T.border};`,
           'transition:background 0.1s,border-color 0.1s;',
         ].join('');
 
-        var namEl = document.createElement('div');
+        const namEl = document.createElement('div');
         namEl.style.cssText = [
-          'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-          'font-weight:' + T.fwBold + ';color:' + T.text + ';',
+          `font-family:${T.fb};font-size:${T.fsB3};`,
+          `font-weight:${T.fwBold};color:${T.text};`,
         ].join('');
         namEl.textContent = disc.name;
 
-        var pctEl = document.createElement('div');
+        const pctEl = document.createElement('div');
         pctEl.style.cssText = [
-          'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-          'font-weight:' + T.fwBold + ';color:' + T.lavender + ';',
+          `font-family:${T.fb};font-size:${T.fsB3};`,
+          `font-weight:${T.fwBold};color:${T.lavender};`,
         ].join('');
         pctEl.textContent = disc.pct + '% off';
 
         tile.appendChild(namEl);
         tile.appendChild(pctEl);
 
-        tile.addEventListener('pointerup', function() {
+        tile.addEventListener('pointerup', () => {
           selectedDiscount = disc;
           // Update all tiles
-          var tiles = tileGrid.querySelectorAll('[data-disc-tile]');
-          for (var ti = 0; ti < tiles.length; ti++) {
-            var t = tiles[ti];
-            var isSelected = t === tile;
+          const tiles = tileGrid.querySelectorAll('[data-disc-tile]');
+          for (let ti = 0; ti < tiles.length; ti++) {
+            const t = tiles[ti];
+            const isSelected = t === tile;
             t.style.background   = isSelected ? T.lavender : T.well;
             t.style.borderColor  = isSelected ? T.lavender : T.border;
             t.querySelector('[data-disc-name]').style.color = isSelected ? T.moonText : T.text;
@@ -540,19 +540,19 @@ defineScene('disc-select', {
       });
     }
 
-    applyBtn.addEventListener('pointerup', function() {
+    applyBtn.addEventListener('pointerup', () => {
       if (!selectedDiscount) return;
-      var disc = selectedDiscount;
+      const disc = selectedDiscount;
       SceneManager.resolveInterrupt('disc-select');
       if (params.onConfirm) params.onConfirm(disc);
     });
 
     // Show loading state
-    var loadingEl = document.createElement('div');
+    const loadingEl = document.createElement('div');
     loadingEl.style.cssText = [
       'text-align:center;',
-      'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-      'font-weight:' + T.fwBold + ';color:' + T.moon + ';',
+      `font-family:${T.fb};font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};color:${T.moon};`,
       'padding:12px 0;',
     ].join('');
     loadingEl.textContent = 'Loading…';
@@ -560,11 +560,11 @@ defineScene('disc-select', {
 
     // Fetch discounts
     fetchWithTimeout('/api/v1/discounts', {}, 10000)
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
+      .then((r) => r.json())
+      .then((data) => {
         if (!alive) return;
-        var list = Array.isArray(data) ? data : (data.discounts || data.items || []);
-        var normalized = list.map(function(d) {
+        const list = Array.isArray(data) ? data : (data.discounts || data.items || []);
+        const normalized = list.map((d) => {
           return {
             id:   d.id   || d.discount_id || d.name || '',
             name: d.name || d.label || d.title || '',
@@ -579,17 +579,17 @@ defineScene('disc-select', {
         }
         _buildTiles(normalized);
       })
-      .catch(function() {
+      .catch(() => {
         if (!alive) return;
         showToast('Could not load discounts');
         SceneManager.resolveInterrupt('disc-select');
         if (params.onCancel) params.onCancel();
       });
 
-    return function() { alive = false; };
+    return () => { alive = false; };
   },
 
-  unmount: function() {},
+  unmount: () => {},
 });
 
 // ═══════════════════════════════════════════════════
@@ -598,7 +598,7 @@ defineScene('disc-select', {
 //               onConfirm(reason: string), onCancel() }
 // ═══════════════════════════════════════════════════
 
-var VOID_REASONS = [
+const VOID_REASONS = [
   'Customer Changed Mind',
   'Entered in Error',
   'Kitchen Error',
@@ -606,12 +606,12 @@ var VOID_REASONS = [
 ];
 
 defineScene('void-reason', {
-  mount: function(container, params) {
+  mount: (container, params) => {
     params = params || {};
 
-    var item           = params.item || {};
-    var alive          = true;
-    var selectedReason = null;
+    const item           = params.item || {};
+    let alive          = true;
+    let selectedReason = null;
 
     container.style.cssText = [
       'width:100%;height:100%;',
@@ -620,23 +620,23 @@ defineScene('void-reason', {
     ].join('');
 
     // ── Modal card ──
-    var modal = document.createElement('div');
+    const modal = document.createElement('div');
     modal.style.cssText = [
       'width:360px;',
-      'background:' + T.card + ';',
-      'border-radius:' + T.chamferCard + 'px;',
+      `background:${T.card};`,
+      `border-radius:${T.chamferCard}px;`,
       'overflow:hidden;',
       'display:flex;flex-direction:column;align-items:stretch;',
-      'border:1px solid ' + T.verm + ';',
+      `border:1px solid ${T.verm};`,
     ].join('');
 
     // Top accent bar
-    var accentBar = document.createElement('div');
-    accentBar.style.cssText = 'width:100%;height:4px;background:' + T.verm + ';flex-shrink:0;';
+    const accentBar = document.createElement('div');
+    accentBar.style.cssText = `width:100%;height:4px;background:${T.verm};flex-shrink:0;`;
     modal.appendChild(accentBar);
 
     // Inner
-    var inner = document.createElement('div');
+    const inner = document.createElement('div');
     inner.style.cssText = [
       'display:flex;flex-direction:column;align-items:stretch;',
       'gap:12px;',
@@ -645,12 +645,12 @@ defineScene('void-reason', {
     ].join('');
 
     // Title
-    var title = document.createElement('div');
+    const title = document.createElement('div');
     title.style.cssText = [
-      'font-family:' + T.fh + ';',
+      `font-family:${T.fh};`,
       'font-size:18px;',
-      'font-weight:' + T.fwBold + ';',
-      'color:' + T.verm + ';',
+      `font-weight:${T.fwBold};`,
+      `color:${T.verm};`,
       'text-align:center;',
       'letter-spacing:1px;',
       'text-transform:uppercase;',
@@ -659,87 +659,87 @@ defineScene('void-reason', {
     inner.appendChild(title);
 
     // Approved badge
-    var badge = document.createElement('div');
+    const badge = document.createElement('div');
     badge.style.cssText = [
       'display:flex;flex-direction:row;align-items:center;justify-content:center;',
       'gap:6px;',
-      'background:' + T.well + ';',
+      `background:${T.well};`,
       'border-radius:6px;',
       'padding:5px 10px;',
       'align-self:center;',
     ].join('');
-    var badgeDot = document.createElement('div');
+    const badgeDot = document.createElement('div');
     badgeDot.style.cssText = [
       'width:6px;height:6px;border-radius:50%;',
-      'background:' + T.green + ';flex-shrink:0;',
+      `background:${T.green};flex-shrink:0;`,
     ].join('');
-    var badgeText = document.createElement('span');
+    const badgeText = document.createElement('span');
     badgeText.style.cssText = [
-      'font-family:' + T.fb + ';font-size:11px;',
-      'font-weight:' + T.fwBold + ';color:' + T.green + ';',
+      `font-family:${T.fb};font-size:11px;`,
+      `font-weight:${T.fwBold};color:${T.green};`,
     ].join('');
-    badgeText.textContent = 'Approved · ' + (params.approvedBy || '');
+    badgeText.textContent = `Approved · ${(params.approvedBy || '')}`;
     badge.appendChild(badgeDot);
     badge.appendChild(badgeText);
     inner.appendChild(badge);
 
     // Item card
-    var itemCard = document.createElement('div');
+    const itemCard = document.createElement('div');
     itemCard.style.cssText = [
-      'background:' + T.well + ';',
-      'border:1px solid ' + T.verm + ';',
-      'border-left:3px solid ' + T.verm + ';',
+      `background:${T.well};`,
+      `border:1px solid ${T.verm};`,
+      `border-left:3px solid ${T.verm};`,
       'border-radius:8px;',
       'padding:6px 10px;',
       'display:flex;flex-direction:row;align-items:center;justify-content:space-between;',
     ].join('');
-    var itemName = document.createElement('span');
+    const itemName = document.createElement('span');
     itemName.style.cssText = [
-      'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-      'font-weight:' + T.fwBold + ';color:' + T.text + ';',
+      `font-family:${T.fb};font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};color:${T.text};`,
       'flex:1;min-width:0;',
     ].join('');
     itemName.textContent = item.name || '';
-    var itemPrice = document.createElement('span');
+    const itemPrice = document.createElement('span');
     itemPrice.style.cssText = [
-      'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-      'font-weight:' + T.fwBold + ';color:' + T.gold + ';',
+      `font-family:${T.fb};font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};color:${T.gold};`,
       'flex-shrink:0;margin-left:10px;',
     ].join('');
-    var priceNum = typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0;
-    itemPrice.textContent = '$' + priceNum.toFixed(2);
+    const priceNum = typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0;
+    itemPrice.textContent = `$${priceNum.toFixed(2)}`;
     itemCard.appendChild(itemName);
     itemCard.appendChild(itemPrice);
     inner.appendChild(itemCard);
 
     // Reason tiles
-    var tileCol = document.createElement('div');
+    const tileCol = document.createElement('div');
     tileCol.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
 
-    var tilePtrs = [];
+    const tilePtrs = [];
 
-    VOID_REASONS.forEach(function(reason) {
-      var tile = document.createElement('div');
+    VOID_REASONS.forEach((reason) => {
+      const tile = document.createElement('div');
       tile.style.cssText = [
         'width:100%;',
         'border-radius:8px;',
         'padding:10px 12px;',
         'box-sizing:border-box;',
         'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-        'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-        'font-weight:' + T.fwBold + ';',
-        'color:' + T.text + ';',
-        'background:' + T.well + ';',
-        'border:1px solid ' + T.border + ';',
+        `font-family:${T.fb};font-size:${T.fsB3};`,
+        `font-weight:${T.fwBold};`,
+        `color:${T.text};`,
+        `background:${T.well};`,
+        `border:1px solid ${T.border};`,
         'transition:background 0.1s,color 0.1s,border-color 0.1s;',
       ].join('');
       tile.textContent = reason;
       tile.dataset.reason = reason;
 
-      tile.addEventListener('pointerup', function() {
+      tile.addEventListener('pointerup', () => {
         selectedReason = reason;
-        tilePtrs.forEach(function(t) {
-          var isSel = t.dataset.reason === reason;
+        tilePtrs.forEach((t) => {
+          const isSel = t.dataset.reason === reason;
           t.style.background   = isSel ? T.verm    : T.well;
           t.style.color        = isSel ? '#fff'    : T.text;
           t.style.borderColor  = isSel ? T.verm    : T.border;
@@ -753,40 +753,40 @@ defineScene('void-reason', {
     inner.appendChild(tileCol);
 
     // VOID button
-    var voidBtn = document.createElement('div');
+    const voidBtn = document.createElement('div');
     voidBtn.style.cssText = [
       'width:100%;border-radius:8px;',
       'padding:12px 10px;',
       'box-sizing:border-box;',
       'text-align:center;',
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-      'font-weight:' + T.fwBold + ';',
-      'background:' + T.well + ';',
-      'border:1px solid ' + T.border + ';',
-      'color:' + T.moon + ';',
-      'box-shadow:0 3px 0 ' + T.vermDk + ';',
+      `font-family:${T.fb};font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};`,
+      `background:${T.well};`,
+      `border:1px solid ${T.border};`,
+      `color:${T.moon};`,
+      `box-shadow:0 3px 0 ${T.vermDk};`,
       'transition:background 0.1s,color 0.1s,border-color 0.1s,transform 0.07s,box-shadow 0.07s;',
     ].join('');
     voidBtn.textContent = 'SELECT A REASON';
     inner.appendChild(voidBtn);
 
-    voidBtn.addEventListener('pointerdown', function() {
+    voidBtn.addEventListener('pointerdown', () => {
       if (!selectedReason) return;
       voidBtn.style.transform  = 'translateY(2px)';
-      voidBtn.style.boxShadow  = '0 1px 0 ' + T.vermDk;
+      voidBtn.style.boxShadow  = `0 1px 0 ${T.vermDk}`;
     });
-    var _voidRelease = function() {
+    const _voidRelease = () => {
       voidBtn.style.transform = '';
-      voidBtn.style.boxShadow = '0 3px 0 ' + T.vermDk;
+      voidBtn.style.boxShadow = `0 3px 0 ${T.vermDk}`;
     };
     voidBtn.addEventListener('pointerup',     _voidRelease);
     voidBtn.addEventListener('pointerleave',  _voidRelease);
     voidBtn.addEventListener('pointercancel', _voidRelease);
 
-    voidBtn.addEventListener('pointerup', function() {
+    voidBtn.addEventListener('pointerup', () => {
       if (!selectedReason) return;
-      var reason = selectedReason;
+      const reason = selectedReason;
       SceneManager.resolveInterrupt('void-reason');
       if (params.onConfirm) params.onConfirm(reason);
     });
@@ -794,28 +794,28 @@ defineScene('void-reason', {
     function _updateVoidBtn() {
       if (selectedReason) {
         voidBtn.style.background  = T.verm;
-        voidBtn.style.border      = '1px solid ' + T.verm;
+        voidBtn.style.border      = `1px solid ${T.verm}`;
         voidBtn.style.color       = '#fff';
-        voidBtn.textContent       = 'VOID  ' + (item.name || '').toUpperCase();
+        voidBtn.textContent       = `VOID  ${(item.name || '').toUpperCase()}`;
       } else {
         voidBtn.style.background  = T.well;
-        voidBtn.style.border      = '1px solid ' + T.border;
+        voidBtn.style.border      = `1px solid ${T.border}`;
         voidBtn.style.color       = T.moon;
         voidBtn.textContent       = 'SELECT A REASON';
       }
     }
 
     // Cancel link
-    var cancelLink = document.createElement('div');
+    const cancelLink = document.createElement('div');
     cancelLink.style.cssText = [
       'text-align:center;',
-      'font-family:' + T.fb + ';font-size:11px;',
-      'font-weight:' + T.fwBold + ';color:' + T.moon + ';',
+      `font-family:${T.fb};font-size:11px;`,
+      `font-weight:${T.fwBold};color:${T.moon};`,
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
       'margin-top:2px;',
     ].join('');
     cancelLink.textContent = 'cancel';
-    cancelLink.addEventListener('pointerup', function() {
+    cancelLink.addEventListener('pointerup', () => {
       SceneManager.resolveInterrupt('void-reason');
       if (params.onCancel) params.onCancel();
     });
@@ -824,8 +824,8 @@ defineScene('void-reason', {
     modal.appendChild(inner);
     container.appendChild(modal);
 
-    return function() { alive = false; };
+    return () => { alive = false; };
   },
 
-  unmount: function() {},
+  unmount: () => {},
 });

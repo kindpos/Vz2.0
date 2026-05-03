@@ -16,8 +16,8 @@
 export function fetchWithTimeout(url, opts, ms) {
   opts = opts || {};
   if (ms == null) ms = 15000;
-  var controller = new AbortController();
-  var timer = setTimeout(function() { controller.abort(); }, ms);
-  var merged = Object.assign({}, opts, { signal: opts.signal || controller.signal });
-  return fetch(url, merged).finally(function() { clearTimeout(timer); });
+  const controller = new AbortController();
+  const timer = setTimeout(() => { controller.abort(); }, ms);
+  const merged = Object.assign({}, opts, { signal: opts.signal || controller.signal });
+  return fetch(url, merged).finally(() => { clearTimeout(timer); });
 }

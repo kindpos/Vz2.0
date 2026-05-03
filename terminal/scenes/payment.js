@@ -16,50 +16,50 @@ import { buildNumpad } from '../numpad.js';
 import { OrderSummary } from '../order-summary.js';
 import { getCashDiscount } from '../pricing.js';
 
-var PAD     = T.scenePad;
-var GAP     = T.colGapSm;
-var API     = '/api/v1';
+const PAD     = T.scenePad;
+const GAP     = T.colGapSm;
+const API     = '/api/v1';
 
 // ── Scene state ───────────────────────────────────
-var sceneEl           = null;
-var sceneData         = {};
-var enteredAmount     = 0;
-var denomAccum        = 0;
-var numpadStr         = '';
-var paymentMode       = 'card';
-var confirmProcessing = false;
-var _cardController   = null;
-var payments          = [];
-var totalPaid         = 0;
-var baseTotal         = 0;
-var numpadRef         = null;
-var dotTimer          = null;
+let sceneEl           = null;
+let sceneData         = {};
+let enteredAmount     = 0;
+let denomAccum        = 0;
+let numpadStr         = '';
+let paymentMode       = 'card';
+let confirmProcessing = false;
+let _cardController   = null;
+let payments          = [];
+let totalPaid         = 0;
+let baseTotal         = 0;
+let numpadRef         = null;
+let dotTimer          = null;
 // Idempotency key for the in-flight payment attempt (cash or card).
 // Generated lazily on first CONFIRM tap; cleared only on success so a
 // network timeout → retry sends the exact same ID the backend already saw.
-var _pendingTxId      = null;
-var _sceneMounted     = false;  // alive-guard for async callbacks (mirrors _alive in other scenes)
+let _pendingTxId      = null;
+let _sceneMounted     = false;  // alive-guard for async callbacks (mirrors _alive in other scenes)
 
 // DOM refs
-var _modeButtons      = {};
-var _chevronEl        = null;
-var _balanceValueEl   = null;
-var _checkNumEl       = null;
-var _denomTiles       = [];
-var _btn100           = null;
-var _subRow           = null;
-var _discRow          = null;
-var _taxRow           = null;
-var _cardRow          = null;
-var _cashRow          = null;
-var _itemsScroll      = null;
+let _modeButtons      = {};
+let _chevronEl        = null;
+let _balanceValueEl   = null;
+let _checkNumEl       = null;
+let _denomTiles       = [];
+let _btn100           = null;
+let _subRow           = null;
+let _discRow          = null;
+let _taxRow           = null;
+let _cardRow          = null;
+let _cashRow          = null;
+let _itemsScroll      = null;
 
 // Card processing overlay state
-var _procStatusEl     = null;
-var _procAnimTimer    = null;
+let _procStatusEl     = null;
+let _procAnimTimer    = null;
 
 // Change-due timer
-var _changeDueTimer   = null;
+let _changeDueTimer   = null;
 
 // Split tap handler (bound to event bus)
 function _onSplitTap() { showSplitPopup(); }
@@ -71,12 +71,12 @@ function _onSplitTap() { showSplitPopup(); }
 function _deriveCheckLabel(src) {
   if (!src) return '';
   if (src.checkLabel)  return src.checkLabel;
-  if (src.checkNumber) return '#' + src.checkNumber;
-  var oid = src.orderId || src.checkId;
+  if (src.checkNumber) return `#${src.checkNumber}`;
+  const oid = src.orderId || src.checkId;
   if (!oid) return '';
-  var stripped = String(oid).replace(/^order[_-]?/i, '');
-  var slice    = stripped.slice(-6) || stripped.slice(0, 6);
-  return slice ? '#' + slice.toUpperCase() : '';
+  const stripped = String(oid).replace(/^order[_-]?/i, '');
+  const slice    = stripped.slice(-6) || stripped.slice(0, 6);
+  return slice ? `#${slice.toUpperCase()}` : '';
 }
 
 
@@ -91,8 +91,8 @@ function _deriveCheckLabel(src) {
 // login as last resort.
 function _returnToParent(params) {
   params = params || {};
-  var target    = params.returnTo || 'check-overview';
-  var retParams = params.returnParams || {
+  const target    = params.returnTo || 'check-overview';
+  const retParams = params.returnParams || {
     checkId:       params.checkId || params.orderId,
     returnLanding: params.returnLanding,
     employeeId:    params.employeeId,
@@ -126,7 +126,7 @@ defineScene({
     paymentMode: 'card',
   },
 
-  render: function(container, params) {
+  render: (container, params) => {
     params = params || {};
     sceneEl           = container;
     sceneData         = params;
@@ -159,7 +159,7 @@ defineScene({
       'display:flex;gap:12px;',
       'padding:10px 24px 16px;',
       'box-sizing:border-box;overflow:hidden;',
-      'background:' + T.bg + ';',
+      `background:${T.bg};`,
     ].join('');
 
     container.appendChild(buildLeftColumn(params));
@@ -171,7 +171,7 @@ defineScene({
     updateSplitDisplay();
 
     if (window._header && window._header.setBackHandler) {
-      window._header.setBackHandler(function() {
+      window._header.setBackHandler(() => {
         if (confirmProcessing) return;
         _returnToParent(sceneData);
       });
@@ -188,28 +188,28 @@ defineScene({
       // check-overview doesn't forward it in params, and the UUID tail
       // ("#15DB75") isn't a real check identifier.
       if (params.orderId) {
-        fetchWithTimeout('/api/v1/orders/' + encodeURIComponent(params.orderId), {}, 10000)
-          .then(function(r) { return r.ok ? r.json() : null; })
-          .then(function(order) {
+        fetchWithTimeout(`/api/v1/orders/${encodeURIComponent(params.orderId)}`, {}, 10000)
+          .then((r) => r.ok ? r.json() : null)
+          .then((order) => {
             if (!_sceneMounted || !_checkNumEl) return;
             if (order && order.check_number) {
-              _checkNumEl.textContent = 'CHECK #' + order.check_number;
+              _checkNumEl.textContent = `CHECK #${order.check_number}`;
             }
           })
-          .catch(function() { /* keep the derived fallback */ });
+          .catch(() => { /* keep the derived fallback */ });
       }
     } else if (params.orderId) {
-      fetchWithTimeout('/api/v1/orders/' + encodeURIComponent(params.orderId), {}, 10000)
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(order) {
+      fetchWithTimeout(`/api/v1/orders/${encodeURIComponent(params.orderId)}`, {}, 10000)
+        .then((r) => r.ok ? r.json() : null)
+        .then((order) => {
           if (!_sceneMounted || !order) return;
           populateLeftCard(order);
         })
-        .catch(function() { /* silently skip — scene still works */ });
+        .catch(() => { /* silently skip — scene still works */ });
     }
   },
 
-  unmount: function() {
+  unmount: () => {
     _sceneMounted  = false;
     _pendingTxId   = null;
     SceneManager.off('split:tap', _onSplitTap);
@@ -223,20 +223,20 @@ defineScene({
   },
 
   events: {
-    'split:tap': function() { showSplitPopup(); },
+    'split:tap': () => { showSplitPopup(); },
   },
 
   interrupts: {
     'split-select': {
-      render: function(container, params) {
+      render: (container, params) => {
         params = params || {};
-        var remaining = params.remaining || 0;
+        let remaining = params.remaining || 0;
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;pointer-events:auto;';
 
         // Nostalgia landing-page card shell — gold accent for split
         // affordance.
-        var shell = buildStaticCard({ accent: T.gold });
+        const shell = buildStaticCard({ accent: T.gold });
         shell.style.display        = 'flex';
         shell.style.flexDirection  = 'column';
         shell.style.alignItems     = 'center';
@@ -244,38 +244,38 @@ defineScene({
         shell.style.minWidth       = '420px';
         shell.style.padding        = '24px 44px 28px 48px';
 
-        var title = document.createElement('div');
+        let title = document.createElement('div');
         title.style.cssText = [
-          'font-family:' + T.fh + ';',
-          'font-size:' + T.fsB1 + ';',
-          'font-weight:' + T.fwBold + ';',
-          'color:' + T.gold + ';',
+          `font-family:${T.fh};`,
+          `font-size:${T.fsB1};`,
+          `font-weight:${T.fwBold};`,
+          `color:${T.gold};`,
           'letter-spacing:0.14em;',
           'text-transform:uppercase;',
         ].join('');
         title.textContent = 'Split Payment';
         shell.appendChild(title);
 
-        var sub = document.createElement('div');
+        const sub = document.createElement('div');
         sub.style.cssText = [
-          'font-family:' + T.fb + ';',
-          'font-size:' + T.fsB2 + ';',
-          'color:' + T.green + ';',
-        ].join('') + ";font-weight:" + T.fwBold + ";";
-        sub.textContent = 'Remaining: $' + remaining.toFixed(2);
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${T.green};`,
+        ].join('') + `;font-weight:${T.fwBold};`;
+        sub.textContent = `Remaining: $${remaining.toFixed(2)}`;
         shell.appendChild(sub);
 
-        var btnRow = document.createElement('div');
+        let btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:14px;margin-top:4px;';
 
         // Fraction tiles match the payment denomination presets: raised
         // buildActionCard with green accent bar, "1/N" stacked over the
         // dollar amount, mint flash on tap.
-        [2, 3, 4].forEach(function(divisor) {
-          var amt = Math.ceil(remaining / divisor * 100) / 100;
-          var tile = buildActionCard({
+        [2, 3, 4].forEach((divisor) => {
+          const amt = Math.ceil(remaining / divisor * 100) / 100;
+          let tile = buildActionCard({
             accent:  T.groups.paymentPreset.tileAccent,
-            onClick: function() { params.onConfirm(amt); },
+            onClick: () => { params.onConfirm(amt); },
           });
           tile.style.cssText += [
             'width:120px;height:96px;flex-shrink:0;',
@@ -283,8 +283,8 @@ defineScene({
             'gap:4px;padding:14px 14px 12px 20px;',
           ].join('');
 
-          var label = document.createElement('div');
-          label.textContent         = '1/' + divisor;
+          let label = document.createElement('div');
+          label.textContent         = `1/${divisor}`;
           label.style.fontFamily    = T.fh;
           label.style.fontSize      = T.fsH2;
           label.style.fontWeight    = T.fwBold;
@@ -293,8 +293,8 @@ defineScene({
           label.style.pointerEvents = 'none';
           tile.appendChild(label);
 
-          var subLabel = document.createElement('div');
-          subLabel.textContent         = '$' + amt.toFixed(2);
+          const subLabel = document.createElement('div');
+          subLabel.textContent         = `$${amt.toFixed(2)}`;
           subLabel.style.fontFamily    = T.fb;
           subLabel.style.fontSize      = T.fsB3;
           subLabel.style.color         = hexToRgba(T.text, 0.7);
@@ -302,11 +302,11 @@ defineScene({
           subLabel.style.pointerEvents = 'none';
           tile.appendChild(subLabel);
 
-          tile.addEventListener('pointerup', function() {
+          tile.addEventListener('pointerup', () => {
             tile.style.backgroundColor = T.groups.paymentPreset.tapFlashFill;
             label.style.color          = T.groups.paymentPreset.tapFlashLabel;
             subLabel.style.color       = T.groups.paymentPreset.tapFlashLabel;
-            setTimeout(function() {
+            setTimeout(() => {
               tile.style.backgroundColor = T.card;
               label.style.color          = T.groups.paymentPreset.tileAccent;
               subLabel.style.color       = hexToRgba(T.text, 0.7);
@@ -317,11 +317,11 @@ defineScene({
         });
         shell.appendChild(btnRow);
 
-        var cancel = buildPillButton({
+        const cancel = buildPillButton({
           label: 'CANCEL',
           variant: 'verm',
           fontSize: T.fsB2,
-          onClick: function() { params.onCancel(); }
+          onClick: () => { params.onCancel(); }
         });
         cancel.style.width           = '160px';
         cancel.style.height          = '48px';
@@ -338,15 +338,15 @@ defineScene({
 
   transactionals: {
     'pc-card-processing': {
-      render: function(container, params) {
+      render: (container, params) => {
         params = params || {};
-        var amount = params.amount || 0;
-        var TOTAL_SEGS = 22;
-        var segments = [];
-        var segIdx = 0;
-        var msgIdx = 0;
+        const amount = params.amount || 0;
+        const TOTAL_SEGS = 22;
+        const segments = [];
+        let segIdx = 0;
+        let msgIdx = 0;
 
-        var statusMessages = [
+        const statusMessages = [
           'Connecting to terminal...',
           'Waiting for card...',
           'Reading card data...',
@@ -357,84 +357,84 @@ defineScene({
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
         // Vz2.0 modal card: left accent bar + rounded + drop shadow.
-        var card = document.createElement('div');
+        let card = document.createElement('div');
         card.style.cssText = [
-          'background:' + T.card + ';',
-          'border-left:4px solid ' + T.gold + ';',
-          'border-radius:' + T.chamferCard + 'px;',
+          `background:${T.card};`,
+          `border-left:4px solid ${T.gold};`,
+          `border-radius:${T.chamferCard}px;`,
           'width:460px;',
           'box-shadow:0 12px 36px rgba(0,0,0,0.55);',
-          'font-family:' + T.fb + ';',
+          `font-family:${T.fb};`,
           'overflow:hidden;',
-        ].join('') + ";font-weight:" + T.fwBold + ";";
+        ].join('') + `;font-weight:${T.fwBold};`;
 
         // Header strip
-        var titleBar = document.createElement('div');
+        const titleBar = document.createElement('div');
         titleBar.style.cssText = [
           'padding:14px 20px;',
-          'background:' + T.well + ';',
+          `background:${T.well};`,
           'display:flex;align-items:center;gap:12px;',
-          'border-bottom:1px solid ' + T.border + ';',
+          `border-bottom:1px solid ${T.border};`,
         ].join('');
 
-        var icon = document.createElement('div');
+        const icon = document.createElement('div');
         icon.style.cssText = [
           'width:32px;height:32px;flex-shrink:0;',
-          'background:' + T.gold + ';',
+          `background:${T.gold};`,
           'display:flex;align-items:center;justify-content:center;',
-          'font-size:18px;font-weight:' + T.fwBold + ';',
-          'color:' + T.well + ';',
+          `font-size:18px;font-weight:${T.fwBold};`,
+          `color:${T.well};`,
           'border-radius:8px;',
         ].join('');
         icon.textContent = '\u25C8';
 
-        var titleText = document.createElement('span');
+        const titleText = document.createElement('span');
         titleText.style.cssText = [
-          'font-family:' + T.fh + ';',
-          'font-size:' + T.fsB2 + ';',
-          'font-weight:' + T.fwBold + ';',
-          'color:' + T.green + ';',
+          `font-family:${T.fh};`,
+          `font-size:${T.fsB2};`,
+          `font-weight:${T.fwBold};`,
+          `color:${T.green};`,
           'letter-spacing:0.08em;',
           'text-transform:uppercase;',
         ].join('');
-        titleText.textContent = 'Card Payment \u2014 $' + amount.toFixed(2);
+        titleText.textContent = `Card Payment \u2014 $${amount.toFixed(2)}`;
 
         titleBar.appendChild(icon);
         titleBar.appendChild(titleText);
         card.appendChild(titleBar);
 
         // Body
-        var body = document.createElement('div');
+        const body = document.createElement('div');
         body.style.cssText = 'padding:24px 24px 22px;display:flex;flex-direction:column;gap:14px;';
 
         _procStatusEl = document.createElement('div');
         _procStatusEl.style.cssText = [
-          'font-family:' + T.fb + ';',
-          'font-size:' + T.fsB2 + ';',
-          'color:' + T.text + ';',
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${T.text};`,
           'min-height:28px;',
-        ].join('') + ";font-weight:" + T.fwBold + ";";
+        ].join('') + `;font-weight:${T.fwBold};`;
         _procStatusEl.textContent = statusMessages[0];
         body.appendChild(_procStatusEl);
 
         // Progress bar: rounded well with gold segments inside.
-        var progContainer = document.createElement('div');
+        const progContainer = document.createElement('div');
         progContainer.style.cssText = [
           'height:28px;padding:3px;',
-          'background:' + T.well + ';',
-          'border:1px solid ' + T.border + ';',
+          `background:${T.well};`,
+          `border:1px solid ${T.border};`,
           'border-radius:8px;',
           'overflow:hidden;',
           'box-shadow:inset 0 2px 4px rgba(0,0,0,0.4);',
         ].join('');
-        var progFill = document.createElement('div');
+        const progFill = document.createElement('div');
         progFill.style.cssText = 'height:100%;display:flex;gap:2px;align-items:stretch;';
 
-        for (var i = 0; i < TOTAL_SEGS; i++) {
-          var seg = document.createElement('div');
+        for (let i = 0; i < TOTAL_SEGS; i++) {
+          const seg = document.createElement('div');
           seg.style.cssText = [
             'width:14px;flex-shrink:0;',
-            'background:' + T.gold + ';',
+            `background:${T.gold};`,
             'border-radius:2px;',
             'opacity:0;transition:opacity 0.05s;',
           ].join('');
@@ -444,21 +444,21 @@ defineScene({
         progContainer.appendChild(progFill);
         body.appendChild(progContainer);
 
-        var hint = document.createElement('div');
+        const hint = document.createElement('div');
         hint.style.cssText = [
-          'font-family:' + T.fb + ';',
-          'font-size:' + T.fsB3 + ';',
-          'color:' + hexToRgba(T.text, 0.6) + ';',
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB3};`,
+          `color:${hexToRgba(T.text, 0.6)};`,
           'text-align:center;',
           'letter-spacing:0.05em;',
-        ].join('') + ";font-weight:" + T.fwBold + ";";
+        ].join('') + `;font-weight:${T.fwBold};`;
         hint.textContent = 'Present card on terminal...';
         body.appendChild(hint);
 
         card.appendChild(body);
         container.appendChild(card);
 
-        _procAnimTimer = setInterval(function() {
+        _procAnimTimer = setInterval(() => {
           if (segIdx < TOTAL_SEGS) {
             segments[segIdx].style.opacity = '1';
             segIdx++;
@@ -469,11 +469,11 @@ defineScene({
           }
           if (segIdx >= TOTAL_SEGS) {
             segIdx = 0;
-            segments.forEach(function(s) { s.style.opacity = '0'; });
+            segments.forEach((s) => { s.style.opacity = '0'; });
           }
         }, 200);
       },
-      unmount: function() {
+      unmount: () => {
         if (_procAnimTimer) clearInterval(_procAnimTimer);
         _procAnimTimer = null;
         _procStatusEl = null;
@@ -481,40 +481,40 @@ defineScene({
     },
 
     'pc-change-due': {
-      render: function(container, params) {
+      render: (container, params) => {
         params = params || {};
-        var returned = false;
+        let returned = false;
         _changeDueTimer = null;
 
 
         container.style.cssText = [
           'width:100%;height:100%;',
           'display:flex;flex-direction:column;align-items:center;justify-content:center;',
-          'gap:24px;background:' + T.scrimInterrupt + ';',
+          `gap:24px;background:${T.scrimInterrupt};`,
         ].join('');
 
-        var isCash    = params.paymentMode === 'cash';
-        var hasChange = isCash && params.change > 0;
+        let isCash    = params.paymentMode === 'cash';
+        const hasChange = isCash && params.change > 0;
 
         // Vz2.0 card with accent bar (gold for change-due celebration)
-        var card = document.createElement('div');
+        let card = document.createElement('div');
         card.style.cssText = [
           'display:flex;flex-direction:column;align-items:center;',
           'padding:40px 72px 36px;',
-          'background:' + T.card + ';',
-          'border-left:4px solid ' + T.gold + ';',
-          'border-radius:' + T.chamferCard + 'px;',
+          `background:${T.card};`,
+          `border-left:4px solid ${T.gold};`,
+          `border-radius:${T.chamferCard}px;`,
           'box-shadow:0 16px 48px rgba(0,0,0,0.55);',
           'min-width:520px;',
         ].join('');
 
-        var topLabel = document.createElement('div');
+        const topLabel = document.createElement('div');
         topLabel.style.cssText = [
-          'font-family:' + T.fh + ';',
-          'font-size:' + T.fsB1 + ';',
-          'font-weight:' + T.fwBold + ';',
+          `font-family:${T.fh};`,
+          `font-size:${T.fsB1};`,
+          `font-weight:${T.fwBold};`,
           'letter-spacing:0.22em;',
-          'color:' + T.green + ';',
+          `color:${T.green};`,
           'margin-bottom:24px;',
           'text-transform:uppercase;',
         ].join('');
@@ -522,36 +522,36 @@ defineScene({
         card.appendChild(topLabel);
 
         if (hasChange) {
-          var changeLabel = document.createElement('div');
+          const changeLabel = document.createElement('div');
           changeLabel.style.cssText = [
-            'font-family:' + T.fh + ';',
-            'font-size:' + T.fsB2 + ';',
-            'font-weight:' + T.fwBold + ';',
+            `font-family:${T.fh};`,
+            `font-size:${T.fsB2};`,
+            `font-weight:${T.fwBold};`,
             'letter-spacing:0.18em;',
-            'color:' + T.green + ';',
+            `color:${T.green};`,
             'margin-bottom:8px;',
             'text-transform:uppercase;',
           ].join('');
           changeLabel.textContent = 'Change Due';
           card.appendChild(changeLabel);
 
-          var changeAmount = document.createElement('div');
+          const changeAmount = document.createElement('div');
           changeAmount.style.cssText = [
-            'font-family:' + T.fh + ';',
-            'font-size:108px;font-weight:' + T.fwBold + ';',
-            'color:' + T.gold + ';',
+            `font-family:${T.fh};`,
+            `font-size:108px;font-weight:${T.fwBold};`,
+            `color:${T.gold};`,
             'line-height:1;letter-spacing:0.02em;',
-            'text-shadow:0 0 24px ' + hexToRgba(T.gold, 0.35) + ';',
+            `text-shadow:0 0 24px ${hexToRgba(T.gold, 0.35)};`,
           ].join('');
-          changeAmount.textContent = '$' + params.change.toFixed(2);
+          changeAmount.textContent = `$${params.change.toFixed(2)}`;
           card.appendChild(changeAmount);
         } else {
-          var paidLabel = document.createElement('div');
+          const paidLabel = document.createElement('div');
           paidLabel.style.cssText = [
-            'font-family:' + T.fh + ';',
-            'font-size:44px;font-weight:' + T.fwBold + ';',
+            `font-family:${T.fh};`,
+            `font-size:44px;font-weight:${T.fwBold};`,
             'letter-spacing:0.14em;',
-            'color:' + T.green + ';',
+            `color:${T.green};`,
             'margin-bottom:8px;',
             'text-transform:uppercase;',
           ].join('');
@@ -559,48 +559,48 @@ defineScene({
           card.appendChild(paidLabel);
         }
 
-        var chargedLine = document.createElement('div');
+        const chargedLine = document.createElement('div');
         chargedLine.style.cssText = [
-          'font-family:' + T.fb + ';',
-          'font-size:' + T.fsB2 + ';',
-          'color:' + hexToRgba(T.text, 0.6) + ';',
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${hexToRgba(T.text, 0.6)};`,
           'margin-top:14px;',
           'letter-spacing:0.06em;',
-        ].join('') + ";font-weight:" + T.fwBold + ";";
-        chargedLine.textContent = (isCash ? 'Cash price: ' : 'Charged: ') + '$' + params.total.toFixed(2);
+        ].join('') + `;font-weight:${T.fwBold};`;
+        chargedLine.textContent = (isCash ? 'Cash price: ' : 'Charged: ') + `$${params.total.toFixed(2)}`;
         card.appendChild(chargedLine);
 
-        var printLine = document.createElement('div');
+        const printLine = document.createElement('div');
         printLine.style.cssText = [
-          'font-family:' + T.fb + ';',
-          'font-size:' + T.fsB3 + ';',
-          'color:' + hexToRgba(T.text, 0.6) + ';',
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB3};`,
+          `color:${hexToRgba(T.text, 0.6)};`,
           'letter-spacing:0.14em;',
           'margin-top:18px;',
           'text-transform:uppercase;',
-        ].join('') + ";font-weight:" + T.fwBold + ";";
+        ].join('') + `;font-weight:${T.fwBold};`;
         printLine.textContent = 'Receipt Printing...';
         card.appendChild(printLine);
 
         container.appendChild(card);
 
-        var btnRow = document.createElement('div');
+        const btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:20px;';
 
-        var newOrderBtn = buildPillButton({
+        const newOrderBtn = buildPillButton({
           label: 'OVERVIEW',
           color: T.elec,
-          onClick: function() { doReturn('check-overview'); }
+          onClick: () => { doReturn('check-overview'); }
         });
         newOrderBtn.style.flex = '0 0 auto';
         newOrderBtn.style.width  = '240px';
         newOrderBtn.style.height = '72px';
         btnRow.appendChild(newOrderBtn);
 
-        var logoutBtn = buildPillButton({
+        const logoutBtn = buildPillButton({
           label: 'LOGOUT',
           color: T.green,
-          onClick: function() { doReturn('login'); }
+          onClick: () => { doReturn('login'); }
         });
         logoutBtn.style.flex = '0 0 auto';
         logoutBtn.style.width  = '240px';
@@ -609,52 +609,52 @@ defineScene({
 
         container.appendChild(btnRow);
 
-        var postAction = (window.KINDpos && window.KINDpos.postPaymentAction) || 'quick-service';
+        const postAction = (window.KINDpos && window.KINDpos.postPaymentAction) || 'quick-service';
         if (postAction === 'logout') {
-          var autoHint = document.createElement('div');
+          const autoHint = document.createElement('div');
           autoHint.style.cssText = [
-            'font-family:' + T.fb + ';',
-            'font-size:' + T.fsB3 + ';',
-            'color:' + hexToRgba(T.text, 0.6) + ';',
+            `font-family:${T.fb};`,
+            `font-size:${T.fsB3};`,
+            `color:${hexToRgba(T.text, 0.6)};`,
             'letter-spacing:0.12em;',
             'margin-top:4px;',
-          ].join('') + ";font-weight:" + T.fwBold + ";";
+          ].join('') + `;font-weight:${T.fwBold};`;
           autoHint.textContent = 'auto-logout in 8s...';
           container.appendChild(autoHint);
 
-          var countdown = 8;
-          _changeDueTimer = setInterval(function() {
+          let countdown = 8;
+          _changeDueTimer = setInterval(() => {
             countdown--;
             if (countdown <= 0) {
               clearInterval(_changeDueTimer);
               _changeDueTimer = null;
               doReturn('login');
             } else {
-              autoHint.textContent = 'auto-logout in ' + countdown + 's...';
+              autoHint.textContent = `auto-logout in ${countdown}s...`;
             }
           }, 1000);
         } else if (params.isLastPayment) {
           // Final seat paid — auto-return to landing after a short flash.
-          var landingHint = document.createElement('div');
+          const landingHint = document.createElement('div');
           landingHint.style.cssText = [
-            'font-family:' + T.fb + ';',
-            'font-size:' + T.fsB3 + ';',
-            'color:' + hexToRgba(T.text, 0.6) + ';',
+            `font-family:${T.fb};`,
+            `font-size:${T.fsB3};`,
+            `color:${hexToRgba(T.text, 0.6)};`,
             'letter-spacing:0.12em;',
             'margin-top:4px;',
-          ].join('') + ";font-weight:" + T.fwBold + ";";
+          ].join('') + `;font-weight:${T.fwBold};`;
           landingHint.textContent = 'returning to landing in 3s...';
           container.appendChild(landingHint);
 
-          var lcount = 3;
-          _changeDueTimer = setInterval(function() {
+          let lcount = 3;
+          _changeDueTimer = setInterval(() => {
             lcount--;
             if (lcount <= 0) {
               clearInterval(_changeDueTimer);
               _changeDueTimer = null;
               doReturn('landing');
             } else {
-              landingHint.textContent = 'returning to landing in ' + lcount + 's...';
+              landingHint.textContent = `returning to landing in ${lcount}s...`;
             }
           }, 1000);
         }
@@ -663,7 +663,7 @@ defineScene({
           if (returned) return;
           returned = true;
           if (_changeDueTimer) { clearInterval(_changeDueTimer); _changeDueTimer = null; }
-          var activeScene = SceneManager.getActiveWorking();
+          const activeScene = SceneManager.getActiveWorking();
           SceneManager.closeAllTransactional();
           if (target === 'login') {
             OrderSummary.hide();
@@ -683,7 +683,7 @@ defineScene({
           } else if (target === 'landing') {
             OrderSummary.hide();
             SceneManager.unmountWorking(activeScene);
-            var landingScene = sceneData.returnLanding
+            const landingScene = sceneData.returnLanding
               || (sceneData.returnParams && sceneData.returnParams.returnLanding)
               || 'server-landing';
             SceneManager.mountWorking(landingScene, {
@@ -709,7 +709,7 @@ defineScene({
           }
         }
       },
-      unmount: function() {
+      unmount: () => {
         if (_changeDueTimer) { clearInterval(_changeDueTimer); _changeDueTimer = null; }
       },
     },
@@ -725,7 +725,7 @@ defineScene({
     set paymentMode(v)        { paymentMode = v; },
     set totalPaid(v)          { totalPaid = v; },
     set baseTotal(v)          { baseTotal = v; },
-    handleConfirm:            function() { return handleConfirm(); },
+    handleConfirm:            () => handleConfirm(),
   },
 });
 
@@ -735,10 +735,10 @@ defineScene({
 // ═══════════════════════════════════════════════════
 
 function buildLeftColumn(params) {
-  var wrap = document.createElement('div');
+  const wrap = document.createElement('div');
   wrap.style.cssText = 'width:300px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;';
 
-  var card = buildStaticCard({ accent: T.green, width: '300px' });
+  let card = buildStaticCard({ accent: T.green, width: '300px' });
   card.style.flex          = '1';
   card.style.display       = 'flex';
   card.style.flexDirection = 'column';
@@ -746,7 +746,7 @@ function buildLeftColumn(params) {
   card.style.padding       = '14px 14px 14px 18px';
 
   // Header row — chevron + label
-  var header = document.createElement('div');
+  const header = document.createElement('div');
   header.style.cssText = 'flex-shrink:0;display:flex;align-items:center;gap:10px;margin-bottom:10px;';
 
   _chevronEl = document.createElement('div');
@@ -758,13 +758,13 @@ function buildLeftColumn(params) {
   _chevronEl.style.userSelect    = 'none';
   _chevronEl.style.touchAction   = 'manipulation';
   _chevronEl.style.padding       = '2px 6px';
-  _chevronEl.addEventListener('pointerup', function() {
+  _chevronEl.addEventListener('pointerup', () => {
     if (confirmProcessing) return;
     _returnToParent(sceneData);
   });
   header.appendChild(_chevronEl);
 
-  var title = document.createElement('div');
+  const title = document.createElement('div');
   title.textContent         = 'ORDER RECAP';
   title.style.fontFamily    = T.fh;
   title.style.fontSize      = T.fsB3;
@@ -807,8 +807,8 @@ function buildLeftColumn(params) {
 function _renderItemRows(items) {
   if (!_itemsScroll) return;
   _itemsScroll.innerHTML = '';
-  items.forEach(function(it) {
-    var row = document.createElement('div');
+  items.forEach((it) => {
+    let row = document.createElement('div');
     row.style.cssText = [
       'display:flex;align-items:baseline;justify-content:space-between;',
       'padding:6px 0;',
@@ -816,8 +816,8 @@ function _renderItemRows(items) {
       'gap:8px;',
     ].join('');
 
-    var left = document.createElement('span');
-    left.textContent         = it.qty + '  ' + it.name;
+    const left = document.createElement('span');
+    left.textContent         = it.qty + `  ${it.name}`;
     left.style.fontFamily    = T.fb;
     left.style.fontSize      = T.fsB3;
     left.style.color         = T.text;
@@ -826,8 +826,8 @@ function _renderItemRows(items) {
     left.style.whiteSpace    = 'nowrap';
     row.appendChild(left);
 
-    var right = document.createElement('span');
-    right.textContent      = '$' + it.price.toFixed(2);
+    const right = document.createElement('span');
+    right.textContent      = `$${it.price.toFixed(2)}`;
     right.style.fontFamily = T.fb;
     right.style.fontSize   = T.fsB2;
     right.style.fontWeight = T.fwBold;
@@ -844,15 +844,15 @@ function _renderItemRows(items) {
 // items and honors effectivePrice so modifier-adjusted lines display
 // the same value the operator saw on the overview.
 function populateLeftCardFromSeats(seats, params) {
-  var items    = [];
-  var subtotal = 0;
-  seats.forEach(function(seat) {
+  let items    = [];
+  let subtotal = 0;
+  seats.forEach((seat) => {
     if (!seat || !Array.isArray(seat.items)) return;
-    seat.items.forEach(function(it) {
+    seat.items.forEach((it) => {
       if (it.voided) return;
-      var qty  = it.qty || 1;
-      var unit = (it.effectivePrice != null) ? it.effectivePrice : (it.price || 0);
-      var line = qty * unit;
+      let qty  = it.qty || 1;
+      let unit = (it.effectivePrice != null) ? it.effectivePrice : (it.price || 0);
+      let line = qty * unit;
       subtotal += line;
       items.push({
         name:  it.name || it.menu_item_name || 'Item',
@@ -865,23 +865,23 @@ function populateLeftCardFromSeats(seats, params) {
   // Prefer the caller's pre-computed totals — they reflect exactly the
   // seats being paid (selection-aware) and match what the operator just
   // saw on check-overview. Fall back to the line-total sum when absent.
-  var useSubtotal    = (typeof params.subtotal  === 'number') ? params.subtotal  : subtotal;
-  var tax            = (typeof params.tax       === 'number') ? params.tax       : 0;
-  var cardTotal      = (typeof params.cardTotal === 'number') ? params.cardTotal : (useSubtotal + tax);
-  var cashPrice      = (typeof params.cashPrice === 'number') ? params.cashPrice : cardTotal;
-  var managerDisc    = (typeof params.managerDiscountTotal === 'number') ? params.managerDiscountTotal : 0;
+  const useSubtotal    = (typeof params.subtotal  === 'number') ? params.subtotal  : subtotal;
+  let tax            = (typeof params.tax       === 'number') ? params.tax       : 0;
+  let cardTotal      = (typeof params.cardTotal === 'number') ? params.cardTotal : (useSubtotal + tax);
+  let cashPrice      = (typeof params.cashPrice === 'number') ? params.cashPrice : cardTotal;
+  let managerDisc    = (typeof params.managerDiscountTotal === 'number') ? params.managerDiscountTotal : 0;
 
   if (!baseTotal) baseTotal = cardTotal;
 
   _renderItemRows(items);
-  if (_subRow)  _subRow.setValue('$' + useSubtotal.toFixed(2));
+  if (_subRow)  _subRow.setValue(`$${useSubtotal.toFixed(2)}`);
   if (_discRow) {
     _discRow.style.display = managerDisc > 0 ? '' : 'none';
-    if (managerDisc > 0) _discRow.setValue('-$' + managerDisc.toFixed(2));
+    if (managerDisc > 0) _discRow.setValue(`-$${managerDisc.toFixed(2)}`);
   }
-  if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
-  if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
-  if (_cashRow) _cashRow.setValue('$' + cashPrice.toFixed(2));
+  if (_taxRow)  _taxRow.setValue(`$${tax.toFixed(2)}`);
+  if (_cardRow) _cardRow.setValue(`$${cardTotal.toFixed(2)}`);
+  if (_cashRow) _cashRow.setValue(`$${cashPrice.toFixed(2)}`);
   if (_checkNumEl && !_checkNumEl.textContent) {
     _checkNumEl.textContent = _deriveCheckLabel(params);
   }
@@ -892,16 +892,16 @@ function populateLeftCardFromSeats(seats, params) {
 // Fallback for direct mounts without seat data — fetches the whole
 // order and renders every non-voided line. Not selection-aware.
 function populateLeftCard(order) {
-  var items    = [];
-  var subtotal = 0;
+  const items    = [];
+  let subtotal = 0;
   if (Array.isArray(order.items)) {
-    order.items.forEach(function(it) {
+    order.items.forEach((it) => {
       if (it.voided) return;
-      var qty  = it.qty || 1;
-      var unit = (typeof it.effective_price === 'number')
+      const qty  = it.qty || 1;
+      const unit = (typeof it.effective_price === 'number')
         ? it.effective_price
         : (typeof it.price === 'number' ? it.price : 0);
-      var line = qty * unit;
+      const line = qty * unit;
       subtotal += line;
       items.push({
         name:  it.name || it.menu_item_name || 'Item',
@@ -910,25 +910,25 @@ function populateLeftCard(order) {
       });
     });
   }
-  var tax         = (typeof order.tax === 'number') ? order.tax : 0;
-  var cardTotal   = (typeof order.balance_due === 'number') ? order.balance_due : (subtotal + tax);
-  var cashPrice   = Math.round(cardTotal * (1 - getCashDiscount()) * 100) / 100;
-  var managerDisc = typeof order.manager_discount_total === 'number' ? order.manager_discount_total : 0;
+  const tax         = (typeof order.tax === 'number') ? order.tax : 0;
+  const cardTotal   = (typeof order.balance_due === 'number') ? order.balance_due : (subtotal + tax);
+  const cashPrice   = Math.round(cardTotal * (1 - getCashDiscount()) * 100) / 100;
+  const managerDisc = typeof order.manager_discount_total === 'number' ? order.manager_discount_total : 0;
 
   if (!baseTotal) baseTotal = cardTotal;
 
   _renderItemRows(items);
-  if (_subRow)  _subRow.setValue('$' + subtotal.toFixed(2));
+  if (_subRow)  _subRow.setValue(`$${subtotal.toFixed(2)}`);
   if (_discRow) {
     _discRow.style.display = managerDisc > 0 ? '' : 'none';
-    if (managerDisc > 0) _discRow.setValue('-$' + managerDisc.toFixed(2));
+    if (managerDisc > 0) _discRow.setValue(`-$${managerDisc.toFixed(2)}`);
   }
-  if (_taxRow)  _taxRow.setValue('$' + tax.toFixed(2));
-  if (_cardRow) _cardRow.setValue('$' + cardTotal.toFixed(2));
-  if (_cashRow) _cashRow.setValue('$' + cashPrice.toFixed(2));
+  if (_taxRow)  _taxRow.setValue(`$${tax.toFixed(2)}`);
+  if (_cardRow) _cardRow.setValue(`$${cardTotal.toFixed(2)}`);
+  if (_cashRow) _cashRow.setValue(`$${cashPrice.toFixed(2)}`);
   if (_checkNumEl) {
     _checkNumEl.textContent = order.check_number
-      ? 'CHECK #' + order.check_number
+      ? `CHECK #${order.check_number}`
       : _deriveCheckLabel({ orderId: order.order_id });
   }
 
@@ -941,7 +941,7 @@ function populateLeftCard(order) {
 // ═══════════════════════════════════════════════════
 
 function buildCenterColumn(params) {
-  var col = document.createElement('div');
+  let col = document.createElement('div');
   col.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;overflow:hidden;';
 
   col.appendChild(buildTenderToggle());
@@ -949,7 +949,7 @@ function buildCenterColumn(params) {
   // Denom grid — flexes to fill the available vertical space so the
   // tiles grow with the viewport instead of leaving dead space above
   // the balance strip.
-  var grid = document.createElement('div');
+  const grid = document.createElement('div');
   grid.style.cssText = [
     'display:grid;',
     'grid-template-columns:1fr 1fr;',
@@ -973,7 +973,7 @@ function buildCenterColumn(params) {
 }
 
 function buildTenderToggle() {
-  var row = document.createElement('div');
+  let row = document.createElement('div');
   row.style.cssText = 'flex-shrink:0;display:flex;gap:8px;';
   row.appendChild(buildModeToggle('cash', 'CASH', T.greenWarm, T.greenWarmDk));
   row.appendChild(buildModeToggle('card', 'CARD', T.elec,      T.elecDk));
@@ -982,31 +982,31 @@ function buildTenderToggle() {
 }
 
 function buildModeToggle(mode, label, color, dkColor) {
-  var btn = buildPillButton({
+  const btn = buildPillButton({
     label:    label,
     color:    color,
     padding:  '10px 14px',
     fontSize: T.fsB2,
-    onClick:  function() { setPaymentMode(mode); },
+    onClick:  () => { setPaymentMode(mode); },
   });
   btn.style.flex   = '1';
   btn.style.height = '48px';
-  _modeButtons[mode] = { el: btn, color: color, dk: dkColor };
+  _modeButtons[mode] = { el: btn, color, dk: dkColor };
 
   // buildPillButton's pointerleave handler repaints the pill to its
   // "default fill" — which on an inactive toggle wrongly reads as
   // selected whenever the pointer just scrolls across it. Re-run
   // setPaymentMode after every pointer event so our own active /
   // inactive paint wins and only an actual tap changes the state.
-  ['pointerup', 'pointerleave', 'pointercancel'].forEach(function(ev) {
-    btn.addEventListener(ev, function() { setPaymentMode(paymentMode); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => {
+    btn.addEventListener(ev, () => { setPaymentMode(paymentMode); });
   });
 
   return btn;
 }
 
 function buildBalanceStrip() {
-  var card = buildStaticCard({ accent: T.gold });
+  const card = buildStaticCard({ accent: T.gold });
   card.style.flexShrink = '0';
   card.style.height     = '36px';
   card.style.padding    = '0 14px 0 20px';
@@ -1014,7 +1014,7 @@ function buildBalanceStrip() {
   card.style.alignItems = 'center';
   card.style.justifyContent = 'space-between';
 
-  var label = document.createElement('span');
+  let label = document.createElement('span');
   label.textContent         = 'REMAINING';
   label.style.fontFamily    = T.fb;
   label.style.fontSize      = T.fsB3;
@@ -1036,8 +1036,8 @@ function buildBalanceStrip() {
   _balanceValueEl.style.fontSize   = T.fsB2;
   _balanceValueEl.style.fontWeight = T.fwBold;
   _balanceValueEl.style.color      = T.gold;
-  _balanceValueEl.style.textShadow = '0 0 8px ' + hexToRgba(T.gold, 0.35);
-  _balanceValueEl.textContent      = '$' + getRemainingBalance().toFixed(2);
+  _balanceValueEl.style.textShadow = `0 0 8px ${hexToRgba(T.gold, 0.35)}`;
+  _balanceValueEl.textContent      = `$${getRemainingBalance().toFixed(2)}`;
   card.appendChild(_balanceValueEl);
 
   return card;
@@ -1049,18 +1049,18 @@ function buildDenomTile(val, opts) {
   // Same buildActionCard chrome the check-overview seat/check tiles use:
   // green accent bar with glow, raised card shadow, press animation, and
   // proper touch-action so taps register on touch devices.
-  var tile = buildActionCard({
+  const tile = buildActionCard({
     accent:  T.groups.paymentPreset.tileAccent,
-    onClick: function() { handleDenomination(val); },
+    onClick: () => { handleDenomination(val); },
   });
   tile.style.cssText += [
     (opts.fullWidth ? 'width:100%;flex-shrink:0;' : 'width:100%;height:100%;'),
     'display:flex;align-items:center;justify-content:center;',
-    'padding:' + (opts.fullWidth ? '8px 20px 6px 24px' : '18px 20px 16px 24px') + ';',
+    `padding:${(opts.fullWidth ? '8px 20px 6px 24px' : '18px 20px 16px 24px')};`,
   ].join('');
 
-  var label = document.createElement('div');
-  label.textContent         = '$' + val;
+  const label = document.createElement('div');
+  label.textContent         = `$${val}`;
   label.style.fontFamily    = T.fh;
   label.style.fontSize      = T.fsH2;
   label.style.fontWeight    = T.fwBold;
@@ -1069,10 +1069,10 @@ function buildDenomTile(val, opts) {
   label.style.pointerEvents = 'none';
   tile.appendChild(label);
 
-  tile.addEventListener('pointerup', function() {
+  tile.addEventListener('pointerup', () => {
     tile.style.backgroundColor = T.groups.paymentPreset.tapFlashFill;
     label.style.color          = T.groups.paymentPreset.tapFlashLabel;
-    setTimeout(function() {
+    setTimeout(() => {
       tile.style.backgroundColor = T.card;
       label.style.color          = T.groups.paymentPreset.tileAccent;
     }, 180);
@@ -1083,12 +1083,12 @@ function buildDenomTile(val, opts) {
 }
 
 function buildActionRow() {
-  var row = document.createElement('div');
+  const row = document.createElement('div');
   row.style.cssText = 'flex-shrink:0;display:flex;gap:10px;height:60px;';
 
   // EXACT / SPLIT mirror check-overview's PAY / ADD-ITEMS theme — solid
   // filled pills with color + darkBg shadow, 14px rounding, 20px label.
-  var exact = buildPillButton({
+  const exact = buildPillButton({
     label:   'EXACT',
     color:   T.gold,
     darkBg:  T.goldDk,
@@ -1103,7 +1103,7 @@ function buildActionRow() {
   });
   row.appendChild(exact);
 
-  var split = buildPillButton({
+  const split = buildPillButton({
     label:   'SPLIT',
     color:   T.elec,
     darkBg:  T.elecDk,
@@ -1127,11 +1127,11 @@ function buildActionRow() {
 // ═══════════════════════════════════════════════════
 
 function buildRightColumn() {
-  var col = document.createElement('div');
+  const col = document.createElement('div');
   col.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;gap:6px;align-items:center;';
 
   // TENDERING label — sits above the numpad's built-in display.
-  var tenderLbl = document.createElement('div');
+  const tenderLbl = document.createElement('div');
   tenderLbl.textContent         = 'TENDERING';
   tenderLbl.style.fontFamily    = T.fb;
   tenderLbl.style.fontSize      = T.fsB4;
@@ -1142,23 +1142,23 @@ function buildRightColumn() {
 
   // Canonical KINDpos numpad — mint-filled keys, integrated dollar display,
   // vermillion CLR (tap = backspace, long-press = clear all), warm-green ENT.
-  var pad = buildNumpad({
+  const pad = buildNumpad({
     masked:        false,
     maxDigits:     7,
     submitLabel:   'ent',
     displayColor:  T.gold,
-    displayFormat: function(digits) {
-      var n = parseInt(digits || '0', 10) || 0;
-      return '$' + (n / 100).toFixed(2);
+    displayFormat: (digits) => {
+      const n = parseInt(digits || '0', 10) || 0;
+      return `$${(n / 100).toFixed(2)}`;
     },
-    canSubmit: function() { return enteredAmount > 0; },
-    onChange:  function(pin) {
+    canSubmit: () => enteredAmount > 0,
+    onChange:  (pin) => {
       numpadStr     = pin;
       denomAccum    = 0;
       enteredAmount = (parseInt(pin || '0', 10) || 0) / 100;
       updateSplitDisplay();
     },
-    onSubmit: function() { handleConfirm(); },
+    onSubmit: () => { handleConfirm(); },
   });
 
   numpadRef = pad;
@@ -1175,20 +1175,20 @@ function setPaymentMode(mode) {
   paymentMode = mode;
 
   // Paint each tender toggle: active = filled + glow, inactive = ghost.
-  Object.keys(_modeButtons).forEach(function(m) {
-    var b = _modeButtons[m];
+  Object.keys(_modeButtons).forEach((m) => {
+    const b = _modeButtons[m];
     if (!b || !b.el) return;
-    var isActive = (m === mode);
-    var el = b.el;
+    const isActive = (m === mode);
+    const el = b.el;
     if (isActive) {
       el.style.background = b.color;
       el.style.color      = T.well;
       el.style.border     = 'none';
-      el.style.boxShadow  = '0 4px 0 ' + b.dk + ', 0 0 16px ' + hexToRgba(b.color, 0.4);
+      el.style.boxShadow  = `0 4px 0 ${b.dk}, 0 0 16px ${hexToRgba(b.color, 0.4)}`;
     } else {
       el.style.background = T.moon;
       el.style.color      = T.moonText;
-      el.style.border     = '4px solid ' + b.color;
+      el.style.border     = `4px solid ${b.color}`;
       el.style.boxShadow  = 'none';
     }
   });
@@ -1208,13 +1208,13 @@ function handleDenomination(val) {
   enteredAmount = denomAccum;
   if (numpadRef) {
     numpadRef.setPin('');
-    numpadRef.setHint('$' + denomAccum.toFixed(2), T.gold);
+    numpadRef.setHint(`$${denomAccum.toFixed(2)}`, T.gold);
   }
   updateSplitDisplay();
 }
 
 function handleExact() {
-  var remaining = getRemainingBalance();
+  let remaining = getRemainingBalance();
   if (remaining <= 0) {
     showToast('Nothing due', { bg: T.gold, duration: 1500 });
     return;
@@ -1224,7 +1224,7 @@ function handleExact() {
   // Populate the numpad's digit buffer with the remaining amount in cents
   // so the display reads the same as if the user typed it manually — then
   // pressing `ent` submits via the normal path.
-  var cents = Math.round(remaining * 100).toString();
+  const cents = Math.round(remaining * 100).toString();
   numpadStr = cents;
   if (numpadRef) {
     numpadRef.setPin(cents);
@@ -1243,7 +1243,7 @@ function getRemainingBalance() {
 
 function updateSplitDisplay() {
   if (_balanceValueEl) {
-    _balanceValueEl.textContent = '$' + getRemainingBalance().toFixed(2);
+    _balanceValueEl.textContent = `$${getRemainingBalance().toFixed(2)}`;
   }
 }
 
@@ -1256,11 +1256,11 @@ async function handleConfirm() {
   if (confirmProcessing) return;
   confirmProcessing = true;
 
-  var remaining = getRemainingBalance();
-  var isCash = paymentMode === 'cash';
-  var paymentAmount = Math.min(enteredAmount, remaining);
-  var change = isCash ? Math.max(0, enteredAmount - paymentAmount) : 0;
-  var proc = null;
+  let remaining = getRemainingBalance();
+  const isCash = paymentMode === 'cash';
+  const paymentAmount = Math.min(enteredAmount, remaining);
+  const change = isCash ? Math.max(0, enteredAmount - paymentAmount) : 0;
+  let proc = null;
 
   if (paymentAmount <= 0) {
     confirmProcessing = false;
@@ -1270,7 +1270,7 @@ async function handleConfirm() {
   if (!_pendingTxId) {
     _pendingTxId = (typeof crypto !== 'undefined' && crypto.randomUUID)
       ? crypto.randomUUID()
-      : 'tx_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      : `tx_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
   }
 
   try {
@@ -1279,18 +1279,18 @@ async function handleConfirm() {
     //  2) sceneData.seats = [{seatId, number, items}]   (check-overview)
     // Without seat_numbers the backend can't tag the payment to specific
     // seats, so check-overview wouldn't render them as paid (gold) on return.
-    var seatNumbers = null;
+    let seatNumbers = null;
     if (Array.isArray(sceneData.seatNumbers) && sceneData.seatNumbers.length) {
       seatNumbers = sceneData.seatNumbers.slice();
     } else if (Array.isArray(sceneData.seats) && sceneData.seats.length) {
       seatNumbers = sceneData.seats
-        .map(function(s) { return s && typeof s.number === 'number' ? s.number : null; })
-        .filter(function(n) { return n !== null; });
+        .map((s) => s && typeof s.number === 'number' ? s.number : null)
+        .filter((n) => n !== null);
       if (seatNumbers.length === 0) seatNumbers = null;
     }
 
     if (isCash) {
-      var cashBody = {
+      const cashBody = {
           order_id:       sceneData.orderId,
           amount:         paymentAmount,
           tip:            0.0,
@@ -1298,13 +1298,13 @@ async function handleConfirm() {
           transaction_id: _pendingTxId,
       };
       if (seatNumbers) cashBody.seat_numbers = seatNumbers;
-      var res = await fetchWithTimeout(API + '/payments/cash', {
+      let res = await fetchWithTimeout(API + '/payments/cash', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cashBody),
       }, 20000);
       if (!res.ok) {
-        var err = await res.json().catch(function() { return {}; });
+        let err = await res.json().catch(() => { return {}; });
         confirmProcessing = false;
         showToast(err.detail || 'Cash payment failed', { bg: T.verm });
         return;
@@ -1313,10 +1313,10 @@ async function handleConfirm() {
       proc = showProcessingOverlay(paymentAmount);
 
       _cardController = new AbortController();
-      var controller = _cardController;
-      var cardTimeout = setTimeout(function() { controller.abort(); }, 95000);
+      const controller = _cardController;
+      const cardTimeout = setTimeout(() => { controller.abort(); }, 95000);
 
-      var saleBody = {
+      const saleBody = {
           transaction_id: _pendingTxId,
           order_id:       sceneData.orderId,
           amount:         paymentAmount,
@@ -1328,7 +1328,7 @@ async function handleConfirm() {
       // payment can be aborted programmatically (e.g. scene unmount or user
       // cancel). fetchWithTimeout owns its own AbortController internally and
       // doesn't expose it, so we manage the signal manually here.
-      var res = await fetch(API + '/payments/sale', {
+      const res = await fetch(API + '/payments/sale', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(saleBody),
@@ -1340,12 +1340,12 @@ async function handleConfirm() {
       if (proc) proc.dismiss();
 
       if (!res.ok) {
-        var err = await res.json().catch(function() { return {}; });
-        var errType = res.status === 402 ? 'DECLINED'
+        const err = await res.json().catch(() => { return {}; });
+        const errType = res.status === 402 ? 'DECLINED'
                     : res.status === 400 ? 'CANCELLED'
                     : 'ERROR';
         confirmProcessing = false;
-        showToast(err.detail || 'Payment failed \u2014 ' + errType, { bg: T.verm });
+        showToast(err.detail || `Payment failed \u2014 ${errType}`, { bg: T.verm });
         return;
       }
     }
@@ -1367,7 +1367,7 @@ async function handleConfirm() {
     // back-to-check-overview here would orphan the recorded payment.
     if (_chevronEl) _chevronEl.style.display = 'none';
 
-    var newRemaining = getRemainingBalance();
+    const newRemaining = getRemainingBalance();
     confirmProcessing = false;
 
     if (newRemaining < 0.005) {
@@ -1379,8 +1379,7 @@ async function handleConfirm() {
       if (numpadRef) numpadRef.clear();
       updateSplitDisplay();
       showToast(
-        '$' + paymentAmount.toFixed(2) + ' ' + paymentMode +
-        ' \u2014 $' + newRemaining.toFixed(2) + ' remaining',
+        `$${paymentAmount.toFixed(2)} ${paymentMode} \u2014 $${newRemaining.toFixed(2)} remaining`,
         { bg: T.greenWarm, duration: 3000 }
       );
     }
@@ -1395,10 +1394,10 @@ async function handleConfirm() {
 function queueReceipt(copyType) {
   // 15s abort guard — a hung printer endpoint used to leave this promise
   // dangling forever with no error surfaced to the operator.
-  fetchWithTimeout(API + '/print/receipt/' + sceneData.orderId + '?copy_type=' + copyType, { method: 'POST' }, 15000)
-    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); })
-    .catch(function(err) {
-      console.warn('[KINDpos] Receipt print failed (' + copyType + '):', err);
+  fetchWithTimeout(API + `/print/receipt/${sceneData.orderId}?copy_type=${copyType}`, { method: 'POST' }, 15000)
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
+    .catch((err) => {
+      console.warn(`[KINDpos] Receipt print failed (${copyType}):`, err);
       showToast('Receipt print failed \u2014 check printer');
     });
 }
@@ -1409,9 +1408,9 @@ function queueReceipt(copyType) {
 // ═══════════════════════════════════════════════════
 
 function activateResult(change) {
-  var lastPayment = payments[payments.length - 1] || {};
-  var remaining = getRemainingBalance();
-  var isFullyPaid = remaining < 0.005;
+  const lastPayment = payments[payments.length - 1] || {};
+  let remaining = getRemainingBalance();
+  const isFullyPaid = remaining < 0.005;
 
   SceneManager.closeAllTransactional();
   SceneManager.emit('payment:complete', { orderId: sceneData.orderId });
@@ -1439,16 +1438,16 @@ function activateResult(change) {
 // ═══════════════════════════════════════════════════
 
 function showSplitPopup() {
-  var remaining = getRemainingBalance();
+  const remaining = getRemainingBalance();
   if (remaining <= 0) return;
 
   SceneManager.interrupt('split-select', {
     remaining: remaining,
-    onConfirm: function(amount) {
+    onConfirm: (amount) => {
       denomAccum = 0;
       enteredAmount = amount;
       numpadStr = '';
-      if (numpadRef) numpadRef.setHint('$' + amount.toFixed(2), T.gold);
+      if (numpadRef) numpadRef.setHint(`$${amount.toFixed(2)}`, T.gold);
       updateSplitDisplay();
     },
   });
@@ -1460,10 +1459,10 @@ function showSplitPopup() {
 // ═══════════════════════════════════════════════════
 
 function showProcessingOverlay(amount) {
-  SceneManager.openTransactional('pc-card-processing', { amount: amount });
+  SceneManager.openTransactional('pc-card-processing', { amount });
   return {
-    updateStatus: function(msg) { if (_procStatusEl) _procStatusEl.textContent = msg; },
-    dismiss: function() {
+    updateStatus: (msg) => { if (_procStatusEl) _procStatusEl.textContent = msg; },
+    dismiss: () => {
       if (_procAnimTimer) clearInterval(_procAnimTimer);
       _procAnimTimer = null;
       _procStatusEl = null;

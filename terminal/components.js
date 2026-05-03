@@ -17,24 +17,24 @@ import { lightenHex, hexToRgba } from './theme-manager.js';
 // ═══════════════════════════════════════════════════
 
 export function showToast(message, opts) {
-  var o = opts || {};
-  var duration = o.duration || 4000;
-  var bg = o.bg || T.verm;
+  const o = opts || {};
+  const duration = o.duration || 4000;
+  const bg = o.bg || T.verm;
 
   // Pick a text color that reads cleanly on the chosen bg.
   // For light backgrounds (green, gold), dark text reads better.
   // For dark backgrounds (verm, card, greenDk), light text.
-  var text = _toastTextColor(bg);
+  const text = _toastTextColor(bg);
 
-  var el = document.createElement('div');
+  const el = document.createElement('div');
   el.style.cssText = [
     'position:fixed;bottom:32px;left:50%;transform:translate(-50%, 8px);',
     'padding:14px 28px;',
-    'background:' + bg + ';',
-    'color:' + text + ';',
-    'font-family:' + T.fb + ';',
-    'font-size:' + T.fsB2 + ';',
-    'font-weight:' + T.fwBold + ';',
+    `background:${bg};`,
+    `color:${text};`,
+    `font-family:${T.fb};`,
+    `font-size:${T.fsB2};`,
+    `font-weight:${T.fwBold};`,
     'border-radius:999px;',
     'box-shadow:0 8px 24px rgba(0,0,0,0.45);',
     'z-index:9999;',
@@ -57,15 +57,15 @@ export function showToast(message, opts) {
   }
 
   document.body.appendChild(el);
-  requestAnimationFrame(function() {
+  requestAnimationFrame(() => {
     el.style.opacity   = '1';
     el.style.transform = 'translate(-50%, 0)';
   });
 
-  setTimeout(function() {
+  setTimeout(() => {
     el.style.opacity   = '0';
     el.style.transform = 'translate(-50%, 8px)';
-    setTimeout(function() {
+    setTimeout(() => {
       if (el.parentNode) el.parentNode.removeChild(el);
     }, 240);
   }, duration);
@@ -75,10 +75,10 @@ export function showToast(message, opts) {
 // Simple luminance heuristic — accurate enough for our palette.
 function _toastTextColor(bg) {
   if (typeof bg !== 'string' || bg.charAt(0) !== '#' || bg.length < 7) return T.well;
-  var r = parseInt(bg.slice(1, 3), 16);
-  var g = parseInt(bg.slice(3, 5), 16);
-  var b = parseInt(bg.slice(5, 7), 16);
-  var lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  const r = parseInt(bg.slice(1, 3), 16);
+  const g = parseInt(bg.slice(3, 5), 16);
+  const b = parseInt(bg.slice(5, 7), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return lum > 0.55 ? T.well : T.text;
 }
 
@@ -90,25 +90,25 @@ function _toastTextColor(bg) {
 // ═══════════════════════════════════════════════════
 
 export function buildRoleButton(roleName, roleColor, onSelect) {
-  var glowDefault = hexToRgba(roleColor, 0.35);
+  const glowDefault = hexToRgba(roleColor, 0.35);
 
-  var wrap = document.createElement('div');
+  const wrap = document.createElement('div');
   wrap.style.cssText = [
     'width:100%;height:100%;min-height:72px;',
-    'background:' + T.card + ';',
-    'border-left:8px solid ' + roleColor + ';',
+    `background:${T.card};`,
+    `border-left:8px solid ${roleColor};`,
     'border-radius:14px;',
     'display:flex;align-items:center;justify-content:center;',
     'box-sizing:border-box;padding:10px 18px;',
-    'font-family:' + T.fh + ';',
-    'font-size:' + T.fsH3 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.text + ';',
+    `font-family:${T.fh};`,
+    `font-size:${T.fsH3};`,
+    `font-weight:${T.fwBold};`,
+    `color:${T.text};`,
     'text-transform:uppercase;',
     'letter-spacing:0.1em;',
     'cursor:pointer;user-select:none;',
-    'box-shadow:0 0 14px ' + glowDefault + ';',
-    'transition:' + T.transitionFast + ';',
+    `box-shadow:0 0 14px ${glowDefault};`,
+    `transition:${T.transitionFast};`,
   ].join('');
   wrap.textContent = roleName.toUpperCase();
 
@@ -118,36 +118,36 @@ export function buildRoleButton(roleName, roleColor, onSelect) {
   function _applyDefault() {
     wrap.style.background  = T.card;
     wrap.style.color       = T.text;
-    wrap.style.borderLeft  = '8px solid ' + roleColor;
-    wrap.style.boxShadow   = '0 0 14px ' + hexToRgba(roleColor, 0.35);
+    wrap.style.borderLeft  = `8px solid ${roleColor}`;
+    wrap.style.boxShadow   = `0 0 14px ${hexToRgba(roleColor, 0.35)}`;
     wrap.style.transform   = '';
   }
 
   function _applySelected() {
     wrap.style.background  = roleColor;
     wrap.style.color       = T.well;
-    wrap.style.borderLeft  = '8px solid ' + lightenHex(roleColor, 0.3);
-    wrap.style.boxShadow   = '0 0 22px ' + hexToRgba(roleColor, 0.85);
+    wrap.style.borderLeft  = `8px solid ${lightenHex(roleColor, 0.3)}`;
+    wrap.style.boxShadow   = `0 0 22px ${hexToRgba(roleColor, 0.85)}`;
     wrap.style.transform   = '';
   }
 
-  wrap._resetVisual = function() {
+  wrap._resetVisual = () => {
     if (wrap._selected) _applySelected();
     else _applyDefault();
   };
 
-  wrap.addEventListener('pointerdown', function() {
+  wrap.addEventListener('pointerdown', () => {
     wrap.style.transform = 'translateY(2px)';
   });
-  wrap.addEventListener('pointerup', function() {
+  wrap.addEventListener('pointerup', () => {
     wrap.style.transform = '';
     onSelect(roleName);
   });
-  wrap.addEventListener('pointerleave', function() {
+  wrap.addEventListener('pointerleave', () => {
     wrap.style.transform = '';
     wrap._resetVisual();
   });
-  wrap.addEventListener('pointercancel', function() {
+  wrap.addEventListener('pointercancel', () => {
     wrap.style.transform = '';
     wrap._resetVisual();
   });

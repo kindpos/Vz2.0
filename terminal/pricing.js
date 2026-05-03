@@ -25,10 +25,10 @@ import { fetchWithTimeout } from './net.js';
 // Defaults kick in when the browser hasn't yet heard back from
 // /api/v1/config/pricing. They match the long-standing POS defaults
 // so a first render before the fetch completes looks sane.
-var _taxRate = 0.07;
-var _cashDiscount = 0.04;
-var _loaded = false;
-var _loadPromise = null;
+let _taxRate = 0.07;
+let _cashDiscount = 0.04;
+let _loaded = false;
+let _loadPromise = null;
 
 function _roundCents(n) {
   return Math.round((n || 0) * 100) / 100;
@@ -36,16 +36,19 @@ function _roundCents(n) {
 
 function _loadRates() {
   if (_loadPromise) return _loadPromise;
-  _loadPromise = fetchWithTimeout('/api/v1/config/pricing', {}, 8000)
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(d) {
+  _loadPromise = (async () => {
+    try {
+      const r = await fetchWithTimeout('/api/v1/config/pricing', {}, 8000);
+      const d = r.ok ? await r.json() : null;
       if (d) {
         if (d.tax_rate != null) _taxRate = d.tax_rate;
         if (d.cash_discount_rate != null) _cashDiscount = d.cash_discount_rate;
       }
       _loaded = true;
-    })
-    .catch(function() { _loaded = true; /* keep defaults */ });
+    } catch (e) {
+      _loaded = true; /* keep defaults */
+    }
+  })();
   return _loadPromise;
 }
 
@@ -74,9 +77,9 @@ export function ratesReady() { return _loadRates(); }
 // discounts). Every scene that builds a preview total should use this
 // exactly once so a future tax change touches one line of code.
 export function computeTotals(subtotal) {
-  var tax = subtotal * _taxRate;
-  var cardTotal = subtotal + tax;
-  var cashPrice = cardTotal * (1 - _cashDiscount);
+  const tax = subtotal * _taxRate;
+  const cardTotal = subtotal + tax;
+  const cashPrice = cardTotal * (1 - _cashDiscount);
   return {
     subtotal:  _roundCents(subtotal),
     tax:       _roundCents(tax),
@@ -92,17 +95,17 @@ export function computeTotals(subtotal) {
 // when the order hasn't been persisted yet (new-order preview).
 export function totalsForOrder(order, fallbackSubtotal) {
   if (order && typeof order.total === 'number') {
-    var cardTotal = _roundCents(order.total);
-    var subtotal = typeof order.subtotal === 'number'
+    const cardTotal = _roundCents(order.total);
+    const subtotal = typeof order.subtotal === 'number'
       ? _roundCents(order.subtotal)
       : _roundCents(cardTotal / (1 + _taxRate));
-    var tax = _roundCents(cardTotal - subtotal);
-    var cashPrice = _roundCents(cardTotal * (1 - _cashDiscount));
+    const tax = _roundCents(cardTotal - subtotal);
+    const cashPrice = _roundCents(cardTotal * (1 - _cashDiscount));
     return {
-      subtotal: subtotal,
-      tax: tax,
-      cardTotal: cardTotal,
-      cashPrice: cashPrice,
+      subtotal,
+      tax,
+      cardTotal,
+      cashPrice,
       balanceDue: typeof order.balance_due === 'number'
         ? _roundCents(order.balance_due)
         : cardTotal,

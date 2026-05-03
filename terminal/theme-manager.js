@@ -59,10 +59,10 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
   // ═══════════════════════════════════════════════════
 
   export function buildPillButton(opts) {
-    var o      = opts || {};
-    var color  = o.color;
-    var darkBg = o.darkBg;
-    var shape  = o.shape || 'pill'; // 'pill' or 'chamfer'
+    const o      = opts || {};
+    let color  = o.color;
+    let darkBg = o.darkBg;
+    const shape  = o.shape || 'pill'; // 'pill' or 'chamfer'
 
   if (o.variant === 'verm') {
     color  = T.verm;
@@ -85,14 +85,14 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
   }
   if (!darkBg) darkBg = darkenHex(color, 0.2);
 
-  var textColor = o.textColor
+  let textColor = o.textColor
     || (o.variant === 'ghost' ? T.text
       : (color === T.verm || color === T.vermDk || o.variant === 'verm') ? '#fff'
       : T.well);
 
-  var btn = document.createElement('button');
+  const btn = document.createElement('button');
   btn.style.background    = color;
-  btn.style.border        = o.variant === 'ghost' ? '1px solid ' + T.border : 'none';
+  btn.style.border        = o.variant === 'ghost' ? `1px solid ${T.border}` : 'none';
   if (shape === 'chamfer') {
     btn.style.borderRadius = '0';
     btn.style.clipPath     = chamfer(o.chamferSize || 6);
@@ -107,7 +107,7 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
   btn.style.color         = textColor;
   btn.style.letterSpacing = '0.08em';
   btn.style.textTransform = 'uppercase';
-  btn.style.boxShadow     = o.variant === 'ghost' ? 'none' : '0 6px 0 ' + darkBg;
+  btn.style.boxShadow     = o.variant === 'ghost' ? 'none' : `0 6px 0 ${darkBg}`;
   btn.style.transition    = T.transitionFast;
   btn.style.outline       = 'none';
   btn.style.whiteSpace    = 'nowrap';
@@ -118,7 +118,7 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
   if (o.width) btn.style.width = o.width;
   if (o.label) btn.textContent = o.label;
 
-  btn.addEventListener('pointerdown', function() {
+  btn.addEventListener('pointerdown', () => {
     if (btn._disabled) return;
     btn.style.background = darkBg;
     btn.style.color      = o.variant === 'ghost' ? T.text : T.well;
@@ -126,14 +126,14 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
     // Preserve existing transform (e.g. translateX(-50%) for centered buttons)
     const current = btn.style.transform || '';
     if (!current.includes('translateY(1px)')) {
-      btn.style.transform = (current + ' translateY(1px)').trim();
+      btn.style.transform = `${current} translateY(1px)`.trim();
     }
   });
-  var _rel = function() {
+  const _rel = () => {
     if (btn._disabled) return;
     btn.style.background = color;
     btn.style.color      = textColor;
-    btn.style.boxShadow  = o.variant === 'ghost' ? 'none' : '0 6px 0 ' + darkBg;
+    btn.style.boxShadow  = o.variant === 'ghost' ? 'none' : `0 6px 0 ${darkBg}`;
     // Restore original transform by removing only the offset
     if (btn.style.transform) {
       btn.style.transform = btn.style.transform.replace('translateY(1px)', '').trim();
@@ -143,23 +143,23 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
   btn.addEventListener('pointerleave',  _rel);
   btn.addEventListener('pointercancel', _rel);
   if (o.onClick) {
-    btn.addEventListener('pointerup', function(e) {
+    btn.addEventListener('pointerup', (e) => {
       if (btn._disabled) return;
       o.onClick(e);
     });
   }
 
-  btn.setColor = function(newColor, newDark, newText) {
+  btn.setColor = (newColor, newDark, newText) => {
     color  = newColor;
     darkBg = newDark;
     textColor = newText || (color === T.verm ? '#fff' : T.well);
     btn.style.background = color;
     btn.style.color      = textColor;
-    btn.style.boxShadow  = '0 6px 0 ' + darkBg;
+    btn.style.boxShadow  = `0 6px 0 ${darkBg}`;
   };
 
   btn._disabled = false;
-  btn.setDisabled = function(d) {
+  btn.setDisabled = (d) => {
     btn._disabled       = d;
     btn.style.opacity   = d ? '0.4'  : '1';
     btn.style.pointerEvents = d ? 'none' : 'auto';
@@ -177,9 +177,9 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
 // ═══════════════════════════════════════════════════
 
 export function buildFloatButton(opts) {
-  var o      = opts || {};
-  var color  = o.color;
-  var darkBg = o.darkBg;
+  const o      = opts || {};
+  let color  = o.color;
+  let darkBg = o.darkBg;
 
   if (o.variant === 'elec') {
     color  = T.elec;
@@ -193,7 +193,7 @@ export function buildFloatButton(opts) {
   }
   if (!darkBg) darkBg = darkenHex(color, 0.2);
 
-  var btn = document.createElement('button');
+  const btn = document.createElement('button');
   btn.style.background    = color;
   btn.style.border        = 'none';
   btn.style.borderRadius  = T.pillRadius;
@@ -202,11 +202,11 @@ export function buildFloatButton(opts) {
   btn.style.fontFamily    = T.fh;
   btn.style.fontSize      = T.fsB2;
   btn.style.fontWeight    = T.fwBold;
-  var textColor = (color === T.verm) ? '#fff' : T.well;
+  const textColor = (color === T.verm) ? '#fff' : T.well;
   btn.style.color         = textColor;
   btn.style.letterSpacing = '0.12em';
   btn.style.textTransform = 'uppercase';
-  btn.style.boxShadow     = '0 6px 0 ' + darkBg + ', 0 0 14px ' + hexToRgba(color, 0.3);
+  btn.style.boxShadow     = `0 6px 0 ${darkBg}, 0 0 14px ${hexToRgba(color, 0.3)}`;
   btn.style.transition    = T.transitionFast;
   btn.style.outline       = 'none';
   btn.style.position      = 'relative';
@@ -216,20 +216,20 @@ export function buildFloatButton(opts) {
   btn.style.touchAction   = 'manipulation';
   if (o.label) btn.textContent = o.label;
 
-  btn.addEventListener('pointerdown', function() {
+  btn.addEventListener('pointerdown', () => {
     btn.style.background = darkBg;
     btn.style.color      = color;
     btn.style.boxShadow  = 'none';
     // Preserve existing transform
     const current = btn.style.transform || '';
     if (!current.includes('translateY(1px)')) {
-      btn.style.transform = (current + ' translateY(1px)').trim();
+      btn.style.transform = `${current} translateY(1px)`.trim();
     }
   });
-  var _rel = function() {
+  const _rel = () => {
     btn.style.background = color;
     btn.style.color      = textColor;
-    btn.style.boxShadow  = '0 6px 0 ' + darkBg + ', 0 0 14px ' + hexToRgba(color, 0.3);
+    btn.style.boxShadow  = `0 6px 0 ${darkBg}, 0 0 14px ${hexToRgba(color, 0.3)}`;
     // Restore original transform
     if (btn.style.transform) {
       btn.style.transform = btn.style.transform.replace('translateY(1px)', '').trim();
@@ -241,11 +241,11 @@ export function buildFloatButton(opts) {
   if (o.onClick) btn.addEventListener('pointerup', o.onClick);
 
   // Color swap — for cycling OPEN → CLOSED → VOID
-  btn.setColor = function(newColor, newDark) {
+  btn.setColor = (newColor, newDark) => {
     color  = newColor;
     darkBg = newDark;
     btn.style.background = color;
-    btn.style.boxShadow  = '0 6px 0 ' + darkBg + ', 0 0 14px ' + hexToRgba(color, 0.3);
+    btn.style.boxShadow  = `0 6px 0 ${darkBg}, 0 0 14px ${hexToRgba(color, 0.3)}`;
   };
 
   return btn;
@@ -261,19 +261,19 @@ export function buildFloatButton(opts) {
 // ═══════════════════════════════════════════════════
 
 export function buildNumKey(opts) {
-  var o    = typeof opts === 'string' ? { label: opts } : (opts || {});
-  var type = o.type || 'digit';
+  const o    = typeof opts === 'string' ? { label: opts } : (opts || {});
+  const type = o.type || 'digit';
 
   // Text color per key type — dark background, colored label
-  var textColors = {
+  const textColors = {
     digit: T.green,
     clr:   T.verm,
     ent:   T.greenWarm,
   };
-  var textColor = o.color || textColors[type] || T.green;
+  const textColor = o.color || textColors[type] || T.green;
 
   // Embossed shadow — raised 3D lift, same treatment as original
-  var shadowRaised = [
+  const shadowRaised = [
     'inset 0 3px 0 rgba(255,255,255,0.10)',
     'inset 0 -3px 0 rgba(0,0,0,0.55)',
     'inset 0 6px 12px rgba(0,0,0,0.35)',
@@ -281,7 +281,7 @@ export function buildNumKey(opts) {
     '0 0 0 1px rgba(0,0,0,0.3)',
   ].join(',');
 
-  var shadowPressed = [
+  const shadowPressed = [
     'inset 0 2px 0 rgba(255,255,255,0.06)',
     'inset 0 -2px 0 rgba(0,0,0,0.55)',
     'inset 0 10px 20px rgba(0,0,0,0.50)',
@@ -289,7 +289,7 @@ export function buildNumKey(opts) {
     '0 0 0 1px rgba(0,0,0,0.3)',
   ].join(',');
 
-  var btn = document.createElement('button');
+  const btn = document.createElement('button');
   btn.style.background    = T.well;       // dark key face
   btn.style.border        = 'none';
   btn.style.clipPath      = chamfer(T.chamferKey);
@@ -301,7 +301,7 @@ export function buildNumKey(opts) {
   btn.style.fontWeight    = T.fwBold;
   btn.style.color         = textColor;    // colored label
   btn.style.letterSpacing = type === 'digit' ? '0.02em' : '0.08em';
-  btn.style.textShadow    = '0 0 12px ' + textColor;
+  btn.style.textShadow    = `0 0 12px ${textColor}`;
   btn.style.boxShadow     = shadowRaised;
   btn.style.transition    = T.transitionFast;
   btn.style.outline       = 'none';
@@ -311,15 +311,15 @@ export function buildNumKey(opts) {
   btn.style.touchAction   = 'manipulation';
   if (o.label) btn.textContent = o.label;
 
-  btn.addEventListener('pointerdown', function() {
+  btn.addEventListener('pointerdown', () => {
     btn.style.boxShadow = shadowPressed;
     // Preserve existing transform
     const current = btn.style.transform || '';
     if (!current.includes('translateY(3px)')) {
-      btn.style.transform = (current + ' translateY(3px)').trim();
+      btn.style.transform = `${current} translateY(3px)`.trim();
     }
   });
-  var _rel = function() {
+  const _rel = () => {
     btn.style.boxShadow = shadowRaised;
     // Restore original transform
     if (btn.style.transform) {
@@ -342,30 +342,30 @@ export function buildNumKey(opts) {
 // ═══════════════════════════════════════════════════
 
 export function buildNumpadChassis(opts) {
-  var o     = opts || {};
-  var onKey = o.onKey || function() {};
+  const o     = opts || {};
+  const onKey = o.onKey || function() {};
 
-  var chassis = buildWell({ padding: '10px' });
+  const chassis = buildWell({ padding: '10px' });
   chassis.style.display       = 'flex';
   chassis.style.flexDirection = 'column';
   chassis.style.gap           = '12px';
 
-  var rows = [
+  const rows = [
     [{ label: '1', type: 'digit' }, { label: '2', type: 'digit' }, { label: '3', type: 'digit' }],
     [{ label: '4', type: 'digit' }, { label: '5', type: 'digit' }, { label: '6', type: 'digit' }],
     [{ label: '7', type: 'digit' }, { label: '8', type: 'digit' }, { label: '9', type: 'digit' }],
     [{ label: 'CLR', type: 'clr' }, { label: '0',   type: 'digit' }, { label: 'ENT', type: 'ent' }],
   ];
 
-  rows.forEach(function(row) {
-    var rowEl = document.createElement('div');
+  rows.forEach((row) => {
+    const rowEl = document.createElement('div');
     rowEl.style.display             = 'grid';
     rowEl.style.gridTemplateColumns = 'repeat(3, 1fr)';
     rowEl.style.gap                 = '12px';
-    row.forEach(function(k) {
+    row.forEach((k) => {
       rowEl.appendChild(buildNumKey({
         label: k.label, type: k.type,
-        onClick: (function(lbl) { return function() { onKey(lbl); }; })(k.label),
+        onClick: ((lbl) => () => { onKey(lbl); })(k.label),
       }));
     });
     chassis.appendChild(rowEl);
@@ -380,12 +380,12 @@ export function buildNumpadChassis(opts) {
 // ═══════════════════════════════════════════════════
 
 export function buildPinBox() {
-  var box = document.createElement('div');
+  const box = document.createElement('div');
   box.style.width          = '88px';
   box.style.height         = '88px';
   box.style.clipPath       = chamfer(T.chamferPin);
   box.style.background     = T.well;
-  box.style.border         = '1.5px solid ' + T.border;
+  box.style.border         = `1.5px solid ${T.border}`;
   box.style.display        = 'flex';
   box.style.alignItems     = 'center';
   box.style.justifyContent = 'center';
@@ -393,30 +393,30 @@ export function buildPinBox() {
   box.style.transition     = T.transitionMed;
   box.style.flexShrink     = '0';
 
-  var pip = document.createElement('div');
+  const pip = document.createElement('div');
   pip.style.width      = '20px';
   pip.style.height     = '20px';
   pip.style.clipPath   = chamfer(2);
   pip.style.background = T.green;
-  pip.style.boxShadow  = '0 0 8px ' + T.green;
+  pip.style.boxShadow  = `0 0 8px ${T.green}`;
   pip.style.display    = 'none';
   box.appendChild(pip);
 
-  box.setFilled = function(filled) {
+  box.setFilled = (filled) => {
     if (filled) {
       box.style.background = hexToRgba(T.green, 0.12);
-      box.style.border     = '1.5px solid ' + T.green;
-      box.style.boxShadow  = '0 0 12px ' + hexToRgba(T.green, 0.35);
+      box.style.border     = `1.5px solid ${T.green}`;
+      box.style.boxShadow  = `0 0 12px ${hexToRgba(T.green, 0.35)}`;
       pip.style.display    = 'block';
     } else {
       box.style.background = T.well;
-      box.style.border     = '1.5px solid ' + T.border;
+      box.style.border     = `1.5px solid ${T.border}`;
       box.style.boxShadow  = 'none';
       pip.style.display    = 'none';
     }
   };
 
-  return { box: box, pip: pip };
+  return { box, pip };
 }
 
 // ═══════════════════════════════════════════════════
@@ -425,19 +425,19 @@ export function buildPinBox() {
 // ═══════════════════════════════════════════════════
 
 export function buildPinRow() {
-  var row = document.createElement('div');
+  const row = document.createElement('div');
   row.style.display        = 'flex';
   row.style.gap            = '20px';
   row.style.justifyContent = 'center';
 
-  var boxes = [buildPinBox(), buildPinBox(), buildPinBox(), buildPinBox()];
-  boxes.forEach(function(b) { row.appendChild(b.box); });
+  const boxes = [buildPinBox(), buildPinBox(), buildPinBox(), buildPinBox()];
+  boxes.forEach((b) => { row.appendChild(b.box); });
 
   return {
-    row: row,
-    boxes: boxes,
-    setCount: function(n) {
-      boxes.forEach(function(b, i) { b.box.setFilled(i < n); });
+    row,
+    boxes,
+    setCount: (n) => {
+      boxes.forEach((b, i) => { b.box.setFilled(i < n); });
     },
   };
 }

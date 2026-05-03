@@ -12,10 +12,10 @@
 import { T } from '../common/tokens.js';
 import { buildStaticCard, buildPillButton } from './theme-manager.js';
 
-var _root = null;
-var _visible = false;
-var _opts = {};
-var _input = null;
+let _root = null;
+let _visible = false;
+let _opts = {};
+let _input = null;
 
 // ═══════════════════════════════════════════════════
 //  PUBLIC API
@@ -29,12 +29,12 @@ export function showKeyboard(opts) {
   if (_opts.maxLength) _input.maxLength = _opts.maxLength;
   else _input.removeAttribute('maxlength');
 
-  var host = document.getElementById('terminal') || document.body;
+  const host = document.getElementById('terminal') || document.body;
   if (!_root.parentNode) host.appendChild(_root);
 
   _visible = true;
   // Focus on the next frame so the input is actually in the DOM
-  requestAnimationFrame(function() {
+  requestAnimationFrame(() => {
     _input.focus();
     _input.setSelectionRange(_input.value.length, _input.value.length);
   });
@@ -66,28 +66,28 @@ function _buildIfNeeded() {
   ].join('');
 
   // Dismiss on backdrop tap
-  _root.addEventListener('pointerup', function(e) {
+  _root.addEventListener('pointerup', (e) => {
     if (e.target === _root) {
       if (_opts.onDismiss) _opts.onDismiss();
       hideKeyboard();
     }
   });
 
-  var shell = buildStaticCard({ accent: T.green });
+  const shell = buildStaticCard({ accent: T.green });
   shell.style.display       = 'flex';
   shell.style.flexDirection = 'column';
   shell.style.gap           = '14px';
   shell.style.minWidth      = '360px';
   shell.style.maxWidth      = '480px';
   shell.style.padding       = '24px 28px 28px 32px';
-  var panel = shell;
+  const panel = shell;
 
-  var label = document.createElement('div');
+  const label = document.createElement('div');
   label.style.cssText = [
-    'font-family:' + T.fh + ';',
-    'font-size:' + T.fsB2 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.green + ';',
+    `font-family:${T.fh};`,
+    `font-size:${T.fsB2};`,
+    `font-weight:${T.fwBold};`,
+    `color:${T.green};`,
     'letter-spacing:0.18em;',
     'text-transform:uppercase;',
     'text-align:center;',
@@ -97,18 +97,18 @@ function _buildIfNeeded() {
 
   _input = document.createElement('input');
   _input.type = 'text';
-  _input.style.cssText = [
+  _input.style.cssText = `${[
     'width:100%;box-sizing:border-box;',
     'padding:12px 14px;',
-    'background:' + T.well + ';',
-    'border:2px solid ' + T.border + ';',
+    `background:${T.well};`,
+    `border:2px solid ${T.border};`,
     'border-radius:8px;',
-    'font-family:' + T.fb + ';',
-    'font-size:' + T.fsB1 + ';',
-    'color:' + T.text + ';',
+    `font-family:${T.fb};`,
+    `font-size:${T.fsB1};`,
+    `color:${T.text};`,
     'outline:none;',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
-  _input.addEventListener('keydown', function(e) {
+  ].join('')};font-weight:${T.fwBold};`;
+  _input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       _handleDone();
     } else if (e.key === 'Escape') {
@@ -116,20 +116,20 @@ function _buildIfNeeded() {
       hideKeyboard();
     } else if (_opts.onInput) {
       // defer so value reflects the new keystroke
-      setTimeout(function() { _opts.onInput(_input.value); }, 0);
+      setTimeout(() => { _opts.onInput(_input.value); }, 0);
     }
   });
   panel.appendChild(_input);
 
-  var btnRow = document.createElement('div');
+  const btnRow = document.createElement('div');
   btnRow.style.cssText = 'display:flex;gap:12px;justify-content:space-between;';
 
   // Button hierarchy: CANCEL (verm destructive) + DONE (mint primary).
-  var cancelBtn = buildPillButton({
+  const cancelBtn = buildPillButton({
     label:    'CANCEL',
     variant:  'verm',
     fontSize: T.fsB2,
-    onClick:  function() {
+    onClick:  () => {
       if (_opts.onDismiss) _opts.onDismiss();
       hideKeyboard();
     },
@@ -140,7 +140,7 @@ function _buildIfNeeded() {
   cancelBtn.style.alignItems     = 'center';
   cancelBtn.style.justifyContent = 'center';
 
-  var doneBtn = buildPillButton({
+  const doneBtn = buildPillButton({
     label:    'DONE',
     variant:  'mint',
     fontSize: T.fsB2,
@@ -160,7 +160,7 @@ function _buildIfNeeded() {
 }
 
 function _handleDone() {
-  var val = _input.value;
+  const val = _input.value;
   if (_opts.onDone) _opts.onDone(val);
   if (_opts.dismissOnDone !== false) hideKeyboard();
 }

@@ -27,30 +27,30 @@ import { fetchWithTimeout } from '../net.js';
 //  LAYOUT CONSTANTS (match mockup exactly)
 // ─────────────────────────────────────────────────
 
-var LEFT_W   = 260;   // Left stats column
-var PAD      = 14;    // Outer side/bottom padding
-var PAD_TOP  = 8;     // reduce top padding per UI audit
+const LEFT_W   = 260;   // Left stats column
+const PAD      = 14;    // Outer side/bottom padding
+const PAD_TOP  = 8;     // reduce top padding per UI audit
 
 // ─────────────────────────────────────────────────
 //  TYPOGRAPHY — aligned to KINDpos token scale
 //  fsB4=14px (micro labels), fsB3=16px (body), fsB2=20px (emphasis)
 // ─────────────────────────────────────────────────
 
-var FS_LABEL   = '13px';   // Uppercase letter-spaced section labels
-var FS_META    = '13px';   // Dim meta text (opened 10:30pm, closed 11:22pm)
-var FS_BODY    = '15px';   // Standard body text, row labels
-var FS_AMOUNT  = '17px';   // Row-level monetary amounts
-var FS_HERO    = '26px';   // Hero numbers (Take-Home, Cash Expected)
-var FS_PILL    = '13px';   // Pill button labels
-var FS_PILL_LG = '15px';   // Larger pill labels (BACK, PRINT, FINALIZE main)
-var FS_RECEIPT = '11px';   // Receipt preview paper (intentionally small — it's a slip)
+const FS_LABEL   = '13px';   // Uppercase letter-spaced section labels
+const FS_META    = '13px';   // Dim meta text (opened 10:30pm, closed 11:22pm)
+const FS_BODY    = '15px';   // Standard body text, row labels
+const FS_AMOUNT  = '17px';   // Row-level monetary amounts
+const FS_HERO    = '26px';   // Hero numbers (Take-Home, Cash Expected)
+const FS_PILL    = '13px';   // Pill button labels
+const FS_PILL_LG = '15px';   // Larger pill labels (BACK, PRINT, FINALIZE main)
+const FS_RECEIPT = '11px';   // Receipt preview paper (intentionally small — it's a slip)
 
 // ─────────────────────────────────────────────────
 //  DATA FETCH
 // ─────────────────────────────────────────────────
 
 export function fetchServerState(params) {
-  var empId = params.employeeId || '';
+  const empId = params.employeeId || '';
 
   // Hard gate — we must have an employee ID. Without one, a bare
   // `?server_id=` query hits the backend's store-wide fallback and returns
@@ -61,64 +61,62 @@ export function fetchServerState(params) {
     return Promise.reject(new Error('server-checkout: missing employee id'));
   }
 
-  var summaryUrl = '/api/v1/orders/day-summary?server_id=' + encodeURIComponent(empId);
-  var ordersUrl  = '/api/v1/orders?server_id=' + encodeURIComponent(empId);
+  const summaryUrl = `/api/v1/orders/day-summary?server_id=${encodeURIComponent(empId)}`;
+  const ordersUrl  = `/api/v1/orders?server_id=${encodeURIComponent(empId)}`;
 
   return Promise.all([
-    fetchWithTimeout(summaryUrl, {}, 10000).then(function(r) { return r.json(); }),
-    fetchWithTimeout('/api/v1/config/tipout', {}, 10000).then(function(r) { return r.json(); }).catch(function() { return []; }),
-    fetchWithTimeout('/api/v1/config/store', {}, 10000).then(function(r) { return r.json(); }).catch(function() { return {}; }),
-    fetchWithTimeout(ordersUrl, {}, 10000).then(function(r) { return r.json(); }).catch(function() { return []; }),
-  ]).then(function(results) {
-    var d = results[0] || {};
-    var rules = Array.isArray(results[1]) ? results[1] : [];
-    var store = results[2] || {};
-    var rawOrders = Array.isArray(results[3]) ? results[3] : [];
+    fetchWithTimeout(summaryUrl, {}, 10000).then((r) => r.json()),
+    fetchWithTimeout('/api/v1/config/tipout', {}, 10000).then((r) => r.json()).catch(() => []),
+    fetchWithTimeout('/api/v1/config/store', {}, 10000).then((r) => r.json()).catch(() => { return {}; }),
+    fetchWithTimeout(ordersUrl, {}, 10000).then((r) => r.json()).catch(() => []),
+  ]).then((results) => {
+    let d = results[0] || {};
+    const rules = Array.isArray(results[1]) ? results[1] : [];
+    const store = results[2] || {};
+    const rawOrders = Array.isArray(results[3]) ? results[3] : [];
 
     // Defensive client-side scrub — drop any order whose server_id doesn't
     // match ours. Trusts the backend filter as primary but prevents leaks
     // if the backend regresses or returns store-wide results.
-    var allOrders = rawOrders.filter(function(o) {
+    const allOrders = rawOrders.filter((o) => {
       // If the record has no server_id at all, we can't verify — prefer
       // safety and drop it.
       if (!o.server_id) return false;
       return o.server_id === empId;
     });
 
-    var rate = rules.reduce(function(s, r) { return s + (r.percentage || 0); }, 0) / 100;
-    var netSales = d.net_sales || 0;
-    var cashSales = d.cash_total || 0;
-    var cardSales = d.card_sales || 0;
-    var cardTips  = d.card_tips  || 0;
-    var tipOutTotal = netSales * rate;
-    var takeHome = (cardTips + (d.cash_tips || 0)) - tipOutTotal;
-    var cashExpected = cashSales - cardTips;
+    const rate = rules.reduce((s, r) => s + (r.percentage || 0), 0) / 100;
+    const netSales = d.net_sales || 0;
+    const cashSales = d.cash_total || 0;
+    const cardSales = d.card_sales || 0;
+    const cardTips  = d.card_tips  || 0;
+    const tipOutTotal = netSales * rate;
+    const takeHome = (cardTips + (d.cash_tips || 0)) - tipOutTotal;
+    const cashExpected = cashSales - cardTips;
 
     // Build a lookup so check rows can show table label and guest count,
     // which the day-summary omits but the orders endpoint includes.
-    var rawById = {};
-    allOrders.forEach(function(o) { rawById[o.order_id] = o; });
+    const rawById = {};
+    allOrders.forEach((o) => { rawById[o.order_id] = o; });
 
     // Same defensive scrub on the checks summary. day-summary entries
     // don't always carry server_id (depends on backend version), so when
     // absent we trust the URL filter; when present, we verify.
-    var allChecks = (d.checks || []).filter(function(c) {
+    let allChecks = (d.checks || []).filter((c) => {
       if (c.server_id && c.server_id !== empId) return false;
       return true;
-    }).map(function(c) {
-      var raw = rawById[c.checkId] || {};
+    }).map((c) => {
+      const raw = rawById[c.checkId] || {};
       return Object.assign({}, c, {
         tableLabel:  raw.table         || raw.customer_name || c.tableLabel  || '',
         guests:      raw.guest_count   || c.guests          || 0,
         server_name: raw.server_name   || c.server_name     || '',
       });
     });
-    var openChecks = allChecks.filter(function(c) { return c.status === 'open'; });
-    var closedCardChecks = allChecks.filter(function(c) {
-      return c.status === 'closed' && c.method === 'card';
-    });
-    var unadjustedChecks = closedCardChecks.filter(function(c) { return !c.adjusted; });
-    var adjustedChecks   = closedCardChecks.filter(function(c) {  return c.adjusted;  });
+    const openChecks = allChecks.filter((c) => c.status === 'open');
+    const closedCardChecks = allChecks.filter((c) => c.status === 'closed' && c.method === 'card');
+    const unadjustedChecks = closedCardChecks.filter((c) => !c.adjusted);
+    const adjustedChecks   = closedCardChecks.filter((c) => c.adjusted);
 
     return {
       employeeId:    params.employeeId || '',
@@ -135,7 +133,7 @@ export function fetchServerState(params) {
       tipOutTotal:   tipOutTotal,
       takeHome:      takeHome,
       cashExpected:  cashExpected,
-      checksClosed:  (d.total_closed || closedCardChecks.length + (allChecks.filter(function(c) { return c.status === 'closed' && c.method === 'cash'; }).length)),
+      checksClosed:  (d.total_closed || closedCardChecks.length + (allChecks.filter((c) => c.status === 'closed' && c.method === 'cash').length)),
 
       // Blocker data
       checks:             allChecks,
@@ -160,59 +158,59 @@ export function fetchServerState(params) {
 // ─────────────────────────────────────────────────
 
 function buildBlockerBanner(state, startTime) {
-  var blockerCount = state.openChecks.length + state.unadjustedChecks.length;
+  const blockerCount = state.openChecks.length + state.unadjustedChecks.length;
   if (blockerCount === 0) return null;
 
-  var card = buildStaticCard({ accent: T.verm });
+  let card = buildStaticCard({ accent: T.verm });
   card.style.flexShrink = '0';
   card.style.display = 'flex';
   card.style.alignItems = 'center';
   card.style.gap = '14px';
   card.style.padding = '10px 18px';
 
-  var icon = document.createElement('div');
+  let icon = document.createElement('div');
   icon.style.cssText = [
     'width:28px;height:28px;border-radius:6px;flex-shrink:0;',
-    'background:' + hexToRgba(T.verm, 0.18) + ';',
+    `background:${hexToRgba(T.verm, 0.18)};`,
     'display:flex;align-items:center;justify-content:center;',
-    'font-family:' + T.fb + ';font-size:16px;font-weight:700;color:' + T.verm + ';',
+    `font-family:${T.fb};font-size:16px;font-weight:700;color:${T.verm};`,
   ].join('');
   icon.textContent = '!';
 
-  var textCol = document.createElement('div');
+  const textCol = document.createElement('div');
   textCol.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:3px;min-width:0;';
 
-  var title = document.createElement('div');
-  title.style.cssText = 'font-family:' + T.fh + ';font-size:' + FS_LABEL + ';font-weight:700;color:' + T.verm + ';letter-spacing:1.8px;';
-  title.textContent = blockerCount + ' BLOCKER' + (blockerCount > 1 ? 'S' : '') + ' \u2014 RESOLVE TO CHECK OUT';
+  let title = document.createElement('div');
+  title.style.cssText = `font-family:${T.fh};font-size:${FS_LABEL};font-weight:700;color:${T.verm};letter-spacing:1.8px;`;
+  title.textContent = blockerCount + ` BLOCKER${(blockerCount > 1 ? 'S' : '')} \u2014 RESOLVE TO CHECK OUT`;
 
-  var summary = document.createElement('div');
-  summary.style.cssText = 'font-family:' + T.fb + ';font-size:' + FS_BODY + ';color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
-  var parts = [];
-  if (state.openChecks.length > 0) parts.push(state.openChecks.length + ' open check' + (state.openChecks.length > 1 ? 's' : ''));
-  if (state.unadjustedChecks.length > 0) parts.push(state.unadjustedChecks.length + ' unadjusted CC tip' + (state.unadjustedChecks.length > 1 ? 's' : ''));
+  const summary = document.createElement('div');
+  summary.style.cssText = `font-family:${T.fb};font-size:${FS_BODY};color:${T.text};;font-weight:${T.fwBold};`;
+  const parts = [];
+  if (state.openChecks.length > 0) parts.push(state.openChecks.length + ` open check${(state.openChecks.length > 1 ? 's' : '')}`);
+  if (state.unadjustedChecks.length > 0) parts.push(state.unadjustedChecks.length + ` unadjusted CC tip${(state.unadjustedChecks.length > 1 ? 's' : '')}`);
   summary.textContent = parts.join(' \u2022 ');
 
   textCol.appendChild(title);
   textCol.appendChild(summary);
 
   // FLSA timer — reassurance that they're still on the clock while resolving.
-  var timer = document.createElement('div');
+  const timer = document.createElement('div');
   timer.style.cssText = [
     'flex-shrink:0;padding:7px 18px;border-radius:999px;',
-    'background:' + T.well + ';',
-    'font-family:' + T.fb + ';font-size:' + FS_META + ';color:' + T.lavender + ';',
+    `background:${T.well};`,
+    `font-family:${T.fb};font-size:${FS_META};color:${T.lavender};`,
     'letter-spacing:0.5px;',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
+  ].join('') + `;font-weight:${T.fwBold};`;
   timer.dataset.flsa = '1';
   timer.textContent = 'still on the clock \u2022 0m 00s';
-  var startedAt = startTime || Date.now();
-  var tick = function() {
+  const startedAt = startTime || Date.now();
+  const tick = () => {
     if (!document.body.contains(timer)) return;
-    var elapsed = Math.floor((Date.now() - startedAt) / 1000);
-    var mins = Math.floor(elapsed / 60);
-    var secs = elapsed % 60;
-    timer.textContent = 'still on the clock \u2022 ' + mins + 'm ' + (secs < 10 ? '0' : '') + secs + 's';
+    const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    timer.textContent = `still on the clock \u2022 ${mins}m ${(secs < 10 ? '0' : '')}${secs}s`;
     setTimeout(tick, 1000);
   };
   setTimeout(tick, 1000);
@@ -232,111 +230,111 @@ function buildBlockerBanner(state, startTime) {
 // ─────────────────────────────────────────────────
 
 function renderCheckPreview(paper, checks, allOrders) {
-  var isMulti = checks.length > 1;
-  var grandTotal = checks.reduce(function(s, c) { return s + (c.amount || 0); }, 0);
+  const isMulti = checks.length > 1;
+  const grandTotal = checks.reduce((s, c) => s + (c.amount || 0), 0);
 
   // Header row — "N CHECKS" + total when multi, else single check label
-  var hdrRow = document.createElement('div');
+  const hdrRow = document.createElement('div');
   hdrRow.style.cssText = [
     'display:flex;justify-content:space-between;align-items:baseline;',
-    'padding-bottom:8px;border-bottom:1px solid ' + hexToRgba(T.text, 0.1) + ';margin-bottom:4px;',
+    `padding-bottom:8px;border-bottom:1px solid ${hexToRgba(T.text, 0.1)};margin-bottom:4px;`,
   ].join('');
-  var hLabel = document.createElement('div');
-  hLabel.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.green + ';letter-spacing:1.2px;';
+  const hLabel = document.createElement('div');
+  hLabel.style.cssText = `font-family:${T.fh};font-size:14px;font-weight:700;color:${T.green};letter-spacing:1.2px;`;
   if (isMulti) {
     hLabel.textContent = checks.length + ' CHECKS';
   } else {
     hLabel.textContent = (checks[0].tableLabel ? checks[0].tableLabel + ' \u2022 ' : '') + (checks[0].checkLabel || checks[0].checkId);
   }
-  var hTotal = document.createElement('div');
-  hTotal.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.gold + ';';
+  const hTotal = document.createElement('div');
+  hTotal.style.cssText = `font-family:${T.fh};font-size:14px;font-weight:700;color:${T.gold};`;
   hTotal.textContent = fmt(grandTotal);
   hdrRow.appendChild(hLabel);
   hdrRow.appendChild(hTotal);
   paper.appendChild(hdrRow);
 
-  checks.forEach(function(chk, idx) {
-    var fullOrder = (allOrders || []).find(function(o) { return o.order_id === chk.checkId; });
+  checks.forEach((chk, idx) => {
+    const fullOrder = (allOrders || []).find((o) => o.order_id === chk.checkId);
 
     if (isMulti) {
       // Sub-header per check — check label + server in smaller type
-      var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:' + T.fh + ';font-size:11px;color:' + T.green + ';letter-spacing:0.5px;margin-top:' + (idx === 0 ? '0' : '8px') + ';margin-bottom:2px;' + ";font-weight:" + T.fwBold + ";";
-      sub.textContent = (chk.checkLabel || chk.checkId) + (fullOrder && fullOrder.server_name ? ' \u00B7 ' + fullOrder.server_name.split(' ')[0].toUpperCase() : '');
+      let sub = document.createElement('div');
+      sub.style.cssText = `font-family:${T.fh};font-size:11px;color:${T.green};letter-spacing:0.5px;margin-top:${(idx === 0 ? '0' : '8px')};margin-bottom:2px;;font-weight:${T.fwBold};`;
+      sub.textContent = (chk.checkLabel || chk.checkId) + (fullOrder && fullOrder.server_name ? ` \u00B7 ${fullOrder.server_name.split(' ')[0].toUpperCase()}` : '');
       paper.appendChild(sub);
     } else if (fullOrder && fullOrder.server_name) {
-      var srvLbl = document.createElement('div');
-      srvLbl.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.elec + ';letter-spacing:0.5px;margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
+      const srvLbl = document.createElement('div');
+      srvLbl.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.elec};letter-spacing:0.5px;margin-bottom:4px;;font-weight:${T.fwBold};`;
       srvLbl.textContent = fullOrder.server_name.toUpperCase();
       paper.appendChild(srvLbl);
     }
 
     // Meta row (only for single — collapsed on multi to save space)
     if (!isMulti) {
-      var metaRow = document.createElement('div');
-      metaRow.style.cssText = 'display:flex;justify-content:space-between;font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';margin-bottom:4px;' + ";font-weight:" + T.fwBold + ";";
-      var mL = document.createElement('span');
-      mL.textContent = chk.guests ? (chk.guests + ' guest' + (chk.guests > 1 ? 's' : '')) : '\u00A0';
-      var mR = document.createElement('span');
-      mR.textContent = 'opened ' + (chk.time || 'recently');
+      const metaRow = document.createElement('div');
+      metaRow.style.cssText = `display:flex;justify-content:space-between;font-family:${T.fb};font-size:11px;color:${hexToRgba(T.text, 0.6)};margin-bottom:4px;;font-weight:${T.fwBold};`;
+      const mL = document.createElement('span');
+      mL.textContent = chk.guests ? (chk.guests + ` guest${(chk.guests > 1 ? 's' : '')}`) : '\u00A0';
+      const mR = document.createElement('span');
+      mR.textContent = `opened ${(chk.time || 'recently')}`;
       metaRow.appendChild(mL);
       metaRow.appendChild(mR);
       paper.appendChild(metaRow);
     }
 
-    var items = (fullOrder && fullOrder.items) || [];
+    const items = (fullOrder && fullOrder.items) || [];
 
     if (items.length === 0) {
-      var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;padding:6px 0;' + ";font-weight:" + T.fwBold + ";";
+      let empty = document.createElement('div');
+      empty.style.cssText = `font-family:${T.fb};font-size:11px;color:${hexToRgba(T.text, 0.6)};font-style:italic;padding:6px 0;;font-weight:${T.fwBold};`;
       empty.textContent = isMulti ? 'no items' : 'no items on this check';
       paper.appendChild(empty);
     } else {
       // Cap items per check on multi-select so the paper doesn't get
       // absurdly long — show first 3, then "+N more".
-      var showCap = isMulti ? 3 : items.length;
-      items.slice(0, showCap).forEach(function(item) {
-        var row = document.createElement('div');
+      const showCap = isMulti ? 3 : items.length;
+      items.slice(0, showCap).forEach((item) => {
+        let row = document.createElement('div');
         row.style.cssText = [
           'display:flex;justify-content:space-between;gap:8px;',
-          'padding:3px 0;border-bottom:1px solid ' + hexToRgba(T.text, 0.06) + ';',
+          `padding:3px 0;border-bottom:1px solid ${hexToRgba(T.text, 0.06)};`,
         ].join('');
-        var nm = document.createElement('span');
-        nm.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.text + ';' + ";font-weight:" + T.fwBold + ";";
+        const nm = document.createElement('span');
+        nm.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.text};;font-weight:${T.fwBold};`;
         nm.textContent = (item.qty && item.qty > 1 ? item.qty + '\u00D7 ' : '') + (item.name || 'Item');
-        var pr = document.createElement('span');
-        pr.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.gold + ';flex-shrink:0;' + ";font-weight:" + T.fwBold + ";";
+        const pr = document.createElement('span');
+        pr.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.gold};flex-shrink:0;;font-weight:${T.fwBold};`;
         pr.textContent = fmt((item.price || 0) * (item.qty || 1));
         row.appendChild(nm);
         row.appendChild(pr);
         paper.appendChild(row);
       });
       if (items.length > showCap) {
-        var more = document.createElement('div');
-        more.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + hexToRgba(T.text, 0.6) + ';padding-top:2px;opacity:0.6;' + ";font-weight:" + T.fwBold + ";";
-        more.textContent = '+ ' + (items.length - showCap) + ' more';
+        const more = document.createElement('div');
+        more.style.cssText = `font-family:${T.fb};font-size:10px;color:${hexToRgba(T.text, 0.6)};padding-top:2px;opacity:0.6;;font-weight:${T.fwBold};`;
+        more.textContent = `+ ${(items.length - showCap)} more`;
         paper.appendChild(more);
       }
     }
 
     // Per-check totals only on single-select view
     if (!isMulti && fullOrder) {
-      var sep = document.createElement('div');
-      sep.style.cssText = 'height:1px;background:' + hexToRgba(T.text, 0.1) + ';margin:6px 0 2px;';
+      const sep = document.createElement('div');
+      sep.style.cssText = `height:1px;background:${hexToRgba(T.text, 0.1)};margin:6px 0 2px;`;
       paper.appendChild(sep);
 
-      var addTotalRow = function(label, val, emphasis) {
-        var r = document.createElement('div');
+      const addTotalRow = (label, val, emphasis) => {
+        const r = document.createElement('div');
         r.style.cssText = [
           'display:flex;justify-content:space-between;padding:2px 0;',
-          'font-family:' + T.fb + ';font-size:' + (emphasis ? '12px' : '11px') + ';',
-          'color:' + (emphasis ? T.text : hexToRgba(T.text, 0.6)) + ';',
+          `font-family:${T.fb};font-size:${(emphasis ? '12px' : '11px')};`,
+          `color:${(emphasis ? T.text : hexToRgba(T.text, 0.6))};`,
           emphasis ? 'font-weight:700;' : '',
         ].join('');
-        var rL = document.createElement('span');
+        const rL = document.createElement('span');
         rL.textContent = label;
-        var rR = document.createElement('span');
-        rR.style.cssText = emphasis ? 'color:' + T.gold + ';font-weight:700;' : 'color:' + T.gold + ';';
+        const rR = document.createElement('span');
+        rR.style.cssText = emphasis ? `color:${T.gold};font-weight:700;` : `color:${T.gold};`;
         rR.textContent = fmt(val);
         r.appendChild(rL);
         r.appendChild(rR);
@@ -355,22 +353,22 @@ function renderCheckPreview(paper, checks, allOrders) {
 // ─────────────────────────────────────────────────
 
 function buildLeftCol(state, handlers) {
-  var wrapper = document.createElement('div');
+  const wrapper = document.createElement('div');
   wrapper.style.cssText = [
     'flex-shrink:0;width:260px;align-self:flex-start;',
     'display:flex;flex-direction:column;gap:6px;',
   ].join('');
 
-  var card = document.createElement('div');
+  let card = document.createElement('div');
   card.style.cssText = [
-    'background:' + T.card + ';',
-    'border-left:3px solid ' + T.green + ';',
+    `background:${T.card};`,
+    `border-left:3px solid ${T.green};`,
     'border-radius:6px;',
     'display:flex;flex-direction:column;',
     'overflow:hidden;',
   ].join('');
 
-  var colBody = document.createElement('div');
+  const colBody = document.createElement('div');
   colBody.style.cssText = [
     'flex-shrink:0;padding:16px 14px 10px;',
     'display:flex;flex-direction:column;',
@@ -379,29 +377,29 @@ function buildLeftCol(state, handlers) {
   ].join('');
 
   // 1. Take Home hero
-  var heroWrap = document.createElement('div');
+  const heroWrap = document.createElement('div');
   heroWrap.style.cssText = [
     'background:rgba(0,0,0,0.2);border-radius:6px;',
     'padding:12px 10px;margin:0 -4px;',
     'display:flex;flex-direction:column;gap:2px;',
   ].join('');
 
-  var heroLabel = document.createElement('div');
+  const heroLabel = document.createElement('div');
   heroLabel.style.cssText = [
-    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-    'letter-spacing:2px;color:' + T.moon + ';text-transform:uppercase;',
+    `font-family:${T.fh};font-size:10px;font-weight:700;`,
+    `letter-spacing:2px;color:${T.moon};text-transform:uppercase;`,
   ].join('');
   heroLabel.textContent = 'TAKE HOME';
 
-  var heroValue = document.createElement('div');
+  const heroValue = document.createElement('div');
   heroValue.style.cssText = [
-    'font-family:' + T.fb + ';font-size:32px;font-weight:700;',
-    'color:' + T.greenWarm + ';line-height:1.1;',
+    `font-family:${T.fb};font-size:32px;font-weight:700;`,
+    `color:${T.greenWarm};line-height:1.1;`,
   ].join('');
   heroValue.textContent = fmt(state.takeHome);
 
-  var heroMeta = document.createElement('div');
-  heroMeta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
+  const heroMeta = document.createElement('div');
+  heroMeta.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.moon};;font-weight:${T.fwBold};`;
   heroMeta.textContent = 'tips − tipout';
 
   heroWrap.appendChild(heroLabel);
@@ -419,90 +417,90 @@ function buildLeftCol(state, handlers) {
   colBody.appendChild(_leftColDivider());
 
   // 5. Tip-Out
-  var toSectionLabel = document.createElement('div');
+  const toSectionLabel = document.createElement('div');
   toSectionLabel.style.cssText = [
-    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-    'letter-spacing:2px;color:' + T.moon + ';text-transform:uppercase;',
+    `font-family:${T.fh};font-size:10px;font-weight:700;`,
+    `letter-spacing:2px;color:${T.moon};text-transform:uppercase;`,
   ].join('');
   toSectionLabel.textContent = 'TIP-OUT';
   colBody.appendChild(toSectionLabel);
 
-  var toBlock = document.createElement('div');
+  const toBlock = document.createElement('div');
   toBlock.style.cssText = [
-    'background:' + T.well + ';border-radius:5px;',
+    `background:${T.well};border-radius:5px;`,
     'padding:8px 10px;',
     'display:flex;flex-direction:column;gap:6px;',
     'margin-top:2px;',
   ].join('');
 
-  var tipoutRules = state.tipoutRules || [];
-  tipoutRules.forEach(function(r) {
-    var ruleRow = document.createElement('div');
+  const tipoutRules = state.tipoutRules || [];
+  tipoutRules.forEach((r) => {
+    const ruleRow = document.createElement('div');
     ruleRow.style.cssText = 'display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:baseline;';
-    var roleName = document.createElement('div');
-    roleName.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
+    const roleName = document.createElement('div');
+    roleName.style.cssText = `font-family:${T.fb};font-size:12px;font-weight:700;color:${T.text};`;
     roleName.textContent = r.role || r.name || 'Role';
-    var basis = document.createElement('div');
-    basis.style.cssText = 'font-family:' + T.fb + ';font-size:10px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
-    basis.textContent = (r.percentage || 0) + '% · ' + (r.category || r.basis || 'Net Sales');
-    var ruleAmt = document.createElement('div');
-    ruleAmt.style.cssText = 'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.verm + ';';
-    ruleAmt.textContent = '−' + fmt(((r.percentage || 0) / 100) * (state.netSales || 0));
+    const basis = document.createElement('div');
+    basis.style.cssText = `font-family:${T.fb};font-size:10px;color:${T.moon};;font-weight:${T.fwBold};`;
+    basis.textContent = (r.percentage || 0) + `% · ${(r.category || r.basis || 'Net Sales')}`;
+    const ruleAmt = document.createElement('div');
+    ruleAmt.style.cssText = `font-family:${T.fb};font-size:13px;font-weight:700;color:${T.verm};`;
+    ruleAmt.textContent = `−${fmt(((r.percentage || 0) / 100) * (state.netSales || 0))}`;
     ruleRow.appendChild(roleName);
     ruleRow.appendChild(basis);
     ruleRow.appendChild(ruleAmt);
     toBlock.appendChild(ruleRow);
   });
 
-  var toCrule = document.createElement('div');
-  toCrule.style.cssText = 'height:1px;background:' + T.border + ';opacity:0.5;';
+  const toCrule = document.createElement('div');
+  toCrule.style.cssText = `height:1px;background:${T.border};opacity:0.5;`;
   toBlock.appendChild(toCrule);
 
-  var toTotRow = document.createElement('div');
+  const toTotRow = document.createElement('div');
   toTotRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
-  var toTotLabel = document.createElement('div');
+  const toTotLabel = document.createElement('div');
   toTotLabel.style.cssText = [
-    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-    'letter-spacing:1.5px;color:' + T.moon + ';text-transform:uppercase;',
+    `font-family:${T.fh};font-size:10px;font-weight:700;`,
+    `letter-spacing:1.5px;color:${T.moon};text-transform:uppercase;`,
   ].join('');
   toTotLabel.textContent = 'TOTAL';
-  var toTotValue = document.createElement('div');
-  toTotValue.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + T.verm + ';';
-  toTotValue.textContent = '−' + fmt(state.tipOutTotal);
+  const toTotValue = document.createElement('div');
+  toTotValue.style.cssText = `font-family:${T.fb};font-size:17px;font-weight:700;color:${T.verm};`;
+  toTotValue.textContent = `−${fmt(state.tipOutTotal)}`;
   toTotRow.appendChild(toTotLabel);
   toTotRow.appendChild(toTotValue);
   toBlock.appendChild(toTotRow);
   colBody.appendChild(toBlock);
 
   // Adjust Rates pill
-  var adjBtn = document.createElement('div');
+  const adjBtn = document.createElement('div');
   adjBtn.style.cssText = [
     'width:100%;box-sizing:border-box;border-radius:999px;',
-    'border:1px solid ' + T.border + ';background:transparent;',
+    `border:1px solid ${T.border};background:transparent;`,
     'display:flex;align-items:center;justify-content:center;gap:5px;',
     'padding:6px 0;margin-top:7px;cursor:pointer;',
-    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-    'letter-spacing:1.5px;color:' + T.moon + ';text-transform:uppercase;',
+    `font-family:${T.fh};font-size:10px;font-weight:700;`,
+    `letter-spacing:1.5px;color:${T.moon};text-transform:uppercase;`,
     'pointer-events:auto;touch-action:manipulation;',
     'transition:border-color 0.15s, color 0.15s;',
   ].join('');
 
-  (function() {
-    var ns = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(ns, 'svg');
+  (() => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('width', '9');
     svg.setAttribute('height', '10');
     svg.setAttribute('viewBox', '0 0 9 10');
     svg.setAttribute('fill', 'none');
     svg.style.flexShrink = '0';
-    var lockRect = document.createElementNS(ns, 'rect');
+    const lockRect = document.createElementNS(ns, 'rect');
     lockRect.setAttribute('x', '1');
     lockRect.setAttribute('y', '4');
     lockRect.setAttribute('width', '7');
     lockRect.setAttribute('height', '5.5');
     lockRect.setAttribute('rx', '1');
     lockRect.setAttribute('fill', 'currentColor');
-    var lockPath = document.createElementNS(ns, 'path');
+    const lockPath = document.createElementNS(ns, 'path');
     lockPath.setAttribute('d', 'M2.5 4V3a2 2 0 0 1 4 0v1');
     lockPath.setAttribute('stroke', 'currentColor');
     lockPath.setAttribute('stroke-width', '1.2');
@@ -512,19 +510,19 @@ function buildLeftCol(state, handlers) {
     adjBtn.appendChild(svg);
   })();
 
-  var adjText = document.createElement('span');
+  const adjText = document.createElement('span');
   adjText.textContent = 'Adjust Rates';
   adjBtn.appendChild(adjText);
 
-  adjBtn.addEventListener('pointerenter', function() {
+  adjBtn.addEventListener('pointerenter', () => {
     adjBtn.style.borderColor = T.warning;
     adjBtn.style.color = T.warning;
   });
-  adjBtn.addEventListener('pointerleave', function() {
+  adjBtn.addEventListener('pointerleave', () => {
     adjBtn.style.borderColor = T.border;
     adjBtn.style.color = T.moon;
   });
-  adjBtn.addEventListener('pointerup', function() {
+  adjBtn.addEventListener('pointerup', () => {
     if (handlers && handlers.onAdjustRates) handlers.onAdjustRates();
   });
   colBody.appendChild(adjBtn);
@@ -538,36 +536,36 @@ function buildLeftCol(state, handlers) {
   card.appendChild(colBody);
 
   // cash-footer
-  var cashFooter = document.createElement('div');
+  const cashFooter = document.createElement('div');
   cashFooter.style.cssText = [
     'flex-shrink:0;',
-    'border-top:1px solid ' + hexToRgba(T.gold, 0.35) + ';',
-    'background:' + hexToRgba(T.gold, 0.06) + ';',
+    `border-top:1px solid ${hexToRgba(T.gold, 0.35)};`,
+    `background:${hexToRgba(T.gold, 0.06)};`,
     'border-radius:0 0 6px 6px;',
     'padding:12px 14px 14px;',
     'display:flex;flex-direction:column;gap:6px;',
   ].join('');
 
-  var cfLabel = document.createElement('div');
+  const cfLabel = document.createElement('div');
   cfLabel.style.cssText = [
-    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
+    `font-family:${T.fh};font-size:10px;font-weight:700;`,
     'letter-spacing:2px;text-transform:uppercase;',
-    'color:' + hexToRgba(T.gold, 0.75) + ';',
+    `color:${hexToRgba(T.gold, 0.75)};`,
   ].join('');
   cfLabel.textContent = 'CASH EXPECTED';
 
-  var cfAmount = document.createElement('div');
+  const cfAmount = document.createElement('div');
   cfAmount.style.cssText = [
-    'font-family:' + T.fb + ';font-size:28px;font-weight:700;',
-    'color:' + T.gold + ';line-height:1.1;',
+    `font-family:${T.fb};font-size:28px;font-weight:700;`,
+    `color:${T.gold};line-height:1.1;`,
   ].join('');
   cfAmount.textContent = fmt(state.cashExpected);
 
-  var cfMath = document.createElement('div');
+  const cfMath = document.createElement('div');
   cfMath.style.cssText = [
     'display:flex;flex-direction:row;gap:6px;align-items:baseline;',
-    'font-family:' + T.fb + ';font-size:11px;',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
+    `font-family:${T.fb};font-size:11px;`,
+  ].join('') + `;font-weight:${T.fwBold};`;
 
   [
     { text: fmt(state.cashSales), color: T.text, bold: true },
@@ -575,8 +573,8 @@ function buildLeftCol(state, handlers) {
     { text: '−',             color: T.moon },
     { text: fmt(state.cardTips),  color: T.verm, bold: true },
     { text: 'tips',               color: T.moon },
-  ].forEach(function(seg) {
-    var s = document.createElement('span');
+  ].forEach((seg) => {
+    const s = document.createElement('span');
     s.style.color = seg.color;
     if (seg.bold) s.style.fontWeight = '700';
     s.textContent = seg.text;
@@ -590,12 +588,12 @@ function buildLeftCol(state, handlers) {
   wrapper.appendChild(card);
 
   // Print pill
-  var printPill = document.createElement('div');
+  const printPill = document.createElement('div');
   printPill.style.cssText = [
     'width:100%;border-radius:999px;padding:10px 0;',
-    'background:' + T.elec + ';box-shadow:0 4px 0 ' + T.elecDk + ';',
-    'font-family:' + T.fh + ';font-size:13px;font-weight:700;',
-    'letter-spacing:2px;color:' + T.well + ';text-transform:uppercase;',
+    `background:${T.elec};box-shadow:0 4px 0 ${T.elecDk};`,
+    `font-family:${T.fh};font-size:13px;font-weight:700;`,
+    `letter-spacing:2px;color:${T.well};text-transform:uppercase;`,
     'text-align:center;',
     'touch-action:manipulation;pointer-events:auto;cursor:pointer;',
     'user-select:none;-webkit-user-select:none;',
@@ -603,19 +601,19 @@ function buildLeftCol(state, handlers) {
   ].join('');
   printPill.textContent = 'Print Slip';
 
-  printPill.addEventListener('pointerenter', function() {
+  printPill.addEventListener('pointerenter', () => {
     printPill.style.filter = 'brightness(1.08)';
   });
-  printPill.addEventListener('pointerdown', function() {
+  printPill.addEventListener('pointerdown', () => {
     printPill.style.transform = 'translateY(2px)';
-    printPill.style.boxShadow = '0 2px 0 ' + T.elecDk;
+    printPill.style.boxShadow = `0 2px 0 ${T.elecDk}`;
   });
-  var _printRelease = function() {
+  const _printRelease = () => {
     printPill.style.transform = '';
-    printPill.style.boxShadow = '0 4px 0 ' + T.elecDk;
+    printPill.style.boxShadow = `0 4px 0 ${T.elecDk}`;
     printPill.style.filter = '';
   };
-  printPill.addEventListener('pointerup', function() {
+  printPill.addEventListener('pointerup', () => {
     _printRelease();
     if (handlers && handlers.onPrintSlip) handlers.onPrintSlip();
   });
@@ -627,22 +625,22 @@ function buildLeftCol(state, handlers) {
 }
 
 function _leftColDivider() {
-  var d = document.createElement('div');
-  d.style.cssText = 'height:1px;background:' + hexToRgba(T.text, 0.08) + ';margin:6px 0;flex-shrink:0;';
+  let d = document.createElement('div');
+  d.style.cssText = `height:1px;background:${hexToRgba(T.text, 0.08)};margin:6px 0;flex-shrink:0;`;
   return d;
 }
 
 function _leftColStat(label, value, valueColor) {
-  var row = document.createElement('div');
+  let row = document.createElement('div');
   row.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
-  var lbl = document.createElement('div');
+  const lbl = document.createElement('div');
   lbl.style.cssText = [
-    'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-    'letter-spacing:2px;color:' + T.moon + ';text-transform:uppercase;',
+    `font-family:${T.fh};font-size:10px;font-weight:700;`,
+    `letter-spacing:2px;color:${T.moon};text-transform:uppercase;`,
   ].join('');
   lbl.textContent = label;
-  var val = document.createElement('div');
-  val.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + valueColor + ';';
+  const val = document.createElement('div');
+  val.style.cssText = `font-family:${T.fb};font-size:17px;font-weight:700;color:${valueColor};`;
   val.textContent = value;
   row.appendChild(lbl);
   row.appendChild(val);
@@ -657,8 +655,8 @@ function _leftColStat(label, value, valueColor) {
 // Base card shell — border-left accent + optional stroke border.
 function buildBaseCard(opts) {
   opts = opts || {};
-  var card = buildStaticCard({ accent: opts.accent || T.green });
-  if (opts.stroke) card.style.border = '1.5px solid ' + opts.stroke;
+  let card = buildStaticCard({ accent: opts.accent || T.green });
+  if (opts.stroke) card.style.border = `1.5px solid ${opts.stroke}`;
   card.style.opacity = opts.dimmed ? '0.45' : '1';
   card.style.transition = 'opacity 0.2s';
   card.style.padding = '12px 16px';
@@ -678,57 +676,57 @@ function buildChecksCard(state, handlers, activeTab, selectedCheckIds) {
     activeTab = (state.openChecks && state.openChecks.length > 0) ? 'active' : 'all';
   }
 
-  var hasOpen = state.openChecks.length > 0;
-  var accentColor = hasOpen ? T.verm : T.elec;
-  var allChecks = state.checks || [];
+  const hasOpen = state.openChecks.length > 0;
+  let accentColor = hasOpen ? T.verm : T.elec;
+  const allChecks = state.checks || [];
 
-  var card = buildBaseCard({ accent: accentColor });
+  let card = buildBaseCard({ accent: accentColor });
   card.style.padding = '12px 14px';
   card.style.gap = '10px';
 
   // Header row
-  var hdr = document.createElement('div');
+  let hdr = document.createElement('div');
   hdr.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
 
   if (hasOpen) {
-    var icon = document.createElement('div');
+    let icon = document.createElement('div');
     icon.style.cssText = [
       'width:18px;height:18px;border-radius:4px;flex-shrink:0;',
-      'background:' + hexToRgba(T.verm, 0.18) + ';',
+      `background:${hexToRgba(T.verm, 0.18)};`,
       'display:flex;align-items:center;justify-content:center;',
-      'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + T.verm + ';',
+      `font-family:${T.fb};font-size:14px;font-weight:700;color:${T.verm};`,
     ].join('');
     icon.textContent = '!';
     hdr.appendChild(icon);
   }
 
-  var titleEl = document.createElement('span');
+  const titleEl = document.createElement('span');
   titleEl.style.cssText = [
-    'font-family:' + T.fh + ';font-size:11px;font-weight:700;',
+    `font-family:${T.fh};font-size:11px;font-weight:700;`,
     'letter-spacing:2px;text-transform:uppercase;',
-    'color:' + accentColor + ';',
+    `color:${accentColor};`,
   ].join('');
   titleEl.textContent = 'CHECKS';
   hdr.appendChild(titleEl);
 
   // Tab pills
-  var tabBar = document.createElement('div');
+  const tabBar = document.createElement('div');
   tabBar.style.cssText = 'display:flex;gap:5px;flex-shrink:0;margin-left:auto;';
 
-  var makeTab = function(key, label, count, activeColor) {
-    var isActive = (activeTab === key);
-    var pill = document.createElement('div');
+  let makeTab = (key, label, count, activeColor) => {
+    const isActive = (activeTab === key);
+    let pill = document.createElement('div');
     pill.style.cssText = [
       'padding:3px 9px;border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:10px;font-weight:700;letter-spacing:1px;',
+      `font-family:${T.fh};font-size:10px;font-weight:700;letter-spacing:1px;`,
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       isActive
-        ? 'background:' + activeColor + ';color:' + T.well + ';'
-        : 'background:transparent;color:' + T.moon + ';border:1px solid rgba(255,255,255,0.15);',
+        ? `background:${activeColor};color:${T.well};`
+        : `background:transparent;color:${T.moon};border:1px solid rgba(255,255,255,0.15);`,
     ].join('');
-    pill.textContent = label + ' ' + count;
-    pill.addEventListener('pointerup', function() {
+    pill.textContent = label + ` ${count}`;
+    pill.addEventListener('pointerup', () => {
       if (handlers.onTabChange) handlers.onTabChange(key);
     });
     return pill;
@@ -740,20 +738,20 @@ function buildChecksCard(state, handlers, activeTab, selectedCheckIds) {
   card.appendChild(hdr);
 
   // List
-  var list = document.createElement('div');
+  let list = document.createElement('div');
   list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
 
   if (activeTab === 'active') {
-    state.openChecks.forEach(function(chk) {
-      var selected = selectedCheckIds.indexOf(chk.checkId) !== -1;
+    state.openChecks.forEach((chk) => {
+      let selected = selectedCheckIds.indexOf(chk.checkId) !== -1;
       list.appendChild(_buildActiveCheckRow(chk, handlers, selected));
     });
   } else {
-    allChecks.forEach(function(chk) {
+    allChecks.forEach((chk) => {
       if (chk.status === 'closed') {
         list.appendChild(_buildClosedCheckRow(chk, handlers));
       } else {
-        var selected = selectedCheckIds.indexOf(chk.checkId) !== -1;
+        const selected = selectedCheckIds.indexOf(chk.checkId) !== -1;
         list.appendChild(_buildActiveCheckRow(chk, handlers, selected));
       }
     });
@@ -764,107 +762,107 @@ function buildChecksCard(state, handlers, activeTab, selectedCheckIds) {
 }
 
 function _buildActiveCheckRow(chk, handlers, isSelected) {
-  var row = document.createElement('div');
+  let row = document.createElement('div');
   row.style.cssText = [
     'display:flex;gap:10px;align-items:center;',
     'padding:10px 12px;border-radius:6px;',
     isSelected
-      ? 'border:1.5px solid ' + T.elec + ';background:' + hexToRgba(T.elec, 0.07) + ';'
-      : 'border:1.5px solid transparent;background:' + T.well + ';',
+      ? `border:1.5px solid ${T.elec};background:${hexToRgba(T.elec, 0.07)};`
+      : `border:1.5px solid transparent;background:${T.well};`,
     'cursor:pointer;pointer-events:auto;touch-action:pan-y;',
     'user-select:none;-webkit-user-select:none;',
   ].join('');
 
-  var info = document.createElement('div');
+  let info = document.createElement('div');
   info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;';
 
-  var top = document.createElement('div');
+  let top = document.createElement('div');
   top.style.cssText = 'display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;';
-  var checkLbl = document.createElement('span');
-  checkLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.text + ';';
-  checkLbl.textContent = chk.checkLabel || ('Check ' + (chk.checkId || ''));
+  let checkLbl = document.createElement('span');
+  checkLbl.style.cssText = `font-family:${T.fb};font-size:13px;font-weight:700;color:${T.text};`;
+  checkLbl.textContent = chk.checkLabel || (`Check ${(chk.checkId || '')}`);
   top.appendChild(checkLbl);
   if (chk.tableLabel) {
-    var tableLbl = document.createElement('span');
-    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
+    let tableLbl = document.createElement('span');
+    tableLbl.style.cssText = `font-family:${T.fb};font-size:13px;color:${T.moon};;font-weight:${T.fwBold};`;
     tableLbl.textContent = chk.tableLabel;
     top.appendChild(tableLbl);
   }
   info.appendChild(top);
 
-  var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
-  var metaParts = [];
-  if (chk.guests) metaParts.push(chk.guests + ' guest' + (chk.guests > 1 ? 's' : ''));
-  if (chk.time) metaParts.push('opened ' + chk.time);
+  let meta = document.createElement('div');
+  meta.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.moon};;font-weight:${T.fwBold};`;
+  let metaParts = [];
+  if (chk.guests) metaParts.push(chk.guests + ` guest${(chk.guests > 1 ? 's' : '')}`);
+  if (chk.time) metaParts.push(`opened ${chk.time}`);
   meta.textContent = metaParts.join(' · ');
   info.appendChild(meta);
 
-  var amt = document.createElement('div');
-  amt.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + T.gold + ';flex-shrink:0;';
+  let amt = document.createElement('div');
+  amt.style.cssText = `font-family:${T.fb};font-size:17px;font-weight:700;color:${T.gold};flex-shrink:0;`;
   amt.textContent = fmt(chk.amount || 0);
 
   row.appendChild(info);
   row.appendChild(amt);
-  row.addEventListener('pointerup', function() {
+  row.addEventListener('pointerup', () => {
     if (handlers.onSelectCheck) handlers.onSelectCheck(chk);
   });
   return row;
 }
 
 function _buildClosedCheckRow(chk, handlers) {
-  var outer = document.createElement('div');
+  const outer = document.createElement('div');
   outer.style.cssText = [
-    'background:' + T.well + ';border-radius:6px;',
+    `background:${T.well};border-radius:6px;`,
     'padding:10px 12px;',
     'display:flex;flex-direction:column;gap:6px;',
   ].join('');
 
   // Top row
-  var topRow = document.createElement('div');
+  const topRow = document.createElement('div');
   topRow.style.cssText = 'display:flex;gap:10px;align-items:center;';
 
-  var info = document.createElement('div');
+  let info = document.createElement('div');
   info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;';
 
-  var top = document.createElement('div');
+  const top = document.createElement('div');
   top.style.cssText = 'display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;';
-  var checkLbl = document.createElement('span');
-  checkLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;font-weight:700;color:' + T.text + ';';
-  checkLbl.textContent = chk.checkLabel || ('Check ' + (chk.checkId || ''));
+  const checkLbl = document.createElement('span');
+  checkLbl.style.cssText = `font-family:${T.fb};font-size:13px;font-weight:700;color:${T.text};`;
+  checkLbl.textContent = chk.checkLabel || (`Check ${(chk.checkId || '')}`);
   top.appendChild(checkLbl);
   if (chk.tableLabel) {
-    var tableLbl = document.createElement('span');
-    tableLbl.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
+    const tableLbl = document.createElement('span');
+    tableLbl.style.cssText = `font-family:${T.fb};font-size:13px;color:${T.moon};;font-weight:${T.fwBold};`;
     tableLbl.textContent = chk.tableLabel;
     top.appendChild(tableLbl);
   }
   info.appendChild(top);
 
-  var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + T.moon + ';' + ";font-weight:" + T.fwBold + ";";
-  var metaParts = [];
-  if (chk.time) metaParts.push('closed ' + chk.time);
-  if (chk.tip != null) metaParts.push('tip ' + fmt(chk.tip));
+  let meta = document.createElement('div');
+  meta.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.moon};;font-weight:${T.fwBold};`;
+  const metaParts = [];
+  if (chk.time) metaParts.push(`closed ${chk.time}`);
+  if (chk.tip != null) metaParts.push(`tip ${fmt(chk.tip)}`);
   meta.textContent = metaParts.join(' · ');
   info.appendChild(meta);
 
   // Payment tag
-  var isCard = chk.method !== 'cash';
-  var tag = document.createElement('div');
+  const isCard = chk.method !== 'cash';
+  const tag = document.createElement('div');
   tag.style.cssText = [
     'flex-shrink:0;font-size:10px;border-radius:3px;padding:1px 5px;',
-    'font-family:' + T.fb + ';',
+    `font-family:${T.fb};`,
     isCard
-      ? 'background:' + hexToRgba(T.elec, 0.12) + ';color:' + T.elec + ';'
-      : 'background:' + hexToRgba(T.greenWarm, 0.12) + ';color:' + T.greenWarm + ';',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
+      ? `background:${hexToRgba(T.elec, 0.12)};color:${T.elec};`
+      : `background:${hexToRgba(T.greenWarm, 0.12)};color:${T.greenWarm};`,
+  ].join('') + `;font-weight:${T.fwBold};`;
   tag.textContent = isCard
-    ? (chk.cardBrand || 'Card') + (chk.cardLast4 ? ' ··· ' + chk.cardLast4 : '')
+    ? (chk.cardBrand || 'Card') + (chk.cardLast4 ? ` ··· ${chk.cardLast4}` : '')
     : 'Cash';
 
-  var amt = document.createElement('div');
-  amt.style.cssText = 'font-family:' + T.fb + ';font-size:17px;font-weight:700;color:' + T.gold + ';flex-shrink:0;';
+  const amt = document.createElement('div');
+  amt.style.cssText = `font-family:${T.fb};font-size:17px;font-weight:700;color:${T.gold};flex-shrink:0;`;
   amt.textContent = fmt(chk.amount || 0);
 
   topRow.appendChild(info);
@@ -873,36 +871,36 @@ function _buildClosedCheckRow(chk, handlers) {
   outer.appendChild(topRow);
 
   // Actions row
-  var actRow = document.createElement('div');
+  const actRow = document.createElement('div');
   actRow.style.cssText = 'display:flex;gap:6px;';
 
-  var reprBtn = document.createElement('div');
+  const reprBtn = document.createElement('div');
   reprBtn.style.cssText = [
-    'background:' + hexToRgba(T.greenWarm, 0.15) + ';',
-    'color:' + T.greenWarm + ';',
-    'border:1px solid ' + hexToRgba(T.greenWarm, 0.3) + ';',
-    'font-family:' + T.fh + ';font-size:10px;font-weight:700;letter-spacing:1px;',
+    `background:${hexToRgba(T.greenWarm, 0.15)};`,
+    `color:${T.greenWarm};`,
+    `border:1px solid ${hexToRgba(T.greenWarm, 0.3)};`,
+    `font-family:${T.fh};font-size:10px;font-weight:700;letter-spacing:1px;`,
     'border-radius:999px;padding:4px 12px;',
     'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
     'user-select:none;-webkit-user-select:none;',
   ].join('');
   reprBtn.textContent = 'Reprint';
-  reprBtn.addEventListener('pointerup', function() {
+  reprBtn.addEventListener('pointerup', () => {
     if (handlers.onReprintCheck) handlers.onReprintCheck(chk);
   });
 
-  var reopBtn = document.createElement('div');
+  const reopBtn = document.createElement('div');
   reopBtn.style.cssText = [
-    'background:' + hexToRgba(T.verm, 0.12) + ';',
-    'color:' + T.verm + ';',
-    'border:1px solid ' + hexToRgba(T.verm, 0.3) + ';',
-    'font-family:' + T.fh + ';font-size:10px;font-weight:700;letter-spacing:1px;',
+    `background:${hexToRgba(T.verm, 0.12)};`,
+    `color:${T.verm};`,
+    `border:1px solid ${hexToRgba(T.verm, 0.3)};`,
+    `font-family:${T.fh};font-size:10px;font-weight:700;letter-spacing:1px;`,
     'border-radius:999px;padding:4px 12px;',
     'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
     'user-select:none;-webkit-user-select:none;',
   ].join('');
   reopBtn.textContent = 'Reopen';
-  reopBtn.addEventListener('pointerup', function() {
+  reopBtn.addEventListener('pointerup', () => {
     if (handlers.onReopenCheck) handlers.onReopenCheck(chk);
   });
 
@@ -918,31 +916,31 @@ function _buildClosedCheckRow(chk, handlers) {
 // tips, this is the yellow blocker. When all tips are adjusted, it becomes a
 // gold review card so the server can fix typos by tapping EDIT on any row.
 function buildTipsCard(state, handlers, tipFilter) {
-  var hasCards = state.unadjustedChecks.length > 0 || state.adjustedChecks.length > 0;
-  var hasUnadj = state.unadjustedChecks.length > 0;
-  var accentColor = !hasCards ? T.border : (hasUnadj ? T.warning : T.gold);
+  const hasCards = state.unadjustedChecks.length > 0 || state.adjustedChecks.length > 0;
+  const hasUnadj = state.unadjustedChecks.length > 0;
+  const accentColor = !hasCards ? T.border : (hasUnadj ? T.warning : T.gold);
 
-  var card = buildBaseCard({ accent: accentColor, stroke: accentColor });
+  const card = buildBaseCard({ accent: accentColor, stroke: accentColor });
   card.dataset.cardKey = 'unadjusted-tips';
 
   // Header row — icon + title + filter tabs on the right
-  var hdr = document.createElement('div');
+  const hdr = document.createElement('div');
   hdr.style.cssText = 'display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;';
 
-  var icon = document.createElement('div');
+  const icon = document.createElement('div');
   icon.style.cssText = [
     'width:18px;height:18px;border-radius:4px;flex-shrink:0;',
-    'background:' + hexToRgba(accentColor, 0.18) + ';',
+    `background:${hexToRgba(accentColor, 0.18)};`,
     'display:flex;align-items:center;justify-content:center;',
-    'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + accentColor + ';',
+    `font-family:${T.fb};font-size:14px;font-weight:700;color:${accentColor};`,
   ].join('');
   icon.textContent = (!hasCards || !hasUnadj) ? '\u2713' : '!';
 
-  var title = document.createElement('span');
-  title.style.cssText = 'flex:1;font-family:' + T.fh + ';font-size:13px;font-weight:700;color:' + accentColor + ';letter-spacing:1.8px;';
+  const title = document.createElement('span');
+  title.style.cssText = `flex:1;font-family:${T.fh};font-size:13px;font-weight:700;color:${accentColor};letter-spacing:1.8px;`;
   title.textContent = !hasCards
     ? 'CC TIPS'
-    : (hasUnadj ? 'UNADJUSTED TIPS \u2022 ' + state.unadjustedChecks.length : 'TIPS \u2022 ALL ADJUSTED');
+    : (hasUnadj ? `UNADJUSTED TIPS \u2022 ${state.unadjustedChecks.length}` : 'TIPS \u2022 ALL ADJUSTED');
 
   hdr.appendChild(icon);
   hdr.appendChild(title);
@@ -954,23 +952,23 @@ function buildTipsCard(state, handlers, tipFilter) {
   card.appendChild(hdr);
 
   // Row list — content depends on current filter
-  var list = document.createElement('div');
+  const list = document.createElement('div');
   list.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
 
   if (!hasCards) {
-    var emptyAll = document.createElement('div');
-    emptyAll.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.4;text-align:center;padding:10px 0;font-style:italic;' + ";font-weight:" + T.fwBold + ";";
+    const emptyAll = document.createElement('div');
+    emptyAll.style.cssText = `font-family:${T.fb};font-size:12px;color:${T.text};opacity:0.4;text-align:center;padding:10px 0;font-style:italic;;font-weight:${T.fwBold};`;
     emptyAll.textContent = 'no card checks today';
     list.appendChild(emptyAll);
   } else {
-    var showing = (tipFilter === 'adjusted') ? state.adjustedChecks : state.unadjustedChecks;
-    var mode = (tipFilter === 'adjusted') ? 'adjusted' : 'unadjusted';
-    showing.forEach(function(chk) {
+    const showing = (tipFilter === 'adjusted') ? state.adjustedChecks : state.unadjustedChecks;
+    const mode = (tipFilter === 'adjusted') ? 'adjusted' : 'unadjusted';
+    showing.forEach((chk) => {
       list.appendChild(buildTipRow(chk, mode, handlers));
     });
     if (!showing.length) {
-      var empty = document.createElement('div');
-      empty.style.cssText = 'font-family:' + T.fb + ';font-size:12px;color:' + T.text + ';opacity:0.45;text-align:center;padding:10px 0;font-style:italic;' + ";font-weight:" + T.fwBold + ";";
+      const empty = document.createElement('div');
+      empty.style.cssText = `font-family:${T.fb};font-size:12px;color:${T.text};opacity:0.45;text-align:center;padding:10px 0;font-style:italic;;font-weight:${T.fwBold};`;
       empty.textContent = tipFilter === 'adjusted' ? 'no adjusted tips yet' : 'all tips adjusted \u2014 ready to finalize';
       list.appendChild(empty);
     }
@@ -982,23 +980,23 @@ function buildTipsCard(state, handlers, tipFilter) {
 
 // Filter tab switcher — two pills, active one is filled, inactive is outlined.
 function buildTipFilterTabs(activeFilter, unadjCount, adjCount, handlers) {
-  var wrap = document.createElement('div');
+  let wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
 
-  var makeTab = function(key, label, count, activeColor) {
-    var active = activeFilter === key || (activeFilter == null && key === 'unadjusted' && unadjCount > 0);
-    var pill = document.createElement('div');
+  const makeTab = (key, label, count, activeColor) => {
+    const active = activeFilter === key || (activeFilter == null && key === 'unadjusted' && unadjCount > 0);
+    const pill = document.createElement('div');
     pill.style.cssText = [
       'padding:4px 10px;border-radius:999px;',
-      'font-family:' + T.fh + ';font-size:11px;font-weight:700;letter-spacing:1px;',
+      `font-family:${T.fh};font-size:11px;font-weight:700;letter-spacing:1px;`,
       'cursor:pointer;user-select:none;-webkit-user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       active
-        ? 'background:' + activeColor + ';color:' + T.well + ';'
-        : 'background:transparent;color:' + hexToRgba(T.text, 0.6) + ';border:1px solid ' + hexToRgba(T.text, 0.2) + ';',
+        ? `background:${activeColor};color:${T.well};`
+        : `background:transparent;color:${hexToRgba(T.text, 0.6)};border:1px solid ${hexToRgba(T.text, 0.2)};`,
     ].join('');
-    pill.textContent = label + ' ' + count;
-    pill.addEventListener('pointerup', function() {
+    pill.textContent = label + ` ${count}`;
+    pill.addEventListener('pointerup', () => {
       if (handlers.onTipFilterChange) handlers.onTipFilterChange(key);
     });
     return pill;
@@ -1011,56 +1009,56 @@ function buildTipFilterTabs(activeFilter, unadjCount, adjCount, handlers) {
 
 // Row for a single check — renders different action button based on mode.
 function buildTipRow(chk, mode, handlers) {
-  var row = document.createElement('div');
+  const row = document.createElement('div');
   row.style.cssText = [
     'display:flex;gap:10px;align-items:center;',
-    'padding:8px 12px;background:' + T.well + ';border-radius:8px;user-select:none;-webkit-user-select:none;touch-action:pan-y;',
+    `padding:8px 12px;background:${T.well};border-radius:8px;user-select:none;-webkit-user-select:none;touch-action:pan-y;`,
   ].join('');
 
-  var info = document.createElement('div');
+  const info = document.createElement('div');
   info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;';
-  var label = document.createElement('div');
-  label.style.cssText = 'font-family:' + T.fb + ';font-size:14px;font-weight:700;color:' + T.text + ';';
-  label.textContent = (chk.tableLabel ? chk.tableLabel + ' \u2022 ' : '') + 'Check ' + (chk.checkLabel || chk.checkId);
-  var meta = document.createElement('div');
-  meta.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';' + ";font-weight:" + T.fwBold + ";";
-  meta.textContent = 'closed ' + (chk.time || '') + (chk.cardBrand ? ' \u2022 ' + chk.cardBrand : '');
+  let label = document.createElement('div');
+  label.style.cssText = `font-family:${T.fb};font-size:14px;font-weight:700;color:${T.text};`;
+  label.textContent = (chk.tableLabel ? chk.tableLabel + ' \u2022 ' : '') + `Check ${(chk.checkLabel || chk.checkId)}`;
+  const meta = document.createElement('div');
+  meta.style.cssText = `font-family:${T.fb};font-size:13px;color:${hexToRgba(T.text, 0.6)};;font-weight:${T.fwBold};`;
+  meta.textContent = `closed ${(chk.time || '')}${(chk.cardBrand ? ' \u2022 ' + chk.cardBrand : '')}`;
   info.appendChild(label);
   info.appendChild(meta);
 
-  var amtCol = document.createElement('div');
+  const amtCol = document.createElement('div');
   amtCol.style.cssText = 'flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px;';
-  var sub = document.createElement('div');
-  sub.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.text, 0.6) + ';' + ";font-weight:" + T.fwBold + ";";
-  sub.innerHTML = '<span style="color:' + hexToRgba(T.text, 0.6) + ';margin-right:8px;">subtotal</span><span style="font-weight:700;color:' + T.gold + ';">' + fmt(chk.amount || 0) + '</span>';
-  var tip = document.createElement('div');
+  const sub = document.createElement('div');
+  sub.style.cssText = `font-family:${T.fb};font-size:14px;color:${hexToRgba(T.text, 0.6)};;font-weight:${T.fwBold};`;
+  sub.innerHTML = `<span style="color:${hexToRgba(T.text, 0.6)};margin-right:8px;">subtotal</span><span style="font-weight:700;color:${T.gold};">${fmt(chk.amount || 0)}</span>`;
+  const tip = document.createElement('div');
 
   if (mode === 'adjusted') {
     // Show the actual tip amount already entered
-    tip.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.green + ';' + ";font-weight:" + T.fwBold + ";";
-    tip.innerHTML = '<span style="color:' + hexToRgba(T.text, 0.6) + ';margin-right:8px;">tip</span><span style="font-weight:700;color:' + T.green + ';">' + fmt(chk.tip || 0) + '</span>';
+    tip.style.cssText = `font-family:${T.fb};font-size:14px;color:${T.green};;font-weight:${T.fwBold};`;
+    tip.innerHTML = `<span style="color:${hexToRgba(T.text, 0.6)};margin-right:8px;">tip</span><span style="font-weight:700;color:${T.green};">${fmt(chk.tip || 0)}</span>`;
   } else {
-    tip.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + T.warning + ';' + ";font-weight:" + T.fwBold + ";";
-    tip.innerHTML = '<span style="color:' + T.warning + ';margin-right:8px;">tip</span><span style="font-weight:700;">\u2014 pending</span>';
+    tip.style.cssText = `font-family:${T.fb};font-size:14px;color:${T.warning};;font-weight:${T.fwBold};`;
+    tip.innerHTML = `<span style="color:${T.warning};margin-right:8px;">tip</span><span style="font-weight:700;">\u2014 pending</span>`;
   }
 
   amtCol.appendChild(sub);
   amtCol.appendChild(tip);
 
-  var actionBtn;
+  let actionBtn;
   if (mode === 'adjusted') {
     actionBtn = buildRowPill({
       label: 'EDIT',
       variant: 'outline',
       width: 76,
-      onClick: function() { if (handlers.onEditTip) handlers.onEditTip(chk); },
+      onClick: () => { if (handlers.onEditTip) handlers.onEditTip(chk); },
     });
   } else {
     actionBtn = buildRowPill({
       label: 'ADJUST',
       variant: 'yellow',
       width: 76,
-      onClick: function() { if (handlers.onAdjustTip) handlers.onAdjustTip(chk); },
+      onClick: () => { if (handlers.onAdjustTip) handlers.onAdjustTip(chk); },
     });
   }
 
@@ -1072,28 +1070,28 @@ function buildTipRow(chk, mode, handlers) {
 
 // ── Compact pill button for row actions (32px tall) ──
 function buildRowPill(opts) {
-  var variant = opts.variant || 'elec';
-  var bg, fg, stroke = null;
+  const variant = opts.variant || 'elec';
+  let bg, fg, stroke = null;
   if (variant === 'elec')     { bg = T.elec;   fg = T.well; }
   else if (variant === 'yellow')  { bg = T.warning; fg = T.well; }
   else if (variant === 'verm')    { bg = T.verm;   fg = T.text; }
   else if (variant === 'outline') { bg = T.bg;     fg = T.text; stroke = hexToRgba(T.text, 0.2); }
   else                            { bg = T.elec;   fg = T.well; }
 
-  var wrap = document.createElement('div');
+  const wrap = document.createElement('div');
   wrap.style.cssText = [
     'flex-shrink:0;display:flex;align-items:center;justify-content:center;',
-    'height:32px;width:' + (opts.width || 120) + 'px;',
-    'background:' + bg + ';',
-    stroke ? 'border:1px solid ' + stroke + ';' : '',
+    `height:32px;width:${(opts.width || 120)}px;`,
+    `background:${bg};`,
+    stroke ? `border:1px solid ${stroke};` : '',
     'border-radius:999px;',
     'cursor:pointer;user-select:none;-webkit-user-select:none;',
     'pointer-events:auto;touch-action:manipulation;',
-    'font-family:' + T.fh + ';font-size:14px;font-weight:700;letter-spacing:1.2px;color:' + fg + ';',
+    `font-family:${T.fh};font-size:14px;font-weight:700;letter-spacing:1.2px;color:${fg};`,
     'box-shadow:0 2px 0 rgba(0,0,0,0.25);',
   ].join('');
   wrap.textContent = opts.label;
-  wrap.addEventListener('pointerup', function() {
+  wrap.addEventListener('pointerup', () => {
     if (opts.onClick) opts.onClick();
   });
   return wrap;
@@ -1105,13 +1103,13 @@ function buildRowPill(opts) {
 
 function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds, activeTab) {
   selectedCheckIds = selectedCheckIds || [];
-  var col = document.createElement('div');
+  const col = document.createElement('div');
   col.style.cssText = 'flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;';
 
-  var blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
+  const blocked = (state.openChecks.length + state.unadjustedChecks.length) > 0;
 
   // Card stack — scrollable
-  var cardStack = document.createElement('div');
+  const cardStack = document.createElement('div');
   cardStack.style.cssText = [
     'flex:1;overflow-y:auto;overflow-x:hidden;',
     'display:flex;flex-direction:column;gap:8px;padding-bottom:4px;',
@@ -1127,27 +1125,27 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds, activeTab)
   col.appendChild(cardStack);
 
   // Pinned finalize footer — right-aligned auto-width pill
-  var footer = document.createElement('div');
+  const footer = document.createElement('div');
   footer.style.cssText = 'flex-shrink:0;padding-top:8px;display:flex;flex-direction:column;gap:4px;align-items:flex-end;';
 
-  var finBtn = document.createElement('div');
+  const finBtn = document.createElement('div');
   if (blocked) {
     finBtn.style.cssText = [
       'padding:10px 18px;border-radius:8px;white-space:nowrap;',
-      'background:' + T.card + ';border:1.5px solid ' + T.border + ';',
+      `background:${T.card};border:1.5px solid ${T.border};`,
       'opacity:0.55;cursor:not-allowed;',
-      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;',
-      'color:' + T.text + ';letter-spacing:1.2px;',
+      `font-family:${T.fh};font-size:${FS_PILL_LG};font-weight:700;`,
+      `color:${T.text};letter-spacing:1.2px;`,
     ].join('');
   } else {
     finBtn.style.cssText = [
       'padding:10px 18px;border-radius:8px;white-space:nowrap;cursor:pointer;',
-      'background:' + T.greenWarm + ';',
-      'box-shadow:0 3px 0 ' + T.greenWarmDk + ';',
-      'font-family:' + T.fh + ';font-size:' + FS_PILL_LG + ';font-weight:700;',
+      `background:${T.greenWarm};`,
+      `box-shadow:0 3px 0 ${T.greenWarmDk};`,
+      `font-family:${T.fh};font-size:${FS_PILL_LG};font-weight:700;`,
       'color:#1a1a1a;letter-spacing:1.2px;',
     ].join('');
-    finBtn.addEventListener('click', function() {
+    finBtn.addEventListener('click', () => {
       if (handlers.onFinalize) handlers.onFinalize();
     });
   }
@@ -1155,15 +1153,15 @@ function buildMiddleCol(state, handlers, tipFilter, selectedCheckIds, activeTab)
   footer.appendChild(finBtn);
 
   if (blocked) {
-    var reason = document.createElement('div');
-    var openN  = state.openChecks.length;
-    var unadjN = state.unadjustedChecks.length;
-    var reasonMsg = openN > 0
-      ? openN + ' open check' + (openN === 1 ? '' : 's') + ' must be closed'
-      : unadjN + ' tip' + (unadjN === 1 ? '' : 's') + ' need adjustment';
+    const reason = document.createElement('div');
+    const openN  = state.openChecks.length;
+    const unadjN = state.unadjustedChecks.length;
+    const reasonMsg = openN > 0
+      ? openN + ` open check${(openN === 1 ? '' : 's')} must be closed`
+      : unadjN + ` tip${(unadjN === 1 ? '' : 's')} need adjustment`;
     reason.style.cssText = [
-      'font-family:' + T.fh + ';font-size:10px;font-weight:700;',
-      'color:' + T.verm + ';text-align:right;letter-spacing:0.6px;',
+      `font-family:${T.fh};font-size:10px;font-weight:700;`,
+      `color:${T.verm};text-align:right;letter-spacing:0.6px;`,
     ].join('');
     reason.textContent = reasonMsg;
     footer.appendChild(reason);
@@ -1190,7 +1188,7 @@ defineScene({
     _refreshing: false,
     el: null,
   },
-  render: function(container, params, state) {
+  render: (container, params, state) => {
     state.el = container;
     // ── Param normalization — accepts legacy { employeeId, employeeName }
     //    and new { staff, fromManager } shape from manager-landing.
@@ -1198,10 +1196,10 @@ defineScene({
     //    on which flow populated it (login currently sets employee_id);
     //    check both. Matches manager-landing's defensive read at line 659.
     params = params || {};
-    var employeeId   = params.employeeId
+    const employeeId   = params.employeeId
                        || (params.staff && (params.staff.id || params.staff.employee_id))
                        || null;
-    var employeeName = params.employeeName
+    const employeeName = params.employeeName
                        || (params.staff && params.staff.name)
                        || '';
     state.fromManager = !!params.fromManager;
@@ -1216,30 +1214,30 @@ defineScene({
     OrderSummary.hide();
 
     if (window._header && window._header.setBackHandler) {
-      window._header.setBackHandler(function() {
-        var target = state.fromManager ? 'manager-landing' : 'server-landing';
+      window._header.setBackHandler(() => {
+        let target = state.fromManager ? 'manager-landing' : 'server-landing';
         SceneManager.mountWorking(target, { staff: params.staff });
       });
     }
 
     container.style.cssText = [
       'width:100%;height:100%;',
-      'display:flex;flex-direction:column;gap:' + T.colGapSm + 'px;',
-      'padding:' + PAD_TOP + 'px ' + PAD + 'px ' + PAD + 'px ' + PAD + 'px;',
+      `display:flex;flex-direction:column;gap:${T.colGapSm}px;`,
+      `padding:${PAD_TOP}px ${PAD}px ${PAD}px ${PAD}px;`,
       'box-sizing:border-box;overflow:hidden;',
-      'background:' + T.bg + ';',
+      `background:${T.bg};`,
     ].join('');
 
     function refresh() {
       if (state._refreshing || !state.el) return;
       state._refreshing = true;
 
-      fetchServerState(params).then(function(newData) {
+      fetchServerState(params).then((newData) => {
         state._refreshing = false;
         if (!state.el) return;
         state.data = newData;
         rebuild();
-      }).catch(function(err) {
+      }).catch((err) => {
         state._refreshing = false;
         if (!state.el) return;
 
@@ -1247,25 +1245,25 @@ defineScene({
         // state.emp.id at login). Surface clearly so the server doesn't
         // see someone else's checks by accident.
         container.innerHTML = '';
-        var errPanel = document.createElement('div');
+        const errPanel = document.createElement('div');
         errPanel.style.cssText = [
           'flex:1;display:flex;align-items:center;justify-content:center;',
           'padding:40px;text-align:center;',
         ].join('');
-        var errCard = document.createElement('div');
+        const errCard = document.createElement('div');
         errCard.style.cssText = [
-          'background:' + T.card + ';border:2px solid ' + T.verm + ';',
+          `background:${T.card};border:2px solid ${T.verm};`,
           'border-radius:12px;padding:28px 36px;max-width:420px;',
           'display:flex;flex-direction:column;gap:10px;align-items:center;',
         ].join('');
-        var t = document.createElement('div');
-        t.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;color:' + T.verm + ';letter-spacing:2px;';
+        const t = document.createElement('div');
+        t.style.cssText = `font-family:${T.fh};font-size:14px;font-weight:700;color:${T.verm};letter-spacing:2px;`;
         t.textContent = 'CHECKOUT UNAVAILABLE';
-        var m = document.createElement('div');
-        m.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:' + T.text + ';line-height:1.5;' + ";font-weight:" + T.fwBold + ";";
+        const m = document.createElement('div');
+        m.style.cssText = `font-family:${T.fb};font-size:13px;color:${T.text};line-height:1.5;;font-weight:${T.fwBold};`;
         m.textContent = 'Your session is missing an employee ID. Log out and log back in to refresh it.';
-        var d = document.createElement('div');
-        d.style.cssText = 'font-family:' + T.fb + ';font-size:11px;color:' + hexToRgba(T.text, 0.6) + ';font-style:italic;margin-top:6px;' + ";font-weight:" + T.fwBold + ";";
+        const d = document.createElement('div');
+        d.style.cssText = `font-family:${T.fb};font-size:11px;color:${hexToRgba(T.text, 0.6)};font-style:italic;margin-top:6px;;font-weight:${T.fwBold};`;
         d.textContent = (err && err.message) || '';
         errCard.appendChild(t);
         errCard.appendChild(m);
@@ -1280,20 +1278,20 @@ defineScene({
       container.innerHTML = '';
 
       // Optional blocker banner across the top
-      var banner = buildBlockerBanner(state.data, state.startTime);
+      const banner = buildBlockerBanner(state.data, state.startTime);
       if (banner) container.appendChild(banner);
 
       // 3-column row
-      var body = document.createElement('div');
-      body.style.cssText = 'flex:1;display:flex;gap:' + T.colGapSm + 'px;min-height:0;overflow:hidden;';
+      const body = document.createElement('div');
+      body.style.cssText = `flex:1;display:flex;gap:${T.colGapSm}px;min-height:0;overflow:hidden;`;
 
-      var handlers = {
-        onBack: function() {
+      const handlers = {
+        onBack: () => {
           OrderSummary.hide();
-          var target = state.fromManager ? 'manager-landing' : 'server-landing';
+          let target = state.fromManager ? 'manager-landing' : 'server-landing';
           SceneManager.mountWorking(target, { staff: params.staff });
         },
-        onPrint: function() {
+        onPrint: () => {
           if (state._printing) return;
           state._printing = true;
           // Print the server's shift summary slip (the "server checkout"
@@ -1309,35 +1307,35 @@ defineScene({
               employee_id:   state.data.employeeId,
               employee_name: state.data.employeeName,
             }),
-          }, 8000).then(function(r) {
+          }, 8000).then((r) => {
             state._printing = false;
             if (r.ok) {
               showToast('Slip printed', { bg: T.greenWarm });
             } else if (r.status === 404) {
               showToast('Print endpoint pending \u2014 server_checkout.py template needed', { bg: T.warning });
             } else {
-              showToast('Print failed (' + r.status + ') \u2014 check printer', { bg: T.verm });
+              showToast(`Print failed (${r.status}) \u2014 check printer`, { bg: T.verm });
             }
-          }).catch(function() {
+          }).catch(() => {
             state._printing = false;
             showToast('Print failed \u2014 check printer connection', { bg: T.verm });
           });
         },
-        onFinalize: function() {
+        onFinalize: () => {
           // Full finalize flow: manager PIN → confirm totals → POST → return
           // to server-landing. On any backend error, stay on scene and surface
           // an actionable message — never give false success to the server.
           SceneManager.interrupt('co-manager-pin', {
-            onConfirm: function(authData) {
+            onConfirm: (authData) => {
               SceneManager.closeInterrupt('co-manager-pin');
               // Brief defer so the PIN interrupt unmounts before the next one
               // mounts — avoids visual overlap of the two panels.
-              setTimeout(function() {
+              setTimeout(() => {
                 SceneManager.interrupt('co-finalize-confirm', {
                   takeHome:     state.data.takeHome,
                   cashExpected: state.data.cashExpected,
                   employeeName: state.data.employeeName,
-                  onConfirm: function() {
+                  onConfirm: () => {
                     if (state._finalizing) return;
                     state._finalizing = true;
                     SceneManager.closeInterrupt('co-finalize-confirm');
@@ -1353,7 +1351,7 @@ defineScene({
                         cash_expected:        state.data.cashExpected,
                         manager_pin_verified: true,
                       }),
-                    }).then(function(r) {
+                    }).then((r) => {
                       if (r.ok) {
                         showToast('Checkout finalized', { bg: T.green });
                         OrderSummary.hide();
@@ -1369,34 +1367,34 @@ defineScene({
                         showToast('Finalize endpoint pending — backend work needed', { bg: T.warning });
                       } else {
                         state._finalizing = false;
-                        showToast('Finalize failed (' + r.status + ') — try again', { bg: T.verm });
+                        showToast(`Finalize failed (${r.status}) — try again`, { bg: T.verm });
                       }
-                    }).catch(function() {
+                    }).catch(() => {
                       state._finalizing = false;
                       showToast('Finalize unavailable — ask your manager', { bg: T.verm });
                     });
                   },
-                  onCancel: function() {
+                  onCancel: () => {
                     SceneManager.closeInterrupt('co-finalize-confirm');
                   },
                 });
               }, 80);
             },
-            onCancel: function() {
+            onCancel: () => {
               SceneManager.closeInterrupt('co-manager-pin');
             },
           });
         },
-        onAdjustTip: function(chk) {
+        onAdjustTip: (chk) => {
           // Opens the single-check tip-adjust transactional from checkout-core.
           // On success, that scene calls onDone → we refresh → the card rebuilds
           // without this row (and collapses when the last unadjusted is cleared).
           SceneManager.openTransactional('co-adjust-single', {
             check: chk,
-            onDone: function() { refresh(); },
+            onDone: () => { refresh(); },
           });
         },
-        onEditTip: function(chk) {
+        onEditTip: (chk) => {
           // Reopens the same single-adjust scene but with the existing tip
           // pre-filled so the server can fix a typo. The scene reads chk.tip
           // as the initial value when present.
@@ -1404,15 +1402,15 @@ defineScene({
             check: chk,
             initialTip: chk.tip,
             mode: 'edit',
-            onDone: function() { refresh(); },
+            onDone: () => { refresh(); },
           });
         },
-        onTipFilterChange: function(filter) {
+        onTipFilterChange: (filter) => {
           // User tapped the UNADJ/ADJ filter tab — update state and rebuild.
           state.tipFilter = filter;
           rebuild();
         },
-        onTransferChecks: function(checks) {
+        onTransferChecks: (checks) => {
           // Open the server-picker interrupt. On confirm, POST transfer for
           // each selected check. All-or-nothing is not guaranteed — if a
           // mid-batch transfer fails, we surface the specific failure and
@@ -1420,41 +1418,41 @@ defineScene({
           SceneManager.interrupt('co-transfer-picker', {
             checks: checks,
             currentEmpId: state.data.employeeId,
-            onConfirm: function(destServer) {
+            onConfirm: (destServer) => {
               SceneManager.closeInterrupt('co-transfer-picker');
 
-              var transfers = checks.map(function(chk) {
-                return fetchWithTimeout('/api/v1/orders/' + (chk.checkId || chk.check_id) + '/transfer', {
+              const transfers = checks.map((chk) => {
+                return fetchWithTimeout(`/api/v1/orders/${(chk.checkId || chk.check_id)}/transfer`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     to_server_id: destServer.id,
                     from_server_id: state.data.employeeId,
                   }),
-                }, 10000).then(function(r) {
-                  return { chk: chk, ok: r.ok, status: r.status };
-                }).catch(function() {
-                  return { chk: chk, ok: false, status: 0 };
+                }, 10000).then((r) => {
+                  return { chk, ok: r.ok, status: r.status };
+                }).catch(() => {
+                  return { chk, ok: false, status: 0 };
                 });
               });
 
-              Promise.all(transfers).then(function(results) {
-                var ok = results.filter(function(r) { return r.ok; });
-                var failed = results.filter(function(r) { return !r.ok; });
+              Promise.all(transfers).then((results) => {
+                let ok = results.filter((r) => r.ok);
+                let failed = results.filter((r) => !r.ok);
 
                 if (ok.length > 0 && failed.length === 0) {
                   showToast(
-                    'Transferred ' + ok.length + (ok.length === 1 ? ' check' : ' checks') + ' to ' + destServer.name,
+                    `Transferred ${ok.length}${(ok.length === 1 ? ' check' : ' checks')} to ${destServer.name}`,
                     { bg: T.elec }
                   );
                 } else if (ok.length > 0 && failed.length > 0) {
                   showToast(
-                    ok.length + ' transferred, ' + failed.length + ' failed',
+                    ok.length + ` transferred, ${failed.length} failed`,
                     { bg: T.warning }
                   );
                 } else {
                   // All failed — likely the endpoint doesn't exist yet.
-                  var code = failed[0] && failed[0].status;
+                  let code = failed[0] && failed[0].status;
                   showToast(
                     code === 404
                       ? 'Transfer endpoint pending \u2014 backend work needed'
@@ -1469,18 +1467,18 @@ defineScene({
                 refresh();
               });
             },
-            onCancel: function() {
+            onCancel: () => {
               SceneManager.closeInterrupt('co-transfer-picker');
             },
           });
         },
-        onCloseCheck: function(checks) {
+        onCloseCheck: (checks) => {
           // When exactly one check selected, jump into check-overview for that
           // specific check so the server can finish the payment flow. When
           // multiple are selected, we don't have a combined-payment scene yet,
           // so surface a Phase D toast rather than silently picking the first.
           if (checks.length === 1) {
-            var chk = checks[0];
+            const chk = checks[0];
             SceneManager.mountWorking('check-overview', {
               checkId:       chk.checkId    || chk.check_id,
               checkLabel:    chk.checkLabel || chk.check_label,
@@ -1489,37 +1487,37 @@ defineScene({
               returnLanding: state.fromManager ? 'manager-landing' : 'server-landing',
             });
           } else {
-            showToast('Combined payment for ' + checks.length + ' checks — Phase D', { bg: T.gold });
+            showToast(`Combined payment for ${checks.length} checks — Phase D`, { bg: T.gold });
           }
         },
-        onPrintCheck: function(checks) {
+        onPrintCheck: (checks) => {
           // Print is a routine action — no manager gate. Fires one request
           // per selected check. Backend endpoint TBD; 404 handled gracefully.
-          var label = checks.length > 1 ? checks.length + ' checks' : (checks[0].checkLabel || checks[0].checkId);
-          showToast('Printing ' + label + '\u2026', { bg: T.greenWarm });
+          const label = checks.length > 1 ? checks.length + ' checks' : (checks[0].checkLabel || checks[0].checkId);
+          showToast(`Printing ${label}\u2026`, { bg: T.greenWarm });
 
-          var prints = checks.map(function(chk) {
-            return fetchWithTimeout('/api/v1/checks/' + (chk.checkId || chk.check_id) + '/print', {
+          const prints = checks.map((chk) => {
+            return fetchWithTimeout(`/api/v1/checks/${(chk.checkId || chk.check_id)}/print`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ kind: 'guest' }),
-            }, 10000).then(function(r) {
-              return { chk: chk, ok: r.ok, status: r.status };
-            }).catch(function() {
-              return { chk: chk, ok: false, status: 0 };
+            }, 10000).then((r) => {
+              return { chk, ok: r.ok, status: r.status };
+            }).catch(() => {
+              return { chk, ok: false, status: 0 };
             });
           });
 
-          Promise.all(prints).then(function(results) {
-            var ok = results.filter(function(r) { return r.ok; });
-            var failed = results.filter(function(r) { return !r.ok; });
+          Promise.all(prints).then((results) => {
+            const ok = results.filter((r) => r.ok);
+            const failed = results.filter((r) => !r.ok);
 
             if (ok.length > 0 && failed.length === 0) {
-              showToast('Printed ' + ok.length + (ok.length === 1 ? ' check' : ' checks'), { bg: T.greenWarm });
+              showToast(`Printed ${ok.length}${(ok.length === 1 ? ' check' : ' checks')}`, { bg: T.greenWarm });
             } else if (ok.length > 0 && failed.length > 0) {
-              showToast(ok.length + ' printed, ' + failed.length + ' failed', { bg: T.warning });
+              showToast(ok.length + ` printed, ${failed.length} failed`, { bg: T.warning });
             } else {
-              var code = failed[0] && failed[0].status;
+              const code = failed[0] && failed[0].status;
               showToast(
                 code === 404
                   ? 'Print endpoint pending \u2014 backend work needed'
@@ -1529,27 +1527,27 @@ defineScene({
             }
           });
         },
-        onDiscountCheck: function(checks) {
+        onDiscountCheck: (checks) => {
           SceneManager.interrupt('co-manager-action', {
             action: 'discount',
             checks: checks,
-            onConfirm: function(result) {
+            onConfirm: (result) => {
               SceneManager.closeInterrupt('co-manager-action');
 
-              var discount = result.discount;
-              var discLabel = discount.type === 'comp'
+              const discount = result.discount;
+              const discLabel = discount.type === 'comp'
                 ? 'Comp'
                 : discount.type === 'percent'
                   ? discount.value + '% off'
-                  : '$' + discount.value + ' off';
+                  : `$${discount.value} off`;
 
-              var okCount = result.results.filter(function(r) { return r.ok; }).length;
-              var failCount = result.results.length - okCount;
+              let okCount = result.results.filter((r) => r.ok).length;
+              let failCount = result.results.length - okCount;
 
               if (okCount > 0 && failCount === 0) {
-                showToast(discLabel + ' applied to ' + okCount + (okCount === 1 ? ' check' : ' checks'), { bg: T.elec });
+                showToast(discLabel + ` applied to ${okCount}${(okCount === 1 ? ' check' : ' checks')}`, { bg: T.elec });
               } else if (okCount > 0 && failCount > 0) {
-                showToast(okCount + ' discounted, ' + failCount + ' failed', { bg: T.warning });
+                showToast(okCount + ` discounted, ${failCount} failed`, { bg: T.warning });
               } else {
                 showToast('Discount failed — try again', { bg: T.verm });
               }
@@ -1557,25 +1555,25 @@ defineScene({
               state.selectedCheckIds = [];
               refresh();
             },
-            onCancel: function() {
+            onCancel: () => {
               SceneManager.closeInterrupt('co-manager-action');
             },
           });
         },
-                onVoidCheck: function(checks) {
+                onVoidCheck: (checks) => {
           SceneManager.interrupt('co-manager-action', {
             action: 'void',
             checks: checks,
-            onConfirm: function(result) {
+            onConfirm: (result) => {
               SceneManager.closeInterrupt('co-manager-action');
 
-              var okCount = result.results.filter(function(r) { return r.ok; }).length;
-              var failCount = result.results.length - okCount;
+              const okCount = result.results.filter((r) => r.ok).length;
+              const failCount = result.results.length - okCount;
 
               if (okCount > 0 && failCount === 0) {
-                showToast('Voided ' + okCount + (okCount === 1 ? ' check' : ' checks'), { bg: T.verm });
+                showToast(`Voided ${okCount}${(okCount === 1 ? ' check' : ' checks')}`, { bg: T.verm });
               } else if (okCount > 0 && failCount > 0) {
-                showToast(okCount + ' voided, ' + failCount + ' failed', { bg: T.warning });
+                showToast(okCount + ` voided, ${failCount} failed`, { bg: T.warning });
               } else {
                 showToast('Void failed — try again', { bg: T.verm });
               }
@@ -1583,30 +1581,30 @@ defineScene({
               state.selectedCheckIds = [];
               refresh();
             },
-            onCancel: function() {
+            onCancel: () => {
               SceneManager.closeInterrupt('co-manager-action');
             },
           });
         },
-                onJumpToCard: function(cardKey) {
+                onJumpToCard: (cardKey) => {
           // Smooth-scroll middle column to the target blocker card and flash
           // a brief highlight. Cards are tagged with data-card-key.
-          var target = container.querySelector('[data-card-key="' + cardKey + '"]');
+          const target = container.querySelector(`[data-card-key="${cardKey}"]`);
           if (!target) return;
           target.scrollIntoView({ behavior: 'smooth', block: 'start' });
           // Flash effect — quick outline pulse.
-          var originalShadow = target.style.boxShadow;
+          const originalShadow = target.style.boxShadow;
           target.style.transition = 'box-shadow 0.3s ease';
-          target.style.boxShadow = '0 0 0 3px ' + hexToRgba(T.text, 0.35);
-          setTimeout(function() {
+          target.style.boxShadow = `0 0 0 3px ${hexToRgba(T.text, 0.35)}`;
+          setTimeout(() => {
             target.style.boxShadow = originalShadow || '';
           }, 600);
         },
-        onSelectCheck: function(chk) {
+        onSelectCheck: (chk) => {
           // Toggle this check's id in the selection array. Tap to add, tap
           // again to remove. No cap on how many can be selected.
-          var id = chk.checkId || chk.check_id;
-          var idx = state.selectedCheckIds.indexOf(id);
+          const id = chk.checkId || chk.check_id;
+          const idx = state.selectedCheckIds.indexOf(id);
           if (idx !== -1) {
             state.selectedCheckIds.splice(idx, 1);
           } else {
@@ -1614,39 +1612,39 @@ defineScene({
           }
           rebuild();
         },
-        onDismissPreview: function() {
+        onDismissPreview: () => {
           state.selectedCheckIds = [];
           rebuild();
         },
-        onPrintSlip: function() {
+        onPrintSlip: () => {
           if (handlers.onPrint) handlers.onPrint();
         },
-        onAdjustRates: function() {
+        onAdjustRates: () => {
           SceneManager.interrupt('co-manager-pin', {
-            onConfirm: function() {
+            onConfirm: () => {
               SceneManager.closeInterrupt('co-manager-pin');
               showToast('Tipout rate adjustment — pending backend', { bg: T.warning });
             },
-            onCancel: function() {
+            onCancel: () => {
               SceneManager.closeInterrupt('co-manager-pin');
             },
           });
         },
-        onTabChange: function(tab) {
+        onTabChange: (tab) => {
           state.activeTab = tab;
           rebuild();
         },
-        onReprintCheck: function(chk) {
-          showToast('Reprinting ' + (chk.checkLabel || chk.checkId) + '…', { bg: T.elec });
+        onReprintCheck: (chk) => {
+          showToast(`Reprinting ${(chk.checkLabel || chk.checkId)}…`, { bg: T.elec });
         },
-        onReopenCheck: function(chk) {
+        onReopenCheck: (chk) => {
           SceneManager.interrupt('co-manager-pin', {
-            onConfirm: function() {
+            onConfirm: () => {
               SceneManager.closeInterrupt('co-manager-pin');
-              showToast('Reopening ' + (chk.checkLabel || chk.checkId) + ' — backend pending', { bg: T.warning });
+              showToast(`Reopening ${(chk.checkLabel || chk.checkId)} — backend pending`, { bg: T.warning });
               refresh();
             },
-            onCancel: function() {
+            onCancel: () => {
               SceneManager.closeInterrupt('co-manager-pin');
             },
           });
@@ -1656,15 +1654,15 @@ defineScene({
       // Resolve the active tip filter. Defaults to 'unadjusted' when there
       // are unadjusted tips (blocker case), 'adjusted' when all done. Scene
       // state overrides the default once the user explicitly taps a tab.
-      var resolvedFilter = state.tipFilter;
+      let resolvedFilter = state.tipFilter;
       if (!resolvedFilter) {
         resolvedFilter = state.data.unadjustedChecks.length > 0 ? 'unadjusted' : 'adjusted';
       }
 
       // Stale-cleanup: drop any IDs that no longer correspond to an open
       // check (e.g. server paid one elsewhere, or refresh returned fewer).
-      state.selectedCheckIds = state.selectedCheckIds.filter(function(id) {
-        return state.data.openChecks.some(function(c) { return c.checkId === id; });
+      state.selectedCheckIds = state.selectedCheckIds.filter((id) => {
+        return state.data.openChecks.some((c) => c.checkId === id);
       });
 
       body.appendChild(buildLeftCol(state.data, handlers));
@@ -1674,7 +1672,7 @@ defineScene({
     }
 
     refresh();
-    var poll = setInterval(refresh, 15000);
+    const poll = setInterval(refresh, 15000);
 
     return function cleanup() {
       state.el = null;

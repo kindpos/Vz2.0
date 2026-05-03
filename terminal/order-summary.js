@@ -8,30 +8,30 @@ import { T } from '../common/tokens.js';
 import { SceneManager } from './scene-manager.js';
 import { hexToRgba, buildCard, buildSectionLabel, buildDataRow, buildDivider } from './theme-manager.js';
 
-var _el = null;          // #order-summary container
-var _card = null;        // buildCard return
-var _itemScroll = null;  // scrollable item list
-var _summaryBox = null;  // subtotal/discount/tax box
-var _pricesBox = null;   // card/cash prices box
-var _paidRow = null;     // dynamic paid row
-var _remainRow = null;   // dynamic remaining row
-var _checkIdEl = null;   // check ID display
-var _nameEl = null;      // customer name display (tappable)
-var _onNameTap = null;   // callback when check ID / name is tapped
-var _splitBtn = null;    // split button ref
-var _headerTitle = null; // header title element ref
-var _backBtn = null;     // back button ref
-var _onBack = null;      // callback for back button
-var _colHead = null;     // column header container ref
-var _summaryRowEl = null;// summary row (contains summary box + split btn)
-var _mode = 'order';     // 'order' or 'checkout'
-var _collapsible = false;
-var _onItemTap = null;
-var _onSeatHeaderTap = null;
-var _expandedItems = {};
-var _itemRenderLocked = false;
-var _customTitle = null;
-var _totalsMode = 'payment';  // 'payment' (default — sub/tax + card/cash) or 'building' (order-entry — sub/tax/total, no card/cash)
+let _el = null;          // #order-summary container
+let _card = null;        // buildCard return
+let _itemScroll = null;  // scrollable item list
+let _summaryBox = null;  // subtotal/discount/tax box
+let _pricesBox = null;   // card/cash prices box
+let _paidRow = null;     // dynamic paid row
+let _remainRow = null;   // dynamic remaining row
+let _checkIdEl = null;   // check ID display
+let _nameEl = null;      // customer name display (tappable)
+let _onNameTap = null;   // callback when check ID / name is tapped
+let _splitBtn = null;    // split button ref
+let _headerTitle = null; // header title element ref
+let _backBtn = null;     // back button ref
+let _onBack = null;      // callback for back button
+let _colHead = null;     // column header container ref
+let _summaryRowEl = null;// summary row (contains summary box + split btn)
+let _mode = 'order';     // 'order' or 'checkout'
+let _collapsible = false;
+let _onItemTap = null;
+let _onSeatHeaderTap = null;
+const _expandedItems = {};
+let _itemRenderLocked = false;
+let _customTitle = null;
+let _totalsMode = 'payment';  // 'payment' (default — sub/tax + card/cash) or 'building' (order-entry — sub/tax/total, no card/cash)
 
 // Muted text helper — lowers T.text opacity for label/sub text.
 function _muted() { return hexToRgba(T.text, 0.55); }
@@ -39,7 +39,7 @@ function _muted() { return hexToRgba(T.text, 0.55); }
 // Apply the Vz2.0 "inset well" look to a box (used for summary + prices panels).
 function _applyWellStyle(box) {
   box.style.background   = T.well;
-  box.style.borderLeft   = T.accentBarW + ' solid ' + T.green;
+  box.style.borderLeft   = T.accentBarW + ` solid ${T.green}`;
   box.style.borderRadius = '8px';
   box.style.boxSizing    = 'border-box';
 }
@@ -54,12 +54,12 @@ function _container() {
 // ═══════════════════════════════════════════════════
 
 function _build() {
-  var el = _container();
+  let el = _container();
   if (!el) return;
   el.innerHTML = '';
 
   // Use buildCard for the main container
-  var cardRes = buildCard({
+  const cardRes = buildCard({
     accent: T.green,
     padding: '0'
   });
@@ -67,32 +67,32 @@ function _build() {
   _card.style.display = 'flex';
   _card.style.flexDirection = 'column';
   _card.style.height = '100%';
-  var wrap = cardRes.wrap;
+  let wrap = cardRes.wrap;
   wrap.style.display = 'none';
   wrap.style.flexDirection = 'column';
   wrap.style.height = '100%';
   el.appendChild(wrap);
 
   // ── Header ──
-  var header = document.createElement('div');
+  const header = document.createElement('div');
   header.style.cssText = [
     'padding:10px 14px;flex-shrink:0;',
     'display:flex;align-items:center;',
     'gap:8px;',
-    'border-bottom:1px solid ' + hexToRgba(T.green, 0.3),
-    'margin-left:' + T.accentBarW, // Align with content to the right of the accent bar
+    `border-bottom:1px solid ${hexToRgba(T.green, 0.3)}`,
+    `margin-left:${T.accentBarW}`, // Align with content to the right of the accent bar
   ].join('');
 
   _backBtn = document.createElement('div');
   _backBtn.style.cssText = [
     'display:none;flex-shrink:0;',
-    'font-family:' + T.fh + ';font-size:28px;',
-    'font-weight:' + T.fwBold + ';color:' + T.green + ';',
+    `font-family:${T.fh};font-size:28px;`,
+    `font-weight:${T.fwBold};color:${T.green};`,
     'cursor:pointer;user-select:none;',
     'padding:0 4px 0 0;line-height:1;margin-top:-2px;',
   ].join('');
   _backBtn.textContent = '‹';
-  _backBtn.addEventListener('pointerup', function() {
+  _backBtn.addEventListener('pointerup', () => {
     if (_onBack) _onBack();
   });
   header.appendChild(_backBtn);
@@ -100,7 +100,7 @@ function _build() {
   _headerTitle = buildSectionLabel('ITEM RECAP', T.green);
   _headerTitle.style.flex = '1';
 
-  var checkWrap = document.createElement('div');
+  const checkWrap = document.createElement('div');
   checkWrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;cursor:pointer;min-width:0;touch-action:manipulation;';
 
   _checkIdEl = buildSectionLabel('', hexToRgba(T.text, 0.55));
@@ -109,15 +109,15 @@ function _build() {
 
   _nameEl = document.createElement('div');
   _nameEl.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + T.fsB4 + ';',
-    'color:' + hexToRgba(T.text, 0.4) + ';',
+    `font-family:${T.fb};`,
+    `font-size:${T.fsB4};`,
+    `color:${hexToRgba(T.text, 0.4)};`,
     'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;',
     'text-transform:uppercase;',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
+  ].join('') + `;font-weight:${T.fwBold};`;
   checkWrap.appendChild(_checkIdEl);
   checkWrap.appendChild(_nameEl);
-  checkWrap.addEventListener('pointerup', function() {
+  checkWrap.addEventListener('pointerup', () => {
     if (_onNameTap) _onNameTap();
   });
   header.appendChild(_headerTitle);
@@ -130,20 +130,20 @@ function _build() {
     'display:grid;grid-template-columns:1fr 40px 68px;align-items:center;',
     'padding:6px 12px;',
     'flex-shrink:0;',
-    'margin-left:' + T.accentBarW,
+    `margin-left:${T.accentBarW}`,
   ].join('');
 
-  var hdrItem = buildSectionLabel('ITEM', hexToRgba(T.text, 0.55));
-  var hdrQty = buildSectionLabel('QTY', hexToRgba(T.text, 0.55));
+  let hdrItem = buildSectionLabel('ITEM', hexToRgba(T.text, 0.55));
+  let hdrQty = buildSectionLabel('QTY', hexToRgba(T.text, 0.55));
   hdrQty.style.textAlign = 'right';
-  var hdrPrice = buildSectionLabel('PRICE', hexToRgba(T.text, 0.55));
+  let hdrPrice = buildSectionLabel('PRICE', hexToRgba(T.text, 0.55));
   hdrPrice.style.textAlign = 'right';
 
   _colHead.appendChild(hdrItem);
   _colHead.appendChild(hdrQty);
   _colHead.appendChild(hdrPrice);
   _card.appendChild(_colHead);
-  _card.appendChild(buildDivider('0 0 0 ' + T.accentBarW));
+  _card.appendChild(buildDivider(`0 0 0 ${T.accentBarW}`));
 
   // ── Scrollable items ──
   _itemScroll = document.createElement('div');
@@ -154,7 +154,7 @@ function _build() {
     'padding:4px 10px;',
     'scrollbar-width:none;-ms-overflow-style:none;',
     'display:flex;flex-direction:column;gap:4px;',
-    'margin-left:' + T.accentBarW,
+    `margin-left:${T.accentBarW}`,
   ].join('');
   // Kill the scrollbar on webkit
   _injectScrollStyle();
@@ -165,7 +165,7 @@ function _build() {
   _summaryRowEl.style.cssText = [
     'flex-shrink:0;display:flex;gap:6px;',
     'padding:6px 8px;',
-    'margin-left:' + T.accentBarW,
+    `margin-left:${T.accentBarW}`,
     'flex-shrink:0;',
   ].join('');
 
@@ -181,18 +181,18 @@ function _build() {
   _pricesBox = document.createElement('div');
   _pricesBox.style.cssText = [
     'flex-shrink:0;padding:8px 12px;margin:0 8px 8px;',
-    'margin-left:calc(' + T.accentBarW + ' + 8px)',
+    `margin-left:calc(${T.accentBarW} + 8px)`,
     'flex-shrink:0;',
   ].join('');
   _applyWellStyle(_pricesBox);
   _card.appendChild(_pricesBox);
 }
 
-var _scrollStyleInjected = false;
+let _scrollStyleInjected = false;
 function _injectScrollStyle() {
   if (_scrollStyleInjected) return;
   if (document.getElementById('os-scroll-style')) { _scrollStyleInjected = true; return; }
-  var s = document.createElement('style');
+  let s = document.createElement('style');
   s.id = 'os-scroll-style';
   s.textContent = '#ticket-list::-webkit-scrollbar{display:none}';
   document.head.appendChild(s);
@@ -204,44 +204,44 @@ function _injectScrollStyle() {
 // ═══════════════════════════════════════════════════
 
 function _modRow(mod) {
-  var modRow = document.createElement('div');
+  const modRow = document.createElement('div');
   modRow.style.cssText = [
     'display:grid;grid-template-columns:1fr 72px;gap:0 6px;',
     'padding:0 0 1px 10px;',
-    'font-family:' + T.fb + ';',
-    'font-size:' + T.fsB3 + ';',
-    'color:' + T.green + ';',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
-  var modName = document.createElement('div');
+    `font-family:${T.fb};`,
+    `font-size:${T.fsB3};`,
+    `color:${T.green};`,
+  ].join('') + `;font-weight:${T.fwBold};`;
+  const modName = document.createElement('div');
   modName.textContent = mod.name;
   modName.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-  var modPrice = document.createElement('div');
-  modPrice.style.cssText = 'text-align:right;color:' + T.gold + ';';
-  modPrice.textContent = mod.price > 0 ? '+$' + mod.price.toFixed(2) : '';
+  const modPrice = document.createElement('div');
+  modPrice.style.cssText = `text-align:right;color:${T.gold};`;
+  modPrice.textContent = mod.price > 0 ? `+$${mod.price.toFixed(2)}` : '';
   modRow.appendChild(modName);
   modRow.appendChild(modPrice);
   return modRow;
 }
 
 function _halfCell(mod) {
-  var td = document.createElement('div');
-  td.style.cssText = 'flex:1;padding:1px 2px;color:' + T.green + ';';
+  const td = document.createElement('div');
+  td.style.cssText = `flex:1;padding:1px 2px;color:${T.green};`;
   if (!mod) return td;
-  var nameEl = document.createElement('div');
-  nameEl.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:' + (mod.price > 0 ? '12px' : '14px') + ';' + ";font-weight:" + T.fwBold + ";";
+  const nameEl = document.createElement('div');
+  nameEl.style.cssText = `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:${(mod.price > 0 ? '12px' : '14px')};;font-weight:${T.fwBold};`;
   nameEl.textContent = mod.name;
   if (mod.price > 0) {
-    var pr = document.createElement('span');
+    const pr = document.createElement('span');
     pr.style.color = T.gold;
-    pr.textContent = ' +$' + mod.price.toFixed(2);
+    pr.textContent = ` +$${mod.price.toFixed(2)}`;
     nameEl.appendChild(pr);
   }
   td.appendChild(nameEl);
   // Special exclusion children (secondary mods)
   if (mod.children && mod.children.length > 0) {
-    for (var c = 0; c < mod.children.length; c++) {
-      var childEl = document.createElement('div');
-      childEl.style.cssText = 'font-size:11px;color:' + T.verm + ';font-style:italic;padding-left:4px;' + ";font-weight:" + T.fwBold + ";";
+    for (let c = 0; c < mod.children.length; c++) {
+      const childEl = document.createElement('div');
+      childEl.style.cssText = `font-size:11px;color:${T.verm};font-style:italic;padding-left:4px;;font-weight:${T.fwBold};`;
       childEl.textContent = mod.children[c].name;
       td.appendChild(childEl);
     }
@@ -250,9 +250,9 @@ function _halfCell(mod) {
 }
 
 function _summaryRow(label, value, color, bold) {
-  var row = buildDataRow(label, value, color || T.gold);
+  let row = buildDataRow(label, value, color || T.gold);
   if (bold) {
-    var val = row.querySelector('span:last-child');
+    const val = row.querySelector('span:last-child');
     if (val) val.style.fontWeight = T.fwBold;
   }
   return row;
@@ -261,41 +261,41 @@ function _summaryRow(label, value, color, bold) {
 function _renderItems(items) {
   if (!_itemScroll) return;
   if (_itemRenderLocked) return;
-  var savedScroll = _itemScroll.scrollTop;
+  const savedScroll = _itemScroll.scrollTop;
   _itemScroll.innerHTML = '';
-  var isCollapsible = _collapsible;
-  (items || []).forEach(function(item, itemIndex) {
+  const isCollapsible = _collapsible;
+  (items || []).forEach((item, itemIndex) => {
     // ── Seat header divider ──
     if (item.seatHeader) {
-      var hdr = document.createElement('div');
+      let hdr = document.createElement('div');
       hdr.style.cssText = [
         'display:flex;align-items:center;gap:10px;',
         'padding:8px 10px;margin:8px 0 4px;',
         'cursor:pointer;user-select:none;touch-action:manipulation;',
-        'background:' + T.card + ';',
+        `background:${T.card};`,
         'border-radius:6px;',
-        'border-bottom:1px dashed ' + hexToRgba(T.green, 0.35) + ';',
+        `border-bottom:1px dashed ${hexToRgba(T.green, 0.35)};`,
       ].join('');
 
-      var seatNum = document.createElement('div');
+      const seatNum = document.createElement('div');
       seatNum.style.cssText = [
-        'font-family:' + T.fh + ';font-size:32px;font-weight:' + T.fwBold + ';',
-        'color:' + T.green + ';line-height:1;min-width:36px;',
+        `font-family:${T.fh};font-size:32px;font-weight:${T.fwBold};`,
+        `color:${T.green};line-height:1;min-width:36px;`,
       ].join('');
       // Extract number from "SEAT 1" or similar
-      var numOnly = (item.seatId || '').replace(/\D/g, '');
+      const numOnly = (item.seatId || '').replace(/\D/g, '');
       seatNum.textContent = numOnly || '?';
 
-      var meta = document.createElement('div');
+      const meta = document.createElement('div');
       meta.style.cssText = 'display:flex;flex-direction:column;gap:2px;flex:1;';
 
-      var label = buildSectionLabel('SEAT', hexToRgba(T.text, 0.35));
+      let label = buildSectionLabel('SEAT', hexToRgba(T.text, 0.35));
       label.style.fontSize = '9px';
       label.style.letterSpacing = '0.15em';
 
-      var total = document.createElement('div');
-      total.style.cssText = 'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';';
-      total.textContent = '$' + (item.seatTotal || 0).toFixed(2);
+      let total = document.createElement('div');
+      total.style.cssText = `font-family:${T.fb};font-size:${T.fsB3};font-weight:${T.fwBold};color:${T.gold};`;
+      total.textContent = `$${(item.seatTotal || 0).toFixed(2)}`;
 
       meta.appendChild(label);
       meta.appendChild(total);
@@ -304,8 +304,8 @@ function _renderItems(items) {
       hdr.appendChild(meta);
 
       if (_onSeatHeaderTap && item.seatIdx != null) {
-        (function(idx) {
-          hdr.addEventListener('pointerup', function() {
+        ((idx) => {
+          hdr.addEventListener('pointerup', () => {
             _onSeatHeaderTap(idx);
           });
         })(item.seatIdx);
@@ -314,14 +314,14 @@ function _renderItems(items) {
       return;
     }
 
-    var mods = item.mods || [];
-    var hasMods = mods.length > 0;
+    const mods = item.mods || [];
+    const hasMods = mods.length > 0;
 
     // ── Item header row ──
-    var isSel = !!item.selected;
-    var row = buildDataRow('', '', isSel ? T.well : T.gold);
+    const isSel = !!item.selected;
+    const row = buildDataRow('', '', isSel ? T.well : T.gold);
     row.style.padding = '4px 10px 2px';
-    row.style.borderBottom = '1px solid ' + hexToRgba(T.border, 0.4);
+    row.style.borderBottom = `1px solid ${hexToRgba(T.border, 0.4)}`;
     if (isSel) {
       row.style.background = T.gold;
       row.style.borderRadius = '6px';
@@ -333,7 +333,7 @@ function _renderItems(items) {
     }
 
     // Customize the label part
-    var lblContainer = row.querySelector('span:first-child');
+    const lblContainer = row.querySelector('span:first-child');
     lblContainer.innerHTML = '';
     lblContainer.style.display = 'flex';
     lblContainer.style.alignItems = 'center';
@@ -343,20 +343,20 @@ function _renderItems(items) {
     lblContainer.style.minWidth = '0';
 
     if (item.sent) {
-      var check = document.createElement('span');
+      const check = document.createElement('span');
       check.textContent = '\u2713 ';
       check.style.color = T.greenWarm;
       lblContainer.appendChild(check);
       row.style.opacity = '0.55';
     }
 
-    var qtyPrefix = document.createElement('span');
+    const qtyPrefix = document.createElement('span');
     qtyPrefix.textContent = (item.qty || 1) + '×';
     qtyPrefix.style.color = isSel ? T.well : hexToRgba(T.text, 0.55);
     qtyPrefix.style.fontSize = T.fsB3;
     lblContainer.appendChild(qtyPrefix);
 
-    var nameSpan = document.createElement('span');
+    const nameSpan = document.createElement('span');
     nameSpan.textContent = item.name;
     nameSpan.style.overflow = 'hidden';
     nameSpan.style.textOverflow = 'ellipsis';
@@ -364,17 +364,17 @@ function _renderItems(items) {
     lblContainer.appendChild(nameSpan);
 
     // Set the price
-    row.setValue('$' + ((item.unitPrice || 0) * (item.qty || 1)).toFixed(2));
+    row.setValue(`$${((item.unitPrice || 0) * (item.qty || 1)).toFixed(2)}`);
 
     // Info chevron only in collapsible mode
-    var arrow = null;
+    let arrow = null;
     if (isCollapsible && hasMods) {
       arrow = document.createElement('span');
-      arrow.style.cssText = 'flex-shrink:0;margin-left:4px;font-size:14px;color:' + _muted() + ';cursor:pointer;' + ";font-weight:" + T.fwBold + ";";
+      arrow.style.cssText = `flex-shrink:0;margin-left:4px;font-size:14px;color:${_muted()};cursor:pointer;;font-weight:${T.fwBold};`;
       arrow.textContent = '›';
-      arrow.addEventListener('pointerup', function(e) {
+      arrow.addEventListener('pointerup', (e) => {
         e.stopPropagation();
-        SceneManager.openTransactional('item-detail', { item: item });
+        SceneManager.openTransactional('item-detail', { item });
       });
       row.appendChild(arrow);
     }
@@ -383,8 +383,8 @@ function _renderItems(items) {
 
     // Attach tap handler for item selection + expand/collapse
     if (isCollapsible) {
-      (function(idx) {
-        row.addEventListener('pointerup', function() {
+      ((idx) => {
+        row.addEventListener('pointerup', () => {
           if (_onItemTap) _onItemTap(idx);
         });
       })(itemIndex);
@@ -398,11 +398,11 @@ function _renderItems(items) {
 function _renderSummary(params) {
   if (!_summaryBox) return;
   _summaryBox.innerHTML = '';
-  _summaryBox.appendChild(buildDataRow('Subtotal', '$' + (params.subtotal || 0).toFixed(2), T.gold));
+  _summaryBox.appendChild(buildDataRow('Subtotal', `$${(params.subtotal || 0).toFixed(2)}`, T.gold));
   if (params.discount && params.discount > 0) {
-    _summaryBox.appendChild(buildDataRow('Discount', '$' + params.discount.toFixed(2), T.gold));
+    _summaryBox.appendChild(buildDataRow('Discount', `$${params.discount.toFixed(2)}`, T.gold));
   }
-  _summaryBox.appendChild(buildDataRow('Tax', '$' + (params.tax || 0).toFixed(2), T.gold));
+  _summaryBox.appendChild(buildDataRow('Tax', `$${(params.tax || 0).toFixed(2)}`, T.gold));
 
   // Building mode (order-entry): emphasize TOTAL inside the summary card
   // since the prices box is hidden. Use cardTotal when supplied (the result
@@ -410,11 +410,11 @@ function _renderSummary(params) {
   // local sum for callers that don't pass it.
   if (_totalsMode === 'building') {
     _summaryBox.appendChild(buildDivider('4px 0'));
-    var total = (params.cardTotal != null)
+    const total = (params.cardTotal != null)
       ? params.cardTotal
       : ((params.subtotal || 0) - (params.discount || 0) + (params.tax || 0));
-    var totalRow = buildDataRow('Total', '$' + total.toFixed(2), T.gold);
-    var totalVal = totalRow.querySelector('span:last-child');
+    const totalRow = buildDataRow('Total', `$${total.toFixed(2)}`, T.gold);
+    const totalVal = totalRow.querySelector('span:last-child');
     if (totalVal) {
       totalVal.style.fontSize = '17px';
       totalVal.style.fontWeight = T.fwBold;
@@ -438,15 +438,15 @@ function _renderPrices(params) {
   _pricesBox.style.display = '';
 
   _pricesBox.innerHTML = '';
-  _pricesBox.appendChild(buildDataRow('CARD PRICE', '$' + (params.cardTotal || 0).toFixed(2), T.elec));
-  _pricesBox.appendChild(buildDataRow('CASH PRICE', '$' + (params.cashPrice || 0).toFixed(2), T.greenWarm));
+  _pricesBox.appendChild(buildDataRow('CARD PRICE', `$${(params.cardTotal || 0).toFixed(2)}`, T.elec));
+  _pricesBox.appendChild(buildDataRow('CASH PRICE', `$${(params.cashPrice || 0).toFixed(2)}`, T.greenWarm));
 
   // Dynamic split-progress rows (hidden until partial payment)
   _paidRow = buildDataRow('Paid', '$0.00', T.elec);
   _paidRow.style.display = 'none';
   _pricesBox.appendChild(_paidRow);
 
-  _remainRow = buildDataRow('Remaining', '$' + (params.cardTotal || 0).toFixed(2), T.elec);
+  _remainRow = buildDataRow('Remaining', `$${(params.cardTotal || 0).toFixed(2)}`, T.elec);
   _remainRow.style.display = 'none';
   _pricesBox.appendChild(_remainRow);
 
@@ -472,10 +472,10 @@ function _configureForMode(mode) {
       _colHead.style.gridTemplateColumns = '1fr 40px 68px';
       _colHead.innerHTML = '';
 
-      var hdrItem = buildSectionLabel('ITEM', hexToRgba(T.text, 0.55));
-      var hdrQty = buildSectionLabel('QTY', hexToRgba(T.text, 0.55));
+      const hdrItem = buildSectionLabel('ITEM', hexToRgba(T.text, 0.55));
+      const hdrQty = buildSectionLabel('QTY', hexToRgba(T.text, 0.55));
       hdrQty.style.textAlign = 'right';
-      var hdrPrice = buildSectionLabel('PRICE', hexToRgba(T.text, 0.55));
+      const hdrPrice = buildSectionLabel('PRICE', hexToRgba(T.text, 0.55));
       hdrPrice.style.textAlign = 'right';
 
       _colHead.appendChild(hdrItem);
@@ -491,19 +491,19 @@ function _renderCheckoutBreakdown(params) {
   if (!_itemScroll) return;
   _itemScroll.innerHTML = '';
 
-  var sections = params.sections || [];
-  for (var s = 0; s < sections.length; s++) {
-    var sec = sections[s];
+  const sections = params.sections || [];
+  for (let s = 0; s < sections.length; s++) {
+    const sec = sections[s];
 
-    var hdr = buildSectionLabel(sec.title, T.text);
+    const hdr = buildSectionLabel(sec.title, T.text);
     hdr.style.padding = '6px 0 2px';
     if (s > 0) {
       _itemScroll.appendChild(buildDivider('4px 0'));
     }
     _itemScroll.appendChild(hdr);
 
-    var rows = sec.rows || [];
-    for (var r = 0; r < rows.length; r++) {
+    const rows = sec.rows || [];
+    for (let r = 0; r < rows.length; r++) {
       _itemScroll.appendChild(buildDataRow(rows[r].label, rows[r].value, T.gold));
     }
   }
@@ -512,8 +512,8 @@ function _renderCheckoutBreakdown(params) {
 function _renderCheckoutSummary(params) {
   if (!_summaryBox) return;
   _summaryBox.innerHTML = '';
-  _summaryBox.appendChild(buildDataRow('Cash Sales', '$' + (params.cashSales || 0).toFixed(2), T.gold));
-  _summaryBox.appendChild(buildDataRow('Tips', '$' + (params.tips || 0).toFixed(2), T.gold));
+  _summaryBox.appendChild(buildDataRow('Cash Sales', `$${(params.cashSales || 0).toFixed(2)}`, T.gold));
+  _summaryBox.appendChild(buildDataRow('Tips', `$${(params.tips || 0).toFixed(2)}`, T.gold));
   _applyWellStyle(_summaryBox);
 }
 
@@ -521,17 +521,17 @@ function _renderCashExpected(params) {
   if (!_pricesBox) return;
   _pricesBox.innerHTML = '';
 
-  var label = buildSectionLabel('CASH EXPECTED', T.text);
+  const label = buildSectionLabel('CASH EXPECTED', T.text);
   label.style.textAlign = 'center';
   label.style.marginBottom = '2px';
   _pricesBox.appendChild(label);
 
-  var heroVal = '$' + (params.cashExpected || 0).toFixed(2);
-  var hero = buildDataRow('', heroVal, T.gold);
+  const heroVal = `$${(params.cashExpected || 0).toFixed(2)}`;
+  const hero = buildDataRow('', heroVal, T.gold);
   hero.style.borderBottom = 'none';
-  var lblPart = hero.querySelector('span:first-child');
+  const lblPart = hero.querySelector('span:first-child');
   if (lblPart) lblPart.style.display = 'none';
-  var valPart = hero.querySelector('span:last-child');
+  const valPart = hero.querySelector('span:last-child');
   if (valPart) {
     valPart.style.width = '100%';
     valPart.style.textAlign = 'center';
@@ -549,11 +549,11 @@ function _renderCashExpected(params) {
 //  PUBLIC API
 // ═══════════════════════════════════════════════════
 
-export var OrderSummary = {
+export const OrderSummary = {
 
-  show: function(params) {
+  show: (params) => {
     params = params || {};
-    var el = _container();
+    let el = _container();
     if (!el) return;
 
     if (!_itemScroll) _build();
@@ -578,11 +578,11 @@ export var OrderSummary = {
     SceneManager.showSummary();
 
     // Ensure wrap is visible (it might have been hidden in _build)
-    var wrap = el.querySelector('div');
+    let wrap = el.querySelector('div');
     if (wrap) wrap.style.display = 'flex';
   },
 
-  hide: function() {
+  hide: () => {
     _onNameTap = null;
     _onItemTap = null;
     _onBack = null;
@@ -590,18 +590,18 @@ export var OrderSummary = {
     SceneManager.hideSummary();
   },
 
-  lockItemRender: function() { _itemRenderLocked = true; },
-  unlockItemRender: function() { _itemRenderLocked = false; },
+  lockItemRender: () => { _itemRenderLocked = true; },
+  unlockItemRender: () => { _itemRenderLocked = false; },
 
-  showBack: function(show) {
+  showBack: (show) => {
     if (_backBtn) _backBtn.style.display = show ? 'block' : 'none';
   },
 
-  setOnBack: function(fn) {
+  setOnBack: (fn) => {
     _onBack = fn;
   },
 
-  update: function(params) {
+  update: (params) => {
     params = params || {};
     if (_checkIdEl && params.checkId !== undefined) _checkIdEl.textContent = params.checkId;
     if (_nameEl && params.customerName !== undefined) _nameEl.textContent = params.customerName || '';
@@ -614,21 +614,21 @@ export var OrderSummary = {
     _renderPrices(params);
   },
 
-  updateSplit: function(opts) {
+  updateSplit: (opts) => {
     opts = opts || {};
     if (_paidRow) {
       _paidRow.style.display = 'flex';
-      _paidRow.setValue('$' + (opts.totalPaid || 0).toFixed(2));
+      _paidRow.setValue(`$${(opts.totalPaid || 0).toFixed(2)}`);
     }
     if (_remainRow) {
       _remainRow.style.display = 'flex';
-      _remainRow.setValue('$' + (opts.remaining || 0).toFixed(2));
+      _remainRow.setValue(`$${(opts.remaining || 0).toFixed(2)}`);
     }
   },
 
-  showCheckout: function(params) {
+  showCheckout: (params) => {
     params = params || {};
-    var el = _container();
+    const el = _container();
     if (!el) return;
     if (!_itemScroll) _build();
     // Reset totals mode so a stale 'building' from a previous order-entry
@@ -649,11 +649,11 @@ export var OrderSummary = {
     SceneManager.showSummary();
 
     // Ensure wrap is visible
-    var wrap = el.querySelector('div');
+    const wrap = el.querySelector('div');
     if (wrap) wrap.style.display = 'flex';
   },
 
-  updateCheckout: function(params) {
+  updateCheckout: (params) => {
     params = params || {};
     if (_headerTitle && params.title) _headerTitle.textContent = params.title;
     if (_checkIdEl && params.label !== undefined) _checkIdEl.textContent = params.label;
@@ -662,7 +662,5 @@ export var OrderSummary = {
     _renderCashExpected(params);
   },
 
-  getElement: function() {
-    return _container();
-  },
+  getElement: () => _container(),
 };

@@ -47,7 +47,7 @@ const _bus = {};
 const _transitionHooks = [];
 
 // ── Summary visibility ────────────────────────────
-var _summaryVisible = false;
+let _summaryVisible = false;
 
 // ═══════════════════════════════════════════════════
 //  REGISTRATION
@@ -70,7 +70,7 @@ function hasScene(name) {
 // ═══════════════════════════════════════════════════
 
 function init() {
-  var terminal = document.getElementById('terminal');
+  const terminal = document.getElementById('terminal');
   if (!terminal) {
     console.error('SceneManager.init: #terminal not found');
     return;
@@ -84,25 +84,25 @@ function init() {
   _layerGate          = document.getElementById('layer-gate');
 
   _applyLayerGeometry();
-  onThemeChange(function() { _applyLayerGeometry(); });
+  onThemeChange(() => { _applyLayerGeometry(); });
 }
 
 function _applyLayerGeometry() {
-  var hH       = T.headerH + 'px';
-  var bodyH    = 'calc(100% - ' + hH + ')';
-  var summaryW = T.pcLeftW;
-  var sceneLeft = _summaryVisible ? (summaryW + T.colGapSm) + 'px' : '0';
-  var sceneW    = _summaryVisible ? 'calc(100% - ' + sceneLeft + ')' : '100%';
+  const hH       = `${T.headerH}px`;
+  const bodyH    = `calc(100% - ${hH})`;
+  const summaryW = T.pcLeftW;
+  const sceneLeft = _summaryVisible ? `${summaryW + T.colGapSm}px` : '0';
+  const sceneW    = _summaryVisible ? `calc(100% - ${sceneLeft})` : '100%';
 
   if (_layerSummary) {
     _layerSummary.style.top    = hH;
     _layerSummary.style.left   = '0';
-    _layerSummary.style.width  = summaryW + 'px';
+    _layerSummary.style.width  = `${summaryW}px`;
     _layerSummary.style.height = bodyH;
     _layerSummary.style.zIndex = T.zSummary;
   }
 
-  [_layerWorking, _layerTransactional, _layerInterrupt].forEach(function(el) {
+  [_layerWorking, _layerTransactional, _layerInterrupt].forEach((el) => {
     if (!el) return;
     el.style.top    = hH;
     el.style.left   = sceneLeft;
@@ -130,8 +130,8 @@ function _applyLayerGeometry() {
 // ═══════════════════════════════════════════════════
 
 function openGate(sceneName) {
-  var scene = _scenes[sceneName];
-  if (!scene) return console.error('SceneManager.openGate: "' + sceneName + '" not registered');
+  const scene = _scenes[sceneName];
+  if (!scene) return console.error(`SceneManager.openGate: "${sceneName}" not registered`);
 
   // Tear down a prior gate before stacking — otherwise the old one's DOM +
   // cleanup are leaked when _gateScene is reassigned.
@@ -146,12 +146,12 @@ function openGate(sceneName) {
     closeGate(_gateScene.name);
   }
 
-  var scrim = document.createElement('div');
+  const scrim = document.createElement('div');
   scrim.className = 'layer-scrim layer-scrim-gate';
-  scrim.style.cssText = 'position:absolute;inset:0;background:' + T.scrimGate + ';';
+  scrim.style.cssText = `position:absolute;inset:0;background:${T.scrimGate};`;
   _layerGate.appendChild(scrim);
 
-  var container = document.createElement('div');
+  const container = document.createElement('div');
   container.className = 'layer-content';
   container.dataset.scene = sceneName;
   container.style.cssText = 'position:absolute;inset:0;';
@@ -159,14 +159,14 @@ function openGate(sceneName) {
 
   _layerGate.style.pointerEvents = 'auto';
 
-  var cleanup = scene.mount(container, {});
-  _gateScene = { name: sceneName, cleanup: cleanup, scrim: scrim, container: container };
+  const cleanup = scene.mount(container, {});
+  _gateScene = { name: sceneName, cleanup, scrim, container };
 }
 
 function closeGate(sceneName) {
   if (!_gateScene || _gateScene.name !== sceneName) return;
 
-  var scene = _scenes[_gateScene.name];
+  const scene = _scenes[_gateScene.name];
   if (scene && scene.unmount) scene.unmount();
   if (typeof _gateScene.cleanup === 'function') _gateScene.cleanup();
 
@@ -185,29 +185,29 @@ function closeGate(sceneName) {
 function mountWorking(sceneName, params) {
   if (params === undefined) params = {};
 
-  var scene = _scenes[sceneName];
-  if (!scene) return console.error('SceneManager.mountWorking: "' + sceneName + '" not registered');
+  const scene = _scenes[sceneName];
+  if (!scene) return console.error(`SceneManager.mountWorking: "${sceneName}" not registered`);
 
-  _transitionHooks.forEach(function(fn) { fn(); });
+  _transitionHooks.forEach((fn) => { fn(); });
 
   if (_workingScene) _unmountWorkingInternal();
 
-  var container = document.createElement('div');
+  const container = document.createElement('div');
   container.className = 'layer-content';
   container.dataset.scene = sceneName;
   container.style.cssText = 'position:absolute;inset:0;';
   _layerWorking.appendChild(container);
 
-  var cleanup = scene.mount(container, params);
-  _workingScene = { name: sceneName, cleanup: cleanup, container: container };
+  const cleanup = scene.mount(container, params);
+  _workingScene = { name: sceneName, cleanup, container };
 
-  _emit('working:mounted', { sceneName: sceneName });
+  _emit('working:mounted', { sceneName });
 }
 
 function unmountWorking(sceneName) {
   if (!_workingScene || _workingScene.name !== sceneName) return;
   _unmountWorkingInternal();
-  _emit('working:unmounted', { sceneName: sceneName });
+  _emit('working:unmounted', { sceneName });
 }
 
 function _unmountWorkingInternal() {
@@ -218,7 +218,7 @@ function _unmountWorkingInternal() {
   // in their layer with live timers and unreachable DOM.
   if (_interruptScene) resolveInterrupt();
   if (_transactionalStack.length > 0) closeAllTransactional();
-  var scene = _scenes[_workingScene.name];
+  const scene = _scenes[_workingScene.name];
   if (scene && scene.unmount) scene.unmount();
   if (typeof _workingScene.cleanup === 'function') _workingScene.cleanup();
   _workingScene.container.remove();
@@ -232,23 +232,23 @@ function _unmountWorkingInternal() {
 function openTransactional(sceneName, params) {
   if (params === undefined) params = {};
 
-  var scene = _scenes[sceneName];
-  if (!scene) return console.error('SceneManager.openTransactional: "' + sceneName + '" not registered');
+  const scene = _scenes[sceneName];
+  if (!scene) return console.error(`SceneManager.openTransactional: "${sceneName}" not registered`);
 
-  _transitionHooks.forEach(function(fn) { fn(); });
-  _emit('transactional:opening', { sceneName: sceneName });
+  _transitionHooks.forEach((fn) => { fn(); });
+  _emit('transactional:opening', { sceneName });
 
-  var scrim = document.createElement('div');
+  const scrim = document.createElement('div');
   scrim.className = 'layer-scrim layer-scrim-transactional';
-  scrim.style.cssText = 'position:absolute;inset:0;background:' + T.scrimInterrupt + ';';
+  scrim.style.cssText = `position:absolute;inset:0;background:${T.scrimInterrupt};`;
   _layerTransactional.appendChild(scrim);
 
-  var frame = document.createElement('div');
+  const frame = document.createElement('div');
   frame.className = 'layer-frame layer-frame-transactional';
   frame.style.cssText = 'position:absolute;inset:0;';
   _layerTransactional.appendChild(frame);
 
-  var container = document.createElement('div');
+  const container = document.createElement('div');
   container.className = 'layer-content';
   container.dataset.scene = sceneName;
   container.style.cssText = 'width:100%;height:100%;position:relative;';
@@ -257,30 +257,30 @@ function openTransactional(sceneName, params) {
   _layerTransactional.style.pointerEvents = 'auto';
 
   frame.classList.add('layer-transactional-enter');
-  requestAnimationFrame(function() {
-    requestAnimationFrame(function() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
       frame.classList.remove('layer-transactional-enter');
     });
   });
 
-  var cleanup = scene.mount(container, params);
+  const cleanup = scene.mount(container, params);
   _transactionalStack.push({
-    name: sceneName, cleanup: cleanup,
-    scrim: scrim, frame: frame, container: container,
+    name: sceneName, cleanup,
+    scrim, frame, container,
   });
 
-  _emit('transactional:opened', { sceneName: sceneName });
+  _emit('transactional:opened', { sceneName });
 }
 
 function closeTransactional(sceneName) {
-  var idx = -1;
-  for (var i = _transactionalStack.length - 1; i >= 0; i--) {
+  let idx = -1;
+  for (let i = _transactionalStack.length - 1; i >= 0; i--) {
     if (_transactionalStack[i].name === sceneName) { idx = i; break; }
   }
   if (idx === -1) return;
 
-  var entry = _transactionalStack[idx];
-  var scene = _scenes[entry.name];
+  const entry = _transactionalStack[idx];
+  const scene = _scenes[entry.name];
   if (scene && scene.unmount) scene.unmount();
   if (typeof entry.cleanup === 'function') entry.cleanup();
 
@@ -292,7 +292,7 @@ function closeTransactional(sceneName) {
     _layerTransactional.style.pointerEvents = 'none';
   }
 
-  _emit('transactional:closed', { sceneName: sceneName });
+  _emit('transactional:closed', { sceneName });
 }
 
 function closeAllTransactional() {
@@ -308,8 +308,8 @@ function closeAllTransactional() {
 function interruptFn(sceneName, params, onConfirm, onCancel) {
   if (params === undefined) params = {};
 
-  var scene = _scenes[sceneName];
-  if (!scene) return console.error('SceneManager.interrupt: "' + sceneName + '" not registered');
+  const scene = _scenes[sceneName];
+  if (!scene) return console.error(`SceneManager.interrupt: "${sceneName}" not registered`);
 
   // Two calling styles are in the wild:
   //   positional:  interrupt('x', params, onConfirm, onCancel)
@@ -320,8 +320,8 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
   // callback never fired and the sub-scene's data was discarded. Pull the
   // user callbacks out of both places and forward any args the sub-scene
   // passes (e.g. the PIN result from co-manager-pin).
-  var userConfirm = onConfirm || (params && params.onConfirm) || null;
-  var userCancel  = onCancel  || (params && params.onCancel)  || null;
+  const userConfirm = onConfirm || (params && params.onConfirm) || null;
+  const userCancel  = onCancel  || (params && params.onCancel)  || null;
 
   // An interrupt already on screen must be torn down before we stack a new one,
   // otherwise its DOM + cleanup are leaked when _interruptScene is reassigned.
@@ -336,20 +336,20 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
     resolveInterrupt();
   }
 
-  var scrim = document.createElement('div');
+  const scrim = document.createElement('div');
   scrim.className = 'layer-scrim layer-scrim-interrupt';
-  scrim.style.cssText = 'position:absolute;inset:0;background:' + T.scrimInterrupt + ';';
+  scrim.style.cssText = `position:absolute;inset:0;background:${T.scrimInterrupt};`;
   _layerInterrupt.appendChild(scrim);
 
   // Frame is a transparent full-layer surface — captures input while an
   // interrupt is open. Legacy 2px rectangular border removed; the card
   // chrome is the scene's responsibility (see buildCard / co-manager-pin).
-  var frame = document.createElement('div');
+  const frame = document.createElement('div');
   frame.className = 'layer-frame layer-frame-interrupt';
   frame.style.cssText = 'position:absolute;inset:0;';
   _layerInterrupt.appendChild(frame);
 
-  var container = document.createElement('div');
+  const container = document.createElement('div');
   container.className = 'layer-content';
   container.dataset.scene = sceneName;
   container.style.cssText = 'width:100%;height:100%;position:relative;';
@@ -361,8 +361,8 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
   // the user's callback. Try/catch around the user call so a crashing handler
   // can't leave the interrupt half-torn-down; the error is reported but the
   // resolve still ran.
-  var wrappedConfirm = function() {
-    var args = Array.prototype.slice.call(arguments);
+  const wrappedConfirm = function() {
+    const args = Array.prototype.slice.call(arguments);
     resolveInterrupt(sceneName);
     if (userConfirm) {
       try { userConfirm.apply(null, args); }
@@ -378,8 +378,8 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
       }
     }
   };
-  var wrappedCancel = function() {
-    var args = Array.prototype.slice.call(arguments);
+  const wrappedCancel = function() {
+    const args = Array.prototype.slice.call(arguments);
     resolveInterrupt(sceneName);
     if (userCancel) {
       try { userCancel.apply(null, args); }
@@ -396,26 +396,26 @@ function interruptFn(sceneName, params, onConfirm, onCancel) {
     }
   };
 
-  var mountParams = Object.assign({}, params, {
+  const mountParams = Object.assign({}, params, {
     onConfirm: wrappedConfirm,
     onCancel:  wrappedCancel,
   });
 
-  var cleanup = scene.mount(container, mountParams);
+  const cleanup = scene.mount(container, mountParams);
   _interruptScene = {
-    name: sceneName, cleanup: cleanup,
-    scrim: scrim, frame: frame, container: container,
+    name: sceneName, cleanup,
+    scrim, frame, container,
   };
 
-  _emit('interrupt:opened', { sceneName: sceneName });
+  _emit('interrupt:opened', { sceneName });
 }
 
 function resolveInterrupt(sceneName) {
   if (!_interruptScene) return;
   if (sceneName && _interruptScene.name !== sceneName) return;
 
-  var scene = _scenes[_interruptScene.name];
-  var name  = _interruptScene.name;
+  const scene = _scenes[_interruptScene.name];
+  const name  = _interruptScene.name;
   if (scene && scene.unmount) scene.unmount();
   if (typeof _interruptScene.cleanup === 'function') _interruptScene.cleanup();
 
@@ -464,23 +464,23 @@ function on(event, handler) {
 
 function off(event, handler) {
   if (!_bus[event]) return;
-  _bus[event] = _bus[event].filter(function(h) { return h !== handler; });
+  _bus[event] = _bus[event].filter((h) => h !== handler);
 }
 
 function _emit(event, data) {
   if (!_bus[event]) return;
-  var handlers = _bus[event].slice();
-  for (var i = 0; i < handlers.length; i++) {
+  const handlers = _bus[event].slice();
+  for (let i = 0; i < handlers.length; i++) {
     try { handlers[i](data); }
     catch (e) {
-      console.error('Event handler error [' + event + ']:', e);
+      console.error(`Event handler error [${event}]:`, e);
       // UI-002 — a bus handler threw. Usually because it's touching scene
       // state after the scene unmounted; worth surfacing in the bug report.
       entReport({
         code: 'UI-002',
         source: 'scene-manager._emit',
-        message: 'Bus handler raised on "' + event + '"',
-        ctx: { event: event, error: String(e && e.message || e).slice(0, 200) },
+        message: `Bus handler raised on "${event}"`,
+        ctx: { event, error: String(e && e.message || e).slice(0, 200) },
         level: 'ERROR',
       });
     }
@@ -494,7 +494,7 @@ function emit(event, data) { _emit(event, data); }
 // ═══════════════════════════════════════════════════
 
 function getActiveWorking()      { return _workingScene ? _workingScene.name : null; }
-function getTransactionalStack() { return _transactionalStack.map(function(e) { return e.name; }); }
+function getTransactionalStack() { return _transactionalStack.map((e) => e.name); }
 function hasInterrupt()          { return _interruptScene !== null; }
 
 // ═══════════════════════════════════════════════════
@@ -508,7 +508,7 @@ function onBeforeTransition(fn) {
   // just stays until reload. Added because _transitionHooks used to be
   // append-only and leaked hooks across scene lifetimes.
   return function removeBeforeTransition() {
-    var idx = _transitionHooks.indexOf(fn);
+    const idx = _transitionHooks.indexOf(fn);
     if (idx !== -1) _transitionHooks.splice(idx, 1);
   };
 }
@@ -578,11 +578,11 @@ export const SceneManager = {
 function _deepCopy(obj) {
   if (obj === null || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) {
-    return obj.map(function(v) { return _deepCopy(v); });
+    return obj.map((v) => _deepCopy(v));
   }
-  var copy = {};
-  var keys = Object.keys(obj);
-  for (var j = 0; j < keys.length; j++) {
+  const copy = {};
+  const keys = Object.keys(obj);
+  for (let j = 0; j < keys.length; j++) {
     copy[keys[j]] = _deepCopy(obj[keys[j]]);
   }
   return copy;
@@ -590,16 +590,16 @@ function _deepCopy(obj) {
 
 function _registerSubScene(name, subDef) {
   if (!subDef || !subDef.render) {
-    console.error('defineScene: sub-scene "' + name + '" must have a render function');
+    console.error(`defineScene: sub-scene "${name}" must have a render function`);
     return;
   }
   SceneManager.register({
-    name: name,
-    mount: function(container, params) {
+    name,
+    mount: (container, params) => {
       if (params === undefined) params = {};
       return subDef.render(container, params);
     },
-    unmount: function() {
+    unmount: () => {
       if (subDef.unmount) subDef.unmount();
     },
   });
@@ -617,34 +617,34 @@ export function defineScene(def, opts) {
     return;
   }
   if (!def.render) {
-    console.error('defineScene: "' + def.name + '" must have a render function');
+    console.error(`defineScene: "${def.name}" must have a render function`);
     return;
   }
 
-  var defaultState = def.state ? _deepCopy(def.state) : {};
-  var currentState = null;
-  var boundEvents  = [];
+  const defaultState = def.state ? _deepCopy(def.state) : {};
+  let currentState = null;
+  let boundEvents  = [];
 
-  var scene = {
+  const scene = {
     name: def.name,
-    mount: function(container, params) {
+    mount: (container, params) => {
       if (params === undefined) params = {};
       currentState = _deepCopy(defaultState);
 
       if (def.events) {
-        var evKeys = Object.keys(def.events);
-        for (var i = 0; i < evKeys.length; i++) {
-          var evName  = evKeys[i];
-          var handler = def.events[evName];
+        const evKeys = Object.keys(def.events);
+        for (let i = 0; i < evKeys.length; i++) {
+          const evName  = evKeys[i];
+          const handler = def.events[evName];
           SceneManager.on(evName, handler);
-          boundEvents.push({ event: evName, handler: handler });
+          boundEvents.push({ event: evName, handler });
         }
       }
 
       return def.render(container, params, currentState);
     },
-    unmount: function() {
-      for (var i = 0; i < boundEvents.length; i++) {
+    unmount: () => {
+      for (let i = 0; i < boundEvents.length; i++) {
         SceneManager.off(boundEvents[i].event, boundEvents[i].handler);
       }
       boundEvents = [];
@@ -656,14 +656,14 @@ export function defineScene(def, opts) {
   SceneManager.register(scene);
 
   if (def.interrupts) {
-    var intKeys = Object.keys(def.interrupts);
-    for (var j = 0; j < intKeys.length; j++) {
+    const intKeys = Object.keys(def.interrupts);
+    for (let j = 0; j < intKeys.length; j++) {
       _registerSubScene(intKeys[j], def.interrupts[intKeys[j]]);
     }
   }
   if (def.transactionals) {
-    var trKeys = Object.keys(def.transactionals);
-    for (var k = 0; k < trKeys.length; k++) {
+    const trKeys = Object.keys(def.transactionals);
+    for (let k = 0; k < trKeys.length; k++) {
       _registerSubScene(trKeys[k], def.transactionals[trKeys[k]]);
     }
   }

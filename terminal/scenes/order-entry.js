@@ -50,22 +50,22 @@ import { entReport } from '../entomology-client.js';
 import { formatModifierLabel } from '../modifier-label.js';
 import { buildCheckOverviewParams } from './transitions.js';
 
-var PAD      = 16;
-var GAP      = 16;
-var BTN_H    = 50;
-var OVERLAP  = 18;
+const PAD      = 16;
+const GAP      = 16;
+const BTN_H    = 50;
+const OVERLAP  = 18;
 
 // Pricing rates come from frontend/js/pricing.js — one source of truth
 // for TAX_RATE / CASH_DISCOUNT across every scene, so a stale copy can't
 // leak into a payment amount.
 
 // ── API ───────────────────────────────────────────
-var API = '/api/v1';
+const API = '/api/v1';
 
 // ── Order ID — one per transaction, reset on fresh enter ──
-var currentOrderId = null;
-var _header = null;
-var isSending = false;   // guard against concurrent handleSend calls
+let currentOrderId = null;
+const _header = null;
+let isSending = false;   // guard against concurrent handleSend calls
 
 // Flip the in-flight flag AND re-render the bottom bar so the SAVE/SEND
 // buttons dim + swap their labels while the POST chain runs. Without this,
@@ -78,15 +78,15 @@ function setSending(v) {
 }
 
 function _idemKey() {
-  return 'ik_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  return `ik_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
-var currentCheckNumber = null;
-var currentCustomerName = null;
+let currentCheckNumber = null;
+let currentCustomerName = null;
 // Per-scene idempotency key for POST /orders. If SEND/SAVE fails after
 // the backend already created the order (e.g. client timeout), retrying
 // with the same key causes the ledger to return the same event instead
 // of minting a duplicate C-NNN. Cleared once currentOrderId is set.
-var createOrderIdemKey = null;
+let createOrderIdemKey = null;
 
 function _handleNameTap() {
   if (!currentOrderId) {
@@ -94,40 +94,40 @@ function _handleNameTap() {
     return;
   }
   SceneManager.interrupt('oe-name-input', {
-    onConfirm: function(name) {
-      fetchWithTimeout(API + '/orders/' + currentOrderId, {
+    onConfirm: (name) => {
+      fetchWithTimeout(API + `/orders/${currentOrderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customer_name: name }),
-      }, 15000).then(function(r) {
+      }, 15000).then((r) => {
         if (r.ok) {
           currentCustomerName = name;
           OrderSummary.update({ customerName: name });
-          showToast(name ? 'Named: ' + name : 'Name cleared', { bg: T.greenWarm, duration: 1500 });
+          showToast(name ? `Named: ${name}` : 'Name cleared', { bg: T.greenWarm, duration: 1500 });
         } else { showToast('Name update failed', { bg: T.verm }); }
-      }).catch(function() { showToast('Name update failed', { bg: T.verm }); });
+      }).catch(() => { showToast('Name update failed', { bg: T.verm }); });
     },
-    onCancel: function() {},
+    onCancel: () => {},
     checkLabel: currentCheckNumber || 'check',
     currentName: currentCustomerName || '',
   });
 }
 
 // ── Pizza builder data (populated by API or fallback) ──
-var PIZZA_BUILDER_DATA = null;
+let PIZZA_BUILDER_DATA = null;
 
 // ── Menu data (loaded from API on scene entry) ──
-var MENU_DATA = [];
+let MENU_DATA = [];
 
-var MOD_DATA = [];
+const MOD_DATA = [];
 
 // ── Per-item included-modifier lookup (from hidden "included_<item_id>" groups) ──
-var INCLUDED_BY_ITEM = {};
+let INCLUDED_BY_ITEM = {};
 
 // ── Overseer-authored modifier wiring (source of truth when present) ──
-var MODIFIER_GROUPS = [];          // raw groups (non-hidden) keyed by group_id
-var MODIFIER_MASTER = {};          // modifier_id → { name, price }
-var ITEM_TO_CATEGORY = {};         // item_id → category_id
+let MODIFIER_GROUPS = [];          // raw groups (non-hidden) keyed by group_id
+let MODIFIER_MASTER = {};          // modifier_id → { name, price }
+let ITEM_TO_CATEGORY = {};         // item_id → category_id
 
 // ── Fetch menu from API and transform to HexNav format ──
 // The legacy MandatoryAssignment / UniversalAssignment model was retired.
@@ -138,37 +138,35 @@ var ITEM_TO_CATEGORY = {};         // item_id → category_id
 // buildKindModPanel actually consume (see line ~2453). The previous
 // /config/*-assignments endpoints were removed from the backend; the
 // frontend was still calling them and logging 404s on every menu load.
-var _menuFetched = false;
+let _menuFetched = false;
 
 function fetchMenuFromAPI() {
   return fetchWithTimeout(API + '/menu', {}, 15000)
-    .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function(menu) {
+    .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then((menu) => {
     if (!menu.categories || !menu.items) return;
 
     // Build items_by_category keyed by category_id (lowercase)
-    var itemsByCatId = {};
+    const itemsByCatId = {};
     ITEM_TO_CATEGORY = {};
-    menu.categories.forEach(function(cat) { itemsByCatId[cat.category_id] = []; });
-    menu.items.forEach(function(item) {
+    menu.categories.forEach((cat) => { itemsByCatId[cat.category_id] = []; });
+    menu.items.forEach((item) => {
       // Match item.category (name like "Pizza") to category
-      var cat = menu.categories.find(function(c) {
-        return c.name === item.category || c.category_id === item.category || c.category_id === item.category_id;
-      });
+      let cat = menu.categories.find((c) => c.name === item.category || c.category_id === item.category || c.category_id === item.category_id);
       if (cat) {
         if (!itemsByCatId[cat.category_id]) itemsByCatId[cat.category_id] = [];
         itemsByCatId[cat.category_id].push(item);
-        var iid = item.item_id || item.id;
+        let iid = item.item_id || item.id;
         if (iid) ITEM_TO_CATEGORY[iid] = cat.category_id;
       }
     });
 
     // Transform categories + items into HexNav MENU_DATA
-    MENU_DATA = menu.categories.map(function(cat) {
-      var catItems = (itemsByCatId[cat.category_id] || [])
-        .sort(function(a, b) { return (a.display_order || 999) - (b.display_order || 999); })
-        .map(function(item) {
-          var hexItem = { label: item.name, price: item.price, id: item.item_id || item.id };
+    MENU_DATA = menu.categories.map((cat) => {
+      let catItems = (itemsByCatId[cat.category_id] || [])
+        .sort((a, b) => (a.display_order || 999) - (b.display_order || 999))
+        .map((item) => {
+          const hexItem = { label: item.name, price: item.price, id: item.item_id || item.id };
           if (item.pizza_size) hexItem.pizzaSize = true;
           if (item.mods) hexItem.requiredMods = item.mods;
           // Preserve new-model modifier wiring authored in Overseer.
@@ -183,8 +181,8 @@ function fetchMenuFromAPI() {
           return hexItem;
         });
       // Prefer the user-set color from the Overseer; fall back to theme token
-      var catColor = cat.color || cat.hex_color || T.catColor(cat.label || cat.name.toUpperCase()) || hexToRgba(T.text, 0.6);
-      var textColor = _textColorForHex(catColor);
+      let catColor = cat.color || cat.hex_color || T.catColor(cat.label || cat.name.toUpperCase()) || hexToRgba(T.text, 0.6);
+      const textColor = _textColorForHex(catColor);
       return {
         id: cat.category_id,
         label: cat.label || cat.name.toUpperCase(),
@@ -204,10 +202,10 @@ function fetchMenuFromAPI() {
     INCLUDED_BY_ITEM = {};
     MODIFIER_GROUPS = [];
     MODIFIER_MASTER = {};
-    (menu.modifier_groups || []).forEach(function(g) {
+    (menu.modifier_groups || []).forEach((g) => {
       // Always index modifiers into MODIFIER_MASTER so later lookups
       // resolve atom names/prices even for atoms inside hidden groups.
-      (g.modifiers || []).forEach(function(m) {
+      (g.modifiers || []).forEach((m) => {
         if (m.modifier_id && !MODIFIER_MASTER[m.modifier_id]) {
           MODIFIER_MASTER[m.modifier_id] = { name: m.name, price: parseFloat(m.price) || 0 };
         }
@@ -217,7 +215,7 @@ function fetchMenuFromAPI() {
         // that haven't been migrated yet. menu-categories.js emits
         // modifier.group_deleted on first save to clean these up.
         if (g.owner_item_id) {
-          var mods = (g.modifiers || []).map(function(m) { return { id: m.modifier_id, label: m.name }; });
+          let mods = (g.modifiers || []).map((m) => { return { id: m.modifier_id, label: m.name }; });
           if (mods.length > 0) INCLUDED_BY_ITEM[g.owner_item_id] = mods;
         }
         return;
@@ -228,12 +226,12 @@ function fetchMenuFromAPI() {
     // New-model pass: walk items directly and build INCLUDED_BY_ITEM
     // from item.included_modifier_ids. This overrides any legacy hidden-group
     // entry with the authoritative Overseer-authored list.
-    (menu.items || []).forEach(function(item) {
-      var iid = item.item_id || item.id;
-      var ids = item.included_modifier_ids || [];
+    (menu.items || []).forEach((item) => {
+      const iid = item.item_id || item.id;
+      let ids = item.included_modifier_ids || [];
       if (!iid || ids.length === 0) return;
-      var mods = ids.map(function(mid) {
-        var master = MODIFIER_MASTER[mid];
+      let mods = ids.map((mid) => {
+        const master = MODIFIER_MASTER[mid];
         return { id: mid, label: master ? master.name : mid };
       });
       INCLUDED_BY_ITEM[iid] = mods;
@@ -241,20 +239,20 @@ function fetchMenuFromAPI() {
 
     // Extract pizza builder modifier groups
     if (menu.modifier_groups) {
-      var builderGroups = menu.modifier_groups
-        .filter(function(g) { return g.builder; })
-        .sort(function(a, b) { return (a.display_order || 999) - (b.display_order || 999); });
+      const builderGroups = menu.modifier_groups
+        .filter((g) => g.builder)
+        .sort((a, b) => (a.display_order || 999) - (b.display_order || 999));
 
       if (builderGroups.length > 0) {
-        PIZZA_BUILDER_DATA = builderGroups.map(function(g) {
-          var subcats;
+        PIZZA_BUILDER_DATA = builderGroups.map((g) => {
+          let subcats;
           if (g.subcats && g.subcats.length > 0) {
             // Group has explicit subcategories (e.g. Prep → Crust, Temp, Sauce, Cut)
-            subcats = g.subcats.map(function(sc) {
+            subcats = g.subcats.map((sc) => {
               return {
                 id: sc.id,
                 label: sc.name,
-                items: (sc.modifiers || []).map(function(m) {
+                items: (sc.modifiers || []).map((m) => {
                   return { label: m.name, id: m.modifier_id, price: m.price || 0 };
                 }),
               };
@@ -262,7 +260,7 @@ function fetchMenuFromAPI() {
           } else {
             // Flat modifiers → single subcat
             subcats = [{ id: g.group_id + '-items', label: g.name, items:
-              (g.modifiers || []).map(function(m) {
+              (g.modifiers || []).map((m) => {
                 return { label: m.name, id: m.modifier_id, price: m.price || 0 };
               }),
             }];
@@ -281,70 +279,70 @@ function fetchMenuFromAPI() {
     _menuFetched = true;
     // Refresh snake grid if already mounted
     if (_gridEl) renderSnakeGrid();
-  }).catch(function(err) {
+  }).catch((err) => {
     console.warn('[KINDpos] Menu fetch failed, using fallback:', err);
   });
 }
 
 function _textColorForHex(hex) {
   // Simple luminance check to pick dark or light text
-  var r = parseInt(hex.slice(1, 3), 16);
-  var g = parseInt(hex.slice(3, 5), 16);
-  var b = parseInt(hex.slice(5, 7), 16);
-  var lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  const r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return lum > 0.5 ? T.well : T.text;
 }
 
 // ── Combo flow state ─────────────────────────────
-var comboFlow    = null;  // { step: 'side'|'drink', ticketItem: ref }
+let comboFlow    = null;  // { step: 'side'|'drink', ticketItem: ref }
 
 // ── Scene state ───────────────────────────────────
-var ticket       = [];    // [{ id, name, unitPrice, mods:[{name,price,charged}], selected, sent }]
-var ticketSeq    = 0;     // monotonic ID counter
-var sceneParams  = {};
-var modHistory   = [];    // [{inst, mod}] — undo stack for modifier additions
-var _bottomBar   = null;  // DOM ref for bottom action bar
-var _mainArea    = null;  // DOM ref for right panel
-var _activeSeats    = new Set();   // currently selected seat numbers
-var _seatList       = [];          // seat numbers in the overview selection
-var _allSeatList    = [];          // all seat numbers in the party
-var _seatTab        = 'selected';  // 'selected' | 'unselected'
-var _seatSelectorEl = null;        // DOM ref for the inline seat card
-var _prevSeats       = new Set();   // snapshot of _activeSeats at last item add (for RECALL)
-var _autoSwitchArmed = false;       // true after item add → next seat tap does exclusive replace
+let ticket       = [];    // [{ id, name, unitPrice, mods:[{name,price,charged}], selected, sent }]
+let ticketSeq    = 0;     // monotonic ID counter
+let sceneParams  = {};
+let modHistory   = [];    // [{inst, mod}] — undo stack for modifier additions
+let _bottomBar   = null;  // DOM ref for bottom action bar
+let _mainArea    = null;  // DOM ref for right panel
+let _activeSeats    = new Set();   // currently selected seat numbers
+let _seatList       = [];          // seat numbers in the overview selection
+let _allSeatList    = [];          // all seat numbers in the party
+let _seatTab        = 'selected';  // 'selected' | 'unselected'
+let _seatSelectorEl = null;        // DOM ref for the inline seat card
+let _prevSeats       = new Set();   // snapshot of _activeSeats at last item add (for RECALL)
+let _autoSwitchArmed = false;       // true after item add → next seat tap does exclusive replace
 
 // ── Snake nav state ───────────────────────────────
-var snakeState = {
+let snakeState = {
   view:   'cats',  // 'personal'|'cats'|'subcats'|'items'
   crumbs: [],      // [{ id, label, color }]
   catId:  null,
   subId:  null,
 };
-var favorites    = [];   // item ids for personal tab
-var _gridEl      = null; // inner grid DOM container
-var _gridWrap    = null; // collapsible grid wrapper
-var _snakeStrip  = null; // crumb-only strip shown when mod panel open
-var _expandedItems = {}; // item id → true when mod rows are expanded
-var _collapsedSeats = new Set(); // seat numbers collapsed in multi-seat s-card view (default: all expanded)
+let favorites    = [];   // item ids for personal tab
+let _gridEl      = null; // inner grid DOM container
+let _gridWrap    = null; // collapsible grid wrapper
+let _snakeStrip  = null; // crumb-only strip shown when mod panel open
+let _expandedItems = {}; // item id → true when mod rows are expanded
+let _collapsedSeats = new Set(); // seat numbers collapsed in multi-seat s-card view (default: all expanded)
 
 // ── Modifier Panel (slide-up) ─────────────────────
-var _modPanel      = null;   // buildKindModPanel instance
-var _modPanelItem  = null;   // ticket preview item for active panel
-var _modPanelCatColor = null; // cat color of the item being modified — used by _appendModPreview
-var _modPanelOpen  = false;  // drives grid collapse animation
+let _modPanel      = null;   // buildKindModPanel instance
+let _modPanelItem  = null;   // ticket preview item for active panel
+let _modPanelCatColor = null; // cat color of the item being modified — used by _appendModPreview
+let _modPanelOpen  = false;  // drives grid collapse animation
 
 // ── Inject invisible scrollbar style ──
-(function() {
+(() => {
   if (document.getElementById('co-scroll-style')) return;
-  var s = document.createElement('style');
+  let s = document.createElement('style');
   s.id = 'co-scroll-style';
   s.textContent = '.co-scroll::-webkit-scrollbar{display:none}';
   document.head.appendChild(s);
 })();
 
-(function() {
+(() => {
   if (document.getElementById('oe-seat-scroll-style')) return;
-  var s = document.createElement('style');
+  let s = document.createElement('style');
   s.id = 'oe-seat-scroll-style';
   s.textContent = '._oe-seat-scroll::-webkit-scrollbar{display:none}';
   document.head.appendChild(s);
@@ -355,7 +353,7 @@ var _modPanelOpen  = false;  // drives grid collapse animation
 // modifier from a drives_pricing group. Reset to {} on every new item /
 // modifier-session start. Read by calculateItemPrice() to apply size-aware
 // item base + per-modifier price_by_size adjustments.
-var modifierSession = {
+let modifierSession = {
   active: false,
   selectedItems: [],
   activePrefix: null,
@@ -384,63 +382,63 @@ function calculateItemPrice(item, selections, menuState) {
   item = item || {};
   selections = selections || [];
   menuState = menuState || {};
-  var groups   = menuState.modifier_groups || {};
-  var mods     = menuState.modifiers       || {};
-  var opts     = menuState.options         || {};
-  var optGroups = menuState.option_groups  || {};
+  let groups   = menuState.modifier_groups || {};
+  let mods     = menuState.modifiers       || {};
+  let opts     = menuState.options         || {};
+  let optGroups = menuState.option_groups  || {};
 
   // Step 1 — Resolve active sizes (group_id → size_name)
-  var activeSizes = {};
-  for (var i = 0; i < selections.length; i++) {
-    var sel = selections[i];
+  const activeSizes = {};
+  for (let i = 0; i < selections.length; i++) {
+    let sel = selections[i];
     if (!sel || !sel.group_id || !sel.modifier_id) continue;
-    var grp = groups[sel.group_id];
+    let grp = groups[sel.group_id];
     if (grp && grp.drives_pricing) {
-      var driverMod = mods[sel.modifier_id];
+      const driverMod = mods[sel.modifier_id];
       if (driverMod) activeSizes[sel.group_id] = driverMod.name;
     }
   }
 
   // Step 2 — Item base price
-  var itemBase = Number(item.price) || 0;
-  var pbsItem = item.price_by_size || {};
-  for (var gid in activeSizes) {
+  let itemBase = Number(item.price) || 0;
+  const pbsItem = item.price_by_size || {};
+  for (let gid in activeSizes) {
     if (!Object.prototype.hasOwnProperty.call(activeSizes, gid)) continue;
-    var sizeName = activeSizes[gid];
-    var grpMap = pbsItem[gid];
+    const sizeName = activeSizes[gid];
+    const grpMap = pbsItem[gid];
     if (grpMap && grpMap[sizeName] != null) {
       itemBase += Number(grpMap[sizeName]) || 0;
     }
   }
 
   // Step 3 — Per-modifier line prices
-  var modifierLines = [];
-  var includedSet = {};
-  (item.included_modifier_ids || []).forEach(function(id) { includedSet[id] = true; });
+  const modifierLines = [];
+  const includedSet = {};
+  (item.included_modifier_ids || []).forEach((id) => { includedSet[id] = true; });
 
-  for (var j = 0; j < selections.length; j++) {
-    var s = selections[j];
+  for (let j = 0; j < selections.length; j++) {
+    let s = selections[j];
     if (!s || !s.group_id || !s.modifier_id) continue;
-    var g = groups[s.group_id];
+    const g = groups[s.group_id];
     if (g && g.drives_pricing) continue; // size groups don't add a line price
-    var mod = mods[s.modifier_id];
+    let mod = mods[s.modifier_id];
     if (!mod) continue;
 
     // Base — free if included on the item
-    var base = includedSet[s.modifier_id] ? 0 : (Number(mod.price) || 0);
+    let base = includedSet[s.modifier_id] ? 0 : (Number(mod.price) || 0);
 
     // Size adjustment — item.size_price_overrides wins over mod.price_by_size
-    var spo = item.size_price_overrides || {};
-    var modPbs = mod.price_by_size || {};
-    for (var gid2 in activeSizes) {
+    const spo = item.size_price_overrides || {};
+    const modPbs = mod.price_by_size || {};
+    for (let gid2 in activeSizes) {
       if (!Object.prototype.hasOwnProperty.call(activeSizes, gid2)) continue;
-      var sName = activeSizes[gid2];
-      var ovGrp = spo[gid2];
-      var override = (ovGrp && ovGrp[sName] != null) ? ovGrp[sName] : null;
+      const sName = activeSizes[gid2];
+      const ovGrp = spo[gid2];
+      const override = (ovGrp && ovGrp[sName] != null) ? ovGrp[sName] : null;
       if (override != null) {
         base += Number(override) || 0;
       } else {
-        var modGrp = modPbs[gid2];
+        const modGrp = modPbs[gid2];
         if (modGrp && modGrp[sName] != null) {
           base += Number(modGrp[sName]) || 0;
         }
@@ -449,12 +447,12 @@ function calculateItemPrice(item, selections, menuState) {
 
     // Option adjustment — item override wins over group default
     if (s.option_id) {
-      var ogOverrides = item.option_group_overrides || {};
-      var optGroupId = ogOverrides[s.group_id];
+      let ogOverrides = item.option_group_overrides || {};
+      let optGroupId = ogOverrides[s.group_id];
       if (optGroupId == null && g) optGroupId = g.default_option_group_id;
-      var optGroup = optGroupId ? optGroups[optGroupId] : null;
+      const optGroup = optGroupId ? optGroups[optGroupId] : null;
       if (optGroup && optGroup.active !== false) {
-        var opt = opts[s.option_id];
+        let opt = opts[s.option_id];
         if (opt && opt.active !== false) {
           if (opt.negates_price) {
             modifierLines.push(0);
@@ -471,8 +469,8 @@ function calculateItemPrice(item, selections, menuState) {
   // Step 4 — micromods always $0.00 (already excluded above via group filter)
 
   // Step 5 — sum and round to 2dp (ROUND_HALF_UP equivalent for positive vals)
-  var raw = itemBase;
-  for (var k = 0; k < modifierLines.length; k++) raw += modifierLines[k];
+  let raw = itemBase;
+  for (let k = 0; k < modifierLines.length; k++) raw += modifierLines[k];
   return Math.round(raw * 100) / 100;
 }
 
@@ -494,18 +492,18 @@ function calculateItemPrice(item, selections, menuState) {
 
 function resolveOptionGroupForModifier(item, groupId, menuState) {
   if (!groupId || !menuState) return null;
-  var groups = menuState.modifier_groups || {};
-  var grp = groups[groupId];
+  const groups = menuState.modifier_groups || {};
+  let grp = groups[groupId];
   if (!grp) return null;
   if (grp.drives_pricing) return null; // size selectors don't get options
-  var ogOverrides = (item && item.option_group_overrides) || {};
-  var ogId = ogOverrides[groupId];
+  const ogOverrides = (item && item.option_group_overrides) || {};
+  let ogId = ogOverrides[groupId];
   if (ogId == null) ogId = grp.default_option_group_id;
   if (!ogId) return null;
-  var optGroups = menuState.option_groups || {};
-  var og = optGroups[ogId];
+  const optGroups = menuState.option_groups || {};
+  let og = optGroups[ogId];
   if (!og || og.active === false) return null;
-  var ids = og.option_ids || [];
+  let ids = og.option_ids || [];
   return ids.length > 0 ? og : null;
 }
 
@@ -517,7 +515,7 @@ function shouldRenderOptionsRow(item, groupId, menuState) {
 function _optionTheme(opt) {
   if (!opt) return { border: T.elec, text: T.elec };
   if (opt.negates_price) return { border: T.verm, text: T.verm };
-  var name = (opt.name || '').toLowerCase().trim();
+  let name = (opt.name || '').toLowerCase().trim();
   if (name === 'regular')                  return { border: T.green, text: T.green };
   if (name === 'extra')                    return { border: T.gold,  text: T.gold  };
   if (name === 'light' || name === 'lite') return { border: T.moon,  text: T.moon  };
@@ -527,16 +525,16 @@ function _optionTheme(opt) {
 
 function _optionPriceLabel(opt) {
   if (!opt || opt.negates_price) return '';
-  var v = Number(opt.price_adjustment || 0);
-  if (v > 0) return '+$' + v.toFixed(2);
-  if (v < 0) return '−$' + Math.abs(v).toFixed(2);
+  let v = Number(opt.price_adjustment || 0);
+  if (v > 0) return `+$${v.toFixed(2)}`;
+  if (v < 0) return `−$${Math.abs(v).toFixed(2)}`;
   return '';
 }
 
 function _defaultSelectedOptionId(og, optionsMap) {
-  var ids = (og && og.option_ids) || [];
-  for (var i = 0; i < ids.length; i++) {
-    var o = optionsMap[ids[i]];
+  let ids = (og && og.option_ids) || [];
+  for (let i = 0; i < ids.length; i++) {
+    const o = optionsMap[ids[i]];
     if (o && (o.name || '').toLowerCase() === 'regular') return o.option_id;
   }
   return null;
@@ -544,49 +542,49 @@ function _defaultSelectedOptionId(og, optionsMap) {
 
 function buildOptionsRow(opts) {
   opts = opts || {};
-  var item     = opts.item || {};
-  var groupId  = opts.groupId;
-  var menuState = opts.menuState || {};
-  var onSelect = opts.onSelect || function() {};
+  const item     = opts.item || {};
+  const groupId  = opts.groupId;
+  const menuState = opts.menuState || {};
+  const onSelect = opts.onSelect || function() {};
 
-  var row = document.createElement('div');
+  let row = document.createElement('div');
   row.dataset.optionsRow = '1';
   row.style.cssText = [
     'display:flex;flex-wrap:wrap;gap:6px;',
     'margin-top:6px;',
   ].join('');
 
-  var og = resolveOptionGroupForModifier(item, groupId, menuState);
+  const og = resolveOptionGroupForModifier(item, groupId, menuState);
   if (!og) {
     row.dataset.empty = '1';
     row.style.display = 'none';
     return row;
   }
 
-  var optionsMap = menuState.options || {};
-  var ids = og.option_ids || [];
-  var selectedOptionId = opts.selectedOptionId || null;
+  const optionsMap = menuState.options || {};
+  let ids = og.option_ids || [];
+  let selectedOptionId = opts.selectedOptionId || null;
   if (!selectedOptionId) {
     selectedOptionId = _defaultSelectedOptionId(og, optionsMap);
   }
   row.dataset.selectedOptionId = selectedOptionId || '';
 
-  ids.forEach(function(oid) {
-    var opt = optionsMap[oid];
+  ids.forEach((oid) => {
+    let opt = optionsMap[oid];
     if (!opt || opt.active === false) return;
-    var theme = _optionTheme(opt);
-    var isSel = (opt.option_id === selectedOptionId);
-    var priceLabel = _optionPriceLabel(opt);
-    var label = priceLabel ? (opt.name + ' ' + priceLabel) : opt.name;
+    const theme = _optionTheme(opt);
+    let isSel = (opt.option_id === selectedOptionId);
+    const priceLabel = _optionPriceLabel(opt);
+    let label = priceLabel ? (opt.name + ` ${priceLabel}`) : opt.name;
 
-    var pill = buildPillButton({
+    let pill = buildPillButton({
       label: label,
       // Selected pills fill with the theme color; unselected stay ghost-style.
       variant: isSel ? undefined : 'ghost',
       color: isSel ? theme.border : 'transparent',
       textColor: isSel ? T.well : theme.text,
       fontSize: '11px',
-      onClick: function() { onSelect(opt.option_id); },
+      onClick: () => { onSelect(opt.option_id); },
     });
 
     // Tag with data attributes for testability + post-style border so the
@@ -597,7 +595,7 @@ function buildOptionsRow(opts) {
     pill.dataset.themeText   = theme.text;
     pill.dataset.selected   = isSel ? '1' : '0';
     pill.dataset.priceLabel = priceLabel;
-    pill.style.border = '1px solid ' + theme.border;
+    pill.style.border = `1px solid ${theme.border}`;
     if (!isSel) pill.style.color = theme.text;
 
     row.appendChild(pill);
@@ -608,7 +606,7 @@ function buildOptionsRow(opts) {
 
 function buildModifierBlock(opts) {
   opts = opts || {};
-  var wrap = document.createElement('div');
+  let wrap = document.createElement('div');
   wrap.dataset.modifierBlock = '1';
   wrap.dataset.modifierId = opts.modifierId || '';
   wrap.dataset.groupId    = opts.groupId    || '';
@@ -616,7 +614,7 @@ function buildModifierBlock(opts) {
   // Modifier tile — minimal placeholder so the existing visual renderer
   // is untouched. Real renderModButtonGrid still owns the production tile
   // styling; this block exists for tests + future composition.
-  var tile = document.createElement('div');
+  let tile = document.createElement('div');
   tile.dataset.modifierTile = '1';
   tile.textContent = opts.label || '';
   wrap.appendChild(tile);
@@ -624,19 +622,19 @@ function buildModifierBlock(opts) {
   // Options row — only renders for non-drives_pricing groups with a valid
   // OptionGroup. shouldRenderOptionsRow() returns false otherwise and
   // buildOptionsRow short-circuits to a hidden, empty row.
-  var optionsRow = buildOptionsRow(opts);
+  const optionsRow = buildOptionsRow(opts);
   wrap.appendChild(optionsRow);
 
   // microMODs row — rendered AFTER the options row, never instead of it.
   // Shape: included_modifier_ids ($0 spec-only sub-picks) tagged onto the
   // modifier in the menu projection. Empty list = no row.
-  var includedIds = opts.includedModifierIds || [];
+  const includedIds = opts.includedModifierIds || [];
   if (includedIds.length > 0) {
-    var mmRow = document.createElement('div');
+    const mmRow = document.createElement('div');
     mmRow.dataset.micromodsRow = '1';
     mmRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;';
-    includedIds.forEach(function(id) {
-      var chip = document.createElement('span');
+    includedIds.forEach((id) => {
+      let chip = document.createElement('span');
       chip.dataset.micromodId = id;
       chip.textContent = id;
       mmRow.appendChild(chip);
@@ -648,7 +646,7 @@ function buildModifierBlock(opts) {
 }
 
 // ── Prefix definitions ────────────────────────────
-var PREFIXES = [
+const PREFIXES = [
   { id: 'add',     label: 'ADD',     color: T.greenWarm, textColor: T.well },
   { id: 'extra',   label: 'EXTRA',   color: T.elec,      textColor: T.well },
   { id: 'no',      label: 'NO',      color: T.verm,      textColor: T.text },
@@ -661,14 +659,14 @@ defineScene({
 
   state: {},
 
-  render: function(container, params) {
+  render: (container, params) => {
     params = params || {};
-    var staff = params.staff || params.emp || {};
+    const staff = params.staff || params.emp || {};
 
     // 2. Body container — fills the entire screen
-    var body = document.createElement('div');
-    var offset = '0';
-    body.style.cssText = 'position:absolute;left:' + offset + ';right:0;top:0;bottom:0;overflow:hidden;display:flex;flex-direction:column;';
+    let body = document.createElement('div');
+    const offset = '0';
+    body.style.cssText = `position:absolute;left:${offset};right:0;top:0;bottom:0;overflow:hidden;display:flex;flex-direction:column;`;
     container.appendChild(body);
 
     ticket         = [];
@@ -728,10 +726,10 @@ defineScene({
     });
     OrderSummary.lockItemRender();
 
-    var mainArea = buildMain(body, params);
+    const mainArea = buildMain(body, params);
     body.appendChild(mainArea);
 
-    if (!_menuFetched) fetchMenuFromAPI().catch(function() { console.error('[KINDpos] Menu fetch failed on mount'); });
+    if (!_menuFetched) fetchMenuFromAPI().catch(() => { console.error('[KINDpos] Menu fetch failed on mount'); });
 
     if (params.recallOrderId) {
       currentOrderId = params.recallOrderId;
@@ -744,14 +742,14 @@ defineScene({
     }
   },
 
-  unmount: function() {
+  unmount: () => {
     // Fire-and-forget auto-save for unexpected unmounts (logout, force
     // scene swap). handleClose() already awaits, so when BACK is used
     // this is a no-op (everything is already flushed). The fetch body
     // is built synchronously so the in-flight request survives the
     // scene teardown.
     try {
-      var hasUnsent = ticket.some(function(inst) { return !inst.sent; });
+      let hasUnsent = ticket.some((inst) => !inst.sent);
       if (hasUnsent && !isSending) handleSaveOnly();
     } catch (_) { /* best-effort only */ }
 
@@ -795,29 +793,29 @@ defineScene({
 
   interrupts: {
     'qty-edit': {
-      render: function(container, params) {
-        var inner      = (params && params.params) || {};
-        var itemName   = inner.itemName || '';
-        var startQty   = Math.max(1, parseInt(inner.currentQty, 10) || 1);
-        var qty        = startQty;
+      render: (container, params) => {
+        let inner      = (params && params.params) || {};
+        let itemName   = inner.itemName || '';
+        const startQty   = Math.max(1, parseInt(inner.currentQty, 10) || 1);
+        let qty        = startQty;
 
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
 
-        var shell = buildStaticCard({ accent: T.groups.composite.shellAccent });
+        let shell = buildStaticCard({ accent: T.groups.composite.shellAccent });
         shell.style.display       = 'flex';
         shell.style.flexDirection = 'column';
         shell.style.gap           = '14px';
         shell.style.minWidth      = '420px';
         shell.style.maxWidth      = '520px';
         shell.style.padding       = '20px 28px 28px 32px';
-        var panel = shell;
+        let panel = shell;
 
-        var title = document.createElement('div');
+        let title = document.createElement('div');
         title.style.cssText = [
-          'font-family:' + T.fh + ';',
-          'font-size:' + T.fsB2 + ';',
-          'font-weight:' + T.fwBold + ';',
-          'color:' + T.green + ';',
+          `font-family:${T.fh};`,
+          `font-size:${T.fsB2};`,
+          `font-weight:${T.fwBold};`,
+          `color:${T.green};`,
           'letter-spacing:0.2em;',
           'text-transform:uppercase;',
           'text-align:center;',
@@ -826,23 +824,23 @@ defineScene({
         panel.appendChild(title);
 
         if (itemName) {
-          var subtitle = document.createElement('div');
+          const subtitle = document.createElement('div');
           subtitle.style.cssText = [
-            'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';',
-            'color:' + T.text + ';text-align:center;',
+            `font-family:${T.fb};font-size:${T.fsB3};`,
+            `color:${T.text};text-align:center;`,
             'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
-          ].join('') + ";font-weight:" + T.fwBold + ";";
+          ].join('') + `;font-weight:${T.fwBold};`;
           subtitle.textContent = itemName;
           panel.appendChild(subtitle);
         }
 
         // Stepper row: [ − ]  ( qty )  [ + ]
-        var stepper = document.createElement('div');
+        const stepper = document.createElement('div');
         stepper.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:16px;margin:6px 0 4px;';
 
         // Stepper −/+: neutral elec cyan so they don't blend with the
         // card bg and don't claim primary-action color.
-        var minusBtn = buildPillButton({
+        const minusBtn = buildPillButton({
           label: '−',
           variant: T.groups.composite.stepper,
           fontSize: T.fsB1,
@@ -852,15 +850,15 @@ defineScene({
         minusBtn.style.borderRadius = '14px';
         minusBtn.style.flexShrink = '0';
 
-        var qtyReadout = document.createElement('div');
+        const qtyReadout = document.createElement('div');
         qtyReadout.style.cssText = [
           'min-width:80px;text-align:center;',
-          'font-family:' + T.fb + ';font-size:' + T.fsB1 + ';',
-          'font-weight:' + T.fwBold + ';color:' + T.gold + ';',
+          `font-family:${T.fb};font-size:${T.fsB1};`,
+          `font-weight:${T.fwBold};color:${T.gold};`,
           'pointer-events:none;',
         ].join('');
 
-        var plusBtn = buildPillButton({
+        const plusBtn = buildPillButton({
           label: '+',
           variant: T.groups.composite.stepper,
           fontSize: T.fsB1,
@@ -878,14 +876,14 @@ defineScene({
         // Button hierarchy: CANCEL (verm destructive) + CONFIRM (mint
         // primary). Matching 14px radius + flex-centered text so the
         // pair reads as one family with the check-overview action bar.
-        var bottomBar = document.createElement('div');
+        const bottomBar = document.createElement('div');
         bottomBar.style.cssText = 'display:flex;gap:10px;margin-top:8px;';
 
-        var cancelBtn = buildPillButton({
+        let cancelBtn = buildPillButton({
           label: 'CANCEL',
           variant: T.groups.composite.cancel,
           fontSize: T.fsB2,
-          onClick: function() { params.onCancel(); },
+          onClick: () => { params.onCancel(); },
         });
         cancelBtn.style.flex = '1';
         cancelBtn.style.height = '48px';
@@ -894,11 +892,11 @@ defineScene({
         cancelBtn.style.alignItems = 'center';
         cancelBtn.style.justifyContent = 'center';
 
-        var confirmBtn = buildPillButton({
+        const confirmBtn = buildPillButton({
           label: 'CONFIRM',
           variant: T.groups.composite.confirm,
           fontSize: T.fsB2,
-          onClick: function() {
+          onClick: () => {
             if (qty === startQty) return;
             params.onConfirm(qty);
           },
@@ -918,72 +916,72 @@ defineScene({
         function paint() {
           qtyReadout.textContent = String(qty);
           minusBtn.style.opacity = qty > 1 ? '1' : '0.35';
-          var dirty = qty !== startQty;
+          const dirty = qty !== startQty;
           confirmBtn.style.color       = dirty ? T.green   : hexToRgba(T.text, 0.45);
           confirmBtn.style.borderColor = dirty ? T.green   : T.card;
         }
 
-        minusBtn.addEventListener('pointerup', function(e) {
+        minusBtn.addEventListener('pointerup', (e) => {
           e.stopPropagation();
           if (qty > 1) { qty -= 1; paint(); }
         });
-        plusBtn.addEventListener('pointerup', function(e) {
+        plusBtn.addEventListener('pointerup', (e) => {
           e.stopPropagation();
           qty += 1;
           paint();
         });
 
-        container.addEventListener('pointerup', function(e) {
+        container.addEventListener('pointerup', (e) => {
           if (e.target === container) { params.onCancel(); }
         });
 
         paint();
       },
-      unmount: function() {},
+      unmount: () => {},
     },
     'oe-name-input': {
-      render: function(container, params) {
+      render: (container, params) => {
         showKeyboard({
           placeholder: 'Enter name',
           initialValue: params.currentName || '',
           maxLength: 40,
-          onDone: function(val) {
+          onDone: (val) => {
             params.onConfirm(val.trim());
           },
-          onDismiss: function() {
+          onDismiss: () => {
             params.onCancel();
           },
           dismissOnDone: true,
         });
       },
-      unmount: function() { hideKeyboard(); },
+      unmount: () => { hideKeyboard(); },
     },
 
     'oe-open-item': {
-      render: function(container, params) {
+      render: (container, params) => {
         container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
-        container.addEventListener('pointerup', function(e) {
+        container.addEventListener('pointerup', (e) => {
           if (e.target === container) params.onCancel();
         });
 
-        var shell = buildStaticCard({ accent: T.gold });
+        const shell = buildStaticCard({ accent: T.gold });
         Object.assign(shell.style, {
           display: 'flex', flexDirection: 'column', gap: '14px',
           minWidth: '340px', maxWidth: '420px',
           padding: '20px 24px 24px',
         });
 
-        var title = document.createElement('div');
-        title.style.cssText = 'font-family:' + T.fh + ';font-size:' + T.fsB2 + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';letter-spacing:0.2em;text-transform:uppercase;text-align:center;';
+        const title = document.createElement('div');
+        title.style.cssText = `font-family:${T.fh};font-size:${T.fsB2};font-weight:${T.fwBold};color:${T.gold};letter-spacing:0.2em;text-transform:uppercase;text-align:center;`;
         title.textContent = 'OPEN ITEM';
         shell.appendChild(title);
 
         // ── Name ──
-        var nameInput = document.createElement('input');
+        const nameInput = document.createElement('input');
         Object.assign(nameInput.style, {
           fontWeight: T.fwBold,
           width: '100%', boxSizing: 'border-box',
-          background: hexToRgba(T.text, 0.06), border: '1px solid ' + hexToRgba(T.text, 0.18),
+          background: hexToRgba(T.text, 0.06), border: `1px solid ${hexToRgba(T.text, 0.18)}`,
           borderRadius: '10px', color: T.text,
           fontFamily: T.fb, fontSize: T.fsB3,
           padding: '10px 12px', outline: 'none',
@@ -993,24 +991,24 @@ defineScene({
         shell.appendChild(nameInput);
 
         // ── Category ──
-        var catSelect = document.createElement('select');
+        const catSelect = document.createElement('select');
         Object.assign(catSelect.style, {
           fontWeight: T.fwBold,
           width: '100%', boxSizing: 'border-box',
-          background: hexToRgba(T.text, 0.06), border: '1px solid ' + hexToRgba(T.text, 0.18),
+          background: hexToRgba(T.text, 0.06), border: `1px solid ${hexToRgba(T.text, 0.18)}`,
           borderRadius: '10px', color: T.text,
           fontFamily: T.fb, fontSize: T.fsB3,
           padding: '10px 12px', outline: 'none',
           appearance: 'none',
         });
-        var catPlaceholder = document.createElement('option');
+        const catPlaceholder = document.createElement('option');
         catPlaceholder.value = '';
         catPlaceholder.textContent = 'Select category…';
         catPlaceholder.disabled = true;
         catPlaceholder.selected = true;
         catSelect.appendChild(catPlaceholder);
-        MENU_DATA.forEach(function(cat) {
-          var opt = document.createElement('option');
+        MENU_DATA.forEach((cat) => {
+          let opt = document.createElement('option');
           opt.value = cat.id;
           opt.textContent = cat.label || cat.id;
           catSelect.appendChild(opt);
@@ -1018,22 +1016,22 @@ defineScene({
         shell.appendChild(catSelect);
 
         // ── Price display ──
-        var _cents = 0;
-        var priceDisplay = document.createElement('div');
+        let _cents = 0;
+        const priceDisplay = document.createElement('div');
         Object.assign(priceDisplay.style, {
           textAlign: 'center', fontFamily: T.fb,
           fontSize: '2rem', fontWeight: T.fwBold, color: T.gold,
           letterSpacing: '0.05em',
         });
-        function _refreshPrice() { priceDisplay.textContent = '$' + (_cents / 100).toFixed(2); }
+        function _refreshPrice() { priceDisplay.textContent = `$${(_cents / 100).toFixed(2)}`; }
         _refreshPrice();
         shell.appendChild(priceDisplay);
 
         // ── Digit pad ──
-        var pad = document.createElement('div');
+        const pad = document.createElement('div');
         pad.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;';
-        [7,8,9,4,5,6,1,2,3,'⌫',0,'✓'].forEach(function(key) {
-          var btn = document.createElement('button');
+        [7,8,9,4,5,6,1,2,3,'⌫',0,'✓'].forEach((key) => {
+          let btn = document.createElement('button');
           Object.assign(btn.style, {
             padding: '14px 0', borderRadius: '10px', border: 'none',
             background: (key === '✓') ? T.greenWarm : hexToRgba(T.text, 0.08),
@@ -1042,7 +1040,7 @@ defineScene({
             cursor: 'pointer',
           });
           btn.textContent = String(key);
-          btn.addEventListener('pointerup', function(e) {
+          btn.addEventListener('pointerup', (e) => {
             e.stopPropagation();
             if (key === '⌫') {
               _cents = Math.floor(_cents / 10);
@@ -1059,11 +1057,11 @@ defineScene({
         shell.appendChild(pad);
 
         // ── Buttons ──
-        var btnRow = document.createElement('div');
+        const btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:10px;margin-top:4px;';
-        var cancelBtn = buildPillButton({ label: 'CANCEL', variant: T.groups.composite.cancel, fontSize: T.fsB2, onClick: function() { params.onCancel(); } });
+        const cancelBtn = buildPillButton({ label: 'CANCEL', variant: T.groups.composite.cancel, fontSize: T.fsB2, onClick: () => { params.onCancel(); } });
         cancelBtn.style.flex = '1'; cancelBtn.style.height = '48px';
-        var addBtn = buildPillButton({ label: 'ADD ITEM', variant: T.groups.composite.confirm, fontSize: T.fsB2, onClick: _commit });
+        const addBtn = buildPillButton({ label: 'ADD ITEM', variant: T.groups.composite.confirm, fontSize: T.fsB2, onClick: _commit });
         addBtn.style.flex = '1'; addBtn.style.height = '48px';
         btnRow.appendChild(cancelBtn);
         btnRow.appendChild(addBtn);
@@ -1073,13 +1071,13 @@ defineScene({
         nameInput.focus();
 
         function _commit() {
-          var name = nameInput.value.trim();
+          let name = nameInput.value.trim();
           if (!name) { nameInput.style.borderColor = T.verm; return; }
           if (!catSelect.value) { catSelect.style.borderColor = T.verm; return; }
           params.onConfirm({ label: name, price: _cents / 100, categoryId: catSelect.value });
         }
       },
-      unmount: function() {},
+      unmount: () => {},
     },
   },
 
@@ -1093,25 +1091,25 @@ defineScene({
     get createOrderIdemKey()    { return createOrderIdemKey; },
     set createOrderIdemKey(v)   { createOrderIdemKey = v; },
     get isSending()             { return isSending; },
-    handleSend:                 function() { return handleSend(); },
-    handleSaveOnly:             function() { return handleSaveOnly(); },
-    recallFromBackend:          function(id) { return recallFromBackend(id); },
+    handleSend:                 () => handleSend(),
+    handleSaveOnly:             () => handleSaveOnly(),
+    recallFromBackend:          (id) => recallFromBackend(id),
     get modifierSession()       { return modifierSession; },
     set modifierSession(v)      { modifierSession = v; },
-    applyModifier:              function(mod) { return applyModifier(mod); },
-    calculateItemPrice:         function(item, selections, menuState) { return calculateItemPrice(item, selections, menuState); },
-    resolveOptionGroupForModifier: function(item, groupId, menuState) { return resolveOptionGroupForModifier(item, groupId, menuState); },
-    shouldRenderOptionsRow:     function(item, groupId, menuState) { return shouldRenderOptionsRow(item, groupId, menuState); },
-    buildOptionsRow:            function(opts) { return buildOptionsRow(opts); },
-    buildModifierBlock:         function(opts) { return buildModifierBlock(opts); },
+    applyModifier:              (mod) => applyModifier(mod),
+    calculateItemPrice:         (item, selections, menuState) => calculateItemPrice(item, selections, menuState),
+    resolveOptionGroupForModifier: (item, groupId, menuState) => resolveOptionGroupForModifier(item, groupId, menuState),
+    shouldRenderOptionsRow:     (item, groupId, menuState) => shouldRenderOptionsRow(item, groupId, menuState),
+    buildOptionsRow:            (opts) => buildOptionsRow(opts),
+    buildModifierBlock:         (opts) => buildModifierBlock(opts),
   },
 });
 
 // ── TOTALS HELPER ─────────────────────────────────
 function _fmtPrice(n) {
-  var v = Number(n);
+  let v = Number(n);
   if (!isFinite(v)) v = 0;
-  return '$' + v.toFixed(2);
+  return `$${v.toFixed(2)}`;
 }
 
 // Pre-send display totals only — items in `ticket` have not reached the server
@@ -1119,12 +1117,12 @@ function _fmtPrice(n) {
 // shown as a live preview and are superseded by server-confirmed totals once
 // the order is saved/sent.
 function computeTicketTotals() {
-  var subtotal = 0;
-  var counts = {};
-  var summaryItems = [];  // item summary for ORDER RECAP
-  ticket.forEach(function(inst) {
-    var modTotal = inst.mods.reduce(function(s, m) { return s + Number(m.price || 0); }, 0);
-    var lineTotal = Number(inst.unitPrice || 0) + modTotal;
+  let subtotal = 0;
+  const counts = {};
+  const summaryItems = [];  // item summary for ORDER RECAP
+  ticket.forEach((inst) => {
+    let modTotal = inst.mods.reduce((s, m) => s + Number(m.price || 0), 0);
+    const lineTotal = Number(inst.unitPrice || 0) + modTotal;
     counts[inst.name] = counts[inst.name] || { unitPrice: inst.unitPrice, qty: 0 };
     counts[inst.name].qty += 1;
     subtotal += lineTotal;
@@ -1133,39 +1131,39 @@ function computeTicketTotals() {
       unitPrice: lineTotal,
       qty: 1,
       sent: inst.sent,
-      mods: inst.mods.filter(function(m) { return m.charged || m.name; }),
+      mods: inst.mods.filter((m) => m.charged || m.name),
     });
   });
-  var t = computeTotals(subtotal);
-  return { counts: counts, summaryItems: summaryItems, subtotal: t.subtotal, tax: t.tax, cardTotal: t.cardTotal, cashPrice: t.cashPrice };
+  let t = computeTotals(subtotal);
+  return { counts, summaryItems, subtotal: t.subtotal, tax: t.tax, cardTotal: t.cardTotal, cashPrice: t.cashPrice };
 }
 
 
 // ── FAVORITES API ─────────────────────────────────
 function loadFavorites() {
-  var empId = sceneParams.employeeId;
+  let empId = sceneParams.employeeId;
   if (!empId) return;
-  fetchWithTimeout(API + '/favorites?employee_id=' + empId, {}, 10000)
-    .then(function(r) { return r.ok ? r.json() : { item_ids: [] }; })
-    .then(function(data) {
+  fetchWithTimeout(API + `/favorites?employee_id=${empId}`, {}, 10000)
+    .then((r) => { return r.ok ? r.json() : { item_ids: [] }; })
+    .then((data) => {
       favorites = data.item_ids || [];
       if (snakeState.view === 'personal') renderSnakeGrid();
     })
-    .catch(function() { favorites = []; });
+    .catch(() => { favorites = []; });
 }
 
 function saveFavorites() {
-  var empId = sceneParams.employeeId;
+  const empId = sceneParams.employeeId;
   if (!empId) return;
   fetchWithTimeout(API + '/favorites', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ employee_id: empId, item_ids: favorites }),
-  }, 10000).catch(function() {});
+  }, 10000).catch(() => {});
 }
 
 function toggleFavorite(itemId) {
-  var idx = favorites.indexOf(itemId);
+  let idx = favorites.indexOf(itemId);
   if (idx >= 0) {
     favorites.splice(idx, 1);
     showToast('Removed from Personal', { bg: T.card, duration: 1200 });
@@ -1180,52 +1178,52 @@ function toggleFavorite(itemId) {
 // ── SNAKE NAV TILE BUILDERS ────────────────────────
 
 function _tileStyle(color, filled, extraCss) {
-  var bg = filled ? color : T.card;
-  var darkBg = darkenHex(bg, 0.2);
+  let bg = filled ? color : T.card;
+  let darkBg = darkenHex(bg, 0.2);
   return [
     'display:flex;flex-direction:column;justify-content:center;align-items:center;',
     'min-height:120px;padding:12px 10px;box-sizing:border-box;',
-    'border-radius:' + T.chamferCard + 'px;cursor:pointer;user-select:none;',
+    `border-radius:${T.chamferCard}px;cursor:pointer;user-select:none;`,
     'pointer-events:auto;touch-action:manipulation;',
-    'border-left:' + T.accentBarW + ' solid ' + color + ';',
-    'background:' + bg + ';',
-    'box-shadow:0 6px 0 ' + darkBg + ';',
+    `border-left:${T.accentBarW} solid ${color};`,
+    `background:${bg};`,
+    `box-shadow:0 6px 0 ${darkBg};`,
     'transition:transform 80ms,box-shadow 80ms;',
     extraCss || '',
   ].join('');
 }
 
 function _applyPress(el, color, filled) {
-  var bg = filled ? color : T.card;
-  var darkBg = darkenHex(bg, 0.2);
-  el.addEventListener('pointerdown', function() {
+  let bg = filled ? color : T.card;
+  const darkBg = darkenHex(bg, 0.2);
+  el.addEventListener('pointerdown', () => {
     el.style.transform = 'translateY(1px)';
     el.style.boxShadow = 'none';
   });
-  el.addEventListener('pointerup', function() {
+  el.addEventListener('pointerup', () => {
     el.style.transform = '';
-    el.style.boxShadow = '0 6px 0 ' + darkBg;
+    el.style.boxShadow = `0 6px 0 ${darkBg}`;
   });
-  el.addEventListener('pointerleave', function() {
+  el.addEventListener('pointerleave', () => {
     el.style.transform = '';
-    el.style.boxShadow = '0 6px 0 ' + darkBg;
+    el.style.boxShadow = `0 6px 0 ${darkBg}`;
   });
 }
 
 function buildCrumbTile(crumb, isLast) {
-  var el = document.createElement('div');
+  let el = document.createElement('div');
   el.style.cssText = _tileStyle(crumb.color, true);
   el.style.position = 'relative';
 
   if (!isLast) {
-    var back = document.createElement('div');
-    back.style.cssText = 'position:absolute;top:6px;right:8px;font-size:10px;color:rgba(0,0,0,0.4);font-family:' + T.fb + ';pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
+    const back = document.createElement('div');
+    back.style.cssText = `position:absolute;top:6px;right:8px;font-size:10px;color:rgba(0,0,0,0.4);font-family:${T.fb};pointer-events:none;;font-weight:${T.fwBold};`;
     back.textContent = '◂';
     el.appendChild(back);
   }
 
-  var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB1 + ';color:' + (isLast ? T.well : hexToRgba(T.text, 0.75)) + ';letter-spacing:1px;text-align:center;pointer-events:none;';
+  let lbl = document.createElement('span');
+  lbl.style.cssText = `font-family:${T.fh};font-weight:700;font-size:${T.fsB1};color:${(isLast ? T.well : hexToRgba(T.text, 0.75))};letter-spacing:1px;text-align:center;pointer-events:none;`;
   lbl.textContent = crumb.label;
   el.appendChild(lbl);
 
@@ -1234,11 +1232,11 @@ function buildCrumbTile(crumb, isLast) {
 }
 
 function buildCatTile(cat) {
-  var el = document.createElement('div');
+  let el = document.createElement('div');
   el.style.cssText = _tileStyle(cat.color, false);
 
-  var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB1 + ';color:' + cat.color + ';letter-spacing:1.5px;text-align:center;pointer-events:none;';
+  let lbl = document.createElement('span');
+  lbl.style.cssText = `font-family:${T.fh};font-weight:700;font-size:${T.fsB1};color:${cat.color};letter-spacing:1.5px;text-align:center;pointer-events:none;`;
   lbl.textContent = cat.label;
   el.appendChild(lbl);
 
@@ -1247,11 +1245,11 @@ function buildCatTile(cat) {
 }
 
 function buildSubcatTile(sub, color) {
-  var el = document.createElement('div');
+  let el = document.createElement('div');
   el.style.cssText = _tileStyle(color, false, 'opacity:0.9;');
 
-  var lbl = document.createElement('span');
-  lbl.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:' + T.fsB1 + ';color:' + color + ';letter-spacing:1px;text-align:center;pointer-events:none;';
+  let lbl = document.createElement('span');
+  lbl.style.cssText = `font-family:${T.fh};font-weight:700;font-size:${T.fsB1};color:${color};letter-spacing:1px;text-align:center;pointer-events:none;`;
   lbl.textContent = sub.label;
   el.appendChild(lbl);
 
@@ -1260,24 +1258,24 @@ function buildSubcatTile(sub, color) {
 }
 
 function buildItemTile(item, catColor, isFav) {
-  var el = document.createElement('div');
+  let el = document.createElement('div');
   el.style.cssText = _tileStyle(catColor, false, 'justify-content:space-between;align-items:flex-start;position:relative;');
 
   if (isFav) {
-    var star = document.createElement('div');
-    star.style.cssText = 'position:absolute;top:7px;right:8px;color:' + T.gold + ';font-size:14px;pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
+    const star = document.createElement('div');
+    star.style.cssText = `position:absolute;top:7px;right:8px;color:${T.gold};font-size:14px;pointer-events:none;;font-weight:${T.fwBold};`;
     star.textContent = '★';
     el.appendChild(star);
   }
 
-  var name = document.createElement('span');
-  name.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:14px;color:' + T.text + ';letter-spacing:0.3px;line-height:1.3;padding-right:' + (isFav ? '18px' : '0') + ';pointer-events:none;';
+  let name = document.createElement('span');
+  name.style.cssText = `font-family:${T.fh};font-weight:700;font-size:14px;color:${T.text};letter-spacing:0.3px;line-height:1.3;padding-right:${(isFav ? '18px' : '0')};pointer-events:none;`;
   name.textContent = item.label;
   el.appendChild(name);
 
-  var price = document.createElement('span');
-  price.style.cssText = 'font-family:' + T.fb + ';font-size:15px;color:' + T.gold + ';font-weight:700;margin-top:6px;pointer-events:none;';
-  price.textContent = '$' + (typeof item.price === 'number' ? item.price.toFixed(2) : item.price);
+  let price = document.createElement('span');
+  price.style.cssText = `font-family:${T.fb};font-size:15px;color:${T.gold};font-weight:700;margin-top:6px;pointer-events:none;`;
+  price.textContent = `$${(typeof item.price === 'number' ? item.price.toFixed(2) : item.price)}`;
   el.appendChild(price);
 
   _applyPress(el, catColor, false);
@@ -1289,18 +1287,18 @@ function buildItemTile(item, catColor, isFav) {
 function renderSnakeGrid() {
   if (!_gridEl) return;
   _gridEl.innerHTML = '';
-  var frag = document.createDocumentFragment();
+  const frag = document.createDocumentFragment();
 
-  var view   = snakeState.view;
-  var crumbs = snakeState.crumbs;
-  var catId  = snakeState.catId;
-  var subId  = snakeState.subId;
+  const view   = snakeState.view;
+  const crumbs = snakeState.crumbs;
+  let catId  = snakeState.catId;
+  const subId  = snakeState.subId;
 
   // ── PERSONAL TAB ──
   if (view === 'personal') {
-    var pCrumb = { id: 'personal', label: 'PERSONAL', color: T.green };
-    var pTile = buildCrumbTile(pCrumb, true);
-    pTile.addEventListener('pointerup', function() {
+    const pCrumb = { id: 'personal', label: 'PERSONAL', color: T.green };
+    let pTile = buildCrumbTile(pCrumb, true);
+    pTile.addEventListener('pointerup', () => {
       snakeState.view   = 'cats';
       snakeState.crumbs = [];
       snakeState.catId  = null;
@@ -1314,9 +1312,9 @@ function renderSnakeGrid() {
 
   // ── Crumb tiles (inline, same grid) ──
   if (view !== 'cats') {
-    crumbs.forEach(function(crumb, i) {
-      var tile = buildCrumbTile(crumb, i === crumbs.length - 1);
-      tile.addEventListener('pointerup', function() { _crumbTap(i); });
+    crumbs.forEach((crumb, i) => {
+      let tile = buildCrumbTile(crumb, i === crumbs.length - 1);
+      tile.addEventListener('pointerup', () => { _crumbTap(i); });
       _gridEl.appendChild(tile);
     });
   }
@@ -1324,9 +1322,9 @@ function renderSnakeGrid() {
   // ── Category home ──
   if (view === 'cats') {
     // Inject PERSONAL as first tile
-    var personalCat = { id: 'personal', label: 'PERSONAL', color: T.green };
-    var pTile = buildCatTile(personalCat);
-    pTile.addEventListener('pointerup', function() {
+    const personalCat = { id: 'personal', label: 'PERSONAL', color: T.green };
+    const pTile = buildCatTile(personalCat);
+    pTile.addEventListener('pointerup', () => {
       snakeState.view = 'personal';
       snakeState.crumbs = [];
       snakeState.catId = null;
@@ -1335,40 +1333,40 @@ function renderSnakeGrid() {
     });
     _gridEl.appendChild(pTile);
 
-    MENU_DATA.forEach(function(cat) {
-      var tile = buildCatTile(cat);
-      tile.addEventListener('pointerup', function() { _selectCat(cat); });
+    MENU_DATA.forEach((cat) => {
+      let tile = buildCatTile(cat);
+      tile.addEventListener('pointerup', () => { _selectCat(cat); });
       _gridEl.appendChild(tile);
     });
     return;
   }
 
   // ── Subcategory ──
-  var menuCat = MENU_DATA.find(function(c) { return c.id === catId; });
+  let menuCat = MENU_DATA.find((c) => c.id === catId);
   if (!menuCat) return;
-  var subcats = menuCat.subcats;
+  const subcats = menuCat.subcats;
 
   if (view === 'subcats' && subcats && subcats.length > 1) {
-    subcats.forEach(function(sub) {
-      var tile = buildSubcatTile(sub, menuCat.color);
-      tile.addEventListener('pointerup', function() { _selectSubcat(sub, menuCat); });
+    subcats.forEach((sub) => {
+      let tile = buildSubcatTile(sub, menuCat.color);
+      tile.addEventListener('pointerup', () => { _selectSubcat(sub, menuCat); });
       _gridEl.appendChild(tile);
     });
     return;
   }
 
   // ── Items ──
-  var itemList = [];
+  let itemList = [];
   if (subId) {
-    var sub = (subcats || []).find(function(s) { return s.id === subId; });
+    let sub = (subcats || []).find((s) => s.id === subId);
     if (sub) itemList = sub.items || [];
   } else {
-    (subcats || []).forEach(function(s) { itemList = itemList.concat(s.items || []); });
+    (subcats || []).forEach((s) => { itemList = itemList.concat(s.items || []); });
   }
 
-  itemList.forEach(function(item) {
-    var isFav = favorites.indexOf(item.id) >= 0;
-    var tile = buildItemTile(item, menuCat.color, isFav);
+  itemList.forEach((item) => {
+    const isFav = favorites.indexOf(item.id) >= 0;
+    let tile = buildItemTile(item, menuCat.color, isFav);
     _bindItemTile(tile, item, menuCat);
     frag.appendChild(tile);
   });
@@ -1376,53 +1374,53 @@ function renderSnakeGrid() {
 }
 
 function _bindItemTile(tile, item, menuCat) {
-  var longPressTimer = null;
-  var didLong = false;
-  var _tapping = false;
+  let longPressTimer = null;
+  let didLong = false;
+  let _tapping = false;
 
-  tile.addEventListener('pointerdown', function() {
+  tile.addEventListener('pointerdown', () => {
     didLong = false;
-    longPressTimer = setTimeout(function() {
+    longPressTimer = setTimeout(() => {
       didLong = true;
       if (item.id) toggleFavorite(item.id);
     }, 600);
   });
 
-  tile.addEventListener('pointerup', function() {
+  tile.addEventListener('pointerup', () => {
     clearTimeout(longPressTimer);
     if (!didLong && !_tapping) {
       _tapping = true;
       handleItemSelect(item);
-      requestAnimationFrame(function() { _tapping = false; });
+      requestAnimationFrame(() => { _tapping = false; });
     }
   });
 
-  tile.addEventListener('pointerleave', function() {
+  tile.addEventListener('pointerleave', () => {
     clearTimeout(longPressTimer);
   });
 
-  tile.addEventListener('pointercancel', function() {
+  tile.addEventListener('pointercancel', () => {
     clearTimeout(longPressTimer);
   });
 }
 
 function _renderPersonalGrid() {
   // Open Item tile — always present at the top of Personal
-  var openTile = document.createElement('div');
+  const openTile = document.createElement('div');
   openTile.style.cssText = _tileStyle(T.gold, false, 'justify-content:space-between;align-items:flex-start;');
-  var openLabel = document.createElement('span');
-  openLabel.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:14px;color:' + T.text + ';letter-spacing:0.3px;pointer-events:none;';
+  const openLabel = document.createElement('span');
+  openLabel.style.cssText = `font-family:${T.fh};font-weight:700;font-size:14px;color:${T.text};letter-spacing:0.3px;pointer-events:none;`;
   openLabel.textContent = 'Open Item';
-  var openIcon = document.createElement('span');
-  openIcon.style.cssText = 'font-family:' + T.fb + ';font-size:18px;color:' + T.gold + ';font-weight:700;margin-top:4px;pointer-events:none;';
+  const openIcon = document.createElement('span');
+  openIcon.style.cssText = `font-family:${T.fb};font-size:18px;color:${T.gold};font-weight:700;margin-top:4px;pointer-events:none;`;
   openIcon.textContent = '+';
   openTile.appendChild(openLabel);
   openTile.appendChild(openIcon);
   _applyPress(openTile, T.gold, false);
-  openTile.addEventListener('pointerup', function() {
+  openTile.addEventListener('pointerup', () => {
     SceneManager.interrupt('oe-open-item', {
-      onConfirm: function(result) {
-        var menuCat = MENU_DATA.find(function(c) { return c.id === result.categoryId; });
+      onConfirm: (result) => {
+        let menuCat = MENU_DATA.find((c) => c.id === result.categoryId);
         addToTicket({
           label: result.label,
           price: result.price,
@@ -1433,7 +1431,7 @@ function _renderPersonalGrid() {
         if (ticket.length > 0) ticket[ticket.length - 1].category = result.categoryId;
         SceneManager.closeInterrupt('oe-open-item');
       },
-      onCancel: function() {
+      onCancel: () => {
         SceneManager.closeInterrupt('oe-open-item');
       },
     });
@@ -1441,23 +1439,23 @@ function _renderPersonalGrid() {
   _gridEl.appendChild(openTile);
 
   if (favorites.length === 0) {
-    var empty = document.createElement('div');
+    let empty = document.createElement('div');
     empty.style.cssText = [
       'grid-column:1/-1;display:flex;flex-direction:column;',
       'align-items:center;justify-content:center;height:200px;gap:10px;',
-      'font-family:' + T.fh + ';font-size:13px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;',
-    ].join('') + ";font-weight:" + T.fwBold + ";";
-    empty.innerHTML = '<div style="font-size:35px;color:' + T.gold + ';opacity:0.5;pointer-events:none;">★</div><span style="pointer-events:none;">Hold any item to add it here</span>';
+      `font-family:${T.fh};font-size:13px;color:${hexToRgba(T.text, 0.6)};text-align:center;`,
+    ].join('') + `;font-weight:${T.fwBold};`;
+    empty.innerHTML = `<div style="font-size:35px;color:${T.gold};opacity:0.5;pointer-events:none;">★</div><span style="pointer-events:none;">Hold any item to add it here</span>`;
     _gridEl.appendChild(empty);
     return;
   }
 
   // Group by category, preserving MENU_DATA order
-  MENU_DATA.forEach(function(cat) {
-    var catItems = [];
-    favorites.forEach(function(favId) {
-      (cat.subcats || []).forEach(function(sub) {
-        (sub.items || []).forEach(function(item) {
+  MENU_DATA.forEach((cat) => {
+    const catItems = [];
+    favorites.forEach((favId) => {
+      (cat.subcats || []).forEach((sub) => {
+        (sub.items || []).forEach((item) => {
           if (item.id === favId) catItems.push(item);
         });
       });
@@ -1465,22 +1463,22 @@ function _renderPersonalGrid() {
     if (catItems.length === 0) return;
 
     // Category header spanning full grid
-    var hdr = document.createElement('div');
+    let hdr = document.createElement('div');
     hdr.style.cssText = [
       'grid-column:1/-1;display:flex;align-items:center;gap:8px;',
       'margin-top:4px;margin-bottom:2px;',
     ].join('');
-    var hdrLabel = document.createElement('span');
-    hdrLabel.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:10px;color:' + cat.color + ';letter-spacing:2px;pointer-events:none;';
+    const hdrLabel = document.createElement('span');
+    hdrLabel.style.cssText = `font-family:${T.fh};font-weight:700;font-size:10px;color:${cat.color};letter-spacing:2px;pointer-events:none;`;
     hdrLabel.textContent = cat.label;
-    var hdrLine = document.createElement('div');
-    hdrLine.style.cssText = 'height:1px;flex:1;background:linear-gradient(to right,' + cat.color + '44,transparent);pointer-events:none;';
+    const hdrLine = document.createElement('div');
+    hdrLine.style.cssText = `height:1px;flex:1;background:linear-gradient(to right,${cat.color}44,transparent);pointer-events:none;`;
     hdr.appendChild(hdrLabel);
     hdr.appendChild(hdrLine);
     _gridEl.appendChild(hdr);
 
-    catItems.forEach(function(item) {
-      var tile = buildItemTile(item, cat.color, true);
+    catItems.forEach((item) => {
+      let tile = buildItemTile(item, cat.color, true);
       _bindItemTile(tile, item, cat);
       _gridEl.appendChild(tile);
     });
@@ -1490,7 +1488,7 @@ function _renderPersonalGrid() {
 // ── SNAKE NAV ACTIONS ──────────────────────────────
 
 function _selectCat(cat) {
-  var hasSubs = cat.subcats && cat.subcats.length > 1;
+  const hasSubs = cat.subcats && cat.subcats.length > 1;
   snakeState.crumbs = [{ id: cat.id, label: cat.label, color: cat.color }];
   snakeState.catId  = cat.id;
   snakeState.subId  = null;
@@ -1523,16 +1521,16 @@ function _crumbTap(idx) {
 
 // ── MAIN AREA ─────────────────────────────────────
 function buildMain(parentEl, params) {
-  var main = document.createElement('div');
+  const main = document.createElement('div');
   main.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
   _mainArea = main;
 
   // ── Collapsible grid wrapper ──────────────────────
-  var gridWrap = document.createElement('div');
+  let gridWrap = document.createElement('div');
   gridWrap.style.cssText = 'flex:1;min-height:0;overflow-y:auto;';
   _gridWrap = gridWrap;
 
-  var grid = document.createElement('div');
+  let grid = document.createElement('div');
   grid.style.cssText = [
     'display:grid;',
     'grid-template-columns:repeat(auto-fill,minmax(140px,1fr));',
@@ -1543,7 +1541,7 @@ function buildMain(parentEl, params) {
   main.appendChild(gridWrap);
 
   // ── Snake strip (crumbs only, shown when mod panel open) ──
-  var snakeStrip = document.createElement('div');
+  const snakeStrip = document.createElement('div');
   snakeStrip.style.cssText = [
     'display:none;flex-wrap:wrap;gap:6px;align-items:center;',
     'padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.06);',
@@ -1567,9 +1565,9 @@ function buildMain(parentEl, params) {
   main.appendChild(_bottomBar);
 
   // Load menu data + favorites, then render grid
-  requestAnimationFrame(function() {
+  requestAnimationFrame(() => {
     if (!_menuFetched) {
-      fetchMenuFromAPI().then(function() { renderSnakeGrid(); }).catch(function() { console.error('[KINDpos] Menu fetch failed'); renderSnakeGrid(); });
+      fetchMenuFromAPI().then(() => { renderSnakeGrid(); }).catch(() => { console.error('[KINDpos] Menu fetch failed'); renderSnakeGrid(); });
     } else {
       renderSnakeGrid();
     }
@@ -1586,34 +1584,34 @@ function buildMain(parentEl, params) {
 // the header bulk-toggle the entire grid. No SELECTED/UNSELECTED tabs,
 // no RECALL — those belonged to the old check-isolated mental model.
 function buildSeatSelectorCard() {
-  var bevelLt = lightenHex(T.bg, 0.08);
+  let bevelLt = lightenHex(T.bg, 0.08);
 
   // Wrapper card: bevel-chromed well, no accent bar (the seat tiles carry
   // the color signal themselves).
-  var card = document.createElement('div');
+  let card = document.createElement('div');
   card.style.cssText = [
     'flex-shrink:0;',
-    'margin:0 ' + PAD + 'px ' + GAP + 'px;',
-    'background:' + T.well + ';',
-    'border:1px solid ' + bevelLt + ';',
+    `margin:0 ${PAD}px ${GAP}px;`,
+    `background:${T.well};`,
+    `border:1px solid ${bevelLt};`,
     'border-radius:10px;',
     'display:flex;flex-direction:column;',
     'overflow:hidden;',
   ].join('');
 
   // ── Header: SEATS label + ALL/NONE pills ──────────
-  var header = document.createElement('div');
+  const header = document.createElement('div');
   header.style.cssText = [
     'display:flex;align-items:center;gap:8px;',
     'padding:8px 12px 6px;',
   ].join('');
 
-  var lbl = document.createElement('span');
+  let lbl = document.createElement('span');
   lbl.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + T.fsB4 + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + T.green + ';',
+    `font-family:${T.fb};`,
+    `font-size:${T.fsB4};`,
+    `font-weight:${T.fwBold};`,
+    `color:${T.green};`,
     'letter-spacing:0.15em;',
     'flex:1;',
   ].join('');
@@ -1622,37 +1620,37 @@ function buildSeatSelectorCard() {
 
   // Outlined-pill builder for ALL/NONE — small, transparent fill, colored border + text.
   function _buildBulkPill(label, color) {
-    var el = document.createElement('div');
+    const el = document.createElement('div');
     el.style.cssText = [
       'padding:3px 12px;',
-      'border:1.5px solid ' + color + ';',
+      `border:1.5px solid ${color};`,
       'border-radius:6px;',
       'background:transparent;',
-      'color:' + color + ';',
-      'font-family:' + T.fh + ';font-size:' + T.fsB4 + ';font-weight:' + T.fwBold + ';',
+      `color:${color};`,
+      `font-family:${T.fh};font-size:${T.fsB4};font-weight:${T.fwBold};`,
       'letter-spacing:0.15em;',
       'cursor:pointer;user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'transition:opacity 0.1s;',
     ].join('');
     el.textContent = label;
-    el.addEventListener('pointerdown', function() { el.style.opacity = '0.6'; });
-    var _rel = function() { el.style.opacity = '1'; };
+    el.addEventListener('pointerdown', () => { el.style.opacity = '0.6'; });
+    let _rel = () => { el.style.opacity = '1'; };
     el.addEventListener('pointerup', _rel);
     el.addEventListener('pointerleave', _rel);
     el.addEventListener('pointercancel', _rel);
     return el;
   }
 
-  var allBtn  = _buildBulkPill('ALL',  T.green);
-  var noneBtn = _buildBulkPill('NONE', T.moon);
+  const allBtn  = _buildBulkPill('ALL',  T.green);
+  const noneBtn = _buildBulkPill('NONE', T.moon);
   header.appendChild(allBtn);
   header.appendChild(noneBtn);
   card.appendChild(header);
 
   // ── Body: 8-col scrollable grid ───────────────────
   // grid-auto-rows fixes row height at 40px; max-height shows ~3 rows; scrolls beyond.
-  var body = document.createElement('div');
+  let body = document.createElement('div');
   body.className = '_oe-seat-scroll';
   body.style.cssText = [
     'display:grid;grid-template-columns:repeat(8,1fr);',
@@ -1664,22 +1662,22 @@ function buildSeatSelectorCard() {
   card.appendChild(body);
 
   function _buildSeatPill(sn, isActive) {
-    var pill = document.createElement('div');
+    let pill = document.createElement('div');
     pill.style.cssText = [
       'display:flex;align-items:center;justify-content:center;',
       'border-radius:8px;',
-      'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';',
-      'font-size:' + T.fsB2 + ';',
+      `font-family:${T.fh};font-weight:${T.fwBold};`,
+      `font-size:${T.fsB2};`,
       'cursor:pointer;user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'transition:transform 0.07s;',
       isActive
-        ? 'background:' + T.green + ';color:' + T.well + ';box-shadow:0 2px 0 ' + T.greenDk + ';'
-        : 'background:transparent;color:' + T.green + ';border:1.5px solid ' + T.green + ';',
+        ? `background:${T.green};color:${T.well};box-shadow:0 2px 0 ${T.greenDk};`
+        : `background:transparent;color:${T.green};border:1.5px solid ${T.green};`,
     ].join('');
-    pill.textContent = 'S' + sn;
-    pill.addEventListener('pointerdown', function() { pill.style.transform = 'translateY(1px)'; });
-    var _rel = function() { pill.style.transform = ''; };
+    pill.textContent = `S${sn}`;
+    pill.addEventListener('pointerdown', () => { pill.style.transform = 'translateY(1px)'; });
+    const _rel = () => { pill.style.transform = ''; };
     pill.addEventListener('pointerup',     _rel);
     pill.addEventListener('pointerleave',  _rel);
     pill.addEventListener('pointercancel', _rel);
@@ -1687,14 +1685,14 @@ function buildSeatSelectorCard() {
   }
 
   function _buildAddTile() {
-    var tile = document.createElement('div');
+    let tile = document.createElement('div');
     tile.style.cssText = [
       'display:flex;align-items:center;justify-content:center;',
       'border-radius:8px;',
       'background:transparent;',
-      'border:1.5px dashed ' + T.moon + ';',
-      'color:' + T.moon + ';',
-      'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:24px;',
+      `border:1.5px dashed ${T.moon};`,
+      `color:${T.moon};`,
+      `font-family:${T.fh};font-weight:${T.fwBold};font-size:24px;`,
       'cursor:pointer;user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
     ].join('');
@@ -1704,11 +1702,11 @@ function buildSeatSelectorCard() {
 
   function repaintSeats() {
     body.innerHTML = '';
-    _allSeatList.forEach(function(sn) {
-      var isActive = _activeSeats.has(sn);
-      var pill = _buildSeatPill(sn, isActive);
-      pill.addEventListener('pointerup', (function(seatNum) {
-        return function() {
+    _allSeatList.forEach((sn) => {
+      let isActive = _activeSeats.has(sn);
+      let pill = _buildSeatPill(sn, isActive);
+      pill.addEventListener('pointerup', ((seatNum) => {
+        return () => {
           // Auto-switch: after items just added, first tap on a different
           // seat replaces the active set rather than toggling.
           if (_autoSwitchArmed) {
@@ -1728,11 +1726,11 @@ function buildSeatSelectorCard() {
     });
 
     // Add-seat tile after all populated cells
-    var addTile = _buildAddTile();
-    addTile.addEventListener('pointerup', function() {
-      var usedSeats = {};
-      _allSeatList.forEach(function(sn) { usedSeats[sn] = true; });
-      var newSeat = 1;
+    const addTile = _buildAddTile();
+    addTile.addEventListener('pointerup', () => {
+      const usedSeats = {};
+      _allSeatList.forEach((sn) => { usedSeats[sn] = true; });
+      let newSeat = 1;
       while (usedSeats[newSeat]) newSeat++;
       if (newSeat > 99) { showToast('Maximum 99 seats', { bg: T.gold }); return; }
       _allSeatList.push(newSeat);
@@ -1745,14 +1743,14 @@ function buildSeatSelectorCard() {
     body.appendChild(addTile);
   }
 
-  allBtn.addEventListener('pointerup', function() {
-    _allSeatList.forEach(function(sn) { _activeSeats.add(sn); });
+  allBtn.addEventListener('pointerup', () => {
+    _allSeatList.forEach((sn) => { _activeSeats.add(sn); });
     _autoSwitchArmed = false;
     repaintSeats();
     renderTicket();
   });
 
-  noneBtn.addEventListener('pointerup', function() {
+  noneBtn.addEventListener('pointerup', () => {
     _activeSeats.clear();
     _autoSwitchArmed = false;
     repaintSeats();
@@ -1763,7 +1761,7 @@ function buildSeatSelectorCard() {
   card._repaintSeats = repaintSeats;
   // Called by _pushToAllSeats after items land — refresh pill states (in
   // case auto-switch armed) and any future add-seat hints.
-  card._onItemAdded = function() { repaintSeats(); };
+  card._onItemAdded = () => { repaintSeats(); };
   return card;
 }
 
@@ -1777,11 +1775,11 @@ function rebuildBottomBar() {
   _bottomBar.innerHTML = '';
   _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:4px;';
 
-  var hasUnsent = ticket.some(function(i) { return !i.sent; });
+  let hasUnsent = ticket.some((i) => !i.sent);
 
-  var doneLabel = isSending ? 'SENDING…' : 'DONE';
+  const doneLabel = isSending ? 'SENDING…' : 'DONE';
 
-  var doneBtn = buildPillButton({
+  let doneBtn = buildPillButton({
     label:    doneLabel,
     variant:  'mint',
     disabled: isSending,
@@ -1792,7 +1790,7 @@ function rebuildBottomBar() {
   doneBtn.style.width = '60%';
   doneBtn.style.justifySelf = 'center';
   doneBtn.style.margin = '2px 0 10px';
-  doneBtn.addEventListener('pointerup', function() {
+  doneBtn.addEventListener('pointerup', () => {
     if (isSending) return;
     if (!hasUnsent) { handleClose(); return; }
     (async function() {
@@ -1806,7 +1804,7 @@ function rebuildBottomBar() {
 
 function clearModifierSelection() {
   modifierSession.selectedItems = [];
-  ticket.forEach(function(i) { i.selected = false; });
+  ticket.forEach((i) => { i.selected = false; });
   renderTicket();
   rebuildBottomBar();
 }
@@ -1815,22 +1813,22 @@ function clearModifierSelection() {
 function openModifierSession() {
   if (modifierSession.active) return;
   // Filter to unsent items only
-  var ids = modifierSession.selectedItems;
-  var items = ticket.filter(function(i) { return ids.indexOf(i.id) !== -1 && !i.sent; });
+  const ids = modifierSession.selectedItems;
+  const items = ticket.filter((i) => ids.indexOf(i.id) !== -1 && !i.sent);
   if (items.length === 0) {
     showToast('No unsent items selected', { bg: hexToRgba(T.text, 0.45), duration: 2000 });
     return;
   }
   modifierSession.active = true;
-  modifierSession.selectedItems = items.map(function(i) { return i.id; });
+  modifierSession.selectedItems = items.map((i) => i.id);
   modifierSession.activePrefix = null;
   modifierSession.activePlacement = null;
   modifierSession.appliedMods = [];
   modifierSession.activeSizes = {};
 
   // Detect pizza items for placement
-  var catIds = [];
-  items.forEach(function(i) {
+  const catIds = [];
+  items.forEach((i) => {
     if (i.category && catIds.indexOf(i.category) === -1) catIds.push(i.category);
   });
   modifierSession.hasPizza = hasPizzaCategory(catIds);
@@ -1839,7 +1837,7 @@ function openModifierSession() {
   // Collapse snake grid, show modifier panel
   if (_gridWrap) _gridWrap.style.display = 'none';
 
-  var panel = buildModifierPanel(catIds);
+  let panel = buildModifierPanel(catIds);
   modifierSession.panelEl = panel;
   if (_mainArea && _bottomBar) {
     _mainArea.insertBefore(panel, _bottomBar);
@@ -1853,43 +1851,43 @@ function openModifierSession() {
 }
 
 function buildPlacementBar() {
-  var plColor = MOD_COLORS.pizza.color;
-  var plText  = MOD_COLORS.pizza.textColor;
-  var dimText = hexToRgba(T.text, 0.6);
+  const plColor = MOD_COLORS.pizza.color;
+  const plText  = MOD_COLORS.pizza.textColor;
+  const dimText = hexToRgba(T.text, 0.6);
 
-  var container = document.createElement('div');
+  const container = document.createElement('div');
   container.style.cssText = [
     'flex-shrink:0;height:44px;display:flex;align-items:stretch;',
-    'background:' + T.well + ';border-radius:' + T.pillRadius + ';',
-    'overflow:hidden;border:1px solid ' + T.border + ';',
+    `background:${T.well};border-radius:${T.pillRadius};`,
+    `overflow:hidden;border:1px solid ${T.border};`,
   ].join('');
 
-  var segments = {};
-  var order = ['left', 'whole', 'right'];
+  const segments = {};
+  const order = ['left', 'whole', 'right'];
 
-  order.forEach(function(id, i) {
-    var pl = PIZZA_PLACEMENTS.find(function(p) { return p.id === id; });
+  order.forEach((id, i) => {
+    const pl = PIZZA_PLACEMENTS.find((p) => p.id === id);
     if (!pl) return;
-    var isActive = modifierSession.activePlacement === id;
+    let isActive = modifierSession.activePlacement === id;
 
     if (i > 0) {
-      var div = document.createElement('div');
-      div.style.cssText = 'width:1px;background:' + T.border + ';flex-shrink:0;align-self:stretch;';
+      const div = document.createElement('div');
+      div.style.cssText = `width:1px;background:${T.border};flex-shrink:0;align-self:stretch;`;
       container.appendChild(div);
     }
 
-    var seg = document.createElement('div');
+    let seg = document.createElement('div');
     seg.style.cssText = [
-      'flex:' + (id === 'whole' ? '2' : '1') + ';',
+      `flex:${(id === 'whole' ? '2' : '1')};`,
       'display:flex;align-items:center;justify-content:center;',
-      'font-family:' + T.fh + ';font-size:13px;font-weight:700;letter-spacing:1px;',
-      'background:' + (isActive ? plColor : 'transparent') + ';',
-      'color:' + (isActive ? plText : dimText) + ';',
+      `font-family:${T.fh};font-size:13px;font-weight:700;letter-spacing:1px;`,
+      `background:${(isActive ? plColor : 'transparent')};`,
+      `color:${(isActive ? plText : dimText)};`,
       'cursor:pointer;transition:all 120ms;',
     ].join('');
     seg.textContent = pl.label.toUpperCase();
 
-    seg.addEventListener('pointerup', function(e) {
+    seg.addEventListener('pointerup', (e) => {
       e.stopPropagation();
       modifierSession.activePlacement = id;
       refreshPlacementBar();
@@ -1899,52 +1897,52 @@ function buildPlacementBar() {
     segments[id] = seg;
   });
 
-  return { wrap: container, segments: segments, plColor: plColor, plText: plText, dimText: dimText };
+  return { wrap: container, segments, plColor, plText, dimText };
 }
 
 function refreshPlacementBar() {
-  var panel = modifierSession.panelEl;
+  let panel = modifierSession.panelEl;
   if (!panel || !panel._placeBar) return;
-  var bar = panel._placeBar;
+  let bar = panel._placeBar;
 
-  ['left', 'whole', 'right'].forEach(function(id) {
-    var seg = bar.segments[id];
+  ['left', 'whole', 'right'].forEach((id) => {
+    let seg = bar.segments[id];
     if (!seg) return;
-    var isActive = modifierSession.activePlacement === id;
+    let isActive = modifierSession.activePlacement === id;
     seg.style.background = isActive ? bar.plColor : 'transparent';
     seg.style.color = isActive ? bar.plText : bar.dimText;
   });
 }
 
 function buildModifierPanel(catIds) {
-  var panel = document.createElement('div');
+  let panel = document.createElement('div');
   panel.style.cssText = [
     'flex:1;display:flex;flex-direction:column;gap:4px;',
-    'background:' + T.card + ';',
-    'border-left:' + T.accentBarW + ' solid ' + T.gold + ';',
-    'border-radius:' + T.chamferCard + 'px;',
+    `background:${T.card};`,
+    `border-left:${T.accentBarW} solid ${T.gold};`,
+    `border-radius:${T.chamferCard}px;`,
     'box-shadow:0 4px 16px rgba(0,0,0,0.28);',
     'padding:10px;overflow:hidden;',
     'margin:0 10px 10px;',
-    'padding-bottom:' + OVERLAP + 'px;',
+    `padding-bottom:${OVERLAP}px;`,
   ].join('');
 
   // ── PREFIX ROW ──
-  var prefixRow = document.createElement('div');
+  const prefixRow = document.createElement('div');
   prefixRow.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
   panel._prefixBtns = {};
 
-  UNI_PREFIXES.forEach(function(p) {
-    var isActive = modifierSession.activePrefix === p.id;
-    var pDef = PREFIXES.find(function(x) { return x.id === p.id; }) || {};
-    var pColor = pDef.color || T.card;
-    var pTextColor = pDef.textColor || T.text;
+  UNI_PREFIXES.forEach((p) => {
+    let isActive = modifierSession.activePrefix === p.id;
+    let pDef = PREFIXES.find((x) => x.id === p.id) || {};
+    let pColor = pDef.color || T.card;
+    let pTextColor = pDef.textColor || T.text;
 
-    var btn = buildPillButton({
+    let btn = buildPillButton({
       label: p.label,
       color: isActive ? pColor : T.card,
       fontSize: '26px',
-      onClick: function(e) {
+      onClick: (e) => {
         // e.stopPropagation(); // buildPillButton uses addEventListener internally or wraps it
         modifierSession.activePrefix = (modifierSession.activePrefix === p.id) ? null : p.id;
         refreshModifierPanel();
@@ -1963,35 +1961,35 @@ function buildModifierPanel(catIds) {
   // ── PIZZA PLACEMENT CARD — wide chamfered bar with 3 segments ──
   if (modifierSession.hasPizza) {
     if (!modifierSession.activePlacement) modifierSession.activePlacement = 'whole';
-    var placeBar = buildPlacementBar();
+    let placeBar = buildPlacementBar();
     panel._placeBar = placeBar;
     panel.appendChild(placeBar.wrap);
   }
 
   // ── MODIFIER BUTTON GRID (replaces HexNav) ──
-  var modData = getModHexData(catIds || []);
+  const modData = getModHexData(catIds || []);
   panel._modData = modData;
 
   // Category tab bar
-  var catTabBar = document.createElement('div');
+  const catTabBar = document.createElement('div');
   catTabBar.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
   panel._catTabBtns = {};
-  var activeCatId = modData.length > 0 ? modData[0].id : null;
+  const activeCatId = modData.length > 0 ? modData[0].id : null;
   panel._activeCatId = activeCatId;
 
-  modData.forEach(function(cat) {
-    var isActive = cat.id === activeCatId;
-    var catBtn = document.createElement('div');
+  modData.forEach((cat) => {
+    let isActive = cat.id === activeCatId;
+    const catBtn = document.createElement('div');
     catBtn.style.cssText = [
       'flex:1;height:34px;display:flex;align-items:center;justify-content:center;',
-      'font-family:' + T.fh + ';font-size:20px;cursor:pointer;',
-      'border:2px solid ' + cat.color + ';',
-      'background:' + (isActive ? cat.color : T.card) + ';',
-      'color:' + (isActive ? cat.textColor : cat.color) + ';',
+      `font-family:${T.fh};font-size:20px;cursor:pointer;`,
+      `border:2px solid ${cat.color};`,
+      `background:${(isActive ? cat.color : T.card)};`,
+      `color:${(isActive ? cat.textColor : cat.color)};`,
       'transition:background 80ms,color 80ms;',
-    ].join('') + ";font-weight:" + T.fwBold + ";";
+    ].join('') + `;font-weight:${T.fwBold};`;
     catBtn.textContent = cat.label;
-    catBtn.addEventListener('pointerup', function(e) {
+    catBtn.addEventListener('pointerup', (e) => {
       e.stopPropagation();
       panel._activeCatId = cat.id;
       refreshModCatTabs(panel);
@@ -2003,25 +2001,25 @@ function buildModifierPanel(catIds) {
   panel.appendChild(catTabBar);
 
   // Scrollable button grid
-  var gridWrap = document.createElement('div');
+  const gridWrap = document.createElement('div');
   gridWrap.style.cssText = 'flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none;';
-  var grid = document.createElement('div');
+  let grid = document.createElement('div');
   grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px;';
   gridWrap.appendChild(grid);
   panel._modGrid = grid;
   panel.appendChild(gridWrap);
 
   // Init: no deferred HexNav needed
-  panel._initHexNav = function() {
+  panel._initHexNav = () => {
     renderModButtonGrid(panel);
   };
 
   // ── APPLIED MODS LOG ──
-  var logWrap = document.createElement('div');
+  const logWrap = document.createElement('div');
   logWrap.style.cssText = [
     'max-height:100px;overflow-y:auto;scrollbar-width:none;-ms-overflow-style:none;',
-    'background:' + T.well + ';padding:4px 8px;flex-shrink:0;',
-    'border:1px solid ' + T.border + ';border-radius:6px;',
+    `background:${T.well};padding:4px 8px;flex-shrink:0;`,
+    `border:1px solid ${T.border};border-radius:6px;`,
     'box-shadow:inset 0 2px 4px rgba(0,0,0,0.35);',
   ].join('');
   panel._log = logWrap;
@@ -2038,32 +2036,32 @@ function applyModifier(mod) {
     showToast('Select a prefix first', { bg: hexToRgba(T.text, 0.45), duration: 2000 });
     return;
   }
-  var prefix = UNI_PREFIXES.find(function(p) { return p.id === modifierSession.activePrefix; });
+  const prefix = UNI_PREFIXES.find((p) => p.id === modifierSession.activePrefix);
   if (!prefix) return;
 
-  var placement = modifierSession.hasPizza ? (modifierSession.activePlacement || 'whole') : null;
-  var modName = prefix.label + ' ' + mod.label;
-  var modRefs = [];
+  const placement = modifierSession.hasPizza ? (modifierSession.activePlacement || 'whole') : null;
+  let modName = prefix.label + ` ${mod.label}`;
+  const modRefs = [];
 
   // Determine price based on prefix: ADD/EXTRA use modifier price, others are free
-  var chargesPrice = prefix.id === 'add' || prefix.id === 'extra';
-  var modPrice = chargesPrice ? (mod.price || 0) : 0;
-  var charged = chargesPrice && modPrice > 0;
+  const chargesPrice = prefix.id === 'add' || prefix.id === 'extra';
+  let modPrice = chargesPrice ? (mod.price || 0) : 0;
+  let charged = chargesPrice && modPrice > 0;
 
-  modifierSession.selectedItems.forEach(function(id) {
-    var inst = ticket.find(function(i) { return i.id === id; });
+  modifierSession.selectedItems.forEach((id) => {
+    let inst = ticket.find((i) => i.id === id);
     if (!inst) return;
-    var isPizza = inst.category === 'pizza';
-    var halfSide = null;
+    let isPizza = inst.category === 'pizza';
+    let halfSide = null;
     if (isPizza && placement === 'left') halfSide = 'Left';
     else if (isPizza && placement === 'right') halfSide = 'Right';
 
-    var modObj = { name: modName, price: modPrice, charged: charged, prefix: halfSide };
+    const modObj = { name: modName, price: modPrice, charged, prefix: halfSide };
     inst.mods.push(modObj);
-    modRefs.push({ inst: inst, mod: modObj });
+    modRefs.push({ inst, mod: modObj });
   });
 
-  var logLabel = modName + (charged ? ' +$' + modPrice.toFixed(2) : '');
+  const logLabel = modName + (charged ? ` +$${modPrice.toFixed(2)}` : '');
   modifierSession.appliedMods.push({
     prefixId: prefix.id,
     prefixLabel: prefix.label,
@@ -2079,20 +2077,20 @@ function applyModifier(mod) {
   // group, record its name so calculateItemPrice picks up the new size.
   // mod.groupId is set by buildModifierPanel where available; fall back
   // to scanning MODIFIER_GROUPS for the modifier_id.
-  var modGroupId = mod.groupId || mod.group_id;
+  let modGroupId = mod.groupId || mod.group_id;
   if (!modGroupId && mod.id && Array.isArray(MODIFIER_GROUPS)) {
-    for (var gi = 0; gi < MODIFIER_GROUPS.length; gi++) {
-      var grpScan = MODIFIER_GROUPS[gi];
-      var members = (grpScan.modifiers || []);
-      for (var mi = 0; mi < members.length; mi++) {
+    for (let gi = 0; gi < MODIFIER_GROUPS.length; gi++) {
+      const grpScan = MODIFIER_GROUPS[gi];
+      const members = (grpScan.modifiers || []);
+      for (let mi = 0; mi < members.length; mi++) {
         if (members[mi].modifier_id === mod.id) { modGroupId = grpScan.group_id; break; }
       }
       if (modGroupId) break;
     }
   }
   if (modGroupId) {
-    var grpDef = (Array.isArray(MODIFIER_GROUPS) ? MODIFIER_GROUPS : [])
-      .find(function(g) { return g && g.group_id === modGroupId; });
+    const grpDef = (Array.isArray(MODIFIER_GROUPS) ? MODIFIER_GROUPS : [])
+      .find((g) => g && g.group_id === modGroupId);
     if (grpDef && grpDef.drives_pricing) {
       modifierSession.activeSizes[modGroupId] = mod.label || mod.name;
     }
@@ -2103,18 +2101,18 @@ function applyModifier(mod) {
 }
 
 function refreshModifierPanel() {
-  var panel = modifierSession.panelEl;
+  const panel = modifierSession.panelEl;
   if (!panel) return;
 
   // Refresh prefix button states
-  UNI_PREFIXES.forEach(function(p) {
-    var btn = panel._prefixBtns[p.id];
+  UNI_PREFIXES.forEach((p) => {
+    let btn = panel._prefixBtns[p.id];
     if (!btn) return;
-    var isActive = modifierSession.activePrefix === p.id;
-    var pDef = PREFIXES.find(function(x) { return x.id === p.id; }) || {};
-    var pColor = pDef.color || T.card;
-    var pTextColor = pDef.textColor || T.text;
-    var inner = btn.firstElementChild || btn.querySelector('div');
+    let isActive = modifierSession.activePrefix === p.id;
+    let pDef = PREFIXES.find((x) => x.id === p.id) || {};
+    const pColor = pDef.color || T.card;
+    const pTextColor = pDef.textColor || T.text;
+    const inner = btn.firstElementChild || btn.querySelector('div');
     if (inner) {
       inner.style.background = isActive ? pColor : T.card;
       inner.style.color = isActive ? pTextColor : pColor;
@@ -2130,56 +2128,56 @@ function refreshModifierPanel() {
 
 function refreshModCatTabs(panel) {
   if (!panel || !panel._catTabBtns || !panel._modData) return;
-  panel._modData.forEach(function(cat) {
-    var btn = panel._catTabBtns[cat.id];
+  panel._modData.forEach((cat) => {
+    let btn = panel._catTabBtns[cat.id];
     if (!btn) return;
-    var isActive = panel._activeCatId === cat.id;
+    let isActive = panel._activeCatId === cat.id;
     btn.style.background = isActive ? cat.color : T.card;
     btn.style.color = isActive ? cat.textColor : cat.color;
   });
 }
 
 function renderModButtonGrid(panel) {
-  var grid = panel._modGrid;
+  let grid = panel._modGrid;
   if (!grid) return;
   grid.innerHTML = '';
 
-  var activeCat = null;
-  (panel._modData || []).forEach(function(cat) {
+  let activeCat = null;
+  (panel._modData || []).forEach((cat) => {
     if (cat.id === panel._activeCatId) activeCat = cat;
   });
   if (!activeCat) return;
 
-  var catColor = activeCat.color;
-  var catText = activeCat.textColor;
+  let catColor = activeCat.color;
+  const catText = activeCat.textColor;
 
   // Flatten all items from all subcats
-  (activeCat.subcats || []).forEach(function(sub) {
-    (sub.items || []).forEach(function(item) {
-      var btn = document.createElement('div');
+  (activeCat.subcats || []).forEach((sub) => {
+    (sub.items || []).forEach((item) => {
+      let btn = document.createElement('div');
       btn.style.cssText = [
         'display:flex;align-items:center;justify-content:center;',
         'height:52px;cursor:pointer;',
-        'font-family:' + T.fb + ';font-size:22px;font-weight:' + T.fwBold + ';',
+        `font-family:${T.fb};font-size:22px;font-weight:${T.fwBold};`,
         'text-align:center;word-break:break-word;',
-        'background:' + T.card + ';',
-        'color:' + catText + ';',
-        'border:2px solid ' + catColor + ';',
+        `background:${T.card};`,
+        `color:${catText};`,
+        `border:2px solid ${catColor};`,
         'transition:background 80ms;',
         'touch-action:manipulation;pointer-events:auto;',
       ].join('');
       btn.textContent = item.label;
 
-      btn.addEventListener('pointerdown', function() {
+      btn.addEventListener('pointerdown', () => {
         btn.style.background = catColor;
         btn.style.color = activeCat.textColor === catText ? T.text : catText;
       });
-      btn.addEventListener('pointerup', function() {
+      btn.addEventListener('pointerup', () => {
         btn.style.background = T.card;
         btn.style.color = catText;
         applyModifier(item);
       });
-      btn.addEventListener('pointerleave', function() {
+      btn.addEventListener('pointerleave', () => {
         btn.style.background = T.card;
         btn.style.color = catText;
       });
@@ -2190,33 +2188,33 @@ function renderModButtonGrid(panel) {
 }
 
 function renderAppliedModsLog(panel) {
-  var log = panel._log;
+  const log = panel._log;
   if (!log) return;
   log.innerHTML = '';
 
   if (modifierSession.appliedMods.length === 0) {
-    var empty = document.createElement('div');
-    empty.style.cssText = 'font-family:' + T.fb + ';font-size:30px;color:' + hexToRgba(T.text, 0.6) + ';text-align:center;padding:4px 0;' + ";font-weight:" + T.fwBold + ";";
+    const empty = document.createElement('div');
+    empty.style.cssText = `font-family:${T.fb};font-size:30px;color:${hexToRgba(T.text, 0.6)};text-align:center;padding:4px 0;;font-weight:${T.fwBold};`;
     empty.textContent = 'No modifiers applied';
     log.appendChild(empty);
     return;
   }
 
-  modifierSession.appliedMods.forEach(function(entry, idx) {
-    var row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-family:' + T.fb + ';font-size:30px;color:' + T.gold + ';line-height:1.2;' + ";font-weight:" + T.fwBold + ";";
-    var label = document.createElement('span');
-    label.textContent = entry.logLabel || (entry.prefixLabel + ' \u2192 ' + entry.modLabel);
+  modifierSession.appliedMods.forEach((entry, idx) => {
+    let row = document.createElement('div');
+    row.style.cssText = `display:flex;justify-content:space-between;align-items:center;font-family:${T.fb};font-size:30px;color:${T.gold};line-height:1.2;;font-weight:${T.fwBold};`;
+    let label = document.createElement('span');
+    label.textContent = entry.logLabel || (entry.prefixLabel + ` \u2192 ${entry.modLabel}`);
     row.appendChild(label);
-    var removeBtn = document.createElement('span');
+    const removeBtn = document.createElement('span');
     removeBtn.textContent = '\u2715';
-    removeBtn.style.cssText = 'color:' + T.verm + ';cursor:pointer;padding:0 4px;font-size:28px;flex-shrink:0;touch-action:manipulation;pointer-events:auto;' + ";font-weight:" + T.fwBold + ";";
-    removeBtn.addEventListener('pointerup', (function(i) {
-      return function(e) {
+    removeBtn.style.cssText = `color:${T.verm};cursor:pointer;padding:0 4px;font-size:28px;flex-shrink:0;touch-action:manipulation;pointer-events:auto;;font-weight:${T.fwBold};`;
+    removeBtn.addEventListener('pointerup', ((i) => {
+      return (e) => {
         e.stopPropagation();
-        var removed = modifierSession.appliedMods.splice(i, 1)[0];
-        removed.modRefs.forEach(function(ref) {
-          var mIdx = ref.inst.mods.indexOf(ref.mod);
+        const removed = modifierSession.appliedMods.splice(i, 1)[0];
+        removed.modRefs.forEach((ref) => {
+          const mIdx = ref.inst.mods.indexOf(ref.mod);
           if (mIdx !== -1) ref.inst.mods.splice(mIdx, 1);
         });
         renderTicket();
@@ -2229,11 +2227,11 @@ function renderAppliedModsLog(panel) {
 
   // RESET button to clear all applied modifiers
   if (modifierSession.appliedMods.length > 0) {
-    var resetBtn = buildPillButton({
+    const resetBtn = buildPillButton({
       label: 'RESET ALL',
       color: T.verm,
       fontSize: '11px',
-      onClick: function() {
+      onClick: () => {
         cancelSession();
       }
     });
@@ -2247,11 +2245,11 @@ function renderAppliedModsLog(panel) {
 
 function undoLastMod() {
   if (modifierSession.appliedMods.length === 0) return;
-  var last = modifierSession.appliedMods.pop();
+  const last = modifierSession.appliedMods.pop();
 
   // Remove the mod from all affected items
-  last.modRefs.forEach(function(ref) {
-    var idx = ref.inst.mods.indexOf(ref.mod);
+  last.modRefs.forEach((ref) => {
+    let idx = ref.inst.mods.indexOf(ref.mod);
     if (idx !== -1) ref.inst.mods.splice(idx, 1);
   });
 
@@ -2267,9 +2265,9 @@ function undoLastMod() {
 function cancelSession() {
   // Roll back ALL mods in reverse order
   while (modifierSession.appliedMods.length > 0) {
-    var entry = modifierSession.appliedMods.pop();
-    entry.modRefs.forEach(function(ref) {
-      var idx = ref.inst.mods.indexOf(ref.mod);
+    let entry = modifierSession.appliedMods.pop();
+    entry.modRefs.forEach((ref) => {
+      let idx = ref.inst.mods.indexOf(ref.mod);
       if (idx !== -1) ref.inst.mods.splice(idx, 1);
     });
   }
@@ -2298,7 +2296,7 @@ function endModifierSession() {
 
   // Clear selection
   modifierSession.selectedItems = [];
-  ticket.forEach(function(i) { i.selected = false; });
+  ticket.forEach((i) => { i.selected = false; });
 
   // Restore grid
   if (_gridWrap) _gridWrap.style.display = '';
@@ -2311,7 +2309,7 @@ function endModifierSession() {
 // ── KIND MODIFIER PANEL — inline replacement for modifier-panel.js ────────
 // Builds our Vz2.0 modifier UI directly. Returns { destroy() }.
 
-var _PREFIX_DEFS = [
+const _PREFIX_DEFS = [
   { id:'ADD',     label:'ADD',     color: null },  // T.greenWarm
   { id:'EXTRA',   label:'EXTRA',   color: null },  // T.elec
   { id:'NO',      label:'NO',      color: null },  // T.verm
@@ -2319,7 +2317,7 @@ var _PREFIX_DEFS = [
   { id:'LITE',    label:'LITE',    color: null },  // T.gold
 ];
 
-var _PLACE_DEFS = [
+const _PLACE_DEFS = [
   { id:'LEFT',  label:'½ LEFT'  },
   { id:'WHOLE', label:'WHOLE'   },
   { id:'RIGHT', label:'RIGHT ½' },
@@ -2336,21 +2334,21 @@ function _prefixColor(id) {
 
 function buildKindModPanel(container, item, modConfig, catColor, enablePlacement, callbacks) {
   modConfig = modConfig || {};
-  var includedItems   = modConfig.includedItems   || [];
-  var mandatoryGroups = modConfig.mandatoryGroups || [];
-  var optionalGroups  = modConfig.optionalGroups  || [];
-  var isPizza = !!enablePlacement;
+  let includedItems   = modConfig.includedItems   || [];
+  let mandatoryGroups = modConfig.mandatoryGroups || [];
+  let optionalGroups  = modConfig.optionalGroups  || [];
+  const isPizza = !!enablePlacement;
 
   // ── State ──────────────────────────────────────────
-  var inclState  = {};   // mod.id  → 'NO'|'ON SIDE'
-  var optState   = {};   // optId   → { prefix, placement }
-  var mandState  = {};   // groupKey → { key, label, price }
-  var activePrefix = 'ADD';
-  var activePlacement = 'WHOLE';
-  var inclPrefix = 'NO';
-  var openSubKey = null;
+  const inclState  = {};   // mod.id  → 'NO'|'ON SIDE'
+  const optState   = {};   // optId   → { prefix, placement }
+  const mandState  = {};   // groupKey → { key, label, price }
+  let activePrefix = 'ADD';
+  let activePlacement = 'WHOLE';
+  let inclPrefix = 'NO';
+  let openSubKey = null;
 
-  var PREFIX_MAP = [
+  const PREFIX_MAP = [
     { id:'ADD',   label:'ADD',     color:T.modAdd,    textColor:T.well, dk:T.modAddDk    },
     { id:'EXTRA', label:'EXTRA',   color:T.modExtra,  textColor:T.well, dk:T.modExtraDk  },
     { id:'NO',    label:'NO',      color:T.modNo,     textColor:T.well, dk:T.modNoDk     },
@@ -2359,57 +2357,57 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   ];
 
   // ── Root overlay ────────────────────────────────────
-  var ov = document.createElement('div');
+  const ov = document.createElement('div');
   ov.style.cssText = [
     'flex:1;min-height:0;',
-    'background:' + T.bg + ';',
+    `background:${T.bg};`,
     'display:flex;flex-direction:column;',
     'overflow:hidden;',
   ].join('');
 
   // strip is rendered by openModifierPanel as a separate _mainArea flex child
-  var itemPx = typeof item.price === 'number' ? item.price : 0;
+  const itemPx = typeof item.price === 'number' ? item.price : 0;
 
   // ── Scrollable content ──────────────────────────────
-  var scroll = document.createElement('div');
+  const scroll = document.createElement('div');
   scroll.style.cssText = 'flex:1;overflow-y:auto;padding:8px 14px 10px;';
   ov.appendChild(scroll);
 
   // ── DONE button ─────────────────────────────────────
-  var doneWrap = document.createElement('div');
+  const doneWrap = document.createElement('div');
   doneWrap.style.cssText = 'flex-shrink:0;padding:8px 14px 10px;';
-  var doneBtn = buildPillButton({ label: 'DONE — ADD TO CHECK', color: T.green, textColor: T.well });
+  const doneBtn = buildPillButton({ label: 'DONE — ADD TO CHECK', color: T.green, textColor: T.well });
   doneBtn.style.width = '100%';
   doneBtn.style.fontSize = '16px';
-  doneBtn.addEventListener('pointerup', function() { callbacks.onSend(_buildActiveItem()); });
-  doneBtn.disabled = mandatoryGroups.some(function(g) { return !mandState[g.key]; });
+  doneBtn.addEventListener('pointerup', () => { callbacks.onSend(_buildActiveItem()); });
+  doneBtn.disabled = mandatoryGroups.some((g) => !mandState[g.key]);
   doneWrap.appendChild(doneBtn);
   ov.appendChild(doneWrap);
 
   // ── Build active item for commit ─────────────────────
   function _buildActiveItem() {
-    var pricingDriverKey = modConfig.pricingDriverKey;
-    var pricingDriverValue = pricingDriverKey ? (mandState[pricingDriverKey] ? mandState[pricingDriverKey].key : null) : null;
+    let pricingDriverKey = modConfig.pricingDriverKey;
+    const pricingDriverValue = pricingDriverKey ? (mandState[pricingDriverKey] ? mandState[pricingDriverKey].key : null) : null;
 
-    var optMods = [];
-    Object.keys(optState).forEach(function(optId) {
-      var s = optState[optId];
+    const optMods = [];
+    Object.keys(optState).forEach((optId) => {
+      let s = optState[optId];
       if (!s) return;
       // Find the option def
-      var found = null;
-      optionalGroups.forEach(function(g) {
-        (g.options || []).forEach(function(o) {
+      let found = null;
+      optionalGroups.forEach((g) => {
+        (g.options || []).forEach((o) => {
           if ((o.id || o.key) === optId) found = o;
         });
       });
       if (!found) return;
 
-      var resolvedPrice = found.price || 0;
+      let resolvedPrice = found.price || 0;
       if (pricingDriverValue && found.priceByOption && found.priceByOption[pricingDriverValue] !== undefined) {
         resolvedPrice = found.priceByOption[pricingDriverValue];
       }
 
-      var placeMap = { 'LEFT': '1st', 'RIGHT': '2nd', 'WHOLE': null };
+      const placeMap = { 'LEFT': '1st', 'RIGHT': '2nd', 'WHOLE': null };
       optMods.push({
         prefix:    s.prefix,
         label:     found.label,
@@ -2418,18 +2416,16 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       });
     });
 
-    var removals = Object.keys(inclState).filter(function(id) {
-      return inclState[id] === 'NO';
-    });
+    const removals = Object.keys(inclState).filter((id) => inclState[id] === 'NO');
 
     // Build mandatory selections map
-    var mandSel = {};
-    Object.keys(mandState).forEach(function(k) {
-      var s = mandState[k];
-      var grp = mandatoryGroups.find(function(g) { return g.key === k; });
-      var opt = grp ? (grp.options || []).find(function(o) { return (o.key || o.id) === s.key; }) : null;
+    const mandSel = {};
+    Object.keys(mandState).forEach((k) => {
+      let s = mandState[k];
+      let grp = mandatoryGroups.find((g) => g.key === k);
+      const opt = grp ? (grp.options || []).find((o) => (o.key || o.id) === s.key) : null;
 
-      var resolvedPrice = s.price;
+      let resolvedPrice = s.price;
       if (opt && pricingDriverValue && opt.priceByOption && opt.priceByOption[pricingDriverValue] !== undefined) {
         resolvedPrice = opt.priceByOption[pricingDriverValue];
       }
@@ -2437,38 +2433,38 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     });
 
     // Build preview mods for ticket
-    var previewMods = [];
+    let previewMods = [];
 
     // 1. Mandatory selections (e.g. Size, Crust)
-    Object.keys(mandSel).forEach(function(k) {
-      var s = mandSel[k];
+    Object.keys(mandSel).forEach((k) => {
+      let s = mandSel[k];
       previewMods.push({ name: s.label, price: s.price || 0, charged: (s.price > 0), prefix: null });
     });
 
     // 2. Included items (Pre-applied) — show even if not modified, unless removed
-    includedItems.forEach(function(inc) {
+    includedItems.forEach((inc) => {
       if (inclState[inc.id] !== 'SIDE') return;   // NO handled by removals below
-      previewMods.push({ name: 'ON SIDE ' + inc.label, price: 0, charged: false, prefix: null });
+      previewMods.push({ name: `ON SIDE ${inc.label}`, price: 0, charged: false, prefix: null });
     });
 
     // 3. Removals (NO X)
-    removals.forEach(function(rid) {
-      var inc = includedItems.find(function(i) { return i.id === rid; });
-      if (inc) previewMods.push({ name: 'NO ' + inc.label, price: 0, charged: false, prefix: null });
+    removals.forEach((rid) => {
+      const inc = includedItems.find((i) => i.id === rid);
+      if (inc) previewMods.push({ name: `NO ${inc.label}`, price: 0, charged: false, prefix: null });
     });
 
     // 4. Optional modifiers
-    optMods.forEach(function(m) {
-      var halfSide = m.placement === '1st' ? 'Left' : m.placement === '2nd' ? 'Right' : null;
-      var charged = (m.prefix === 'ADD' || m.prefix === 'EXTRA') && m.price > 0;
+    optMods.forEach((m) => {
+      let halfSide = m.placement === '1st' ? 'Left' : m.placement === '2nd' ? 'Right' : null;
+      let charged = (m.prefix === 'ADD' || m.prefix === 'EXTRA') && m.price > 0;
       // `activePrefix` starts as null (line 1312) and stays null until
       // the server taps ADD/NO/EXTRA/etc. A modifier picked before any
       // prefix is chosen previously rendered as "null Pepperoni" on
       // both the preview and (via commitModifierPanelItem) the kitchen
       // ticket. formatModifierLabel handles the null-prefix fallback
       // so the commit path (below) and this preview stay in lockstep.
-      var displayName = formatModifierLabel(m.prefix, m.label);
-      previewMods.push({ name: displayName, price: charged ? m.price : 0, charged: charged, prefix: halfSide });
+      let displayName = formatModifierLabel(m.prefix, m.label);
+      previewMods.push({ name: displayName, price: charged ? m.price : 0, charged, prefix: halfSide });
     });
 
     callbacks.onUpdate({ itemLabel: item.label, basePrice: itemPx, mods: previewMods });
@@ -2487,61 +2483,61 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
   // ── Render content sections ──────────────────────────
   function renderContent() {
-    var savedTop = scroll.scrollTop;
+    const savedTop = scroll.scrollTop;
     scroll.innerHTML = '';
 
     // ── SNAKE BREADCRUMB CARD — matches grid tile style ──
-    var snakeCard = document.createElement('div');
+    const snakeCard = document.createElement('div');
     snakeCard.style.cssText = [
       'display:flex;gap:6px;align-items:stretch;',
       'margin-bottom:12px;',
     ].join('');
 
     // Crumb tiles — filled, same style as buildCrumbTile
-    snakeState.crumbs.forEach(function(crumb) {
-      var tile = document.createElement('div');
+    snakeState.crumbs.forEach((crumb) => {
+      let tile = document.createElement('div');
       tile.style.cssText = [
         'display:flex;align-items:center;justify-content:center;',
         'padding:10px 14px;border-radius:10px;min-height:95px;',
-        'background:' + crumb.color + ';',
-        'border-left:4px solid ' + crumb.color + ';',
-        'box-shadow:0 4px 0 ' + hexToRgba(crumb.color, 0.55) + ';',
-        'font-family:' + T.fh + ';font-weight:700;font-size:22px;',
-        'color:' + T.well + ';letter-spacing:1px;pointer-events:none;',
+        `background:${crumb.color};`,
+        `border-left:4px solid ${crumb.color};`,
+        `box-shadow:0 4px 0 ${hexToRgba(crumb.color, 0.55)};`,
+        `font-family:${T.fh};font-weight:700;font-size:22px;`,
+        `color:${T.well};letter-spacing:1px;pointer-events:none;`,
       ].join('');
       tile.textContent = crumb.label;
       snakeCard.appendChild(tile);
     });
 
     // Item tile — same style as buildItemTile but filled, tap to cancel
-    var itemTile = document.createElement('div');
+    const itemTile = document.createElement('div');
     itemTile.style.cssText = [
       'display:flex;flex-direction:column;justify-content:center;',
       'padding:10px 14px;border-radius:10px;cursor:pointer;',
-      'background:' + catColor + ';',
-      'border-left:4px solid ' + catColor + ';',
-      'box-shadow:0 4px 0 ' + hexToRgba(catColor, 0.55) + ';',
+      `background:${catColor};`,
+      `border-left:4px solid ${catColor};`,
+      `box-shadow:0 4px 0 ${hexToRgba(catColor, 0.55)};`,
       'pointer-events:auto;touch-action:manipulation;',
       'min-height:95px;min-width:120px;',
     ].join('');
-    var icn = document.createElement('span');
-    icn.style.cssText = 'font-family:' + T.fh + ';font-weight:700;font-size:22px;color:' + T.well + ';pointer-events:none;';
+    const icn = document.createElement('span');
+    icn.style.cssText = `font-family:${T.fh};font-weight:700;font-size:22px;color:${T.well};pointer-events:none;`;
     icn.textContent = item.label;
-    var icp = document.createElement('span');
-    icp.style.cssText = 'font-family:' + T.fb + ';font-size:14px;color:' + hexToRgba(T.well, 0.65) + ';margin-top:4px;pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
-    icp.textContent = '$' + itemPx.toFixed(2);
+    const icp = document.createElement('span');
+    icp.style.cssText = `font-family:${T.fb};font-size:14px;color:${hexToRgba(T.well, 0.65)};margin-top:4px;pointer-events:none;;font-weight:${T.fwBold};`;
+    icp.textContent = `$${itemPx.toFixed(2)}`;
     itemTile.appendChild(icn);
     itemTile.appendChild(icp);
-    itemTile.addEventListener('pointerup', function() { callbacks.onCancel(); });
+    itemTile.addEventListener('pointerup', () => { callbacks.onCancel(); });
     snakeCard.appendChild(itemTile);
     scroll.appendChild(snakeCard);
 
     // ── Accordion state ──────────────────────────
-    var defaultCard =
+    const defaultCard =
       includedItems.length  > 0 ? 'included' :
       mandatoryGroups.length > 0 ? 'mandatory' : 'optional';
     if (!renderContent._activeCard) renderContent._activeCard = defaultCard;
-    var activeCard = renderContent._activeCard;
+    const activeCard = renderContent._activeCard;
 
     function setActiveCard(id) {
       renderContent._activeCard = id;
@@ -2549,78 +2545,78 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     }
 
     // ── Accordion container ───────────────────────
-    var accWrap = document.createElement('div');
+    const accWrap = document.createElement('div');
     accWrap.style.cssText = [
       'display:flex;flex-direction:column;gap:8px;',
       'padding:8px 14px 10px;',
     ].join('');
 
-    var CARD_DEFS = [
+    const CARD_DEFS = [
       { id:'included',  title:'INCLUDED',  show: includedItems.length > 0 },
       { id:'mandatory', title:'MANDATORY', show: mandatoryGroups.length > 0 },
       { id:'optional',  title:'OPTIONS',   show: true },
     ];
 
-    CARD_DEFS.forEach(function(def) {
+    CARD_DEFS.forEach((def) => {
       if (!def.show) return;
-      var isExp = activeCard === def.id;
+      const isExp = activeCard === def.id;
 
-      var card = document.createElement('div');
+      let card = document.createElement('div');
       card.dataset.accCard = def.id;
       card.style.cssText = [
-        'background:' + T.card + ';',
+        `background:${T.card};`,
         'border-radius:10px;overflow:hidden;flex-shrink:0;',
-        'border-left:4px solid ' + (isExp ? _accColor(def.id) : T.border) + ';',
+        `border-left:4px solid ${(isExp ? _accColor(def.id) : T.border)};`,
         'box-shadow:0 4px 12px rgba(0,0,0,0.25);',
         'transition:border-color 0.15s;',
         'pointer-events:auto;',
       ].join('');
 
       // Header
-      var hdr = document.createElement('div');
+      const hdr = document.createElement('div');
       hdr.style.cssText = [
         'display:flex;align-items:center;gap:10px;',
         'padding:0 14px;height:44px;cursor:pointer;',
         'user-select:none;touch-action:manipulation;',
         'pointer-events:auto;',
       ].join('');
-      hdr.addEventListener('pointerdown', function() {
+      hdr.addEventListener('pointerdown', () => {
         hdr.style.background = 'rgba(255,255,255,0.03)';
       });
-      hdr.addEventListener('pointerleave', function() {
+      hdr.addEventListener('pointerleave', () => {
         hdr.style.background = '';
       });
-      hdr.addEventListener('pointerup', function() {
+      hdr.addEventListener('pointerup', () => {
         hdr.style.background = '';
       });
-      hdr.addEventListener('pointerup', function() { setActiveCard(def.id); });
+      hdr.addEventListener('pointerup', () => { setActiveCard(def.id); });
 
-      var titleEl = document.createElement('span');
+      const titleEl = document.createElement('span');
       titleEl.style.cssText = [
-        'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';font-weight:700;',
+        `font-family:${T.fb};font-size:${T.fsB3};font-weight:700;`,
         'letter-spacing:2px;flex-shrink:0;',
-        'color:' + (isExp ? _accColor(def.id) : T.moon) + ';',
+        `color:${(isExp ? _accColor(def.id) : T.moon)};`,
       ].join('');
       titleEl.textContent = def.title;
       hdr.appendChild(titleEl);
 
       // Action area (expanded only) — placeholder, filled per card below
-      var actionArea = document.createElement('div');
+      const actionArea = document.createElement('div');
       actionArea.style.cssText = 'display:flex;align-items:center;gap:5px;flex:1;';
       actionArea.dataset.actionArea = def.id;
       hdr.appendChild(actionArea);
 
       // Status chip (collapsed only) — placeholder
-      var chipWrap = document.createElement('span');
+      const chipWrap = document.createElement('span');
       chipWrap.dataset.chipWrap = def.id;
       hdr.appendChild(chipWrap);
 
       // Chevron
-      var chev = document.createElement('span');
+      let chev = document.createElement('span');
       chev.style.cssText = [
-        'font-size:' + T.fsB4 + ';color:' + T.border + ';margin-left:auto;',
+        `font-size:${T.fsB4};color:${T.border};margin-left:auto;`,
         'transition:transform 0.15s;flex-shrink:0;',
-        'transform:' + (isExp ? 'rotate(180deg)' : 'none') + ';',
+        `transform:${(isExp ? 'rotate(180deg)' : 'none')};`,
       ].join('');
       chev.textContent = '▼';
       hdr.appendChild(chev);
@@ -2628,8 +2624,8 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       card.appendChild(hdr);
 
       // Body
-      var body = document.createElement('div');
-      body.style.cssText = 'padding:8px 10px 10px;' + (isExp ? '' : 'display:none;');
+      const body = document.createElement('div');
+      body.style.cssText = `padding:8px 10px 10px;${(isExp ? '' : 'display:none;')}`;
       body.dataset.cardBody = def.id;
       card.appendChild(body);
 
@@ -2658,22 +2654,22 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
       // ── Header buttons (expanded only) ───────────
       if (isExp) {
-        ['NO','SIDE'].forEach(function(pid) {
-          var p = PREFIX_MAP.find(function(x){ return x.id === pid; });
-          var isActive = inclPrefix === pid;
-          var btn = document.createElement('button');
+        ['NO','SIDE'].forEach((pid) => {
+          let p = PREFIX_MAP.find((x) => x.id === pid);
+          let isActive = inclPrefix === pid;
+          let btn = document.createElement('button');
           btn.style.cssText = [
             'padding:4px 11px;border-radius:6px;',
-            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
             'letter-spacing:0.5px;cursor:pointer;white-space:nowrap;',
-            'border:1px solid ' + (isActive ? p.color : T.border) + ';',
-            'background:' + (isActive ? p.color : T.well) + ';',
-            'color:' + (isActive ? p.textColor : T.text) + ';',
-            'box-shadow:0 3px 0 ' + (isActive ? p.dk : T.moonDk) + ';',
+            `border:1px solid ${(isActive ? p.color : T.border)};`,
+            `background:${(isActive ? p.color : T.well)};`,
+            `color:${(isActive ? p.textColor : T.text)};`,
+            `box-shadow:0 3px 0 ${(isActive ? p.dk : T.moonDk)};`,
             'touch-action:manipulation;pointer-events:auto;',
           ].join('');
           btn.textContent = p.label;
-          btn.addEventListener('pointerup', function(e) {
+          btn.addEventListener('pointerup', (e) => {
             e.stopPropagation();
             inclPrefix = (inclPrefix === pid) ? null : pid;
             renderContent();
@@ -2684,20 +2680,18 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
       // ── Status chip (collapsed only) ─────────────
       if (!isExp) {
-        var nCount = Object.keys(inclState).filter(function(k){
-          return inclState[k]==='NO';}).length;
-        var sCount = Object.keys(inclState).filter(function(k){
-          return inclState[k]==='SIDE';}).length;
-        var parts = [];
+        const nCount = Object.keys(inclState).filter((k) => inclState[k]==='NO').length;
+        const sCount = Object.keys(inclState).filter((k) => inclState[k]==='SIDE').length;
+        const parts = [];
         if (nCount) parts.push(nCount + ' NO');
         if (sCount) parts.push(sCount + ' SIDE');
         if (parts.length) {
-          var chip = document.createElement('span');
+          let chip = document.createElement('span');
           chip.style.cssText = [
             'display:inline-flex;align-items:center;gap:5px;',
             'padding:2px 8px;border-radius:6px;white-space:nowrap;',
-            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
-            'background:rgba(74,222,128,0.1);color:' + T.greenWarm + ';',
+            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
+            `background:rgba(74,222,128,0.1);color:${T.greenWarm};`,
             'border:1px solid rgba(74,222,128,0.25);',
           ].join('');
           chip.textContent = parts.join(' · ');
@@ -2706,59 +2700,59 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       }
 
       // ── Tile grid ────────────────────────────────
-      var grid = document.createElement('div');
+      let grid = document.createElement('div');
       grid.style.cssText = [
         'display:grid;',
         'grid-template-columns:repeat(auto-fill,minmax(108px,1fr));',
         'gap:6px;',
       ].join('');
 
-      includedItems.forEach(function(inc) {
-        var s = inclState[inc.id] || null;
-        var tile = document.createElement('div');
+      includedItems.forEach((inc) => {
+        let s = inclState[inc.id] || null;
+        let tile = document.createElement('div');
 
-        var bg   = s==='NO' ? T.verm : s==='SIDE' ? T.modOnSide : T.well;
-        var fg   = s==='NO' ? '#fff' : s==='SIDE' ? T.well      : T.text;
-        var shDk = s==='NO' ? T.modNoDk : s==='SIDE' ? T.modOnSideDk : T.moonDk;
+        let bg   = s==='NO' ? T.verm : s==='SIDE' ? T.modOnSide : T.well;
+        let fg   = s==='NO' ? '#fff' : s==='SIDE' ? T.well      : T.text;
+        let shDk = s==='NO' ? T.modNoDk : s==='SIDE' ? T.modOnSideDk : T.moonDk;
 
         tile.style.cssText = [
           'height:44px;border-radius:8px;',
           'display:flex;flex-direction:column;',
           'align-items:center;justify-content:center;gap:1px;',
-          'font-family:' + T.fb + ';font-weight:700;',
-          'background:' + bg + ';color:' + fg + ';',
-          'border:1px solid ' + (s ? bg : T.border) + ';',
-          'box-shadow:0 3px 0 ' + shDk + ';',
+          `font-family:${T.fb};font-weight:700;`,
+          `background:${bg};color:${fg};`,
+          `border:1px solid ${(s ? bg : T.border)};`,
+          `box-shadow:0 3px 0 ${shDk};`,
           'cursor:pointer;touch-action:manipulation;pointer-events:auto;',
           'transition:all 0.08s;user-select:none;',
         ].join('');
 
         if (s) {
-          var tag = document.createElement('span');
-          tag.style.cssText = 'font-size:' + T.fsB4 + ';font-weight:700;opacity:0.8;pointer-events:none;';
+          let tag = document.createElement('span');
+          tag.style.cssText = `font-size:${T.fsB4};font-weight:700;opacity:0.8;pointer-events:none;`;
           tag.textContent = s === 'SIDE' ? 'ON SIDE' : s;
           tile.appendChild(tag);
         }
-        var lbl = document.createElement('span');
-        lbl.style.cssText = 'font-size:' + T.fsB3 + ';pointer-events:none;';
+        let lbl = document.createElement('span');
+        lbl.style.cssText = `font-size:${T.fsB3};pointer-events:none;`;
         lbl.textContent = inc.label;
         tile.appendChild(lbl);
 
-        tile.addEventListener('pointerdown', function(){
+        tile.addEventListener('pointerdown', () => {
           tile.style.transform='translateY(2px)';
-          tile.style.boxShadow='0 1px 0 '+shDk;
+          tile.style.boxShadow=`0 1px 0 ${shDk}`;
         });
-        tile.addEventListener('pointerup', function(){
+        tile.addEventListener('pointerup', () => {
           tile.style.transform='';
-          tile.style.boxShadow='0 3px 0 '+shDk;
+          tile.style.boxShadow=`0 3px 0 ${shDk}`;
           if (!inclPrefix) return;
           if (inclState[inc.id]===inclPrefix) delete inclState[inc.id];
           else inclState[inc.id]=inclPrefix;
           renderContent();
         });
-        tile.addEventListener('pointerleave', function(){
+        tile.addEventListener('pointerleave', () => {
           tile.style.transform='';
-          tile.style.boxShadow='0 3px 0 '+shDk;
+          tile.style.boxShadow=`0 3px 0 ${shDk}`;
         });
         grid.appendChild(tile);
       });
@@ -2770,26 +2764,26 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
       // ── Status chip (collapsed only) ─────────────
       if (activeCard !== 'mandatory') {
-        var pending = mandatoryGroups.filter(function(g){return !mandState[g.key];});
+        const pending = mandatoryGroups.filter((g) => !mandState[g.key]);
         if (pending.length) {
-          var chip = document.createElement('span');
+          let chip = document.createElement('span');
           chip.style.cssText = [
             'display:inline-flex;align-items:center;gap:5px;',
             'padding:2px 8px;border-radius:6px;white-space:nowrap;',
-            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
-            'background:rgba(251,191,36,0.12);color:' + T.modLite + ';',
+            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
+            `background:rgba(251,191,36,0.12);color:${T.modLite};`,
             'border:1px solid rgba(251,191,36,0.3);',
           ].join('');
           chip.textContent = pending.length + ' REQUIRED';
           chipWrap.appendChild(chip);
         } else {
-          mandatoryGroups.forEach(function(g) {
+          mandatoryGroups.forEach((g) => {
             if (!mandState[g.key]) return;
-            var sc = document.createElement('span');
+            const sc = document.createElement('span');
             sc.style.cssText = [
               'display:inline-flex;padding:2px 7px;border-radius:6px;',
-              'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
-              'background:rgba(232,200,78,0.12);color:' + T.gold + ';',
+              `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
+              `background:rgba(232,200,78,0.12);color:${T.gold};`,
               'border:1px solid rgba(232,200,78,0.3);white-space:nowrap;',
               'margin-right:4px;',
             ].join('');
@@ -2800,120 +2794,120 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       }
 
       // ── Two-column tile grid ──────────────────────
-      var grid = document.createElement('div');
+      const grid = document.createElement('div');
       grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;';
 
-      mandatoryGroups.forEach(function(g) {
-        var chosen  = mandState[g.key] || null;
-        var isOpen  = openSubKey === g.key;
+      mandatoryGroups.forEach((g) => {
+        const chosen  = mandState[g.key] || null;
+        let isOpen  = openSubKey === g.key;
 
         // Group tile
-        var tile = document.createElement('div');
-        var barColor = isOpen||chosen ? T.gold : (g.required ? T.modLite : T.border);
+        let tile = document.createElement('div');
+        const barColor = isOpen||chosen ? T.gold : (g.required ? T.modLite : T.border);
         tile.style.cssText = [
           'height:52px;border-radius:8px;position:relative;overflow:hidden;',
           'display:flex;flex-direction:column;justify-content:center;',
           'padding:0 12px 0 14px;cursor:pointer;',
-          'background:' + T.well + ';',
-          'border:1px solid ' + T.border + ';',
-          'box-shadow:0 3px 0 ' + T.moonDk + ';',
+          `background:${T.well};`,
+          `border:1px solid ${T.border};`,
+          `box-shadow:0 3px 0 ${T.moonDk};`,
           'touch-action:manipulation;pointer-events:auto;user-select:none;',
           'transition:all 0.08s;',
         ].join('');
 
         // Left bar
-        var bar = document.createElement('div');
+        const bar = document.createElement('div');
         bar.style.cssText = [
           'position:absolute;left:0;top:0;bottom:0;width:3px;',
-          'background:' + barColor + ';pointer-events:none;',
+          `background:${barColor};pointer-events:none;`,
         ].join('');
         tile.appendChild(bar);
 
-        var glabel = document.createElement('div');
+        const glabel = document.createElement('div');
         glabel.style.cssText = [
-          'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+          `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
           'letter-spacing:1.5px;pointer-events:none;',
-          'color:' + (g.required && !chosen ? T.modLite : T.moon) + ';',
+          `color:${(g.required && !chosen ? T.modLite : T.moon)};`,
         ].join('');
         glabel.textContent = g.label;
         tile.appendChild(glabel);
 
         if (chosen) {
-          var gval = document.createElement('div');
+          const gval = document.createElement('div');
           gval.style.cssText = [
-            'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';font-weight:700;',
-            'color:' + T.gold + ';margin-top:2px;pointer-events:none;',
+            `font-family:${T.fb};font-size:${T.fsB3};font-weight:700;`,
+            `color:${T.gold};margin-top:2px;pointer-events:none;`,
           ].join('');
           gval.textContent = chosen.label;
           tile.appendChild(gval);
         } else {
-          var gpend = document.createElement('div');
+          const gpend = document.createElement('div');
           gpend.style.cssText = [
-            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
-            'font-style:italic;color:' + T.modLite + ';',
+            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
+            `font-style:italic;color:${T.modLite};`,
             'margin-top:2px;pointer-events:none;',
           ].join('');
           gpend.textContent = 'tap to select →';
           tile.appendChild(gpend);
         }
 
-        tile.addEventListener('pointerdown', function(){
+        tile.addEventListener('pointerdown', () => {
           tile.style.transform='translateY(2px)';
-          tile.style.boxShadow='0 1px 0 '+T.moonDk;
+          tile.style.boxShadow=`0 1px 0 ${T.moonDk}`;
         });
-        tile.addEventListener('pointerup', function(){
+        tile.addEventListener('pointerup', () => {
           tile.style.transform='';
-          tile.style.boxShadow='0 3px 0 '+T.moonDk;
+          tile.style.boxShadow=`0 3px 0 ${T.moonDk}`;
           openSubKey = (openSubKey===g.key) ? null : g.key;
           renderContent();
         });
-        tile.addEventListener('pointerleave', function(){
+        tile.addEventListener('pointerleave', () => {
           tile.style.transform='';
-          tile.style.boxShadow='0 3px 0 '+T.moonDk;
+          tile.style.boxShadow=`0 3px 0 ${T.moonDk}`;
         });
         grid.appendChild(tile);
 
         // Sub-card (spans both columns)
         if (isOpen) {
-          var sub = document.createElement('div');
+          const sub = document.createElement('div');
           sub.style.cssText = [
             'grid-column:1/-1;display:block;',
             'background:rgba(34,37,42,0.85);border-radius:8px;',
             'border:1px solid rgba(232,200,78,0.22);padding:8px;',
           ].join('');
 
-          var subLbl = document.createElement('div');
+          const subLbl = document.createElement('div');
           subLbl.style.cssText = [
-            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
-            'letter-spacing:1.5px;color:' + T.gold + ';margin-bottom:7px;',
+            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
+            `letter-spacing:1.5px;color:${T.gold};margin-bottom:7px;`,
           ].join('');
-          subLbl.textContent = 'SELECT ' + g.label;
+          subLbl.textContent = `SELECT ${g.label}`;
           sub.appendChild(subLbl);
 
-          var subGrid = document.createElement('div');
+          const subGrid = document.createElement('div');
           subGrid.style.cssText = [
             'display:grid;',
             'grid-template-columns:repeat(auto-fill,minmax(100px,1fr));',
             'gap:5px;',
           ].join('');
 
-          (g.options || []).forEach(function(opt) {
-            var isSel = chosen && chosen.key === (opt.key||opt.id);
-            var st = document.createElement('div');
+          (g.options || []).forEach((opt) => {
+            const isSel = chosen && chosen.key === (opt.key||opt.id);
+            const st = document.createElement('div');
             st.style.cssText = [
               'height:36px;border-radius:6px;',
               'display:flex;align-items:center;justify-content:center;',
-              'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+              `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
               'letter-spacing:0.3px;cursor:pointer;',
-              'background:' + (isSel ? T.gold  : T.card)   + ';',
-              'color:'      + (isSel ? T.well  : T.text)   + ';',
-              'border:1px solid ' + (isSel ? T.gold : T.border) + ';',
-              'box-shadow:0 2px 0 ' + (isSel ? T.goldDk : T.moonDk) + ';',
+              `background:${(isSel ? T.gold  : T.card)};`,
+              `color:${(isSel ? T.well  : T.text)};`,
+              `border:1px solid ${(isSel ? T.gold : T.border)};`,
+              `box-shadow:0 2px 0 ${(isSel ? T.goldDk : T.moonDk)};`,
               'touch-action:manipulation;pointer-events:auto;user-select:none;',
               'transition:all 0.08s;',
             ].join('');
             st.textContent = opt.label.toUpperCase();
-            st.addEventListener('pointerup', function(e) {
+            st.addEventListener('pointerup', (e) => {
               e.stopPropagation();
               mandState[g.key] = {
                 key:   opt.key || opt.id,
@@ -2921,9 +2915,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
                 price: opt.price || 0,
               };
               openSubKey = null;
-              doneBtn.disabled = mandatoryGroups.some(function(g){
-                return !mandState[g.key];
-              });
+              doneBtn.disabled = mandatoryGroups.some((g) => !mandState[g.key]);
               renderContent();
             });
             subGrid.appendChild(st);
@@ -2941,21 +2933,21 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
       // ── Prefix toolbar (expanded only) ───────────
       if (isExp) {
-        PREFIX_MAP.forEach(function(p) {
-          var isActive = activePrefix === p.id;
-          var btn = document.createElement('button');
+        PREFIX_MAP.forEach((p) => {
+          let isActive = activePrefix === p.id;
+          const btn = document.createElement('button');
           btn.style.cssText = [
             'padding:4px 11px;border-radius:6px;',
-            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
+            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
             'letter-spacing:0.5px;cursor:pointer;white-space:nowrap;',
-            'border:1px solid ' + (isActive ? p.color : T.border) + ';',
-            'background:' + (isActive ? p.color : T.well) + ';',
-            'color:' + (isActive ? p.textColor : T.text) + ';',
-            'box-shadow:0 3px 0 ' + (isActive ? p.dk : T.moonDk) + ';',
+            `border:1px solid ${(isActive ? p.color : T.border)};`,
+            `background:${(isActive ? p.color : T.well)};`,
+            `color:${(isActive ? p.textColor : T.text)};`,
+            `box-shadow:0 3px 0 ${(isActive ? p.dk : T.moonDk)};`,
             'touch-action:manipulation;pointer-events:auto;',
           ].join('');
           btn.textContent = p.label;
-          btn.addEventListener('pointerup', function(e) {
+          btn.addEventListener('pointerup', (e) => {
             e.stopPropagation();
             activePrefix = p.id;
             renderContent();
@@ -2966,26 +2958,26 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
       // ── Placement bar (pizza only) ────────────────
       if (isPizza) {
-        var placeBar = document.createElement('div');
+        const placeBar = document.createElement('div');
         placeBar.style.cssText = [
           'display:flex;gap:3px;margin-bottom:10px;',
-          'background:' + T.well + ';border-radius:10px;padding:3px;',
+          `background:${T.well};border-radius:10px;padding:3px;`,
         ].join('');
-        _PLACE_DEFS.forEach(function(pl) {
-          var isActive = activePlacement === pl.id;
-          var seg = document.createElement('div');
+        _PLACE_DEFS.forEach((pl) => {
+          const isActive = activePlacement === pl.id;
+          const seg = document.createElement('div');
           seg.style.cssText = [
-            'flex:' + (pl.id === 'WHOLE' ? 2 : 1) + ';text-align:center;',
+            `flex:${(pl.id === 'WHOLE' ? 2 : 1)};text-align:center;`,
             'padding:7px 8px;border-radius:8px;cursor:pointer;',
             'pointer-events:auto;touch-action:manipulation;',
-            'font-family:' + T.fb + ';font-weight:700;font-size:' + T.fsB4 + ';letter-spacing:1px;',
-            'color:' + (isActive ? T.well : T.moon) + ';',
-            'background:' + (isActive ? catColor : 'transparent') + ';',
-            'box-shadow:' + (isActive ? '0 3px 0 ' + hexToRgba(catColor, 0.55) : 'none') + ';',
+            `font-family:${T.fb};font-weight:700;font-size:${T.fsB4};letter-spacing:1px;`,
+            `color:${(isActive ? T.well : T.moon)};`,
+            `background:${(isActive ? catColor : 'transparent')};`,
+            `box-shadow:${(isActive ? '0 3px 0 ' + hexToRgba(catColor, 0.55) : 'none')};`,
             'transition:all 120ms;',
           ].join('');
           seg.textContent = pl.label;
-          seg.addEventListener('pointerup', function() {
+          seg.addEventListener('pointerup', () => {
             activePlacement = pl.id;
             renderContent();
           });
@@ -2995,72 +2987,72 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
       }
 
       // ── Option tile grid ─────────────────────────
-      var outerGrid = document.createElement('div');
+      const outerGrid = document.createElement('div');
       outerGrid.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
 
-      optionalGroups.forEach(function(g) {
+      optionalGroups.forEach((g) => {
         if (g.label) {
-          var secLbl = document.createElement('div');
+          const secLbl = document.createElement('div');
           secLbl.style.cssText = [
-            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';font-weight:700;',
-            'letter-spacing:2px;color:' + T.greenWarm + ';',
+            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
+            `letter-spacing:2px;color:${T.greenWarm};`,
             'margin-top:4px;margin-bottom:2px;',
             'display:flex;align-items:center;gap:8px;',
           ].join('');
-          var line = document.createElement('div');
+          const line = document.createElement('div');
           line.style.cssText = 'height:1px;flex:1;background:rgba(74,222,128,0.2);';
           secLbl.textContent = g.label;
           secLbl.appendChild(line);
           outerGrid.appendChild(secLbl);
         }
 
-        var tileGrid = document.createElement('div');
+        const tileGrid = document.createElement('div');
         tileGrid.style.cssText = [
           'display:grid;',
           'grid-template-columns:repeat(auto-fill,minmax(108px,1fr));',
           'gap:6px;',
         ].join('');
 
-        (g.options || []).forEach(function(opt) {
-          var optId = opt.id || opt.key;
-          var s     = optState[optId] || null;
-          var pDef  = s ? PREFIX_MAP.find(function(p){ return p.id===s.prefix; }) : null;
+        (g.options || []).forEach((opt) => {
+          const optId = opt.id || opt.key;
+          const s     = optState[optId] || null;
+          const pDef  = s ? PREFIX_MAP.find((p) => p.id===s.prefix) : null;
 
-          var bg   = pDef ? pDef.color     : T.well;
-          var fg   = pDef ? pDef.textColor : T.text;
-          var shDk = pDef ? pDef.dk        : T.moonDk;
+          const bg   = pDef ? pDef.color     : T.well;
+          const fg   = pDef ? pDef.textColor : T.text;
+          const shDk = pDef ? pDef.dk        : T.moonDk;
 
-          var tile = document.createElement('div');
+          const tile = document.createElement('div');
           tile.style.cssText = [
             'height:44px;border-radius:8px;',
             'display:flex;flex-direction:column;',
             'align-items:center;justify-content:center;gap:1px;',
-            'font-family:' + T.fb + ';font-weight:700;',
-            'background:' + bg + ';color:' + fg + ';',
-            'border:1px solid ' + (s ? bg : T.border) + ';',
-            'box-shadow:0 3px 0 ' + shDk + ';',
+            `font-family:${T.fb};font-weight:700;`,
+            `background:${bg};color:${fg};`,
+            `border:1px solid ${(s ? bg : T.border)};`,
+            `box-shadow:0 3px 0 ${shDk};`,
             'cursor:pointer;touch-action:manipulation;pointer-events:auto;',
             'user-select:none;transition:all 0.08s;',
           ].join('');
 
           if (s && pDef) {
-            var tag = document.createElement('span');
-            tag.style.cssText = 'font-size:' + T.fsB4 + ';font-weight:700;opacity:0.8;pointer-events:none;';
+            const tag = document.createElement('span');
+            tag.style.cssText = `font-size:${T.fsB4};font-weight:700;opacity:0.8;pointer-events:none;`;
             tag.textContent = pDef.label;
             tile.appendChild(tag);
           }
-          var lbl = document.createElement('span');
-          lbl.style.cssText = 'font-size:' + T.fsB3 + ';pointer-events:none;';
+          const lbl = document.createElement('span');
+          lbl.style.cssText = `font-size:${T.fsB3};pointer-events:none;`;
           lbl.textContent = opt.label;
           tile.appendChild(lbl);
 
-          tile.addEventListener('pointerdown', function(){
+          tile.addEventListener('pointerdown', () => {
             tile.style.transform='translateY(2px)';
-            tile.style.boxShadow='0 1px 0 '+shDk;
+            tile.style.boxShadow=`0 1px 0 ${shDk}`;
           });
-          tile.addEventListener('pointerup', function(){
+          tile.addEventListener('pointerup', () => {
             tile.style.transform='';
-            tile.style.boxShadow='0 3px 0 '+shDk;
+            tile.style.boxShadow=`0 3px 0 ${shDk}`;
             if (optState[optId] && optState[optId].prefix===activePrefix) {
               delete optState[optId];
             } else {
@@ -3068,9 +3060,9 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
             }
             renderContent();
           });
-          tile.addEventListener('pointerleave', function(){
+          tile.addEventListener('pointerleave', () => {
             tile.style.transform='';
-            tile.style.boxShadow='0 3px 0 '+shDk;
+            tile.style.boxShadow=`0 3px 0 ${shDk}`;
           });
           tileGrid.appendChild(tile);
         });
@@ -3088,7 +3080,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   container.appendChild(ov);
 
   return {
-    destroy: function() {
+    destroy: () => {
       if (ov.parentNode) ov.parentNode.removeChild(ov);
     },
   };
@@ -3111,9 +3103,9 @@ function openModifierPanel(item, modConfig, catColor, enablePlacement) {
   _mainArea.style.border = 'none';
 
   _modPanel = buildKindModPanel(_mainArea, item, modConfig, catColor, enablePlacement, {
-    onUpdate: function(outputItem) { _modPanelItem = outputItem; renderTicket(); },
-    onSend:   function(activeItem) { commitModifierPanelItem(item, activeItem, modConfig); },
-    onCancel: function()           { closeModifierPanel(); },
+    onUpdate: (outputItem) => { _modPanelItem = outputItem; renderTicket(); },
+    onSend:   (activeItem) => { commitModifierPanelItem(item, activeItem, modConfig); },
+    onCancel: () => { closeModifierPanel(); },
   });
   renderTicket();
 }
@@ -3124,13 +3116,13 @@ function _buildSnakeStrip(item, catColor) {
   _snakeStrip.style.display = 'flex';
 
   // Crumb tiles
-  snakeState.crumbs.forEach(function(crumb) {
-    var chip = document.createElement('div');
+  snakeState.crumbs.forEach((crumb) => {
+    const chip = document.createElement('div');
     chip.style.cssText = [
-      'background:' + crumb.color + ';border-radius:8px;',
-      'border-left:4px solid ' + crumb.color + ';',
-      'padding:6px 16px;font-family:' + T.fh + ';',
-      'font-weight:700;font-size:14px;color:' + T.well + ';letter-spacing:1px;',
+      `background:${crumb.color};border-radius:8px;`,
+      `border-left:4px solid ${crumb.color};`,
+      `padding:6px 16px;font-family:${T.fh};`,
+      `font-weight:700;font-size:14px;color:${T.well};letter-spacing:1px;`,
       'pointer-events:none;',
     ].join('');
     chip.textContent = crumb.label;
@@ -3138,25 +3130,25 @@ function _buildSnakeStrip(item, catColor) {
   });
 
   // Item chip — tap to cancel
-  var itemChip = document.createElement('div');
+  const itemChip = document.createElement('div');
   itemChip.style.cssText = [
-    'background:' + catColor + ';border-radius:8px;',
-    'border-left:4px solid ' + catColor + ';',
-    'padding:6px 16px;font-family:' + T.fh + ';',
-    'font-weight:700;font-size:14px;color:' + T.well + ';letter-spacing:1px;',
+    `background:${catColor};border-radius:8px;`,
+    `border-left:4px solid ${catColor};`,
+    `padding:6px 16px;font-family:${T.fh};`,
+    `font-weight:700;font-size:14px;color:${T.well};letter-spacing:1px;`,
     'display:flex;align-items:center;gap:8px;cursor:pointer;',
     'pointer-events:auto;touch-action:manipulation;',
-    'box-shadow:0 0 12px ' + hexToRgba(catColor, 0.5) + ';',
+    `box-shadow:0 0 12px ${hexToRgba(catColor, 0.5)};`,
   ].join('');
-  var itemName = document.createElement('span');
+  const itemName = document.createElement('span');
   itemName.style.cssText = 'pointer-events:none;';
   itemName.textContent = item.label;
-  var itemPrice = document.createElement('span');
-  itemPrice.style.cssText = 'font-family:' + T.fb + ';font-size:13px;color:rgba(255,255,255,0.7);pointer-events:none;' + ";font-weight:" + T.fwBold + ";";
-  itemPrice.textContent = '$' + (typeof item.price === 'number' ? item.price.toFixed(2) : '0.00');
+  const itemPrice = document.createElement('span');
+  itemPrice.style.cssText = `font-family:${T.fb};font-size:13px;color:rgba(255,255,255,0.7);pointer-events:none;;font-weight:${T.fwBold};`;
+  itemPrice.textContent = `$${(typeof item.price === 'number' ? item.price.toFixed(2) : '0.00')}`;
   itemChip.appendChild(itemName);
   itemChip.appendChild(itemPrice);
-  itemChip.addEventListener('pointerup', function() { closeModifierPanel(); });
+  itemChip.addEventListener('pointerup', () => { closeModifierPanel(); });
   _snakeStrip.appendChild(itemChip);
 }
 
@@ -3177,7 +3169,7 @@ function closeModifierPanel() {
 
   renderTicket();
 
-  requestAnimationFrame(function() {
+  requestAnimationFrame(() => {
     if (_bottomBar) _bottomBar.style.display = '';
     rebuildBottomBar();
   });
@@ -3190,16 +3182,16 @@ function commitModifierPanelItem(originalItem, activeItem, modConfig) {
   _modPanelOpen = false;
   modConfig = modConfig || {};
   // Build ticket item from modifier panel state
-  var mands = activeItem.mandatorySelections;
-  var mandPrice = 0;
-  Object.keys(mands).forEach(function(k) {
+  const mands = activeItem.mandatorySelections;
+  let mandPrice = 0;
+  Object.keys(mands).forEach((k) => {
     mandPrice += mands[k].price || 0;
   });
 
   // Mandatory selections as modifier lines
-  var mods = [];
-  var mandGroups = modConfig.mandatoryGroups || [];
-  mandGroups.forEach(function(g) {
+  let mods = [];
+  const mandGroups = modConfig.mandatoryGroups || [];
+  mandGroups.forEach((g) => {
     if (mands[g.key]) {
       mods.push({
         name: mands[g.key].label,
@@ -3211,15 +3203,15 @@ function commitModifierPanelItem(originalItem, activeItem, modConfig) {
   });
 
   // Optional modifiers — map placement to Left/Right prefix
-  activeItem.optionalModifiers.forEach(function(m) {
-    var charged = m.prefix !== 'NO' && m.price > 0;
-    var halfSide = m.placement === '1st' ? 'Left' : m.placement === '2nd' ? 'Right' : null;
+  activeItem.optionalModifiers.forEach((m) => {
+    let charged = m.prefix !== 'NO' && m.price > 0;
+    const halfSide = m.placement === '1st' ? 'Left' : m.placement === '2nd' ? 'Right' : null;
     // `m.prefix` is null if the modifier was picked before the server
     // tapped ADD/NO/EXTRA. formatModifierLabel treats null as
     // "unprefixed" rather than concatenating literal "null ".
     // Previously shipped "null Pepperoni" to the kitchen ticket.
-    var displayName = formatModifierLabel(m.prefix, m.label);
-    var parentMod = {
+    let displayName = formatModifierLabel(m.prefix, m.label);
+    const parentMod = {
       name: displayName,
       price: m.prefix === 'NO' ? 0 : m.price,
       charged: charged,
@@ -3228,41 +3220,41 @@ function commitModifierPanelItem(originalItem, activeItem, modConfig) {
     };
     // Special exclusions as child mods (indented on ticket)
     if (m.special && m.exclusions && m.exclusions.length > 0) {
-      m.exclusions.forEach(function(ex) {
-        parentMod.children.push({ name: 'NO ' + ex, price: 0, charged: false });
+      m.exclusions.forEach((ex) => {
+        parentMod.children.push({ name: `NO ${ex}`, price: 0, charged: false });
       });
     }
     mods.push(parentMod);
   });
 
   // Included removals
-  var includedItems = modConfig.includedItems || [];
-  activeItem.includedRemovals.forEach(function(rid) {
-    var incl = includedItems.find(function(i) { return i.id === rid; });
+  const includedItems = modConfig.includedItems || [];
+  activeItem.includedRemovals.forEach((rid) => {
+    const incl = includedItems.find((i) => i.id === rid);
     if (incl) {
-      mods.push({ name: 'NO ' + incl.label, price: 0, charged: false, prefix: null });
+      mods.push({ name: `NO ${incl.label}`, price: 0, charged: false, prefix: null });
     }
   });
 
   // Allergens
-  var ALLERGEN_LABELS = {
+  const ALLERGEN_LABELS = {
     nuts: 'Nuts', shellfish: 'Shellfish', gluten: 'Gluten', dairy: 'Dairy',
     soy: 'Soy', eggs: 'Eggs', fish: 'Fish',
   };
-  activeItem.allergens.forEach(function(aId) {
-    var label = ALLERGEN_LABELS[aId] || aId;
-    mods.push({ name: '\u26A0 ALLERGEN: ' + label, price: 0, charged: false, prefix: null });
+  activeItem.allergens.forEach((aId) => {
+    const label = ALLERGEN_LABELS[aId] || aId;
+    mods.push({ name: `\u26A0 ALLERGEN: ${label}`, price: 0, charged: false, prefix: null });
   });
   if (activeItem.allergenNote) {
-    mods.push({ name: '\u26A0 ALLERGEN: ' + activeItem.allergenNote, price: 0, charged: false, prefix: null });
+    mods.push({ name: `\u26A0 ALLERGEN: ${activeItem.allergenNote}`, price: 0, charged: false, prefix: null });
   }
 
   // Note
   if (activeItem.note) {
-    mods.push({ name: '\uD83D\uDCDD ' + activeItem.note, price: 0, charged: false, prefix: null });
+    mods.push({ name: `\uD83D\uDCDD ${activeItem.note}`, price: 0, charged: false, prefix: null });
   }
 
-  var ticketItem = {
+  let ticketItem = {
     id:        ++ticketSeq,
     menu_item_id: originalItem.id,
     idemKey:   _idemKey(),
@@ -3303,19 +3295,19 @@ function resolveBackendModifierConfig(itemId, catId) {
   if (!itemId && !catId) return null;
 
   // Locate the MENU_DATA item + category to read new-model fields.
-  var menuCat = catId ? MENU_DATA.find(function(c) { return c.id === catId; }) : null;
-  var menuItem = null;
+  let menuCat = catId ? MENU_DATA.find((c) => c.id === catId) : null;
+  let menuItem = null;
   if (menuCat) {
-    (menuCat.subcats || []).some(function(sc) {
-      menuItem = (sc.items || []).find(function(i) { return i.id === itemId; });
+    (menuCat.subcats || []).some((sc) => {
+      menuItem = (sc.items || []).find((i) => i.id === itemId);
       return !!menuItem;
     });
   }
   // Fallback: scan all categories (item may be orphaned from catId)
   if (!menuItem && itemId) {
-    MENU_DATA.some(function(c) {
-      (c.subcats || []).some(function(sc) {
-        menuItem = (sc.items || []).find(function(i) { return i.id === itemId; });
+    MENU_DATA.some((c) => {
+      (c.subcats || []).some((sc) => {
+        menuItem = (sc.items || []).find((i) => i.id === itemId);
         return !!menuItem;
       });
       if (menuItem && !menuCat) menuCat = c;
@@ -3323,24 +3315,24 @@ function resolveBackendModifierConfig(itemId, catId) {
     });
   }
 
-  var mandatoryGroupIds = (menuItem && menuItem.mandatoryGroupIds) || [];
-  var universalGroupIds = (menuCat && menuCat.universalGroupIds) || [];
+  const mandatoryGroupIds = (menuItem && menuItem.mandatoryGroupIds) || [];
+  const universalGroupIds = (menuCat && menuCat.universalGroupIds) || [];
 
-  var mandatoryGroups = [];
-  var pricingDriverKey = null;
-  mandatoryGroupIds.forEach(function(gid) {
-    var grp = MODIFIER_GROUPS.find(function(g) { return g.group_id === gid; });
+  const mandatoryGroups = [];
+  let pricingDriverKey = null;
+  mandatoryGroupIds.forEach((gid) => {
+    let grp = MODIFIER_GROUPS.find((g) => g.group_id === gid);
     if (!grp) return;
-    var drivesPricing = !!grp.drives_pricing;
-    var entry = {
+    const drivesPricing = !!grp.drives_pricing;
+    let entry = {
       key: gid,
       label: (grp.name || '').toUpperCase(),
       drivesPricing: drivesPricing,
       min: grp.min_selections || 0,
       max: grp.max_selections || 1,
-      options: (grp.modifiers || []).map(function(m) {
-        var priceByOption = (m.price_by_option && Object.keys(m.price_by_option).length > 0) ? m.price_by_option : null;
-        var subatomicIds  = (m.included_modifier_ids && m.included_modifier_ids.length > 0) ? m.included_modifier_ids.slice() : null;
+      options: (grp.modifiers || []).map((m) => {
+        let priceByOption = (m.price_by_option && Object.keys(m.price_by_option).length > 0) ? m.price_by_option : null;
+        const subatomicIds  = (m.included_modifier_ids && m.included_modifier_ids.length > 0) ? m.included_modifier_ids.slice() : null;
         return {
           key: m.modifier_id,
           id: m.modifier_id,
@@ -3355,17 +3347,17 @@ function resolveBackendModifierConfig(itemId, catId) {
     mandatoryGroups.push(entry);
   });
 
-  var optionalGroups = [];
-  universalGroupIds.forEach(function(gid) {
-    var grp = MODIFIER_GROUPS.find(function(g) { return g.group_id === gid; });
+  const optionalGroups = [];
+  universalGroupIds.forEach((gid) => {
+    const grp = MODIFIER_GROUPS.find((g) => g.group_id === gid);
     if (!grp) return;
     optionalGroups.push({
       key: grp.group_id,
       label: (grp.name || '').toUpperCase(),
       min: grp.min_selections || 0,
       max: grp.max_selections || 99,
-      options: (grp.modifiers || []).map(function(m) {
-        var priceByOption = (m.price_by_option && Object.keys(m.price_by_option).length > 0) ? m.price_by_option : null;
+      options: (grp.modifiers || []).map((m) => {
+        const priceByOption = (m.price_by_option && Object.keys(m.price_by_option).length > 0) ? m.price_by_option : null;
         return {
           id: m.modifier_id,
           label: m.name,
@@ -3386,16 +3378,16 @@ function resolveBackendModifierConfig(itemId, catId) {
 }
 
 function _pushToAllSeats(item) {
-  var seatArr = Array.from(_activeSeats);
+  let seatArr = Array.from(_activeSeats);
   if (seatArr.length === 0) seatArr = [_seatList[0] || 1];
   item.seat_number = seatArr[0];
   ticket.push(item);
-  for (var si = 1; si < seatArr.length; si++) {
-    var clone = Object.assign({}, item);
+  for (let si = 1; si < seatArr.length; si++) {
+    const clone = Object.assign({}, item);
     clone.id = ++ticketSeq;
     clone.idemKey = _idemKey();
     clone.seat_number = seatArr[si];
-    clone.mods = (item.mods || []).map(function(m) { return Object.assign({}, m); });
+    clone.mods = (item.mods || []).map((m) => { return Object.assign({}, m); });
     if (item._modPanelData) clone._modPanelData = Object.assign({}, item._modPanelData);
     ticket.push(clone);
   }
@@ -3408,31 +3400,31 @@ function _pushToAllSeats(item) {
 }
 
 function getMenuCat(id) {
-  return MENU_DATA.find(function(c) { return c.id === id; });
+  return MENU_DATA.find((c) => c.id === id);
 }
 
 function getModCat(id) {
-  return MOD_DATA.find(function(c) { return c.id === id; });
+  return MOD_DATA.find((c) => c.id === id);
 }
 
 function handleItemSelect(item) {
-  var name  = item.label || item;
-  var price = typeof item.price === 'number' ? item.price : 0;
+  let name  = item.label || item;
+  let price = typeof item.price === 'number' ? item.price : 0;
 
   // ── Combo flow: picking side or soda ──
   if (comboFlow) {
     if (comboFlow.step === 'side') {
-      comboFlow.ticketItem.mods.push({ name: name, price: 0, charged: false });
+      comboFlow.ticketItem.mods.push({ name, price: 0, charged: false });
       comboFlow.step = 'drink';
       // Navigate snake to drinks
-      var drinksCat = getMenuCat('drinks');
+      const drinksCat = getMenuCat('drinks');
       if (drinksCat) _selectCat(drinksCat);
       renderTicket();
       rebuildBottomBar();
       return;
     }
     if (comboFlow.step === 'drink') {
-      comboFlow.ticketItem.mods.push({ name: name, price: 0, charged: false });
+      comboFlow.ticketItem.mods.push({ name, price: 0, charged: false });
       comboFlow = null;
       // Return to category home
       snakeState = { view:'cats', crumbs:[], catId:null, subId:null };
@@ -3445,17 +3437,17 @@ function handleItemSelect(item) {
 
   // ── Start combo flow if selected from COMBO category ──
   if (snakeState.catId === 'combo') {
-    var comboMods = [];
+    const comboMods = [];
     if (item.selectedMods) {
-      item.selectedMods.forEach(function(sm) {
+      item.selectedMods.forEach((sm) => {
         comboMods.push({ name: sm.label, price: sm.price || 0, charged: sm.price > 0 });
       });
     }
-    var ticketItem = {
+    const ticketItem = {
       id:        ++ticketSeq,
       menu_item_id: item.id,
       idemKey:   _idemKey(),
-      name:      'Combo ' + name,
+      name:      `Combo ${name}`,
       unitPrice: price,
       mods:      comboMods,
       selected:  false,
@@ -3463,8 +3455,8 @@ function handleItemSelect(item) {
       category:  'combo',
     };
     _pushToAllSeats(ticketItem);
-    comboFlow = { step: 'side', ticketItem: ticketItem };
-    var sidesCat = getMenuCat('sides');
+    comboFlow = { step: 'side', ticketItem };
+    const sidesCat = getMenuCat('sides');
     if (sidesCat) _selectCat(sidesCat);
     renderTicket();
     rebuildBottomBar();
@@ -3473,8 +3465,8 @@ function handleItemSelect(item) {
 
   // ── Pizza builder: size tap opens the overlay ──
   if (item.pizzaSize) {
-    showPizzaBuilderOverlay(item, PIZZA_BUILDER_DATA).then(function(result) {
-      var pizzaItem = {
+    showPizzaBuilderOverlay(item, PIZZA_BUILDER_DATA).then((result) => {
+      const pizzaItem = {
         id:        ++ticketSeq,
         menu_item_id: item.id,
         idemKey:   _idemKey(),
@@ -3488,35 +3480,35 @@ function handleItemSelect(item) {
       _pushToAllSeats(pizzaItem);
       renderTicket();
       rebuildBottomBar();
-    }).catch(function() { /* cancelled */ });
+    }).catch(() => { /* cancelled */ });
     return;
   }
 
   // ── Modifier panel: resolve config from backend assignments ──
-  var catId = snakeState.catId;
+  let catId = snakeState.catId;
   if (!catId && item.id) catId = ITEM_TO_CATEGORY[item.id] || null;
 
-  var backendConfig = resolveBackendModifierConfig(item.id, catId);
-  var overseerIncluded = item.id ? INCLUDED_BY_ITEM[item.id] : null;
+  const backendConfig = resolveBackendModifierConfig(item.id, catId);
+  const overseerIncluded = item.id ? INCLUDED_BY_ITEM[item.id] : null;
 
   if (backendConfig || (overseerIncluded && overseerIncluded.length > 0)) {
-    var effectiveConfig = backendConfig ? Object.assign({}, backendConfig) : {};
+    const effectiveConfig = backendConfig ? Object.assign({}, backendConfig) : {};
     if (overseerIncluded && overseerIncluded.length > 0) {
       effectiveConfig.includedItems = overseerIncluded;
     }
-    var catColor = (snakeState.crumbs.length > 0)
+    let catColor = (snakeState.crumbs.length > 0)
       ? snakeState.crumbs[snakeState.crumbs.length - 1].color
       : T.catColor(item.category || item.cat || '');
-    var menuCat = catId ? getMenuCat(catId) : null;
-    var enablePlacement = menuCat ? !!menuCat.enablePlacement : false;
+    const menuCat = catId ? getMenuCat(catId) : null;
+    const enablePlacement = menuCat ? !!menuCat.enablePlacement : false;
     openModifierPanel(item, effectiveConfig, catColor, enablePlacement);
     return;
   }
 
   // ── Pizza fallback: always open modifier panel for pizza categories ──
-  var menuCatForFallback = catId ? getMenuCat(catId) : null;
+  const menuCatForFallback = catId ? getMenuCat(catId) : null;
   if (menuCatForFallback && (menuCatForFallback.enablePlacement || menuCatForFallback.pizzaBuilder)) {
-    var fallbackConfig = { mandatoryGroups: [], optionalGroups: [], includedItems: [] };
+    const fallbackConfig = { mandatoryGroups: [], optionalGroups: [], includedItems: [] };
     openModifierPanel(item, fallbackConfig, menuCatForFallback.color, true);
     return;
   }
@@ -3525,8 +3517,8 @@ function handleItemSelect(item) {
 }
 
 function addToTicket(item) {
-  var name  = item.label || item;
-  var price = typeof item.price === 'number' ? item.price : 0;
+  const name  = item.label || item;
+  const price = typeof item.price === 'number' ? item.price : 0;
 
   // Empty-seat guard: if no seats are active, the new item has nowhere to
   // route. Toast and bail rather than silently routing to seat 1 — the
@@ -3538,54 +3530,54 @@ function addToTicket(item) {
 
   if (modifierSession.active) {
     // Apply modifier to all selected instances
-    var selected = ticket.filter(function(i) { return i.selected; });
+    const selected = ticket.filter((i) => i.selected);
     if (selected.length === 0) {
       showToast('Select an item first', { bg: hexToRgba(T.text, 0.45), duration: 2000 });
       return;
     }
 
     // Check if current modifier category has half_placement
-    var modCatId = snakeState.catId;
-    var modCat = modCatId ? getModCat(modCatId) : null;
+    const modCatId = snakeState.catId;
+    const modCat = modCatId ? getModCat(modCatId) : null;
     if (modCat && modCat.half_placement) {
-      var halfPrice = typeof item.half_price === 'number' ? item.half_price : null;
+      const halfPrice = typeof item.half_price === 'number' ? item.half_price : null;
       // Use first selected item for overlay context
-      var targetInst = selected[0];
+      const targetInst = selected[0];
       showHalfPlacementOverlay(targetInst.name, name, price, halfPrice, targetInst.mods)
-        .then(function(result) {
-          selected.forEach(function(inst) {
+        .then((result) => {
+          selected.forEach((inst) => {
             // Re-selection: if same mod on other side, move it
-            var otherSide = result.side === 'Left' ? 'Right' : 'Left';
-            for (var i = inst.mods.length - 1; i >= 0; i--) {
+            const otherSide = result.side === 'Left' ? 'Right' : 'Left';
+            for (let i = inst.mods.length - 1; i >= 0; i--) {
               if (inst.mods[i].name === name && inst.mods[i].prefix === otherSide) {
                 inst.mods.splice(i, 1);
               }
             }
-            var modPrice = halfPrice != null ? halfPrice : 0;
-            var mod = { name: name, price: modPrice, half_price: halfPrice, charged: modPrice > 0, prefix: result.side };
+            let modPrice = halfPrice != null ? halfPrice : 0;
+            let mod = { name, price: modPrice, half_price: halfPrice, charged: modPrice > 0, prefix: result.side };
             inst.mods.push(mod);
-            modHistory.push({ inst: inst, mod: mod });
+            modHistory.push({ inst, mod });
           });
           renderTicket();
           rebuildBottomBar();
         })
-        .catch(function() { /* cancelled */ });
+        .catch(() => { /* cancelled */ });
       return;
     }
 
-    var pfx = PREFIXES.find(function(p) { return p.id === modifierSession.activePrefix; });
-    var modName = (pfx ? pfx.label + ' ' : '') + name;
-    var charged = price > 0;
-    selected.forEach(function(inst) {
-      var mod = { name: modName, price: price, charged: charged, prefix: null };
+    const pfx = PREFIXES.find((p) => p.id === modifierSession.activePrefix);
+    let modName = (pfx ? pfx.label + ' ' : '') + name;
+    const charged = price > 0;
+    selected.forEach((inst) => {
+      const mod = { name: modName, price, charged, prefix: null };
       inst.mods.push(mod);
-      modHistory.push({ inst: inst, mod: mod });
+      modHistory.push({ inst, mod });
     });
   } else {
     // New item instance
-    var mods = [];
+    const mods = [];
     if (item.selectedMods) {
-      item.selectedMods.forEach(function(sm) {
+      item.selectedMods.forEach((sm) => {
         mods.push({ name: sm.label, price: sm.price || 0, charged: sm.price > 0 });
       });
     }
@@ -3612,7 +3604,7 @@ function addToTicket(item) {
 // colors, and orphan rows after a category delete.
 function _catColorForItem(inst) {
   if (!inst || !inst.category) return T.moon;
-  var cat = getMenuCat(inst.category);
+  const cat = getMenuCat(inst.category);
   return (cat && cat.color) || T.moon;
 }
 
@@ -3625,12 +3617,12 @@ function _catColorForItem(inst) {
 //   variant 'preview' — dashed cat-color pill borders + dashed stem/branch
 function _buildModTree(mods, opts) {
   opts = opts || {};
-  var variant = opts.variant || 'default';
-  var catColor = opts.catColor || T.green;
-  var bevelLt = lightenHex(T.bg, 0.08);
-  var bevelDk = darkenHex(T.bg, 0.2);
+  const variant = opts.variant || 'default';
+  let catColor = opts.catColor || T.green;
+  let bevelLt = lightenHex(T.bg, 0.08);
+  let bevelDk = darkenHex(T.bg, 0.2);
 
-  var tree = document.createElement('div');
+  const tree = document.createElement('div');
   tree.style.cssText = [
     'position:relative;',
     'display:flex;flex-direction:column;gap:3px;',
@@ -3640,70 +3632,70 @@ function _buildModTree(mods, opts) {
 
   // Stem — vertical line down the left of the tree. Stops 12px before the
   // tree bottom so the last branch's horizontal segment terminates the line.
-  var stem = document.createElement('div');
+  const stem = document.createElement('div');
   if (variant === 'preview') {
-    stem.style.cssText = 'position:absolute;left:5px;top:0;bottom:12px;width:0;border-left:2px dashed ' + T.text + ';';
+    stem.style.cssText = `position:absolute;left:5px;top:0;bottom:12px;width:0;border-left:2px dashed ${T.text};`;
   } else {
-    stem.style.cssText = 'position:absolute;left:6px;top:0;bottom:12px;width:2px;background:' + T.text + ';';
+    stem.style.cssText = `position:absolute;left:6px;top:0;bottom:12px;width:2px;background:${T.text};`;
   }
   tree.appendChild(stem);
 
-  mods.forEach(function(mod) {
-    var entry = document.createElement('div');
+  mods.forEach((mod) => {
+    const entry = document.createElement('div');
     entry.style.cssText = 'position:relative;display:flex;align-items:center;gap:5px;';
 
     // Branch — horizontal segment from stem to pill
-    var branch = document.createElement('div');
+    const branch = document.createElement('div');
     if (variant === 'preview') {
-      branch.style.cssText = 'position:absolute;left:-10px;top:50%;width:10px;height:0;border-top:2px dashed ' + T.text + ';';
+      branch.style.cssText = `position:absolute;left:-10px;top:50%;width:10px;height:0;border-top:2px dashed ${T.text};`;
     } else {
-      branch.style.cssText = 'position:absolute;left:-10px;top:50%;width:10px;height:2px;background:' + T.text + ';';
+      branch.style.cssText = `position:absolute;left:-10px;top:50%;width:10px;height:2px;background:${T.text};`;
     }
     entry.appendChild(branch);
 
     // Pill
-    var pill = document.createElement('div');
-    var pillStyles = [
+    const pill = document.createElement('div');
+    const pillStyles = [
       'flex:1;min-width:0;',
       'display:flex;align-items:baseline;justify-content:space-between;gap:6px;',
       'padding:3px 8px;',
-      'background:' + T.card + ';',
+      `background:${T.card};`,
       'border-radius:6px;',
     ];
     if (variant === 'sent') {
-      pillStyles.push('border:1px solid ' + hexToRgba(T.green, 0.4));
+      pillStyles.push(`border:1px solid ${hexToRgba(T.green, 0.4)}`);
     } else if (variant === 'preview') {
-      pillStyles.push('border:1px dashed ' + hexToRgba(catColor, 0.6));
+      pillStyles.push(`border:1px dashed ${hexToRgba(catColor, 0.6)}`);
     } else {
-      pillStyles.push('border-top:1px solid ' + bevelLt);
-      pillStyles.push('border-left:1px solid ' + bevelLt);
-      pillStyles.push('border-right:1px solid ' + bevelDk);
-      pillStyles.push('border-bottom:1px solid ' + bevelDk);
+      pillStyles.push(`border-top:1px solid ${bevelLt}`);
+      pillStyles.push(`border-left:1px solid ${bevelLt}`);
+      pillStyles.push(`border-right:1px solid ${bevelDk}`);
+      pillStyles.push(`border-bottom:1px solid ${bevelDk}`);
     }
     pill.style.cssText = pillStyles.join(';') + ';';
 
-    var modName = document.createElement('span');
+    const modName = document.createElement('span');
     modName.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-size:' + T.fsB4 + ';',
+      `font-family:${T.fb};`,
+      `font-size:${T.fsB4};`,
       'font-style:italic;',
-      'color:' + T.text + ';',
+      `color:${T.text};`,
       'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
       'min-width:0;flex:1;',
-    ].join('') + ";font-weight:" + T.fwBold + ";";
+    ].join('') + `;font-weight:${T.fwBold};`;
     modName.textContent = mod.name;
     pill.appendChild(modName);
 
     if (mod.charged && Number(mod.price) > 0) {
-      var modPrice = document.createElement('span');
+      const modPrice = document.createElement('span');
       modPrice.style.cssText = [
-        'font-family:' + T.fb + ';',
-        'font-size:' + T.fsB4 + ';',
-        'font-weight:' + T.fwBold + ';',
-        'color:' + T.gold + ';',
+        `font-family:${T.fb};`,
+        `font-size:${T.fsB4};`,
+        `font-weight:${T.fwBold};`,
+        `color:${T.gold};`,
         'flex-shrink:0;',
       ].join('');
-      modPrice.textContent = '+$' + (Number(mod.price) || 0).toFixed(2);
+      modPrice.textContent = `+$${(Number(mod.price) || 0).toFixed(2)}`;
       pill.appendChild(modPrice);
     }
 
@@ -3715,19 +3707,19 @@ function _buildModTree(mods, opts) {
 }
 
 function _buildItemSubCard(inst, isMultiSeat) {
-  var sent = !!inst.sent;
-  var catColor = _catColorForItem(inst);
-  var bevelLt = lightenHex(T.bg, 0.08);
-  var bevelDk = darkenHex(T.bg, 0.2);
+  const sent = !!inst.sent;
+  let catColor = _catColorForItem(inst);
+  const bevelLt = lightenHex(T.bg, 0.08);
+  let bevelDk = darkenHex(T.bg, 0.2);
 
-  var modTotal = (inst.mods || []).reduce(function(s, m) { return s + (Number(m.price) || 0); }, 0);
-  var totalPrice = (Number(inst.unitPrice) || 0) + modTotal;
-  var qty = inst.qty || 1;
-  var displayName = qty > 1 ? qty + '× ' + inst.name : inst.name;
+  let modTotal = (inst.mods || []).reduce((s, m) => s + (Number(m.price) || 0), 0);
+  const totalPrice = (Number(inst.unitPrice) || 0) + modTotal;
+  const qty = inst.qty || 1;
+  const displayName = qty > 1 ? qty + `× ${inst.name}` : inst.name;
 
   // Wrapper — flex row containing item-block (card + mod tree) + optional
   // chevron column for sent items.
-  var wrapper = document.createElement('div');
+  const wrapper = document.createElement('div');
   wrapper.style.cssText = [
     'display:flex;align-items:stretch;gap:8px;',
     'margin-bottom:5px;',
@@ -3735,75 +3727,75 @@ function _buildItemSubCard(inst, isMultiSeat) {
   ].join('');
 
   // Item block — vertical stack of card + (optional) mod tree
-  var block = document.createElement('div');
+  const block = document.createElement('div');
   block.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;';
 
   // ── Card body ────────────────────────────────────
-  var card = document.createElement('div');
+  const card = document.createElement('div');
   if (sent) {
     // All-4 green border (Mode B treatment from check-overview)
     card.style.cssText = [
-      'background:' + T.well + ';',
-      'border:2px solid ' + T.green + ';',
+      `background:${T.well};`,
+      `border:2px solid ${T.green};`,
       'border-left-width:3px;',
       'border-radius:8px;',
       'padding:6px 10px;',
-      'box-shadow:0 2px 0 ' + T.greenDk + ';',
+      `box-shadow:0 2px 0 ${T.greenDk};`,
     ].join('');
   } else {
     // Bevel chrome with cat-color left border
     card.style.cssText = [
-      'background:' + T.well + ';',
-      'border-top:2px solid ' + bevelLt + ';',
-      'border-right:2px solid ' + bevelDk + ';',
-      'border-bottom:2px solid ' + bevelDk + ';',
-      'border-left:3px solid ' + catColor + ';',
+      `background:${T.well};`,
+      `border-top:2px solid ${bevelLt};`,
+      `border-right:2px solid ${bevelDk};`,
+      `border-bottom:2px solid ${bevelDk};`,
+      `border-left:3px solid ${catColor};`,
       'border-radius:8px;',
       'padding:6px 10px;',
     ].join('');
   }
 
   // Main row: name + price + (× delete for unsent)
-  var mainRow = document.createElement('div');
+  const mainRow = document.createElement('div');
   mainRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
 
-  var nameEl = document.createElement('span');
+  const nameEl = document.createElement('span');
   nameEl.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-weight:' + T.fwBold + ';',
-    'font-size:' + T.fsB3 + ';',
-    'color:' + T.text + ';',
+    `font-family:${T.fb};`,
+    `font-weight:${T.fwBold};`,
+    `font-size:${T.fsB3};`,
+    `color:${T.text};`,
     'flex:1;min-width:0;',
     'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
   ].join('');
   nameEl.textContent = displayName;
   mainRow.appendChild(nameEl);
 
-  var priceEl = document.createElement('span');
+  const priceEl = document.createElement('span');
   priceEl.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-weight:' + T.fwBold + ';',
-    'font-size:' + T.fsB3 + ';',
-    'color:' + T.gold + ';',
+    `font-family:${T.fb};`,
+    `font-weight:${T.fwBold};`,
+    `font-size:${T.fsB3};`,
+    `color:${T.gold};`,
     'flex-shrink:0;',
   ].join('');
   priceEl.textContent = _fmtPrice(totalPrice);
   mainRow.appendChild(priceEl);
 
   if (!sent) {
-    var xBtn = document.createElement('div');
+    const xBtn = document.createElement('div');
     xBtn.style.cssText = [
       'width:22px;height:22px;flex-shrink:0;',
       'display:flex;align-items:center;justify-content:center;',
-      'border-radius:4px;background:' + T.verm + ';',
-      'color:#fff;font-family:' + T.fb + ';font-size:15px;font-weight:' + T.fwBold + ';',
+      `border-radius:4px;background:${T.verm};`,
+      `color:#fff;font-family:${T.fb};font-size:15px;font-weight:${T.fwBold};`,
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
     ].join('');
     xBtn.textContent = '×';
-    xBtn.addEventListener('pointerup', (function(instance) {
-      return function(e) {
+    xBtn.addEventListener('pointerup', ((instance) => {
+      return (e) => {
         e.stopPropagation();
-        var idx = ticket.indexOf(instance);
+        let idx = ticket.indexOf(instance);
         if (idx !== -1) ticket.splice(idx, 1);
         delete _expandedItems[instance.id];
         renderTicket();
@@ -3828,7 +3820,7 @@ function _buildItemSubCard(inst, isMultiSeat) {
 
   // ── Sent: chevron column to right ────────────────
   if (sent) {
-    var chevCol = document.createElement('div');
+    const chevCol = document.createElement('div');
     chevCol.style.cssText = [
       'flex:0 0 auto;min-width:48px;',
       'display:flex;flex-direction:column;',
@@ -3836,25 +3828,25 @@ function _buildItemSubCard(inst, isMultiSeat) {
       'padding-left:4px;gap:4px;',
     ].join('');
 
-    var chev = document.createElement('span');
+    const chev = document.createElement('span');
     chev.style.cssText = [
-      'font-family:' + T.fb + ';',
-      'font-weight:' + T.fwBold + ';',
+      `font-family:${T.fb};`,
+      `font-weight:${T.fwBold};`,
       'font-size:18px;',
-      'color:' + T.green + ';',
+      `color:${T.green};`,
       'letter-spacing:0.08em;line-height:1;',
     ].join('');
     chev.textContent = '>>>';
     chevCol.appendChild(chev);
 
     if (inst.sent_at) {
-      var stamp = document.createElement('span');
+      const stamp = document.createElement('span');
       stamp.style.cssText = [
-        'font-family:' + T.fb + ';',
+        `font-family:${T.fb};`,
         'font-size:11px;',
-        'color:' + T.text + ';',
+        `color:${T.text};`,
         'font-style:italic;',
-      ].join('') + ";font-weight:" + T.fwBold + ";";
+      ].join('') + `;font-weight:${T.fwBold};`;
       stamp.textContent = inst.sent_at;
       chevCol.appendChild(stamp);
     }
@@ -3867,26 +3859,24 @@ function _buildItemSubCard(inst, isMultiSeat) {
 
 function renderTicket() {
   if (SceneManager.getActiveWorking() !== 'order-entry') return;
-  var list = document.getElementById('ticket-list');
+  const list = document.getElementById('ticket-list');
   if (!list) return;
   list.innerHTML = '';
 
   // In check-overview mode, only show unsent items
-  var displayTicket = ticket;
+  let displayTicket = ticket;
   if (sceneParams.returnScene === 'check-overview') {
-    displayTicket = ticket.filter(function(inst) { return !inst.sent; });
+    displayTicket = ticket.filter((inst) => !inst.sent);
   }
 
   // Filter to items whose seat_number is in _activeSeats
   if (_activeSeats.size > 0) {
-    displayTicket = displayTicket.filter(function(inst) {
-      return _activeSeats.has(inst.seat_number);
-    });
+    displayTicket = displayTicket.filter((inst) => _activeSeats.has(inst.seat_number));
   }
 
   if (displayTicket.length === 0 && !_modPanelItem) {
-    var hint = document.createElement('div');
-    hint.style.cssText = 'padding:20px 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + hexToRgba(T.text, 0.6) + ';text-align:center;' + ";font-weight:" + T.fwBold + ";";
+    const hint = document.createElement('div');
+    hint.style.cssText = `padding:20px 8px;font-family:${T.fb};font-size:${T.fsB3};color:${hexToRgba(T.text, 0.6)};text-align:center;;font-weight:${T.fwBold};`;
     hint.textContent = 'Tap items to add';
     list.appendChild(hint);
     _appendModPreview(list);
@@ -3898,53 +3888,53 @@ function renderTicket() {
     // Multi-seat: each seat rendered as collapsible s-card
     // (matches check-overview Mode B). Default state is open;
     // _collapsedSeats tracks any user-collapsed seats.
-    var bevelDk = darkenHex(T.bg, 0.2);
-    var seatOrder = Array.from(_activeSeats).sort(function(a, b) { return a - b; });
-    seatOrder.forEach(function(sn) {
-      var seatItems = displayTicket.filter(function(i) { return i.seat_number === sn; });
-      var seatSubtotal = seatItems.reduce(function(s, i) {
-        return s + (Number(i.unitPrice) || 0) + (i.mods || []).reduce(function(ms, m) { return ms + (Number(m.price) || 0); }, 0);
+    const bevelDk = darkenHex(T.bg, 0.2);
+    let seatOrder = Array.from(_activeSeats).sort((a, b) => a - b);
+    seatOrder.forEach((sn) => {
+      const seatItems = displayTicket.filter((i) => i.seat_number === sn);
+      const seatSubtotal = seatItems.reduce((s, i) => {
+        return s + (Number(i.unitPrice) || 0) + (i.mods || []).reduce((ms, m) => ms + (Number(m.price) || 0), 0);
       }, 0);
-      var isOpen = !_collapsedSeats.has(sn);
+      const isOpen = !_collapsedSeats.has(sn);
 
-      var sCard = document.createElement('div');
+      const sCard = document.createElement('div');
       sCard.style.cssText = [
-        'border-bottom:1px solid ' + bevelDk + ';',
-        'border-left:3px solid ' + T.green + ';',
+        `border-bottom:1px solid ${bevelDk};`,
+        `border-left:3px solid ${T.green};`,
         'margin-bottom:5px;',
       ].join('');
 
-      var sHdr = document.createElement('div');
+      const sHdr = document.createElement('div');
       sHdr.style.cssText = [
         'display:flex;align-items:baseline;justify-content:space-between;',
-        'padding:8px 12px;background:' + T.well + ';',
+        `padding:8px 12px;background:${T.well};`,
         'cursor:pointer;user-select:none;',
         'pointer-events:auto;touch-action:manipulation;',
       ].join('');
 
-      var sHdrLeft = document.createElement('div');
+      const sHdrLeft = document.createElement('div');
       sHdrLeft.style.cssText = 'display:flex;align-items:baseline;gap:8px;';
-      var sNum = document.createElement('span');
-      sNum.style.cssText = 'font-family:' + T.fh + ';font-weight:' + T.fwBold + ';font-size:20px;color:' + T.green + ';';
-      sNum.textContent = 'S' + sn;
-      var sSbtl = document.createElement('span');
-      sSbtl.style.cssText = 'font-family:' + T.fb + ';font-weight:' + T.fwBold + ';font-size:' + T.fsB4 + ';color:' + T.gold + ';';
+      const sNum = document.createElement('span');
+      sNum.style.cssText = `font-family:${T.fh};font-weight:${T.fwBold};font-size:20px;color:${T.green};`;
+      sNum.textContent = `S${sn}`;
+      const sSbtl = document.createElement('span');
+      sSbtl.style.cssText = `font-family:${T.fb};font-weight:${T.fwBold};font-size:${T.fsB4};color:${T.gold};`;
       sSbtl.textContent = _fmtPrice(seatSubtotal);
       sHdrLeft.appendChild(sNum);
       sHdrLeft.appendChild(sSbtl);
       sHdr.appendChild(sHdrLeft);
 
-      var sChev = document.createElement('span');
+      const sChev = document.createElement('span');
       sChev.style.cssText = [
-        'font-family:' + T.fb + ';font-size:16px;color:' + T.moon + ';',
+        `font-family:${T.fb};font-size:16px;color:${T.moon};`,
         'transition:transform 0.15s;display:inline-block;',
-        'transform:' + (isOpen ? 'rotate(90deg)' : 'rotate(0deg)') + ';',
-      ].join('') + ";font-weight:" + T.fwBold + ";";
+        `transform:${(isOpen ? 'rotate(90deg)' : 'rotate(0deg)')};`,
+      ].join('') + `;font-weight:${T.fwBold};`;
       sChev.textContent = '▸';
       sHdr.appendChild(sChev);
 
-      sHdr.addEventListener('pointerup', (function(seatNum) {
-        return function() {
+      sHdr.addEventListener('pointerup', ((seatNum) => {
+        return () => {
           if (_collapsedSeats.has(seatNum)) _collapsedSeats.delete(seatNum);
           else _collapsedSeats.add(seatNum);
           renderTicket();
@@ -3953,17 +3943,17 @@ function renderTicket() {
 
       sCard.appendChild(sHdr);
 
-      var itemsWrap = document.createElement('div');
+      const itemsWrap = document.createElement('div');
       itemsWrap.style.cssText = [
         'overflow:hidden;',
-        'max-height:' + (isOpen ? '5000px' : '0') + ';',
+        `max-height:${(isOpen ? '5000px' : '0')};`,
         'transition:max-height 0.2s ease;',
       ].join('');
 
-      var itemsInner = document.createElement('div');
+      const itemsInner = document.createElement('div');
       itemsInner.style.cssText = 'padding:6px 8px 8px;display:flex;flex-direction:column;';
 
-      seatItems.forEach(function(inst) {
+      seatItems.forEach((inst) => {
         itemsInner.appendChild(_buildItemSubCard(inst, false));
       });
 
@@ -3973,7 +3963,7 @@ function renderTicket() {
     });
   } else {
     // Single seat — items render flush, no header
-    displayTicket.forEach(function(inst) {
+    displayTicket.forEach((inst) => {
       list.appendChild(_buildItemSubCard(inst, false));
     });
   }
@@ -3985,64 +3975,64 @@ function renderTicket() {
 function _appendModPreview(list) {
   if (!_modPanelItem) return;
   // Remove ALL stale previews (may lack data-mod-preview from interrupted renders)
-  var children = list.children;
-  for (var ri = children.length - 1; ri >= 0; ri--) {
+  const children = list.children;
+  for (let ri = children.length - 1; ri >= 0; ri--) {
     if (children[ri].textContent.indexOf('\u270E') !== -1) {
       list.removeChild(children[ri]);
     }
   }
 
-  var previewMods = (_modPanelItem.mods || []);
-  var previewModTotal = previewMods.reduce(function(s, m) { return s + Number(m.price || 0); }, 0);
-  var previewPrice = (_modPanelItem.basePrice || 0) + previewModTotal;
-  var catColor = _modPanelCatColor || T.green;
-  var fsMod = T.fsB3;
+  let previewMods = (_modPanelItem.mods || []);
+  let previewModTotal = previewMods.reduce((s, m) => s + Number(m.price || 0), 0);
+  const previewPrice = (_modPanelItem.basePrice || 0) + previewModTotal;
+  const catColor = _modPanelCatColor || T.green;
+  const fsMod = T.fsB3;
 
   // ── Wrapper: dashed cat-color border on all 4 sides, transparent fill,
   // marker text (\u270E pencil) inside the name so renderTicket can scrub
   // stale previews on next pass. Price stays gold per money rule.
-  var pc = document.createElement('div');
+  const pc = document.createElement('div');
   pc.setAttribute('data-mod-preview', '1');
   pc.style.cssText = [
     'flex-shrink:0;margin-bottom:5px;',
-    'background:' + T.well + ';',
-    'border:1.5px dashed ' + catColor + ';',
+    `background:${T.well};`,
+    `border:1.5px dashed ${catColor};`,
     'border-radius:8px;',
     'padding:6px 10px;',
   ].join('');
 
   // Main row: pencil + name + price
-  var pRow = document.createElement('div');
+  const pRow = document.createElement('div');
   pRow.style.cssText = 'display:flex;align-items:center;gap:6px;';
-  var pName = document.createElement('span');
+  const pName = document.createElement('span');
   pName.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-weight:' + T.fwBold + ';',
-    'font-size:' + T.fsB3 + ';',
-    'color:' + T.text + ';',
+    `font-family:${T.fb};`,
+    `font-weight:${T.fwBold};`,
+    `font-size:${T.fsB3};`,
+    `color:${T.text};`,
     'flex:1;min-width:0;',
     'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
   ].join('');
-  pName.textContent = '\u270E ' + _modPanelItem.itemLabel;
-  var pPrice = document.createElement('span');
+  pName.textContent = `\u270E ${_modPanelItem.itemLabel}`;
+  const pPrice = document.createElement('span');
   pPrice.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-weight:' + T.fwBold + ';',
-    'font-size:' + T.fsB3 + ';',
-    'color:' + T.gold + ';',
+    `font-family:${T.fb};`,
+    `font-weight:${T.fwBold};`,
+    `font-size:${T.fsB3};`,
+    `color:${T.gold};`,
     'flex-shrink:0;',
   ].join('');
-  pPrice.textContent = '$' + previewPrice.toFixed(2);
+  pPrice.textContent = `$${previewPrice.toFixed(2)}`;
   pRow.appendChild(pName);
   pRow.appendChild(pPrice);
   pc.appendChild(pRow);
 
   // Partition into whole / left / right
-  var wholeMods = [];
-  var leftMods = [];
-  var rightMods = [];
-  for (var pi = 0; pi < previewMods.length; pi++) {
-    var pm = previewMods[pi];
+  const wholeMods = [];
+  const leftMods = [];
+  const rightMods = [];
+  for (let pi = 0; pi < previewMods.length; pi++) {
+    const pm = previewMods[pi];
     if (pm.prefix === 'Left') leftMods.push(pm);
     else if (pm.prefix === 'Right') rightMods.push(pm);
     else wholeMods.push(pm);
@@ -4050,18 +4040,18 @@ function _appendModPreview(list) {
 
   // Whole mods → preview-variant mod tree (dashed cat-color pills + dashed stem/branch)
   if (wholeMods.length > 0) {
-    pc.appendChild(_buildModTree(wholeMods, { variant: 'preview', catColor: catColor }));
+    pc.appendChild(_buildModTree(wholeMods, { variant: 'preview', catColor }));
     // Exclusion children (e.g. "NO Ketchup" under "ADD Cheeseburger")
     // — preserved from legacy preview; rendered as italic verm rows below the tree.
-    wholeMods.forEach(function(m) {
+    wholeMods.forEach((m) => {
       if (m.children && m.children.length > 0) {
-        m.children.forEach(function(child) {
-          var childRow = document.createElement('div');
+        m.children.forEach((child) => {
+          const childRow = document.createElement('div');
           childRow.style.cssText = [
             'margin-left:36px;padding:2px 8px;',
-            'font-family:' + T.fb + ';font-size:' + T.fsB4 + ';',
-            'font-style:italic;color:' + T.verm + ';',
-          ].join('') + ";font-weight:" + T.fwBold + ";";
+            `font-family:${T.fb};font-size:${T.fsB4};`,
+            `font-style:italic;color:${T.verm};`,
+          ].join('') + `;font-weight:${T.fwBold};`;
           childRow.textContent = child.name;
           pc.appendChild(childRow);
         });
@@ -4073,7 +4063,7 @@ function _appendModPreview(list) {
   // doesn't have a clean tree-pattern equivalent yet, so it lives outside
   // the new mod-tree treatment for now.
   if (leftMods.length > 0 || rightMods.length > 0) {
-    var inst = { sent: false, mods: _modPanelItem.mods };
+    let inst = { sent: false, mods: _modPanelItem.mods };
     pc.appendChild(buildHalfTable(leftMods, rightMods, fsMod, inst));
   }
 
@@ -4082,18 +4072,18 @@ function _appendModPreview(list) {
 
 function _updateTicketTotals(filteredTicket) {
   // When a filtered view is active, compute totals from visible items only.
-  var subtotal = 0;
-  var src = filteredTicket || ticket;
-  src.forEach(function(inst) {
-    var modTotal = (inst.mods || []).reduce(function(s, m) { return s + (Number(m.price) || 0); }, 0);
+  let subtotal = 0;
+  const src = filteredTicket || ticket;
+  src.forEach((inst) => {
+    const modTotal = (inst.mods || []).reduce((s, m) => s + (Number(m.price) || 0), 0);
     subtotal += (Number(inst.unitPrice) || 0) + modTotal;
   });
   if (_modPanelItem) {
-    var previewMods = (_modPanelItem.mods || []);
-    var previewModTotal = previewMods.reduce(function(s, m) { return s + (Number(m.price) || 0); }, 0);
+    const previewMods = (_modPanelItem.mods || []);
+    const previewModTotal = previewMods.reduce((s, m) => s + (Number(m.price) || 0), 0);
     subtotal += (_modPanelItem.basePrice || 0) + previewModTotal;
   }
-  var t = computeTotals(subtotal);
+  const t = computeTotals(subtotal);
   OrderSummary.update({
     checkId: currentCheckNumber || '',
     skipItems: true,
@@ -4107,15 +4097,15 @@ function _updateTicketTotals(filteredTicket) {
 
 // ── Swipe-to-delete wrapper ──────────────────────
 function _wrapSwipeDelete(innerEl, onDelete) {
-  var THRESHOLD = 60;
-  var BTN_W = 70;
+  const THRESHOLD = 60;
+  const BTN_W = 70;
 
-  var wrap = document.createElement('div');
+  const wrap = document.createElement('div');
   wrap.style.cssText = 'position:relative;overflow:hidden;flex-shrink:0;';
 
   // Delete button behind
-  var delBtn = document.createElement('div');
-  delBtn.style.cssText = 'position:absolute;right:0;top:0;bottom:0;width:' + BTN_W + 'px;display:flex;align-items:center;justify-content:center;background:' + T.verm + ';color:' + T.text + ';font-family:' + T.fh + ';font-size:' + T.fsB3 + ';letter-spacing:1px;cursor:pointer;user-select:none;' + ";font-weight:" + T.fwBold + ";";
+  const delBtn = document.createElement('div');
+  delBtn.style.cssText = `position:absolute;right:0;top:0;bottom:0;width:${BTN_W}px;display:flex;align-items:center;justify-content:center;background:${T.verm};color:${T.text};font-family:${T.fh};font-size:${T.fsB3};letter-spacing:1px;cursor:pointer;user-select:none;;font-weight:${T.fwBold};`;
   delBtn.textContent = 'DELETE';
   wrap.appendChild(delBtn);
 
@@ -4125,34 +4115,34 @@ function _wrapSwipeDelete(innerEl, onDelete) {
   innerEl.style.transition = 'transform 150ms ease-out';
   wrap.appendChild(innerEl);
 
-  var startX = 0;
-  var currentX = 0;
-  var swiping = false;
-  var revealed = false;
+  let startX = 0;
+  let currentX = 0;
+  let swiping = false;
+  let revealed = false;
 
-  innerEl.addEventListener('pointerdown', function(e) {
+  innerEl.addEventListener('pointerdown', (e) => {
     startX = e.clientX;
     currentX = 0;
     swiping = true;
     innerEl.style.transition = 'none';
   });
 
-  innerEl.addEventListener('pointermove', function(e) {
+  innerEl.addEventListener('pointermove', (e) => {
     if (!swiping) return;
-    var dx = e.clientX - startX;
+    let dx = e.clientX - startX;
     if (dx > 0) dx = 0; // no right swipe
     if (dx < -BTN_W) dx = -BTN_W;
     currentX = dx;
-    innerEl.style.transform = 'translateX(' + dx + 'px)';
+    innerEl.style.transform = `translateX(${dx}px)`;
   });
 
-  innerEl.addEventListener('pointerup', function() {
+  innerEl.addEventListener('pointerup', () => {
     if (!swiping) return;
     swiping = false;
     innerEl.style.transition = 'transform 150ms ease-out';
     if (currentX < -THRESHOLD) {
       // Reveal delete
-      innerEl.style.transform = 'translateX(-' + BTN_W + 'px)';
+      innerEl.style.transform = `translateX(-${BTN_W}px)`;
       revealed = true;
     } else {
       innerEl.style.transform = 'translateX(0)';
@@ -4160,12 +4150,12 @@ function _wrapSwipeDelete(innerEl, onDelete) {
     }
   });
 
-  innerEl.addEventListener('pointerleave', function() {
+  innerEl.addEventListener('pointerleave', () => {
     if (!swiping) return;
     swiping = false;
     innerEl.style.transition = 'transform 150ms ease-out';
     if (currentX < -THRESHOLD) {
-      innerEl.style.transform = 'translateX(-' + BTN_W + 'px)';
+      innerEl.style.transform = `translateX(-${BTN_W}px)`;
       revealed = true;
     } else {
       innerEl.style.transform = 'translateX(0)';
@@ -4173,7 +4163,7 @@ function _wrapSwipeDelete(innerEl, onDelete) {
     }
   });
 
-  delBtn.addEventListener('pointerup', function() {
+  delBtn.addEventListener('pointerup', () => {
     onDelete();
   });
 
@@ -4183,78 +4173,78 @@ function _wrapSwipeDelete(innerEl, onDelete) {
 
 // ── SEPARATOR + MOD ROW helpers ───────────────────
 function buildSeparator() {
-  var sep = document.createElement('div');
-  sep.style.cssText = 'padding:0 8px;font-family:' + T.fb + ';font-size:' + T.fsB3 + ';color:' + T.greenDk + ';letter-spacing:2px;overflow:hidden;white-space:nowrap;line-height:1;' + ";font-weight:" + T.fwBold + ";";
+  let sep = document.createElement('div');
+  sep.style.cssText = `padding:0 8px;font-family:${T.fb};font-size:${T.fsB3};color:${T.greenDk};letter-spacing:2px;overflow:hidden;white-space:nowrap;line-height:1;;font-weight:${T.fwBold};`;
   sep.textContent = '- - - - - - - - - - - - - - - - - -';
   return sep;
 }
 
 function buildModRow(name, price, dark, showPrice) {
-  var row = document.createElement('div');
+  let row = document.createElement('div');
   row.style.cssText = [
     'display:flex;justify-content:space-between;',
     'padding:2px 8px 2px 20px;',
-    'font-family:' + T.fb + ';font-size:' + T.fsB3 + ';font-weight:' + T.fwBold + ';',
-    'color:' + (dark ? T.well : T.gold) + ';',
+    `font-family:${T.fb};font-size:${T.fsB3};font-weight:${T.fwBold};`,
+    `color:${(dark ? T.well : T.gold)};`,
   ].join('');
-  var n = document.createElement('span');
+  let n = document.createElement('span');
   n.textContent = name;
-  var p = document.createElement('span');
-  p.textContent = price > 0 ? '+$' + price.toFixed(2) : '$0.00';
+  let p = document.createElement('span');
+  p.textContent = price > 0 ? `+$${price.toFixed(2)}` : '$0.00';
   row.appendChild(n);
   row.appendChild(p);
   return row;
 }
 
 function buildModRowSized(name, price, fontSize, onRemove) {
-  var row = document.createElement('div');
+  let row = document.createElement('div');
   row.style.cssText = [
     'display:flex;align-items:center;',
     'padding:1px 8px 1px 16px;',
-    'font-family:' + T.fb + ';font-size:' + fontSize + ';font-weight:' + T.fwBold + ';',
-    'color:' + T.green + ';',
+    `font-family:${T.fb};font-size:${fontSize};font-weight:${T.fwBold};`,
+    `color:${T.green};`,
   ].join('');
   // Remove button (shown for unsent items)
   if (onRemove) {
-    var x = document.createElement('span');
+    let x = document.createElement('span');
     x.style.cssText = [
       'flex-shrink:0;width:22px;height:22px;margin-right:4px;',
       'display:flex;align-items:center;justify-content:center;',
-      'font-size:14px;color:' + T.verm + ';cursor:pointer;',
-      'border:1px solid ' + T.verm + ';clip-path:polygon(3px 0%,calc(100% - 3px) 0%,100% 3px,100% calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,0% calc(100% - 3px),0% 3px);',
-    ].join('') + ";font-weight:" + T.fwBold + ";";
+      `font-size:14px;color:${T.verm};cursor:pointer;`,
+      `border:1px solid ${T.verm};clip-path:polygon(3px 0%,calc(100% - 3px) 0%,100% 3px,100% calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,0% calc(100% - 3px),0% 3px);`,
+    ].join('') + `;font-weight:${T.fwBold};`;
     x.textContent = '\u2715';
-    x.addEventListener('pointerup', function(e) {
+    x.addEventListener('pointerup', (e) => {
       e.stopPropagation();
       onRemove();
     });
     row.appendChild(x);
   }
-  var n = document.createElement('span');
+  const n = document.createElement('span');
   n.style.cssText = 'flex:1;';
   n.textContent = name;
-  var p = document.createElement('span');
-  p.style.cssText = 'flex-shrink:0;color:' + T.gold + ';';
-  p.textContent = price > 0 ? '+$' + price.toFixed(2) : '';
+  let p = document.createElement('span');
+  p.style.cssText = `flex-shrink:0;color:${T.gold};`;
+  p.textContent = price > 0 ? `+$${price.toFixed(2)}` : '';
   row.appendChild(n);
   if (price > 0) row.appendChild(p);
   return row;
 }
 
 function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
-  var table = document.createElement('div');
+  const table = document.createElement('div');
   table.style.cssText = 'padding:2px 8px;';
 
   // Divider
-  var divTop = document.createElement('div');
-  divTop.style.cssText = 'display:flex;border-bottom:1px solid ' + T.greenDk + ';margin-bottom:1px;';
-  var hdrL = document.createElement('div');
-  hdrL.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + fontSize + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';text-align:center;';
+  const divTop = document.createElement('div');
+  divTop.style.cssText = `display:flex;border-bottom:1px solid ${T.greenDk};margin-bottom:1px;`;
+  const hdrL = document.createElement('div');
+  hdrL.style.cssText = `flex:1;font-family:${T.fb};font-size:${fontSize};font-weight:${T.fwBold};color:${T.gold};text-align:center;`;
   hdrL.textContent = '1ST';
-  var hdrSep = document.createElement('div');
-  hdrSep.style.cssText = 'width:1px;background:' + T.greenDk + ';margin:0 4px;';
-  var hdrR = document.createElement('div');
-  hdrR.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + fontSize + ';font-weight:' + T.fwBold + ';color:' + T.gold + ';text-align:center;';
+  const hdrSep = document.createElement('div');
+  hdrSep.style.cssText = `width:1px;background:${T.greenDk};margin:0 4px;`;
+  const hdrR = document.createElement('div');
+  hdrR.style.cssText = `flex:1;font-family:${T.fb};font-size:${fontSize};font-weight:${T.fwBold};color:${T.gold};text-align:center;`;
   hdrR.textContent = '2ND';
   divTop.appendChild(hdrL);
   divTop.appendChild(hdrSep);
@@ -4262,17 +4252,17 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
   table.appendChild(divTop);
 
   function _makeRemoveBtn(mod) {
-    var x = document.createElement('span');
+    const x = document.createElement('span');
     x.style.cssText = [
       'flex-shrink:0;width:18px;height:18px;margin:0 2px;',
       'display:inline-flex;align-items:center;justify-content:center;',
-      'font-size:11px;color:' + T.verm + ';cursor:pointer;',
-      'border:1px solid ' + T.verm + ';clip-path:polygon(3px 0%,calc(100% - 3px) 0%,100% 3px,100% calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,0% calc(100% - 3px),0% 3px);',
-    ].join('') + ";font-weight:" + T.fwBold + ";";
+      `font-size:11px;color:${T.verm};cursor:pointer;`,
+      `border:1px solid ${T.verm};clip-path:polygon(3px 0%,calc(100% - 3px) 0%,100% 3px,100% calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,0% calc(100% - 3px),0% 3px);`,
+    ].join('') + `;font-weight:${T.fwBold};`;
     x.textContent = '\u2715';
-    x.addEventListener('pointerup', function(e) {
+    x.addEventListener('pointerup', (e) => {
       e.stopPropagation();
-      var mi = removableInst.mods.indexOf(mod);
+      const mi = removableInst.mods.indexOf(mod);
       if (mi !== -1) removableInst.mods.splice(mi, 1);
       renderTicket();
       rebuildBottomBar();
@@ -4281,43 +4271,43 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
   }
 
   // Rows — zip left and right
-  var maxRows = Math.max(leftMods.length, rightMods.length);
-  for (var i = 0; i < maxRows; i++) {
-    var row = document.createElement('div');
+  const maxRows = Math.max(leftMods.length, rightMods.length);
+  for (let i = 0; i < maxRows; i++) {
+    const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;';
 
-    var cellL = document.createElement('div');
-    cellL.style.cssText = 'flex:1;display:flex;align-items:center;font-family:' + T.fb + ';font-size:' + fontSize + ';color:' + T.green + ';padding:0 4px;' + ";font-weight:" + T.fwBold + ";";
+    const cellL = document.createElement('div');
+    cellL.style.cssText = `flex:1;display:flex;align-items:center;font-family:${T.fb};font-size:${fontSize};color:${T.green};padding:0 4px;;font-weight:${T.fwBold};`;
     if (removableInst && leftMods[i]) cellL.appendChild(_makeRemoveBtn(leftMods[i]));
-    var lText = document.createElement('span');
+    const lText = document.createElement('span');
     lText.textContent = leftMods[i] ? stripPlacementPrefix(leftMods[i].name) : '';
     cellL.appendChild(lText);
 
     if (leftMods[i] && leftMods[i].priceDelta) {
-      var lp = leftMods[i].priceDelta;
-      var lpRow = buildDataRow('', (lp > 0 ? '+$' : '-$') + Math.abs(lp).toFixed(2), T.gold);
+      const lp = leftMods[i].priceDelta;
+      const lpRow = buildDataRow('', (lp > 0 ? '+$' : '-$') + Math.abs(lp).toFixed(2), T.gold);
       lpRow.style.flex = '1';
       lpRow.style.border = 'none';
       lpRow.style.padding = '0 0 0 8px';
       cellL.appendChild(lpRow);
     }
 
-    var sep = document.createElement('div');
-    sep.style.cssText = 'width:1px;align-self:stretch;background:' + T.greenDk + ';margin:0 4px;flex-shrink:0;';
+    const sep = document.createElement('div');
+    sep.style.cssText = `width:1px;align-self:stretch;background:${T.greenDk};margin:0 4px;flex-shrink:0;`;
 
-    var cellR = document.createElement('div');
-    cellR.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:flex-end;font-family:' + T.fb + ';font-size:' + fontSize + ';color:' + T.green + ';padding:0 4px;' + ";font-weight:" + T.fwBold + ";";
+    const cellR = document.createElement('div');
+    cellR.style.cssText = `flex:1;display:flex;align-items:center;justify-content:flex-end;font-family:${T.fb};font-size:${fontSize};color:${T.green};padding:0 4px;;font-weight:${T.fwBold};`;
 
     if (rightMods[i] && rightMods[i].priceDelta) {
-      var rp = rightMods[i].priceDelta;
-      var rpRow = buildDataRow('', (rp > 0 ? '+$' : '-$') + Math.abs(rp).toFixed(2), T.gold);
+      const rp = rightMods[i].priceDelta;
+      const rpRow = buildDataRow('', (rp > 0 ? '+$' : '-$') + Math.abs(rp).toFixed(2), T.gold);
       rpRow.style.flex = '1';
       rpRow.style.border = 'none';
       rpRow.style.padding = '0 8px 0 0';
       cellR.appendChild(rpRow);
     }
 
-    var rText = document.createElement('span');
+    const rText = document.createElement('span');
     rText.textContent = rightMods[i] ? stripPlacementPrefix(rightMods[i].name) : '';
     cellR.appendChild(rText);
     if (removableInst && rightMods[i]) cellR.appendChild(_makeRemoveBtn(rightMods[i]));
@@ -4328,19 +4318,19 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
     table.appendChild(row);
 
     // Render children (exclusions) for specials in half-table
-    var lChildren = (leftMods[i] && leftMods[i].children) ? leftMods[i].children : [];
-    var rChildren = (rightMods[i] && rightMods[i].children) ? rightMods[i].children : [];
-    var maxChildren = Math.max(lChildren.length, rChildren.length);
-    for (var ci = 0; ci < maxChildren; ci++) {
-      var cRow = document.createElement('div');
+    const lChildren = (leftMods[i] && leftMods[i].children) ? leftMods[i].children : [];
+    const rChildren = (rightMods[i] && rightMods[i].children) ? rightMods[i].children : [];
+    const maxChildren = Math.max(lChildren.length, rChildren.length);
+    for (let ci = 0; ci < maxChildren; ci++) {
+      const cRow = document.createElement('div');
       cRow.style.cssText = 'display:flex;align-items:center;';
-      var cL = document.createElement('div');
-      cL.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + (parseInt(fontSize) - 4) + 'px;color:' + T.verm + ';font-style:italic;padding:0 4px 0 20px;' + ";font-weight:" + T.fwBold + ";";
+      const cL = document.createElement('div');
+      cL.style.cssText = `flex:1;font-family:${T.fb};font-size:${(parseInt(fontSize) - 4)}px;color:${T.verm};font-style:italic;padding:0 4px 0 20px;;font-weight:${T.fwBold};`;
       cL.textContent = lChildren[ci] ? lChildren[ci].name : '';
-      var cSep = document.createElement('div');
-      cSep.style.cssText = 'width:1px;align-self:stretch;background:' + T.greenDk + ';margin:0 4px;flex-shrink:0;';
-      var cR = document.createElement('div');
-      cR.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:' + (parseInt(fontSize) - 4) + 'px;color:' + T.verm + ';font-style:italic;padding:0 4px 0 20px;text-align:right;' + ";font-weight:" + T.fwBold + ";";
+      const cSep = document.createElement('div');
+      cSep.style.cssText = `width:1px;align-self:stretch;background:${T.greenDk};margin:0 4px;flex-shrink:0;`;
+      const cR = document.createElement('div');
+      cR.style.cssText = `flex:1;font-family:${T.fb};font-size:${(parseInt(fontSize) - 4)}px;color:${T.verm};font-style:italic;padding:0 4px 0 20px;text-align:right;;font-weight:${T.fwBold};`;
       cR.textContent = rChildren[ci] ? rChildren[ci].name : '';
       cRow.appendChild(cL);
       cRow.appendChild(cSep);
@@ -4350,8 +4340,8 @@ function buildHalfTable(leftMods, rightMods, fontSize, removableInst) {
   }
 
   // Bottom divider
-  var divBot = document.createElement('div');
-  divBot.style.cssText = 'border-top:1px solid ' + T.greenDk + ';margin-top:1px;';
+  const divBot = document.createElement('div');
+  divBot.style.cssText = `border-top:1px solid ${T.greenDk};margin-top:1px;`;
   table.appendChild(divBot);
 
   return table;
@@ -4364,20 +4354,20 @@ function stripPlacementPrefix(name) {
 // ── QUANTITY EDITOR ─────────────────────────────
 function showQtyEditor(itemName, instances) {
   SceneManager.interrupt('qty-edit', {
-    onConfirm: function(newQty) {
-      var currentQty = instances.length;
+    onConfirm: (newQty) => {
+      const currentQty = instances.length;
       if (newQty === currentQty || newQty < 1) return;
       if (newQty > currentQty) {
         // Add more instances (clone from first)
-        var template = instances[0];
-        for (var i = 0; i < newQty - currentQty; i++) {
+        const template = instances[0];
+        for (let i = 0; i < newQty - currentQty; i++) {
           ticket.push({
             id:        ++ticketSeq,
             menu_item_id: template.menu_item_id,
             idemKey:   _idemKey(),
             name:      template.name,
             unitPrice: template.unitPrice,
-            mods:      template.mods.map(function(m) { return { name: m.name, price: m.price, charged: m.charged, prefix: m.prefix }; }),
+            mods:      template.mods.map((m) => { return { name: m.name, price: m.price, charged: m.charged, prefix: m.prefix }; }),
             selected:  false,
             sent:      false,
             category:  template.category,
@@ -4386,29 +4376,29 @@ function showQtyEditor(itemName, instances) {
         }
       } else {
         // Remove from the end (unsent only)
-        var toRemove = currentQty - newQty;
-        for (var j = instances.length - 1; j >= 0 && toRemove > 0; j--) {
-          var idx = ticket.indexOf(instances[j]);
+        let toRemove = currentQty - newQty;
+        for (let j = instances.length - 1; j >= 0 && toRemove > 0; j--) {
+          const idx = ticket.indexOf(instances[j]);
           if (idx !== -1) { ticket.splice(idx, 1); toRemove--; }
         }
       }
       renderTicket();
       rebuildBottomBar();
     },
-    onCancel: function() {},
-    params: { itemName: itemName, currentQty: instances.length },
+    onCancel: () => {},
+    params: { itemName, currentQty: instances.length },
   });
 }
 
 function _buildItemPayload(inst) {
-  var payload = {
+  const payload = {
     menu_item_id: inst.menu_item_id || inst.name.toLowerCase().replace(/\s+/g, '_'),
     name:         inst.name,
     price:        Number(inst.unitPrice) || 0,
     quantity:     1,
     category:     inst.category || 'general',
     seat_number:  inst.seat_number || 1,
-    modifiers:    inst.mods.map(function(m) {
+    modifiers:    inst.mods.map((m) => {
       return {
         name: m.name, price: m.price, modifier_price: m.price,
         charged: m.charged, prefix: m.prefix || null,
@@ -4419,17 +4409,17 @@ function _buildItemPayload(inst) {
 
   // Include modifier panel data for atomic ledger write (ORDER_ITEM_ADDED)
   if (inst._modPanelData) {
-    var mpd = inst._modPanelData;
+    const mpd = inst._modPanelData;
     // Backend expects list[str] ("{group_id}:{option_key}"); mpd.mandatory
     // is the terminal-side object map {group_id: {key,label,price}}. Flatten
     // so the ledger can audit which groups were picked without losing the
     // group→choice mapping. Label/price already ride along in `modifiers[]`.
-    var mand = mpd.mandatory;
+    const mand = mpd.mandatory;
     if (mand && typeof mand === 'object' && !Array.isArray(mand)) {
-      payload.mandatory_selections = Object.keys(mand).map(function(gid) {
-        var sel = mand[gid];
-        var key = (sel && sel.key) || '';
-        return gid + ':' + key;
+      payload.mandatory_selections = Object.keys(mand).map((gid) => {
+        const sel = mand[gid];
+        const key = (sel && sel.key) || '';
+        return gid + `:${key}`;
       });
     } else {
       payload.mandatory_selections = mand || [];
@@ -4438,7 +4428,7 @@ function _buildItemPayload(inst) {
     payload.allergens = mpd.allergens;
     payload.allergen_note = mpd.allergenNote || '';
     payload.note = mpd.note || '';
-    payload.optional_modifiers = mpd.optionalModifiers.map(function(m) {
+    payload.optional_modifiers = mpd.optionalModifiers.map((m) => {
       return { prefix: m.prefix, modifier_id: m.modifierId, label: m.label, price: m.price };
     });
   }
@@ -4451,7 +4441,7 @@ async function handleSaveOnly() {
   if (ticket.length === 0) return;
   if (isSending) return;
 
-  var unsentInstances = ticket.filter(function(inst) { return !inst.sent; });
+  let unsentInstances = ticket.filter((inst) => !inst.sent);
   if (unsentInstances.length === 0) return;
 
   setSending(true);
@@ -4460,7 +4450,7 @@ async function handleSaveOnly() {
     // Step 1 — create order if needed
     if (!currentOrderId) {
       if (!createOrderIdemKey) createOrderIdemKey = _idemKey();
-      var createRes = await fetchWithTimeout(API + '/orders', {
+      let createRes = await fetchWithTimeout(API + '/orders', {
         method: 'POST',
         headers: {
           'Content-Type':    'application/json',
@@ -4474,8 +4464,8 @@ async function handleSaveOnly() {
           server_name:   sceneParams.employeeName || null,
         }),
       }, 15000);
-      if (!createRes.ok) throw new Error('Order create failed: ' + createRes.status);
-      var created = await createRes.json();
+      if (!createRes.ok) throw new Error(`Order create failed: ${createRes.status}`);
+      let created = await createRes.json();
       if (!created || !created.order_id) throw new Error('Invalid order response — missing order_id');
       currentOrderId = created.order_id;
       currentCheckNumber = created.check_number;
@@ -4485,20 +4475,20 @@ async function handleSaveOnly() {
     // Skip items with a backendItemId: they were saved in a prior session and
     // already exist on the backend — re-posting with a new idemKey would create
     // duplicates when the user later calls handleSend.
-    var itemPromises = [];
-    for (var ui = 0; ui < unsentInstances.length; ui++) {
-      var inst = unsentInstances[ui];
+    let itemPromises = [];
+    for (let ui = 0; ui < unsentInstances.length; ui++) {
+      let inst = unsentInstances[ui];
       if (inst.backendItemId) continue;
-      itemPromises.push({ inst: inst, promise: fetchWithTimeout(API + '/orders/' + currentOrderId + '/items', {
+      itemPromises.push({ inst, promise: fetchWithTimeout(API + `/orders/${currentOrderId}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': inst.idemKey || _idemKey() },
         body: JSON.stringify(_buildItemPayload(inst)),
       }, 15000)});
     }
     if (itemPromises.length === 0) return;
-    var results = await Promise.allSettled(itemPromises.map(function(p) { return p.promise; }));
-    var anyFailed = false;
-    results.forEach(function(r, idx) {
+    let results = await Promise.allSettled(itemPromises.map((p) => p.promise));
+    let anyFailed = false;
+    results.forEach((r, idx) => {
       if (r.status !== 'fulfilled' || !r.value.ok) {
         anyFailed = true;
       }
@@ -4524,16 +4514,16 @@ async function handleSend() {
   if (ticket.length === 0) return;
   if (isSending) return;
 
-  var unsentInstances = ticket.filter(function(inst) { return !inst.sent; });
+  const unsentInstances = ticket.filter((inst) => !inst.sent);
 
   // All items already sent — resend to kitchen only
   if (unsentInstances.length === 0 && currentOrderId) {
     setSending(true);
     try {
-      await fetchWithTimeout(API + '/orders/' + currentOrderId + '/send', { method: 'POST' }, 15000);
-      fetchWithTimeout(API + '/print/ticket/' + currentOrderId, { method: 'POST' }, 15000)
-        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); })
-        .catch(function(err) {
+      await fetchWithTimeout(API + `/orders/${currentOrderId}/send`, { method: 'POST' }, 15000);
+      fetchWithTimeout(API + `/print/ticket/${currentOrderId}`, { method: 'POST' }, 15000)
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
+        .catch((err) => {
           console.warn('[KINDpos] Kitchen print failed:', err);
           showToast('Kitchen ticket print failed — check printer');
         });
@@ -4548,13 +4538,13 @@ async function handleSend() {
   }
 
   setSending(true);
-  var totals = computeTicketTotals();
+  const totals = computeTicketTotals();
 
   try {
     // Step 1 — create order on first send, reuse on subsequent sends
     if (!currentOrderId) {
       if (!createOrderIdemKey) createOrderIdemKey = _idemKey();
-      var createRes = await fetchWithTimeout(API + '/orders', {
+      const createRes = await fetchWithTimeout(API + '/orders', {
         method: 'POST',
         headers: {
           'Content-Type':    'application/json',
@@ -4568,8 +4558,8 @@ async function handleSend() {
           server_name:   sceneParams.employeeName || null,
         }),
       }, 15000);
-      if (!createRes.ok) throw new Error('Order create failed: ' + createRes.status);
-      var created = await createRes.json();
+      if (!createRes.ok) throw new Error(`Order create failed: ${createRes.status}`);
+      const created = await createRes.json();
       if (!created || !created.order_id) throw new Error('Invalid order response — missing order_id');
       currentOrderId = created.order_id;   // use the backend-generated ID
       currentCheckNumber = created.check_number;
@@ -4579,25 +4569,25 @@ async function handleSend() {
     // Skip items with a backendItemId: they were saved in a prior session and
     // already exist on the backend. Re-posting with a new idemKey would create
     // duplicates. The /send call in step 3 fires them to the kitchen regardless.
-    var itemPromises = [];
-    for (var ui = 0; ui < unsentInstances.length; ui++) {
-      var inst = unsentInstances[ui];
+    const itemPromises = [];
+    for (let ui = 0; ui < unsentInstances.length; ui++) {
+      const inst = unsentInstances[ui];
       if (inst.backendItemId) continue;
-      itemPromises.push({ inst: inst, promise: fetchWithTimeout(API + '/orders/' + currentOrderId + '/items', {
+      itemPromises.push({ inst, promise: fetchWithTimeout(API + `/orders/${currentOrderId}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': inst.idemKey || _idemKey() },
         body: JSON.stringify(_buildItemPayload(inst)),
       }, 15000)});
     }
-    var results = await Promise.allSettled(itemPromises.map(function(p) { return p.promise; }));
-    var anyFailed = false;
-    results.forEach(function(r, idx) {
+    const results = await Promise.allSettled(itemPromises.map((p) => p.promise));
+    let anyFailed = false;
+    results.forEach((r, idx) => {
       if (r.status === 'fulfilled' && r.value.ok) {
         itemPromises[idx].inst.sent = true;
       } else {
         anyFailed = true;
         console.warn('[KINDpos] Item POST failed:', itemPromises[idx].inst.name,
-          r.status === 'rejected' ? r.reason : 'HTTP ' + r.value.status);
+          r.status === 'rejected' ? r.reason : `HTTP ${r.value.status}`);
       }
     });
     if (anyFailed) {
@@ -4609,19 +4599,19 @@ async function handleSend() {
     // r.ok: fetch resolves for 4xx/5xx too, so without this guard a 500
     // here would let us fall through to line 3586 and mark every item
     // `sent` even though kitchen never got them — UI and ledger diverge.
-    var sendRes = await fetchWithTimeout(API + '/orders/' + currentOrderId + '/send', { method: 'POST' }, 15000);
+    const sendRes = await fetchWithTimeout(API + `/orders/${currentOrderId}/send`, { method: 'POST' }, 15000);
     if (!sendRes.ok) {
       renderTicket();
-      throw new Error('Send to kitchen failed: HTTP ' + sendRes.status);
+      throw new Error(`Send to kitchen failed: HTTP ${sendRes.status}`);
     }
 
     // Mark remaining items as sent (order-level confirmation)
-    ticket.forEach(function(inst) { inst.sent = true; });
+    ticket.forEach((inst) => { inst.sent = true; });
 
     // Fire kitchen print — non-blocking, dispatcher handles retry
-    fetchWithTimeout(API + '/print/ticket/' + currentOrderId, { method: 'POST' }, 15000)
-      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); })
-      .catch(function(err) {
+    fetchWithTimeout(API + `/print/ticket/${currentOrderId}`, { method: 'POST' }, 15000)
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
+      .catch((err) => {
         console.warn('[KINDpos] Kitchen print failed:', err);
         showToast('Kitchen ticket print failed — check printer');
       });
@@ -4650,7 +4640,7 @@ async function handleSend() {
 // are persisted to the backend (without kitchen-send) so they survive
 // BACK, logout, or an unexpected scene swap.
 async function handleClose() {
-  var hasUnsent = ticket.some(function(inst) { return !inst.sent; });
+  const hasUnsent = ticket.some((inst) => !inst.sent);
   if (hasUnsent) {
     try {
       await handleSaveOnly();
@@ -4672,12 +4662,12 @@ function recallFromBackend(orderId) {
   // 15s abort guard matches handleSend/handleSaveOnly. Without it, a
   // hung backend on scene entry leaves the ticket list blank forever
   // with no error surfaced.
-  fetchWithTimeout(API + '/orders/' + orderId, {}, 15000)
-    .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+  fetchWithTimeout(API + `/orders/${orderId}`, {}, 15000)
+    .then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     })
-    .then(function(order) {
+    .then((order) => {
       if (SceneManager.getActiveWorking() !== 'order-entry') return;
       currentOrderId = order.order_id;
       currentCheckNumber = order.check_number || null;
@@ -4690,14 +4680,12 @@ function recallFromBackend(orderId) {
       // price field arriving here is a string. Coerce to Number at the
       // boundary — downstream code (renderTicket, sending, totals) all
       // assume numeric prices and `.toFixed()` them.
-      ticket = (order.items || []).filter(function(item) {
-        return !item.voided;
-      }).map(function(item) {
+      ticket = (order.items || []).filter((item) => !item.voided).map((item) => {
         ticketSeq += 1;
         // Prefer server-computed effective_price (post-mods/discounts);
         // base `price` is 0 for combos/pizzas where value lives in mods.
-        var rawUnit = item.effective_price != null ? item.effective_price : item.price;
-        var unit = Number(rawUnit);
+        const rawUnit = item.effective_price != null ? item.effective_price : item.price;
+        let unit = Number(rawUnit);
         if (!Number.isFinite(unit)) unit = 0;
         return {
           id:           ticketSeq,
@@ -4706,9 +4694,9 @@ function recallFromBackend(orderId) {
           idemKey:      _idemKey(),
           name:      item.name,
           unitPrice: unit,
-          mods:      (item.modifiers || []).map(function(m) {
-            var rawPrice = m.modifier_price != null ? m.modifier_price : m.price;
-            var p = Number(rawPrice);
+          mods:      (item.modifiers || []).map((m) => {
+            const rawPrice = m.modifier_price != null ? m.modifier_price : m.price;
+            let p = Number(rawPrice);
             if (!Number.isFinite(p)) p = 0;
             return {
               name:       m.name,
@@ -4733,31 +4721,27 @@ function recallFromBackend(orderId) {
       // All recalled items are sent:true (set above). Filter to the selected
       // seat when exactly one seat was chosen before entering add-items mode.
       if (sceneParams.returnScene === 'check-overview') {
-        var selSeats = sceneParams.selectedSeatNumbers || [];
-        var sentItems = ticket;
+        const selSeats = sceneParams.selectedSeatNumbers || [];
+        let sentItems = ticket;
 
         if (selSeats.length === 1) {
-          sentItems = sentItems.filter(function(i) {
-            return i.seat_number === selSeats[0];
-          });
+          sentItems = sentItems.filter((i) => i.seat_number === selSeats[0]);
         }
 
-        var leftItems = [];
+        let leftItems = [];
         if (selSeats.length !== 1 && sentItems.length > 0) {
-          var seatGroups = {};
-          var seatOrder  = [];
-          sentItems.forEach(function(i) {
-            var sn = i.seat_number || 1;
+          const seatGroups = {};
+          const seatOrder  = [];
+          sentItems.forEach((i) => {
+            const sn = i.seat_number || 1;
             if (!seatGroups[sn]) { seatGroups[sn] = []; seatOrder.push(sn); }
             seatGroups[sn].push(i);
           });
-          seatOrder.sort(function(a, b) { return a - b; });
-          seatOrder.forEach(function(sn) {
-            var seatTot = seatGroups[sn].reduce(function(s, i) {
-              return s + (i.unitPrice || 0);
-            }, 0);
-            leftItems.push({ seatHeader: true, seatId: 'SEAT ' + sn, seatTotal: seatTot });
-            seatGroups[sn].forEach(function(i) { leftItems.push(i); });
+          seatOrder.sort((a, b) => a - b);
+          seatOrder.forEach((sn) => {
+            const seatTot = seatGroups[sn].reduce((s, i) => s + (i.unitPrice || 0), 0);
+            leftItems.push({ seatHeader: true, seatId: `SEAT ${sn}`, seatTotal: seatTot });
+            seatGroups[sn].forEach((i) => { leftItems.push(i); });
           });
         } else {
           leftItems = sentItems;
@@ -4768,7 +4752,7 @@ function recallFromBackend(orderId) {
         OrderSummary.lockItemRender();
       }
     })
-    .catch(function(err) {
+    .catch((err) => {
       console.warn('[KINDpos] Failed to recall order:', err);
       showToast('Failed to load saved check', { bg: T.verm, duration: 2000 });
     });

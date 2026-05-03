@@ -8,7 +8,7 @@ import { T, chamfer } from '../common/tokens.js';
 import { lightenHex, darkenHex, hexToRgba } from './theme-manager.js';
 
 // ── Numpad dimensions ─────────────────────────────
-var PAD = {
+const PAD = {
   displayH: 80,
   gap:      20,
   cardPad:  18,
@@ -20,31 +20,31 @@ var PAD = {
 // ── Internal key builder ──────────────────────────
 // Pill-style: filled color, dark text, bottom shadow, thin chamfer
 function _buildKey(opts) {
-  var o      = opts || {};
-  var bg     = o.bg     || T.green;
-  var bgDk   = o.bgDk   || darkenHex(bg, 0.35);
-  var textColor = o.textColor || T.well;
-  var wrap = document.createElement('div');
+  const o      = opts || {};
+  const bg     = o.bg     || T.green;
+  const bgDk   = o.bgDk   || darkenHex(bg, 0.35);
+  const textColor = o.textColor || T.well;
+  const wrap = document.createElement('div');
   wrap.style.cssText = [
-    'width:' + (o.w || PAD.keyW) + 'px;',
-    'height:' + (o.h || PAD.keyH) + 'px;',
-    'background:' + bg + ';',
+    `width:${o.w || PAD.keyW}px;`,
+    `height:${o.h || PAD.keyH}px;`,
+    `background:${bg};`,
     'border:none;',
     'border-radius:14px;',
     'display:flex;align-items:center;justify-content:center;',
     'cursor:pointer;user-select:none;',
     'pointer-events:auto;touch-action:manipulation;',
     'box-sizing:border-box;',
-    'box-shadow:0 6px 0 ' + bgDk + ', inset 0 1px 0 rgba(255,255,255,0.2);',
+    `box-shadow:0 6px 0 ${bgDk}, inset 0 1px 0 rgba(255,255,255,0.2);`,
     'transition:transform 0.05s, box-shadow 0.05s;',
   ].join('');
 
-  var label = document.createElement('div');
+  const label = document.createElement('div');
   label.style.cssText = [
-    'font-family:' + T.fh + ';',
-    'font-size:' + (o.fontSize || '44px') + ';',
-    'font-weight:' + T.fwBold + ';',
-    'color:' + textColor + ';',
+    `font-family:${T.fh};`,
+    `font-size:${o.fontSize || '44px'};`,
+    `font-weight:${T.fwBold};`,
+    `color:${textColor};`,
     'line-height:1;',
     'pointer-events:none;',
   ].join('');
@@ -56,7 +56,7 @@ function _buildKey(opts) {
   wrap.setAttribute('tabindex', '0');
   wrap.setAttribute('role', 'button');
   if (o.ariaLabel) wrap.setAttribute('aria-label', o.ariaLabel);
-  wrap.addEventListener('keydown', function(e) {
+  wrap.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       wrap.dispatchEvent(new Event('pointerdown', { bubbles: true }));
@@ -65,132 +65,132 @@ function _buildKey(opts) {
   });
 
   // Press state — pill sink
-  wrap.addEventListener('pointerdown', function() {
+  wrap.addEventListener('pointerdown', () => {
     wrap.style.transform  = 'translateY(4px)';
-    wrap.style.boxShadow  = '0 2px 0 ' + bgDk + ', inset 0 1px 0 rgba(255,255,255,0.1)';
+    wrap.style.boxShadow  = `0 2px 0 ${bgDk}, inset 0 1px 0 rgba(255,255,255,0.1)`;
   });
-  var _rel = function() {
+  const _rel = () => {
     wrap.style.transform = '';
-    wrap.style.boxShadow = '0 6px 0 ' + bgDk + ', inset 0 1px 0 rgba(255,255,255,0.2)';
+    wrap.style.boxShadow = `0 6px 0 ${bgDk}, inset 0 1px 0 rgba(255,255,255,0.2)`;
   };
   wrap.addEventListener('pointerup',     _rel);
   wrap.addEventListener('pointerleave',  _rel);
   wrap.addEventListener('pointercancel', _rel);
 
-  return { wrap: wrap, label: label };
+  return { wrap, label };
 }
 
 // ── Public builder ────────────────────────────────
 export function buildNumpad(opts) {
-  var o = opts || {};
+  const o = opts || {};
 
-  var maxDigits     = o.maxDigits     || 6;
-  var masked        = o.masked        !== false;
-  var onSubmit      = o.onSubmit      || function() {};
-  var onChange      = o.onChange      || null;
-  var displayFormat = o.displayFormat || null;
-  var onCancel      = o.onCancel      || null;
-  var submitLabel   = o.submitLabel   || '>>>';
-  var canSubmit     = o.canSubmit     || function(p) { return p.length > 0; };
-  var maskChar      = o.maskChar      || '\u25C6';
+  const maxDigits     = o.maxDigits     || 6;
+  const masked        = o.masked        !== false;
+  const onSubmit      = o.onSubmit      || function() {};
+  const onChange      = o.onChange      || null;
+  const displayFormat = o.displayFormat || null;
+  const onCancel      = o.onCancel      || null;
+  const submitLabel   = o.submitLabel   || '>>>';
+  const canSubmit     = o.canSubmit     || function(p) { return p.length > 0; };
+  const maskChar      = o.maskChar      || '\u25C6';
 
   // Color overrides
-  var digitColor   = o.digitColor   || T.green;
-  var clearColor   = o.clearColor   || T.verm;
-  var submitColor  = o.submitColor  || T.greenWarm;
-  var displayColor = o.displayColor || T.green;
-  var chassisColor = o.chassisColor || T.well;
-  var chassisLight = lightenHex(T.bg, 0.08);
-  var chassisDark  = darkenHex(T.bg, 0.2);
+  const digitColor   = o.digitColor   || T.green;
+  const clearColor   = o.clearColor   || T.verm;
+  const submitColor  = o.submitColor  || T.greenWarm;
+  const displayColor = o.displayColor || T.green;
+  const chassisColor = o.chassisColor || T.well;
+  const chassisLight = lightenHex(T.bg, 0.08);
+  const chassisDark  = darkenHex(T.bg, 0.2);
 
-  var keyW = o.keyW || PAD.keyW;
-  var keyH = o.keyH || PAD.keyH;
-  var keyGap  = o.keyGap  != null ? o.keyGap  : PAD.keyGap;
-  var cardPad = o.cardPad != null ? o.cardPad : PAD.cardPad;
-  var bevel   = 5;
-  var cardH   = keyH * 4 + keyGap * 3 + cardPad * 2 + bevel * 2;
+  const keyW = o.keyW || PAD.keyW;
+  const keyH = o.keyH || PAD.keyH;
+  const keyGap  = o.keyGap  != null ? o.keyGap  : PAD.keyGap;
+  const cardPad = o.cardPad != null ? o.cardPad : PAD.cardPad;
+  const bevel   = 5;
+  const cardH   = keyH * 4 + keyGap * 3 + cardPad * 2 + bevel * 2;
 
-  var pin = '';
-  var _submitCooldown = false;
+  let pin = '';
+  let _submitCooldown = false;
 
   // ── Container ──────────────────────────────────
-  var container = document.createElement('div');
+  const container = document.createElement('div');
   container.style.cssText = [
     'display:flex;flex-direction:column;',
-    'gap:' + (o.gap != null ? o.gap : PAD.gap) + 'px;',
+    `gap:${o.gap != null ? o.gap : PAD.gap}px;`,
     'position:relative;',
-    'width:' + (o.width || (keyW * 3 + keyGap * 2 + cardPad * 2 + bevel * 2)) + 'px;',
+    `width:${o.width || (keyW * 3 + keyGap * 2 + cardPad * 2 + bevel * 2)}px;`,
   ].join('');
 
   // ── Cancel button ───────────────────────────────
   if (onCancel) {
-    var xBtn = document.createElement('div');
+    const xBtn = document.createElement('div');
     xBtn.style.cssText = [
       'position:absolute;top:-18px;right:-18px;z-index:10;',
       'width:42px;height:42px;',
-      'background:' + T.well + ';',
-      'border:2px solid ' + T.verm + ';',
-      'color:' + T.verm + ';',
-      'font-family:' + T.fb + ';font-size:20px;font-weight:' + T.fwBold + ';',
+      `background:${T.well};`,
+      `border:2px solid ${T.verm};`,
+      `color:${T.verm};`,
+      `font-family:${T.fb};font-size:20px;font-weight:${T.fwBold};`,
       'display:flex;align-items:center;justify-content:center;',
       'cursor:pointer;',
-      'clip-path:' + chamfer(6) + ';',
+      `clip-path:${chamfer(6)};`,
     ].join('');
     xBtn.textContent = 'X';
-    xBtn.addEventListener('pointerup', function() { onCancel(); });
+    xBtn.addEventListener('pointerup', () => { onCancel(); });
     container.appendChild(xBtn);
   }
 
   // ── Display ─────────────────────────────────────
-  var displayH = o.displayH || PAD.displayH;
-  var displayWrap = document.createElement('div');
+  const displayH = o.displayH || PAD.displayH;
+  const displayWrap = document.createElement('div');
   displayWrap.style.cssText = [
-    'width:100%;height:' + displayH + 'px;',
+    `width:100%;height:${displayH}px;`,
     'filter:drop-shadow(3px 4px 0px rgba(0,0,0,0.55));',
   ].join('');
 
-  var display = document.createElement('div');
-  display.style.cssText = [
+  const display = document.createElement('div');
+  display.style.cssText = `${[
     'width:100%;height:100%;box-sizing:border-box;',
-    'background:' + T.well + ';',
+    `background:${T.well};`,
     'display:flex;align-items:center;justify-content:center;',
-    'font-family:' + T.fb + ';',
+    `font-family:${T.fb};`,
     'font-size:32px;',
-    'color:' + displayColor + ';',
+    `color:${displayColor};`,
     'letter-spacing:10px;',
-    'border-top:'    + bevel + 'px solid ' + chassisColor + ';',
-    'border-left:'   + bevel + 'px solid ' + chassisColor + ';',
-    'border-bottom:' + bevel + 'px solid ' + chassisColor + ';',
-    'border-right:'  + bevel + 'px solid ' + chassisColor + ';',
+    `border-top:${bevel}px solid ${chassisColor};`,
+    `border-left:${bevel}px solid ${chassisColor};`,
+    `border-bottom:${bevel}px solid ${chassisColor};`,
+    `border-right:${bevel}px solid ${chassisColor};`,
     'border-radius:14px;',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
+  ].join('')};font-weight:${T.fwBold};`;
 
   displayWrap.appendChild(display);
   container.appendChild(displayWrap);
 
   // ── Chassis ─────────────────────────────────────
-  var cardWrap = document.createElement('div');
+  const cardWrap = document.createElement('div');
   cardWrap.style.cssText = [
-    'width:100%;height:' + cardH + 'px;',
-    'filter:drop-shadow(3px 4px 0px rgba(0,0,0,0.6)) drop-shadow(0 0 16px ' + hexToRgba(chassisColor, 0.2) + ');',
+    `width:100%;height:${cardH}px;`,
+    `filter:drop-shadow(3px 4px 0px rgba(0,0,0,0.6)) drop-shadow(0 0 16px ${hexToRgba(chassisColor, 0.2)});`,
   ].join('');
   cardWrap.style.maxHeight = '85vh';
   cardWrap.style.overflowY = 'auto';
 
-  var card = document.createElement('div');
+  const card = document.createElement('div');
   card.style.cssText = [
     'width:100%;height:100%;',
-    'padding:' + cardPad + 'px;',
+    `padding:${cardPad}px;`,
     'display:grid;',
-    'grid-template-columns:repeat(3,' + keyW + 'px);',
-    'grid-template-rows:repeat(4,' + keyH + 'px);',
-    'gap:' + keyGap + 'px;',
+    `grid-template-columns:repeat(3,${keyW}px);`,
+    `grid-template-rows:repeat(4,${keyH}px);`,
+    `gap:${keyGap}px;`,
     'box-sizing:border-box;',
-    'background:' + chassisColor + ';',
-    'border-top:'    + bevel + 'px solid ' + chassisLight + ';',
-    'border-left:'   + bevel + 'px solid ' + chassisLight + ';',
-    'border-bottom:' + bevel + 'px solid ' + chassisDark  + ';',
-    'border-right:'  + bevel + 'px solid ' + chassisDark  + ';',
+    `background:${chassisColor};`,
+    `border-top:${bevel}px solid ${chassisLight};`,
+    `border-left:${bevel}px solid ${chassisLight};`,
+    `border-bottom:${bevel}px solid ${chassisDark};`,
+    `border-right:${bevel}px solid ${chassisDark};`,
     'border-radius:18px;',
   ].join('');
 
@@ -198,7 +198,7 @@ export function buildNumpad(opts) {
   container.appendChild(cardWrap);
 
   // ── Keys ────────────────────────────────────────
-  var layout = [
+  const layout = [
     { label: '1',         type: 'digit'  },
     { label: '2',         type: 'digit'  },
     { label: '3',         type: 'digit'  },
@@ -213,8 +213,8 @@ export function buildNumpad(opts) {
     { label: submitLabel, type: 'submit' },
   ];
 
-  layout.forEach(function(key) {
-    var keyBg, keyBgDk, textColor, fontSize;
+  layout.forEach((key) => {
+    let keyBg, keyBgDk, textColor, fontSize;
     if (key.type === 'clear') {
       keyBg = T.verm; keyBgDk = T.vermDk;
       textColor = T.well; fontSize = '38px';
@@ -226,21 +226,21 @@ export function buildNumpad(opts) {
       textColor = T.well; fontSize = '44px';
     }
 
-    var pair = _buildKey({ label: key.label, bg: keyBg, bgDk: keyBgDk, textColor: textColor, fontSize: fontSize, w: keyW, h: keyH });
+    const pair = _buildKey({ label: key.label, bg: keyBg, bgDk: keyBgDk, textColor, fontSize, w: keyW, h: keyH });
 
     if (key.type === 'clear') {
-      var _clrTimer = null;
-      var _clrFired = false;
-      pair.wrap.addEventListener('pointerdown', function() {
+      let _clrTimer = null;
+      let _clrFired = false;
+      pair.wrap.addEventListener('pointerdown', () => {
         _clrFired = false;
-        _clrTimer = setTimeout(function() {
+        _clrTimer = setTimeout(() => {
           _clrFired = true;
           pin = '';
           _render();
           if (onChange) onChange(pin);
         }, 500);
       });
-      pair.wrap.addEventListener('pointerup', function() {
+      pair.wrap.addEventListener('pointerup', () => {
         if (_clrTimer) { clearTimeout(_clrTimer); _clrTimer = null; }
         if (!_clrFired) {
           if (pin.length > 0) {
@@ -250,11 +250,11 @@ export function buildNumpad(opts) {
           }
         }
       });
-      pair.wrap.addEventListener('pointercancel', function() {
+      pair.wrap.addEventListener('pointercancel', () => {
         if (_clrTimer) { clearTimeout(_clrTimer); _clrTimer = null; }
       });
     } else {
-      pair.wrap.addEventListener('pointerup', function() {
+      pair.wrap.addEventListener('pointerup', () => {
         if (key.type === 'digit') {
           if (pin.length < maxDigits) {
             container._clearHint();
@@ -265,7 +265,7 @@ export function buildNumpad(opts) {
         } else if (key.type === 'submit') {
           if (canSubmit(pin) && !_submitCooldown) {
             _submitCooldown = true;
-            setTimeout(function() { _submitCooldown = false; }, 200);
+            setTimeout(() => { _submitCooldown = false; }, 200);
             onSubmit(pin);
           }
         }
@@ -280,33 +280,33 @@ export function buildNumpad(opts) {
     if (displayFormat) {
       display.textContent = displayFormat(pin);
     } else if (masked) {
-      display.textContent = pin.split('').map(function() { return maskChar; }).join(' ');
+      display.textContent = pin.split('').map(() => maskChar).join(' ');
     } else {
       display.textContent = pin;
     }
   }
 
   // ── Public API ──────────────────────────────────
-  container.clear   = function() { pin = ''; _render(); };
-  container.getPin  = function() { return pin; };
-  container.setPin  = function(d) { pin = d || ''; _render(); };
+  container.clear   = () => { pin = ''; _render(); };
+  container.getPin  = () => pin;
+  container.setPin  = (d) => { pin = d || ''; _render(); };
 
-  container.setError = function(msg) {
+  container.setError = (msg) => {
     display.textContent = msg || '';
     display.style.color = T.verm;
-    setTimeout(function() {
+    setTimeout(() => {
       display.style.color = displayColor;
       pin = ''; _render();
     }, 1200);
   };
 
-  var _hintActive = false;
-  container.setHint = function(msg, color) {
+  let _hintActive = false;
+  container.setHint = (msg, color) => {
     display.textContent = msg || '';
     display.style.color = color || T.green;
     _hintActive = true;
   };
-  container._clearHint = function() {
+  container._clearHint = () => {
     if (_hintActive) {
       _hintActive = false;
       display.style.color = displayColor;
