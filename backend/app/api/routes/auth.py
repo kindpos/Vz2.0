@@ -335,11 +335,15 @@ async def verify_pin(
             all_roles = await get_roles(ledger)
             role_map = {r.role_id: r for r in all_roles}
             resolved_roles = [role_map[rid] for rid in e.role_ids if rid in role_map]
+            if not resolved_roles and e.role_ids:
+                roles_payload = [{"role_id": rid, "label": rid.capitalize()} for rid in e.role_ids]
+            else:
+                roles_payload = [r.dict() for r in resolved_roles]
             return {
                 "valid": True,
                 "employee_id": e.employee_id,
                 "name": e.display_name,
-                "roles": [r.dict() for r in resolved_roles],
+                "roles": roles_payload,
                 "token": token,
             }
 
