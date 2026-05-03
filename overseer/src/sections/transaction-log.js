@@ -22,6 +22,8 @@ let _modalRightEl     = null;
 // Fallbacks for tokens not yet in tokens.js
 const _MOON        = T.moon        || T.lavender;
 const _SRV_PALETTE = T.srvPalette  || [T.elec, T.green, T.gold, T.lavender, T.verm, T.mint];
+const _SEAT_PALETTE = T.seatPalette || [T.green, T.elec, T.gold, T.lavender, T.verm, T.mint, T.greenUp, T.warning];
+const _GREEN_WARM   = T.greenWarm   || T.green;
 
 export let _pillValues    = {};
 export let _activeFilters = [];
@@ -837,7 +839,7 @@ function openModal(row) {
 
     _modalLeftEl.innerHTML = '';
     _modalRightEl.innerHTML = '';
-    _modalLeftEl.textContent = 'Loading check detail…';
+    renderModalContent(row);
 
     _modalEl.style.display = 'flex';
     document.body.style.overflow = 'hidden';
@@ -848,6 +850,438 @@ function closeModal() {
     _modalEl.style.display = 'none';
     document.body.style.overflow = '';
     _modalOrderId = null;
+}
+
+// ─── Modal content ────────────────────────────────────────────────────
+function renderModalContent(row) {
+    renderModalItems(row);
+    renderModalSeats(row);
+    if (row.discounts?.length) renderModalDiscounts(row);
+    if (row.voids?.length)     renderModalVoids(row);
+    renderModalTotals(row);
+    renderModalPayment(row);
+    renderModalTimeline(row);
+}
+
+function buildModalSection(title) {
+    const wrapper = document.createElement('div');
+    const lbl = document.createElement('div');
+    lbl.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        color: ${T.green};
+        font-weight: 500;
+        margin-bottom: 8px;
+    `;
+    lbl.textContent = title;
+    const content = document.createElement('div');
+    wrapper.appendChild(lbl);
+    wrapper.appendChild(content);
+    wrapper.content = content;
+    return wrapper;
+}
+
+function renderModalItems(row) {
+    const sec = buildModalSection('Items');
+    const items = row.items || [];
+
+    if (items.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 12px;`;
+        empty.textContent = 'No items';
+        sec.content.appendChild(empty);
+        _modalLeftEl.appendChild(sec);
+        return;
+    }
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width: 100%; border-collapse: collapse;';
+
+    const thead = document.createElement('thead');
+    const hRow = document.createElement('tr');
+    [
+        { label: 'Item',  align: 'left'  },
+        { label: 'Qty',   align: 'right' },
+        { label: 'Each',  align: 'right' },
+        { label: 'Total', align: 'right' },
+    ].forEach(col => {
+        const th = document.createElement('th');
+        th.style.cssText = `
+            font-family: ${T.fb};
+            font-size: 9.5px;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: ${T.muted};
+            padding: 0 8px 7px;
+            border-bottom: 1px solid ${T.border};
+            text-align: ${col.align};
+        `;
+        th.textContent = col.label;
+        hRow.appendChild(th);
+    });
+    thead.appendChild(hRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    items.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = `border-bottom: 1px solid rgba(255,255,255,0.06);${item.is_voided ? ' opacity: 0.45;' : ''}`;
+
+        const itemTd = document.createElement('td');
+        itemTd.style.cssText = 'padding: 8px 8px 8px 0;';
+
+        if (item.seat_number) {
+            const seatColor = _SEAT_PALETTE[(item.seat_number - 1) % _SEAT_PALETTE.length];
+            const seatBadge = document.createElement('span');
+            seatBadge.style.cssText = `
+                display: inline-block;
+                font-family: ${T.fb};
+                font-size: 10px;
+                font-weight: 500;
+                padding: 1px 6px;
+                border-radius: 999px;
+                margin-bottom: 3px;
+                background: ${withAlpha(seatColor, 0.15)};
+                color: ${seatColor};
+            `;
+            seatBadge.textContent = 'S' + item.seat_number;
+            itemTd.appendChild(seatBadge);
+            itemTd.appendChild(document.createElement('br'));
+        }
+
+        const nameDiv = document.createElement('div');
+        nameDiv.style.cssText = `font-weight: 500; color: ${T.text}; font-size: 12.5px;${item.is_voided ? ' text-decoration: line-through;' : ''}`;
+        nameDiv.textContent = item.item_name || item.name || '—';
+        itemTd.appendChild(nameDiv);
+
+        if (item.modifiers?.length) {
+            const modDiv = document.createElement('div');
+            modDiv.style.cssText = `font-family: ${T.fb}; font-size: 11px; color: ${T.muted}; margin-top: 2px; line-height: 1.5;`;
+            modDiv.textContent = item.modifiers.join(' · ');
+            itemTd.appendChild(modDiv);
+        }
+
+        if (item.is_voided) {
+            const voidBadge = document.createElement('span');
+            voidBadge.style.cssText = `
+                display: inline-block;
+                font-family: ${T.fb};
+                font-size: 10px;
+                background: ${withAlpha(T.verm, 0.15)};
+                color: ${T.verm};
+                padding: 1px 5px;
+                border-radius: 3px;
+                margin-top: 2px;
+                opacity: 1;
+            `;
+            voidBadge.textContent = 'VOID';
+            itemTd.appendChild(voidBadge);
+        }
+
+        tr.appendChild(itemTd);
+
+        const qtyTd = document.createElement('td');
+        qtyTd.style.cssText = `padding: 8px; text-align: right; color: ${T.muted};`;
+        qtyTd.textContent = item.quantity != null ? String(item.quantity) : '—';
+        tr.appendChild(qtyTd);
+
+        const eachTd = document.createElement('td');
+        eachTd.style.cssText = `padding: 8px; text-align: right; color: ${T.gold};`;
+        eachTd.textContent = item.unit_price != null ? fmt(item.unit_price) : '—';
+        tr.appendChild(eachTd);
+
+        const totalTd = document.createElement('td');
+        totalTd.style.cssText = 'padding: 8px 0 8px 8px; text-align: right;';
+        if (item.is_voided) {
+            totalTd.style.color = T.verm;
+            totalTd.textContent = 'VOID';
+        } else {
+            totalTd.style.color = T.gold;
+            totalTd.textContent = item.subtotal != null ? fmt(item.subtotal) : '—';
+        }
+        tr.appendChild(totalTd);
+
+        tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    sec.content.appendChild(table);
+    _modalLeftEl.appendChild(sec);
+}
+
+function renderModalSeats(row) {
+    if (!row.seats?.length) return;
+    const sec = buildModalSection('By Seat');
+    row.seats.forEach((seat, idx) => {
+        const rowEl = document.createElement('div');
+        const isLast = idx === row.seats.length - 1;
+        rowEl.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            padding: 7px 0;
+            font-size: 12.5px;
+            ${isLast ? '' : 'border-bottom: 1px solid rgba(255,255,255,0.06);'}
+        `;
+        const left = document.createElement('div');
+        left.style.cssText = 'display: flex; align-items: center; gap: 7px;';
+        const dotColor = _SEAT_PALETTE[(seat.seat_number - 1) % _SEAT_PALETTE.length];
+        const dot = document.createElement('span');
+        dot.style.cssText = `
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: ${dotColor};
+            flex-shrink: 0;
+            display: inline-block;
+        `;
+        const lbl = document.createElement('span');
+        lbl.style.color = T.text;
+        lbl.textContent = 'Seat ' + seat.seat_number;
+        left.appendChild(dot);
+        left.appendChild(lbl);
+        const right = document.createElement('span');
+        right.style.cssText = `color: ${T.gold}; font-weight: 500;`;
+        right.textContent = seat.subtotal != null ? fmt(seat.subtotal) : '—';
+        rowEl.appendChild(left);
+        rowEl.appendChild(right);
+        sec.content.appendChild(rowEl);
+    });
+    _modalLeftEl.appendChild(sec);
+}
+
+function renderModalDiscounts(row) {
+    const sec = buildModalSection('Discount Applied');
+    row.discounts.forEach(discount => {
+        const card = document.createElement('div');
+        card.style.cssText = `
+            background: ${T.well};
+            border-radius: 8px;
+            padding: 11px 14px;
+            border-left: 3px solid ${T.lavender};
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        `;
+        const titleEl = document.createElement('div');
+        titleEl.style.cssText = `color: ${T.lavender}; font-weight: 600; font-size: 12px;`;
+        titleEl.textContent = (discount.discount_type || '—') + ' · –' + (discount.amount != null ? fmt(discount.amount) : '—');
+        const authEl = document.createElement('div');
+        authEl.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 11px;`;
+        authEl.textContent = 'Auth: ' + (discount.approved_by || '—') + ' · ' + (discount.applied_at ? formatTime(discount.applied_at) : '—');
+        card.appendChild(titleEl);
+        if (discount.reason) {
+            const reasonEl = document.createElement('div');
+            reasonEl.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 11px;`;
+            reasonEl.textContent = discount.reason;
+            card.appendChild(reasonEl);
+        }
+        card.appendChild(authEl);
+        sec.content.appendChild(card);
+    });
+    _modalLeftEl.appendChild(sec);
+}
+
+function renderModalVoids(row) {
+    const sec = buildModalSection('Void');
+    row.voids.forEach(v => {
+        const card = document.createElement('div');
+        card.style.cssText = `
+            background: ${T.well};
+            border-radius: 8px;
+            padding: 11px 14px;
+            border-left: 3px solid ${T.verm};
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        `;
+        const titleEl = document.createElement('div');
+        titleEl.style.cssText = `color: ${T.verm}; font-weight: 600; font-size: 12px;`;
+        titleEl.textContent = (v.item_name || '—') + ' × ' + (v.quantity || 1) + ' · ' + (v.amount != null ? fmt(v.amount) : '—');
+        const authEl = document.createElement('div');
+        authEl.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 11px;`;
+        authEl.textContent = 'Auth: ' + (v.approved_by || '—') + ' · ' + (v.voided_at ? formatTime(v.voided_at) : '—');
+        card.appendChild(titleEl);
+        if (v.reason) {
+            const reasonEl = document.createElement('div');
+            reasonEl.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 11px;`;
+            reasonEl.textContent = v.reason;
+            card.appendChild(reasonEl);
+        }
+        card.appendChild(authEl);
+        sec.content.appendChild(card);
+    });
+    _modalLeftEl.appendChild(sec);
+}
+
+function renderModalTotals(row) {
+    const sec = buildModalSection('Totals');
+    const c = sec.content;
+    const discountTotal = row.discount_total || 0;
+    const net = (row.subtotal || 0) - discountTotal;
+
+    const mkRow = (label, value, valueColor, labelExtra = '', valueExtra = '') => {
+        const el = document.createElement('div');
+        el.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 12.5px;
+        `;
+        const lbl = document.createElement('span');
+        lbl.style.cssText = `color: ${T.muted}; ${labelExtra}`;
+        lbl.textContent = label;
+        const val = document.createElement('span');
+        val.style.cssText = `color: ${valueColor}; ${valueExtra}`;
+        val.textContent = value;
+        el.appendChild(lbl);
+        el.appendChild(val);
+        return el;
+    };
+
+    c.appendChild(mkRow('Subtotal', fmt(row.subtotal || 0), T.gold));
+    if (discountTotal) {
+        c.appendChild(mkRow('Discount', '–' + fmt(discountTotal), T.lavender));
+        c.appendChild(mkRow('Net', fmt(net), T.text));
+    }
+    c.appendChild(mkRow('Tax', fmt(row.tax || 0), T.muted));
+
+    const div1 = document.createElement('div');
+    div1.style.cssText = `border-top: 1.5px solid ${T.border}; padding-top: 10px; margin-top: 2px;`;
+    const totalRow = mkRow('Total', fmt(row.total || 0), T.gold,
+        `color: ${T.text}; font-weight: 600; font-size: 14px;`, 'font-size: 16px; font-weight: 700;');
+    totalRow.style.borderBottom = 'none';
+    div1.appendChild(totalRow);
+    c.appendChild(div1);
+
+    const div2 = document.createElement('div');
+    div2.style.cssText = `border-top: 1.5px solid ${T.border}; padding-top: 6px; margin-top: 2px;`;
+    div2.appendChild(mkRow('Tip', fmt(row.tip_total || 0), T.green));
+    const chargedRow = mkRow('Charged', fmt((row.total || 0) + (row.tip_total || 0)), T.gold,
+        `color: ${T.text}; font-weight: 600; font-size: 14px;`, 'font-size: 18px; font-weight: 700;');
+    chargedRow.style.borderBottom = 'none';
+    div2.appendChild(chargedRow);
+    c.appendChild(div2);
+
+    _modalRightEl.appendChild(sec);
+}
+
+function renderModalPayment(row) {
+    const sec = buildModalSection('Payment');
+    const card = document.createElement('div');
+    card.style.cssText = `
+        background: ${T.well};
+        border-radius: 8px;
+        border: 1px solid ${T.border};
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    `;
+
+    const payments = row.payments || (row.payment_method ? [{
+        method: row.payment_method,
+        amount: row.total,
+        card_last_four: row.card_last_four,
+    }] : []);
+
+    payments.forEach((payment, idx) => {
+        if (idx > 0) {
+            const sep = document.createElement('div');
+            sep.style.cssText = `border-top: 1px solid ${T.border}; padding-top: 10px; margin-top: 4px;`;
+            card.appendChild(sep);
+        }
+        const pm = (payment.method || payment.payment_method || '').toLowerCase();
+        const pmColor = pm === 'cash' ? T.green : pm === 'card' ? T.elec : pm === 'split' ? T.gold : _MOON;
+
+        const row1 = document.createElement('div');
+        row1.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+
+        const badge = document.createElement('span');
+        badge.style.cssText = `
+            background: ${withAlpha(pmColor, 0.1)};
+            border: 1px solid ${withAlpha(pmColor, 0.3)};
+            color: ${pmColor};
+            border-radius: 4px;
+            font-family: ${T.fb};
+            font-size: 10px;
+            text-transform: uppercase;
+            padding: 2px 7px;
+        `;
+        badge.textContent = payment.method || payment.payment_method || '—';
+        row1.appendChild(badge);
+
+        if (pm === 'card' && payment.card_last_four) {
+            const last4 = document.createElement('span');
+            last4.style.cssText = `color: ${T.muted}; font-size: 11px; font-family: ${T.fb}; letter-spacing: 0.15em;`;
+            last4.textContent = '·· ·· ·· ' + payment.card_last_four;
+            row1.appendChild(last4);
+        }
+
+        const amountEl = document.createElement('span');
+        amountEl.style.cssText = `color: ${T.gold}; font-weight: 500; margin-left: auto;`;
+        amountEl.textContent = payment.amount != null ? fmt(payment.amount) : '—';
+        row1.appendChild(amountEl);
+        card.appendChild(row1);
+
+        if (pm === 'card') {
+            const row2 = document.createElement('div');
+            row2.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 11px; margin-top: 2px;`;
+            row2.textContent = (payment.method || 'Card') + ' · Swiped · Adjusted';
+            card.appendChild(row2);
+        }
+
+        if (pm === 'cash' && payment.tendered != null) {
+            const row3 = document.createElement('div');
+            row3.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 11px; margin-top: 2px;`;
+            row3.textContent = 'Tendered ' + fmt(payment.tendered) + ' · Change: ' + fmt(payment.change || 0);
+            card.appendChild(row3);
+        }
+    });
+
+    sec.content.appendChild(card);
+    _modalRightEl.appendChild(sec);
+}
+
+function renderModalTimeline(row) {
+    const sec = buildModalSection('Timeline');
+
+    const events = [
+        row.opened_at         && { label: 'Opened',      ts: row.opened_at,        color: T.text        },
+        row.first_item_at     && { label: '1st item',     ts: row.first_item_at,    color: T.text        },
+        row.voids?.length     && { label: 'Void',         ts: row.voids.reduce((a, v) => (!a || v.voided_at < a) ? v.voided_at : a, null), color: T.verm },
+        row.discounts?.length && { label: 'Discount',     ts: row.discounts.reduce((a, d) => (!a || d.applied_at < a) ? d.applied_at : a, null), color: T.lavender },
+        row.tip_adjusted_at   && { label: 'Tip adjusted', ts: row.tip_adjusted_at,  color: T.text        },
+        row.closed_at         && { label: 'Closed',       ts: row.closed_at,        color: _GREEN_WARM   },
+    ].filter(Boolean).filter(e => e.ts);
+
+    events.sort((a, b) => a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0);
+
+    const col = document.createElement('div');
+    col.style.cssText = `display: flex; flex-direction: column; gap: 5px; font-family: ${T.fb}; font-size: 11.5px;`;
+
+    if (events.length === 0) {
+        col.style.color = T.muted;
+        col.textContent = '—';
+    } else {
+        events.forEach(ev => {
+            const evRow = document.createElement('div');
+            evRow.style.cssText = 'display: flex; justify-content: space-between;';
+            const lbl = document.createElement('span');
+            lbl.style.color = T.muted;
+            lbl.textContent = ev.label;
+            const val = document.createElement('span');
+            val.style.color = ev.color;
+            val.textContent = formatTime(ev.ts);
+            evRow.appendChild(lbl);
+            evRow.appendChild(val);
+            col.appendChild(evRow);
+        });
+    }
+
+    sec.content.appendChild(col);
+    _modalRightEl.appendChild(sec);
 }
 
 // ─── Skeleton (loading state) ─────────────────────────────────────────
