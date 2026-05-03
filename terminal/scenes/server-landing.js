@@ -485,9 +485,6 @@ defineScene({
 
     // Checkout pill — always enabled, lavender variant
     var checkoutBtn = buildPillButton({ label: 'CHECKOUT', color: T.lavender, darkBg: darkenHex(T.lavender, 0.35) });
-    checkoutBtn.style.marginTop = '10px';
-    checkoutBtn.style.padding   = '10px 28px';
-    tipResult.appendChild(checkoutBtn);
 
     // Check preview — absolutely covers tipResult when a tile is selected
     var previewSlide = document.createElement('div');
@@ -600,29 +597,98 @@ defineScene({
     [scGuests, scAvg, scTables, scTurn].forEach(function(s) { statsGrid.appendChild(s.wrap); });
 
     // ─────────────────────────────────────────────
-    //  SALES OVERVIEW (col 3, row 2)
+    //  MY SHIFT (col 3, row 2)
     // ─────────────────────────────────────────────
-    var salesResult = buildStaticCard({ accent: T.gold });
-    salesResult.style.gridColumn = '3';
-    salesResult.style.gridRow    = '2';
-    salesResult.style.display    = 'flex';
-    salesResult.style.flexDirection = 'column';
-    root.appendChild(salesResult);
+    var shiftResult = buildStaticCard({ accent: T.gold });
+    shiftResult.style.gridColumn    = '3';
+    shiftResult.style.gridRow       = '2';
+    shiftResult.style.display       = 'flex';
+    shiftResult.style.flexDirection = 'column';
+    root.appendChild(shiftResult);
 
-    var salesLbl = buildSectionLabel('Sales Overview', T.text);
-    salesLbl.style.marginBottom = '6px'; salesLbl.style.fontSize = '16px';
-    salesResult.appendChild(salesLbl);
+    // Header row: MY SHIFT label + CHECKOUT pill
+    var shiftHdr = document.createElement('div');
+    shiftHdr.style.cssText = 'display:flex;justify-content:space-between;'
+      + 'align-items:center;margin-bottom:6px;flex-shrink:0;';
+    var shiftLbl = buildSectionLabel('MY SHIFT', T.text);
+    shiftLbl.style.marginBottom = '0';
+    shiftLbl.style.fontSize     = '13px';
+    shiftHdr.appendChild(shiftLbl);
+    // Checkout pill lives here now
+    checkoutBtn.style.fontSize = '11px';
+    checkoutBtn.style.padding  = '6px 14px';
+    shiftHdr.appendChild(checkoutBtn);
+    shiftResult.appendChild(shiftHdr);
 
-    var srvSalesOverview = buildSalesOverview({ netSales: 0, cash: 0, card: 0 });
-    salesResult.appendChild(srvSalesOverview.wrap);
+    // Hero: estimated take-home
+    var shiftHeroWrap = document.createElement('div');
+    shiftHeroWrap.style.cssText = 'margin-bottom:6px;flex-shrink:0;';
+    var shiftHeroLbl = document.createElement('div');
+    shiftHeroLbl.textContent   = 'EST. TAKE-HOME';
+    shiftHeroLbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;font-weight:700;'
+      + 'color:' + T.moon + ';letter-spacing:0.14em;margin-bottom:2px;';
+    var shiftHeroVal = document.createElement('div');
+    shiftHeroVal.textContent   = '$0.00';
+    shiftHeroVal.style.cssText = 'font-family:' + T.fh + ';font-size:32px;font-weight:700;'
+      + 'color:' + T.greenWarm + ';line-height:1;'
+      + 'text-shadow:0 0 14px ' + hexToRgba(T.greenWarm, 0.35) + ';';
+    shiftHeroWrap.appendChild(shiftHeroLbl);
+    shiftHeroWrap.appendChild(shiftHeroVal);
+    shiftResult.appendChild(shiftHeroWrap);
+
+    // Data rows: ADJ TIPS / TIPOUT / CASH OUT
+    var shiftRows = document.createElement('div');
+    shiftRows.style.cssText = 'display:flex;flex-direction:column;gap:4px;flex:1;';
+
+    function _makeShiftRow(label, value, color) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;'
+        + 'padding:4px 0;border-bottom:1px solid ' + hexToRgba(T.border, 0.25) + ';';
+      var lbl = document.createElement('span');
+      lbl.textContent   = label;
+      lbl.style.cssText = 'font-family:' + T.fb + ';font-size:10px;font-weight:700;'
+        + 'color:' + T.moon + ';letter-spacing:0.1em;';
+      var val = document.createElement('span');
+      val.textContent   = value;
+      val.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;'
+        + 'color:' + color + ';';
+      row.appendChild(lbl);
+      row.appendChild(val);
+      row._valEl = val;
+      return row;
+    }
+
+    var shiftRowAdjTips = _makeShiftRow('ADJ TIPS',  '$0.00', T.gold);
+    var shiftRowTipout  = _makeShiftRow('TIPOUT',     '$0.00', T.warning);
+    var shiftRowCashOut = _makeShiftRow('CASH OUT',   '$0.00', T.gold);
+    shiftRows.appendChild(shiftRowAdjTips);
+    shiftRows.appendChild(shiftRowTipout);
+    shiftRows.appendChild(shiftRowCashOut);
+    shiftResult.appendChild(shiftRows);
+
+    // Unadj warning chip for MY SHIFT
+    var shiftUnadjChip = document.createElement('div');
+    shiftUnadjChip.style.cssText = 'display:none;align-items:center;gap:5px;margin-top:6px;flex-shrink:0;';
+    var shiftUnadjDot = document.createElement('div');
+    shiftUnadjDot.style.cssText = 'width:5px;height:5px;border-radius:50%;'
+      + 'background:' + T.warning + ';flex-shrink:0;';
+    var shiftUnadjText = document.createElement('span');
+    shiftUnadjText.style.cssText = 'font-family:' + T.fb + ';font-size:9px;font-weight:700;'
+      + 'color:' + T.warning + ';letter-spacing:0.1em;';
+    shiftUnadjText.textContent = '0 TIPS UNADJUSTED';
+    shiftUnadjChip.appendChild(shiftUnadjDot);
+    shiftUnadjChip.appendChild(shiftUnadjText);
+    shiftResult.appendChild(shiftUnadjChip);
 
     // Store refs for live updates
     state._refs = {
       tileGrid,
       tipList, tipsTotal, takeHomeLine, unadjChip, unadjText,
       tipResult, checkoutBtn, filterBtn,
-      tipSparkBg, scGuests, scAvg, scTables, scTurn, srvSalesOverview,
+      tipSparkBg, scGuests, scAvg, scTables, scTurn,
       previewSlide, prevContent, prevActions,
+      shiftHeroVal, shiftRowAdjTips, shiftRowTipout,
+      shiftRowCashOut, shiftUnadjChip, shiftUnadjText,
     };
 
     // ─────────────────────────────────────────────
@@ -919,14 +985,6 @@ defineScene({
       r.scTables.setValue(ts.tableCount   != null ? String(ts.tableCount)   : '0');
       r.scTurn.setValue(ts.avgTurnMinutes ? fmtTurnTime(ts.avgTurnMinutes)   : '0:00');
 
-      r.srvSalesOverview.update(
-        sd.net_sales  || 0,
-        sd.cash_sales || sd.cash_total || 0,
-        sd.card_sales || sd.card_total || 0,
-        sd.net_sales > 0 ? '▲ vs yesterday' : '',
-        sd.sparkData  || null
-      );
-
       // Update tip sparkline with cumulative tip data if available
       var closedChecks = ((sd.checks || [])).filter(function(c) { return c.status === 'closed'; });
       if (closedChecks.length > 1) {
@@ -934,6 +992,43 @@ defineScene({
         var running = 0;
         closedChecks.forEach(function(c) { running += c.tip || 0; cumulative.push(running); });
         r.tipSparkBg.update(cumulative);
+      }
+    }
+
+    function renderMyShift() {
+      var r   = state._refs;
+      var sd  = state.salesData || {};
+      var checks = ((sd.checks || [])).filter(function(c) {
+        return c.status === 'closed';
+      });
+
+      var adjTips = 0;
+      var unadj   = 0;
+      checks.forEach(function(c) {
+        if (c.adjusted) adjTips += (c.tip || 0);
+        else unadj++;
+      });
+
+      var tipoutAmt = adjTips * (state.tipoutRate || 0);
+      var takeHome  = adjTips - tipoutAmt;
+      var cashOut   = sd.cash_sales || sd.cash_total || 0;
+      var tipoutPct = Math.round((state.tipoutRate || 0) * 100);
+
+      r.shiftHeroVal.textContent           = fmt(takeHome);
+      r.shiftRowAdjTips._valEl.textContent = fmt(adjTips);
+      r.shiftRowTipout._valEl.textContent  = '−' + fmt(tipoutAmt).slice(1);
+      r.shiftRowTipout._valEl.style.color  = T.warning;
+
+      // Update tipout label to show percentage
+      r.shiftRowTipout.querySelector('span').textContent = 'TIPOUT (' + tipoutPct + '%)';
+
+      r.shiftRowCashOut._valEl.textContent = fmt(cashOut);
+
+      if (unadj > 0) {
+        r.shiftUnadjText.textContent   = unadj + ' TIPS UNADJUSTED';
+        r.shiftUnadjChip.style.display = 'flex';
+      } else {
+        r.shiftUnadjChip.style.display = 'none';
       }
     }
 
@@ -1121,7 +1216,8 @@ defineScene({
         try { renderTiles();    } catch(e) { console.warn('[sl] renderTiles threw:', e); }
         try { renderPreview();  } catch(e) { console.warn('[sl] renderPreview threw:', e); }
         try { renderTipQueue(); } catch(e) { console.warn('[sl] renderTipQueue threw:', e); }
-        try { renderStats(); } catch(e) { console.warn('[sl] renderStats threw:', e); }
+        try { renderStats();    } catch(e) { console.warn('[sl] renderStats threw:', e); }
+        try { renderMyShift(); } catch(e) { console.warn('[sl] renderMyShift threw:', e); }
       }).catch(function() { state._refreshing = false; });
     }
 
