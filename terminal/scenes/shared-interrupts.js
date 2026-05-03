@@ -269,7 +269,7 @@ defineScene('manager-pin', {
       }
 
       if (k === 'ENT') {
-        if (submitting || !pinBuf) return;
+        if (submitting || pinBuf.length !== 4) return;
         submitting = true;
         chassis.style.pointerEvents = 'none';
 
