@@ -282,6 +282,7 @@ function _buildCheckPreview(orders) {
       wrap.appendChild(seatBody);
 
       seatMap[sn].forEach(function(item) {
+        console.log('[preview item]', JSON.stringify(item));
         var card = document.createElement('div');
         card.style.cssText = 'background:' + T.card + ';border:1px solid ' + T.moon
           + ';border-top:2px solid ' + T.moon + ';border-radius:6px;margin-bottom:5px;'
