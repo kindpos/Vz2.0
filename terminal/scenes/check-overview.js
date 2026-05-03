@@ -3603,6 +3603,10 @@ function _voidItems(state, refs) {
 
   if (!state.orderId) return;
 
+  // Snapshot order and totals state before DELETEs fire so we can fully
+  // restore the display — not just item voided flags — if any DELETE fails.
+  const preVoidSnapshot = JSON.parse(JSON.stringify(state.order));
+
   // Fire DELETEs immediately — no undo window.
   const deletes = snapshot
     .filter((s) => !!s.item.item_id && !s.alreadyVoided)
@@ -3615,30 +3619,40 @@ function _voidItems(state, refs) {
       });
     });
 
-  Promise.all(deletes)
-    .then(() => {
-      state._voidInProgress = false;
-      // DELETEs confirmed. Persist voided items in _voidedItems so
-      // _injectVoidedItems restores them after every refreshOrder.
-      if (!state._voidedItems) state._voidedItems = [];
-      for (let _vi = 0; _vi < snapshot.length; _vi++) {
-        const _ve = snapshot[_vi];
-        const _vs = state.seats[_ve.seatIdx];
-        if (!_vs) continue;
-        const _dup = state._voidedItems.some((e) => e.item.item_id && e.item.item_id === _ve.item.item_id);
-        if (!_dup) state._voidedItems.push({ seatNumber: _vs.number, item: _ve.item });
+  Promise.allSettled(deletes)
+    .then((results) => {
+      const anyFailed = results.some((r) => r.status === 'rejected');
+      if (anyFailed) {
+        state._voidInProgress = false;
+        // Restore order state and clear voided flags so the display
+        // rolls back to match backend truth.
+        state.order = preVoidSnapshot;
+        for (let j = 0; j < snapshot.length; j++) {
+          snapshot[j].item.voided = false;
+        }
+        entReport({
+          code:    'VOID_DELETE_FAILED',
+          level:   'ERROR',
+          source:  'check-overview._voidItems',
+          message: 'One or more void DELETE requests failed — order display rolled back',
+          ctx:     { orderId: state.orderId },
+        });
+        if (!state._alive) return;
+        rerenderTopArea(state);
+        showToast('Void failed — please try again.', { bg: T.verm });
+      } else {
+        state._voidInProgress = false;
+        // All DELETEs confirmed. Persist voided items in _voidedItems so
+        // _injectVoidedItems restores them after every refreshOrder.
+        if (!state._voidedItems) state._voidedItems = [];
+        for (let _vi = 0; _vi < snapshot.length; _vi++) {
+          const _ve = snapshot[_vi];
+          const _vs = state.seats[_ve.seatIdx];
+          if (!_vs) continue;
+          const _dup = state._voidedItems.some((e) => e.item.item_id && e.item.item_id === _ve.item.item_id);
+          if (!_dup) state._voidedItems.push({ seatNumber: _vs.number, item: _ve.item });
+        }
       }
-    })
-    .catch(() => {
-      state._voidInProgress = false;
-      // DELETE(s) failed — roll back the local void so the display
-      // matches backend truth rather than silently diverging.
-      if (!state._alive) return;
-      for (let j = 0; j < snapshot.length; j++) {
-        snapshot[j].item.voided = false;
-      }
-      rerenderTopArea(state);
-      showToast('Void failed — check connection', { bg: T.verm });
     });
 }
 
