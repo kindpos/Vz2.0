@@ -15,7 +15,7 @@ from app.services.store_config_service import StoreConfigService
 from app.services.overseer_config_service import OverseerConfigService
 
 from app.api.dependencies import get_ledger
-from app.api.routes.auth import _extract_session, _record_diag
+from app.api.routes.auth import _extract_session, _record_diag, require_manager
 from app.core.event_ledger import EventLedger
 from app.core.events import EventType
 from app.core.projections import project_orders, project_order
@@ -194,7 +194,7 @@ def _build_tip_map(events):
 
 # ── sales-summary ──────────────────────────────────────────────────────────
 
-@router.get("/sales-summary")
+@router.get("/sales-summary", dependencies=[Depends(require_manager)])
 async def get_sales_summary(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     server_id: Optional[str] = Query(None, description="Employee ID for server-specific view"),
@@ -396,7 +396,7 @@ async def get_sales_summary(
 
 # ── labor-summary ──────────────────────────────────────────────────────────
 
-@router.get("/labor-summary")
+@router.get("/labor-summary", dependencies=[Depends(require_manager)])
 async def get_labor_summary(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     server_id: Optional[str] = Query(None, description="Employee ID for server-specific view"),
@@ -779,7 +779,7 @@ async def get_labor_summary(
 # HOURLY SALES COMPARISON (today vs last week)
 # =============================================================================
 
-@router.get("/hourly-compare")
+@router.get("/hourly-compare", dependencies=[Depends(require_manager)])
 async def hourly_compare(
     date: Optional[str] = None,
     ledger: EventLedger = Depends(get_ledger),
@@ -850,7 +850,7 @@ async def _hourly_for_date(ledger: EventLedger, date_str: str, open_hour: int = 
 # TRANSACTIONS LOG
 # =============================================================================
 
-@router.get("/transactions")
+@router.get("/transactions", dependencies=[Depends(require_manager)])
 async def get_transactions(
     date_from: Optional[str] = Query(None, description="Start date (YYYY-MM-DD), defaults to today"),
     date_to: Optional[str] = Query(None, description="End date (YYYY-MM-DD), defaults to today"),
