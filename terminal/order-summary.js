@@ -7,31 +7,41 @@
 import { T } from '../common/tokens.js';
 import { SceneManager } from './scene-manager.js';
 import { hexToRgba, buildCard, buildSectionLabel, buildDataRow, buildDivider } from './theme-manager.js';
+import { entReport } from './entomology-client.js';
 
-let _el = null;          // #order-summary container
-let _card = null;        // buildCard return
-let _itemScroll = null;  // scrollable item list
-let _summaryBox = null;  // subtotal/discount/tax box
-let _pricesBox = null;   // card/cash prices box
-let _paidRow = null;     // dynamic paid row
-let _remainRow = null;   // dynamic remaining row
-let _checkIdEl = null;   // check ID display
-let _nameEl = null;      // customer name display (tappable)
-let _onNameTap = null;   // callback when check ID / name is tapped
-let _splitBtn = null;    // split button ref
-let _headerTitle = null; // header title element ref
-let _backBtn = null;     // back button ref
-let _onBack = null;      // callback for back button
-let _colHead = null;     // column header container ref
-let _summaryRowEl = null;// summary row (contains summary box + split btn)
-let _mode = 'order';     // 'order' or 'checkout'
-let _collapsible = false;
-let _onItemTap = null;
-let _onSeatHeaderTap = null;
-const _expandedItems = {};
-let _itemRenderLocked = false;
-let _customTitle = null;
-let _totalsMode = 'payment';  // 'payment' (default — sub/tax + card/cash) or 'building' (order-entry — sub/tax/total, no card/cash)
+// All per-mount state lives in this object, replaced on each show()/showCheckout()
+// so callbacks and mode flags from a previous mount cannot leak across remounts.
+// Other public API methods (hide/update/etc.) read through this same reference.
+let _state = null;
+
+function _initState() {
+  return {
+    _el:                null,        // #order-summary container
+    _card:              null,        // buildCard return
+    _itemScroll:        null,        // scrollable item list
+    _summaryBox:        null,        // subtotal/discount/tax box
+    _pricesBox:         null,        // card/cash prices box
+    _paidRow:           null,        // dynamic paid row
+    _remainRow:         null,        // dynamic remaining row
+    _checkIdEl:         null,        // check ID display
+    _nameEl:            null,        // customer name display (tappable)
+    _onNameTap:         null,        // callback when check ID / name is tapped
+    _splitBtn:          null,        // split button ref
+    _headerTitle:       null,        // header title element ref
+    _backBtn:           null,        // back button ref
+    _onBack:            null,        // callback for back button
+    _colHead:           null,        // column header container ref
+    _summaryRowEl:      null,        // summary row (contains summary box + split btn)
+    _mode:              'order',     // 'order' or 'checkout'
+    _collapsible:       false,
+    _onItemTap:         null,
+    _onSeatHeaderTap:   null,
+    _expandedItems:     {},
+    _itemRenderLocked:  false,
+    _customTitle:       null,
+    _totalsMode:        'payment',   // 'payment' (default — sub/tax + card/cash) or 'building' (order-entry — sub/tax/total, no card/cash)
+  };
+}
 
 // Muted text helper — lowers T.text opacity for label/sub text.
 function _muted() { return hexToRgba(T.text, 0.55); }
@@ -45,8 +55,9 @@ function _applyWellStyle(box) {
 }
 
 function _container() {
-  if (!_el) _el = document.getElementById('order-summary');
-  return _el;
+  if (!_state) _state = _initState();
+  if (!_state._el) _state._el = document.getElementById('order-summary');
+  return _state._el;
 }
 
 // ═══════════════════════════════════════════════════
@@ -63,10 +74,10 @@ function _build() {
     accent: T.green,
     padding: '0'
   });
-  _card = cardRes.card;
-  _card.style.display = 'flex';
-  _card.style.flexDirection = 'column';
-  _card.style.height = '100%';
+  _state._card = cardRes.card;
+  _state._card.style.display = 'flex';
+  _state._card.style.flexDirection = 'column';
+  _state._card.style.height = '100%';
   let wrap = cardRes.wrap;
   wrap.style.display = 'none';
   wrap.style.flexDirection = 'column';
@@ -83,50 +94,50 @@ function _build() {
     `margin-left:${T.accentBarW}`, // Align with content to the right of the accent bar
   ].join('');
 
-  _backBtn = document.createElement('div');
-  _backBtn.style.cssText = [
+  _state._backBtn = document.createElement('div');
+  _state._backBtn.style.cssText = [
     'display:none;flex-shrink:0;',
     `font-family:${T.fh};font-size:28px;`,
     `font-weight:${T.fwBold};color:${T.green};`,
     'cursor:pointer;user-select:none;',
     'padding:0 4px 0 0;line-height:1;margin-top:-2px;',
   ].join('');
-  _backBtn.textContent = '‹';
-  _backBtn.addEventListener('pointerup', () => {
-    if (_onBack) _onBack();
+  _state._backBtn.textContent = '‹';
+  _state._backBtn.addEventListener('pointerup', () => {
+    if (_state && _state._onBack) _state._onBack();
   });
-  header.appendChild(_backBtn);
+  header.appendChild(_state._backBtn);
 
-  _headerTitle = buildSectionLabel('ITEM RECAP', T.green);
-  _headerTitle.style.flex = '1';
+  _state._headerTitle = buildSectionLabel('ITEM RECAP', T.green);
+  _state._headerTitle.style.flex = '1';
 
   const checkWrap = document.createElement('div');
   checkWrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;cursor:pointer;min-width:0;touch-action:manipulation;';
 
-  _checkIdEl = buildSectionLabel('', hexToRgba(T.text, 0.55));
-  _checkIdEl.style.fontSize = T.fsB4;
-  _checkIdEl.style.letterSpacing = '0.1em';
+  _state._checkIdEl = buildSectionLabel('', hexToRgba(T.text, 0.55));
+  _state._checkIdEl.style.fontSize = T.fsB4;
+  _state._checkIdEl.style.letterSpacing = '0.1em';
 
-  _nameEl = document.createElement('div');
-  _nameEl.style.cssText = [
+  _state._nameEl = document.createElement('div');
+  _state._nameEl.style.cssText = [
     `font-family:${T.fb};`,
     `font-size:${T.fsB4};`,
     `color:${hexToRgba(T.text, 0.4)};`,
     'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;',
     'text-transform:uppercase;',
   ].join('') + `;font-weight:${T.fwBold};`;
-  checkWrap.appendChild(_checkIdEl);
-  checkWrap.appendChild(_nameEl);
+  checkWrap.appendChild(_state._checkIdEl);
+  checkWrap.appendChild(_state._nameEl);
   checkWrap.addEventListener('pointerup', () => {
-    if (_onNameTap) _onNameTap();
+    if (_state && _state._onNameTap) _state._onNameTap();
   });
-  header.appendChild(_headerTitle);
+  header.appendChild(_state._headerTitle);
   header.appendChild(checkWrap);
-  _card.appendChild(header);
+  _state._card.appendChild(header);
 
   // ── Column headers ──
-  _colHead = document.createElement('div');
-  _colHead.style.cssText = [
+  _state._colHead = document.createElement('div');
+  _state._colHead.style.cssText = [
     'display:grid;grid-template-columns:1fr 40px 68px;align-items:center;',
     'padding:6px 12px;',
     'flex-shrink:0;',
@@ -139,16 +150,16 @@ function _build() {
   let hdrPrice = buildSectionLabel('PRICE', hexToRgba(T.text, 0.55));
   hdrPrice.style.textAlign = 'right';
 
-  _colHead.appendChild(hdrItem);
-  _colHead.appendChild(hdrQty);
-  _colHead.appendChild(hdrPrice);
-  _card.appendChild(_colHead);
-  _card.appendChild(buildDivider(`0 0 0 ${T.accentBarW}`));
+  _state._colHead.appendChild(hdrItem);
+  _state._colHead.appendChild(hdrQty);
+  _state._colHead.appendChild(hdrPrice);
+  _state._card.appendChild(_state._colHead);
+  _state._card.appendChild(buildDivider(`0 0 0 ${T.accentBarW}`));
 
   // ── Scrollable items ──
-  _itemScroll = document.createElement('div');
-  _itemScroll.id = 'ticket-list';
-  _itemScroll.style.cssText = [
+  _state._itemScroll = document.createElement('div');
+  _state._itemScroll.id = 'ticket-list';
+  _state._itemScroll.style.cssText = [
     'flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;',
     'touch-action:pan-y;',
     'padding:4px 10px;',
@@ -158,34 +169,34 @@ function _build() {
   ].join('');
   // Kill the scrollbar on webkit
   _injectScrollStyle();
-  _card.appendChild(_itemScroll);
+  _state._card.appendChild(_state._itemScroll);
 
   // ── Bottom: [Summary | Split] row ──
-  _summaryRowEl = document.createElement('div');
-  _summaryRowEl.style.cssText = [
+  _state._summaryRowEl = document.createElement('div');
+  _state._summaryRowEl.style.cssText = [
     'flex-shrink:0;display:flex;gap:6px;',
     'padding:6px 8px;',
     `margin-left:${T.accentBarW}`,
     'flex-shrink:0;',
   ].join('');
 
-  _summaryBox = document.createElement('div');
-  _summaryBox.style.cssText = 'flex:1;padding:8px 12px;';
-  _applyWellStyle(_summaryBox);
-  _summaryRowEl.appendChild(_summaryBox);
+  _state._summaryBox = document.createElement('div');
+  _state._summaryBox.style.cssText = 'flex:1;padding:8px 12px;';
+  _applyWellStyle(_state._summaryBox);
+  _state._summaryRowEl.appendChild(_state._summaryBox);
 
-  _splitBtn = null;
-  _card.appendChild(_summaryRowEl);
+  _state._splitBtn = null;
+  _state._card.appendChild(_state._summaryRowEl);
 
   // ── Prices box ──
-  _pricesBox = document.createElement('div');
-  _pricesBox.style.cssText = [
+  _state._pricesBox = document.createElement('div');
+  _state._pricesBox.style.cssText = [
     'flex-shrink:0;padding:8px 12px;margin:0 8px 8px;',
     `margin-left:calc(${T.accentBarW} + 8px)`,
     'flex-shrink:0;',
   ].join('');
-  _applyWellStyle(_pricesBox);
-  _card.appendChild(_pricesBox);
+  _applyWellStyle(_state._pricesBox);
+  _state._card.appendChild(_state._pricesBox);
 }
 
 let _scrollStyleInjected = false;
@@ -259,11 +270,11 @@ function _summaryRow(label, value, color, bold) {
 }
 
 function _renderItems(items) {
-  if (!_itemScroll) return;
-  if (_itemRenderLocked) return;
-  const savedScroll = _itemScroll.scrollTop;
-  _itemScroll.innerHTML = '';
-  const isCollapsible = _collapsible;
+  if (!_state || !_state._itemScroll) return;
+  if (_state._itemRenderLocked) return;
+  const savedScroll = _state._itemScroll.scrollTop;
+  _state._itemScroll.innerHTML = '';
+  const isCollapsible = _state._collapsible;
   (items || []).forEach((item, itemIndex) => {
     // ── Seat header divider ──
     if (item.seatHeader) {
@@ -303,14 +314,14 @@ function _renderItems(items) {
       hdr.appendChild(seatNum);
       hdr.appendChild(meta);
 
-      if (_onSeatHeaderTap && item.seatIdx != null) {
+      if (_state._onSeatHeaderTap && item.seatIdx != null) {
         ((idx) => {
           hdr.addEventListener('pointerup', () => {
-            _onSeatHeaderTap(idx);
+            if (_state && _state._onSeatHeaderTap) _state._onSeatHeaderTap(idx);
           });
         })(item.seatIdx);
       }
-      _itemScroll.appendChild(hdr);
+      _state._itemScroll.appendChild(hdr);
       return;
     }
 
@@ -344,7 +355,7 @@ function _renderItems(items) {
 
     if (item.sent) {
       const check = document.createElement('span');
-      check.textContent = '\u2713 ';
+      check.textContent = '✓ ';
       check.style.color = T.greenWarm;
       lblContainer.appendChild(check);
       row.style.opacity = '0.55';
@@ -379,37 +390,37 @@ function _renderItems(items) {
       row.appendChild(arrow);
     }
 
-    _itemScroll.appendChild(row);
+    _state._itemScroll.appendChild(row);
 
     // Attach tap handler for item selection + expand/collapse
     if (isCollapsible) {
       ((idx) => {
         row.addEventListener('pointerup', () => {
-          if (_onItemTap) _onItemTap(idx);
+          if (_state && _state._onItemTap) _state._onItemTap(idx);
         });
       })(itemIndex);
     }
 
     // ── Modifier detail container — always hidden in order-summary, use overlay ──
   });
-  _itemScroll.scrollTop = savedScroll;
+  _state._itemScroll.scrollTop = savedScroll;
 }
 
 function _renderSummary(params) {
-  if (!_summaryBox) return;
-  _summaryBox.innerHTML = '';
-  _summaryBox.appendChild(buildDataRow('Subtotal', `$${(params.subtotal || 0).toFixed(2)}`, T.gold));
+  if (!_state || !_state._summaryBox) return;
+  _state._summaryBox.innerHTML = '';
+  _state._summaryBox.appendChild(buildDataRow('Subtotal', `$${(params.subtotal || 0).toFixed(2)}`, T.gold));
   if (params.discount && params.discount > 0) {
-    _summaryBox.appendChild(buildDataRow('Discount', `$${params.discount.toFixed(2)}`, T.gold));
+    _state._summaryBox.appendChild(buildDataRow('Discount', `$${params.discount.toFixed(2)}`, T.gold));
   }
-  _summaryBox.appendChild(buildDataRow('Tax', `$${(params.tax || 0).toFixed(2)}`, T.gold));
+  _state._summaryBox.appendChild(buildDataRow('Tax', `$${(params.tax || 0).toFixed(2)}`, T.gold));
 
   // Building mode (order-entry): emphasize TOTAL inside the summary card
   // since the prices box is hidden. Use cardTotal when supplied (the result
   // of computeTotals — handles discount math correctly); fall back to a
   // local sum for callers that don't pass it.
-  if (_totalsMode === 'building') {
-    _summaryBox.appendChild(buildDivider('4px 0'));
+  if (_state._totalsMode === 'building') {
+    _state._summaryBox.appendChild(buildDivider('4px 0'));
     const total = (params.cardTotal != null)
       ? params.cardTotal
       : ((params.subtotal || 0) - (params.discount || 0) + (params.tax || 0));
@@ -419,38 +430,38 @@ function _renderSummary(params) {
       totalVal.style.fontSize = '17px';
       totalVal.style.fontWeight = T.fwBold;
     }
-    _summaryBox.appendChild(totalRow);
+    _state._summaryBox.appendChild(totalRow);
   }
 
-  _applyWellStyle(_summaryBox);
+  _applyWellStyle(_state._summaryBox);
 }
 
 function _renderPrices(params) {
-  if (!_pricesBox) return;
+  if (!_state || !_state._pricesBox) return;
 
   // Building mode (order-entry): TOTAL lives in the summary box; the prices
   // box is unused. Hide the box entirely so it doesn't take vertical space.
-  if (_totalsMode === 'building') {
-    _pricesBox.style.display = 'none';
-    _pricesBox.innerHTML = '';
+  if (_state._totalsMode === 'building') {
+    _state._pricesBox.style.display = 'none';
+    _state._pricesBox.innerHTML = '';
     return;
   }
-  _pricesBox.style.display = '';
+  _state._pricesBox.style.display = '';
 
-  _pricesBox.innerHTML = '';
-  _pricesBox.appendChild(buildDataRow('CARD PRICE', `$${(params.cardTotal || 0).toFixed(2)}`, T.elec));
-  _pricesBox.appendChild(buildDataRow('CASH PRICE', `$${(params.cashPrice || 0).toFixed(2)}`, T.greenWarm));
+  _state._pricesBox.innerHTML = '';
+  _state._pricesBox.appendChild(buildDataRow('CARD PRICE', `$${(params.cardTotal || 0).toFixed(2)}`, T.elec));
+  _state._pricesBox.appendChild(buildDataRow('CASH PRICE', `$${(params.cashPrice || 0).toFixed(2)}`, T.greenWarm));
 
   // Dynamic split-progress rows (hidden until partial payment)
-  _paidRow = buildDataRow('Paid', '$0.00', T.elec);
-  _paidRow.style.display = 'none';
-  _pricesBox.appendChild(_paidRow);
+  _state._paidRow = buildDataRow('Paid', '$0.00', T.elec);
+  _state._paidRow.style.display = 'none';
+  _state._pricesBox.appendChild(_state._paidRow);
 
-  _remainRow = buildDataRow('Remaining', `$${(params.cardTotal || 0).toFixed(2)}`, T.elec);
-  _remainRow.style.display = 'none';
-  _pricesBox.appendChild(_remainRow);
+  _state._remainRow = buildDataRow('Remaining', `$${(params.cardTotal || 0).toFixed(2)}`, T.elec);
+  _state._remainRow.style.display = 'none';
+  _state._pricesBox.appendChild(_state._remainRow);
 
-  _applyWellStyle(_pricesBox);
+  _applyWellStyle(_state._pricesBox);
 }
 
 
@@ -459,18 +470,19 @@ function _renderPrices(params) {
 // ═══════════════════════════════════════════════════
 
 function _configureForMode(mode) {
-  _mode = mode;
+  if (!_state) return;
+  _state._mode = mode;
   if (mode === 'checkout') {
-    if (_headerTitle) _headerTitle.textContent = 'CHECKOUT RECAP';
-    if (_colHead) _colHead.style.display = 'none';
-    if (_splitBtn) _splitBtn.style.display = 'none';
-    if (_summaryRowEl) _summaryRowEl.style.padding = '6px 8px 0';
+    if (_state._headerTitle) _state._headerTitle.textContent = 'CHECKOUT RECAP';
+    if (_state._colHead) _state._colHead.style.display = 'none';
+    if (_state._splitBtn) _state._splitBtn.style.display = 'none';
+    if (_state._summaryRowEl) _state._summaryRowEl.style.padding = '6px 8px 0';
   } else {
-    if (_headerTitle) _headerTitle.textContent = _customTitle || 'ORDER RECAP';
-    if (_colHead) {
-      _colHead.style.display = 'grid';
-      _colHead.style.gridTemplateColumns = '1fr 40px 68px';
-      _colHead.innerHTML = '';
+    if (_state._headerTitle) _state._headerTitle.textContent = _state._customTitle || 'ORDER RECAP';
+    if (_state._colHead) {
+      _state._colHead.style.display = 'grid';
+      _state._colHead.style.gridTemplateColumns = '1fr 40px 68px';
+      _state._colHead.innerHTML = '';
 
       const hdrItem = buildSectionLabel('ITEM', hexToRgba(T.text, 0.55));
       const hdrQty = buildSectionLabel('QTY', hexToRgba(T.text, 0.55));
@@ -478,18 +490,18 @@ function _configureForMode(mode) {
       const hdrPrice = buildSectionLabel('PRICE', hexToRgba(T.text, 0.55));
       hdrPrice.style.textAlign = 'right';
 
-      _colHead.appendChild(hdrItem);
-      _colHead.appendChild(hdrQty);
-      _colHead.appendChild(hdrPrice);
+      _state._colHead.appendChild(hdrItem);
+      _state._colHead.appendChild(hdrQty);
+      _state._colHead.appendChild(hdrPrice);
     }
-    if (_splitBtn) _splitBtn.style.display = '';
-    if (_summaryRowEl) _summaryRowEl.style.padding = '6px 8px';
+    if (_state._splitBtn) _state._splitBtn.style.display = '';
+    if (_state._summaryRowEl) _state._summaryRowEl.style.padding = '6px 8px';
   }
 }
 
 function _renderCheckoutBreakdown(params) {
-  if (!_itemScroll) return;
-  _itemScroll.innerHTML = '';
+  if (!_state || !_state._itemScroll) return;
+  _state._itemScroll.innerHTML = '';
 
   const sections = params.sections || [];
   for (let s = 0; s < sections.length; s++) {
@@ -498,33 +510,33 @@ function _renderCheckoutBreakdown(params) {
     const hdr = buildSectionLabel(sec.title, T.text);
     hdr.style.padding = '6px 0 2px';
     if (s > 0) {
-      _itemScroll.appendChild(buildDivider('4px 0'));
+      _state._itemScroll.appendChild(buildDivider('4px 0'));
     }
-    _itemScroll.appendChild(hdr);
+    _state._itemScroll.appendChild(hdr);
 
     const rows = sec.rows || [];
     for (let r = 0; r < rows.length; r++) {
-      _itemScroll.appendChild(buildDataRow(rows[r].label, rows[r].value, T.gold));
+      _state._itemScroll.appendChild(buildDataRow(rows[r].label, rows[r].value, T.gold));
     }
   }
 }
 
 function _renderCheckoutSummary(params) {
-  if (!_summaryBox) return;
-  _summaryBox.innerHTML = '';
-  _summaryBox.appendChild(buildDataRow('Cash Sales', `$${(params.cashSales || 0).toFixed(2)}`, T.gold));
-  _summaryBox.appendChild(buildDataRow('Tips', `$${(params.tips || 0).toFixed(2)}`, T.gold));
-  _applyWellStyle(_summaryBox);
+  if (!_state || !_state._summaryBox) return;
+  _state._summaryBox.innerHTML = '';
+  _state._summaryBox.appendChild(buildDataRow('Cash Sales', `$${(params.cashSales || 0).toFixed(2)}`, T.gold));
+  _state._summaryBox.appendChild(buildDataRow('Tips', `$${(params.tips || 0).toFixed(2)}`, T.gold));
+  _applyWellStyle(_state._summaryBox);
 }
 
 function _renderCashExpected(params) {
-  if (!_pricesBox) return;
-  _pricesBox.innerHTML = '';
+  if (!_state || !_state._pricesBox) return;
+  _state._pricesBox.innerHTML = '';
 
   const label = buildSectionLabel('CASH EXPECTED', T.text);
   label.style.textAlign = 'center';
   label.style.marginBottom = '2px';
-  _pricesBox.appendChild(label);
+  _state._pricesBox.appendChild(label);
 
   const heroVal = `$${(params.cashExpected || 0).toFixed(2)}`;
   const hero = buildDataRow('', heroVal, T.gold);
@@ -540,9 +552,9 @@ function _renderCashExpected(params) {
     valPart.style.padding = '4px 0';
   }
   hero.setAttribute('data-cash-expected', '1');
-  _pricesBox.appendChild(hero);
+  _state._pricesBox.appendChild(hero);
 
-  _applyWellStyle(_pricesBox);
+  _applyWellStyle(_state._pricesBox);
 }
 
 // ═══════════════════════════════════════════════════
@@ -553,23 +565,31 @@ export const OrderSummary = {
 
   show: (params) => {
     params = params || {};
+    _state = _initState();  // fresh state per mount — payment.js pattern
     let el = _container();
-    if (!el) return;
+    if (!el) {
+      entReport({
+        code:    'UI-040',
+        source:  'OrderSummary.show',
+        message: '#order-summary element not found in DOM',
+      });
+      return;
+    }
 
-    if (!_itemScroll) _build();
-    _collapsible = !!params.collapsible;
-    _onItemTap = params.onItemTap || null;
-    _onSeatHeaderTap = params.onSeatHeaderTap || null;
-    _onBack = params.onBack || null;
-    _totalsMode = params.totalsMode || 'payment';
-    if (_backBtn) _backBtn.style.display = params.showBack ? 'block' : 'none';
-    _customTitle = params.title || null;
+    if (!_state._itemScroll) _build();
+    _state._collapsible = !!params.collapsible;
+    _state._onItemTap = params.onItemTap || null;
+    _state._onSeatHeaderTap = params.onSeatHeaderTap || null;
+    _state._onBack = params.onBack || null;
+    _state._totalsMode = params.totalsMode || 'payment';
+    if (_state._backBtn) _state._backBtn.style.display = params.showBack ? 'block' : 'none';
+    _state._customTitle = params.title || null;
     _configureForMode('order');
 
-    if (_checkIdEl) _checkIdEl.textContent = params.checkId || '';
-    if (_nameEl) _nameEl.textContent = params.customerName || '';
-    _onNameTap = params.onNameTap || null;
-    _itemRenderLocked = false;
+    if (_state._checkIdEl) _state._checkIdEl.textContent = params.checkId || '';
+    if (_state._nameEl) _state._nameEl.textContent = params.customerName || '';
+    _state._onNameTap = params.onNameTap || null;
+    _state._itemRenderLocked = false;
 
     _renderItems(params.items);
     _renderSummary(params);
@@ -583,32 +603,35 @@ export const OrderSummary = {
   },
 
   hide: () => {
-    _onNameTap = null;
-    _onItemTap = null;
-    _onBack = null;
-    if (_backBtn) _backBtn.style.display = 'none';
+    if (_state) {
+      _state._onNameTap = null;
+      _state._onItemTap = null;
+      _state._onBack = null;
+      if (_state._backBtn) _state._backBtn.style.display = 'none';
+    }
     SceneManager.hideSummary();
   },
 
-  lockItemRender: () => { _itemRenderLocked = true; },
-  unlockItemRender: () => { _itemRenderLocked = false; },
+  lockItemRender: () => { if (_state) _state._itemRenderLocked = true; },
+  unlockItemRender: () => { if (_state) _state._itemRenderLocked = false; },
 
   showBack: (show) => {
-    if (_backBtn) _backBtn.style.display = show ? 'block' : 'none';
+    if (_state && _state._backBtn) _state._backBtn.style.display = show ? 'block' : 'none';
   },
 
   setOnBack: (fn) => {
-    _onBack = fn;
+    if (_state) _state._onBack = fn;
   },
 
   update: (params) => {
     params = params || {};
-    if (_checkIdEl && params.checkId !== undefined) _checkIdEl.textContent = params.checkId;
-    if (_nameEl && params.customerName !== undefined) _nameEl.textContent = params.customerName || '';
-    if (params.onNameTap !== undefined) _onNameTap = params.onNameTap;
-    if (params.onItemTap !== undefined) _onItemTap = params.onItemTap;
-    if (params.onSeatHeaderTap !== undefined) _onSeatHeaderTap = params.onSeatHeaderTap;
-    if (params.totalsMode !== undefined) _totalsMode = params.totalsMode;
+    if (!_state) return;
+    if (_state._checkIdEl && params.checkId !== undefined) _state._checkIdEl.textContent = params.checkId;
+    if (_state._nameEl && params.customerName !== undefined) _state._nameEl.textContent = params.customerName || '';
+    if (params.onNameTap !== undefined) _state._onNameTap = params.onNameTap;
+    if (params.onItemTap !== undefined) _state._onItemTap = params.onItemTap;
+    if (params.onSeatHeaderTap !== undefined) _state._onSeatHeaderTap = params.onSeatHeaderTap;
+    if (params.totalsMode !== undefined) _state._totalsMode = params.totalsMode;
     if (params.items && !params.skipItems) _renderItems(params.items);
     _renderSummary(params);
     _renderPrices(params);
@@ -616,31 +639,40 @@ export const OrderSummary = {
 
   updateSplit: (opts) => {
     opts = opts || {};
-    if (_paidRow) {
-      _paidRow.style.display = 'flex';
-      _paidRow.setValue(`$${(opts.totalPaid || 0).toFixed(2)}`);
+    if (!_state) return;
+    if (_state._paidRow) {
+      _state._paidRow.style.display = 'flex';
+      _state._paidRow.setValue(`$${(opts.totalPaid || 0).toFixed(2)}`);
     }
-    if (_remainRow) {
-      _remainRow.style.display = 'flex';
-      _remainRow.setValue(`$${(opts.remaining || 0).toFixed(2)}`);
+    if (_state._remainRow) {
+      _state._remainRow.style.display = 'flex';
+      _state._remainRow.setValue(`$${(opts.remaining || 0).toFixed(2)}`);
     }
   },
 
   showCheckout: (params) => {
     params = params || {};
+    _state = _initState();  // fresh state per mount — payment.js pattern
     const el = _container();
-    if (!el) return;
-    if (!_itemScroll) _build();
+    if (!el) {
+      entReport({
+        code:    'UI-040',
+        source:  'OrderSummary.showCheckout',
+        message: '#order-summary element not found in DOM',
+      });
+      return;
+    }
+    if (!_state._itemScroll) _build();
     // Reset totals mode so a stale 'building' from a previous order-entry
     // session can't leak into checkout's prices box (defensive — checkout
     // doesn't use _renderSummary/_renderPrices, but the box display:none
     // from 'building' mode WOULD persist if we don't unset it here).
-    _totalsMode = 'payment';
-    if (_pricesBox) _pricesBox.style.display = '';
+    _state._totalsMode = 'payment';
+    if (_state._pricesBox) _state._pricesBox.style.display = '';
     _configureForMode('checkout');
 
-    if (_headerTitle && params.title) _headerTitle.textContent = params.title;
-    if (_checkIdEl) _checkIdEl.textContent = params.label || '';
+    if (_state._headerTitle && params.title) _state._headerTitle.textContent = params.title;
+    if (_state._checkIdEl) _state._checkIdEl.textContent = params.label || '';
 
     _renderCheckoutBreakdown(params);
     _renderCheckoutSummary(params);
@@ -655,8 +687,9 @@ export const OrderSummary = {
 
   updateCheckout: (params) => {
     params = params || {};
-    if (_headerTitle && params.title) _headerTitle.textContent = params.title;
-    if (_checkIdEl && params.label !== undefined) _checkIdEl.textContent = params.label;
+    if (!_state) return;
+    if (_state._headerTitle && params.title) _state._headerTitle.textContent = params.title;
+    if (_state._checkIdEl && params.label !== undefined) _state._checkIdEl.textContent = params.label;
     if (params.checks) _renderCheckoutBreakdown(params);
     _renderCheckoutSummary(params);
     _renderCashExpected(params);
