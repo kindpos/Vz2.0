@@ -16,17 +16,36 @@ defineScene({
     var catColor       = params.catColor || T.green;
     var modifierGroups = item.modifier_groups || [];
 
+    // FIX B: make container full-screen so it obscures the order screen below
+    container.style.cssText = [
+      'position:fixed;top:0;left:0;right:0;bottom:0;',
+      'display:flex;flex-direction:column;',
+      'background:' + T.bg + ';',
+      'z-index:50;overflow:hidden;',
+    ].join('');
+
     // Map QSR modifier_groups to modConfig shape (mandatoryGroups, optionalGroups)
     var mandatoryGroups = [];
     var optionalGroups = [];
     modifierGroups.forEach(function(grp) {
       var groupKey = grp.group_id || grp.id || grp.name;
       var isMandatory = (grp.min_selections || 0) >= 1;
+      // FIX C: use 'options' (not 'modifiers') so buildKindModPanel can read g.options;
+      // also normalise each modifier to the {key, id, label, price} shape the panel expects.
+      var mappedOptions = (grp.modifiers || grp.options || []).map(function(m) {
+        return {
+          key:   m.id || m.key || m.name,
+          id:    m.id || m.key || m.name,
+          label: m.name || m.label,
+          price: parseFloat(m.price || 0),
+        };
+      });
       var groupObj = {
-        key: groupKey,
-        name: grp.name,
-        label: grp.name,
-        modifiers: grp.modifiers || grp.options || [],
+        key:            groupKey,
+        name:           grp.name,
+        label:          grp.name,
+        options:        mappedOptions,
+        required:       isMandatory,
         min_selections: grp.min_selections || 0,
         max_selections: grp.max_selections || 1,
       };
@@ -43,18 +62,26 @@ defineScene({
       includedItems: [],
     };
 
-    // Map item to full-service shape
+    // FIX A: set label so the item tile shows the name; read unitPrice (not price)
+    // since openQsrModifierSelector forwards item.price as unitPrice.
     var fsItem = {
-      id: item.itemKey || item.key || item.name,
-      name: item.name,
-      price: parseFloat(item.price || 0),
+      id:    item.itemKey || item.key || item.name,
+      name:  item.name,
+      label: item.name,
+      price: parseFloat(item.unitPrice || item.price || 0),
       category: 'qsr',
     };
+
+    // FIX A: build a category crumb so the breadcrumb area shows [Category][Item $X.XX]
+    var qsrCrumbs = [];
+    if (item.category_name) {
+      qsrCrumbs.push({ label: item.category_name.toUpperCase(), color: catColor });
+    }
 
     // Call openModifierPanel with container as mainArea
     openModifierPanel(fsItem, modConfig, catColor, false, {
       mainArea: container,
-      snakeState: {},
+      snakeState: { crumbs: qsrCrumbs },
       onPanelInit: {
         onUpdate: function(outputItem) {
           // Real-time update (optional)
@@ -97,6 +124,8 @@ function openQsrModifierSelector(item, catColor, onConfirm) {
     item: {
       name:            item.name,
       unitPrice:       parseFloat(item.price || 0),
+      price:           parseFloat(item.price || 0),
+      category_name:   item.category_name || '',
       itemKey:         item.itemKey || item.key || item.name,
       modifier_groups: item.modifier_groups,
       mods:            [],
