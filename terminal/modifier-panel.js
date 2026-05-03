@@ -54,7 +54,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     'overflow:hidden;',
   ].join('');
 
-  const itemPx = typeof item.price === 'number' ? item.price : 0;
+  const itemPx = Number(item.price) || 0;
 
   // ── Scrollable content ──────────────────────────────
   const scroll = document.createElement('div');
