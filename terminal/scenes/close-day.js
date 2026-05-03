@@ -258,6 +258,7 @@ function fetchCloseDayState(params) {
       restaurantName: (store.info && store.info.restaurant_name) || store.name || 'KINDpos',
       managerName:   params.managerName || (params.staff && params.staff.name) || 'Manager',
       managerId:     (params.staff && (params.staff.id || params.staff.employee_id)) || null,
+      managerPin:    (params.staff && params.staff.pin) || null,
 
       // Revenue
       grossSales:    Number(d.gross_sales) || 0,
@@ -1345,6 +1346,7 @@ defineScene({
         SceneManager.openTransactional('close-day-checks-viewer', {
           managerId:    state.data.managerId,
           managerName:  state.data.managerName,
+          managerPin:   state.data.managerPin,
           onBack: function() {
             SceneManager.closeTransactional('close-day-checks-viewer');
             refreshScene();
@@ -1716,8 +1718,8 @@ defineScene({
                       method:  'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
+                        pin: state.data.managerPin || '',
                         reason: reason,
-                        manager_pin_verified: true,
                       }),
                     }, 15000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
                       .catch(function()  { return { chk: chk, ok: false, status: 0 }; });

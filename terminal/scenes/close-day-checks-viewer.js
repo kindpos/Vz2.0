@@ -951,8 +951,8 @@ defineScene({
                       method:  'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
+                        pin: params.managerPin || '',
                         reason: reason,
-                        manager_pin_verified: true,
                       }),
                     }, 8000).then(function(r) { return { chk: chk, ok: r.ok, status: r.status }; })
                             .catch(function()  { return { chk: chk, ok: false, status: 0 }; });

@@ -807,7 +807,11 @@ defineScene({
           fetchWithTimeout(`/api/v1/orders/${orderId}/void`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ approved_by: st.emp.employee_id || st.emp.id, reason: 'Manager void from landing' }),
+            body: JSON.stringify({
+              pin: st.emp.pin || '',
+              reason: 'Manager void from landing',
+              approved_by: st.emp.employee_id || st.emp.id,
+            }),
           }, 8000).then((r) => {
             if (r.ok) voided++; else vFailed++;
             _voidDone();
