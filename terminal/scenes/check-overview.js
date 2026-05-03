@@ -3517,11 +3517,21 @@ function handleVoid(state) {
     return;
   }
 
+  // Filter out already-voided items before showing the PIN challenge.
+  const nonVoidedRefs = itemRefs.filter((r) => {
+    const item = state.seats[r.seatIdx] && state.seats[r.seatIdx].items[r.itemIdx];
+    return item && !item.voided;
+  });
+  if (nonVoidedRefs.length === 0) {
+    showToast('Selected items are already voided.', { bg: T.gold });
+    return;
+  }
+
   SceneManager.interrupt('manager-pin', {
     context: 'void',
     onConfirm: () => {
       const paidSeats = state.paidSeats || {};
-      const hasPaid = itemRefs.some((r) => {
+      const hasPaid = nonVoidedRefs.some((r) => {
         const seat = state.seats[r.seatIdx];
         return seat && paidSeats[seat.id];
       });
@@ -3529,7 +3539,7 @@ function handleVoid(state) {
         showToast('Cannot void items on a paid seat.', { bg: T.verm });
         return;
       }
-      _voidItems(state, itemRefs);
+      _voidItems(state, nonVoidedRefs);
     },
     onCancel: () => {},
   });
@@ -3551,7 +3561,7 @@ function _voidItems(state, refs) {
 
   // Fire DELETEs immediately — no undo window.
   const deletes = snapshot
-    .filter((s) => !!s.item.item_id)
+    .filter((s) => !!s.item.item_id && !s.item.voided)
     .map((s) => {
       return fetchWithTimeout(
         `/api/v1/orders/${state.orderId}/items/${s.item.item_id}`,
