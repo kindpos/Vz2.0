@@ -1052,6 +1052,77 @@ defineScene({
       },
       unmount: () => {},
     },
+
+    'co-unassigned-warn': {
+      render: (container, params) => {
+        params = params || {};
+        const count = params.count || 0;
+
+        container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
+
+        let shell = buildStaticCard({ accent: T.gold });
+        shell.style.display       = 'flex';
+        shell.style.flexDirection = 'column';
+        shell.style.alignItems    = 'stretch';
+        shell.style.gap           = '14px';
+        shell.style.minWidth      = '320px';
+        shell.style.maxWidth      = '420px';
+        shell.style.padding       = '24px 28px 28px 28px';
+
+        let title = document.createElement('div');
+        title.style.cssText = [
+          `font-family:${T.fh};`,
+          `font-size:${T.fsB2};`,
+          `font-weight:${T.fwBold};`,
+          `color:${T.gold};`,
+          'letter-spacing:0.2em;',
+          'text-transform:uppercase;',
+          'text-align:center;',
+        ].join('');
+        title.textContent = 'Unassigned Items';
+        shell.appendChild(title);
+
+        let body = document.createElement('div');
+        body.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${T.text};`,
+          'text-align:center;',
+          'line-height:1.5;',
+        ].join('');
+        body.textContent = `${count} item(s) have no seat assigned and will not be included in this payment. Continue?`;
+        shell.appendChild(body);
+
+        let cancelBtn = buildPillButton({
+          label:    'CANCEL',
+          variant:  'ghost',
+          fontSize: T.fsB2,
+          onClick:  () => { params.onCancel(); },
+        });
+        cancelBtn.style.width          = '100%';
+        cancelBtn.style.borderRadius   = '14px';
+        cancelBtn.style.display        = 'flex';
+        cancelBtn.style.alignItems     = 'center';
+        cancelBtn.style.justifyContent = 'center';
+        shell.appendChild(cancelBtn);
+
+        let continueBtn = buildPillButton({
+          label:    'CONTINUE',
+          color:    T.gold,
+          fontSize: T.fsB2,
+          onClick:  () => { params.onConfirm(); },
+        });
+        continueBtn.style.width          = '100%';
+        continueBtn.style.borderRadius   = '14px';
+        continueBtn.style.display        = 'flex';
+        continueBtn.style.alignItems     = 'center';
+        continueBtn.style.justifyContent = 'center';
+        shell.appendChild(continueBtn);
+
+        container.appendChild(shell);
+      },
+      unmount: () => {},
+    },
   },
 });
 
@@ -3461,54 +3532,70 @@ function handlePay(state, params) {
   // Pre-flight: verify balance_due > 0 and order still open before mounting
   // the payment scene. Uses the freshest server state to avoid launching
   // payment against a check that was just closed or fully paid elsewhere.
-  fetchWithTimeout(`/api/v1/orders/${state.orderId}`, { cache: 'no-store' }, 10000)
-    .then((r) => r.ok ? r.json() : null)
-    .then((freshOrder) => {
-      state._payingInProgress = false;
-      if (!state._alive) return;
-      if (!freshOrder) {
+  function _launchPayment() {
+    fetchWithTimeout(`/api/v1/orders/${state.orderId}`, { cache: 'no-store' }, 10000)
+      .then((r) => r.ok ? r.json() : null)
+      .then((freshOrder) => {
+        state._payingInProgress = false;
+        if (!state._alive) return;
+        if (!freshOrder) {
+          showToast('Could not verify check — try again', { bg: T.verm });
+          return;
+        }
+        const freshStatus = freshOrder.status || '';
+        if (freshStatus === 'closed' || freshStatus === 'paid') {
+          showToast('Check already settled', { bg: T.gold });
+          return;
+        }
+        if (!(freshOrder.balance_due > 0)) {
+          showToast('Nothing is owed on this check', { bg: T.gold });
+          return;
+        }
+        state._paymentInProgress = true;
+        SceneManager.mountWorking('payment', {
+          orderId:              state.orderId,
+          seatIds:              selectedIds,
+          seats:                seatSummary,
+          cardTotal:            cardTotal,
+          cashPrice:            cashPrice,
+          subtotal:             subtotal,
+          tax:                  tax,
+          managerDiscountTotal: freshOrder.manager_discount_total || 0,
+          isLastPayment:        isLastPayment,
+          returnTo:      'check-overview',
+          returnParams: {
+            checkId:       state.orderId,
+            returnLanding: params.returnLanding,
+            employeeId:    params.employeeId,
+            employeeName:  params.employeeName,
+            pin:           params.pin,
+          },
+          employeeId:   params.employeeId,
+          employeeName: params.employeeName,
+          pin:          params.pin,
+          onComplete:   () => { state._paymentInProgress = false; },
+          onCancel:     () => { state._paymentInProgress = false; },
+        });
+      })
+      .catch(() => {
+        state._payingInProgress = false;
         showToast('Could not verify check — try again', { bg: T.verm });
-        return;
-      }
-      const freshStatus = freshOrder.status || '';
-      if (freshStatus === 'closed' || freshStatus === 'paid') {
-        showToast('Check already settled', { bg: T.gold });
-        return;
-      }
-      if (!(freshOrder.balance_due > 0)) {
-        showToast('Nothing is owed on this check', { bg: T.gold });
-        return;
-      }
-      state._paymentInProgress = true;
-      SceneManager.mountWorking('payment', {
-        orderId:              state.orderId,
-        seatIds:              selectedIds,
-        seats:                seatSummary,
-        cardTotal:            cardTotal,
-        cashPrice:            cashPrice,
-        subtotal:             subtotal,
-        tax:                  tax,
-        managerDiscountTotal: freshOrder.manager_discount_total || 0,
-        isLastPayment:        isLastPayment,
-        returnTo:      'check-overview',
-        returnParams: {
-          checkId:       state.orderId,
-          returnLanding: params.returnLanding,
-          employeeId:    params.employeeId,
-          employeeName:  params.employeeName,
-          pin:           params.pin,
-        },
-        employeeId:   params.employeeId,
-        employeeName: params.employeeName,
-        pin:          params.pin,
-        onComplete:   () => { state._paymentInProgress = false; },
-        onCancel:     () => { state._paymentInProgress = false; },
       });
-    })
-    .catch(() => {
-      state._payingInProgress = false;
-      showToast('Could not verify check — try again', { bg: T.verm });
+  }
+
+  const orderItems = (state.order && state.order.items) || [];
+  const unassigned = orderItems.filter(
+    (it) => !it.voided && (!it.seat_number || it.seat_number === 0)
+  );
+  if (unassigned.length > 0) {
+    SceneManager.interrupt('co-unassigned-warn', {
+      count:     unassigned.length,
+      onConfirm: () => { _launchPayment(); },
+      onCancel:  () => { state._payingInProgress = false; },
     });
+  } else {
+    _launchPayment();
+  }
 }
 
 // ═══════════════════════════════════════════════════
