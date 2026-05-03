@@ -104,16 +104,7 @@ function ageColor(minutes) {
 // Per-server color palette — matches manager-landing/SRV_PALETTE exactly
 // so Dorothy looks like Dorothy across every screen. Deterministic hash
 // from server_id to a palette index; falls back to T.elec if no id.
-var SRV_PALETTE = [
-  '#38bdf8', // sky
-  '#a78bfa', // violet
-  '#fb923c', // peach
-  '#34d399', // emerald
-  '#facc15', // yellow
-  '#f472b6', // pink
-  '#e879f9', // fuchsia
-  '#4ade80', // green
-];
+var SRV_PALETTE = T.srvPalette;
 function serverColor(server_id) {
   if (!server_id) return T.elec;
   var s = String(server_id);
@@ -485,7 +476,7 @@ function buildChecksListCol(data, handlers, sceneState) {
 
   // Scrollable rows
   var list = document.createElement('div');
-  list.style.cssText = 'flex:1;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding-right:2px;';
+  list.style.cssText = 'flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding-right:2px;';
 
   if (data.openChecks.length === 0) {
     list.appendChild(buildEmptyState());
