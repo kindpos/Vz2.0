@@ -867,8 +867,8 @@ function renderFooterToolbar(state) {
   state.listeners.push({ el: undoBtn, event: 'pointercancel', handler: lpLeave });
   rightGrid.appendChild(undoBtn);
 
-  // CANCEL
-  var cancelBtn = buildActBtn({ label: 'CANCEL', bg: T.verm, dk: T.vermDk, color: '#fff', fontSize: T.fsB3 });
+  // RESET
+  var cancelBtn = buildActBtn({ label: 'RESET', bg: T.verm, dk: T.vermDk, color: '#fff', fontSize: T.fsB3 });
   cancelBtn.style.height = '100%';
   cancelBtn.addEventListener('pointerup', function() { clearMode(state); });
   state.listeners.push({ el: cancelBtn, event: 'pointerup', handler: function() { clearMode(state); } });
