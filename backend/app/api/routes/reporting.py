@@ -18,7 +18,7 @@ from app.api.dependencies import get_ledger
 from app.api.routes.auth import _extract_session, _record_diag
 from app.core.event_ledger import EventLedger
 from app.core.events import EventType
-from app.core.projections import project_orders
+from app.core.projections import project_orders, project_order
 from app.core.money import money_round
 from app.services.print_context_builder import PrintContextBuilder
 from app.core.financial_invariants import (
@@ -844,3 +844,246 @@ async def _hourly_for_date(ledger: EventLedger, date_str: str, open_hour: int = 
         })
 
     return result
+
+
+# =============================================================================
+# TRANSACTIONS LOG
+# =============================================================================
+
+@router.get("/transactions")
+async def get_transactions(
+    date_from: Optional[str] = Query(None, description="Start date (YYYY-MM-DD), defaults to today"),
+    date_to: Optional[str] = Query(None, description="End date (YYYY-MM-DD), defaults to today"),
+    day_part: Optional[list[str]] = Query(None, description="Filter by day_part (breakfast, lunch, dinner, late_night)"),
+    order_type: Optional[list[str]] = Query(None, description="Filter by order_type (dine_in, takeout, delivery, etc.)"),
+    payment_method: Optional[list[str]] = Query(None, description="Filter by payment_method (cash, card, split, comp)"),
+    server_id: Optional[list[str]] = Query(None, description="Filter by server_id"),
+    include_voids: bool = Query(False, description="Include voided orders"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=200, description="Results per page"),
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Paginated, filterable transaction log for reporting.
+
+    Filters are applied as: (day_part[0] OR day_part[1] ...) AND
+    (order_type[0] OR order_type[1] ...) AND ... (AND logic across groups,
+    OR logic within groups).
+    """
+    from app.core.financial_invariants import check_all_2dp, max_abs_diff
+
+    # Normalize dates
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if not date_from:
+        date_from = today
+    if not date_to:
+        date_to = today
+
+    # Convert date_to to next day (inclusive) for range query
+    date_to_dt = datetime.strptime(date_to, "%Y-%m-%d")
+    date_to_exclusive = (date_to_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # Fetch events for the date range
+    events = await ledger.get_events_by_date_range(date_from, date_to_exclusive, limit=50000)
+
+    # Group events by correlation_id (order_id) and project each order
+    orders_by_id: dict[str, list] = {}
+    for event in events:
+        cid = event.correlation_id
+        if cid:
+            if cid not in orders_by_id:
+                orders_by_id[cid] = []
+            orders_by_id[cid].append(event)
+
+    # Project orders
+    projected_orders = []
+    for order_id, order_events in orders_by_id.items():
+        order = project_order(order_events)
+        if order:
+            projected_orders.append(order)
+
+    # Filter: only closed orders, optionally exclude voids
+    closed_orders = [o for o in projected_orders if o.status in ("closed", "paid")]
+    if not include_voids:
+        closed_orders = [o for o in closed_orders if o.status != "voided"]
+
+    # Apply multi-value filters (OR within group, AND across groups)
+    filtered_orders = closed_orders
+
+    # Filter by day_part (OR)
+    if day_part:
+        filtered_orders = [o for o in filtered_orders if o.day_part in day_part]
+
+    # Filter by order_type (OR)
+    if order_type:
+        filtered_orders = [o for o in filtered_orders if o.order_type in order_type]
+
+    # Filter by server_id (OR)
+    if server_id:
+        filtered_orders = [o for o in filtered_orders if o.server_id in server_id]
+
+    # Filter by payment_method (OR)
+    if payment_method:
+        def get_payment_method(order):
+            if order.total == _ZERO:
+                return "comp"
+            if not order.payments:
+                return None
+            confirmed_payments = [p for p in order.payments if p.status == "confirmed"]
+            if not confirmed_payments:
+                return None
+            methods = set(p.method for p in confirmed_payments)
+            if len(methods) == 1:
+                return list(methods)[0]
+            else:
+                return "split"
+
+        filtered_orders = [o for o in filtered_orders if get_payment_method(o) in payment_method]
+
+    # Pagination
+    total_count = len(filtered_orders)
+    total_pages = (total_count + page_size - 1) // page_size
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paginated_orders = filtered_orders[start_idx:end_idx]
+
+    # Build response rows
+    results = []
+    for order in paginated_orders:
+        # Derive payment_method
+        if order.total == _ZERO:
+            payment_method_summary = "comp"
+        else:
+            confirmed_payments = [p for p in order.payments if p.status == "confirmed"]
+            if not confirmed_payments:
+                payment_method_summary = None
+            else:
+                methods = set(p.method for p in confirmed_payments)
+                if len(methods) == 1:
+                    payment_method_summary = list(methods)[0]
+                else:
+                    payment_method_summary = "split"
+
+        # Build card_last_four display
+        confirmed_payments = [p for p in order.payments if p.status == "confirmed"]
+        card_last_fours = [
+            p.card_last_four for p in confirmed_payments
+            if p.card_last_four and p.method == "card"
+        ]
+        if card_last_fours:
+            card_last_four_display = " / ".join(card_last_fours) if len(card_last_fours) > 1 else card_last_fours[0]
+        else:
+            card_last_four_display = None
+
+        # Item count
+        item_count = sum(item.quantity for item in order.items)
+
+        # Tip total
+        tip_total = sum(
+            Decimal(str(p.tip_amount)) for p in confirmed_payments
+        )
+
+        # Seats
+        seats = [
+            {"seat_number": int(sn), "subtotal": money_round(sb.item_subtotal)}
+            for sn, sb in order.seat_balances.items()
+        ]
+
+        # Items list
+        items_list = [
+            {
+                "item_id": item.item_id,
+                "name": item.name,
+                "quantity": item.quantity,
+                "unit_price": money_round(item.price),
+                "modifiers": [m.get("name") for m in item.modifiers],
+                "seat_number": item.seat_number,
+                "subtotal": money_round(item.subtotal),
+                "is_voided": False,
+            }
+            for item in order.items
+        ]
+
+        # Payments list
+        payments_list = [
+            {
+                "payment_id": p.payment_id,
+                "method": p.method,
+                "amount": money_round(p.amount),
+                "tip_amount": money_round(p.tip_amount),
+                "card_last_four": p.card_last_four,
+                "status": p.status,
+            }
+            for p in confirmed_payments
+        ]
+
+        # Discounts list
+        discounts_list = [
+            {
+                "discount_type": d.get("type"),
+                "amount": money_round(d.get("amount", _ZERO)),
+                "reason": d.get("reason"),
+                "approved_by": d.get("approved_by"),
+                "applied_at": d.get("approved_at"),
+            }
+            for d in order.discounts
+        ]
+
+        # Voids list (placeholder)
+        voids_list = []
+
+        row = {
+            "order_id": order.order_id,
+            "check_number": order.check_number,
+            "closed_at": order.closed_at.isoformat() if order.closed_at else None,
+            "server_id": order.server_id,
+            "server_name": order.server_name,
+            "order_type": order.order_type,
+            "day_part": order.day_part,
+            "table_number": order.table,
+            "guest_count": order.guest_count,
+            "item_count": item_count,
+            "subtotal": money_round(order.subtotal),
+            "discount_total": money_round(order.discount_total),
+            "tax": money_round(order.tax),
+            "total": money_round(order.total),
+            "tip_total": money_round(tip_total),
+            "payment_method": payment_method_summary,
+            "card_last_four": card_last_four_display,
+            "is_voided": order.status == "voided",
+            "items": items_list,
+            "payments": payments_list,
+            "discounts": discounts_list,
+            "voids": voids_list,
+            "seats": seats,
+        }
+
+        results.append(row)
+
+    # Run 2dp gate on all monetary fields in all rows
+    monetary_fields = {}
+    for idx, row in enumerate(results):
+        monetary_fields.update({
+            f"row_{idx}_subtotal": row["subtotal"],
+            f"row_{idx}_discount_total": row["discount_total"],
+            f"row_{idx}_tax": row["tax"],
+            f"row_{idx}_total": row["total"],
+            f"row_{idx}_tip_total": row["tip_total"],
+        })
+        for i, item in enumerate(row["items"]):
+            monetary_fields[f"row_{idx}_item_{i}_unit_price"] = item["unit_price"]
+            monetary_fields[f"row_{idx}_item_{i}_subtotal"] = item["subtotal"]
+        for i, payment in enumerate(row["payments"]):
+            monetary_fields[f"row_{idx}_payment_{i}_amount"] = payment["amount"]
+            monetary_fields[f"row_{idx}_payment_{i}_tip_amount"] = payment["tip_amount"]
+
+    gate_result = check_all_2dp(monetary_fields)
+    reconciliation_diff = max_abs_diff([gate_result]) if not gate_result.ok else None
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total_count": total_count,
+        "total_pages": total_pages,
+        "reconciliation_diff": reconciliation_diff,
+        "results": results,
+    }

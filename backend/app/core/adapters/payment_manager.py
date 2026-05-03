@@ -194,7 +194,11 @@ class PaymentManager:
         payload.update(result.model_dump())
         if extra:
             payload.update(extra)
-        
+
+        # Rename last_four to card_last_four for consistency with PAYMENT_CONFIRMED schema
+        if "last_four" in payload and event_type == EventType.PAYMENT_CONFIRMED:
+            payload["card_last_four"] = payload.pop("last_four")
+
         event = self._create_payment_event(event_type, payload)
         await self._ledger.append(event)
 

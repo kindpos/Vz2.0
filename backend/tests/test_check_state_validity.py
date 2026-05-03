@@ -218,44 +218,43 @@ async def test_split_child_order_fetchable_by_correlation():
 
 @pytest.mark.asyncio
 async def test_split_child_without_correlation_id_fails():
-    """Without correlation_id on CREATE, the child order can't be fetched
-    individually — demonstrating the bug this fix addresses."""
+    """With correlation_id now automatically set on CREATE, the child order
+    can be fetched individually — the ghost check bug is fixed."""
     async with EventLedger(_fresh_db()) as ledger:
-        child_id = "order_split_broken"
+        child_id = "order_split_fixed"
 
-        # Simulate the OLD buggy behavior: no correlation_id on CREATE
+        # order_created now ALWAYS sets correlation_id=order_id
         create_evt = order_created(
             terminal_id=TERMINAL,
             order_id=child_id,
             order_type="dine_in",
             guest_count=1,
         )
-        # Deliberately NOT setting correlation_id (old bug)
         await ledger.append(create_evt)
 
         add_evt = item_added(
             terminal_id=TERMINAL,
             order_id=child_id,
-            item_id="item_broken_1",
+            item_id="item_fixed_1",
             menu_item_id="menu_fries",
             name="Fries",
             price=5.00,
         )
         await ledger.append(add_evt)
 
-        # Fetch by correlation — CREATE event will be MISSING
+        # Fetch by correlation — CREATE event will be found
         events = await ledger.get_events_by_correlation(child_id)
         event_types = [e.event_type for e in events]
 
-        # The CREATE event is not in the results (no correlation_id)
-        assert EventType.ORDER_CREATED not in event_types, (
-            "Without correlation_id, CREATE should not appear in correlation query"
+        # The CREATE event is in the results (correlation_id now set automatically)
+        assert EventType.ORDER_CREATED in event_types, (
+            "With correlation_id set, CREATE should appear in correlation query"
         )
 
-        # Projection returns None because no ORDER_CREATED event found
+        # Projection succeeds because ORDER_CREATED event is found
         order = project_order(events, tax_rate=TAX_RATE)
-        assert order is None, (
-            "Without the CREATE event, projection should return None (the ghost check bug)"
+        assert order is not None, (
+            "With the CREATE event, projection should succeed"
         )
 
 

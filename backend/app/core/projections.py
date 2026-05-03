@@ -61,6 +61,7 @@ class Payment:
     tip_adjusted: bool = False  # True once a TIP_ADJUSTED event has been applied
     tax_amount: Decimal = Decimal("0.00")  # Tax captured at payment time
     seat_numbers: list[int] = field(default_factory=list)  # Seats covered by this payment
+    card_last_four: Optional[str] = None  # Last four digits of card; null for cash
 
 
 @dataclass
@@ -134,6 +135,8 @@ class Order:
     closed_at: Optional[datetime] = None
     voided_at: Optional[datetime] = None
     void_reason: Optional[str] = None
+    day_part: Optional[str] = None  # breakfast, lunch, dinner, late_night, all_day
+    order_type: Optional[str] = None  # dine_in, takeout, delivery, bar, etc.
 
     # Printing history
     print_history: list[dict] = field(default_factory=list)
@@ -253,6 +256,8 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                 guest_count=payload.get("guest_count", 1),
                 seat_numbers=list(payload.get("seat_numbers") or []),
                 created_at=event.timestamp,
+                day_part=payload.get("day_part"),
+                order_type=payload.get("order_type"),
             )
             if tax_rate is not None:
                 order._tax_rate = Decimal(str(tax_rate))
@@ -449,6 +454,7 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                         payment.transaction_id = payload.get("transaction_id")
                         payment.confirmed_at = event.timestamp
                         payment.tax_amount = Decimal(str(payload.get("tax", Decimal("0.00"))))
+                        payment.card_last_four = payload.get("card_last_four")
                         if payload.get("seat_numbers"):
                             payment.seat_numbers = payload["seat_numbers"]
                         # Distribute a payment slice to each covered seat.

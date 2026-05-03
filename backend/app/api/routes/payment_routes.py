@@ -532,6 +532,7 @@ async def process_cash_payment(
         amount=sale_amount,
         tax=order.tax,
         seat_numbers=request.seat_numbers,
+        card_last_four=None,
     )
 
     batch_events = [init_evt, confirm_evt]

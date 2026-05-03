@@ -472,12 +472,11 @@ def order_created(
         customer_name: Optional[str] = None,
         check_number: Optional[str] = None,
         seat_numbers: Optional[list[int]] = None,
+        day_part: Optional[str] = None,
+        order_type: Optional[str] = None,
         **kwargs
 ) -> Event:
     """Create an ORDER_CREATED event."""
-    # Accept and discard order_type kwarg from legacy callers; field has
-    # been removed from the active schema but tests still pass it.
-    kwargs.pop("order_type", None)
     payload = {
         "order_id": order_id,
         "check_number": check_number,
@@ -489,10 +488,17 @@ def order_created(
     }
     if seat_numbers is not None:
         payload["seat_numbers"] = list(seat_numbers)
+    if day_part is not None:
+        payload["day_part"] = day_part
+    if order_type is not None:
+        payload["order_type"] = order_type
+    # Remove correlation_id from kwargs if present to avoid conflict
+    kwargs.pop('correlation_id', None)
     return create_event(
         event_type=EventType.ORDER_CREATED,
         terminal_id=terminal_id,
         payload=payload,
+        correlation_id=order_id,
         **kwargs
     )
 
@@ -825,6 +831,7 @@ def payment_confirmed(
         amount: Decimal,
         tax: Decimal = Decimal("0.00"),
         seat_numbers: Optional[list[int]] = None,
+        card_last_four: Optional[str] = None,
         **kwargs
 ) -> Event:
     """Create a PAYMENT_CONFIRMED event.  Captures tax at payment time."""
@@ -837,6 +844,8 @@ def payment_confirmed(
     }
     if seat_numbers:
         payload["seat_numbers"] = seat_numbers
+    if card_last_four is not None:
+        payload["card_last_four"] = card_last_four
     return create_event(
         event_type=EventType.PAYMENT_CONFIRMED,
         terminal_id=terminal_id,

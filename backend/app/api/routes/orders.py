@@ -62,6 +62,7 @@ from app.api.routes.payment_routes import get_payment_manager, _ensure_devices
 from app.api.routes.auth import validate_pin_for_operation
 from app.services.print_context_builder import PrintContextBuilder
 from app.services.overseer_config_service import OverseerConfigService
+from app.services.store_config_service import StoreConfigService
 from app.core.adapters.base_payment import TransactionRequest as TxReq
 from app.core.events import (
     order_created,
@@ -131,6 +132,7 @@ class CreateOrderRequest(BaseModel):
     server_name: Optional[str] = None
     guest_count: int = Field(default=1, ge=1)
     customer_name: Optional[str] = None
+    order_type: Optional[str] = None
     # Authoritative list of seats the server set up on the check. Seat
     # numbers must be positive ints. When provided, takes precedence
     # over guest_count for seat tracking.
@@ -386,6 +388,75 @@ async def get_order_or_404(ledger: EventLedger, order_id: str) -> Order:
     return order
 
 
+async def _derive_day_part(ledger: EventLedger, timestamp: Optional[datetime] = None) -> Optional[str]:
+    """Derive day_part from timestamp + store's operating hours config.
+
+    Returns: "breakfast" | "lunch" | "dinner" | "late_night" | "all_day" | None
+    Returns None if operating hours are not configured.
+    """
+    if timestamp is None:
+        timestamp = datetime.now(timezone.utc)
+
+    try:
+        config_service = StoreConfigService(ledger)
+        config = await config_service.get_projected_config()
+        op_hours = config.operating_hours or {}
+
+        if not op_hours:
+            return None
+
+        dow = timestamp.weekday()  # 0=Monday
+        day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        day_name = day_names[dow]
+        day_config = op_hours.get(day_name)
+
+        if not day_config or not day_config.get("enabled"):
+            return None
+
+        hour = timestamp.hour
+
+        # Simple heuristic: breakfast (5-11), lunch (11-14), dinner (14-21), late_night (21-5)
+        if 5 <= hour < 11:
+            return "breakfast"
+        elif 11 <= hour < 14:
+            return "lunch"
+        elif 14 <= hour < 21:
+            return "dinner"
+        elif 21 <= hour < 24 or 0 <= hour < 5:
+            return "late_night"
+        else:
+            return "all_day"
+    except Exception:
+        # If config service fails, silently return None
+        return None
+
+
+async def _validate_order_type(ledger: EventLedger, order_type: Optional[str]) -> None:
+    """Validate order_type against store's configured order_types.
+
+    Raises 422 if order_type is provided but not in the store's enabled_types.
+    """
+    if order_type is None:
+        return
+
+    try:
+        config_service = StoreConfigService(ledger)
+        config = await config_service.get_projected_config()
+        order_types_config = config.order_types or {}
+        enabled_types = order_types_config.get("enabled_types", [])
+
+        if enabled_types and order_type not in enabled_types:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"order_type '{order_type}' is not in the store's enabled_types: {enabled_types}",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # If config service fails, silently allow the order_type
+        pass
+
+
 # =============================================================================
 # ROUTES
 # =============================================================================
@@ -446,6 +517,12 @@ async def create_order(
     seat_numbers = list(request.seat_numbers) if request.seat_numbers else None
     guest_count = len(seat_numbers) if seat_numbers else request.guest_count
 
+    # Validate order_type if provided
+    await _validate_order_type(ledger, request.order_type)
+
+    # Derive day_part from current timestamp + store operating hours
+    day_part = await _derive_day_part(ledger)
+
     event = order_created(
         terminal_id=settings.terminal_id,
         order_id=order_id,
@@ -456,6 +533,8 @@ async def create_order(
         customer_name=request.customer_name,
         check_number=check_number,
         seat_numbers=seat_numbers,
+        day_part=day_part,
+        order_type=request.order_type,
         idempotency_key=idem_key,
     )
     # Distinct check-timeline anchor. Batched with ORDER_CREATED so the
