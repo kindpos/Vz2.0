@@ -33,11 +33,14 @@ export async function loadEmployeeData() {
     if (roleRes.status === 'fulfilled' && roleRes.value.ok) {
         const roles = await roleRes.value.json();
         if (roles.length > 0) {
-            ROLES = roles.map(r => ({
+            const customMapped = roles.map(r => ({
                 id: r.role_id,
                 label: r.name,
                 permissionLevel: r.permission_level,
             }));
+            const defaultIds = new Set(DEFAULT_ROLES.map(r => r.id));
+            const newOnly = customMapped.filter(r => !defaultIds.has(r.id));
+            ROLES = [...DEFAULT_ROLES, ...newOnly];
         }
     }
     _rolesMap = {};
