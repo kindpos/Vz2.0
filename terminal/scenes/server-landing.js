@@ -981,45 +981,51 @@ defineScene({
               return;
             }
 
-            // Second tap confirmed — void each selected check
+            // Second tap confirmed — require manager PIN before voiding
             state._voidPending    = false;
             state._voidPendingKey = null;
-            const toVoid  = selected.slice();
-            let voided  = 0, vFailed = 0;
-            function _finishVoid() {
-              if (voided + vFailed !== toVoid.length) return;
-              if (voided > 0) {
-                state.selectedIds = [];
-                state.selectedAt  = {};
-                refresh();
-              }
-              showToast(
-                vFailed === 0
-                  ? `Voided ${voided} check${(voided === 1 ? '' : 's')}`
-                  : voided + ` voided, ${vFailed} failed`,
-                { bg: vFailed === 0 ? T.green : T.gold, duration: 2000 }
-              );
-            }
-            showToast(voidMsg.replace('?', '…'), { bg: T.verm, duration: 1200 });
-            toVoid.forEach((o) => {
-              fetchWithTimeout(
-                `/api/v1/orders/${o.order_id}/void`,
-                {
-                  method:  'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body:    JSON.stringify({
-                    pin:         state.emp ? state.emp.pin : '',
-                    reason:      'server void',
-                    approved_by: state.emp ? (state.emp.id || state.emp.employee_id) : null,
-                  }),
-                }, 10000
-              ).then((r) => {
-                if (r.ok) voided++; else vFailed++;
-                _finishVoid();
-              }).catch(() => {
-                vFailed++;
-                _finishVoid();
-              });
+            const toVoid = selected.slice();
+            SceneManager.interrupt('manager-pin', {
+              context: 'void',
+              onConfirm: (pinBuf, empId) => {
+                let voided = 0, vFailed = 0;
+                function _finishVoid() {
+                  if (voided + vFailed !== toVoid.length) return;
+                  if (voided > 0) {
+                    state.selectedIds = [];
+                    state.selectedAt  = {};
+                    refresh();
+                  }
+                  showToast(
+                    vFailed === 0
+                      ? `Voided ${voided} check${(voided === 1 ? '' : 's')}`
+                      : voided + ` voided, ${vFailed} failed`,
+                    { bg: vFailed === 0 ? T.green : T.gold, duration: 2000 }
+                  );
+                }
+                showToast(voidMsg.replace('?', '…'), { bg: T.verm, duration: 1200 });
+                toVoid.forEach((o) => {
+                  fetchWithTimeout(
+                    `/api/v1/orders/${o.order_id}/void`,
+                    {
+                      method:  'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body:    JSON.stringify({
+                        pin:         pinBuf,
+                        reason:      'Manager void',
+                        approved_by: empId,
+                      }),
+                    }, 10000
+                  ).then((r) => {
+                    if (r.ok) voided++; else vFailed++;
+                    _finishVoid();
+                  }).catch(() => {
+                    vFailed++;
+                    _finishVoid();
+                  });
+                });
+              },
+              onCancel: () => {},
             });
             return;
           }
