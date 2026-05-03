@@ -13,7 +13,7 @@
  * 
  * 2. Entry (Add Items):
  *    - User taps "ADD ITEMS" in check-overview.
- *    - Navigation to order-entry.js happens with currentOrderId=null.
+ *    - Navigation to order-entry.js happens with state.currentOrderId=null.
  *    - Order is NOT created yet (Fixed: premature POST removed from check-overview).
  * 
  * 3. Order Entry:
@@ -63,7 +63,10 @@ const OVERLAP  = 18;
 const API = '/api/v1';
 
 // ── Order ID — one per transaction, reset on fresh enter ──
-let currentOrderId = null;
+// Held in a per-mount state object so that a fresh render() always gets a
+// clean reference and stale callbacks (e.g. interrupt onConfirm fired after
+// unmount → remount) cannot accidentally write to a previous mount's state.
+let state = { currentOrderId: null };
 const _header = null;
 let isSending = false;   // guard against concurrent handleSend calls
 
@@ -85,17 +88,26 @@ let currentCustomerName = null;
 // Per-scene idempotency key for POST /orders. If SEND/SAVE fails after
 // the backend already created the order (e.g. client timeout), retrying
 // with the same key causes the ledger to return the same event instead
-// of minting a duplicate C-NNN. Cleared once currentOrderId is set.
+// of minting a duplicate C-NNN. Cleared once state.currentOrderId is set.
 let createOrderIdemKey = null;
 
 function _handleNameTap() {
-  if (!currentOrderId) {
+  if (!state.currentOrderId) {
     showToast('Send items first to name this check', { bg: T.gold, duration: 2000 });
     return;
   }
   SceneManager.interrupt('oe-name-input', {
     onConfirm: (name) => {
-      fetchWithTimeout(API + `/orders/${currentOrderId}`, {
+      if (state.currentOrderId == null) {
+        entReport({
+          code:    'UI-031',
+          source:  'order-entry._handleNameTap',
+          message: 'PATCH skipped — currentOrderId is null/undefined',
+          ctx:     { name },
+        });
+        return;
+      }
+      fetchWithTimeout(API + `/orders/${state.currentOrderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customer_name: name }),
@@ -672,7 +684,7 @@ defineScene({
     ticket         = [];
     ticketSeq      = 0;
     sceneParams    = params;
-    currentOrderId = null;
+    state          = { currentOrderId: null };  // fresh state object per mount
     isSending      = false;
     currentCheckNumber = null;
     currentCustomerName = null;
@@ -732,7 +744,7 @@ defineScene({
     if (!_menuFetched) fetchMenuFromAPI().catch(() => { console.error('[KINDpos] Menu fetch failed on mount'); });
 
     if (params.recallOrderId) {
-      currentOrderId = params.recallOrderId;
+      state.currentOrderId = params.recallOrderId;
       currentCheckNumber = params.recallCheckNumber || null;
       recallFromBackend(params.recallOrderId);
     }
@@ -767,7 +779,7 @@ defineScene({
     modHistory     = [];
     modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], activeSizes: {}, panelEl: null, hasPizza: false };
     comboFlow      = null;
-    currentOrderId = null;
+    state.currentOrderId = null;
     isSending      = false;
     currentCheckNumber = null;
     currentCustomerName = null;
@@ -1086,8 +1098,8 @@ defineScene({
   __handlers: {
     get ticket()                { return ticket; },
     set ticket(v)               { ticket = v; },
-    get currentOrderId()        { return currentOrderId; },
-    set currentOrderId(v)       { currentOrderId = v; },
+    get currentOrderId()        { return state.currentOrderId; },
+    set currentOrderId(v)       { state.currentOrderId = v; },
     get createOrderIdemKey()    { return createOrderIdemKey; },
     set createOrderIdemKey(v)   { createOrderIdemKey = v; },
     get isSending()             { return isSending; },
@@ -4448,7 +4460,7 @@ async function handleSaveOnly() {
 
   try {
     // Step 1 — create order if needed
-    if (!currentOrderId) {
+    if (!state.currentOrderId) {
       if (!createOrderIdemKey) createOrderIdemKey = _idemKey();
       let createRes = await fetchWithTimeout(API + '/orders', {
         method: 'POST',
@@ -4467,7 +4479,7 @@ async function handleSaveOnly() {
       if (!createRes.ok) throw new Error(`Order create failed: ${createRes.status}`);
       let created = await createRes.json();
       if (!created || !created.order_id) throw new Error('Invalid order response — missing order_id');
-      currentOrderId = created.order_id;
+      state.currentOrderId = created.order_id;
       currentCheckNumber = created.check_number;
     }
 
@@ -4479,7 +4491,7 @@ async function handleSaveOnly() {
     for (let ui = 0; ui < unsentInstances.length; ui++) {
       let inst = unsentInstances[ui];
       if (inst.backendItemId) continue;
-      itemPromises.push({ inst, promise: fetchWithTimeout(API + `/orders/${currentOrderId}/items`, {
+      itemPromises.push({ inst, promise: fetchWithTimeout(API + `/orders/${state.currentOrderId}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': inst.idemKey || _idemKey() },
         body: JSON.stringify(_buildItemPayload(inst)),
@@ -4500,7 +4512,7 @@ async function handleSaveOnly() {
     if (anyFailed) throw new Error('Some items failed to save');
 
     showToast('Items saved', { bg: T.greenWarm, duration: 1500 });
-    if (currentOrderId) SceneManager.emit('order:updated', { orderId: currentOrderId });
+    if (state.currentOrderId) SceneManager.emit('order:updated', { orderId: state.currentOrderId });
   } catch (err) {
     console.warn('[KINDpos] Save failed:', err);
     showToast('Save failed', { bg: T.verm });
@@ -4517,11 +4529,11 @@ async function handleSend() {
   const unsentInstances = ticket.filter((inst) => !inst.sent);
 
   // All items already sent — resend to kitchen only
-  if (unsentInstances.length === 0 && currentOrderId) {
+  if (unsentInstances.length === 0 && state.currentOrderId) {
     setSending(true);
     try {
-      await fetchWithTimeout(API + `/orders/${currentOrderId}/send`, { method: 'POST' }, 15000);
-      fetchWithTimeout(API + `/print/ticket/${currentOrderId}`, { method: 'POST' }, 15000)
+      await fetchWithTimeout(API + `/orders/${state.currentOrderId}/send`, { method: 'POST' }, 15000);
+      fetchWithTimeout(API + `/print/ticket/${state.currentOrderId}`, { method: 'POST' }, 15000)
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
         .catch((err) => {
           console.warn('[KINDpos] Kitchen print failed:', err);
@@ -4542,7 +4554,7 @@ async function handleSend() {
 
   try {
     // Step 1 — create order on first send, reuse on subsequent sends
-    if (!currentOrderId) {
+    if (!state.currentOrderId) {
       if (!createOrderIdemKey) createOrderIdemKey = _idemKey();
       const createRes = await fetchWithTimeout(API + '/orders', {
         method: 'POST',
@@ -4561,7 +4573,7 @@ async function handleSend() {
       if (!createRes.ok) throw new Error(`Order create failed: ${createRes.status}`);
       const created = await createRes.json();
       if (!created || !created.order_id) throw new Error('Invalid order response — missing order_id');
-      currentOrderId = created.order_id;   // use the backend-generated ID
+      state.currentOrderId = created.order_id;   // use the backend-generated ID
       currentCheckNumber = created.check_number;
     }
 
@@ -4573,7 +4585,7 @@ async function handleSend() {
     for (let ui = 0; ui < unsentInstances.length; ui++) {
       const inst = unsentInstances[ui];
       if (inst.backendItemId) continue;
-      itemPromises.push({ inst, promise: fetchWithTimeout(API + `/orders/${currentOrderId}/items`, {
+      itemPromises.push({ inst, promise: fetchWithTimeout(API + `/orders/${state.currentOrderId}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': inst.idemKey || _idemKey() },
         body: JSON.stringify(_buildItemPayload(inst)),
@@ -4599,7 +4611,7 @@ async function handleSend() {
     // r.ok: fetch resolves for 4xx/5xx too, so without this guard a 500
     // here would let us fall through to line 3586 and mark every item
     // `sent` even though kitchen never got them — UI and ledger diverge.
-    const sendRes = await fetchWithTimeout(API + `/orders/${currentOrderId}/send`, { method: 'POST' }, 15000);
+    const sendRes = await fetchWithTimeout(API + `/orders/${state.currentOrderId}/send`, { method: 'POST' }, 15000);
     if (!sendRes.ok) {
       renderTicket();
       throw new Error(`Send to kitchen failed: HTTP ${sendRes.status}`);
@@ -4609,7 +4621,7 @@ async function handleSend() {
     ticket.forEach((inst) => { inst.sent = true; });
 
     // Fire kitchen print — non-blocking, dispatcher handles retry
-    fetchWithTimeout(API + `/print/ticket/${currentOrderId}`, { method: 'POST' }, 15000)
+    fetchWithTimeout(API + `/print/ticket/${state.currentOrderId}`, { method: 'POST' }, 15000)
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
       .catch((err) => {
         console.warn('[KINDpos] Kitchen print failed:', err);
@@ -4629,7 +4641,7 @@ async function handleSend() {
 
   // Notify other scenes (server-landing, etc.) that this check just
   // changed state so any subscribed tile refreshes.
-  if (currentOrderId) SceneManager.emit('order:updated', { orderId: currentOrderId });
+  if (state.currentOrderId) SceneManager.emit('order:updated', { orderId: state.currentOrderId });
 
   // Reset hex nav — ticket stays visible for PAY
 
@@ -4654,7 +4666,7 @@ async function handleClose() {
   OrderSummary.hide();
   // Param shape lives in scenes/transitions.js so the order-entry and
   // check-overview sides of the handoff share one source of truth.
-  SceneManager.mountWorking('check-overview', buildCheckOverviewParams(currentOrderId, sceneParams));
+  SceneManager.mountWorking('check-overview', buildCheckOverviewParams(state.currentOrderId, sceneParams));
 }
 
 // ── RECALL FROM BACKEND (open saved check) ──────
@@ -4669,7 +4681,7 @@ function recallFromBackend(orderId) {
     })
     .then((order) => {
       if (SceneManager.getActiveWorking() !== 'order-entry') return;
-      currentOrderId = order.order_id;
+      state.currentOrderId = order.order_id;
       currentCheckNumber = order.check_number || null;
       if (currentCheckNumber) {
         OrderSummary.update({ checkId: currentCheckNumber });
