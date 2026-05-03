@@ -78,31 +78,31 @@ var MOCK_MENU = [
   {
     key: 'BURGERS', label: 'Burgers', color: '#fb923c',
     items: [
-      { itemKey: 'burger-classic',   name: 'Classic Burger',   price: 12.50, popularity: 1 },
-      { itemKey: 'burger-cheese',    name: 'Cheeseburger',     price: 13.50, popularity: 2 },
-      { itemKey: 'burger-double',    name: 'Double Smash',     price: 15.00, popularity: 3 },
-      { itemKey: 'burger-bacon',     name: 'Bacon Burger',     price: 14.50, popularity: 4 },
-      { itemKey: 'burger-mushroom',  name: 'Mushroom Swiss',   price: 14.00, popularity: 5 },
-      { itemKey: 'burger-veggie',    name: 'Veggie Burger',    price: 12.00, popularity: 6 },
+      { itemKey: 'burger-classic',   name: 'Classic Burger',   price: 12.50, popularity: 1, modifier_groups: [] },
+      { itemKey: 'burger-cheese',    name: 'Cheeseburger',     price: 13.50, popularity: 2, modifier_groups: [] },
+      { itemKey: 'burger-double',    name: 'Double Smash',     price: 15.00, popularity: 3, modifier_groups: [] },
+      { itemKey: 'burger-bacon',     name: 'Bacon Burger',     price: 14.50, popularity: 4, modifier_groups: [] },
+      { itemKey: 'burger-mushroom',  name: 'Mushroom Swiss',   price: 14.00, popularity: 5, modifier_groups: [] },
+      { itemKey: 'burger-veggie',    name: 'Veggie Burger',    price: 12.00, popularity: 6, modifier_groups: [] },
     ],
   },
   {
     key: 'SIDES', label: 'Sides', color: '#facc15',
     items: [
-      { itemKey: 'fries-sm',   name: 'Fries (Sm)',    price: 3.50, popularity: 1 },
-      { itemKey: 'fries-lg',   name: 'Fries (Lg)',    price: 4.50, popularity: 2 },
-      { itemKey: 'rings',      name: 'Onion Rings',   price: 5.00, popularity: 3 },
-      { itemKey: 'coleslaw',   name: 'Coleslaw',      price: 2.50, popularity: 4 },
+      { itemKey: 'fries-sm',   name: 'Fries (Sm)',    price: 3.50, popularity: 1, modifier_groups: [] },
+      { itemKey: 'fries-lg',   name: 'Fries (Lg)',    price: 4.50, popularity: 2, modifier_groups: [] },
+      { itemKey: 'rings',      name: 'Onion Rings',   price: 5.00, popularity: 3, modifier_groups: [] },
+      { itemKey: 'coleslaw',   name: 'Coleslaw',      price: 2.50, popularity: 4, modifier_groups: [] },
     ],
   },
   {
     key: 'DRINKS', label: 'Drinks', color: '#e879f9',
     items: [
-      { itemKey: 'soda-sm',  name: 'Soda (Sm)',    price: 2.00, popularity: 1 },
-      { itemKey: 'soda-lg',  name: 'Soda (Lg)',    price: 2.75, popularity: 2 },
-      { itemKey: 'shake',    name: 'Milkshake',    price: 5.50, popularity: 3 },
-      { itemKey: 'water',    name: 'Water',        price: 0.00, popularity: 4 },
-      { itemKey: 'lemonade', name: 'Lemonade',     price: 3.00, popularity: 5 },
+      { itemKey: 'soda-sm',  name: 'Soda (Sm)',    price: 2.00, popularity: 1, modifier_groups: [] },
+      { itemKey: 'soda-lg',  name: 'Soda (Lg)',    price: 2.75, popularity: 2, modifier_groups: [] },
+      { itemKey: 'shake',    name: 'Milkshake',    price: 5.50, popularity: 3, modifier_groups: [] },
+      { itemKey: 'water',    name: 'Water',        price: 0.00, popularity: 4, modifier_groups: [] },
+      { itemKey: 'lemonade', name: 'Lemonade',     price: 3.00, popularity: 5, modifier_groups: [] },
     ],
   },
 ];
@@ -1293,8 +1293,8 @@ function handleItemTap(itemKey) {
         name:            item.name,
         unitPrice:       parseFloat(item.price || 0),
         itemKey:         item.itemKey || item.key || item.name,
-        modifier_groups: item.modifier_groups,
-        mods:            [],
+        modifier_groups: item.modifier_groups || [],
+        mods:            item.modifier_groups || [],
       },
       onConfirm: function(configuredItem) {
         addItem(configuredItem);
@@ -1657,7 +1657,8 @@ function fetchMenuData() {
       // Build modifier_groups lookup by id
       var modGroupsById = {};
       (menu.modifier_groups || []).forEach(function(grp) {
-        if (grp.group_id) modGroupsById[grp.group_id] = grp;
+        var gid = grp.group_id || grp.id;
+        if (gid) modGroupsById[gid] = grp;
       });
 
       var cats = (menu.categories || []).slice();
@@ -1675,7 +1676,7 @@ function fetchMenuData() {
         var items = rawItems.map(function(it) {
           // Resolve modifier_groups from mandatory_group_ids
           var modGroups = [];
-          var mandatoryIds = it.mandatory_group_ids || [];
+          var mandatoryIds = it.mandatory_group_ids || it.modifier_group_ids || it.mod_group_ids || [];
           mandatoryIds.forEach(function(gid) {
             if (modGroupsById[gid]) {
               modGroups.push(modGroupsById[gid]);
