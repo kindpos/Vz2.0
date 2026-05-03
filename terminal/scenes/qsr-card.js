@@ -40,6 +40,7 @@ function _lighten(hex, pct) {
 import { showToast } from '../components.js';
 import { fmt } from './checkout-core.js';
 import { fetchWithTimeout } from '../net.js';
+import { entReport } from '../entomology-client.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS
@@ -65,6 +66,8 @@ var state = {
   readerPending:    false,  // true while waiting for reader response
   cancelFn:         null,   // set by reader integration in Chunk 2
   _submitting:      false,  // true from first POST until response resolves
+  idempotencyKey:   null,   // current payment's idempotency key for retry/check
+  recoveryActive:   false,  // true when recovery screen is displayed
 };
 
 var els = {};
@@ -491,6 +494,117 @@ function setReaderStatus(text, color) {
 }
 
 // ─────────────────────────────────────────────────
+//  PAYMENT RECOVERY SCREEN
+// ─────────────────────────────────────────────────
+
+function buildRecoveryScreen() {
+  var container = document.createElement('div');
+  container.style.cssText = [
+    'position:absolute;',
+    'left:' + (RECAP_W + 1) + 'px;',
+    'top:' + T.headerH + 'px;',
+    'width:' + RIGHT_W + 'px;',
+    'height:' + CONTENT_H + 'px;',
+    'background:' + T.bg + ';',
+    'display:flex;flex-direction:column;',
+    'padding:' + T.scenePad + 'px;',
+    'box-sizing:border-box;',
+    'z-index:10;',
+  ].join('');
+
+  // Title
+  var title = document.createElement('div');
+  title.style.cssText = [
+    'font-family:' + T.fh + ';',
+    'font-size:24px;font-weight:' + T.fwBold + ';',
+    'color:' + T.warning + ';',
+    'margin-bottom:16px;',
+  ].join('');
+  title.textContent = 'Payment Status Unknown';
+  container.appendChild(title);
+
+  // Body text
+  var body = document.createElement('div');
+  body.style.cssText = [
+    'font-family:' + T.fb + ';',
+    'font-size:14px;color:' + T.text + ';',
+    'line-height:1.5;margin-bottom:24px;',
+  ].join('');
+  body.textContent = 'The payment request timed out. The charge may or may not have been processed.';
+  container.appendChild(body);
+
+  // Spacer
+  var spacer = document.createElement('div');
+  spacer.style.cssText = 'flex:1;';
+  container.appendChild(spacer);
+
+  // Button row — three buttons, stacked vertically
+  var buttonRow = document.createElement('div');
+  buttonRow.style.cssText = 'display:flex;flex-direction:column;gap:10px;flex-shrink:0;';
+
+  // CHECK ORDER STATUS button
+  var checkBtn = document.createElement('div');
+  checkBtn.style.cssText = [
+    'height:44px;border-radius:' + T.chamferBtn + 'px;',
+    'border:1.5px solid ' + T.green + ';',
+    'background:' + hexToRgba(T.green, 0.18) + ';',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  var checkLabel = document.createElement('span');
+  checkLabel.style.cssText = [
+    'font-family:' + T.fb + ';font-size:14px;',
+    'font-weight:' + T.fwBold + ';color:' + T.green + ';',
+  ].join('');
+  checkLabel.textContent = 'CHECK ORDER STATUS';
+  checkBtn.appendChild(checkLabel);
+  checkBtn.addEventListener('pointerup', handleCheckOrderStatus);
+
+  // TRY AGAIN button
+  var retryBtn = document.createElement('div');
+  retryBtn.style.cssText = [
+    'height:44px;border-radius:' + T.chamferBtn + 'px;',
+    'border:1.5px solid ' + T.elec + ';',
+    'background:' + hexToRgba(T.elec, 0.18) + ';',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  var retryLabel = document.createElement('span');
+  retryLabel.style.cssText = [
+    'font-family:' + T.fb + ';font-size:14px;',
+    'font-weight:' + T.fwBold + ';color:' + T.elec + ';',
+  ].join('');
+  retryLabel.textContent = 'TRY AGAIN';
+  retryBtn.appendChild(retryLabel);
+  retryBtn.addEventListener('pointerup', handlePaymentRetry);
+
+  // CANCEL button
+  var cancelBtn = document.createElement('div');
+  cancelBtn.style.cssText = [
+    'height:44px;border-radius:' + T.chamferBtn + 'px;',
+    'border:1.5px solid ' + T.verm + ';',
+    'background:' + T.card + ';',
+    'display:flex;align-items:center;justify-content:center;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  var cancelLabel = document.createElement('span');
+  cancelLabel.style.cssText = [
+    'font-family:' + T.fb + ';font-size:14px;',
+    'font-weight:' + T.fwBold + ';color:' + T.verm + ';',
+  ].join('');
+  cancelLabel.textContent = 'CANCEL';
+  cancelBtn.appendChild(cancelLabel);
+  cancelBtn.addEventListener('pointerup', handleRecoveryCancel);
+
+  buttonRow.appendChild(checkBtn);
+  buttonRow.appendChild(retryBtn);
+  buttonRow.appendChild(cancelBtn);
+  container.appendChild(buttonRow);
+
+  return container;
+}
+
+// ─────────────────────────────────────────────────
 //  READER PAYMENT FLOW  — Pattern A (backend-mediated)
 //
 //  POST /api/v1/payments/sale — backend drives the Dejavoo reader
@@ -519,7 +633,9 @@ function initiateReaderPayment() {
   };
 
   var orderId = state.order.orderId;
-  var txId = 'qsr-card-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  // Reuse idempotency key if retrying, otherwise generate new one
+  var txId = state.idempotencyKey || ('qsr-card-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  state.idempotencyKey = txId;
   var payload = {
     order_id:        orderId || '',
     amount:          state.chargeAmount,
@@ -550,10 +666,21 @@ function initiateReaderPayment() {
       return;
     }
     state._submitting = false;
-    setReaderStatus(err.message || 'Connection error', T.verm);
     state.readerPending = false;
-    showToast('Reader error — try again or use cash');
-    if (els.cancelBtn) els.cancelBtn.style.pointerEvents = 'auto';
+
+    // Network timeout/error: show recovery screen instead of silent failure
+    entReport({
+      code: 'QSR_PAYMENT_TIMEOUT',
+      source: 'qsr-card',
+      message: err.message || 'Payment request timeout',
+      ctx: {
+        orderId: state.order.orderId || '',
+        idempotencyKey: state.idempotencyKey || '',
+      },
+      level: 'warn',
+    });
+
+    showRecoveryScreen();
   });
 }
 
@@ -615,6 +742,91 @@ function routeToComplete(paymentPayload) {
 }
 
 // ─────────────────────────────────────────────────
+//  RECOVERY SCREEN HANDLERS
+// ─────────────────────────────────────────────────
+
+function showRecoveryScreen() {
+  if (els.rightSurface) els.rightSurface.style.display = 'none';
+  var recoveryEl = buildRecoveryScreen();
+  document.querySelector('[data-scene="qsr-card"]')?.appendChild(recoveryEl);
+  state.recoveryActive = true;
+  els.recoveryScreen = recoveryEl;
+}
+
+function hideRecoveryScreen() {
+  if (els.recoveryScreen) {
+    els.recoveryScreen.remove();
+    els.recoveryScreen = null;
+  }
+  if (els.rightSurface) els.rightSurface.style.display = 'flex';
+  state.recoveryActive = false;
+}
+
+function handleCheckOrderStatus() {
+  var orderId = state.order.orderId;
+  if (!orderId) {
+    showToast('Order ID not found');
+    return;
+  }
+
+  fetchWithTimeout('/api/v1/orders/' + orderId, {}, 10000)
+    .then(function(res) {
+      if (!res.ok) {
+        showToast('Failed to check order status');
+        return;
+      }
+      return res.json();
+    })
+    .then(function(orderData) {
+      if (!orderData) return;
+
+      // Check if a confirmed payment exists matching the idempotency_key
+      var payments = orderData.payments || [];
+      var confirmedPayment = payments.find(function(p) {
+        return p.status === 'confirmed' && p.idempotency_key === state.idempotencyKey;
+      });
+
+      if (confirmedPayment) {
+        // Payment succeeded — route to complete
+        hideRecoveryScreen();
+        routeToComplete({
+          tip_amount:  confirmedPayment.tip_amount || 0,
+          card_last4:  confirmedPayment.card_last4 || '',
+          card_brand:  confirmedPayment.card_brand || '',
+        });
+      } else {
+        // Payment not found — still unclear
+        showToast('Payment status: Not confirmed. Try again or contact support.');
+      }
+    })
+    .catch(function(err) {
+      showToast('Could not reach server to check status');
+    });
+}
+
+function handlePaymentRetry() {
+  hideRecoveryScreen();
+  // Reset reader UI state
+  state.readerPending = false;
+  state._submitting = false;
+  setReaderStatus('Retrying…', T.warning);
+  if (els.cancelBtn) els.cancelBtn.style.pointerEvents = 'none';
+  // Retry with same idempotency key (safe due to idempotency guard)
+  initiateReaderPayment();
+}
+
+function handleRecoveryCancel() {
+  hideRecoveryScreen();
+  showToast('Payment cancelled. Verify with manager if card was charged.');
+  SceneManager.mountWorking('qsr-order', {
+    items:            state.order.items,
+    ticketNumber:     state.order.ticketNumber,
+    ticketName:       state.order.ticketName,
+    cashDiscountRate: state.order.cashDiscountRate,
+  });
+}
+
+// ─────────────────────────────────────────────────
 //  CANCEL HANDLER
 // ─────────────────────────────────────────────────
 
@@ -639,6 +851,8 @@ defineScene('qsr-card', {
     state.readerPending = false;
     state.cancelFn      = null;
     state._submitting   = false;
+    state.idempotencyKey = null;
+    state.recoveryActive = false;
 
     var recapEl = buildFrozenRecap(state.order);
     var rightEl = buildRightSurface();
@@ -652,6 +866,7 @@ defineScene('qsr-card', {
     if (state.cancelFn) state.cancelFn();
     state.cancelFn      = null;
     state.readerPending = false;
+    hideRecoveryScreen();
     els = {};
   },
 });

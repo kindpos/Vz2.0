@@ -1231,12 +1231,20 @@ function postPartialPayment(payment, key, callback) {
       return;
     }
     if (key) state.completedSplitKeys.push(key);
+    // Persist split state: fetch order and read back confirmed payments
+    syncSplitStateFromBackend(orderId);
     callback(true);
   })
   .catch(function() {
     showToast('Network error — payment may not have recorded');
     callback(false);
   });
+}
+
+function syncSplitStateFromBackend(orderId) {
+  fetchWithTimeout('/api/v1/orders/' + orderId, {}, 5000)
+    .then(function(res) { return res.ok ? res.json() : null; })
+    .catch(function() { /* silent — sync is non-critical */ });
 }
 
 // ─────────────────────────────────────────────────
@@ -1406,6 +1414,67 @@ function handleSplitRecoveryCancel() {
 }
 
 // ─────────────────────────────────────────────────
+//  SPLIT STATE INITIALIZATION & RECOVERY
+// ─────────────────────────────────────────────────
+
+function initializeSplitState(orderId) {
+  var didRecover = false;
+  var recoveryToastShown = false;
+
+  fetchWithTimeout('/api/v1/orders/' + orderId, {}, 5000)
+    .then(function(res) { return res.ok ? res.json() : null; })
+    .then(function(orderData) {
+      if (!orderData) return;
+
+      // Read confirmed payments from backend
+      var confirmedPayments = (orderData.payments || []).filter(function(p) {
+        return p.status === 'confirmed';
+      });
+
+      if (confirmedPayments.length === 0) return;
+
+      // Reconstruct state.payments from confirmed payments
+      state.payments = confirmedPayments.map(function(bp) {
+        return {
+          method:         bp.method || 'unknown',
+          amount:         bp.amount || 0,
+          tendered:       bp.tendered,
+          changeDue:      bp.changeDue,
+          tip_amount:     bp.tip_amount,
+          cardLast4:      bp.card_last4,
+          cardBrand:      bp.card_brand,
+          tax:            bp.tax || 0,
+        };
+      });
+
+      // Reconstruct completedSplitKeys from backend payment idempotency keys
+      state.completedSplitKeys = confirmedPayments
+        .map(function(p) { return p.idempotency_key; })
+        .filter(function(k) { return k; });
+
+      // Recalculate remaining balance
+      computeRemaining();
+
+      // Check if order is fully paid
+      if (state.remaining <= 0) {
+        // Order already paid in full — route to complete
+        routeToComplete();
+        return;
+      }
+
+      // Partial payments exist — show recovery toast
+      if (confirmedPayments.length > 0) {
+        showToast('Resuming split — ' + confirmedPayments.length + ' payment(s) already confirmed.');
+        recoveryToastShown = true;
+        didRecover = true;
+      }
+    })
+    .catch(function() {
+      // Config lookup failed — continue normally
+    });
+}
+
+// ─────────────────────────────────────────────────
 //  SCENE REGISTRATION
 // ─────────────────────────────────────────────────
 
@@ -1446,6 +1515,11 @@ defineScene('qsr-split', {
     container.appendChild(rightEl);
 
     renderPhase();
+
+    // Recover split state from backend if orderId is provided
+    if (state.order.orderId) {
+      initializeSplitState(state.order.orderId);
+    }
   },
 
   unmount: function() {
