@@ -11,6 +11,13 @@ let _summaryStrip     = null;
 let _currentPage      = 1;
 let _tabRowEl         = null;
 let _tableWrapEl      = null;
+let _modalEl          = null;
+let _modalOrderId     = null;
+let _modalCheckNumEl  = null;
+let _modalMetaTopEl   = null;
+let _modalMetaSubEl   = null;
+let _modalLeftEl      = null;
+let _modalRightEl     = null;
 
 // Fallbacks for tokens not yet in tokens.js
 const _MOON        = T.moon        || T.lavender;
@@ -18,6 +25,16 @@ const _SRV_PALETTE = T.srvPalette  || [T.elec, T.green, T.gold, T.lavender, T.ve
 
 export let _pillValues    = {};
 export let _activeFilters = [];
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+function formatTime(isoString) {
+    const d = new Date(isoString);
+    let h = d.getHours();
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${m} ${ampm}`;
+}
 
 // ─── Fetch ────────────────────────────────────────────────────────────
 async function fetchJson(url, signal) {
@@ -338,22 +355,13 @@ function renderTable(container, rows) {
         `;
         checkSpan.dataset.orderId = row.order_id;
         checkSpan.textContent = row.order_id || '—';
-        checkSpan.addEventListener('click', () => console.log('open check', row.order_id));
+        checkSpan.addEventListener('click', () => openModal(row));
         checkTd.appendChild(checkSpan);
         tr.appendChild(checkTd);
 
         // Time
         const timeTd = td(`color: ${T.muted}; font-family: ${T.fb};`);
-        if (row.closed_at) {
-            const d = new Date(row.closed_at);
-            let h = d.getHours();
-            const m = String(d.getMinutes()).padStart(2, '0');
-            const ampm = h >= 12 ? 'PM' : 'AM';
-            h = h % 12 || 12;
-            timeTd.textContent = `${h}:${m} ${ampm}`;
-        } else {
-            timeTd.textContent = '—';
-        }
+        timeTd.textContent = row.closed_at ? formatTime(row.closed_at) : '—';
         tr.appendChild(timeTd);
 
         // Server
@@ -565,6 +573,281 @@ function renderPagination(container, data) {
 
     footer.appendChild(controls);
     _tableWrapEl.appendChild(footer);
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────
+function ensureModal() {
+    if (_modalEl) return;
+
+    _modalEl = document.createElement('div');
+    _modalEl.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: ${withAlpha(T.well, 0.88)};
+        z-index: 200;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+    `;
+    _modalEl.addEventListener('click', e => { if (e.target === _modalEl) closeModal(); });
+
+    const shell = document.createElement('div');
+    shell.style.cssText = `
+        background: ${T.card};
+        border: 1.5px solid ${T.border};
+        border-radius: 12px;
+        width: 100%;
+        max-width: 780px;
+        max-height: 88vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+    `;
+    shell.addEventListener('click', e => e.stopPropagation());
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex;
+        gap: 16px;
+        padding: 18px 22px 16px;
+        border-bottom: 1.5px solid ${T.green};
+        background: ${T.well};
+        flex-shrink: 0;
+        align-items: flex-start;
+    `;
+
+    _modalCheckNumEl = document.createElement('span');
+    _modalCheckNumEl.style.cssText = `
+        font-family: ${T.fh};
+        font-size: 22px;
+        font-weight: 800;
+        color: ${T.elec};
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+    `;
+
+    const metaCol = document.createElement('div');
+    metaCol.style.cssText = 'flex: 1; display: flex; flex-direction: column; gap: 3px;';
+
+    _modalMetaTopEl = document.createElement('div');
+    _modalMetaTopEl.style.cssText = 'display: flex; align-items: center; gap: 10px; flex-wrap: wrap;';
+
+    _modalMetaSubEl = document.createElement('div');
+    _modalMetaSubEl.style.cssText = `display: flex; gap: 8px; font-family: ${T.fb}; font-size: 11px; color: ${T.muted};`;
+
+    metaCol.appendChild(_modalMetaTopEl);
+    metaCol.appendChild(_modalMetaSubEl);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.style.cssText = `
+        background: none;
+        border: 1px solid ${T.border};
+        border-radius: 6px;
+        color: ${T.muted};
+        font-family: ${T.fb};
+        font-size: 18px;
+        width: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+    `;
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('mouseenter', () => { closeBtn.style.borderColor = T.verm; closeBtn.style.color = T.verm; });
+    closeBtn.addEventListener('mouseleave', () => { closeBtn.style.borderColor = T.border; closeBtn.style.color = T.muted; });
+    closeBtn.addEventListener('click', closeModal);
+
+    header.appendChild(_modalCheckNumEl);
+    header.appendChild(metaCol);
+    header.appendChild(closeBtn);
+
+    // Body
+    const body = document.createElement('div');
+    body.style.cssText = 'display: flex; flex: 1; overflow: hidden; min-height: 0;';
+
+    _modalLeftEl = document.createElement('div');
+    _modalLeftEl.style.cssText = `
+        flex: 1;
+        overflow-y: auto;
+        padding: 18px 20px;
+        border-right: 1px solid rgba(255,255,255,0.06);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    `;
+
+    _modalRightEl = document.createElement('div');
+    _modalRightEl.style.cssText = `
+        width: 240px;
+        flex-shrink: 0;
+        overflow-y: auto;
+        padding: 18px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    `;
+
+    body.appendChild(_modalLeftEl);
+    body.appendChild(_modalRightEl);
+
+    // Footer
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 14px 22px;
+        border-top: 1px solid ${T.border};
+        background: ${T.well};
+        flex-shrink: 0;
+    `;
+
+    const footerCloseBtn = document.createElement('button');
+    footerCloseBtn.style.cssText = `
+        background: none;
+        border: 1.5px solid ${T.border};
+        color: ${T.muted};
+        font-family: ${T.fb};
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        padding: 8px 18px;
+        border-radius: 6px;
+        cursor: pointer;
+    `;
+    footerCloseBtn.textContent = 'Close';
+    footerCloseBtn.addEventListener('click', closeModal);
+
+    const reprintBtn = document.createElement('button');
+    reprintBtn.style.cssText = `
+        background: ${withAlpha(T.elec, 0.08)};
+        border: 1.5px solid ${T.elec};
+        color: ${T.elec};
+        font-family: ${T.fb};
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        padding: 8px 18px;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    `;
+    reprintBtn.textContent = 'Reprint Receipt';
+    reprintBtn.addEventListener('click', () => console.log('reprint', _modalOrderId));
+
+    footer.appendChild(footerCloseBtn);
+    footer.appendChild(reprintBtn);
+
+    shell.appendChild(header);
+    shell.appendChild(body);
+    shell.appendChild(footer);
+    _modalEl.appendChild(shell);
+    document.body.appendChild(_modalEl);
+}
+
+function openModal(row) {
+    ensureModal();
+    _modalOrderId = row.order_id;
+
+    _modalCheckNumEl.textContent = '#' + (row.check_number || row.order_id);
+
+    // Meta top row
+    _modalMetaTopEl.innerHTML = '';
+
+    const serverChip = document.createElement('div');
+    serverChip.style.cssText = 'display: flex; align-items: center; gap: 6px;';
+    const dot = document.createElement('span');
+    dot.style.cssText = `
+        width: 7px; height: 7px;
+        border-radius: 50%;
+        background: ${_SRV_PALETTE[0]};
+        flex-shrink: 0;
+        display: inline-block;
+    `;
+    const nameSpan = document.createElement('span');
+    nameSpan.style.cssText = `font-family: ${T.fb}; font-size: 13px; font-weight: 500; color: ${T.text};`;
+    nameSpan.textContent = row.server_name || '—';
+    serverChip.appendChild(dot);
+    serverChip.appendChild(nameSpan);
+    _modalMetaTopEl.appendChild(serverChip);
+
+    if (row.order_type) {
+        const ot = (row.order_type || '').toLowerCase().replace('_', '-');
+        const otColor = ot === 'dine-in' ? T.green : ot === 'bar' ? T.elec : _MOON;
+        const otBadge = document.createElement('span');
+        otBadge.style.cssText = `
+            background: ${withAlpha(otColor, 0.1)};
+            border: 1px solid ${withAlpha(otColor, 0.3)};
+            color: ${otColor};
+            border-radius: 4px;
+            font-family: ${T.fb};
+            font-size: 10px;
+            text-transform: uppercase;
+            padding: 2px 7px;
+        `;
+        otBadge.textContent = row.order_type;
+        _modalMetaTopEl.appendChild(otBadge);
+    }
+
+    const pm = (row.payment_method || '').toLowerCase();
+    const pmColor = pm === 'cash' ? T.green : pm === 'card' ? T.elec : pm === 'split' ? T.gold : _MOON;
+    const pmBadge = document.createElement('span');
+    pmBadge.style.cssText = `
+        background: ${withAlpha(pmColor, 0.1)};
+        border: 1px solid ${withAlpha(pmColor, 0.3)};
+        color: ${pmColor};
+        border-radius: 4px;
+        font-family: ${T.fb};
+        font-size: 10px;
+        text-transform: uppercase;
+        padding: 2px 7px;
+    `;
+    pmBadge.textContent = row.payment_method || '—';
+    _modalMetaTopEl.appendChild(pmBadge);
+
+    if (row.day_part) {
+        const dpSpan = document.createElement('span');
+        dpSpan.style.cssText = `color: ${T.muted}; font-family: ${T.fb}; font-size: 11px;`;
+        dpSpan.textContent = row.day_part;
+        _modalMetaTopEl.appendChild(dpSpan);
+    }
+
+    // Meta sub row
+    _modalMetaSubEl.innerHTML = '';
+    const parts = [];
+    if (row.table_number) parts.push('Table ' + row.table_number);
+    if (row.closed_at)    parts.push('Closed ' + formatTime(row.closed_at));
+    if (row.guest_count)  parts.push(row.guest_count + ' guests');
+    parts.forEach((p, i) => {
+        if (i > 0) {
+            const sep = document.createElement('span');
+            sep.style.cssText = `color: ${T.border}; margin: 0 4px;`;
+            sep.textContent = '·';
+            _modalMetaSubEl.appendChild(sep);
+        }
+        _modalMetaSubEl.appendChild(document.createTextNode(p));
+    });
+
+    _modalLeftEl.innerHTML = '';
+    _modalRightEl.innerHTML = '';
+    _modalLeftEl.textContent = 'Loading check detail…';
+
+    _modalEl.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    if (!_modalEl) return;
+    _modalEl.style.display = 'none';
+    document.body.style.overflow = '';
+    _modalOrderId = null;
 }
 
 // ─── Skeleton (loading state) ─────────────────────────────────────────
