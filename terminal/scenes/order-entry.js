@@ -2447,7 +2447,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
     // 2. Included items (Pre-applied) — show even if not modified, unless removed
     includedItems.forEach(function(inc) {
-      if (inclState[inc.id] !== 'ON SIDE') return;   // NO handled by removals below
+      if (inclState[inc.id] !== 'SIDE') return;   // NO handled by removals below
       previewMods.push({ name: 'ON SIDE ' + inc.label, price: 0, charged: false, prefix: null });
     });
 
