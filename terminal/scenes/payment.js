@@ -1252,9 +1252,20 @@ function updateSplitDisplay() {
 
 async function handleConfirm() {
   if (_state.confirmProcessing) return;
+
+  if (_state.enteredAmount <= 0) {
+    showToast('Enter an amount first', { bg: T.gold });
+    return;
+  }
+
+  const remaining = getRemainingBalance();
+  if (_state.enteredAmount > remaining * 2) {
+    showToast('Amount entered seems incorrect.', { bg: T.verm });
+    return;
+  }
+
   _state.confirmProcessing = true;
 
-  let remaining = getRemainingBalance();
   const isCash = _state.paymentMode === 'cash';
   const paymentAmount = Math.min(_state.enteredAmount, remaining);
   const change = isCash ? Math.max(0, _state.enteredAmount - paymentAmount) : 0;

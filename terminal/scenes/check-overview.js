@@ -3445,28 +3445,54 @@ function handlePay(state, params) {
   const cardTotal = Math.round((subtotal + tax) * 100) / 100;
   const cashPrice = Math.round(cardTotal * (1 - discount) * 100) / 100;
 
-  SceneManager.mountWorking('payment', {
-    orderId:              state.orderId,
-    seatIds:              selectedIds,
-    seats:                seatSummary,
-    cardTotal:            cardTotal,
-    cashPrice:            cashPrice,
-    subtotal:             subtotal,
-    tax:                  tax,
-    managerDiscountTotal: state.order ? (state.order.manager_discount_total || 0) : 0,
-    isLastPayment:        isLastPayment,
-    returnTo:      'check-overview',
-    returnParams: {
-      checkId:       state.orderId,
-      returnLanding: params.returnLanding,
-      employeeId:    params.employeeId,
-      employeeName:  params.employeeName,
-      pin:           params.pin,
-    },
-    employeeId:   params.employeeId,
-    employeeName: params.employeeName,
-    pin:          params.pin,
-  });
+  // Pre-flight: verify balance_due > 0 and order still open before mounting
+  // the payment scene. Uses the freshest server state to avoid launching
+  // payment against a check that was just closed or fully paid elsewhere.
+  fetchWithTimeout(`/api/v1/orders/${state.orderId}`, { cache: 'no-store' }, 10000)
+    .then((r) => r.ok ? r.json() : null)
+    .then((freshOrder) => {
+      state._payingInProgress = false;
+      if (!state._alive) return;
+      if (!freshOrder) {
+        showToast('Could not verify check — try again', { bg: T.verm });
+        return;
+      }
+      const freshStatus = freshOrder.status || '';
+      if (freshStatus === 'closed' || freshStatus === 'paid') {
+        showToast('Check already settled', { bg: T.gold });
+        return;
+      }
+      if (!(freshOrder.balance_due > 0)) {
+        showToast('Nothing is owed on this check', { bg: T.gold });
+        return;
+      }
+      SceneManager.mountWorking('payment', {
+        orderId:              state.orderId,
+        seatIds:              selectedIds,
+        seats:                seatSummary,
+        cardTotal:            cardTotal,
+        cashPrice:            cashPrice,
+        subtotal:             subtotal,
+        tax:                  tax,
+        managerDiscountTotal: freshOrder.manager_discount_total || 0,
+        isLastPayment:        isLastPayment,
+        returnTo:      'check-overview',
+        returnParams: {
+          checkId:       state.orderId,
+          returnLanding: params.returnLanding,
+          employeeId:    params.employeeId,
+          employeeName:  params.employeeName,
+          pin:           params.pin,
+        },
+        employeeId:   params.employeeId,
+        employeeName: params.employeeName,
+        pin:          params.pin,
+      });
+    })
+    .catch(() => {
+      state._payingInProgress = false;
+      showToast('Could not verify check — try again', { bg: T.verm });
+    });
 }
 
 // ═══════════════════════════════════════════════════
