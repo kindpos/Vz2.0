@@ -61,6 +61,8 @@ function _lighten(hex, pct) {
 import { showToast } from '../components.js';
 import { fmt } from './checkout-core.js';
 import { fetchWithTimeout } from '../net.js';
+import { computeDiscountAmount, buildDiscountBody } from '../discount.js';
+import { entReport } from '../entomology-client.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS
@@ -1510,6 +1512,74 @@ function buildOrderPayload() {
 //  DISCOUNT HANDLER
 // ─────────────────────────────────────────────────
 
+// Creates the QSR order on the backend if it doesn't exist yet, then
+// posts all local items so the backend has item_ids for the discount POST.
+function ensureOrderCreated(callback) {
+  if (state.orderId) { callback(null); return; }
+
+  var idemKey = 'qsr-order-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  fetchWithTimeout('/api/v1/orders', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idemKey },
+    body: JSON.stringify({
+      guest_count:   1,
+      seat_numbers:  null,
+      customer_name: state.ticketName || null,
+      server_id:     null,
+      server_name:   null,
+    }),
+  }, 10000)
+  .then(function(res) {
+    if (!res.ok) throw new Error('Order create failed: ' + res.status);
+    return res.json();
+  })
+  .then(function(created) {
+    if (!created || !created.order_id) throw new Error('Invalid order response — missing order_id');
+    state.orderId = created.order_id;
+    return _postQsrItems();
+  })
+  .then(function() { callback(null); })
+  .catch(function(err) { callback(err); });
+}
+
+// Posts all local items to the backend to obtain their item_ids.
+// Non-fatal per item — discount will use item_ids: null if POST fails.
+function _postQsrItems() {
+  var promises = state.items.map(function(item) {
+    if (item.item_id) return Promise.resolve();
+    var idemKey = 'qsr-item-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    return fetchWithTimeout('/api/v1/orders/' + state.orderId + '/items', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idemKey },
+      body: JSON.stringify({
+        menu_item_id: item.itemKey || item.name.toLowerCase().replace(/\s+/g, '_'),
+        name:         item.name,
+        price:        item.price || 0,
+        quantity:     item.qty || 1,
+        category:     'general',
+        seat_number:  1,
+        modifiers: (item.mods || []).map(function(m) {
+          return typeof m === 'string'
+            ? { name: m, price: 0 }
+            : { name: m.name || m.label || '', price: Number(m.price) || 0 };
+        }),
+      }),
+    }, 8000)
+    .then(function(res) { return res.ok ? res.json() : null; })
+    .then(function(data) { if (data && data.item_id) item.item_id = data.item_id; })
+    .catch(function() { /* non-fatal: discount will proceed with item_ids: null */ });
+  });
+  return Promise.all(promises);
+}
+
+function _rollbackDiscount(appliedIdxs, discountId) {
+  appliedIdxs.forEach(function(idx) {
+    var item = state.items[idx];
+    if (!item || !item.discounts) return;
+    item.discounts = item.discounts.filter(function(d) { return d.id !== discountId; });
+  });
+}
+
 function handleDiscount() {
   var targetIdxs = state.selectedIdxs.length > 0
     ? state.selectedIdxs.slice()
@@ -1526,7 +1596,7 @@ function handleDiscount() {
       SceneManager.openInterrupt('disc-select', {
         approvedBy: employeeId,
         onConfirm:  function(discount) {
-          applyDiscount(discount, targetIdxs);
+          applyDiscount(discount, targetIdxs, employeeId);
         },
         onCancel: function() {},
       });
@@ -1535,7 +1605,9 @@ function handleDiscount() {
   });
 }
 
-function applyDiscount(discount, targetIdxs) {
+function applyDiscount(discount, targetIdxs, approvedBy) {
+  // Apply locally first for immediate visual feedback (optimistic update).
+  var appliedIdxs = [];
   targetIdxs.forEach(function(idx) {
     var item = state.items[idx];
     if (!item) return;
@@ -1545,8 +1617,49 @@ function applyDiscount(discount, targetIdxs) {
     if (alreadyApplied) return;
     if (!item.discounts) item.discounts = [];
     item.discounts.push({ id: discount.id, name: discount.name, pct: discount.pct });
+    appliedIdxs.push(idx);
   });
+
+  if (appliedIdxs.length === 0) { renderRecap(); return; }
   renderRecap();
+
+  // Ensure order + items exist on the backend, then persist the discount.
+  ensureOrderCreated(function(err) {
+    if (err) {
+      _rollbackDiscount(appliedIdxs, discount.id);
+      showToast('Discount could not be saved. Please try again.');
+      entReport({ code: 'QSR_DISCOUNT_PERSIST_FAILED', source: 'qsr-order',
+        message: err.message || 'Order creation failed', level: 'error' });
+      renderRecap();
+      return;
+    }
+
+    var affectedItems = appliedIdxs.map(function(idx) { return state.items[idx]; }).filter(Boolean);
+    var amount  = computeDiscountAmount(affectedItems, discount.pct);
+    var itemIds = affectedItems.map(function(it) { return it.item_id; }).filter(Boolean);
+    var txId    = 'qsr-disc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    var body    = buildDiscountBody(discount.pct, amount, itemIds, approvedBy);
+    body.idempotency_key = txId;
+
+    fetchWithTimeout('/api/v1/orders/' + state.orderId + '/discount', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    }, 8000)
+    .then(function(res) {
+      if (!res.ok) return res.json().then(function(d) {
+        throw new Error(d.detail || 'HTTP ' + res.status);
+      });
+      return res.json();
+    })
+    .catch(function(err) {
+      _rollbackDiscount(appliedIdxs, discount.id);
+      showToast('Discount could not be saved. Please try again.');
+      entReport({ code: 'QSR_DISCOUNT_PERSIST_FAILED', source: 'qsr-order',
+        message: err.message || 'Network error', level: 'error' });
+      renderRecap();
+    });
+  });
 }
 
 // ─────────────────────────────────────────────────
