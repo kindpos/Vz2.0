@@ -283,18 +283,55 @@ function _buildCheckPreview(orders) {
 
       seatMap[sn].forEach(function(item) {
         var card = document.createElement('div');
-        card.style.cssText = 'background:' + T.card + ';border:1px solid ' + T.moon + ';border-top:2px solid ' + T.moon + ';border-radius:6px;margin-bottom:5px;margin-left:14px;overflow:hidden;';
+        card.style.cssText = 'background:' + T.card + ';border:1px solid ' + T.moon
+          + ';border-top:2px solid ' + T.moon + ';border-radius:6px;margin-bottom:5px;'
+          + 'margin-left:14px;overflow:hidden;';
+
+        // Item row
         var row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px;';
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 10px 6px;';
         var nm = document.createElement('span');
         nm.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.text + ';';
         nm.textContent   = item.name || 'Item';
         var pr = document.createElement('span');
-        pr.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;color:' + T.gold + ';flex-shrink:0;margin-left:12px;';
+        pr.style.cssText = 'font-family:' + T.fb + ';font-size:12px;font-weight:700;'
+          + 'color:' + T.gold + ';flex-shrink:0;margin-left:12px;';
         pr.textContent   = fmt(item.price || 0);
         row.appendChild(nm);
         row.appendChild(pr);
         card.appendChild(row);
+
+        // Modifier lines
+        var mods = Array.isArray(item.mods) ? item.mods : [];
+        if (mods.length > 0) {
+          var modList = document.createElement('div');
+          modList.style.cssText = 'padding:0 10px 7px 16px;display:flex;'
+            + 'flex-direction:column;gap:2px;';
+          mods.forEach(function(mod) {
+            var modRow = document.createElement('div');
+            modRow.style.cssText = 'display:flex;align-items:center;gap:4px;';
+            var arrow = document.createElement('span');
+            arrow.textContent   = '↳';
+            arrow.style.cssText = 'font-family:' + T.fb + ';font-size:10px;'
+              + 'color:' + T.moon + ';flex-shrink:0;';
+            var modNm = document.createElement('span');
+            modNm.style.cssText = 'flex:1;font-family:' + T.fb + ';font-size:11px;'
+              + 'color:' + T.moon + ';';
+            modNm.textContent = mod.name || mod.label || '';
+            var modPr = document.createElement('span');
+            modPr.style.cssText = 'font-family:' + T.fb + ';font-size:11px;'
+              + 'color:' + T.moon + ';flex-shrink:0;';
+            modPr.textContent = (mod.price && mod.price !== 0)
+              ? fmt(mod.price)
+              : '';
+            modRow.appendChild(arrow);
+            modRow.appendChild(modNm);
+            if (modPr.textContent) modRow.appendChild(modPr);
+            modList.appendChild(modRow);
+          });
+          card.appendChild(modList);
+        }
+
         seatBody.appendChild(card);
       });
     });
@@ -503,10 +540,6 @@ defineScene({
       'overflow:hidden;',
     ].join('');
     tipOuter.appendChild(previewSlide);
-
-    var prevLabel = buildSectionLabel('Check Preview');
-    prevLabel.style.marginBottom = '10px';
-    previewSlide.appendChild(prevLabel);
 
     var prevContent = document.createElement('div');
     prevContent.style.cssText = 'flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;pointer-events:auto;';
@@ -797,27 +830,9 @@ defineScene({
       hdrRow.appendChild(closeBtn);
       r.prevContent.appendChild(hdrRow);
 
-      // ── Summary header: check label(s) + total ──
-      var sumHdr = document.createElement('div');
-      sumHdr.style.cssText = 'display:flex;justify-content:space-between;'
-        + 'align-items:baseline;padding-bottom:8px;'
-        + 'border-bottom:2px solid ' + T.green + ';margin-bottom:8px;';
-
-      var sumLabel = document.createElement('span');
-      sumLabel.textContent   = single ? checkNum(selected[0]) : selected.length + ' CHECKS';
-      sumLabel.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;'
-        + 'color:' + T.green + ';letter-spacing:0.08em;';
-
-      var sumTotal = document.createElement('span');
-      sumTotal.textContent   = fmt(total);
-      sumTotal.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;'
-        + 'color:' + T.gold + ';';
-
-      sumHdr.appendChild(sumLabel);
-      sumHdr.appendChild(sumTotal);
-      r.prevContent.appendChild(sumHdr);
-
       // ── Content: items (single) or check list (multi) ──
+      // Single: _buildCheckPreview renders its own header + items.
+      // Multi: render a summary header + one row per check.
       if (single) {
         r.prevContent.appendChild(_buildCheckPreview(selected));
       } else {
