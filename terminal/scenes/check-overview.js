@@ -3576,7 +3576,8 @@ function _voidItems(state, refs) {
   for (let i = 0; i < refs.length; i++) {
     let r = refs[i];
     const item = state.seats[r.seatIdx].items[r.itemIdx];
-    snapshot.push({ seatIdx: r.seatIdx, itemIdx: r.itemIdx, item });
+    const alreadyVoided = !!item.voided;
+    snapshot.push({ seatIdx: r.seatIdx, itemIdx: r.itemIdx, item, alreadyVoided });
     item.voided = true;
   }
 
@@ -3587,7 +3588,7 @@ function _voidItems(state, refs) {
 
   // Fire DELETEs immediately — no undo window.
   const deletes = snapshot
-    .filter((s) => !!s.item.item_id && !s.item.voided)
+    .filter((s) => !!s.item.item_id && !s.alreadyVoided)
     .map((s) => {
       return fetchWithTimeout(
         `/api/v1/orders/${state.orderId}/items/${s.item.item_id}`,
