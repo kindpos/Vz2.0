@@ -1,15 +1,9 @@
-// terminal/scenes/qsr-modifier-selector.js
-// Transactional scene: modifier selection for QSR items before add-to-order.
-//
-// params:
-//   item        — { name, unitPrice, itemKey, modifier_groups, mods }
-//   catColor    — accent colour from the active category
-//   onConfirm   — fn(configuredItem) called on ADD TO ORDER
-//                 configuredItem = { name, price, itemKey, mods }
+// terminal/qsr-utils.js
+// Shared utilities for QSR scenes
 
-import { defineScene, SceneManager } from '../scene-manager.js';
-import { T } from '../../common/tokens.js';
-import { buildPillButton, hexToRgba } from '../theme-manager.js';
+import { defineScene, SceneManager } from './scene-manager.js';
+import { T } from '../common/tokens.js';
+import { buildPillButton, hexToRgba } from './theme-manager.js';
 
 defineScene({
   name: 'qsr-modifier-selector',
@@ -247,3 +241,19 @@ defineScene({
     };
   },
 });
+
+function openQsrModifierSelector(item, catColor, onConfirm) {
+  SceneManager.openTransactional('qsr-modifier-selector', {
+    item: {
+      name:            item.name,
+      unitPrice:       parseFloat(item.price || 0),
+      itemKey:         item.itemKey || item.key || item.name,
+      modifier_groups: item.modifier_groups,
+      mods:            [],
+    },
+    catColor: catColor,
+    onConfirm: onConfirm,
+  });
+}
+
+export { openQsrModifierSelector };

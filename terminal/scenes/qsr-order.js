@@ -63,6 +63,7 @@ import { fmt } from './checkout-core.js';
 import { fetchWithTimeout } from '../net.js';
 import { computeDiscountAmount, buildDiscountBody } from '../discount.js';
 import { entReport } from '../entomology-client.js';
+import { openQsrModifierSelector } from '../qsr-utils.js';
 
 // ─────────────────────────────────────────────────
 //  LAYOUT CONSTANTS
@@ -1289,19 +1290,13 @@ function handleItemTap(itemKey) {
   var hasModifiers = item.modifier_groups && item.modifier_groups.length > 0;
 
   if (hasModifiers) {
-    SceneManager.openTransactional('qsr-modifier-selector', {
-      item: {
-        name:            item.name,
-        unitPrice:       parseFloat(item.price || 0),
-        itemKey:         item.itemKey || item.key || item.name,
-        modifier_groups: item.modifier_groups,
-        mods:            [],
-      },
-      catColor: (activeCat && activeCat.color) || T.green,
-      onConfirm: function(configuredItem) {
+    openQsrModifierSelector(
+      item,
+      (activeCat && activeCat.color) || T.green,
+      function(configuredItem) {
         addItem(configuredItem);
-      },
-    });
+      }
+    );
   } else {
     addItem({
       name:    item.name,
