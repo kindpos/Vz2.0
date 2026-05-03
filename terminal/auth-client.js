@@ -34,7 +34,7 @@ export function setToken(data) {
 
 /** Return the stored bearer token, or null if not logged in. */
 export function getToken() {
-  var s = _read();
+  const s = _read();
   return s && s.token ? s.token : null;
 }
 
@@ -57,32 +57,32 @@ export function clearToken() {
 // Importing this module is the install. We only install once per page;
 // re-imports are no-ops.
 
-var _installed = false;
+let _installed = false;
 
 export function installAuthFetchInterceptor() {
   if (_installed) return;
   if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
   _installed = true;
 
-  var _original = window.fetch.bind(window);
+  const _original = window.fetch.bind(window);
 
-  window.fetch = function(input, init) {
+  window.fetch = (input, init) => {
     try {
-      var url = (typeof input === 'string') ? input
+      const url = (typeof input === 'string') ? input
               : (input && input.url) ? input.url : '';
-      var isOurApi = typeof url === 'string' && (
+      const isOurApi = typeof url === 'string' && (
         url.indexOf('/api/') === 0 ||
-        url.indexOf(window.location.origin + '/api/') === 0
+        url.indexOf(`${window.location.origin}/api/`) === 0
       );
       if (isOurApi) {
-        var tok = getToken();
+        const tok = getToken();
         if (tok) {
           init = init || {};
           // Caller-supplied Authorization wins so they can temporarily
           // override (e.g. the PIN verify request before login is complete).
-          var headers = new Headers(init.headers || {});
+          const headers = new Headers(init.headers || {});
           if (!headers.has('Authorization')) {
-            headers.set('Authorization', 'Bearer ' + tok);
+            headers.set('Authorization', `Bearer ${tok}`);
             init.headers = headers;
           }
         }
