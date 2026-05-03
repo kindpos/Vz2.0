@@ -5,6 +5,8 @@ import { defineScene, SceneManager } from './scene-manager.js';
 import { T } from '../common/tokens.js';
 import { buildPillButton, hexToRgba } from './theme-manager.js';
 
+function moneyRound(x) { return Math.round(x * 100) / 100; }
+
 defineScene({
   name: 'qsr-modifier-selector',
 
@@ -26,9 +28,9 @@ defineScene({
       var extra = 0;
       modifierGroups.forEach(function(grp) {
         var gid = grp.group_id || grp.id || grp.name;
-        (selections[gid] || []).forEach(function(s) { extra += Number(s.price) || 0; });
+        (selections[gid] || []).forEach(function(s) { extra = moneyRound(extra + (Number(s.price) || 0)); });
       });
-      return (Number(item.unitPrice) || 0) + extra;
+      return moneyRound((Number(item.unitPrice) || 0) + extra);
     }
 
     // ── Layout ───────────────────────────────────────────────────────
@@ -191,7 +193,7 @@ defineScene({
             for (var i = 0; i < siblings.length; i++) {
               if (siblings[i]._paint) siblings[i]._paint();
             }
-            priceEl.textContent = '$' + computeTotal().toFixed(2);
+            priceEl.textContent = '$' + moneyRound(computeTotal()).toFixed(2);
             updateDoneBtn();
           });
         })(gid, mid, opt.name, optPrice, isSingle, maxSel);
