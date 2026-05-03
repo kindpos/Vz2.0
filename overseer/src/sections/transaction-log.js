@@ -94,7 +94,59 @@ async function loadTransactions() {
 }
 
 function renderError(container, err) {
-    container.textContent = 'Error: ' + err.message;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'max-width: 480px; margin: 40px auto; text-align: center;';
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+        background: ${T.card};
+        border-left: 3px solid ${T.verm};
+        border-radius: 8px;
+        padding: 20px 24px;
+        text-align: left;
+    `;
+
+    const title = document.createElement('div');
+    title.style.cssText = `
+        color: ${T.verm};
+        font-family: ${T.fh};
+        font-size: 16px;
+        font-weight: 600;
+    `;
+    title.textContent = 'Failed to load transactions';
+
+    const msg = document.createElement('div');
+    msg.style.cssText = `
+        color: ${T.text};
+        font-family: ${T.fb};
+        font-size: 13px;
+        margin-top: 6px;
+    `;
+    msg.textContent = err.message;
+
+    const retryBtn = document.createElement('button');
+    retryBtn.style.cssText = `
+        border: 1px solid ${T.green};
+        color: ${T.green};
+        background: none;
+        border-radius: 6px;
+        font-family: ${T.fb};
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        padding: 8px 16px;
+        margin-top: 14px;
+        cursor: pointer;
+    `;
+    retryBtn.textContent = 'Retry';
+    retryBtn.addEventListener('click', () => { _currentPage = 1; loadTransactions(); });
+
+    card.appendChild(title);
+    card.appendChild(msg);
+    card.appendChild(retryBtn);
+    wrap.appendChild(card);
+    container.innerHTML = '';
+    container.appendChild(wrap);
 }
 
 function populateServerChips(employees) {
@@ -414,7 +466,106 @@ function renderTable(container, rows) {
     container.appendChild(_tableWrapEl);
 }
 
-function renderPagination(c, d) { /* TODO 3d */ }
+function renderPagination(container, data) {
+    if (!_tableWrapEl) return;
+    const totalPages = data.total_pages || 1;
+    const totalCount = data.total_count || 0;
+    const pageSize   = data.page_size   || 50;
+
+    const footer = document.createElement('div');
+    footer.style.cssText = `
+        background: ${T.well};
+        border-top: 1px solid ${T.border};
+        padding: 14px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    `;
+
+    // Left — "Showing X–Y of Z checks"
+    const x = (_currentPage - 1) * pageSize + 1;
+    const y = Math.min(_currentPage * pageSize, totalCount);
+    const info = document.createElement('span');
+    info.style.cssText = `font-family: ${T.fb}; font-size: 11px; color: ${T.muted};`;
+    info.textContent = `Showing ${x}–${y} of ${totalCount} checks`;
+    footer.appendChild(info);
+
+    // Right — page controls
+    const controls = document.createElement('div');
+    controls.style.cssText = 'display: flex; gap: 4px; align-items: center;';
+
+    const _btn = (label, onClick, disabled = false) => {
+        const b = document.createElement('button');
+        b.style.cssText = `
+            background: ${T.card};
+            border: 1px solid ${T.border};
+            border-radius: 5px;
+            color: ${T.text};
+            font-family: ${T.fb};
+            font-size: 11px;
+            padding: 4px 11px;
+            cursor: ${disabled ? 'default' : 'pointer'};
+            ${disabled ? 'opacity: 0.35;' : ''}
+        `;
+        b.textContent = label;
+        b.disabled = disabled;
+        if (!disabled) {
+            b.addEventListener('mouseenter', () => { b.style.borderColor = T.green; });
+            b.addEventListener('mouseleave', () => { b.style.borderColor = T.border; });
+            b.addEventListener('click', onClick);
+        }
+        return b;
+    };
+
+    // Prev
+    controls.appendChild(_btn('← Prev', () => { _currentPage--; loadTransactions(); }, _currentPage === 1));
+
+    // Page number buttons with ellipsis
+    const half = 2;
+    let start = Math.max(1, _currentPage - half);
+    let end   = Math.min(totalPages, _currentPage + half);
+    if (end - start < 4) {
+        if (start === 1) end   = Math.min(totalPages, start + 4);
+        else             start = Math.max(1, end - 4);
+    }
+
+    if (start > 1) {
+        controls.appendChild(_btn('1', () => { _currentPage = 1; loadTransactions(); }));
+        if (start > 2) {
+            const ellipsis = document.createElement('span');
+            ellipsis.style.cssText = `font-family: ${T.fb}; font-size: 11px; color: ${T.muted}; padding: 4px 6px;`;
+            ellipsis.textContent = '…';
+            controls.appendChild(ellipsis);
+        }
+    }
+
+    for (let p = start; p <= end; p++) {
+        const isActive = p === _currentPage;
+        const pb = _btn(String(p), () => { _currentPage = p; loadTransactions(); }, false);
+        if (isActive) {
+            pb.style.borderColor = T.green;
+            pb.style.color       = T.green;
+            pb.style.fontWeight  = '500';
+        }
+        controls.appendChild(pb);
+    }
+
+    if (end < totalPages) {
+        if (end < totalPages - 1) {
+            const ellipsis = document.createElement('span');
+            ellipsis.style.cssText = `font-family: ${T.fb}; font-size: 11px; color: ${T.muted}; padding: 4px 6px;`;
+            ellipsis.textContent = '…';
+            controls.appendChild(ellipsis);
+        }
+        controls.appendChild(_btn(String(totalPages), () => { _currentPage = totalPages; loadTransactions(); }));
+    }
+
+    // Next
+    controls.appendChild(_btn('Next →', () => { _currentPage++; loadTransactions(); }, _currentPage === totalPages));
+
+    footer.appendChild(controls);
+    _tableWrapEl.appendChild(footer);
+}
 
 // ─── Skeleton (loading state) ─────────────────────────────────────────
 function renderSkeleton(container) {
