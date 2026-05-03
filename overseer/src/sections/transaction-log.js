@@ -1,4 +1,5 @@
 import { T, withAlpha } from '../ui/tokens.js';
+import { fmt } from '../ui/money.js';
 
 // ─── Module state ─────────────────────────────────────────────────────
 let _currentContainer = null;
@@ -8,6 +9,7 @@ let _activeTagsEl     = null;
 let _resultCountEl    = null;
 let _summaryStrip     = null;
 let _currentPage      = 1;
+let _tabRowEl         = null;
 
 export let _pillValues    = {};
 export let _activeFilters = [];
@@ -90,9 +92,108 @@ function renderError(container, err) {
     container.textContent = 'Error: ' + err.message;
 }
 
-function populateServerChips(employees) { /* TODO 3b */ }
+function populateServerChips(employees) {
+    if (!_currentContainer) return;
+    const group = _currentContainer.querySelector('[data-group="server"]');
+    if (!group) return;
+    if (group.querySelector('.tl-chip')) return;
+    employees.forEach(emp => {
+        const chip = document.createElement('button');
+        chip.className = 'tl-chip';
+        chip.dataset.value = emp.id;
+        chip.textContent = emp.name;
+        chip.addEventListener('click', () => toggleChip(chip, 'server'));
+        group.appendChild(chip);
+    });
+}
 
-function renderPage_data(container, data, employees) { /* TODO 3b */ }
+function updateStatPills(data) {
+    const set = (id, text) => { if (_pillValues[id]) _pillValues[id].textContent = text; };
+    const setSub = (id, text) => {
+        const el = _pillValues[id];
+        if (el && el.nextElementSibling) el.nextElementSibling.textContent = text;
+    };
+    set('totalChecks', data.total_checks    != null ? String(data.total_checks)    : '—');
+    set('grossSales',  data.gross_sales     != null ? fmt(data.gross_sales)        : '—');
+    set('netSales',    data.net_sales       != null ? fmt(data.net_sales)          : '—');
+    set('cardRevenue', data.card_revenue    != null ? fmt(data.card_revenue)       : '—');
+    set('cashRevenue', data.cash_revenue    != null ? fmt(data.cash_revenue)       : '—');
+    set('discounts',   data.total_discounts != null ? fmt(data.total_discounts)    : '—');
+    set('voids',       data.total_voids     != null ? fmt(data.total_voids)        : '—');
+    if (data.discount_count != null) setSub('discounts', `${data.discount_count} applied`);
+    if (data.void_count     != null) setSub('voids',     `${data.void_count} items`);
+}
+
+function renderTabs(container, data) {
+    const tabs = [
+        { id: 'transactions', label: 'Transactions', count: data.total_count    || 0 },
+        { id: 'discounts',    label: 'Discounts',    count: data.discount_count || 0 },
+        { id: 'voids',        label: 'Voids',        count: data.void_count     || 0 },
+    ];
+
+    _tabRowEl = document.createElement('div');
+    _tabRowEl.style.cssText = `
+        display: flex;
+        border-bottom: 1.5px solid ${T.border};
+        padding: 0 24px;
+    `;
+
+    tabs.forEach(tab => {
+        const isActive = tab.id === 'transactions';
+        const btn = document.createElement('button');
+        btn.style.cssText = `
+            background: none;
+            border: none;
+            border-bottom: 2px solid ${isActive ? T.green : 'transparent'};
+            color: ${isActive ? T.green : T.muted};
+            font-family: ${T.fb};
+            font-size: 13px;
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: -1.5px;
+        `;
+
+        const labelSpan = document.createElement('span');
+        labelSpan.textContent = tab.label;
+
+        const badge = document.createElement('span');
+        badge.style.cssText = `
+            background: ${isActive ? withAlpha(T.green, 0.15) : T.well};
+            color: ${isActive ? T.green : T.muted};
+            border-radius: 999px;
+            font-size: 10px;
+            padding: 1px 7px;
+            font-family: ${T.fb};
+        `;
+        badge.textContent = String(tab.count);
+
+        btn.appendChild(labelSpan);
+        btn.appendChild(badge);
+
+        if (!isActive) {
+            btn.addEventListener('click', () => console.log('tab:', tab.id));
+        }
+
+        _tabRowEl.appendChild(btn);
+    });
+
+    container.appendChild(_tabRowEl);
+}
+
+function renderPage_data(container, data, employees) {
+    populateServerChips(employees);
+    updateStatPills(data);
+    renderTabs(container, data);
+    renderTable(container, data.results || []);
+    renderPagination(container, data);
+}
+
+function renderTable(c, r) { /* TODO 3c */ }
+
+function renderPagination(c, d) { /* TODO 3d */ }
 
 // ─── Skeleton (loading state) ─────────────────────────────────────────
 function renderSkeleton(container) {
