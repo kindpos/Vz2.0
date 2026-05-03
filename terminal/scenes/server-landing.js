@@ -508,19 +508,46 @@ defineScene({
     root.appendChild(gridResult);
 
     var tileGrid = document.createElement('div');
-    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;pointer-events:auto;';
+    tileGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;pointer-events:auto;padding:14px 14px 10px;';
     gridResult.appendChild(tileGrid);
 
-    // Filter footer row — inside grid card, no float positioning
+    // Grid footer — urgency legend left, filter pill right
     var gridFooter = document.createElement('div');
     gridFooter.style.cssText = [
-      'display:flex;justify-content:flex-end;',
-      'padding:8px 0 0;flex-shrink:0;',
+      'display:flex;justify-content:space-between;align-items:center;',
+      'padding:6px 14px 10px;flex-shrink:0;',
       'border-top:1px solid rgba(255,255,255,0.06);',
     ].join('');
     gridResult.appendChild(gridFooter);
 
-    // OPEN/CLOSED/VOID pill filter — sits in the grid card footer
+    // Urgency legend
+    var legendEl = document.createElement('div');
+    legendEl.style.cssText = 'display:flex;gap:14px;align-items:center;';
+    var LEGEND = [
+      { label: '<45m',   color: T.green },
+      { label: '45–90m', color: T.gold  },
+      { label: '>90m',   color: T.verm  },
+    ];
+    LEGEND.forEach(function(entry) {
+      var item = document.createElement('div');
+      item.style.cssText = 'display:flex;align-items:center;gap:5px;';
+      var swatch = document.createElement('div');
+      swatch.style.cssText = [
+        'width:8px;height:8px;border-radius:2px;',
+        'background:' + hexToRgba(entry.color, 0.25) + ';',
+        'border:1px solid ' + hexToRgba(entry.color, 0.6) + ';',
+      ].join('');
+      var lbl = document.createElement('span');
+      lbl.textContent   = entry.label;
+      lbl.style.cssText = 'font-family:' + T.fb + ';font-size:9px;font-weight:700;'
+        + 'color:' + hexToRgba(entry.color, 0.7) + ';letter-spacing:0.1em;';
+      item.appendChild(swatch);
+      item.appendChild(lbl);
+      legendEl.appendChild(item);
+    });
+    gridFooter.appendChild(legendEl);
+
+    // OPEN/CLOSED/VOID pill filter — right side of footer
     var filterBtn = buildPillButton({ label: 'ACTIVE', color: T.green, darkBg: T.greenDk, fontSize: T.fsB3 });
     filterBtn.style.pointerEvents = 'auto';
     gridFooter.appendChild(filterBtn);
