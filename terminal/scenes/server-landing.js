@@ -21,6 +21,7 @@ import {
 } from '../charts.js';
 import { buildNumpad } from '../numpad.js';
 import { fetchWithTimeout } from '../net.js';
+import { showToast } from '../components.js';
 
 // ── Input guard + double-tap window ──────────────
 var DOUBLE_TAP_MS = 300;    // second tap must land within this window to open
@@ -369,8 +370,11 @@ defineScene({
     selectedIds: [],
     selectedAt:  {},        // id → timestamp of when that id was first selected
     emp:         null,
-    _refreshing: false,
-    el:          null,
+    _refreshing:     false,
+    _voidPending:    false,
+    _voidPendingKey: null,
+    _printing:       false,
+    el:              null,
 
     // Refs to live-update DOM elements
     _refs: {},
@@ -911,7 +915,131 @@ defineScene({
               },
             });
           }
-          // PAY, PRINT, DISCOUNT, VOID — wired in future prompts
+          if (op.label === 'PAY') {
+            if (!single) {
+              showToast('Select one check to pay', { bg: T.gold, duration: 1800 });
+              return;
+            }
+            SceneManager.mountWorking('check-overview', {
+              checkId:       selected[0].order_id,
+              returnLanding: 'server-landing',
+              employeeId:    state.emp ? state.emp.id   : null,
+              employeeName:  state.emp ? state.emp.name : null,
+              pin:           state.emp ? state.emp.pin  : null,
+              autoPay:       true,
+            });
+            return;
+          }
+
+          if (op.label.indexOf('PRINT') === 0) {
+            if (state._printing) return;
+            state._printing = true;
+            var printIds = selected.map(function(o) { return o.order_id; });
+            var printed = 0, failed = 0;
+            function _finishPrint() {
+              if (printed + failed !== printIds.length) return;
+              state._printing = false;
+              showToast(
+                failed === 0
+                  ? 'Printed ' + printed + ' receipt' + (printed === 1 ? '' : 's')
+                  : printed + ' printed, ' + failed + ' failed',
+                { bg: failed === 0 ? T.green : T.gold, duration: 2000 }
+              );
+            }
+            showToast(
+              'Printing ' + printIds.length + ' receipt' + (printIds.length === 1 ? '' : 's') + '…',
+              { bg: T.green, duration: 1200 }
+            );
+            printIds.forEach(function(orderId) {
+              fetchWithTimeout(
+                '/api/v1/orders/' + orderId + '/print/receipt',
+                { method: 'POST' }, 8000
+              ).then(function(r) {
+                if (r.ok) printed++; else failed++;
+                _finishPrint();
+              }).catch(function() {
+                failed++;
+                _finishPrint();
+              });
+            });
+            return;
+          }
+
+          if (op.label === 'DISCOUNT') {
+            if (!single) {
+              showToast('Select one check to discount', { bg: T.elec, duration: 1800 });
+              return;
+            }
+            SceneManager.mountWorking('check-overview', {
+              checkId:        selected[0].order_id,
+              returnLanding:  'server-landing',
+              employeeId:     state.emp ? state.emp.id   : null,
+              employeeName:   state.emp ? state.emp.name : null,
+              pin:            state.emp ? state.emp.pin  : null,
+              autoDiscount:   true,
+            });
+            return;
+          }
+
+          if (op.label === 'VOID') {
+            var voidIds  = state.selectedIds.slice().sort().join(',');
+            var voidMsg  = single
+              ? 'Void ' + checkNum(selected[0]) + '?'
+              : 'Void ' + selected.length + ' checks?';
+
+            if (!state._voidPending || state._voidPendingKey !== voidIds) {
+              showToast(voidMsg + ' — tap again to confirm', { bg: T.verm, duration: 3000 });
+              state._voidPending    = true;
+              state._voidPendingKey = voidIds;
+              setTimeout(function() {
+                state._voidPending    = false;
+                state._voidPendingKey = null;
+              }, 3000);
+              return;
+            }
+
+            // Second tap confirmed — void each selected check
+            state._voidPending    = false;
+            state._voidPendingKey = null;
+            var toVoid  = selected.slice();
+            var voided  = 0, vFailed = 0;
+            function _finishVoid() {
+              if (voided + vFailed !== toVoid.length) return;
+              if (voided > 0) {
+                state.selectedIds = [];
+                state.selectedAt  = {};
+                refresh();
+              }
+              showToast(
+                vFailed === 0
+                  ? 'Voided ' + voided + ' check' + (voided === 1 ? '' : 's')
+                  : voided + ' voided, ' + vFailed + ' failed',
+                { bg: vFailed === 0 ? T.green : T.gold, duration: 2000 }
+              );
+            }
+            showToast(voidMsg.replace('?', '…'), { bg: T.verm, duration: 1200 });
+            toVoid.forEach(function(o) {
+              fetchWithTimeout(
+                '/api/v1/orders/' + o.order_id + '/void',
+                {
+                  method:  'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body:    JSON.stringify({
+                    pin:         state.emp ? state.emp.pin : '',
+                    reason:      'server void',
+                    approved_by: state.emp ? (state.emp.id || state.emp.employee_id) : null,
+                  }),
+                }, 10000
+              ).then(function(r) {
+                if (r.ok) voided++; else vFailed++;
+                _finishVoid();
+              }).catch(function() {
+                vFailed++;
+                _finishVoid();
+              });
+            });
+            return;
+          }
         });
 
         divider.appendChild(btn);
