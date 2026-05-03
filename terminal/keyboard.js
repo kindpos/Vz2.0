@@ -26,7 +26,11 @@ export function showKeyboard(opts) {
   _buildIfNeeded();
   _input.value = _opts.initialValue || '';
   _input.placeholder = _opts.placeholder || '';
-  if (_opts.maxLength) _input.maxLength = _opts.maxLength;
+  if (_opts.maxLength) {
+    const maxLen = typeof _opts.maxLength === 'number'
+      && _opts.maxLength > 0 ? _opts.maxLength : 64;
+    _input.maxLength = maxLen;
+  }
   else _input.removeAttribute('maxlength');
 
   const host = document.getElementById('terminal') || document.body;
