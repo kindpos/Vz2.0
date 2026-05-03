@@ -1506,7 +1506,8 @@ async def void_order(
             pin=request.pin,
             client_id=client_id,
             ledger=ledger,
-            operation_name="void_order"
+            operation_name="void_order",
+            require_role="manager"
         )
         approved_by = pin_result["employee_id"]
     except HTTPException as e:
@@ -1753,7 +1754,8 @@ async def apply_discount(
             pin=request.pin,
             client_id=client_id,
             ledger=ledger,
-            operation_name="apply_discount"
+            operation_name="apply_discount",
+            require_role="manager"
         )
         approved_by = pin_result["employee_id"]
     except HTTPException as e:

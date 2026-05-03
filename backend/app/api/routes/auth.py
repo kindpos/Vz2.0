@@ -270,6 +270,7 @@ async def validate_pin_for_operation(
     client_id: str,
     ledger: EventLedger,
     operation_name: str = "operation",
+    require_role: Optional[str] = None,
 ) -> dict:
     """Validate a PIN and return employee info or raise HTTPException.
 
@@ -277,7 +278,7 @@ async def validate_pin_for_operation(
         dict with keys: employee_id, name, roles
 
     Raises:
-        HTTPException: on invalid PIN, rate limit, or no matching employee
+        HTTPException: on invalid PIN, rate limit, no matching employee, or insufficient role
     """
     try:
         _check_rate_limit(client_id)
@@ -306,6 +307,14 @@ async def validate_pin_for_operation(
         if not e.active or not e.pin:
             continue
         if verify_pin_hash(submitted, e.pin):
+            if require_role is not None:
+                manager_roles = {"manager", "admin", "owner"}
+                employee_roles = set(e.role_ids or [])
+                if not employee_roles.intersection(manager_roles):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="PIN does not belong to a manager role",
+                    )
             _attempts.pop(client_id, None)
             return {
                 "employee_id": e.employee_id,
