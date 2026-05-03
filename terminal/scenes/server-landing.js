@@ -661,14 +661,173 @@ defineScene({
       var r = state._refs;
       r.prevContent.innerHTML = '';
       r.prevActions.innerHTML = '';
+
       if (state.selectedIds.length === 0) {
         r.previewSlide.style.display = 'none';
         return;
       }
+
       var selected = state.allOrders.filter(function(o) {
         return state.selectedIds.indexOf(o.order_id) !== -1;
       });
-      if (selected.length > 0) r.prevContent.appendChild(_buildCheckPreview(selected));
+      if (selected.length === 0) {
+        r.previewSlide.style.display = 'none';
+        return;
+      }
+
+      var single = selected.length === 1;
+      var total  = selected.reduce(function(s, o) {
+        return s + (parseFloat(o.total) || (o.total_cents || 0) / 100);
+      }, 0);
+
+      // ── Header row: label + × close ──
+      var hdrRow = document.createElement('div');
+      hdrRow.style.cssText = 'display:flex;justify-content:space-between;'
+        + 'align-items:center;margin-bottom:8px;';
+
+      var hdrLabel = buildSectionLabel('Check Preview');
+      hdrLabel.style.marginBottom = '0';
+      hdrRow.appendChild(hdrLabel);
+
+      var closeBtn = document.createElement('div');
+      closeBtn.textContent   = '×';
+      closeBtn.style.cssText = 'font-family:' + T.fb + ';font-size:18px;font-weight:700;'
+        + 'color:' + T.moon + ';cursor:pointer;pointer-events:auto;'
+        + 'touch-action:manipulation;line-height:1;padding:0 2px;';
+      closeBtn.addEventListener('pointerup', function() {
+        state.selectedIds = [];
+        state.selectedAt  = {};
+        renderTiles();
+        renderPreview();
+      });
+      hdrRow.appendChild(closeBtn);
+      r.prevContent.appendChild(hdrRow);
+
+      // ── Summary header: check label(s) + total ──
+      var sumHdr = document.createElement('div');
+      sumHdr.style.cssText = 'display:flex;justify-content:space-between;'
+        + 'align-items:baseline;padding-bottom:8px;'
+        + 'border-bottom:2px solid ' + T.green + ';margin-bottom:8px;';
+
+      var sumLabel = document.createElement('span');
+      sumLabel.textContent   = single ? checkNum(selected[0]) : selected.length + ' CHECKS';
+      sumLabel.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;'
+        + 'color:' + T.green + ';letter-spacing:0.08em;';
+
+      var sumTotal = document.createElement('span');
+      sumTotal.textContent   = fmt(total);
+      sumTotal.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;'
+        + 'color:' + T.gold + ';';
+
+      sumHdr.appendChild(sumLabel);
+      sumHdr.appendChild(sumTotal);
+      r.prevContent.appendChild(sumHdr);
+
+      // ── Content: items (single) or check list (multi) ──
+      if (single) {
+        r.prevContent.appendChild(_buildCheckPreview(selected));
+      } else {
+        selected.forEach(function(o) {
+          var row = document.createElement('div');
+          row.style.cssText = [
+            'display:flex;align-items:center;gap:8px;',
+            'padding:7px 10px;border-radius:6px;margin-bottom:4px;',
+            'background:' + hexToRgba(T.gold, 0.06) + ';',
+            'border:1px solid ' + hexToRgba(T.gold, 0.2) + ';',
+          ].join('');
+          var info = document.createElement('div');
+          info.style.cssText = 'flex:1;';
+          var cNum = document.createElement('div');
+          cNum.textContent   = checkNum(o);
+          cNum.style.cssText = 'font-family:' + T.fh + ';font-size:13px;font-weight:700;'
+            + 'color:' + T.gold + ';letter-spacing:0.06em;';
+          var cSub = document.createElement('div');
+          var guests = o.seat_count || o.guest_count || o.covers || 1;
+          var age    = orderAgeMinutes(o);
+          var ageStr = age < 60
+            ? age + 'm'
+            : Math.floor(age / 60) + ':' + String(age % 60).padStart(2, '0');
+          cSub.textContent   = 'x' + guests + ' · ' + ageStr;
+          cSub.style.cssText = 'font-family:' + T.fb + ';font-size:10px;font-weight:700;'
+            + 'color:' + T.moon + ';margin-top:1px;';
+          info.appendChild(cNum);
+          info.appendChild(cSub);
+          var cTotal = document.createElement('div');
+          cTotal.textContent   = fmt(parseFloat(o.total) || (o.total_cents || 0) / 100);
+          cTotal.style.cssText = 'font-family:' + T.fh + ';font-size:14px;font-weight:700;'
+            + 'color:' + T.gold + ';';
+          row.appendChild(info);
+          row.appendChild(cTotal);
+          r.prevContent.appendChild(row);
+        });
+      }
+
+      // ── Options bar ──
+      var opts = single
+        ? [
+            { label: 'MANAGE',   color: T.elec,      dark: T.elecDk,      span: 2 },
+            { label: 'PRINT',    color: T.greenWarm,  dark: T.greenWarmDk, span: 1 },
+            { label: 'PAY',      color: T.gold,       dark: T.goldDk,      span: 1 },
+            { label: 'DISCOUNT', color: T.elec,       dark: T.elecDk,      span: 1 },
+            { label: 'VOID',     color: T.verm,       dark: T.vermDk,      span: 1 },
+          ]
+        : [
+            { label: 'MANAGE',              color: T.elec,      dark: T.elecDk,      span: 2 },
+            { label: 'PRINT ' + selected.length, color: T.greenWarm, dark: T.greenWarmDk, span: 1 },
+            { label: 'PAY',                 color: T.gold,       dark: T.goldDk,      span: 1 },
+            { label: 'DISCOUNT',            color: T.elec,       dark: T.elecDk,      span: 1 },
+            { label: 'VOID',                color: T.verm,       dark: T.vermDk,      span: 1 },
+          ];
+
+      var divider = document.createElement('div');
+      divider.style.cssText = 'border-top:1px solid ' + hexToRgba(T.border, 0.3)
+        + ';margin-top:8px;padding-top:10px;'
+        + 'display:grid;grid-template-columns:1fr 1fr;gap:7px;';
+
+      opts.forEach(function(op) {
+        var btn = buildPillButton({
+          label:  op.label,
+          color:  op.color,
+          darkBg: op.dark,
+        });
+        btn.style.fontSize   = '11px';
+        btn.style.padding    = '8px 4px';
+        btn.style.boxShadow  = '0 3px 0 ' + op.dark;
+        if (op.span === 2) btn.style.gridColumn = '1 / -1';
+        if (op.color === T.verm) btn.style.color = '#fff';
+
+        btn.addEventListener('pointerup', function() {
+          if (op.label === 'MANAGE') {
+            var cols = selected.map(function(o) {
+              return {
+                id:    o.order_id,
+                label: checkNum(o),
+                items: (o.items || []).map(function(it) {
+                  return {
+                    name:    it.name || 'Item',
+                    qty:     it.qty  || 1,
+                    price:   parseFloat(it.price) || 0,
+                    item_id: it.item_id,
+                  };
+                }),
+              };
+            });
+            SceneManager.openTransactional('column-editor', {
+              columns:      cols,
+              checkNumber:  single ? checkNum(selected[0]) : selected.length + ' checks',
+              returnScene:  'server-landing',
+              onSave: function(updatedCols) {
+                refresh();
+              },
+            });
+          }
+          // PAY, PRINT, DISCOUNT, VOID — wired in future prompts
+        });
+
+        divider.appendChild(btn);
+      });
+
+      r.prevActions.appendChild(divider);
       r.previewSlide.style.display = 'flex';
     }
 
