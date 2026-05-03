@@ -433,8 +433,9 @@ defineScene({
     focusedSeats:  {},
     expandedSeats: {},
     _itemDiscounts: {},   // item_id → {pct, amount} — survives refreshOrder
-    _voidedItems:   [],   // {seatNumber, item} re-injected after every refreshOrder
-    _seatDiscounts: {},   // seat.id  → {pct, amount} — fallback when item_id absent
+    _voidedItems:      [],    // {seatNumber, item} re-injected after every refreshOrder
+    _seatDiscounts:    {},    // seat.id  → {pct, amount} — fallback when item_id absent
+    _paymentInProgress: false,
   },
 
   render: (container, params, state) => {
@@ -3346,6 +3347,11 @@ async function _gotoOrderEntry(state, params) {
 // ═══════════════════════════════════════════════════
 
 function handlePay(state, params) {
+  if (state._paymentInProgress) {
+    showToast('Payment already in progress.', { bg: T.gold });
+    return;
+  }
+
   if (!state.orderId) {
     entReport({
       code: 'UI-007', level: 'INFO',
@@ -3466,6 +3472,7 @@ function handlePay(state, params) {
         showToast('Nothing is owed on this check', { bg: T.gold });
         return;
       }
+      state._paymentInProgress = true;
       SceneManager.mountWorking('payment', {
         orderId:              state.orderId,
         seatIds:              selectedIds,
@@ -3487,6 +3494,8 @@ function handlePay(state, params) {
         employeeId:   params.employeeId,
         employeeName: params.employeeName,
         pin:          params.pin,
+        onComplete:   () => { state._paymentInProgress = false; },
+        onCancel:     () => { state._paymentInProgress = false; },
       });
     })
     .catch(() => {
