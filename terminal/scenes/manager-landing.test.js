@@ -27,7 +27,11 @@ vi.mock('../scene-manager.js', () => ({
     mountWorking:          vi.fn(),
     openTransactional:     vi.fn(),
     closeTransactional:    vi.fn(),
-    interrupt:             vi.fn(),
+    interrupt:             vi.fn((name, params) => {
+      if (name === 'manager-pin' && params && params.onConfirm) {
+        params.onConfirm('0000');
+      }
+    }),
     closeInterrupt:        vi.fn(),
     hasInterrupt:          vi.fn(() => false),
     on:                    vi.fn(),
