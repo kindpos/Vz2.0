@@ -573,28 +573,28 @@ defineScene({
     gridFooter.appendChild(filterBtn);
 
     // ─────────────────────────────────────────────
-    //  TABLE STATS (col 2, row 2)
+    //  FLOOR STATUS (col 2, row 2)
     // ─────────────────────────────────────────────
     var statsResult = buildStaticCard({ accent: T.elec });
-    statsResult.style.gridColumn = '2';
-    statsResult.style.gridRow    = '2';
-    statsResult.style.display    = 'flex';
+    statsResult.style.gridColumn    = '2';
+    statsResult.style.gridRow       = '2';
+    statsResult.style.display       = 'flex';
     statsResult.style.flexDirection = 'column';
     root.appendChild(statsResult);
 
-    var statsLbl = buildSectionLabel('Table Stats', T.text);
-    statsLbl.style.marginBottom = '8px'; statsLbl.style.fontSize = '16px';
+    var statsLbl = buildSectionLabel('Floor Status', T.text);
+    statsLbl.style.marginBottom = '8px'; statsLbl.style.fontSize = '13px';
     statsResult.appendChild(statsLbl);
 
     var statsGrid = document.createElement('div');
     statsGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;min-height:0;overflow:hidden;';
     statsResult.appendChild(statsGrid);
 
-    var scGuests = buildStatCard({ title: 'Guests',  value: '0',     color: T.text, delta: '' });
-    var scAvg    = buildStatCard({ title: 'Chk Avg', value: '$0.00', color: T.gold, delta: '' });
-    var scTables = buildStatCard({ title: 'Tables',  value: '0',     color: T.elec, delta: '' });
-    var scTurn   = buildStatCard({ title: 'Turn',    value: '0:00',  color: T.elec, delta: '' });
-    [scGuests, scAvg, scTables, scTurn].forEach(function(s) { statsGrid.appendChild(s.wrap); });
+    var scTables  = buildStatCard({ title: 'Tables',   value: '0',    color: T.elec,  delta: '' });
+    var scGuests  = buildStatCard({ title: 'Guests',   value: '0',    color: T.text,  delta: '' });
+    var scOldest  = buildStatCard({ title: 'Oldest',   value: '0:00', color: T.green, delta: '' });
+    var scTurn    = buildStatCard({ title: 'Avg Turn', value: '0:00', color: T.moon,  delta: '' });
+    [scTables, scGuests, scOldest, scTurn].forEach(function(s) { statsGrid.appendChild(s.wrap); });
 
     // ─────────────────────────────────────────────
     //  MY SHIFT (col 3, row 2)
@@ -685,7 +685,7 @@ defineScene({
       tileGrid,
       tipList, tipsTotal, takeHomeLine, unadjChip, unadjText,
       tipResult, checkoutBtn, filterBtn,
-      tipSparkBg, scGuests, scAvg, scTables, scTurn,
+      tipSparkBg, scTables, scGuests, scOldest, scTurn,
       previewSlide, prevContent, prevActions,
       shiftHeroVal, shiftRowAdjTips, shiftRowTipout,
       shiftRowCashOut, shiftUnadjChip, shiftUnadjText,
@@ -975,18 +975,36 @@ defineScene({
       r.tipResult.setAccent(unadj > 0 ? T.verm : T.groups.landing.infoAccent);
     }
 
-    function renderStats() {
+    function renderFloorStatus() {
       var ts = state.tableStats || {};
-      var sd = state.salesData  || {};
       var r  = state._refs;
 
-      r.scGuests.setValue(ts.guestCount   != null ? String(ts.guestCount)   : '0');
-      r.scAvg.setValue(ts.checkAvg        != null ? fmt(ts.checkAvg)        : '$0.00');
-      r.scTables.setValue(ts.tableCount   != null ? String(ts.tableCount)   : '0');
-      r.scTurn.setValue(ts.avgTurnMinutes ? fmtTurnTime(ts.avgTurnMinutes)   : '0:00');
+      r.scTables.setValue(ts.tableCount != null ? String(ts.tableCount) : '0');
+      r.scGuests.setValue(ts.guestCount != null ? String(ts.guestCount) : '0');
+
+      // OLDEST — find the maximum age among open orders
+      var openOrders = (state.allOrders || []).filter(function(o) {
+        return o.status === 'open';
+      });
+      var maxAge = 0;
+      openOrders.forEach(function(o) {
+        var age = orderAgeMinutes(o);
+        if (age > maxAge) maxAge = age;
+      });
+      var oldestStr = maxAge < 60
+        ? maxAge + 'm'
+        : Math.floor(maxAge / 60) + ':' + String(maxAge % 60).padStart(2, '0');
+      var oldestColor = ageColor(maxAge);
+      r.scOldest.setValue(maxAge > 0 ? oldestStr : '—');
+      r.scOldest.setColor(oldestColor);
+
+      // AVG TURN
+      r.scTurn.setValue(ts.avgTurnMinutes ? fmtTurnTime(ts.avgTurnMinutes) : '0:00');
 
       // Update tip sparkline with cumulative tip data if available
-      var closedChecks = ((sd.checks || [])).filter(function(c) { return c.status === 'closed'; });
+      var closedChecks = ((state.salesData.checks || [])).filter(function(c) {
+        return c.status === 'closed';
+      });
       if (closedChecks.length > 1) {
         var cumulative = [];
         var running = 0;
@@ -1216,7 +1234,7 @@ defineScene({
         try { renderTiles();    } catch(e) { console.warn('[sl] renderTiles threw:', e); }
         try { renderPreview();  } catch(e) { console.warn('[sl] renderPreview threw:', e); }
         try { renderTipQueue(); } catch(e) { console.warn('[sl] renderTipQueue threw:', e); }
-        try { renderStats();    } catch(e) { console.warn('[sl] renderStats threw:', e); }
+        try { renderFloorStatus(); } catch(e) { console.warn('[sl] renderFloorStatus threw:', e); }
         try { renderMyShift(); } catch(e) { console.warn('[sl] renderMyShift threw:', e); }
       }).catch(function() { state._refreshing = false; });
     }

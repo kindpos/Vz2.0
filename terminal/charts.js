@@ -198,6 +198,11 @@ export function buildStatCard(opts) {
   return {
     wrap:     wrap,
     setValue: function(v) { valueEl.textContent = v; },
+    setColor: function(c) {
+      valueEl.style.color    = c;
+      dot.style.background   = c;
+      dot.style.boxShadow    = '0 0 5px ' + hexToRgba(c, 0.5);
+    },
     setDelta: function(d, c) {
       deltaEl.textContent  = d;
       if (c) deltaEl.style.color = c;
