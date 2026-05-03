@@ -789,33 +789,40 @@ defineScene({
         st._voidPendingKey = null;
         if (st._voiding) return;
         st._voiding = true;
-        let voided = 0, vFailed = 0;
-        function _voidDone() {
-          if (voided + vFailed !== ids.length) return;
-          st._voiding = false;
-          showToast(
-            vFailed === 0
-              ? `Voided ${voided} check${(voided === 1 ? '' : 's')}`
-              : voided + ` voided, ${vFailed} failed`,
-            { bg: vFailed === 0 ? T.green : T.gold, duration: 2000 }
-          );
-          st.selectedIds = [];
-          st.selectedAt  = {};
-          refresh();
-        }
-        ids.forEach((orderId) => {
-          fetchWithTimeout(`/api/v1/orders/${orderId}/void`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              pin: st.emp.pin || '',
-              reason: 'Manager void from landing',
-              approved_by: st.emp.employee_id || st.emp.id,
-            }),
-          }, 8000).then((r) => {
-            if (r.ok) voided++; else vFailed++;
-            _voidDone();
-          }).catch(() => { vFailed++; _voidDone(); });
+
+        SceneManager.interrupt('manager-pin', {
+          context: 'void',
+          onConfirm: (enteredPin) => {
+            let voided = 0, vFailed = 0;
+            function _voidDone() {
+              if (voided + vFailed !== ids.length) return;
+              st._voiding = false;
+              showToast(
+                vFailed === 0
+                  ? `Voided ${voided} check${(voided === 1 ? '' : 's')}`
+                  : voided + ` voided, ${vFailed} failed`,
+                { bg: vFailed === 0 ? T.green : T.gold, duration: 2000 }
+              );
+              st.selectedIds = [];
+              st.selectedAt  = {};
+              refresh();
+            }
+            ids.forEach((orderId) => {
+              fetchWithTimeout(`/api/v1/orders/${orderId}/void`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  pin: enteredPin,
+                  reason: 'Manager void from landing',
+                  approved_by: st.emp.employee_id || st.emp.id,
+                }),
+              }, 8000).then((r) => {
+                if (r.ok) voided++; else vFailed++;
+                _voidDone();
+              }).catch(() => { vFailed++; _voidDone(); });
+            });
+          },
+          onCancel: () => { st._voiding = false; },
         });
         return;
       }
