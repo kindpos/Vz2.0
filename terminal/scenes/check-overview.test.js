@@ -261,6 +261,8 @@ describe('terminal/scenes/check-overview — discount flow', () => {
     state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
     state.selectedItems = { '0:0': true };
 
+    state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', item_id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
+
     sceneDef.__handlers.handleDiscount(state);
 
     const discPinCall = interruptCalls.find((c) => c.name === 'disc-pin');

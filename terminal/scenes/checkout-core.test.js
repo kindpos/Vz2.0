@@ -224,10 +224,8 @@ describe('terminal/scenes/checkout-core — co-manager-action (merged PIN + pick
   describe('Stage 1 - PIN Entry', () => {
     it('renders a numpad for PIN entry on initial mount', () => {
       const container = mount('discount', [{ check_id: 'c1', amount: 50 }]);
-      expect(container.textContent).toContain('1');
-      expect(container.textContent).toContain('2');
-      expect(container.textContent).toContain('9');
-      expect(container.textContent).toContain('0');
+      expect(numpadStore.el).not.toBeNull();
+      expect(container.contains(numpadStore.el)).toBe(true);
     });
 
     it('transitions to stage 2 (picker) when SUBMIT is tapped after PIN entry', () => {
