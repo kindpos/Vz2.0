@@ -3659,7 +3659,7 @@ function handleVoid(state) {
   state._voidInProgress = true;
   SceneManager.interrupt('manager-pin', {
     context: 'void',
-    onConfirm: () => {
+    onConfirm: (approvedBy) => {
       const paidSeats = state.paidSeats || {};
       const hasPaid = nonVoidedRefs.some((r) => {
         const seat = state.seats[r.seatIdx];
@@ -3670,13 +3670,13 @@ function handleVoid(state) {
         showToast('Cannot void items on a paid seat.', { bg: T.verm });
         return;
       }
-      _voidItems(state, nonVoidedRefs);
+      _voidItems(state, nonVoidedRefs, approvedBy);
     },
     onCancel: () => { state._voidInProgress = false; },
   });
 }
 
-function _voidItems(state, refs) {
+function _voidItems(state, refs, approvedBy) {
   const snapshot = [];
   for (let i = 0; i < refs.length; i++) {
     let r = refs[i];
@@ -3699,8 +3699,9 @@ function _voidItems(state, refs) {
   const deletes = snapshot
     .filter((s) => !!s.item.item_id && !s.alreadyVoided)
     .map((s) => {
+      const qs = approvedBy ? `?voided_by=${encodeURIComponent(approvedBy)}` : '';
       return fetchWithTimeout(
-        `/api/v1/orders/${state.orderId}/items/${s.item.item_id}`,
+        `/api/v1/orders/${state.orderId}/items/${s.item.item_id}${qs}`,
         { method: 'DELETE' }, 8000
       ).then((r) => {
         if (!r.ok) throw new Error(r.status);
