@@ -442,6 +442,14 @@ defineScene({
     prevContent.style.cssText = 'flex:1;min-height:0;overflow-y:auto;touch-action:pan-y;pointer-events:auto;';
     previewSlide.appendChild(prevContent);
 
+    var prevActions = document.createElement('div');
+    prevActions.style.cssText = [
+      'display:flex;flex-direction:column;gap:8px;',
+      'flex-shrink:0;padding-top:10px;margin-top:8px;',
+      'border-top:1px solid ' + hexToRgba(T.border, 0.3) + ';',
+    ].join('');
+    previewSlide.appendChild(prevActions);
+
     // ─────────────────────────────────────────────
     //  CHECK GRID (cols 2-3, row 1)
     // ─────────────────────────────────────────────
@@ -517,7 +525,7 @@ defineScene({
       tileGrid,
       tipList, tipsTotal, tipResult, checkoutBtn, filterBtn,
       tipSparkBg, scGuests, scAvg, scTables, scTurn, srvSalesOverview,
-      previewSlide, prevContent,
+      previewSlide, prevContent, prevActions,
     };
 
     // ─────────────────────────────────────────────
@@ -579,6 +587,7 @@ defineScene({
     function renderPreview() {
       var r = state._refs;
       r.prevContent.innerHTML = '';
+      r.prevActions.innerHTML = '';
       if (state.selectedIds.length === 0) {
         r.previewSlide.style.display = 'none';
         return;
