@@ -3511,7 +3511,13 @@ function handleVoid(state) {
     return;
   }
 
-  _voidItems(state, itemRefs);
+  SceneManager.interrupt('manager-pin', {
+    context: 'void',
+    onConfirm: () => {
+      _voidItems(state, itemRefs);
+    },
+    onCancel: () => {},
+  });
 }
 
 function _voidItems(state, refs) {
