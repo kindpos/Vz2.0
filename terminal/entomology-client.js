@@ -7,18 +7,20 @@
 //  Queues events when offline and replays on `online`.
 // ═══════════════════════════════════════════════════
 
+import { fetchWithTimeout } from './net.js';
+
 const _ENDPOINT = '/api/v1/entomology/client-event';
 const _QUEUE_MAX = 50;
 const _queue = [];
 
 async function _send(body) {
   try {
-    const r = await fetch(_ENDPOINT, {
+    const r = await fetchWithTimeout(_ENDPOINT, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body),
       keepalive: true,
-    });
+    }, 3000);
     return r.ok;
   } catch (e) {
     return false;
