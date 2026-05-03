@@ -81,6 +81,12 @@ export const T = {
   sp,
   r,
   font,
+  // Shorthand font aliases
+  fb:    font.body,
+  fh:    font.heading,
+  // Shorthand color aliases
+  muted: palette.textMuted,
+  elec:  palette.cyan,
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────
