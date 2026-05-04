@@ -3829,10 +3829,18 @@ function _buildItemSubCard(inst, isMultiSeat) {
 
   // ── Mod tree below card ──────────────────────────
   if ((inst.mods || []).length > 0) {
-    block.appendChild(_buildModTree(inst.mods, {
-      variant: sent ? 'sent' : 'default',
-      catColor: catColor,
-    }));
+    const _wholeMods = inst.mods.filter((m) => m.prefix !== 'Left' && m.prefix !== 'Right');
+    const _leftMods  = inst.mods.filter((m) => m.prefix === 'Left');
+    const _rightMods = inst.mods.filter((m) => m.prefix === 'Right');
+    if (_wholeMods.length > 0) {
+      block.appendChild(_buildModTree(_wholeMods, {
+        variant: sent ? 'sent' : 'default',
+        catColor: catColor,
+      }));
+    }
+    if (_leftMods.length > 0 || _rightMods.length > 0) {
+      block.appendChild(buildHalfTable(_leftMods, _rightMods, T.fsB4, sent ? null : inst));
+    }
   }
 
   wrapper.appendChild(block);
