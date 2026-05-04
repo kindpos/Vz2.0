@@ -23,7 +23,7 @@
 //           MANAGE  → MOVE / SPLIT / MERGE tool pills | divider |
 //                      UNDO + RESET (long-press) + DONE.
 //
-//  DISC is behind the existing disc-pin interrupt — reachable via
+//  DISC is behind the manager-pin interrupt — reachable via
 //  long-press item / bulk / seat menus only; no DISC on the primary
 //  bar. TRANSFER keeps its long-press seat-menu entry; it's not on
 //  the MANAGE toolbar (selection-aware transfer deferred).
@@ -807,59 +807,6 @@ defineScene({
             list.appendChild(err);
           });
       },
-    },
-
-    'disc-pin': {
-      render: (container, params) => {
-        container.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;';
-
-        let shell = buildStaticCard({ accent: T.groups.auth.shellAccent });
-        shell.style.display       = 'flex';
-        shell.style.flexDirection = 'column';
-        shell.style.alignItems    = 'center';
-        shell.style.gap           = '14px';
-        shell.style.padding       = '24px 28px 28px 32px';
-        let panel = shell;
-
-        let lbl = document.createElement('div');
-        lbl.style.cssText = [
-          `font-family:${T.fh};`,
-          `font-size:${T.fsB2};`,
-          `font-weight:${T.fwBold};`,
-          `color:${T.gold};`,
-          'letter-spacing:0.2em;',
-          'text-transform:uppercase;',
-          'margin-bottom:2px;',
-        ].join('');
-        lbl.textContent = 'MANAGER PIN';
-        panel.appendChild(lbl);
-
-        let numpad = buildNumpad({
-          onSubmit: (pin) => {
-            fetchWithTimeout('/api/v1/auth/verify-pin', {
-              method:  'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body:    JSON.stringify({ pin }),
-            }, 10000).then((r) => r.json()).then((data) => {
-              if (data.valid && (data.roles || []).indexOf('manager') !== -1) {
-                params.onConfirm(data.employee_id || pin);
-              } else if (data.valid) {
-                numpad.setError('NOT A MANAGER');
-              } else {
-                numpad.setError('INVALID PIN');
-              }
-            }).catch(() => { numpad.setError('NETWORK ERROR'); });
-          },
-          onCancel: () => { params.onCancel(); },
-        });
-        panel.appendChild(numpad);
-        container.appendChild(shell);
-
-        container.addEventListener('pointerup', (e) => {
-          if (e.target === container) { params.onCancel(); }
-        });
-      },
-      unmount: () => {},
     },
 
     'disc-select': {
@@ -3808,11 +3755,12 @@ function handleDiscount(state) {
   }
 
   state._discountInProgress = true;
-  SceneManager.interrupt('disc-pin', {
-    onConfirm: (approvedBy) => {
+  SceneManager.interrupt('manager-pin', {
+    context: 'discount',
+    onConfirm: (_pin, empId) => {
       SceneManager.interrupt('disc-select', {
         onConfirm: (opt) => {
-          _applyDiscount(state, opt.pct, itemRefs, seatIds, approvedBy);
+          _applyDiscount(state, opt.pct, itemRefs, seatIds, empId);
         },
         onCancel: () => { state._discountInProgress = false; },
       });

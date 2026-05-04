@@ -5,7 +5,7 @@
 //   2. Call handleDiscount via sceneDef.__handlers (DISC has no primary
 //      action-bar button anymore — the redesign routes it through the
 //      long-press item / seat menus — so tests drive the handler direct).
-//   3. Inspect the interrupt chain: disc-pin → disc-select → _applyDiscount.
+//   3. Inspect the interrupt chain: manager-pin → disc-select → _applyDiscount.
 //
 // Tests also pin the UI-007 dead-end guard (no selection → toast, no interrupt).
 
@@ -216,9 +216,9 @@ describe('terminal/scenes/check-overview — discount flow', () => {
     );
   });
 
-  // ── disc-pin interrupt opens ────────────────────────────────────
+  // ── manager-pin interrupt opens ────────────────────────────────────
 
-  it('DISC with selected items opens disc-pin interrupt', () => {
+  it('DISC with selected items opens manager-pin interrupt', () => {
     const { state } = renderScene();
     // Both must be set AFTER render: render() resets selectedItems (line 325)
     // and overwrites state.seats via orderToSeats(null,1) (line 335) which
@@ -228,26 +228,27 @@ describe('terminal/scenes/check-overview — discount flow', () => {
 
     sceneDef.__handlers.handleDiscount(state);
 
-    expect(SceneManagerMock.interrupt).toHaveBeenCalledWith('disc-pin', expect.objectContaining({
+    expect(SceneManagerMock.interrupt).toHaveBeenCalledWith('manager-pin', expect.objectContaining({
+      context:   'discount',
       onConfirm: expect.any(Function),
       onCancel:  expect.any(Function),
     }));
   });
 
-  // ── disc-select opens after disc-pin confirms ───────────────────
+  // ── disc-select opens after manager-pin confirms ───────────────────
 
-  it('disc-pin onConfirm triggers disc-select interrupt', () => {
+  it('manager-pin onConfirm triggers disc-select interrupt', () => {
     const { state } = renderScene();
     state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
     state.selectedItems = { '0:0': true };
 
     sceneDef.__handlers.handleDiscount(state);
 
-    const discPinCall = interruptCalls.find((c) => c.name === 'disc-pin');
-    expect(discPinCall).toBeDefined();
+    const managerPinCall = interruptCalls.find((c) => c.name === 'manager-pin');
+    expect(managerPinCall).toBeDefined();
 
     // Simulate manager confirming their PIN.
-    discPinCall.params.onConfirm('emp-mgr-42');
+    managerPinCall.params.onConfirm('mock-pin', 'mock-emp-id');
 
     const discSelectCall = interruptCalls.find((c) => c.name === 'disc-select');
     expect(discSelectCall).toBeDefined();
@@ -265,8 +266,8 @@ describe('terminal/scenes/check-overview — discount flow', () => {
 
     sceneDef.__handlers.handleDiscount(state);
 
-    const discPinCall = interruptCalls.find((c) => c.name === 'disc-pin');
-    discPinCall.params.onConfirm('emp-mgr-42');
+    const managerPinCall = interruptCalls.find((c) => c.name === 'manager-pin');
+    managerPinCall.params.onConfirm('mock-pin', 'mock-emp-id');
 
     const discSelectCall = interruptCalls.find((c) => c.name === 'disc-select');
     discSelectCall.params.onConfirm({ pct: 10, label: '10%' });
@@ -282,15 +283,15 @@ describe('terminal/scenes/check-overview — discount flow', () => {
 
   // ── cancel paths are no-ops ─────────────────────────────────────
 
-  it('disc-pin cancel does not open disc-select', () => {
+  it('manager-pin cancel does not open disc-select', () => {
     const { state } = renderScene();
     state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
     state.selectedItems = { '0:0': true };
 
     sceneDef.__handlers.handleDiscount(state);
 
-    const discPinCall = interruptCalls.find((c) => c.name === 'disc-pin');
-    discPinCall.params.onCancel();
+    const managerPinCall = interruptCalls.find((c) => c.name === 'manager-pin');
+    managerPinCall.params.onCancel();
 
     const discSelectCall = interruptCalls.find((c) => c.name === 'disc-select');
     expect(discSelectCall).toBeUndefined();
