@@ -475,6 +475,23 @@ defineScene({
     state._seatsChain   = null;     // reset per mount
     state.seats = orderToSeats(null, 1);
 
+    // Default all seats selected if none provided
+    const allSeats = state.seats.filter((s) => !state.paidSeats[s.id]);
+    const selectedSeats = (params.selectedSeats && params.selectedSeats.length > 0)
+      ? params.selectedSeats
+      : [];
+    if (selectedSeats.length === 0 && allSeats.length > 0) {
+      // Select all seats
+      for (let i = 0; i < allSeats.length; i++) {
+        toggleSeat(state, allSeats[i].id);
+      }
+    } else {
+      // Select only the provided seats
+      for (let i = 0; i < selectedSeats.length; i++) {
+        toggleSeat(state, selectedSeats[i]);
+      }
+    }
+
     let _landing = params.returnLanding || null;
     if (!_landing) {
       entReport({
@@ -547,23 +564,6 @@ defineScene({
     state._params = params;
     renderActionBar(state);
     rerenderTopArea(state);
-
-    // Default all seats selected if none provided
-    const allSeats = state.seats.filter((s) => !state.paidSeats[s.id]);
-    const selectedSeats = (params.selectedSeats && params.selectedSeats.length > 0)
-      ? params.selectedSeats
-      : [];
-    if (selectedSeats.length === 0 && allSeats.length > 0) {
-      // Select all seats
-      for (let i = 0; i < allSeats.length; i++) {
-        toggleSeat(state, allSeats[i].id);
-      }
-    } else {
-      // Select only the provided seats
-      for (let i = 0; i < selectedSeats.length; i++) {
-        toggleSeat(state, selectedSeats[i]);
-      }
-    }
 
     // ── Fetch order ──
     if (state.orderId) {
