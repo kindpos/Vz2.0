@@ -5,16 +5,7 @@
 
 export let EMPLOYEES = [];
 
-const DEFAULT_ROLES = [
-    { id: 'manager',    label: 'Manager',    permissionLevel: 'Manager'  },
-    { id: 'server',     label: 'Server',     permissionLevel: 'Standard' },
-    { id: 'bartender',  label: 'Bartender',  permissionLevel: 'Standard' },
-    { id: 'cook',       label: 'Cook',       permissionLevel: 'Standard' },
-    { id: 'host',       label: 'Host',       permissionLevel: 'Standard' },
-    { id: 'busser',     label: 'Busser',     permissionLevel: 'Standard' },
-];
-
-export let ROLES = [...DEFAULT_ROLES];
+export let ROLES = [];
 
 export const STATUSES = [
     { id: 'active',         label: 'Active',           color: 'var(--color-green)',       dot: '#39b54a' },
@@ -33,14 +24,11 @@ export async function loadEmployeeData() {
     if (roleRes.status === 'fulfilled' && roleRes.value.ok) {
         const roles = await roleRes.value.json();
         if (roles.length > 0) {
-            const customMapped = roles.map(r => ({
+            ROLES = roles.map(r => ({
                 id: r.role_id,
                 label: r.name,
                 permissionLevel: r.permission_level,
             }));
-            const defaultIds = new Set(DEFAULT_ROLES.map(r => r.id));
-            const newOnly = customMapped.filter(r => !defaultIds.has(r.id));
-            ROLES = [...DEFAULT_ROLES, ...newOnly];
         }
     }
     _rolesMap = {};
