@@ -1,6 +1,7 @@
 from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator
 from typing import Dict, List, Literal, Optional
+import uuid
 
 class StoreInfo(BaseModel):
     restaurant_name: str = "KINDpos"
@@ -411,7 +412,7 @@ class PendingChange(BaseModel):
 
 # Pricing Config Models
 class Discount(BaseModel):
-    id: str
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     type: Literal["percentage", "flat_dollar"]
     value: Decimal
