@@ -1324,6 +1324,7 @@ function renderActionBar(state) {
     lbl.style.fontWeight = T.fwBold;
     lbl.style.lineHeight = '1.2';
     lbl.style.textAlign  = 'center';
+    lbl.style.paddingTop = '3px';
     lbl.textContent      = opts.label;
     btn.appendChild(lbl);
 
