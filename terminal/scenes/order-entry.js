@@ -711,7 +711,9 @@ defineScene({
     _seatList = (params.selectedSeatNumbers && params.selectedSeatNumbers.length > 0)
       ? params.selectedSeatNumbers.slice()
       : [];
-    _activeSeats    = new Set(_seatList);
+    _activeSeats = (_seatList.length > 0)
+      ? new Set(_seatList)
+      : new Set(_allSeatList);
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
     _seatTab        = 'selected';

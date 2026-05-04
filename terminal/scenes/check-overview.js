@@ -475,23 +475,6 @@ defineScene({
     state._seatsChain   = null;     // reset per mount
     state.seats = orderToSeats(null, 1);
 
-    // Default all seats selected if none provided
-    const allSeats = state.seats.filter((s) => !state.paidSeats[s.id]);
-    const selectedSeats = (params.selectedSeats && params.selectedSeats.length > 0)
-      ? params.selectedSeats
-      : [];
-    if (selectedSeats.length === 0 && allSeats.length > 0) {
-      // Select all seats
-      for (let i = 0; i < allSeats.length; i++) {
-        toggleSeat(state, allSeats[i].id);
-      }
-    } else {
-      // Select only the provided seats
-      for (let i = 0; i < selectedSeats.length; i++) {
-        toggleSeat(state, selectedSeats[i]);
-      }
-    }
-
     let _landing = params.returnLanding || null;
     if (!_landing) {
       entReport({
@@ -1719,7 +1702,9 @@ function renderSeatsGrid(state, container, mode) {
       ((capturedId) => {
         sHdr.addEventListener('pointerup', (e) => {
           if (e.defaultPrevented) return;
-          toggleSeat(state, capturedId);
+          if (state.expandedSeats[capturedId]) delete state.expandedSeats[capturedId];
+          else state.expandedSeats[capturedId] = true;
+          rerenderTopArea(state);
         });
       })(rSeat.id);
       sCard.appendChild(sHdr);
