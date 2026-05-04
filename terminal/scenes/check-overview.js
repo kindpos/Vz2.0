@@ -1188,7 +1188,7 @@ function renderActionBar(state) {
 
   // ── Bar shell ──
   const bar = document.createElement('div');
-  bar.style.height        = '116px';
+  bar.style.height        = '136px';
   bar.style.flex          = '1';
   bar.style.flexShrink    = '0';
   bar.style.background    = T.well;
@@ -1286,7 +1286,7 @@ function renderActionBar(state) {
   const actionGrid = document.createElement('div');
   actionGrid.style.flex                = '1';
   actionGrid.style.display             = 'grid';
-  actionGrid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+  actionGrid.style.gridTemplateColumns = '2fr 0.7fr 1.2fr 1.2fr 2fr';
   actionGrid.style.gap                 = '7px';
   actionGrid.style.alignSelf  = 'center';
   actionGrid.style.alignItems = 'center';
@@ -1294,7 +1294,7 @@ function renderActionBar(state) {
   function _actBtn(opts) {
     let btn = document.createElement('div');
     btn.style.borderRadius   = '10px';
-    btn.style.height         = '82px';
+    btn.style.height         = '96px';
     btn.style.cursor         = 'pointer';
     btn.style.display        = 'flex';
     btn.style.flexDirection  = 'column';
@@ -1350,31 +1350,16 @@ function renderActionBar(state) {
   const selCount = itemKeys.length;
   const paySubLabel = selCount > 0 ? `(${selCount} items)` : '';
 
-  actionGrid.appendChild(_actBtn({
+  const payBtn = _actBtn({
     label:     'Pay',
     sub:       paySubLabel,
     bg:        T.gold,
     dk:        T.goldDk,
     color:     T.well,
     onClick:   () => { handlePay(state, state._params || {}); },
-  }));
-
-  // ── Print column: Print on top, Disc + Void sub-row on bottom ──
-  const printCol = document.createElement('div');
-  printCol.style.display       = 'flex';
-  printCol.style.flexDirection = 'column';
-  printCol.style.gap           = '5px';
-
-  const printBtn = _actBtn({
-    label:   'Print',
-    bg:      T.elec,
-    dk:      T.elecDk,
-    color:   T.well,
-    onClick: () => { handlePrint(state); },
   });
-  printCol.appendChild(printBtn);
 
-  // Sub-row builder — shared press-state wiring
+  // Sub-button builder — shared press-state wiring
   function _subBtn(opts) {
     const btn = document.createElement('div');
     btn.style.flex          = '1';
@@ -1411,32 +1396,7 @@ function renderActionBar(state) {
     return btn;
   }
 
-  const subRow = document.createElement('div');
-  subRow.style.display    = 'flex';
-  subRow.style.gap        = '5px';
-  subRow.style.flexShrink = '0';
-  subRow.style.height     = '36px';
-
-  subRow.appendChild(_subBtn({
-    label:   'Disc',
-    bg:      T.lavender,
-    dk:      darkenHex(T.lavender, 0.45),
-    color:   T.well,
-    onClick: () => { handleDiscount(state); },
-  }));
-
-  subRow.appendChild(_subBtn({
-    label:   'Void',
-    bg:      T.verm,
-    dk:      T.vermDk,
-    color:   '#fff',
-    onClick: () => { handleVoid(state); },
-  }));
-
-  printCol.appendChild(subRow);
-  actionGrid.appendChild(printCol);
-
-  actionGrid.appendChild(_actBtn({
+  const manageBtn = _actBtn({
     label:     'Manage',
     labelSize: '22px',
     sub:       '',
@@ -1445,9 +1405,9 @@ function renderActionBar(state) {
     color:     T.text,
     border:    `1px solid ${T.border}`,
     onClick:   () => { openEditSeats(state); },
-  }));
+  });
 
-  actionGrid.appendChild(_actBtn({
+  const addItemsBtn = _actBtn({
     label:   'Add Items',
     labelSize: '22px',
     sub:     '',
@@ -1455,7 +1415,57 @@ function renderActionBar(state) {
     dk:      T.greenWarmDk,
     color:   T.well,
     onClick: () => { handleAddItems(state, state._params || {}); },
-  }));
+  });
+
+  // Pay (unchanged, append as before)
+  actionGrid.appendChild(payBtn);
+
+  // Disc/Void — new narrow stacked column between Pay and Print
+  const dvCol = document.createElement('div');
+  dvCol.style.display       = 'flex';
+  dvCol.style.flexDirection = 'column';
+  dvCol.style.gap           = '5px';
+  dvCol.style.alignSelf     = 'center';
+  dvCol.style.height        = '96px';
+
+  const discBtn = _subBtn({
+    label:   'Disc',
+    bg:      T.lavender,
+    dk:      darkenHex(T.lavender, 0.45),
+    color:   T.well,
+    onClick: () => { handleDiscount(state); },
+  });
+  discBtn.style.flex = '1';
+
+  const voidBtn = _subBtn({
+    label:   'Void',
+    bg:      T.verm,
+    dk:      T.vermDk,
+    color:   '#fff',
+    onClick: () => { handleVoid(state); },
+  });
+  voidBtn.style.flex = '1';
+
+  dvCol.appendChild(discBtn);
+  dvCol.appendChild(voidBtn);
+  actionGrid.appendChild(dvCol);
+
+  // Print — standalone button, no sub-row, no flex:1
+  const printColNew = document.createElement('div');
+  printColNew.style.alignSelf = 'center';
+  const printBtnNew = _actBtn({
+    label:   'Print',
+    bg:      T.elec,
+    dk:      T.elecDk,
+    color:   T.well,
+    onClick: () => { handlePrint(state); },
+  });
+  printColNew.appendChild(printBtnNew);
+  actionGrid.appendChild(printColNew);
+
+  // Manage and Add Items (unchanged labels/colors, just appended directly)
+  actionGrid.appendChild(manageBtn);
+  actionGrid.appendChild(addItemsBtn);
 
   bar.appendChild(actionGrid);
 }
