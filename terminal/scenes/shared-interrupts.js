@@ -292,12 +292,17 @@ defineScene('manager-pin', {
             console.log('[MPIN] data.roles:', JSON.stringify(data.roles));
             console.log('[MPIN] isManager check input:', JSON.stringify(data.roles || []));
             const roles = data.roles || [];
-            const isManager = roles.some((r) =>
-              (typeof r === 'string')
-                ? (r === 'manager' || r === 'admin' || r === 'owner')
-                : (r.role_id === 'manager' || r.id === 'manager' ||
-                   r.role_id === 'admin' || r.role_id === 'owner')
-            );
+            const isManager = roles.some((r) => {
+              if (typeof r === 'string') {
+                return r === 'manager' || r === 'admin' || r === 'owner';
+              }
+              return (
+                r.role_id === 'manager' || r.id === 'manager' ||
+                r.role_id === 'admin' || r.role_id === 'owner' ||
+                (r.permission_level &&
+                 ['Manager', 'Admin', 'Owner'].includes(r.permission_level))
+              );
+            });
             if (data.valid && isManager) {
               const empId = data.employee_id || pinBuf;
               attempts = 0;
