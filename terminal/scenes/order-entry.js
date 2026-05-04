@@ -710,7 +710,9 @@ defineScene({
     _seatList = (params.selectedSeatNumbers && params.selectedSeatNumbers.length > 0)
       ? params.selectedSeatNumbers.slice()
       : [];
-    _activeSeats    = new Set(_seatList);
+    _activeSeats = (_seatList.length > 0)
+      ? new Set(_seatList)
+      : new Set(_allSeatList);
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
     _seatTab        = 'selected';
@@ -1719,17 +1721,8 @@ function buildSeatSelectorCard() {
       let pill = _buildSeatPill(sn, isActive);
       pill.addEventListener('pointerup', ((seatNum) => {
         return () => {
-          // Auto-switch: after items just added, first tap on a different
-          // seat replaces the active set rather than toggling.
-          if (_autoSwitchArmed) {
-            _autoSwitchArmed = false;
-            _activeSeats = new Set([seatNum]);
-            repaintSeats();
-            renderTicket();
-            return;
-          }
-          if (_activeSeats.has(seatNum)) _activeSeats.delete(seatNum);
-          else _activeSeats.add(seatNum);
+          _autoSwitchArmed = false;
+          _activeSeats = new Set([seatNum]);
           repaintSeats();
           renderTicket();
         };
