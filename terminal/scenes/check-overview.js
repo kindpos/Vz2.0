@@ -1198,6 +1198,8 @@ function renderActionBar(state) {
   bar.style.gap           = '8px';
   bar.style.padding       = '6px 10px';
   bar.style.boxSizing     = 'border-box';
+  bar.style.borderRadius  = '10px';
+  bar.style.margin        = '0';
   barZone.appendChild(bar);
 
   // ── Left totals cluster ──
@@ -1284,19 +1286,20 @@ function renderActionBar(state) {
 
   // ── Action grid — 4 equal buttons ──
   const actionGrid = document.createElement('div');
-  actionGrid.style.flex                = '1';
+  actionGrid.style.flex                = '0 1 auto';
   actionGrid.style.display             = 'grid';
   actionGrid.style.gridTemplateColumns = '2fr 0.7fr 1.2fr 1.2fr 2fr';
   actionGrid.style.gap                 = '7px';
-  actionGrid.style.alignSelf  = 'center';
-  actionGrid.style.alignItems = 'center';
+  actionGrid.style.alignSelf           = 'center';
+  actionGrid.style.alignItems          = 'center';
+  actionGrid.style.justifyItems        = 'start';
 
   function _actBtn(opts) {
     let btn = document.createElement('div');
     btn.style.borderRadius   = '10px';
     btn.style.height         = '78px';
-    btn.style.width          = '60%';
-    btn.style.margin         = '0 auto';
+    btn.style.width          = '80%';
+    btn.style.margin         = '0';
     btn.style.cursor         = 'pointer';
     btn.style.display        = 'flex';
     btn.style.flexDirection  = 'column';
@@ -1439,8 +1442,8 @@ function renderActionBar(state) {
     onClick: () => { handleDiscount(state); },
   });
   discBtn.style.flex   = '1';
-  discBtn.style.width  = '60%';
-  discBtn.style.margin = '0 auto';
+  discBtn.style.width  = '80%';
+  discBtn.style.margin = '0';
 
   const voidBtn = _subBtn({
     label:   'Void',
@@ -1450,8 +1453,8 @@ function renderActionBar(state) {
     onClick: () => { handleVoid(state); },
   });
   voidBtn.style.flex   = '1';
-  voidBtn.style.width  = '60%';
-  voidBtn.style.margin = '0 auto';
+  voidBtn.style.width  = '80%';
+  voidBtn.style.margin = '0';
 
   dvCol.appendChild(discBtn);
   dvCol.appendChild(voidBtn);
