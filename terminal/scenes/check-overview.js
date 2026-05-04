@@ -1288,9 +1288,10 @@ function renderActionBar(state) {
 
   // ── Action grid — 4 equal buttons ──
   const actionGrid = document.createElement('div');
-  actionGrid.style.flex                = '0 1 auto';
+  actionGrid.style.width               = 'fit-content';
+  actionGrid.style.flex                = '0 0 auto';
   actionGrid.style.display             = 'grid';
-  actionGrid.style.gridTemplateColumns = '1.2fr 0.7fr 1.2fr 1.2fr 1.2fr';
+  actionGrid.style.gridTemplateColumns = 'auto auto auto auto auto';
   actionGrid.style.gap                 = '5px';
   actionGrid.style.alignSelf           = 'center';
   actionGrid.style.alignItems          = 'center';
