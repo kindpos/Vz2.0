@@ -1189,7 +1189,7 @@ function renderActionBar(state) {
   // ── Bar shell ──
   const bar = document.createElement('div');
   bar.style.height        = '136px';
-  bar.style.flex          = '1';
+  bar.style.flex          = '0 0 auto';
   bar.style.flexShrink    = '0';
   bar.style.background    = T.well;
   bar.style.borderTop     = `2px solid ${T.border}`;
