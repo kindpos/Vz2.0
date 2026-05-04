@@ -304,7 +304,7 @@ defineScene({
         overlay.innerHTML = '';
         const empId   = empData ? (empData.employee_id || empData.id || '') : '';
         const empName = empData ? (empData.name || 'Team Member') : '';
-        const roles   = empData ? (empData.roles || ['server']) : [];
+        const roles   = empData ? (empData.roles || []) : [];
 
         // Header
         const hdr = document.createElement('div');
