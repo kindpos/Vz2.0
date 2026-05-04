@@ -1288,10 +1288,13 @@ function renderActionBar(state) {
   actionGrid.style.display             = 'grid';
   actionGrid.style.gridTemplateColumns = 'repeat(4, 1fr)';
   actionGrid.style.gap                 = '7px';
+  actionGrid.style.alignSelf  = 'center';
+  actionGrid.style.alignItems = 'center';
 
   function _actBtn(opts) {
     let btn = document.createElement('div');
     btn.style.borderRadius   = '10px';
+    btn.style.height         = '82px';
     btn.style.cursor         = 'pointer';
     btn.style.display        = 'flex';
     btn.style.flexDirection  = 'column';
@@ -1369,7 +1372,6 @@ function renderActionBar(state) {
     color:   T.well,
     onClick: () => { handlePrint(state); },
   });
-  printBtn.style.flex = '1';
   printCol.appendChild(printBtn);
 
   // Sub-row builder — shared press-state wiring
@@ -1435,8 +1437,8 @@ function renderActionBar(state) {
   actionGrid.appendChild(printCol);
 
   actionGrid.appendChild(_actBtn({
-    label:     'Edit\nSeats',
-    labelSize: '18px',
+    label:     'Manage',
+    labelSize: '22px',
     sub:       '',
     bg:        T.card,
     dk:        T.moonDk,
