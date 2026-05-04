@@ -4188,7 +4188,7 @@ function openEditSeats(state) {
       };
     });
 
-  // focusedIds: selected seats, or focused seats, or first unpaid seat
+  // focusedIds: selected seats, or focused seats, or all unpaid seats
   let focusedIds;
   const selKeys2 = Object.keys(state.selected || {});
   if (selKeys2.length > 0) {
@@ -4196,8 +4196,7 @@ function openEditSeats(state) {
   } else if (Object.keys(state.focusedSeats || {}).length > 0) {
     focusedIds = Object.keys(state.focusedSeats);
   } else {
-    const firstUnpaid = state.seats.filter((s) => !state.paidSeats[s.id])[0];
-    focusedIds = firstUnpaid ? [firstUnpaid.id] : [];
+    focusedIds = state.seats.filter((s) => !state.paidSeats[s.id]).map((s) => s.id);
   }
 
   SceneManager.openTransactional('column-editor', {
