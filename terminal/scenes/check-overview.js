@@ -1288,7 +1288,7 @@ function renderActionBar(state) {
   const actionGrid = document.createElement('div');
   actionGrid.style.flex                = '0 1 auto';
   actionGrid.style.display             = 'grid';
-  actionGrid.style.gridTemplateColumns = '2fr 0.7fr 1.2fr 1.2fr 2fr';
+  actionGrid.style.gridTemplateColumns = '1.2fr 0.7fr 1.2fr 1.2fr 1.2fr';
   actionGrid.style.gap                 = '5px';
   actionGrid.style.alignSelf           = 'center';
   actionGrid.style.alignItems          = 'center';
