@@ -651,6 +651,8 @@ function buildColumn(colIdx, state) {
         }
       }
 
+      var highlightColor = isSelected ? T.green : (isSplitTgt ? T.elec : (isMergeTgt ? T.greenWarm : null));
+
       var row = document.createElement('div');
       row.style.display       = 'flex';
       row.style.alignItems    = 'center';
@@ -662,7 +664,7 @@ function buildColumn(colIdx, state) {
       row.style.touchAction   = 'manipulation';
       row.style.userSelect    = 'none';
       row.dataset.itemRow     = '1';
-      if (isSelected) row.style.background = hexToRgba(T.green, 0.12);
+      if (highlightColor) row.style.background = hexToRgba(highlightColor, 0.12);
 
       var nameSpan = document.createElement('span');
       nameSpan.textContent    = nameText;
@@ -670,7 +672,7 @@ function buildColumn(colIdx, state) {
       nameSpan.style.minWidth = '0';
       nameSpan.style.fontFamily = T.fb;
       nameSpan.style.fontSize   = T.fsB3;
-      nameSpan.style.color      = isSelected ? T.green : T.text;
+      nameSpan.style.color      = highlightColor || T.text;
 
       var priceSpan = document.createElement('span');
       priceSpan.textContent      = fmt(item.qty * item.price);
@@ -679,7 +681,7 @@ function buildColumn(colIdx, state) {
       priceSpan.style.fontFamily = T.fb;
       priceSpan.style.fontWeight = T.fwBold;
       priceSpan.style.fontSize   = T.fsB3;
-      priceSpan.style.color      = isSelected ? T.green : T.gold;
+      priceSpan.style.color      = highlightColor || T.gold;
 
       row.appendChild(nameSpan);
       row.appendChild(priceSpan);
