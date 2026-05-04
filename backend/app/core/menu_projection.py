@@ -346,6 +346,12 @@ def project_menu(events: List[Event]) -> MenuState:
 
     # Finalize state
     state.categories = sorted(categories_map.values(), key=lambda c: c.get('display_order', 999))
+    for grp in modifier_groups_map.values():
+        if 'modifiers' in grp and isinstance(grp['modifiers'], list):
+            grp['modifiers'] = sorted(
+                grp['modifiers'],
+                key=lambda m: (m.get('name') or '').lower()
+            )
     state.items = list(items_map.values())
     state.modifier_groups = list(modifier_groups_map.values())
     state.options = options_map
