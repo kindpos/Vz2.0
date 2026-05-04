@@ -1287,17 +1287,6 @@ function renderActionBar(state) {
   barDiv.style.margin     = '2px 0';
   bar.appendChild(barDiv);
 
-  // ── Action grid — 4 equal buttons ──
-  const actionGrid = document.createElement('div');
-  actionGrid.style.width               = 'fit-content';
-  actionGrid.style.flex                = '0 0 auto';
-  actionGrid.style.display             = 'grid';
-  actionGrid.style.gridTemplateColumns = '120px 56px 120px 140px 140px';
-  actionGrid.style.gap                 = '5px';
-  actionGrid.style.alignSelf           = 'center';
-  actionGrid.style.alignItems          = 'center';
-
-
   function _actBtn(opts) {
     let btn = document.createElement('div');
     btn.style.borderRadius   = '10px';
@@ -1428,17 +1417,6 @@ function renderActionBar(state) {
     onClick: () => { handleAddItems(state, state._params || {}); },
   });
 
-  // Pay (unchanged, append as before)
-  actionGrid.appendChild(payBtn);
-
-  // Disc/Void — new narrow stacked column between Pay and Print
-  const dvCol = document.createElement('div');
-  dvCol.style.display       = 'flex';
-  dvCol.style.flexDirection = 'column';
-  dvCol.style.gap           = '5px';
-  dvCol.style.alignSelf     = 'center';
-  dvCol.style.height        = '78px';
-
   const discBtn = _subBtn({
     label:   'Disc',
     bg:      T.lavender,
@@ -1446,9 +1424,6 @@ function renderActionBar(state) {
     color:   T.well,
     onClick: () => { handleDiscount(state); },
   });
-  discBtn.style.flex   = '1';
-  discBtn.style.width  = '100%';
-  discBtn.style.margin = '0';
 
   const voidBtn = _subBtn({
     label:   'Void',
@@ -1457,19 +1432,7 @@ function renderActionBar(state) {
     color:   T.text,
     onClick: () => { handleVoid(state); },
   });
-  voidBtn.style.flex   = '1';
-  voidBtn.style.width  = '100%';
-  voidBtn.style.margin = '0';
 
-  dvCol.appendChild(discBtn);
-  discBtn.style.width = '100%';
-  dvCol.appendChild(voidBtn);
-  voidBtn.style.width = '100%';
-  actionGrid.appendChild(dvCol);
-
-  // Print — standalone button, no sub-row, no flex:1
-  const printColNew = document.createElement('div');
-  printColNew.style.alignSelf = 'center';
   const printBtnNew = _actBtn({
     label:   'Print',
     bg:      T.elec,
@@ -1477,14 +1440,67 @@ function renderActionBar(state) {
     color:   T.well,
     onClick: () => { handlePrint(state); },
   });
-  printColNew.appendChild(printBtnNew);
-  actionGrid.appendChild(printColNew);
 
-  // Manage and Add Items (unchanged labels/colors, just appended directly)
-  actionGrid.appendChild(manageBtn);
-  actionGrid.appendChild(addItemsBtn);
+  const CUT = 20;
+  const cpLeft = `polygon(0 0,100% 0,100% calc(50% - ${CUT}px),calc(100% - ${CUT}px) 50%,100% calc(50% + ${CUT}px),100% 100%,0 100%)`;
+  const cpTopR = `polygon(0 0,100% 0,100% 100%,${CUT}px 100%,0 calc(100% - ${CUT}px))`;
+  const cpBotR = `polygon(${CUT}px 0,100% 0,100% 100%,0 100%,0 ${CUT}px)`;
 
-  bar.appendChild(actionGrid);
+  // LEFT TALL — payBtn
+  payBtn.style.width   = '100%';
+  payBtn.style.height  = '100%';
+  payBtn.style.clipPath = cpLeft;
+
+  // TOP RIGHT — disc + void stacked
+  const dvCol = document.createElement('div');
+  dvCol.style.cssText = `
+    display:flex; flex-direction:column; gap:4px;
+    width:100%; height:100%; clip-path:${cpTopR};
+  `;
+  discBtn.style.flex = '1';
+  discBtn.style.width = '100%';
+  voidBtn.style.flex = '1';
+  voidBtn.style.width = '100%';
+  dvCol.appendChild(discBtn);
+  dvCol.appendChild(voidBtn);
+
+  // BOTTOM RIGHT — addItemsBtn
+  addItemsBtn.style.width    = '100%';
+  addItemsBtn.style.height   = '100%';
+  addItemsBtn.style.clipPath = cpBotR;
+
+  // Quad grid
+  const actionCluster = document.createElement('div');
+  actionCluster.style.cssText = `
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+    gap:5px; height:112px; width:300px; flex-shrink:0;
+  `;
+  const payCell = document.createElement('div');
+  payCell.style.cssText = 'grid-column:1; grid-row:1/3; display:flex;';
+  payCell.appendChild(payBtn);
+  const dvCell = document.createElement('div');
+  dvCell.style.cssText = 'grid-column:2; grid-row:1; display:flex;';
+  dvCell.appendChild(dvCol);
+  const addCell = document.createElement('div');
+  addCell.style.cssText = 'grid-column:2; grid-row:2; display:flex;';
+  addCell.appendChild(addItemsBtn);
+  actionCluster.appendChild(payCell);
+  actionCluster.appendChild(dvCell);
+  actionCluster.appendChild(addCell);
+
+  // Secondary left column
+  const secondaryCol = document.createElement('div');
+  secondaryCol.style.cssText = `
+    display:flex; flex-direction:column;
+    gap:5px; justify-content:center; flex:1;
+  `;
+  secondaryCol.appendChild(manageBtn);
+  secondaryCol.appendChild(printBtnNew);
+
+  bar.appendChild(secondaryCol);
+  bar.appendChild(actionCluster);
 }
 
 
