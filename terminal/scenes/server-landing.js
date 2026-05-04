@@ -415,12 +415,14 @@ defineScene({
     const root = document.createElement('div');
     root.style.cssText = [
       'position:absolute;inset:0;',
+      'height:100%;',
+      'min-height:0;',
       `background:${T.bg};`,
       'display:grid;',
       'grid-template-columns:300px 1fr 1fr;',
       'grid-template-rows:1fr 250px;',
       'gap:10px;padding:8px 10px 32px;',
-      'box-sizing:border-box;overflow:visible;',
+      'box-sizing:border-box;overflow:hidden;',
       `font-family:${T.fb};`,
     ].join('') + `;font-weight:${T.fwBold};`;
     container.appendChild(root);
@@ -545,7 +547,9 @@ defineScene({
     const gridResult = buildStaticCard({ accent: T.groups.landing.infoAccent });
     gridResult.style.gridColumn = '2/4';
     gridResult.style.gridRow    = '1';
-    gridResult.style.height     = '100%';
+    gridResult.style.flex       = '1';
+    gridResult.style.minHeight  = '0';
+    gridResult.style.overflow   = 'hidden';
     gridResult.style.display    = 'flex';
     gridResult.style.flexDirection = 'column';
     root.appendChild(gridResult);
