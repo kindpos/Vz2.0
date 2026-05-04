@@ -1200,8 +1200,7 @@ function renderActionBar(state) {
   bar.style.boxSizing     = 'border-box';
   bar.style.borderRadius  = '10px';
   bar.style.margin        = '0';
-  bar.style.width         = 'fit-content';
-  bar.style.minWidth      = '0';
+
   barZone.appendChild(bar);
 
   // ── Left totals cluster ──
@@ -1291,7 +1290,7 @@ function renderActionBar(state) {
   actionGrid.style.width               = 'fit-content';
   actionGrid.style.flex                = '0 0 auto';
   actionGrid.style.display             = 'grid';
-  actionGrid.style.gridTemplateColumns = 'auto auto auto auto auto';
+  actionGrid.style.gridTemplateColumns = '120px 56px 120px 140px 140px';
   actionGrid.style.gap                 = '5px';
   actionGrid.style.alignSelf           = 'center';
   actionGrid.style.alignItems          = 'center';
@@ -1301,8 +1300,7 @@ function renderActionBar(state) {
     let btn = document.createElement('div');
     btn.style.borderRadius   = '10px';
     btn.style.height         = '78px';
-    btn.style.width          = '80%';
-    btn.style.margin         = '0';
+    btn.style.width          = '100%';
     btn.style.cursor         = 'pointer';
     btn.style.display        = 'flex';
     btn.style.flexDirection  = 'column';
@@ -1445,7 +1443,7 @@ function renderActionBar(state) {
     onClick: () => { handleDiscount(state); },
   });
   discBtn.style.flex   = '1';
-  discBtn.style.width  = '80%';
+  discBtn.style.width  = '100%';
   discBtn.style.margin = '0';
 
   const voidBtn = _subBtn({
@@ -1456,7 +1454,7 @@ function renderActionBar(state) {
     onClick: () => { handleVoid(state); },
   });
   voidBtn.style.flex   = '1';
-  voidBtn.style.width  = '80%';
+  voidBtn.style.width  = '100%';
   voidBtn.style.margin = '0';
 
   dvCol.appendChild(discBtn);
