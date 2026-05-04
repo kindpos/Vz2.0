@@ -1195,8 +1195,8 @@ function renderActionBar(state) {
   bar.style.borderTop     = `2px solid ${T.border}`;
   bar.style.display       = 'flex';
   bar.style.alignItems    = 'stretch';
-  bar.style.gap           = '8px';
-  bar.style.padding       = '6px 4px';
+  bar.style.gap           = '4px';
+  bar.style.padding       = '6px 0';
   bar.style.boxSizing     = 'border-box';
   bar.style.borderRadius  = '10px';
   bar.style.margin        = '0';
@@ -1289,7 +1289,7 @@ function renderActionBar(state) {
   actionGrid.style.flex                = '0 1 auto';
   actionGrid.style.display             = 'grid';
   actionGrid.style.gridTemplateColumns = '2fr 0.7fr 1.2fr 1.2fr 2fr';
-  actionGrid.style.gap                 = '7px';
+  actionGrid.style.gap                 = '5px';
   actionGrid.style.alignSelf           = 'center';
   actionGrid.style.alignItems          = 'center';
 
