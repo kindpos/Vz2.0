@@ -424,6 +424,7 @@ defineScene({
         }
 
         let selectedRole = null;
+        let selectedRoleName = null;
         const roleBtns = [];
         roles.forEach((role) => {
           const rc = (T.roles && T.roles[role]) || T.elec;
@@ -436,6 +437,7 @@ defineScene({
             fontSize: T.fsB3,
             onClick:  ((r, rcc, rdd) => () => {
               selectedRole = r.role_id;
+              selectedRoleName = (r.name || r.role_id);
               roleBtns.forEach((rb) => {
                 const sel = rb._role === r;
                 if (sel) {
@@ -542,7 +544,7 @@ defineScene({
               throw new Error(detail || 'Failed');
             }
             await r.json();
-            showToast(`${empName} clocked in as ${selectedRole.toUpperCase()}`, { bg: T.greenWarm, duration: 3000 });
+            showToast(`${empName} clocked in as ${(selectedRoleName || selectedRole).toUpperCase()}`, { bg: T.greenWarm, duration: 3000 });
             _closeOverlay();
             SceneManager.closeGate('login');
             const dest = selectedRole === 'manager' ? 'manager-landing' : 'server-landing';
