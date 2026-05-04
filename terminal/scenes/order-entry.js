@@ -1720,8 +1720,13 @@ function buildSeatSelectorCard() {
       let pill = _buildSeatPill(sn, isActive);
       pill.addEventListener('pointerup', ((seatNum) => {
         return () => {
-          _autoSwitchArmed = false;
-          _activeSeats = new Set([seatNum]);
+          if (_autoSwitchArmed) {
+            _autoSwitchArmed = false;
+            _activeSeats = new Set([seatNum]);
+          } else {
+            if (_activeSeats.has(seatNum)) _activeSeats.delete(seatNum);
+            else _activeSeats.add(seatNum);
+          }
           repaintSeats();
           renderTicket();
         };
