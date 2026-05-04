@@ -342,6 +342,7 @@ let _modPanel      = null;   // buildKindModPanel instance
 let _modPanelItem  = null;   // ticket preview item for active panel
 let _modPanelCatColor = null; // cat color of the item being modified — used by _appendModPreview
 let _modPanelOpen  = false;  // drives grid collapse animation
+let _editingInstId = null;   // ticket item id currently being re-edited
 
 // ── Inject invisible scrollbar style ──
 (() => {
@@ -2337,7 +2338,7 @@ function _prefixColor(id) {
   return T.card;
 }
 
-function buildKindModPanel(container, item, modConfig, catColor, enablePlacement, callbacks) {
+function buildKindModPanel(container, item, modConfig, catColor, enablePlacement, callbacks, initialState) {
   modConfig = modConfig || {};
   let includedItems   = modConfig.includedItems   || [];
   let mandatoryGroups = modConfig.mandatoryGroups || [];
@@ -2345,9 +2346,10 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   const isPizza = !!enablePlacement;
 
   // ── State ──────────────────────────────────────────
-  const inclState  = {};   // mod.id  → 'NO'|'ON SIDE'
-  const optState   = {};   // optId   → { prefix, placement }
-  const mandState  = {};   // groupKey → { key, label, price }
+  const _is       = initialState || {};
+  const inclState = _is.inclState  ? Object.assign({}, _is.inclState)  : {};
+  const optState  = _is.optState   ? Object.assign({}, _is.optState)   : {};
+  const mandState = _is.mandState  ? Object.assign({}, _is.mandState)  : {};
   let activePrefix = 'ADD';
   let activePlacement = 'WHOLE';
   let inclPrefix = 'NO';
@@ -3100,7 +3102,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
 
 // ── MODIFIER PANEL (overlay on _mainArea) ─────────
-function openModifierPanel(item, modConfig, catColor, enablePlacement) {
+function openModifierPanel(item, modConfig, catColor, enablePlacement, editingInst) {
   if (_modPanel) closeModifierPanel();
   if (!_mainArea) return;
 
@@ -3114,11 +3116,43 @@ function openModifierPanel(item, modConfig, catColor, enablePlacement) {
   if (_bottomBar)      _bottomBar.style.display      = 'none';
   _mainArea.style.border = 'none';
 
+  let _initialState = null;
+  if (editingInst && editingInst._modPanelData) {
+    const _mpd = editingInst._modPanelData;
+    // mandState: already keyed by groupKey
+    const _mandState = Object.assign({}, _mpd.mandatory || {});
+    // inclState: removals → 'NO', on-side → 'SIDE'
+    const _inclState = {};
+    (_mpd.includedRemovals || []).forEach((id) => { _inclState[id] = 'NO'; });
+    (_mpd.optionalModifiers || []).filter((m) => m.prefix === 'ON SIDE').forEach((m) => {
+      const inc = (modConfig.includedItems || []).find((i) => i.label === m.label);
+      if (inc) _inclState[inc.id] = 'SIDE';
+    });
+    // optState: match label back to optId via modConfig.optionalGroups
+    const _revPlace = { '1st': 'LEFT', '2nd': 'RIGHT' };
+    const _optState = {};
+    (_mpd.optionalModifiers || []).forEach((m) => {
+      let _optId = null;
+      (modConfig.optionalGroups || []).forEach((g) => {
+        (g.options || []).forEach((o) => {
+          if (o.label === m.label) _optId = o.id || o.key;
+        });
+      });
+      if (_optId) _optState[_optId] = {
+        prefix:    m.prefix,
+        placement: _revPlace[m.placement] || 'WHOLE',
+      };
+    });
+    _initialState = { mandState: _mandState, inclState: _inclState, optState: _optState };
+  }
+
+  _editingInstId = editingInst ? editingInst.id : null;
+
   _modPanel = buildKindModPanel(_mainArea, item, modConfig, catColor, enablePlacement, {
     onUpdate: (outputItem) => { _modPanelItem = outputItem; renderTicket(); },
     onSend:   (activeItem) => { commitModifierPanelItem(item, activeItem, modConfig); },
     onCancel: () => { closeModifierPanel(); },
-  });
+  }, _initialState);
   renderTicket();
 }
 
@@ -3265,6 +3299,31 @@ function commitModifierPanelItem(originalItem, activeItem, modConfig) {
   if (activeItem.note) {
     mods.push({ name: `\uD83D\uDCDD ${activeItem.note}`, price: 0, charged: false, prefix: null });
   }
+
+  // Edit-in-place: update existing ticket item instead of pushing new
+  if (_editingInstId !== null) {
+    const _eInst = ticket.find((i) => i.id === _editingInstId);
+    _editingInstId = null;
+    if (_eInst) {
+      // Rebuild mods array same way as the normal commit path
+      // (reuse the existing mands/optMods/removals locals that follow)
+      // then overwrite in-place
+      _eInst.mods          = mods;   // 'mods' is built by the existing code above
+      _eInst._modPanelData = {
+        mandatory:          mands,
+        optionalModifiers:  activeItem.optionalModifiers,
+        includedRemovals:   activeItem.includedRemovals,
+        allergens:          activeItem.allergens,
+        allergenNote:       activeItem.allergenNote,
+        note:               activeItem.note,
+      };
+      closeModifierPanel();
+      renderTicket();
+      rebuildBottomBar();
+      return;
+    }
+  }
+  _editingInstId = null;
 
   let ticketItem = {
     id:        ++ticketSeq,
@@ -3815,6 +3874,27 @@ function _buildItemSubCard(inst, isMultiSeat) {
       };
     })(inst));
     mainRow.appendChild(xBtn);
+  }
+
+  if (!sent) {
+    card.style.cursor = 'pointer';
+    card.addEventListener('pointerup', (e) => {
+      if (e.target === xBtn) return;
+      const _itemId  = inst.menu_item_id;
+      const _catId   = inst.category;
+      const _bkCfg   = resolveBackendModifierConfig(_itemId, _catId);
+      const _ovInc   = _itemId ? INCLUDED_BY_ITEM[_itemId] : null;
+      if (!_bkCfg && !(_ovInc && _ovInc.length > 0)) return;
+      const _eCfg    = _bkCfg ? Object.assign({}, _bkCfg) : {};
+      if (_ovInc && _ovInc.length > 0) _eCfg.includedItems = _ovInc;
+      const _mCat    = _catId ? getMenuCat(_catId) : null;
+      const _enPl    = _mCat ? !!_mCat.enablePlacement : false;
+      const _cc      = _catColorForItem(inst);
+      openModifierPanel(
+        { label: inst.name, price: inst.unitPrice, id: inst.menu_item_id },
+        _eCfg, _cc, _enPl, inst
+      );
+    });
   }
 
   card.appendChild(mainRow);
