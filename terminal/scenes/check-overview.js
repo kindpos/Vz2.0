@@ -1192,13 +1192,14 @@ function renderActionBar(state) {
   bar.style.flex          = '0 0 auto';
   bar.style.flexShrink    = '0';
   bar.style.background    = T.well;
-  bar.style.borderTop     = `2px solid ${T.border}`;
+  bar.style.border        = `1.5px solid ${T.border}`;
+  bar.style.borderLeft    = `4px solid ${T.green}`;
+  bar.style.borderRadius  = '10px';
   bar.style.display       = 'flex';
   bar.style.alignItems    = 'stretch';
   bar.style.gap           = '4px';
-  bar.style.padding       = '6px 0';
+  bar.style.padding       = '8px 12px';
   bar.style.boxSizing     = 'border-box';
-  bar.style.borderRadius  = '10px';
   bar.style.margin        = '0';
 
   barZone.appendChild(bar);
