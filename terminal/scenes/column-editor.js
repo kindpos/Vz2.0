@@ -175,6 +175,24 @@ function handleColTap(colIdx, state) {
   } else if (state.mode === 'move') {
     if (state.selectedItems.length > 0) doMove(colIdx, state);
     else showToast('Select items first', { bg: T.gold });
+  } else {
+    // Null mode: tap header to select all items in that seat
+    var col = state.columns[colIdx];
+    if (col && col.items.length > 0) {
+      for (var ii = 0; ii < col.items.length; ii++) {
+        var found = -1;
+        for (var si = 0; si < state.selectedItems.length; si++) {
+          if (state.selectedItems[si].colIdx === colIdx && state.selectedItems[si].itemIdx === ii) {
+            found = si; break;
+          }
+        }
+        if (found < 0) state.selectedItems.push({ colIdx: colIdx, itemIdx: ii });
+      }
+      // Auto-activate MOVE on first header tap
+      if (state.selectedItems.length > 0 && state.mode === null) state.mode = 'move';
+      renderColumns(state);
+      renderFooterToolbar(state);
+    }
   }
 }
 
