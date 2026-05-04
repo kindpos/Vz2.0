@@ -536,7 +536,10 @@ defineScene({
             }, 15000);
             if (!r.ok) {
               const d = await r.json();
-              throw new Error(d.detail||'Failed');
+              const detail = typeof d.detail === 'string'
+                ? d.detail
+                : JSON.stringify(d.detail);
+              throw new Error(detail || 'Failed');
             }
             await r.json();
             showToast(`${empName} clocked in as ${selectedRole.toUpperCase()}`, { bg: T.greenWarm, duration: 3000 });
