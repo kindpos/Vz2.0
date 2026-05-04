@@ -3863,6 +3863,7 @@ function _buildItemSubCard(inst, isMultiSeat) {
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
     ].join('');
     xBtn.textContent = '×';
+    xBtn.dataset.deleteBtn = '1';
     xBtn.addEventListener('pointerup', ((instance) => {
       return (e) => {
         e.stopPropagation();
@@ -3878,8 +3879,10 @@ function _buildItemSubCard(inst, isMultiSeat) {
 
   if (!sent) {
     card.style.cursor = 'pointer';
+    card.style.pointerEvents = 'auto';
+    card.style.touchAction = 'manipulation';
     card.addEventListener('pointerup', (e) => {
-      if (e.target === xBtn) return;
+      if (e.target.closest('[data-delete-btn]')) return;
       const _itemId  = inst.menu_item_id;
       const _catId   = inst.category;
       const _bkCfg   = resolveBackendModifierConfig(_itemId, _catId);
