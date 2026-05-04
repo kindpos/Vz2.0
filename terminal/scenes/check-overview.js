@@ -1196,7 +1196,7 @@ function renderActionBar(state) {
   bar.style.display       = 'flex';
   bar.style.alignItems    = 'stretch';
   bar.style.gap           = '8px';
-  bar.style.padding       = '6px 10px';
+  bar.style.padding       = '6px 4px';
   bar.style.boxSizing     = 'border-box';
   bar.style.borderRadius  = '10px';
   bar.style.margin        = '0';
@@ -1292,7 +1292,7 @@ function renderActionBar(state) {
   actionGrid.style.gap                 = '7px';
   actionGrid.style.alignSelf           = 'center';
   actionGrid.style.alignItems          = 'center';
-  actionGrid.style.justifyItems        = 'start';
+
 
   function _actBtn(opts) {
     let btn = document.createElement('div');
@@ -1457,7 +1457,9 @@ function renderActionBar(state) {
   voidBtn.style.margin = '0';
 
   dvCol.appendChild(discBtn);
+  discBtn.style.width = '100%';
   dvCol.appendChild(voidBtn);
+  voidBtn.style.width = '100%';
   actionGrid.appendChild(dvCol);
 
   // Print — standalone button, no sub-row, no flex:1
