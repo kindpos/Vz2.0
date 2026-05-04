@@ -426,18 +426,18 @@ defineScene({
         let selectedRole = null;
         const roleBtns = [];
         roles.forEach((role) => {
-          const rc = (T.roles && T.roles[role]) || T.elec;
+          const rc = (T.roles && T.roles[role.role_id]) || T.elec;
           const rd = darkenHex(rc, 0.35);
           const btn = buildPillButton({
-            label:    role.toUpperCase(),
+            label:    (role.label || role.role_id).toUpperCase(),
             color:    hexToRgba(rc, 0.15),
             darkBg:   hexToRgba(rc, 0.08),
             textColor: rc,
             fontSize: T.fsB3,
             onClick:  ((r, rcc, rdd) => () => {
-              selectedRole = r;
+              selectedRole = r.role_id;
               roleBtns.forEach((rb) => {
-                const sel = rb._role === r;
+                const sel = rb._role === r.role_id;
                 if (sel) {
                   rb.setColor(rb._rc, rb._rd, T.well);
                 } else {
@@ -449,7 +449,7 @@ defineScene({
               clockInBtn.style.pointerEvents = 'auto';
             })(role, rc, rd),
           });
-          btn._role = role; btn._rc = rc; btn._rd = rd;
+          btn._role = role.role_id; btn._rc = rc; btn._rd = rd;
           roleBtns.push(btn);
           roleGrid.appendChild(btn);
         });
