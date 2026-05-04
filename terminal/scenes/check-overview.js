@@ -1453,7 +1453,7 @@ function renderActionBar(state) {
     label:   'Void',
     bg:      T.verm,
     dk:      T.vermDk,
-    color:   '#fff',
+    color:   T.text,
     onClick: () => { handleVoid(state); },
   });
   voidBtn.style.flex   = '1';
