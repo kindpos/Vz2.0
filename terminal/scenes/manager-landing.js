@@ -18,6 +18,7 @@ import {
 } from '../theme-manager.js';
 import { showToast } from '../components.js';
 import { fetchWithTimeout } from '../net.js';
+import * as authClient from '../auth-client.js';
 import {
   buildSalesOverview,
   buildLineCard,
@@ -479,7 +480,15 @@ defineScene({
   },
 
   render: (container, params, state) => {
-    const _rawEmp = params.staff || params.emp || params || {};
+    let _rawEmp = params.staff || params.emp || params || {};
+    // Fallback: if _rawEmp has no employee_id, read from auth client session
+    if (!_rawEmp || (!_rawEmp.employee_id && !_rawEmp.id)) {
+      const session = authClient.getSession ? authClient.getSession()
+                      : JSON.parse(sessionStorage.getItem('kindpos.session') || '{}');
+      if (session && session.employee_id) {
+        _rawEmp = session;
+      }
+    }
     // Auth data uses employee_id; session-restore / check-overview return uses id.
     // Normalise once so all downstream .id references work regardless of login path.
     state.emp = (_rawEmp && _rawEmp.employee_id && !_rawEmp.id)
