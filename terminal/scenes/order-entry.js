@@ -1287,7 +1287,7 @@ function buildItemTile(item, catColor, isFav) {
 
   let price = document.createElement('span');
   price.style.cssText = `font-family:${T.fb};font-size:15px;color:${T.gold};font-weight:700;margin-top:6px;pointer-events:none;`;
-  price.textContent = `$${(typeof item.price === 'number' ? item.price.toFixed(2) : item.price)}`;
+  price.textContent = `$${(Number(item.price) || 0).toFixed(2)}`;
   el.appendChild(price);
 
   _applyPress(el, catColor, false);
@@ -2378,7 +2378,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
   ].join('');
 
   // strip is rendered by openModifierPanel as a separate _mainArea flex child
-  const itemPx = typeof item.price === 'number' ? item.price : 0;
+  const itemPx = Number(item.price) || 0;
 
   // ── Scrollable content ──────────────────────────────
   const scroll = document.createElement('div');
@@ -3157,7 +3157,7 @@ function _buildSnakeStrip(item, catColor) {
   itemName.textContent = item.label;
   const itemPrice = document.createElement('span');
   itemPrice.style.cssText = `font-family:${T.fb};font-size:13px;color:rgba(255,255,255,0.7);pointer-events:none;;font-weight:${T.fwBold};`;
-  itemPrice.textContent = `$${(typeof item.price === 'number' ? item.price.toFixed(2) : '0.00')}`;
+  itemPrice.textContent = `$${(Number(item.price) || 0).toFixed(2)}`;
   itemChip.appendChild(itemName);
   itemChip.appendChild(itemPrice);
   itemChip.addEventListener('pointerup', () => { closeModifierPanel(); });
