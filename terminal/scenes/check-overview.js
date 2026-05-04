@@ -1195,9 +1195,10 @@ function renderActionBar(state) {
   bar.style.border        = `1.5px solid ${T.green}`;
   bar.style.borderLeft    = `4px solid ${T.green}`;
   bar.style.borderRadius  = '10px';
-  bar.style.display       = 'flex';
-  bar.style.alignItems    = 'stretch';
-  bar.style.gap           = '4px';
+  bar.style.display         = 'flex';
+  bar.style.justifyContent  = 'flex-end';
+  bar.style.alignItems      = 'stretch';
+  bar.style.gap             = '4px';
   bar.style.padding       = '8px 12px';
   bar.style.boxSizing     = 'border-box';
   bar.style.margin        = '0';
