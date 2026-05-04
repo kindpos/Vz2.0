@@ -429,7 +429,7 @@ defineScene({
           const rc = (T.roles && T.roles[role]) || T.elec;
           const rd = darkenHex(rc, 0.35);
           const btn = buildPillButton({
-            label:    role.toUpperCase(),
+            label:    (role.name || role.role_id).toUpperCase(),
             color:    hexToRgba(rc, 0.15),
             darkBg:   hexToRgba(rc, 0.08),
             textColor: rc,
