@@ -1192,7 +1192,7 @@ function renderActionBar(state) {
   bar.style.flex          = '0 0 auto';
   bar.style.flexShrink    = '0';
   bar.style.background    = T.well;
-  bar.style.border        = `1.5px solid ${T.border}`;
+  bar.style.border        = `1.5px solid ${T.green}`;
   bar.style.borderLeft    = `4px solid ${T.green}`;
   bar.style.borderRadius  = '10px';
   bar.style.display       = 'flex';
@@ -1324,6 +1324,7 @@ function renderActionBar(state) {
     lbl.style.fontWeight = T.fwBold;
     lbl.style.lineHeight = '1.2';
     lbl.style.textAlign  = 'center';
+    lbl.style.width      = '100%';
     lbl.style.paddingTop = '3px';
     lbl.textContent      = opts.label;
     btn.appendChild(lbl);
@@ -1418,7 +1419,7 @@ function renderActionBar(state) {
 
   const addItemsBtn = _actBtn({
     label:   'Add Items',
-    labelSize: '22px',
+    labelSize: '26px',
     sub:     '',
     bg:      T.greenWarm,
     dk:      T.greenWarmDk,
