@@ -288,9 +288,6 @@ defineScene('manager-pin', {
           })
           .then((data) => {
             if (!alive) return;
-            console.log('[MPIN] data.valid:', data.valid);
-            console.log('[MPIN] data.roles:', JSON.stringify(data.roles));
-            console.log('[MPIN] isManager check input:', JSON.stringify(data.roles || []));
             const roles = data.roles || [];
             const isManager = roles.some((r) => {
               if (typeof r === 'string') {

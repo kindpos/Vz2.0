@@ -802,7 +802,6 @@ defineScene({
         SceneManager.interrupt('manager-pin', {
           context: 'void',
           onConfirm: (enteredPin) => {
-            console.log('[VOID] onConfirm fired', { enteredPin, ids, empId: st.emp?.employee_id });
             let voided = 0, vFailed = 0;
             function _voidDone() {
               if (voided + vFailed !== ids.length) return;
@@ -818,7 +817,6 @@ defineScene({
               refresh();
             }
             ids.forEach((orderId) => {
-              console.log('[VOID] firing for orderId:', orderId, 'pin length:', enteredPin?.length);
               fetchWithTimeout(`/api/v1/orders/${orderId}/void`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -828,7 +826,6 @@ defineScene({
                   approved_by: st.emp.employee_id || st.emp.id,
                 }),
               }, 8000).then((r) => {
-                console.log('[VOID] response:', r.status, r.ok);
                 if (r.ok) voided++; else vFailed++;
                 _voidDone();
               }).catch(() => { vFailed++; _voidDone(); });
