@@ -132,7 +132,7 @@ var state = {
   ticketNumber:     1,       // Daily sequence — displayed as QS-001
   ticketName:       '',      // Optional customer name
   orderId:          null,    // Set after first item POST
-  taxRate:          0.08875, // Default — overridden by store config
+  taxRate:          0,       // Set from /api/v1/config/pricing on mount
   cashDiscountRate: 0.0,    // float — from StoreConfigBundle.cash_discount_rate
 };
 
@@ -543,36 +543,6 @@ function buildRecapPanel() {
   ].join('');
   els.itemList = itemList;
   panel.appendChild(itemList);
-
-  // ── c) Clear-all link row ───────────────────────
-  // (Per-item void is now the ✕ button on each row; this row keeps
-  //  only the "clear all" link.)
-  var voidRow = document.createElement('div');
-  voidRow.style.cssText = [
-    'display:flex;align-items:center;gap:6px;',
-    'padding:4px 12px;',
-    'flex-shrink:0;',
-    'min-height:22px;',
-  ].join('');
-
-  var clearLink = document.createElement('span');
-  clearLink.style.cssText = [
-    'font-family:' + T.fb + ';',
-    'font-size:' + FS_MOD + ';',
-    'color:' + T.moon + ';',
-    'cursor:pointer;pointer-events:auto;',
-  ].join('') + ";font-weight:" + T.fwBold + ";";
-  clearLink.textContent = 'clear all';
-
-  voidRow.appendChild(clearLink);
-  panel.appendChild(voidRow);
-
-  // Wire clear all link
-  clearLink.addEventListener('pointerup', function() {
-    state.items        = [];
-    state.selectedIdxs = [];
-    renderRecap();
-  });
 
   // ── d) Divider ─────────────────────────────────
   var divider = document.createElement('div');
@@ -1816,17 +1786,16 @@ function fetchMenuData() {
 }
 
 function fetchStoreConfig() {
-  return fetchWithTimeout('/api/v1/config/store', {}, 10000)
+  return fetchWithTimeout('/api/v1/config/pricing', {}, 10000)
     .then(function(r) { return r.json(); })
     .then(function(cfg) {
-      var rawRate = cfg && (cfg.tax_rate || cfg.sales_tax_rate || cfg.taxRate);
-      if (rawRate != null) {
-        state.taxRate = parseFloat(rawRate) || state.taxRate;
+      if (cfg && typeof cfg.tax_rate === 'number') {
+        state.taxRate = cfg.tax_rate;
       }
       state.cashDiscountRate = parseFloat(cfg && cfg.cash_discount_rate || 0);
     })
     .catch(function() {
-      // keep default state.taxRate
+      // keep defaults
     });
 }
 
