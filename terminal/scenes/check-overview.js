@@ -1295,6 +1295,8 @@ function renderActionBar(state) {
     let btn = document.createElement('div');
     btn.style.borderRadius   = '10px';
     btn.style.height         = '78px';
+    btn.style.width          = '60%';
+    btn.style.margin         = '0 auto';
     btn.style.cursor         = 'pointer';
     btn.style.display        = 'flex';
     btn.style.flexDirection  = 'column';
@@ -1313,7 +1315,8 @@ function renderActionBar(state) {
     btn.style.transition     = 'transform 0.07s, box-shadow 0.07s';
 
     const lbl = document.createElement('span');
-    lbl.style.fontSize   = opts.labelSize || '26px';
+    lbl.style.fontSize   = opts.labelSize || '32px';
+    lbl.style.fontWeight = T.fwBold;
     lbl.style.lineHeight = '1.2';
     lbl.style.textAlign  = 'center';
     lbl.textContent      = opts.label;
@@ -1397,8 +1400,8 @@ function renderActionBar(state) {
   }
 
   const manageBtn = _actBtn({
-    label:     'Manage',
-    labelSize: '22px',
+    label:     'Manage\nSeats',
+    labelSize: '24px',
     sub:       '',
     bg:        T.card,
     dk:        T.moonDk,
@@ -1435,7 +1438,9 @@ function renderActionBar(state) {
     color:   T.well,
     onClick: () => { handleDiscount(state); },
   });
-  discBtn.style.flex = '1';
+  discBtn.style.flex   = '1';
+  discBtn.style.width  = '60%';
+  discBtn.style.margin = '0 auto';
 
   const voidBtn = _subBtn({
     label:   'Void',
@@ -1444,7 +1449,9 @@ function renderActionBar(state) {
     color:   '#fff',
     onClick: () => { handleVoid(state); },
   });
-  voidBtn.style.flex = '1';
+  voidBtn.style.flex   = '1';
+  voidBtn.style.width  = '60%';
+  voidBtn.style.margin = '0 auto';
 
   dvCol.appendChild(discBtn);
   dvCol.appendChild(voidBtn);
