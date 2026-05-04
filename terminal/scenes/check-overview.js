@@ -1200,6 +1200,8 @@ function renderActionBar(state) {
   bar.style.boxSizing     = 'border-box';
   bar.style.borderRadius  = '10px';
   bar.style.margin        = '0';
+  bar.style.width         = 'fit-content';
+  bar.style.minWidth      = '0';
   barZone.appendChild(bar);
 
   // ── Left totals cluster ──
