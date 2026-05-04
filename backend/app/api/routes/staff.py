@@ -1,5 +1,6 @@
+import logging
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -16,7 +17,13 @@ from app.core.events import (
 from app.config import settings
 from app.services.overseer_config_service import OverseerConfigService
 
+_log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/servers", tags=["staff"])
+
+
+async def broadcast_config_update(sections: List[str]):
+    _log.info("config.updated sections=%s (terminals pick up via /config/version poll)", sections)
 
 
 @router.get("")
@@ -205,3 +212,17 @@ async def declare_cash_tips(
         "server_id": request.server_id,
         "amount": event.payload["amount"],
     }
+
+
+@router.delete("/{employee_id}", dependencies=[Depends(require_manager)])
+async def delete_employee(employee_id: str, background_tasks: BackgroundTasks,
+                          ledger: EventLedger = Depends(get_ledger)):
+    """Delete an employee."""
+    event = create_event(
+        event_type=EventType.EMPLOYEE_DELETED,
+        terminal_id="OVERSEER",
+        payload={"employee_id": employee_id}
+    )
+    await ledger.append(event)
+    background_tasks.add_task(broadcast_config_update, ["employees"])
+    return {"status": "ok", "event_id": event.sequence_number}
