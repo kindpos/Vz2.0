@@ -4,18 +4,29 @@ Menu Items — pricing chain write endpoints.
   PUT /{item_id}/size-pricing/{group_id}               → MENU_ITEM_SIZE_PRICING_SET
   PUT /{item_id}/option-group-override/{group_id}      → MENU_ITEM_OPTION_GROUP_OVERRIDE_SET
   PUT /{item_id}/size-price-override/{group_id}/{size} → MENU_ITEM_SIZE_PRICE_OVERRIDE_SET
+  DELETE /{item_id}                                      → MENU_ITEM_DELETED
+  DELETE /categories/{category_id}                       → MENU_CATEGORY_DELETED
 """
 
-from typing import Dict, Optional
+import logging
+from typing import Dict, Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
 from app.api.dependencies import get_ledger
+from app.api.routes.auth import require_manager
 from app.core import events as evt
+from app.core.events import create_event, EventType
 from app.core.menu_projection import project_menu
 
+_log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/menu-items", tags=["menu-items"])
+
+
+async def broadcast_config_update(sections: List[str]):
+    _log.info("config.updated sections=%s (terminals pick up via /config/version poll)", sections)
 
 
 class _SizePricingBody(BaseModel):
@@ -104,3 +115,31 @@ async def set_item_size_price_override(
     )
     menu = project_menu(await ledger.get_events())
     return next((i for i in menu.items if i.get("item_id") == item_id), {})
+
+
+@router.delete("/{item_id}", dependencies=[Depends(require_manager)])
+async def delete_menu_item(item_id: str, background_tasks: BackgroundTasks,
+                           ledger=Depends(get_ledger)):
+    """Delete a menu item."""
+    event = create_event(
+        event_type=EventType.MENU_ITEM_DELETED,
+        terminal_id="OVERSEER",
+        payload={"item_id": item_id}
+    )
+    await ledger.append(event)
+    background_tasks.add_task(broadcast_config_update, ["menu"])
+    return {"status": "ok", "event_id": event.sequence_number}
+
+
+@router.delete("/categories/{category_id}", dependencies=[Depends(require_manager)])
+async def delete_menu_category(category_id: str, background_tasks: BackgroundTasks,
+                               ledger=Depends(get_ledger)):
+    """Delete a menu category."""
+    event = create_event(
+        event_type=EventType.MENU_CATEGORY_DELETED,
+        terminal_id="OVERSEER",
+        payload={"category_id": category_id}
+    )
+    await ledger.append(event)
+    background_tasks.add_task(broadcast_config_update, ["menu"])
+    return {"status": "ok", "event_id": event.sequence_number}

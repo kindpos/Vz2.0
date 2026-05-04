@@ -500,6 +500,20 @@ async def delete_role(role_id: str, background_tasks: BackgroundTasks, ledger: E
     return {"status": "ok", "event_id": event.sequence_number}
 
 
+@router.delete("/modifier-groups/{group_id}", dependencies=[Depends(require_manager)])
+async def delete_modifier_group(group_id: str, background_tasks: BackgroundTasks,
+                                ledger: EventLedger = Depends(get_ledger)):
+    """Delete a modifier group."""
+    event = create_event(
+        event_type=EventType.MODIFIER_GROUP_DELETED,
+        terminal_id="OVERSEER",
+        payload={"group_id": group_id}
+    )
+    await ledger.append(event)
+    background_tasks.add_task(broadcast_config_update, ["menu"])
+    return {"status": "ok", "event_id": event.sequence_number}
+
+
 @router.post("/employees", dependencies=[Depends(require_manager)])
 async def create_employee(employee: Employee, background_tasks: BackgroundTasks,
                           ledger: EventLedger = Depends(get_ledger)):
