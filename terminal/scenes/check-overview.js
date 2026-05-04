@@ -1294,7 +1294,7 @@ function renderActionBar(state) {
   function _actBtn(opts) {
     let btn = document.createElement('div');
     btn.style.borderRadius   = '10px';
-    btn.style.height         = '96px';
+    btn.style.height         = '78px';
     btn.style.cursor         = 'pointer';
     btn.style.display        = 'flex';
     btn.style.flexDirection  = 'column';
@@ -1426,7 +1426,7 @@ function renderActionBar(state) {
   dvCol.style.flexDirection = 'column';
   dvCol.style.gap           = '5px';
   dvCol.style.alignSelf     = 'center';
-  dvCol.style.height        = '96px';
+  dvCol.style.height        = '78px';
 
   const discBtn = _subBtn({
     label:   'Disc',
