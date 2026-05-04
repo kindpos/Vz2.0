@@ -737,7 +737,14 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
           tile.addEventListener('pointerup', () => {
             tile.style.transform='';
             tile.style.boxShadow=`0 3px 0 ${shDk}`;
-            if (optState[optId] && optState[optId].prefix===activePrefix) {
+            const _cur = optState[optId];
+            if (!_cur) {
+              optState[optId] = { prefix: activePrefix, placement: activePlacement };
+            } else if (_cur.prefix === 'ADD' && activePrefix === 'ADD') {
+              optState[optId] = { prefix: 'EXTRA', placement: activePlacement };
+            } else if (_cur.prefix === 'EXTRA' && activePrefix === 'ADD') {
+              delete optState[optId];
+            } else if (_cur.prefix === activePrefix) {
               delete optState[optId];
             } else {
               optState[optId] = { prefix: activePrefix, placement: activePlacement };
