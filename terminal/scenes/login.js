@@ -435,7 +435,7 @@ defineScene({
             textColor: rc,
             fontSize: T.fsB3,
             onClick:  ((r, rcc, rdd) => () => {
-              selectedRole = r;
+              selectedRole = r.role_id;
               roleBtns.forEach((rb) => {
                 const sel = rb._role === r;
                 if (sel) {
