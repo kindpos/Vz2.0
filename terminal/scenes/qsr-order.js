@@ -183,7 +183,7 @@ function computeTotals() {
   for (var i = 0; i < state.items.length; i++) {
     subtotal += discountedPrice(state.items[i]) * (state.items[i].qty || 1);
   }
-  var tax   = subtotal * state.taxRate;
+  var tax   = moneyRound(subtotal * state.taxRate);
   var total = subtotal + tax;
   return {
     subtotal: subtotal,
@@ -611,7 +611,7 @@ function buildRecapPanel() {
   }
 
   var sub  = makeRow('Subtotal', '$0.00', false);
-  var tax  = makeRow('Tax ' + (state.taxRate * 100).toFixed(2) + '%', '$0.00', false);
+  var tax  = makeRow('Tax ' + (state.taxRate * 100).toFixed(2).replace(/.00$/, '') + '%', '$0.00', false);
   els.subtotalEl = sub.val;
   els.taxEl      = tax.val;
   totalsBlock.appendChild(sub.row);
@@ -912,7 +912,10 @@ function renderRecap() {
 
   // Update payment button subtitles
   var totalStr = fmtMoney(t.total);
-  if (els.cashBtn  && els.cashBtn._subEl)  els.cashBtn._subEl.textContent  = totalStr;
+  var cashTotal = state.cashDiscountRate > 0
+    ? moneyRound(t.total * (1 - state.cashDiscountRate))
+    : t.total;
+  if (els.cashBtn  && els.cashBtn._subEl)  els.cashBtn._subEl.textContent  = fmtMoney(cashTotal);
   if (els.cardBtn  && els.cardBtn._subEl)  els.cardBtn._subEl.textContent  = totalStr;
   if (els.splitBtn && els.splitBtn._subEl) els.splitBtn._subEl.textContent = totalStr;
 
@@ -1207,7 +1210,7 @@ function _renderItemGridContents(grid, items, cat, anchorIdx) {
   grid.style.display = 'grid';
   grid.style.gridTemplateColumns = 'repeat(3,1fr)';
   grid.style.gridAutoRows = '70px';
-  grid.style.gap = '8px';
+  grid.style.gap = '6px';
   grid.style.alignItems = '';
   grid.style.justifyContent = '';
   grid.style.flexDirection = '';
@@ -1816,8 +1819,9 @@ function fetchStoreConfig() {
   return fetchWithTimeout('/api/v1/config/store', {}, 10000)
     .then(function(r) { return r.json(); })
     .then(function(cfg) {
-      if (cfg && typeof cfg.tax_rate === 'number') {
-        state.taxRate = cfg.tax_rate;
+      var rawRate = cfg && (cfg.tax_rate || cfg.sales_tax_rate || cfg.taxRate);
+      if (rawRate != null) {
+        state.taxRate = parseFloat(rawRate) || state.taxRate;
       }
       state.cashDiscountRate = parseFloat(cfg && cfg.cash_discount_rate || 0);
     })
