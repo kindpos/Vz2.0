@@ -407,3 +407,21 @@ class AccountsMapping(BaseModel):
 class PendingChange(BaseModel):
     event_type: str
     payload: Dict
+
+
+# Pricing Config Models
+class Discount(BaseModel):
+    id: str
+    name: str
+    type: Literal["percentage", "flat_dollar"]
+    value: Decimal
+    requires_pin: bool = True
+    active: bool = True
+
+
+class VoidReason(BaseModel):
+    id: str
+    name: str
+    requires_pin: bool = False
+    max_amount: Optional[Decimal] = None
+    active: bool = True

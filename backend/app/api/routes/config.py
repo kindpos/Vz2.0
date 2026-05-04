@@ -24,7 +24,8 @@ from app.core.events import (
 from app.models.config_events import (
     StoreConfigBundle, StoreInfo, CCProcessingRate, PendingChange,
     Role, Employee, TipoutRule, TipPool, MenuItem, MenuCategory, ModifierGroup, MicroMod,
-    Section, FloorPlanLayout, Terminal, Printer, RoutingMatrix
+    Section, FloorPlanLayout, Terminal, Printer, RoutingMatrix,
+    Discount, VoidReason,
 )
 from app.config import settings
 from app.services.store_config_service import StoreConfigService
@@ -367,6 +368,8 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
             sections.add("modifiers")
         elif etype.startswith("discount."):
             sections.add("discounts")
+        elif etype.startswith("pricing."):
+            sections.add("pricing")
         elif etype.startswith("floorplan."):
             sections.add("floor_plan")
         elif etype.startswith("terminal.") or etype.startswith("routing."):
@@ -583,3 +586,177 @@ async def get_terminal_bundle(ledger: EventLedger = Depends(get_ledger)):
             "routing": await overseer_service.get_routing_matrix()
         }
     }
+
+
+# =============================================================================
+# PRICING CONFIG — Discounts & Void Reasons
+# =============================================================================
+
+async def _project_discounts(ledger: EventLedger) -> list[dict]:
+    """Replay PRICING_DISCOUNT_* events into a current discount list."""
+    created = await ledger.get_events_by_type(EventType.PRICING_DISCOUNT_CREATED, limit=500)
+    updated = await ledger.get_events_by_type(EventType.PRICING_DISCOUNT_UPDATED, limit=500)
+    deleted = await ledger.get_events_by_type(EventType.PRICING_DISCOUNT_DELETED, limit=500)
+
+    discounts: dict[str, dict] = {}
+    for ev in sorted(created + updated + deleted, key=lambda e: e.sequence_number or 0):
+        p = ev.payload
+        if ev.event_type == EventType.PRICING_DISCOUNT_CREATED:
+            discounts[p["id"]] = dict(p)
+        elif ev.event_type == EventType.PRICING_DISCOUNT_UPDATED:
+            if p["id"] in discounts:
+                discounts[p["id"]].update(p)
+        elif ev.event_type == EventType.PRICING_DISCOUNT_DELETED:
+            discounts.pop(p.get("id", ""), None)
+
+    return list(discounts.values())
+
+
+async def _project_void_reasons(ledger: EventLedger) -> list[dict]:
+    """Replay PRICING_VOID_REASON_* events into a current void reason list."""
+    created = await ledger.get_events_by_type(EventType.PRICING_VOID_REASON_CREATED, limit=500)
+    updated = await ledger.get_events_by_type(EventType.PRICING_VOID_REASON_UPDATED, limit=500)
+    deleted = await ledger.get_events_by_type(EventType.PRICING_VOID_REASON_DELETED, limit=500)
+
+    reasons: dict[str, dict] = {}
+    for ev in sorted(created + updated + deleted, key=lambda e: e.sequence_number or 0):
+        p = ev.payload
+        if ev.event_type == EventType.PRICING_VOID_REASON_CREATED:
+            reasons[p["id"]] = dict(p)
+        elif ev.event_type == EventType.PRICING_VOID_REASON_UPDATED:
+            if p["id"] in reasons:
+                reasons[p["id"]].update(p)
+        elif ev.event_type == EventType.PRICING_VOID_REASON_DELETED:
+            reasons.pop(p.get("id", ""), None)
+
+    return list(reasons.values())
+
+
+# Discount endpoints live on a separate no-prefix router so they land at
+# /api/v1/discounts (not /api/v1/config/discounts). Registered in main.py.
+discounts_router = APIRouter(tags=["config"])
+
+
+@discounts_router.get("/discounts")
+async def list_discounts(ledger: EventLedger = Depends(get_ledger)):
+    """Return all active discounts with a 'pct' field for the terminal disc-select scene."""
+    rows = await _project_discounts(ledger)
+    result = []
+    for r in rows:
+        if not r.get("active", True):
+            continue
+        d = Discount(**r)
+        row = d.model_dump(mode="json")
+        row["pct"] = float(d.value) if d.type == "percentage" else 0
+        result.append(row)
+    return result
+
+
+@discounts_router.post("/discounts", dependencies=[Depends(require_manager)])
+async def create_discount(
+    discount: Discount,
+    background_tasks: BackgroundTasks,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Create a new discount definition."""
+    if not discount.id:
+        discount.id = str(uuid.uuid4())
+    event = create_event(
+        event_type=EventType.PRICING_DISCOUNT_CREATED,
+        terminal_id="OVERSEER",
+        payload=discount.model_dump(mode="json"),
+    )
+    await ledger.append(event)
+    background_tasks.add_task(broadcast_config_update, ["pricing"])
+    return discount
+
+
+@discounts_router.delete("/discounts/{discount_id}", dependencies=[Depends(require_manager)])
+async def delete_discount(
+    discount_id: str,
+    background_tasks: BackgroundTasks,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Delete (hard-remove) a discount from the catalog."""
+    rows = await _project_discounts(ledger)
+    if not any(r["id"] == discount_id for r in rows):
+        raise HTTPException(status_code=404, detail=f"Discount {discount_id} not found")
+    event = create_event(
+        event_type=EventType.PRICING_DISCOUNT_DELETED,
+        terminal_id="OVERSEER",
+        payload={"id": discount_id},
+    )
+    await ledger.append(event)
+    background_tasks.add_task(broadcast_config_update, ["pricing"])
+    return {"status": "ok"}
+
+
+# Void-reason endpoints: config router already has prefix="/config" so
+# "/pricing/void-reasons" resolves to /api/v1/config/pricing/void-reasons.
+@router.get("/pricing/void-reasons", response_model=List[VoidReason])
+async def list_void_reasons(ledger: EventLedger = Depends(get_ledger)):
+    """Return all void reasons from the config projection."""
+    rows = await _project_void_reasons(ledger)
+    return [VoidReason(**r) for r in rows]
+
+
+@router.post("/pricing/void-reasons", dependencies=[Depends(require_manager)])
+async def create_void_reason(
+    reason: VoidReason,
+    background_tasks: BackgroundTasks,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Create a new void reason."""
+    if not reason.id:
+        reason.id = str(uuid.uuid4())
+    event = create_event(
+        event_type=EventType.PRICING_VOID_REASON_CREATED,
+        terminal_id="OVERSEER",
+        payload=reason.model_dump(mode="json"),
+    )
+    await ledger.append(event)
+    background_tasks.add_task(broadcast_config_update, ["pricing"])
+    return reason
+
+
+@router.put("/pricing/void-reasons/{reason_id}", dependencies=[Depends(require_manager)])
+async def update_void_reason(
+    reason_id: str,
+    reason: VoidReason,
+    background_tasks: BackgroundTasks,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Update an existing void reason."""
+    rows = await _project_void_reasons(ledger)
+    if not any(r["id"] == reason_id for r in rows):
+        raise HTTPException(status_code=404, detail=f"Void reason {reason_id} not found")
+    payload = reason.model_dump(mode="json")
+    payload["id"] = reason_id
+    event = create_event(
+        event_type=EventType.PRICING_VOID_REASON_UPDATED,
+        terminal_id="OVERSEER",
+        payload=payload,
+    )
+    await ledger.append(event)
+    background_tasks.add_task(broadcast_config_update, ["pricing"])
+    return reason
+
+
+@router.delete("/pricing/void-reasons/{reason_id}", dependencies=[Depends(require_manager)])
+async def delete_void_reason(
+    reason_id: str,
+    background_tasks: BackgroundTasks,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Delete a void reason."""
+    rows = await _project_void_reasons(ledger)
+    if not any(r["id"] == reason_id for r in rows):
+        raise HTTPException(status_code=404, detail=f"Void reason {reason_id} not found")
+    event = create_event(
+        event_type=EventType.PRICING_VOID_REASON_DELETED,
+        terminal_id="OVERSEER",
+        payload={"id": reason_id},
+    )
+    await ledger.append(event)
+    background_tasks.add_task(broadcast_config_update, ["pricing"])
+    return {"status": "ok"}

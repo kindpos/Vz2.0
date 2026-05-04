@@ -306,6 +306,14 @@ class EventType(str, Enum):
     # ledger keeps both the original event and the correction history.
     TIMECARD_ADJUSTED = "timecard.adjusted"
 
+    # ── Pricing Config (LEDGER_OPERATIONAL) ───────────────────────────
+    PRICING_DISCOUNT_CREATED    = "pricing.discount_created"
+    PRICING_DISCOUNT_UPDATED    = "pricing.discount_updated"
+    PRICING_DISCOUNT_DELETED    = "pricing.discount_deleted"
+    PRICING_VOID_REASON_CREATED = "pricing.void_reason_created"
+    PRICING_VOID_REASON_UPDATED = "pricing.void_reason_updated"
+    PRICING_VOID_REASON_DELETED = "pricing.void_reason_deleted"
+
 
 # Legacy UPPERCASE values from existing ledger data → canonical EventType
 _LEGACY_ALIASES: dict[str, EventType] = {
@@ -380,6 +388,7 @@ CONFIG_EVENT_PREFIXES: tuple[str, ...] = (
     "option.",
     "option_group.",
     "size.",
+    "pricing.",
 )
 
 

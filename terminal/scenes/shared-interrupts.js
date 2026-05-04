@@ -678,7 +678,7 @@ defineScene('disc-select', {
 //               onConfirm(reason: string), onCancel() }
 // ═══════════════════════════════════════════════════
 
-const VOID_REASONS = [
+const _VOID_REASON_FALLBACK = [
   'Customer Changed Mind',
   'Entered in Error',
   'Kitchen Error',
@@ -798,39 +798,69 @@ defineScene('void-reason', {
 
     const tilePtrs = [];
 
-    VOID_REASONS.forEach((reason) => {
-      const tile = document.createElement('div');
-      tile.style.cssText = [
-        'width:100%;',
-        'border-radius:8px;',
-        'padding:10px 12px;',
-        'box-sizing:border-box;',
-        'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-        `font-family:${T.fb};font-size:${T.fsB3};`,
-        `font-weight:${T.fwBold};`,
-        `color:${T.text};`,
-        `background:${T.well};`,
-        `border:1px solid ${T.border};`,
-        'transition:background 0.1s,color 0.1s,border-color 0.1s;',
-      ].join('');
-      tile.textContent = reason;
-      tile.dataset.reason = reason;
+    function _buildVoidTiles(reasons) {
+      tileCol.innerHTML = '';
+      tilePtrs.length = 0;
+      reasons.forEach((reason) => {
+        const tile = document.createElement('div');
+        tile.style.cssText = [
+          'width:100%;',
+          'border-radius:8px;',
+          'padding:10px 12px;',
+          'box-sizing:border-box;',
+          'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+          `font-family:${T.fb};font-size:${T.fsB3};`,
+          `font-weight:${T.fwBold};`,
+          `color:${T.text};`,
+          `background:${T.well};`,
+          `border:1px solid ${T.border};`,
+          'transition:background 0.1s,color 0.1s,border-color 0.1s;',
+        ].join('');
+        tile.textContent = reason;
+        tile.dataset.reason = reason;
 
-      tile.addEventListener('pointerup', () => {
-        selectedReason = reason;
-        tilePtrs.forEach((t) => {
-          const isSel = t.dataset.reason === reason;
-          t.style.background   = isSel ? T.verm    : T.well;
-          t.style.color        = isSel ? '#fff'    : T.text;
-          t.style.borderColor  = isSel ? T.verm    : T.border;
+        tile.addEventListener('pointerup', () => {
+          selectedReason = reason;
+          tilePtrs.forEach((t) => {
+            const isSel = t.dataset.reason === reason;
+            t.style.background   = isSel ? T.verm    : T.well;
+            t.style.color        = isSel ? '#fff'    : T.text;
+            t.style.borderColor  = isSel ? T.verm    : T.border;
+          });
+          _updateVoidBtn();
         });
-        _updateVoidBtn();
-      });
 
-      tileCol.appendChild(tile);
-      tilePtrs.push(tile);
-    });
+        tileCol.appendChild(tile);
+        tilePtrs.push(tile);
+      });
+    }
+
+    // Show loading placeholder while fetching reasons from API
+    const _loadingEl = document.createElement('div');
+    _loadingEl.style.cssText = [
+      'text-align:center;',
+      `font-family:${T.fb};font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};color:${T.moon};`,
+      'padding:8px 0;',
+    ].join('');
+    _loadingEl.textContent = 'Loading…';
+    tileCol.appendChild(_loadingEl);
+
     inner.appendChild(tileCol);
+
+    fetchWithTimeout('/api/v1/config/pricing/void-reasons', {}, 6000)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!alive) return;
+        const reasons = Array.isArray(data)
+          ? data.filter((r) => r.active !== false).map((r) => r.name).filter(Boolean)
+          : [];
+        _buildVoidTiles(reasons.length > 0 ? reasons : _VOID_REASON_FALLBACK);
+      })
+      .catch(() => {
+        if (!alive) return;
+        _buildVoidTiles(_VOID_REASON_FALLBACK);
+      });
 
     // VOID button
     const voidBtn = document.createElement('div');
