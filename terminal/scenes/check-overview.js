@@ -1397,7 +1397,7 @@ function renderActionBar(state) {
   }
 
   const manageBtn = _actBtn({
-    label:     'Manage\nSeats',
+    label:     'Manage',
     labelSize: '16px',
     sub:       '',
     bg:        T.card,
