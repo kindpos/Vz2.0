@@ -18,7 +18,12 @@ apt-get install -y nginx avahi-daemon python3 python3-pip
 
 # 2. Python dependencies
 echo "[2/7] Installing Python dependencies..."
-pip3 install --break-system-packages -r "$BASE/backend/requirements.txt"
+apt-get install -y python3-venv
+if [ ! -d "/home/kindpos/venv" ]; then
+    python3 -m venv /home/kindpos/venv
+    chown -R kindpos:kindpos /home/kindpos/venv
+fi
+/home/kindpos/venv/bin/pip install -r "$BASE/backend/requirements.txt"
 
 # 3. Systemd service
 echo "[3/7] Installing kindpos.service..."
