@@ -1442,65 +1442,70 @@ function renderActionBar(state) {
   });
 
   const CUT = 20;
-  const cpLeft = `polygon(0 0,100% 0,100% calc(50% - ${CUT}px),calc(100% - ${CUT}px) 50%,100% calc(50% + ${CUT}px),100% 100%,0 100%)`;
-  const cpTopR = `polygon(0 0,100% 0,100% 100%,${CUT}px 100%,0 calc(100% - ${CUT}px))`;
-  const cpBotR = `polygon(${CUT}px 0,100% 0,100% 100%,0 100%,0 ${CUT}px)`;
 
-  // LEFT TALL — payBtn
-  payBtn.style.width   = '100%';
-  payBtn.style.height  = '100%';
-  payBtn.style.clipPath = cpLeft;
+  // ── LEFT QUAD: PAY (tall left) + Disc/Void (stacked right) ──
+  const cpPayLeft  = `polygon(0 0,100% 0,100% calc(50% - ${CUT}px),calc(100% - ${CUT}px) 50%,100% calc(50% + ${CUT}px),100% 100%,0 100%)`;
+  const cpDiscBL   = `polygon(0 0,100% 0,100% 100%,${CUT}px 100%,0 calc(100% - ${CUT}px))`;
+  const cpVoidTL   = `polygon(${CUT}px 0,100% 0,100% 100%,0 100%,0 ${CUT}px)`;
 
-  // TOP RIGHT — disc + void stacked
-  const dvCol = document.createElement('div');
-  dvCol.style.cssText = `
-    display:flex; flex-direction:column; gap:4px;
-    width:100%; height:100%; clip-path:${cpTopR};
-  `;
-  discBtn.style.flex = '1';
-  discBtn.style.width = '100%';
-  voidBtn.style.flex = '1';
-  voidBtn.style.width = '100%';
-  dvCol.appendChild(discBtn);
-  dvCol.appendChild(voidBtn);
+  payBtn.style.cssText    += `width:100%;height:100%;clip-path:${cpPayLeft};`;
+  discBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpDiscBL};`;
+  voidBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpVoidTL};`;
 
-  // BOTTOM RIGHT — addItemsBtn
-  addItemsBtn.style.width    = '100%';
-  addItemsBtn.style.height   = '100%';
-  addItemsBtn.style.clipPath = cpBotR;
+  const leftQuad = document.createElement('div');
+  leftQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:280px;flex-shrink:0;`;
 
-  // Quad grid
-  const actionCluster = document.createElement('div');
-  actionCluster.style.cssText = `
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    grid-template-rows:1fr 1fr;
-    gap:5px; height:112px; width:300px; flex-shrink:0;
-  `;
   const payCell = document.createElement('div');
-  payCell.style.cssText = 'grid-column:1; grid-row:1/3; display:flex;';
+  payCell.style.cssText = 'grid-column:1;grid-row:1/3;display:flex;';
   payCell.appendChild(payBtn);
-  const dvCell = document.createElement('div');
-  dvCell.style.cssText = 'grid-column:2; grid-row:1; display:flex;';
-  dvCell.appendChild(dvCol);
+
+  const discCell = document.createElement('div');
+  discCell.style.cssText = 'grid-column:2;grid-row:1;display:flex;';
+  discCell.appendChild(discBtn);
+
+  const voidCell = document.createElement('div');
+  voidCell.style.cssText = 'grid-column:2;grid-row:2;display:flex;';
+  voidCell.appendChild(voidBtn);
+
+  leftQuad.appendChild(payCell);
+  leftQuad.appendChild(discCell);
+  leftQuad.appendChild(voidCell);
+
+  // ── RIGHT QUAD: Manage/Print (stacked left) + Add Items (tall right) ──
+  const cpMgmtBR   = `polygon(0 0,100% 0,100% calc(100% - ${CUT}px),calc(100% - ${CUT}px) 100%,0 100%)`;
+  const cpPrintTR  = `polygon(0 0,calc(100% - ${CUT}px) 0,100% ${CUT}px,100% 100%,0 100%)`;
+  const cpAddRight = `polygon(0 0,100% 0,100% 100%,0 100%,0 calc(50% + ${CUT}px),${CUT}px 50%,0 calc(50% - ${CUT}px))`;
+
+  manageBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpMgmtBR};`;
+  printBtnNew.style.cssText += `width:100%;height:100%;clip-path:${cpPrintTR};`;
+  addItemsBtn.style.cssText += `width:100%;height:100%;clip-path:${cpAddRight};`;
+
+  const rightQuad = document.createElement('div');
+  rightQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:280px;flex-shrink:0;`;
+
+  const mgmtCell = document.createElement('div');
+  mgmtCell.style.cssText = 'grid-column:1;grid-row:1;display:flex;';
+  mgmtCell.appendChild(manageBtn);
+
+  const printCell = document.createElement('div');
+  printCell.style.cssText = 'grid-column:1;grid-row:2;display:flex;';
+  printCell.appendChild(printBtnNew);
+
   const addCell = document.createElement('div');
-  addCell.style.cssText = 'grid-column:2; grid-row:2; display:flex;';
+  addCell.style.cssText = 'grid-column:2;grid-row:1/3;display:flex;';
   addCell.appendChild(addItemsBtn);
-  actionCluster.appendChild(payCell);
-  actionCluster.appendChild(dvCell);
-  actionCluster.appendChild(addCell);
 
-  // Secondary left column
-  const secondaryCol = document.createElement('div');
-  secondaryCol.style.cssText = `
-    display:flex; flex-direction:column;
-    gap:5px; justify-content:center; flex:1;
-  `;
-  secondaryCol.appendChild(manageBtn);
-  secondaryCol.appendChild(printBtnNew);
+  rightQuad.appendChild(mgmtCell);
+  rightQuad.appendChild(printCell);
+  rightQuad.appendChild(addCell);
 
-  bar.appendChild(secondaryCol);
-  bar.appendChild(actionCluster);
+  // ── SPACER + APPEND ──
+  const spacer = document.createElement('div');
+  spacer.style.flex = '1';
+
+  bar.appendChild(leftQuad);
+  bar.appendChild(spacer);
+  bar.appendChild(rightQuad);
 }
 
 
