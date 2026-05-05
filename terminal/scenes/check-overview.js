@@ -1451,10 +1451,14 @@ function renderActionBar(state) {
 
   payBtn.style.cssText    += `width:100%;height:100%;clip-path:${cpPayLeft};`;
   discBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpDiscBL};`;
+  discBtn.style.fontSize = '16px';
+  discBtn.style.fontWeight = '900';
   voidBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpVoidTL};`;
+  voidBtn.style.fontSize = '16px';
+  voidBtn.style.fontWeight = '900';
 
   const leftQuad = document.createElement('div');
-  leftQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:280px;flex-shrink:0;`;
+  leftQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:320px;flex-shrink:0;`;
 
   const payCell = document.createElement('div');
   payCell.style.cssText = 'grid-column:1;grid-row:1/3;display:flex;';
@@ -1482,7 +1486,7 @@ function renderActionBar(state) {
   addItemsBtn.style.cssText += `width:100%;height:100%;clip-path:${cpAddRight};`;
 
   const rightQuad = document.createElement('div');
-  rightQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:280px;flex-shrink:0;`;
+  rightQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:320px;flex-shrink:0;`;
 
   const mgmtCell = document.createElement('div');
   mgmtCell.style.cssText = 'grid-column:1;grid-row:1;display:flex;';
