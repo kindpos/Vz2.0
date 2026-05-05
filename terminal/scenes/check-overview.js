@@ -1410,6 +1410,7 @@ function renderActionBar(state) {
   if (manageLbl) {
     manageLbl.style.textAlign = 'center';
     manageLbl.style.width = '100%';
+    manageLbl.style.marginTop = '10px';
   }
   manageBtn.style.textAlign = 'center';
   manageBtn.style.alignItems = 'center';
