@@ -14,7 +14,7 @@ import sys
 from app.api.routes.printing import print_queue
 from app.printing.print_dispatcher import PrintDispatcher
 from app.config import settings
-from app.api.dependencies import init_ledger, close_ledger, set_printer_manager, get_ephemeral_log, set_print_dispatcher, get_ledger, set_diagnostic_collector, get_diagnostic_collector
+from app.api.dependencies import init_ledger, close_ledger, set_printer_manager, get_ephemeral_log, set_print_dispatcher, get_ledger, set_diagnostic_collector, get_diagnostic_collector, set_connection_manager
 from app.services.diagnostic_collector import DiagnosticCollector
 from app.services.demo_seeder import seed_demo_data_if_empty
 from app.core.adapters.printer_manager import PrinterManager
@@ -32,6 +32,7 @@ from app.api.routes import reporting
 from app.api.routes import server_shift
 from app.api.routes import auth
 from app.api.routes import sync
+from app.api.routes import websocket as websocket_routes
 from app.api.routes import entomology
 from app.api.routes import day_cash
 from app.api.routes import favorites
@@ -126,6 +127,10 @@ async def lifespan(app: FastAPI):
     await _dispatcher.start()
     set_print_dispatcher(_dispatcher)
     print("Print Dispatcher started")
+
+    from app.services.connection_manager import ConnectionManager
+    set_connection_manager(ConnectionManager())
+    print("ConnectionManager initialized")
 
     # Crash-recovery sweep: resolve any PAYMENT_INITIATED that landed
     # before a crash and never got a result event. Must run after the
@@ -232,6 +237,7 @@ app.include_router(server_shift.router, prefix="/api/v1")
 app.include_router(server_shift.shifts_router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(sync.router, prefix="/api/v1")
+app.include_router(websocket_routes.router, prefix="/api/v1")
 app.include_router(entomology.router, prefix="/api/v1")
 app.include_router(day_cash.router, prefix="/api/v1")
 app.include_router(favorites.router, prefix="/api/v1")
