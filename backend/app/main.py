@@ -41,6 +41,7 @@ from app.api.routes import sizes as sizes_routes
 from app.api.routes import modifier_groups as modifier_groups_routes
 from app.api.routes import modifiers as modifiers_routes
 from app.api.routes import menu_items as menu_items_routes
+from app.api.routes import licenses
 from app.api.routes.printing import print_queue
 
 
@@ -240,6 +241,7 @@ app.include_router(sizes_routes.router, prefix="/api/v1")
 app.include_router(modifier_groups_routes.router, prefix="/api/v1")
 app.include_router(modifiers_routes.router, prefix="/api/v1")
 app.include_router(menu_items_routes.router, prefix="/api/v1")
+app.include_router(licenses.router, prefix="/api/v1")
 
 
 # Serve frontend
