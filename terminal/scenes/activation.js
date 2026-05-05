@@ -4,7 +4,7 @@
  * Collects activation code, store name, and terminal name.
  */
 
-import T from '../../common/tokens.js';
+import { T } from '../../common/tokens.js';
 import { buildStaticCard, buildPillButton } from '../theme-manager.js';
 import { fetchWithTimeout } from '../net.js';
 
