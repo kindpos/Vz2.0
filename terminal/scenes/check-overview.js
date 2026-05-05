@@ -1996,6 +1996,7 @@ function _seatHasDisc(seat, state) {
 
 function buildItemBlock(state, seatIdx, itemIdx, modeB) {
   let item     = state.seats[seatIdx].items[itemIdx];
+  const seatId = state.seats[seatIdx].id;
   const isVoided = !!item.voided;
   // Detect discount from explicit object OR from effectivePrice being lower than
   // the list price — the backend may only surface the discount at the order level
@@ -2032,7 +2033,7 @@ function buildItemBlock(state, seatIdx, itemIdx, modeB) {
     _discPctRaw = Math.round((_priceDelta / _rawPrice) * 100);
   }
   const isSent   = !!(item.sent_at || item.sent) && !isVoided;
-  const isSel    = !isVoided && !!(state.selectedItems && state.selectedItems[seatIdx + `:${itemIdx}`]);
+  const isSel    = !isVoided && !!(state.selectedItems && state.selectedItems[seatId + `:${itemIdx}`]);
 
   let bevelLt = lightenHex(T.bg, 0.08);
   let bevelDk = darkenHex(T.bg, 0.2);
@@ -3024,7 +3025,8 @@ function _wireHeaderTaps(state, seatId, el) {
 function _wireItemTaps(state, seatIdx, itemIdx, el) {
   let lpTimer = null;
   let didLongPress = false;
-  let key = seatIdx + `:${itemIdx}`;
+  const seatId = state.seats[seatIdx].id;
+  let key = seatId + `:${itemIdx}`;
 
   el.addEventListener('pointerdown', () => {
     didLongPress = false;
@@ -3122,11 +3124,11 @@ function toggleSeat(state, seatId) {
   let allSelected = true;
   for (let j = 0; j < seat.items.length; j++) {
     if (seat.items[j].voided) continue;
-    if (!state.selectedItems[seatIdx + `:${j}`]) { allSelected = false; break; }
+    if (!state.selectedItems[seatId + `:${j}`]) { allSelected = false; break; }
   }
   for (let k = 0; k < seat.items.length; k++) {
     if (seat.items[k].voided) continue;
-    const key = seatIdx + `:${k}`;
+    const key = seatId + `:${k}`;
     if (allSelected) delete state.selectedItems[key];
     else             state.selectedItems[key] = true;
   }
@@ -3961,8 +3963,9 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
 function openItemMenu(state, seatIdx, itemIdx) {
   // When long-pressed on an unselected item, select it first so the
   // menu acts on a clear single target.
+  const seatId = state.seats[seatIdx].id;
   state.selectedItems = {};
-  state.selectedItems[seatIdx + `:${itemIdx}`] = true;
+  state.selectedItems[seatId + `:${itemIdx}`] = true;
   rerenderTopArea(state);
 
   SceneManager.interrupt('co-item-menu', {
