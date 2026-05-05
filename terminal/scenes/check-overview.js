@@ -1472,6 +1472,7 @@ function renderActionBar(state) {
   discBtn.style.justifyContent = 'center';
   discBtn.style.alignItems = 'center';
   discBtn.style.display = 'flex';
+  discBtn.style.height = '100%';
   voidBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpVoidTL};`;
   voidBtn.style.fontSize = '20px';
   voidBtn.style.fontWeight = '900';
@@ -1479,6 +1480,7 @@ function renderActionBar(state) {
   voidBtn.style.justifyContent = 'center';
   voidBtn.style.alignItems = 'center';
   voidBtn.style.display = 'flex';
+  voidBtn.style.height = '100%';
 
   const leftQuad = document.createElement('div');
   leftQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:320px;flex-shrink:0;`;
