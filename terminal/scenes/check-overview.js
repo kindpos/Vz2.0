@@ -1398,7 +1398,7 @@ function renderActionBar(state) {
 
   const manageBtn = _actBtn({
     label:     'Manage',
-    labelSize: '16px',
+    labelSize: '25px',
     sub:       '',
     bg:        T.card,
     dk:        T.moonDk,
