@@ -1,63 +1,64 @@
 #!/bin/bash
-# KINDpos Pi Installer
-# Run once after cloning the repo on a fresh Pi.
-# Usage: cd ~/kindpos && bash pi/install.sh
+# KINDpos Pi Installer — provisions a fresh Pi OS Lite install.
+# Usage: sudo bash pi/install.sh
+# Safe to run more than once (idempotent).
 
 set -e
-BASE="$HOME/kindpos"
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+BASE=$(dirname "$SCRIPT_DIR")
+
 echo "=== KINDpos Pi Installer ==="
+echo "Repo: $BASE"
 
-# 1. Install system dependencies
+# 1. System dependencies
 echo "[1/7] Installing dependencies..."
-sudo apt update -q
-sudo apt install -y adb nmap
+apt-get update -q
+apt-get install -y nginx avahi-daemon python3 python3-pip
 
-# 2. Make scripts executable
-echo "[2/7] Setting permissions..."
-chmod +x "$BASE/pi/scripts/kindpos-setup.sh"
-chmod +x "$BASE/pi/scripts/kindpos-watchdog.sh"
+# 2. Python dependencies
+echo "[2/7] Installing Python dependencies..."
+pip3 install --break-system-packages -r "$BASE/backend/requirements.txt"
 
-# 3. Create log directory
-echo "[3/7] Creating log directory..."
-mkdir -p "$HOME/kindpos-logs"
+# 3. Systemd service
+echo "[3/7] Installing kindpos.service..."
+cp "$SCRIPT_DIR/systemd/kindpos.service" /etc/systemd/system/kindpos.service
+systemctl daemon-reload
+systemctl enable kindpos
 
-# 4. Configure static IP on eth0 (direct Pi → Terminal connection)
-echo "[4/7] Configuring static IP on eth0..."
-if ! grep -q "interface eth0" /etc/dhcpcd.conf; then
-    echo "" | sudo tee -a /etc/dhcpcd.conf
-    echo "interface eth0" | sudo tee -a /etc/dhcpcd.conf
-    echo "static ip_address=192.168.50.1/24" | sudo tee -a /etc/dhcpcd.conf
-    echo "static routers=192.168.50.1" | sudo tee -a /etc/dhcpcd.conf
-    echo "Static IP configured on eth0."
+# 4. nginx config
+echo "[4/7] Configuring nginx..."
+cp "$SCRIPT_DIR/nginx/kindpos.conf" /etc/nginx/sites-available/kindpos
+rm -f /etc/nginx/sites-enabled/default
+ln -sf /etc/nginx/sites-available/kindpos /etc/nginx/sites-enabled/kindpos
+systemctl enable nginx
+
+# 5. avahi-daemon (provides kindpos.local mDNS name)
+echo "[5/7] Enabling avahi-daemon..."
+systemctl enable avahi-daemon
+systemctl start avahi-daemon
+
+# 6. eth0 static IP (192.168.50.1/24 — direct terminal connection)
+echo "[6/7] Configuring eth0 static IP..."
+if ! nmcli -g ipv4.addresses connection show netplan-eth0 2>/dev/null | grep -q "192.168.50.1/24"; then
+    nmcli connection modify netplan-eth0 ipv4.addresses 192.168.50.1/24 ipv4.method manual
+    nmcli connection up netplan-eth0
+    echo "eth0 set to 192.168.50.1/24."
 else
-    echo "eth0 static IP already configured, skipping."
+    echo "eth0 already configured — skipping."
 fi
 
-# 5. Install systemd services
-echo "[5/7] Installing systemd services..."
-sudo cp "$BASE/pi/systemd/kindpos-setup.service" /etc/systemd/system/
-sudo cp "$BASE/pi/systemd/kindpos-watchdog.service" /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable kindpos-setup
-sudo systemctl enable kindpos-watchdog
-
-# 6. Start KINDpos backend as a service (optional — skip if already running)
-echo "[6/7] Starting KINDpos backend..."
-PYTHONPATH="$BASE/backend" ~/.local/bin/uvicorn app.main:app \
-    --host 0.0.0.0 --port 8000 &
-echo $! > "$HOME/kindpos-backend.pid"
-
-# 7. Start watchdog
-echo "[7/7] Starting watchdog..."
-sudo systemctl start kindpos-watchdog
+# 7. Sudoers — allow kindpos user to restart its own service without a password
+echo "[7/7] Configuring sudoers..."
+SUDOERS_FILE=/etc/sudoers.d/kindpos
+SUDOERS_LINE="kindpos ALL=(ALL) NOPASSWD: /bin/systemctl restart kindpos"
+if [ ! -f "$SUDOERS_FILE" ] || ! grep -qF "$SUDOERS_LINE" "$SUDOERS_FILE"; then
+    echo "$SUDOERS_LINE" > "$SUDOERS_FILE"
+    chmod 440 "$SUDOERS_FILE"
+    echo "Sudoers entry added."
+else
+    echo "Sudoers entry already present — skipping."
+fi
 
 echo ""
-echo "=== KINDpos Install Complete ==="
-echo ""
-echo "Next steps:"
-echo "  1. Plug USB cable: Pi → Terminal"
-echo "  2. Tap 'Allow' on the terminal screen"
-echo "  3. Wait 60 seconds for terminal to reboot"
-echo "  4. Unplug USB, plug CAT5: Pi → Terminal"
-echo ""
-echo "Backend running at: http://$(hostname -I | awk '{print $1}'):8000/terminal/"
+echo "KINDpos Node ready at http://kindpos.local"
