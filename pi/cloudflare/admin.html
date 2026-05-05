@@ -929,42 +929,7 @@
       if (stored) {
         customers = JSON.parse(stored);
       } else {
-        // Seed demo data
-        customers = [
-          {
-            id: 'c1',
-            name: "Sammy's Pizza",
-            prefix: 'SMYS',
-            contact_name: 'Sammy',
-            email: 'sammy@sammyspizza.com',
-            phone: '(555) 123-4567',
-            location: '123 Main St',
-            plan: 'Professional',
-            since: '2024-01-15',
-            notes: 'Great customer, 3 locations, expanding to 4th',
-            terminals: [
-              { id: 't1', name: 'Register-1', code: 'SMYS-001-a7f2-8b3c-1e90', device: 'Swan', ip: '192.168.1.10', status: 'active', last_seen: new Date().toISOString() },
-              { id: 't2', name: 'Register-2', code: 'SMYS-002-c3e9-5d4b-2f67', device: 'Swan', ip: '192.168.1.11', status: 'active', last_seen: new Date().toISOString() },
-              { id: 't3', name: 'Kitchen', code: 'SMYS-003-b1a8-9e2d-4c73', device: 'Swan', ip: '192.168.1.12', status: 'offline', last_seen: new Date(Date.now() - 3600000).toISOString() }
-            ]
-          },
-          {
-            id: 'c2',
-            name: 'Meat Sweats BBQ',
-            prefix: 'MSWT',
-            contact_name: 'Marcus',
-            email: 'marcus@meatsweats.com',
-            phone: '(555) 987-6543',
-            location: '456 Oak Ave',
-            plan: 'Startup',
-            since: '2024-03-22',
-            notes: 'New customer, single location',
-            terminals: [
-              { id: 't4', name: 'Main Register', code: 'MSWT-001-d2b9-7e3a-5f82', device: 'Swan', ip: '192.168.1.20', status: 'active', last_seen: new Date().toISOString() }
-            ]
-          }
-        ];
-        saveCustomers();
+        customers = [];
       }
     }
 
@@ -997,20 +962,26 @@
         c.prefix.toLowerCase().includes(searchTerm)
       );
 
-      list.innerHTML = filtered.map(c => {
-        const activePips = (c.terminals || []).filter(t => t.status === 'active').length;
-        const totalPips = (c.terminals || []).length;
-        return `
-          <div class="customer-item ${c.id === currentCustomerId ? 'active' : ''}" onclick="selectCustomer('${c.id}')">
-            <div class="customer-name">${c.name}</div>
-            <div class="customer-prefix">${c.prefix}</div>
-            <div class="customer-status">
-              ${Array(activePips).fill().map(() => '<div class="status-pip active"></div>').join('')}
-              ${Array(totalPips - activePips).fill().map(() => '<div class="status-pip"></div>').join('')}
+      if (filtered.length === 0 && customers.length === 0) {
+        list.innerHTML = '<div style="padding: 16px; color: var(--moon); font-size: 12px; text-align: center;">No customers yet</div>';
+      } else if (filtered.length === 0) {
+        list.innerHTML = '<div style="padding: 16px; color: var(--moon); font-size: 12px; text-align: center;">No results</div>';
+      } else {
+        list.innerHTML = filtered.map(c => {
+          const activePips = (c.terminals || []).filter(t => t.status === 'active').length;
+          const totalPips = (c.terminals || []).length;
+          return `
+            <div class="customer-item ${c.id === currentCustomerId ? 'active' : ''}" onclick="selectCustomer('${c.id}')">
+              <div class="customer-name">${c.name}</div>
+              <div class="customer-prefix">${c.prefix}</div>
+              <div class="customer-status">
+                ${Array(activePips).fill().map(() => '<div class="status-pip active"></div>').join('')}
+                ${Array(totalPips - activePips).fill().map(() => '<div class="status-pip"></div>').join('')}
+              </div>
             </div>
-          </div>
-        `;
-      }).join('');
+          `;
+        }).join('');
+      }
     }
 
     function selectCustomer(id) {
@@ -1029,7 +1000,20 @@
 
     function renderOverview() {
       const customer = customers.find(c => c.id === currentCustomerId);
-      if (!customer) return;
+      if (!customer) {
+        if (customers.length === 0) {
+          document.getElementById('overviewContent').innerHTML = `
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 24px;">
+              <div style="text-align: center;">
+                <div style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 8px;">No customers yet</div>
+                <div style="color: var(--moon); font-size: 14px;">Create your first customer to get started</div>
+              </div>
+              <button class="generate-btn" onclick="openModal('addCustomerModal')" style="padding: 12px 24px; font-size: 14px;">+ Create First Customer</button>
+            </div>
+          `;
+        }
+        return;
+      }
 
       const html = `
         <div class="info-card">
