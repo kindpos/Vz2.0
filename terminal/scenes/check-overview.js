@@ -1406,6 +1406,14 @@ function renderActionBar(state) {
     border:    `1px solid ${T.border}`,
     onClick:   () => { openEditSeats(state); },
   });
+  const manageLbl = manageBtn.querySelector('span');
+  if (manageLbl) {
+    manageLbl.style.textAlign = 'center';
+    manageLbl.style.width = '100%';
+  }
+  manageBtn.style.textAlign = 'center';
+  manageBtn.style.alignItems = 'center';
+  manageBtn.style.justifyContent = 'center';
 
   const addItemsBtn = _actBtn({
     label:   'Add\nItems',
