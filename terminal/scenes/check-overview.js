@@ -1398,7 +1398,7 @@ function renderActionBar(state) {
 
   const manageBtn = _actBtn({
     label:     'Manage\nSeats',
-    labelSize: '16px',
+    labelSize: '20px',
     sub:       '',
     bg:        T.card,
     dk:        T.moonDk,
@@ -1409,7 +1409,7 @@ function renderActionBar(state) {
 
   const addItemsBtn = _actBtn({
     label:   'Add\nItems',
-    labelSize: '18px',
+    labelSize: '25px',
     sub:     '',
     bg:      T.greenWarm,
     dk:      T.greenWarmDk,
