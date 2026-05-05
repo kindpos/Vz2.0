@@ -1398,7 +1398,7 @@ function renderActionBar(state) {
 
   const manageBtn = _actBtn({
     label:     'Manage\nSeats',
-    labelSize: '24px',
+    labelSize: '18px',
     sub:       '',
     bg:        T.card,
     dk:        T.moonDk,
@@ -1408,8 +1408,8 @@ function renderActionBar(state) {
   });
 
   const addItemsBtn = _actBtn({
-    label:   'Add Items',
-    labelSize: '26px',
+    label:   'Add\nItems',
+    labelSize: '20px',
     sub:     '',
     bg:      T.greenWarm,
     dk:      T.greenWarmDk,
@@ -1435,6 +1435,7 @@ function renderActionBar(state) {
 
   const printBtnNew = _actBtn({
     label:   'Print',
+    labelSize: '22px',
     bg:      T.elec,
     dk:      T.elecDk,
     color:   T.well,
@@ -1481,7 +1482,7 @@ function renderActionBar(state) {
   addItemsBtn.style.cssText += `width:100%;height:100%;clip-path:${cpAddRight};`;
 
   const rightQuad = document.createElement('div');
-  rightQuad.style.cssText = `display:grid;grid-template-columns:1fr 120px;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:280px;flex-shrink:0;`;
+  rightQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:280px;flex-shrink:0;`;
 
   const mgmtCell = document.createElement('div');
   mgmtCell.style.cssText = 'grid-column:1;grid-row:1;display:flex;';
@@ -1492,7 +1493,7 @@ function renderActionBar(state) {
   printCell.appendChild(printBtnNew);
 
   const addCell = document.createElement('div');
-  addCell.style.cssText = 'grid-column:2;grid-row:1/3;min-width:120px;display:flex;';
+  addCell.style.cssText = 'grid-column:2;grid-row:1/3;display:flex;';
   addCell.appendChild(addItemsBtn);
 
   rightQuad.appendChild(mgmtCell);
