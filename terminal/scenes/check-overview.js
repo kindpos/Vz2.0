@@ -1490,11 +1490,11 @@ function renderActionBar(state) {
   payCell.appendChild(payBtn);
 
   const discCell = document.createElement('div');
-  discCell.style.cssText = 'grid-column:2;grid-row:1;display:flex;';
+  discCell.style.cssText = 'grid-column:2;grid-row:1;display:flex;align-items:center;justify-content:center;';
   discCell.appendChild(discBtn);
 
   const voidCell = document.createElement('div');
-  voidCell.style.cssText = 'grid-column:2;grid-row:2;display:flex;';
+  voidCell.style.cssText = 'grid-column:2;grid-row:2;display:flex;align-items:center;justify-content:center;';
   voidCell.appendChild(voidBtn);
 
   leftQuad.appendChild(payCell);
@@ -1528,15 +1528,15 @@ function renderActionBar(state) {
   rightQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:320px;flex-shrink:0;`;
 
   const mgmtCell = document.createElement('div');
-  mgmtCell.style.cssText = 'grid-column:1;grid-row:1;display:flex;';
+  mgmtCell.style.cssText = 'grid-column:1;grid-row:1;display:flex;align-items:center;justify-content:center;';
   mgmtCell.appendChild(manageBtn);
 
   const printCell = document.createElement('div');
-  printCell.style.cssText = 'grid-column:1;grid-row:2;display:flex;';
+  printCell.style.cssText = 'grid-column:1;grid-row:2;display:flex;align-items:center;justify-content:center;';
   printCell.appendChild(printBtnNew);
 
   const addCell = document.createElement('div');
-  addCell.style.cssText = 'grid-column:2;grid-row:1/3;display:flex;';
+  addCell.style.cssText = 'grid-column:2;grid-row:1/3;display:flex;align-items:center;justify-content:center;';
   addCell.appendChild(addItemsBtn);
 
   rightQuad.appendChild(mgmtCell);
