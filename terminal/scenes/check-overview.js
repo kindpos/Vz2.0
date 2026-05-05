@@ -1451,6 +1451,12 @@ function renderActionBar(state) {
     onClick: () => { handlePrint(state); },
   });
 
+  const printLbl = printBtnNew.querySelector('span');
+  if (printLbl) {
+    printLbl.style.textAlign = 'center';
+    printLbl.style.width = '100%';
+  }
+
   const CUT = 20;
 
   // ── LEFT QUAD: PAY (tall left) + Disc/Void (stacked right) ──
