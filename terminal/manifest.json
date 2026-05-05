@@ -1,0 +1,9 @@
+{
+  "name": "KINDpos",
+  "short_name": "KINDpos",
+  "start_url": "/",
+  "display": "fullscreen",
+  "background_color": "#383c42",
+  "theme_color": "#383c42",
+  "orientation": "landscape"
+}

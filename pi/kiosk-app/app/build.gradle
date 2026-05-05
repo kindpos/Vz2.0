@@ -1,6 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
+    namespace "com.kindpos.kiosk"    // ← add this
     compileSdkVersion 34
     defaultConfig {
         applicationId "com.kindpos.kiosk"

@@ -759,3 +759,44 @@ class DiagnosticCollector:
         )
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
+
+    # =========================================================================
+    # BOOT PROBES
+    # =========================================================================
+
+    async def check_license(self) -> dict:
+        """
+        Boot probe: check if license.json exists and is valid.
+        Returns { passed: bool, message: str }
+        """
+        license_file = "/home/kindpos/data/license.json"
+        required_fields = {"store_name", "terminal_name", "prefix", "node_number"}
+
+        if not os.path.exists(license_file):
+            return {
+                "passed": False,
+                "message": "No license found — activate at kindpos.local"
+            }
+
+        try:
+            with open(license_file, "r") as f:
+                license_data = json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading license file: {e}")
+            return {
+                "passed": False,
+                "message": f"License file corrupted: {str(e)}"
+            }
+
+        # Validate required fields
+        missing_fields = required_fields - set(license_data.keys())
+        if missing_fields:
+            return {
+                "passed": False,
+                "message": f"License missing fields: {', '.join(sorted(missing_fields))}"
+            }
+
+        return {
+            "passed": True,
+            "message": f"License valid: {license_data.get('prefix', '?')}-{license_data.get('node_number', '?')}"
+        }

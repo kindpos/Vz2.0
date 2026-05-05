@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test *)",
+      "Bash(git checkout *)",
+      "Bash(py *)",
+      "Bash(npx vitest *)",
+      "Bash(npm run *)",
+      "Bash(grep -nE '#[0-9a-fA-F]{3,8}\\\\b' overseer/src/sections/modifiers.js)",
+      "Bash(grep -nE '#[0-9a-fA-F]{3,8}\\\\b' overseer/src/sections/modifier-groups.js)",
+      "Bash(grep -nE '#[0-9a-fA-F]{3,8}\\\\b' overseer/src/sections/pricing-setup.js)",
+      "Bash(grep -nE '#[0-9a-fA-F]{3,8}\\\\b' overseer/src/sections/modifiers.js overseer/src/sections/modifier-groups.js overseer/src/sections/pricing-setup.js)",
+      "Bash(grep *)",
+      "Bash(python -m pytest tests/test_modifier_group_membership.py -v)",
+      "Bash(python3 -m pytest tests/test_modifier_group_membership.py -v)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(py *)",
+      "Bash(tail *)",
+      "PowerShell(npx vitest terminal/scenes/qsr-order.test.js --run)",
+      "PowerShell(npx vitest --run)",
+      "Bash(git check-ignore *)",
+      "Bash(python _es6_migrate.py terminal/scenes/manager-landing.js)",
+      "Bash(node -e \"import\\('./terminal/scenes/order-entry.js'\\).then\\(m => console.log\\('OK'\\)\\).catch\\(e => console.error\\(e.message\\)\\)\")",
+      "Bash(node --input-type=module -e \"import * as fs from 'fs'; import\\('./terminal/scenes/order-entry.js'\\).then\\(m => console.log\\('OK'\\)\\).catch\\(e => console.error\\(e.message, e.stack\\)\\)\")",
+      "Bash(node -e \"const fs = require\\('fs'\\); const src = fs.readFileSync\\('terminal/scenes/order-entry.js', 'utf-8'\\); try { new Function\\(src\\); } catch\\(e\\) { console.log\\(e.message\\); console.log\\(e.stack\\); }\")",
+      "Bash(node --check terminal/scenes/order-entry.js)",
+      "Bash(node --check terminal/scenes/manager-landing.js)",
+      "Bash(node --check terminal/scenes/server-landing.js)",
+      "Bash(node --check terminal/scenes/check-overview.js)",
+      "Bash(node --check terminal/order-summary.js)",
+      "Bash(node --check terminal/scenes/payment.js)",
+      "Bash(node --check terminal/scenes/shared-interrupts.js)",
+      "Bash(node --check terminal/scenes/server-checkout.js)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
+    ]
+  }
+}
