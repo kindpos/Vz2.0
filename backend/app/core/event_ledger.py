@@ -154,13 +154,30 @@ class EventLedger:
     # WRITE OPERATIONS
     # =========================================================================
 
+    @staticmethod
+    def _event_to_broadcast_dict(event: "Event") -> dict:
+        """Serialize a stored event for hub-and-spoke broadcast.
+
+        The 'origin' field carries the terminal_id that wrote the event so
+        ConnectionManager.broadcast() can skip echo-back to the sender.
+        """
+        return {
+            "event_id":        event.event_id,
+            "event_type":      event.event_type.value,
+            "payload":         event.payload,
+            "sequence_number": event.sequence_number,
+            "timestamp":       event.timestamp.isoformat(),
+            "origin":          event.terminal_id,
+        }
+
     async def append(self, event: Event) -> Event:
         """
         Append an event to the ledger.
 
         - Assigns sequence number
         - Computes checksum with hash chain
-        - Returns the complete event
+        - Broadcasts to connected terminals after a successful write
+        - Returns the complete event (None when an idempotency gate blocks a dup)
         """
         # 2dp precision gate — reject non-2dp monetary values
         if event.payload:
@@ -170,6 +187,8 @@ class EventLedger:
                     f"Precision gate: event {event.event_id} ({event.event_type.value}) "
                     f"has non-2dp monetary values: {', '.join(bad)}"
                 )
+
+        stored: Optional[Event] = None
 
         async with self._write_lock:
             # ── Idempotency gate: reject if key already exists in ledger ──
@@ -230,8 +249,8 @@ class EventLedger:
 
             await self._db.commit()
 
-            # Return complete event with sequence number and checksum
-            return Event(
+            # Build the complete event; broadcast happens outside the lock
+            stored = Event(
                 event_id=event.event_id,
                 timestamp=event.timestamp,
                 terminal_id=event.terminal_id,
@@ -245,6 +264,26 @@ class EventLedger:
                 previous_checksum=previous_checksum,
                 checksum=checksum,
             )
+
+        # ── Broadcast to connected terminals (outside the write lock) ──
+        # Lazy import breaks the circular dependency: dependencies imports
+        # EventLedger, so we cannot import dependencies at module level here.
+        try:
+            from app.api.dependencies import get_connection_manager  # noqa: PLC0415
+            cm = get_connection_manager()
+            if cm is not None and cm.connected_terminals:
+                await cm.broadcast(
+                    self._event_to_broadcast_dict(stored),
+                    origin=stored.terminal_id,
+                )
+        except Exception as exc:
+            # Broadcast is best-effort: the ledger write already succeeded.
+            logger.warning(
+                "Post-write broadcast failed for event %s (%s): %s",
+                stored.event_id, stored.event_type.value, exc,
+            )
+
+        return stored
 
     async def append_batch(self, events: list[Event]) -> list[Event]:
         """Append multiple events atomically."""
