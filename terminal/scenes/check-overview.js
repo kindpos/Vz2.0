@@ -1398,7 +1398,7 @@ function renderActionBar(state) {
 
   const manageBtn = _actBtn({
     label:     'Manage',
-    labelSize: '22px',
+    labelSize: '20px',
     sub:       '',
     bg:        T.card,
     dk:        T.moonDk,
@@ -1444,7 +1444,7 @@ function renderActionBar(state) {
 
   const printBtnNew = _actBtn({
     label:   'Print',
-    labelSize: '22px',
+    labelSize: '20px',
     bg:      T.elec,
     dk:      T.elecDk,
     color:   T.well,
