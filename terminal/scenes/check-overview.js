@@ -1451,11 +1451,19 @@ function renderActionBar(state) {
 
   payBtn.style.cssText    += `width:100%;height:100%;clip-path:${cpPayLeft};`;
   discBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpDiscBL};`;
-  discBtn.style.fontSize = '16px';
+  discBtn.style.fontSize = '20px';
   discBtn.style.fontWeight = '900';
+  discBtn.style.textAlign = 'center';
+  discBtn.style.justifyContent = 'center';
+  discBtn.style.alignItems = 'center';
+  discBtn.style.display = 'flex';
   voidBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpVoidTL};`;
-  voidBtn.style.fontSize = '16px';
+  voidBtn.style.fontSize = '20px';
   voidBtn.style.fontWeight = '900';
+  voidBtn.style.textAlign = 'center';
+  voidBtn.style.justifyContent = 'center';
+  voidBtn.style.alignItems = 'center';
+  voidBtn.style.display = 'flex';
 
   const leftQuad = document.createElement('div');
   leftQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:320px;flex-shrink:0;`;
@@ -1482,7 +1490,21 @@ function renderActionBar(state) {
   const cpAddRight = `polygon(0 0,100% 0,100% 100%,0 100%,0 calc(50% + ${CUT}px),${CUT}px 50%,0 calc(50% - ${CUT}px))`;
 
   manageBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpMgmtBR};`;
+  manageBtn.style.fontSize = '20px';
+  manageBtn.style.fontWeight = '900';
+  manageBtn.style.textAlign = 'center';
+  manageBtn.style.justifyContent = 'center';
+  manageBtn.style.alignItems = 'center';
+  manageBtn.style.display = 'flex';
+  manageBtn.style.lineHeight = '1.2';
   printBtnNew.style.cssText += `width:100%;height:100%;clip-path:${cpPrintTR};`;
+  printBtnNew.style.fontSize = '20px';
+  printBtnNew.style.fontWeight = '900';
+  printBtnNew.style.textAlign = 'center';
+  printBtnNew.style.justifyContent = 'center';
+  printBtnNew.style.alignItems = 'center';
+  printBtnNew.style.display = 'flex';
+  printBtnNew.style.lineHeight = '1.2';
   addItemsBtn.style.cssText += `width:100%;height:100%;clip-path:${cpAddRight};`;
 
   const rightQuad = document.createElement('div');
