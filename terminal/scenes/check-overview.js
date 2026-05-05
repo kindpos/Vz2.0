@@ -1316,7 +1316,7 @@ function renderActionBar(state) {
     lbl.style.textAlign  = 'center';
     lbl.style.width      = '100%';
     lbl.style.paddingTop = '3px';
-    lbl.textContent      = opts.label;
+    lbl.innerHTML        = opts.label.replace(/\n/g, '<br>');
     btn.appendChild(lbl);
 
     if (opts.sub !== undefined) {
