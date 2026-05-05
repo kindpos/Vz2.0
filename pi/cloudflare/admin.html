@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KINDpos Fleet Admin</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #383c42;
+      --card: #2e3236;
+      --well: #22252a;
+      --green: #86efac;
+      --greenWarm: #4ade80;
+      --gold: #e8c84e;
+      --verm: #e8472a;
+      --elec: #22d3ee;
+      --lavender: #b48efa;
+      --text: #e8eaed;
+      --border: #5a5f66;
+      --moon: #7e8896;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       PASSWORD GATE
+       ═════════════════════════════════════════════════ */
+    .password-gate {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+
+    .password-gate.hidden {
+      display: none;
+    }
+
+    .gate-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 40px;
+      width: 320px;
+      text-align: center;
+    }
+
+    .gate-card h1 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      font-size: 24px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .gate-card p {
+      color: var(--moon);
+      font-size: 13px;
+      margin-bottom: 24px;
+    }
+
+    .gate-input {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--well);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
+    .gate-input::placeholder {
+      color: var(--moon);
+    }
+
+    .gate-button {
+      width: 100%;
+      padding: 10px;
+      background: var(--green);
+      color: var(--well);
+      border: none;
+      border-radius: 4px;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .gate-button:hover {
+      background: var(--greenWarm);
+    }
+
+    /* ═══════════════════════════════════════════════════
+       TOP BAR
+       ═════════════════════════════════════════════════ */
+    .top-bar {
+      height: 56px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+    }
+
+    .top-bar-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+      color: var(--green);
+    }
+
+    .top-label {
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .logout-btn {
+      padding: 6px 12px;
+      background: var(--verm);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    .logout-btn:hover {
+      opacity: 0.9;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       STATS BAR
+       ═════════════════════════════════════════════════ */
+    .stats-bar {
+      background: var(--well);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      gap: 40px;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--moon);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--green);
+    }
+
+    /* ═══════════════════════════════════════════════════
+       MAIN LAYOUT
+       ═════════════════════════════════════════════════ */
+    .app-container {
+      display: flex;
+      height: calc(100vh - 56px - 56px - 60px);
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 8px 12px;
+      background: var(--well);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
+
+    .search-input::placeholder {
+      color: var(--moon);
+    }
+
+    .add-btn {
+      padding: 8px 12px;
+      background: var(--green);
+      color: var(--well);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .customer-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .customer-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .customer-item:hover {
+      background: var(--well);
+    }
+
+    .customer-item.active {
+      background: var(--well);
+      border-left: 3px solid var(--green);
+      padding-left: 13px;
+    }
+
+    .customer-name {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .customer-prefix {
+      display: inline-block;
+      background: var(--elec);
+      color: var(--well);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .customer-status {
+      display: flex;
+      gap: 3px;
+      margin-top: 6px;
+    }
+
+    .status-pip {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+
+    .status-pip.active {
+      background: var(--green);
+      box-shadow: 0 0 4px var(--green);
+    }
+
+    /* ═══════════════════════════════════════════════════
+       MAIN PANEL
+       ═════════════════════════════════════════════════ */
+    .main-panel {
+      flex: 1;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .tab-bar {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+    }
+
+    .tab-btn {
+      padding: 12px 20px;
+      background: transparent;
+      color: var(--moon);
+      border: none;
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      font-size: 12px;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      color: var(--green);
+      border-bottom-color: var(--green);
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       CARDS & SECTIONS
+       ═════════════════════════════════════════════════ */
+    .info-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .info-card h3 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .info-label {
+      color: var(--moon);
+    }
+
+    .info-value {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       GENERATE CODE CARD
+       ═════════════════════════════════════════════════ */
+    .generate-section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .generate-section h3 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12px;
+      color: var(--moon);
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 8px 12px;
+      background: var(--well);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .generate-btn {
+      width: 100%;
+      padding: 10px;
+      background: var(--green);
+      color: var(--well);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+      margin-top: 8px;
+    }
+
+    .generate-btn:hover {
+      background: var(--greenWarm);
+    }
+
+    .code-display {
+      background: var(--well);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 12px;
+      margin-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    .copy-btn {
+      padding: 6px 12px;
+      background: var(--elec);
+      color: var(--well);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    /* ═════════════════════════════════════════════════
+       TERMINALS LIST
+       ════════════════════════════════════════════════ */
+    .terminals-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .terminal-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .terminal-info {
+      flex: 1;
+    }
+
+    .terminal-name {
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .terminal-meta {
+      font-size: 12px;
+      color: var(--moon);
+    }
+
+    .terminal-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-right: 12px;
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 4px var(--green);
+    }
+
+    .status-indicator.offline {
+      background: var(--border);
+      box-shadow: none;
+    }
+
+    .terminal-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .action-btn {
+      padding: 6px 10px;
+      background: var(--well);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .action-btn:hover {
+      border-color: var(--text);
+    }
+
+    .action-btn.danger {
+      color: var(--verm);
+      border-color: var(--verm);
+    }
+
+    .action-btn.danger:hover {
+      background: var(--verm);
+      color: white;
+    }
+
+    /* ═════════════════════════════════════════════════
+       NOTES SECTION
+       ════════════════════════════════════════════════ */
+    .notes-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .notes-textarea {
+      width: 100%;
+      min-height: 300px;
+      padding: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .save-notes-btn {
+      padding: 10px 20px;
+      background: var(--green);
+      color: var(--well);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+      align-self: flex-start;
+    }
+
+    .save-notes-btn:hover {
+      background: var(--greenWarm);
+    }
+
+    /* ═════════════════════════════════════════════════
+       MODAL
+       ════════════════════════════════════════════════ */
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 5000;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      width: 90%;
+      max-width: 500px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      justify-content: flex-end;
+    }
+
+    .btn-primary {
+      padding: 10px 20px;
+      background: var(--green);
+      color: var(--well);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    .btn-primary:hover {
+      background: var(--greenWarm);
+    }
+
+    .btn-secondary {
+      padding: 10px 20px;
+      background: var(--well);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 700;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--text);
+    }
+
+    /* ═════════════════════════════════════════════════
+       SCROLLBAR
+       ════════════════════════════════════════════════ */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--card);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--moon);
+    }
+  </style>
+</head>
+<body>
+  <!-- PASSWORD GATE -->
+  <div id="passwordGate" class="password-gate">
+    <div class="gate-card">
+      <h1>KINDpos Admin</h1>
+      <p>Enter admin secret to continue</p>
+      <input type="password" id="adminSecretInput" class="gate-input" placeholder="ADMIN_SECRET" />
+      <button id="gateSubmitBtn" class="gate-button">Unlock</button>
+    </div>
+  </div>
+
+  <!-- MAIN APP (hidden until authenticated) -->
+  <div id="mainApp" style="display: none; height: 100vh; display: flex; flex-direction: column;">
+    <!-- TOP BAR -->
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <div class="logo">●●●</div>
+        <div class="top-label">Fleet Admin</div>
+      </div>
+      <button id="logoutBtn" class="logout-btn">Logout</button>
+    </div>
+
+    <!-- STATS BAR -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-label">Customers</div>
+        <div class="stat-value" id="statCustomers">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Active Nodes</div>
+        <div class="stat-value" id="statActiveNodes">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Inactive Nodes</div>
+        <div class="stat-value" id="statInactiveNodes">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Licenses Issued</div>
+        <div class="stat-value" id="statLicenses">0</div>
+      </div>
+    </div>
+
+    <!-- MAIN LAYOUT -->
+    <div class="app-container">
+      <!-- SIDEBAR -->
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <input type="text" id="searchInput" class="search-input" placeholder="Search..." />
+          <button id="addCustomerBtn" class="add-btn">+ New</button>
+        </div>
+        <div class="customer-list" id="customerList"></div>
+      </div>
+
+      <!-- MAIN PANEL -->
+      <div class="main-panel">
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="overview">Overview</button>
+          <button class="tab-btn" data-tab="terminals">Terminals</button>
+          <button class="tab-btn" data-tab="notes">Notes</button>
+        </div>
+
+        <!-- OVERVIEW TAB -->
+        <div id="overview" class="tab-pane active tab-content">
+          <div id="overviewContent"></div>
+        </div>
+
+        <!-- TERMINALS TAB -->
+        <div id="terminals" class="tab-pane tab-content">
+          <div id="terminalsContent"></div>
+        </div>
+
+        <!-- NOTES TAB -->
+        <div id="notes" class="tab-pane tab-content">
+          <div class="notes-section">
+            <textarea id="notesTextarea" class="notes-textarea" placeholder="Add notes about this customer..."></textarea>
+            <button id="saveNotesBtn" class="save-notes-btn">Save Notes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALS -->
+  <div id="addCustomerModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">Add Customer</div>
+      <div class="form-group">
+        <label class="form-label">Customer Name</label>
+        <input type="text" id="modalCustomerName" class="form-input" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Prefix (e.g. SMYS)</label>
+          <input type="text" id="modalPrefix" class="form-input" maxlength="4" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Plan</label>
+          <input type="text" id="modalPlan" class="form-input" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contact Name</label>
+        <input type="text" id="modalContactName" class="form-input" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" id="modalEmail" class="form-input" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input type="tel" id="modalPhone" class="form-input" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Location</label>
+        <input type="text" id="modalLocation" class="form-input" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('addCustomerModal')">Cancel</button>
+        <button class="btn-primary" onclick="saveNewCustomer()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="addTerminalModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">Add Terminal</div>
+      <div class="form-group">
+        <label class="form-label">Terminal Name</label>
+        <input type="text" id="modalTerminalName" class="form-input" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Node Number</label>
+          <input type="number" id="modalNodeNumber" class="form-input" min="1" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Device Model</label>
+          <input type="text" id="modalDevice" class="form-input" placeholder="e.g. Swan" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">IP Address</label>
+        <input type="text" id="modalIP" class="form-input" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('addTerminalModal')">Cancel</button>
+        <button class="btn-primary" onclick="saveNewTerminal()">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════════════
+    // STATE MANAGEMENT
+    // ═══════════════════════════════════════════════════
+    let adminSecret = null;
+    let currentCustomerId = null;
+    let customers = [];
+
+    // ═══════════════════════════════════════════════════
+    // INITIALIZATION
+    // ═══════════════════════════════════════════════════
+    function init() {
+      // Check session storage for admin secret
+      adminSecret = sessionStorage.getItem('adminSecret');
+      if (adminSecret) {
+        showMainApp();
+      } else {
+        setupPasswordGate();
+      }
+    }
+
+    function setupPasswordGate() {
+      const input = document.getElementById('adminSecretInput');
+      const btn = document.getElementById('gateSubmitBtn');
+
+      btn.addEventListener('click', () => {
+        adminSecret = input.value.trim();
+        if (adminSecret) {
+          sessionStorage.setItem('adminSecret', adminSecret);
+          showMainApp();
+        }
+      });
+
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') btn.click();
+      });
+    }
+
+    function showMainApp() {
+      document.getElementById('passwordGate').classList.add('hidden');
+      document.getElementById('mainApp').style.display = 'flex';
+
+      // Load customers from localStorage
+      loadCustomers();
+
+      // Setup event listeners
+      setupEventListeners();
+
+      // Render UI
+      renderCustomerList();
+      updateStats();
+      selectFirstCustomer();
+    }
+
+    function setupEventListeners() {
+      document.getElementById('logoutBtn').addEventListener('click', logout);
+      document.getElementById('addCustomerBtn').addEventListener('click', () => openModal('addCustomerModal'));
+      document.getElementById('searchInput').addEventListener('input', filterCustomers);
+      document.getElementById('saveNotesBtn').addEventListener('click', saveNotes);
+
+      // Tab switching
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+          e.target.classList.add('active');
+          const tabName = e.target.dataset.tab;
+          document.getElementById(tabName).classList.add('active');
+
+          if (tabName === 'notes' && currentCustomerId) {
+            document.getElementById('notesTextarea').value = customers.find(c => c.id === currentCustomerId)?.notes || '';
+          }
+        });
+      });
+    }
+
+    // ═══════════════════════════════════════════════════
+    // DATA MANAGEMENT
+    // ═══════════════════════════════════════════════════
+    function loadCustomers() {
+      const stored = localStorage.getItem('kindposCustomers');
+      if (stored) {
+        customers = JSON.parse(stored);
+      } else {
+        // Seed demo data
+        customers = [
+          {
+            id: 'c1',
+            name: "Sammy's Pizza",
+            prefix: 'SMYS',
+            contact_name: 'Sammy',
+            email: 'sammy@sammyspizza.com',
+            phone: '(555) 123-4567',
+            location: '123 Main St',
+            plan: 'Professional',
+            since: '2024-01-15',
+            notes: 'Great customer, 3 locations, expanding to 4th',
+            terminals: [
+              { id: 't1', name: 'Register-1', code: 'SMYS-001-a7f2-8b3c-1e90', device: 'Swan', ip: '192.168.1.10', status: 'active', last_seen: new Date().toISOString() },
+              { id: 't2', name: 'Register-2', code: 'SMYS-002-c3e9-5d4b-2f67', device: 'Swan', ip: '192.168.1.11', status: 'active', last_seen: new Date().toISOString() },
+              { id: 't3', name: 'Kitchen', code: 'SMYS-003-b1a8-9e2d-4c73', device: 'Swan', ip: '192.168.1.12', status: 'offline', last_seen: new Date(Date.now() - 3600000).toISOString() }
+            ]
+          },
+          {
+            id: 'c2',
+            name: 'Meat Sweats BBQ',
+            prefix: 'MSWT',
+            contact_name: 'Marcus',
+            email: 'marcus@meatsweats.com',
+            phone: '(555) 987-6543',
+            location: '456 Oak Ave',
+            plan: 'Startup',
+            since: '2024-03-22',
+            notes: 'New customer, single location',
+            terminals: [
+              { id: 't4', name: 'Main Register', code: 'MSWT-001-d2b9-7e3a-5f82', device: 'Swan', ip: '192.168.1.20', status: 'active', last_seen: new Date().toISOString() }
+            ]
+          }
+        ];
+        saveCustomers();
+      }
+    }
+
+    function saveCustomers() {
+      localStorage.setItem('kindposCustomers', JSON.stringify(customers));
+      updateStats();
+    }
+
+    function updateStats() {
+      const totalCustomers = customers.length;
+      const activeNodes = customers.reduce((acc, c) => acc + (c.terminals?.filter(t => t.status === 'active').length || 0), 0);
+      const inactiveNodes = customers.reduce((acc, c) => acc + (c.terminals?.filter(t => t.status === 'offline').length || 0), 0);
+      const totalLicenses = customers.reduce((acc, c) => acc + (c.terminals?.length || 0), 0);
+
+      document.getElementById('statCustomers').textContent = totalCustomers;
+      document.getElementById('statActiveNodes').textContent = activeNodes;
+      document.getElementById('statInactiveNodes').textContent = inactiveNodes;
+      document.getElementById('statLicenses').textContent = totalLicenses;
+    }
+
+    // ═══════════════════════════════════════════════════
+    // UI RENDERING
+    // ═══════════════════════════════════════════════════
+    function renderCustomerList() {
+      const list = document.getElementById('customerList');
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+
+      const filtered = customers.filter(c =>
+        c.name.toLowerCase().includes(searchTerm) ||
+        c.prefix.toLowerCase().includes(searchTerm)
+      );
+
+      list.innerHTML = filtered.map(c => {
+        const activePips = (c.terminals || []).filter(t => t.status === 'active').length;
+        const totalPips = (c.terminals || []).length;
+        return `
+          <div class="customer-item ${c.id === currentCustomerId ? 'active' : ''}" onclick="selectCustomer('${c.id}')">
+            <div class="customer-name">${c.name}</div>
+            <div class="customer-prefix">${c.prefix}</div>
+            <div class="customer-status">
+              ${Array(activePips).fill().map(() => '<div class="status-pip active"></div>').join('')}
+              ${Array(totalPips - activePips).fill().map(() => '<div class="status-pip"></div>').join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectCustomer(id) {
+      currentCustomerId = id;
+      renderCustomerList();
+      renderOverview();
+      renderTerminals();
+      document.getElementById('notesTextarea').value = customers.find(c => c.id === id)?.notes || '';
+    }
+
+    function selectFirstCustomer() {
+      if (customers.length > 0) {
+        selectCustomer(customers[0].id);
+      }
+    }
+
+    function renderOverview() {
+      const customer = customers.find(c => c.id === currentCustomerId);
+      if (!customer) return;
+
+      const html = `
+        <div class="info-card">
+          <h3>Contact Information</h3>
+          <div class="info-row">
+            <span class="info-label">Name:</span>
+            <span class="info-value">${customer.name}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Contact:</span>
+            <span class="info-value">${customer.contact_name}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Email:</span>
+            <span class="info-value">${customer.email}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Phone:</span>
+            <span class="info-value">${customer.phone}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Location:</span>
+            <span class="info-value">${customer.location}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Plan:</span>
+            <span class="info-value">${customer.plan}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Customer Since:</span>
+            <span class="info-value">${new Date(customer.since).toLocaleDateString()}</span>
+          </div>
+        </div>
+
+        <div class="generate-section">
+          <h3>Generate License Code</h3>
+          <div class="form-group">
+            <label class="form-label">Node Number</label>
+            <input type="number" id="nodeNumber" class="form-input" value="${(customer.terminals?.length || 0) + 1}" min="1" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">SKU</label>
+              <input type="text" id="nodeSku" class="form-input" value="KINDPOS-PI-5" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Store Ref (optional)</label>
+              <input type="text" id="nodeStoreRef" class="form-input" />
+            </div>
+          </div>
+          <button class="generate-btn" onclick="generateLicense()">Generate Code</button>
+          <div id="codeResult"></div>
+        </div>
+
+        <button class="generate-btn" style="background: #5a5f66; margin-top: 12px;" onclick="openModal('addTerminalModal')">+ Add Terminal</button>
+      `;
+
+      document.getElementById('overviewContent').innerHTML = html;
+    }
+
+    function renderTerminals() {
+      const customer = customers.find(c => c.id === currentCustomerId);
+      if (!customer || !customer.terminals) {
+        document.getElementById('terminalsContent').innerHTML = '<p style="color: var(--moon);">No terminals</p>';
+        return;
+      }
+
+      const html = `
+        <div class="terminals-list">
+          ${customer.terminals.map(t => `
+            <div class="terminal-item">
+              <div class="terminal-info">
+                <div class="terminal-name">${t.name}</div>
+                <div class="terminal-meta">Code: ${t.code} | Device: ${t.device} | IP: ${t.ip}</div>
+                <div class="terminal-meta">Last seen: ${new Date(t.last_seen).toLocaleString()}</div>
+              </div>
+              <div class="terminal-status">
+                <div class="status-indicator ${t.status === 'active' ? '' : 'offline'}"></div>
+                <span>${t.status === 'active' ? 'Active' : 'Offline'}</span>
+              </div>
+              <div class="terminal-actions">
+                <button class="action-btn" onclick="copyToClipboard('${t.code}')">Copy Code</button>
+                <button class="action-btn danger" onclick="revokeTerminal('${t.id}')">Revoke</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      document.getElementById('terminalsContent').innerHTML = html;
+    }
+
+    // ═══════════════════════════════════════════════════
+    // ACTIONS
+    // ═══════════════════════════════════════════════════
+    async function generateLicense() {
+      const customer = customers.find(c => c.id === currentCustomerId);
+      const nodeNum = document.getElementById('nodeNumber').value;
+      const sku = document.getElementById('nodeSku').value;
+      const storeRef = document.getElementById('nodeStoreRef').value;
+
+      if (!nodeNum || !sku) {
+        alert('Please fill in all required fields');
+        return;
+      }
+
+      try {
+        const response = await fetch('https://kindpos.com/api/admin/generate', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${adminSecret}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            prefix: customer.prefix,
+            node_number: nodeNum,
+            sku: sku,
+            store_ref: storeRef || null
+          })
+        });
+
+        if (!response.ok) throw new Error('API error');
+
+        const data = await response.json();
+        const resultDiv = document.getElementById('codeResult');
+        resultDiv.innerHTML = `
+          <div class="code-display">
+            <span>${data.code}</span>
+            <button class="copy-btn" onclick="copyToClipboard('${data.code}')">Copy</button>
+          </div>
+        `;
+      } catch (e) {
+        alert('Error generating license: ' + e.message);
+      }
+    }
+
+    function revokeTerminal(terminalId) {
+      if (!confirm('Are you sure? This cannot be undone.')) return;
+
+      const customer = customers.find(c => c.id === currentCustomerId);
+      customer.terminals = customer.terminals.filter(t => t.id !== terminalId);
+      saveCustomers();
+      renderTerminals();
+    }
+
+    function saveNotes() {
+      const customer = customers.find(c => c.id === currentCustomerId);
+      if (customer) {
+        customer.notes = document.getElementById('notesTextarea').value;
+        saveCustomers();
+        alert('Notes saved');
+      }
+    }
+
+    function filterCustomers() {
+      renderCustomerList();
+    }
+
+    function logout() {
+      sessionStorage.removeItem('adminSecret');
+      location.reload();
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Copied to clipboard');
+      });
+    }
+
+    // ═══════════════════════════════════════════════════
+    // MODAL MANAGEMENT
+    // ═══════════════════════════════════════════════════
+    function openModal(id) {
+      document.getElementById(id).classList.add('active');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    function saveNewCustomer() {
+      const name = document.getElementById('modalCustomerName').value.trim();
+      const prefix = document.getElementById('modalPrefix').value.trim().toUpperCase();
+      const contact = document.getElementById('modalContactName').value.trim();
+      const email = document.getElementById('modalEmail').value.trim();
+      const phone = document.getElementById('modalPhone').value.trim();
+      const location = document.getElementById('modalLocation').value.trim();
+      const plan = document.getElementById('modalPlan').value.trim();
+
+      if (!name || !prefix) {
+        alert('Name and prefix are required');
+        return;
+      }
+
+      const newCustomer = {
+        id: 'c' + Date.now(),
+        name,
+        prefix,
+        contact_name: contact,
+        email,
+        phone,
+        location,
+        plan,
+        since: new Date().toISOString().split('T')[0],
+        notes: '',
+        terminals: []
+      };
+
+      customers.push(newCustomer);
+      saveCustomers();
+      renderCustomerList();
+      closeModal('addCustomerModal');
+      selectCustomer(newCustomer.id);
+
+      // Clear form
+      document.getElementById('modalCustomerName').value = '';
+      document.getElementById('modalPrefix').value = '';
+      document.getElementById('modalContactName').value = '';
+      document.getElementById('modalEmail').value = '';
+      document.getElementById('modalPhone').value = '';
+      document.getElementById('modalLocation').value = '';
+      document.getElementById('modalPlan').value = '';
+    }
+
+    function saveNewTerminal() {
+      const name = document.getElementById('modalTerminalName').value.trim();
+      const nodeNum = document.getElementById('modalNodeNumber').value;
+      const device = document.getElementById('modalDevice').value.trim();
+      const ip = document.getElementById('modalIP').value.trim();
+
+      if (!name || !nodeNum) {
+        alert('Name and node number are required');
+        return;
+      }
+
+      const customer = customers.find(c => c.id === currentCustomerId);
+      const newTerminal = {
+        id: 't' + Date.now(),
+        name,
+        code: `${customer.prefix}-${String(nodeNum).padStart(3, '0')}-XXXX-XXXX-XXXX`,
+        device: device || 'Swan',
+        ip: ip || '0.0.0.0',
+        status: 'offline',
+        last_seen: new Date().toISOString()
+      };
+
+      customer.terminals = customer.terminals || [];
+      customer.terminals.push(newTerminal);
+      saveCustomers();
+      renderTerminals();
+      closeModal('addTerminalModal');
+
+      // Clear form
+      document.getElementById('modalTerminalName').value = '';
+      document.getElementById('modalNodeNumber').value = '';
+      document.getElementById('modalDevice').value = '';
+      document.getElementById('modalIP').value = '';
+    }
+
+    // ═══════════════════════════════════════════════════
+    // START
+    // ═══════════════════════════════════════════════════
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
