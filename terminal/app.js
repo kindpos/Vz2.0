@@ -18,6 +18,7 @@ import { getSession } from './auth-client.js';
 import { T, applyStoreTheme } from '../common/tokens.js';
 
 // ── Scene imports ─────────────────────────────────
+import { defineActivationScene } from './scenes/activation.js';
 import './scenes/login.js';
 import './scenes/server-landing.js';
 import './scenes/manager-landing.js';
@@ -201,7 +202,24 @@ async function boot() {
   // 1. Init scene manager — wire DOM layers
   SceneManager.init();
 
-  // 3. Load store config from backend
+  // 2. Register activation scene
+  SceneManager.register(defineActivationScene());
+
+  // 3. Check license activation status (must come before login)
+  try {
+    const licRes = await fetchWithTimeout('/api/v1/licenses/status', {}, 8000);
+    if (licRes.ok) {
+      const licData = await licRes.json();
+      if (licData.activated === false) {
+        SceneManager.openGate('activation');
+        return;
+      }
+    }
+  } catch (e) {
+    console.info('[app] License check failed, continuing with boot');
+  }
+
+  // 4. Load store config from backend
   try {
     var res = await fetchWithTimeout('/api/v1/config/store', {}, 8000);
     if (res.ok) {
@@ -222,7 +240,7 @@ async function boot() {
     console.info('[app] Store config unavailable, using defaults');
   }
 
-  // 4. Open gate → login scene
+  // 5. Open gate → login scene (only reached if license is activated)
   SceneManager.openGate('login');
 }
 
