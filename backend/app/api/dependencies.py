@@ -11,6 +11,7 @@ from app.core.ephemeral_log import EphemeralLog
 from app.core.adapters.printer_manager import PrinterManager
 from app.services.diagnostic_collector import DiagnosticCollector
 from app.services.connection_manager import ConnectionManager
+from app.services.sync_client import SyncClient
 from app.printing.print_dispatcher import PrintDispatcher
 from app.config import settings
 
@@ -21,6 +22,7 @@ _printer_manager: PrinterManager | None = None
 _diagnostic_collector: DiagnosticCollector | None = None
 _print_dispatcher: PrintDispatcher | None = None
 _connection_manager: ConnectionManager | None = None
+_sync_client: SyncClient | None = None
 
 
 async def get_ledger() -> EventLedger:
@@ -102,6 +104,17 @@ def set_connection_manager(cm: ConnectionManager) -> None:
     """Register a ConnectionManager instance (called during startup)."""
     global _connection_manager
     _connection_manager = cm
+
+
+def get_sync_client() -> Optional[SyncClient]:
+    """Optional dependency — returns None if SyncClient not initialized."""
+    return _sync_client
+
+
+def set_sync_client(sc: SyncClient) -> None:
+    """Register a SyncClient instance (called during startup on terminal Pis)."""
+    global _sync_client
+    _sync_client = sc
 
 
 async def check_license_activation(app) -> None:

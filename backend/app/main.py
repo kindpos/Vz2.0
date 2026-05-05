@@ -14,7 +14,7 @@ import sys
 from app.api.routes.printing import print_queue
 from app.printing.print_dispatcher import PrintDispatcher
 from app.config import settings
-from app.api.dependencies import init_ledger, close_ledger, set_printer_manager, get_ephemeral_log, set_print_dispatcher, get_ledger, set_diagnostic_collector, get_diagnostic_collector, set_connection_manager
+from app.api.dependencies import init_ledger, close_ledger, set_printer_manager, get_ephemeral_log, set_print_dispatcher, get_ledger, set_diagnostic_collector, get_diagnostic_collector, set_connection_manager, set_sync_client
 from app.services.diagnostic_collector import DiagnosticCollector
 from app.services.demo_seeder import seed_demo_data_if_empty
 from app.core.adapters.printer_manager import PrinterManager
@@ -128,9 +128,23 @@ async def lifespan(app: FastAPI):
     set_print_dispatcher(_dispatcher)
     print("Print Dispatcher started")
 
-    from app.services.connection_manager import ConnectionManager
-    set_connection_manager(ConnectionManager())
-    print("ConnectionManager initialized")
+    hub_url = os.environ.get("HUB_URL")
+    if hub_url:
+        # Terminal Pi — connect to hub and stay in sync
+        from app.services.sync_client import SyncClient
+        sync_client = SyncClient(
+            hub_url=hub_url,
+            terminal_id=settings.terminal_id,
+            ledger=ledger,
+        )
+        await sync_client.start()
+        set_sync_client(sync_client)
+        print(f"SyncClient started — hub={hub_url}")
+    else:
+        # Hub Pi — accept connections from terminal Pis
+        from app.services.connection_manager import ConnectionManager
+        set_connection_manager(ConnectionManager())
+        print("ConnectionManager initialized")
 
     # Crash-recovery sweep: resolve any PAYMENT_INITIATED that landed
     # before a crash and never got a result event. Must run after the
@@ -151,6 +165,10 @@ async def lifespan(app: FastAPI):
 
     await _dispatcher.stop()
     await print_queue.close()
+    from app.api.dependencies import get_sync_client
+    sc = get_sync_client()
+    if sc is not None:
+        await sc.stop()
     collector = get_diagnostic_collector()
     if collector is not None:
         await collector.close()
