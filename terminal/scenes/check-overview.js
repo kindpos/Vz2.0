@@ -1631,11 +1631,11 @@ function renderSeatsGrid(state, container, mode) {
       for (let rii = 0; rii < rSeat.items.length; rii++) {
         const rit = rSeat.items[rii];
         if (rit.voided) continue;
-        if (rit.sent_at || rit.sent) rSentRaw.push(rit);
+        if (rit.sent_at || rit.sent) rSentRaw.push({ it: rit, ii: rii });
         else rUnsentRaw.push({ it: rit, ii: rii });
       }
       if (rSentRaw.length > 0) {
-        itemsInner.appendChild(_coBuildSentGroups(rSentRaw));
+        itemsInner.appendChild(_coBuildSentGroups(rSentRaw, state, rSeatIdx));
       }
       if (rUnsentRaw.length > 0) {
         if (rSentRaw.length > 0) itemsInner.appendChild(_coUnsentHeader());
@@ -2218,27 +2218,28 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
   return buildItemBlock(state, seatIdx, itemIdx, false);
 }
 
-function _coBuildSentGroups(items) {
+function _coBuildSentGroups(items, state, seatIdx) {
   const container = document.createElement('div');
   const groups = [];
   const keyToIdx = {};
 
-  items.forEach((it) => {
+  items.forEach((itemData) => {
+    const it = itemData.it;
     let key = '__null__';
     let groupTs = null;
     if (it.sent_at) {
       const d = new Date(it.sent_at);
       if (!isNaN(d.getTime())) {
-        const rounded = Math.round(d.getTime() / 60000) * 60000;
-        key = '' + rounded;
-        groupTs = new Date(rounded);
+        const floored = Math.floor(d.getTime() / 60000);
+        key = '' + floored;
+        groupTs = new Date(floored * 60000);
       }
     }
     if (keyToIdx[key] === undefined) {
       keyToIdx[key] = groups.length;
       groups.push({ key, ts: groupTs, items: [] });
     }
-    groups[keyToIdx[key]].items.push(it);
+    groups[keyToIdx[key]].items.push(itemData);
   });
 
   groups.sort((a, b) => {
@@ -2248,7 +2249,7 @@ function _coBuildSentGroups(items) {
   });
 
   groups.forEach((group, idx) => {
-    const label = 'Sent ' + (idx + 1);
+    const label = 'Sent';
     let timeStr = null;
     if (group.ts) {
       let h = group.ts.getHours();
@@ -2282,7 +2283,7 @@ function _coBuildSentGroups(items) {
       timeSpan.style.cssText = [
         `font-family:${T.fb};`,
         'font-size:9px;',
-        `color:${hexToRgba(T.text, 0.3)};`,
+        `color:${T.text};`,
       ].join('') + `;font-weight:${T.fwBold};`;
       timeSpan.textContent = timeStr;
       hdr.appendChild(timeSpan);
@@ -2293,7 +2294,9 @@ function _coBuildSentGroups(items) {
     hdr.appendChild(line);
     zone.appendChild(hdr);
 
-    group.items.forEach((it) => {
+    group.items.forEach((itemData) => {
+      const it = itemData.it;
+      const ii = itemData.ii;
       const ep = it.effectivePrice != null ? it.effectivePrice : (it.price || 0);
       const total = (it.qty || 1) * Number(ep);
 
@@ -2306,7 +2309,12 @@ function _coBuildSentGroups(items) {
         'display:flex;align-items:center;gap:7px;',
         'opacity:0.6;',
         'margin-bottom:3px;',
+        'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
       ].join('');
+
+      if (state && seatIdx != null) {
+        row.addEventListener('pointerup', () => { toggleItem(state, seatIdx, ii); });
+      }
 
       const nameSpan = document.createElement('span');
       nameSpan.style.cssText = [
@@ -2467,12 +2475,12 @@ function buildSeatCard(state, seatIdx) {
     for (let ii = 0; ii < seat.items.length; ii++) {
       const it = seat.items[ii];
       if (it.voided) continue;
-      if (it.sent_at || it.sent) sentRaw.push(it);
+      if (it.sent_at || it.sent) sentRaw.push({ it, ii });
       else unsentRaw.push({ it, ii });
     }
 
     if (sentRaw.length > 0) {
-      itemsWrap.appendChild(_coBuildSentGroups(sentRaw));
+      itemsWrap.appendChild(_coBuildSentGroups(sentRaw, state, seatIdx));
     }
     if (unsentRaw.length > 0) {
       if (sentRaw.length > 0) itemsWrap.appendChild(_coUnsentHeader());

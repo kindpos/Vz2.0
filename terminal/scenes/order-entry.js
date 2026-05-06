@@ -3798,9 +3798,9 @@ function _buildSentGroups(sentItems) {
     if (inst.sent_at) {
       const d = new Date(inst.sent_at);
       if (!isNaN(d.getTime())) {
-        const rounded = Math.round(d.getTime() / 60000) * 60000;
-        key = '' + rounded;
-        groupTs = new Date(rounded);
+        const floored = Math.floor(d.getTime() / 60000);
+        key = '' + floored;
+        groupTs = new Date(floored * 60000);
       }
     }
     if (keyToIdx[key] === undefined) {
@@ -3817,7 +3817,7 @@ function _buildSentGroups(sentItems) {
   });
 
   groups.forEach((group, idx) => {
-    const label = 'Sent ' + (idx + 1);
+    const label = 'Sent';
     let timeStr = null;
     if (group.ts) {
       let h = group.ts.getHours();
@@ -3851,7 +3851,7 @@ function _buildSentGroups(sentItems) {
       timeSpan.style.cssText = [
         `font-family:${T.fb};`,
         'font-size:9px;',
-        `color:${hexToRgba(T.text, 0.3)};`,
+        `color:${T.text};`,
       ].join('') + `;font-weight:${T.fwBold};`;
       timeSpan.textContent = timeStr;
       hdr.appendChild(timeSpan);
@@ -4918,6 +4918,7 @@ function recallFromBackend(orderId) {
           }),
           selected:  false,
           sent:      !!(item.sent_at),  // true only if actually kitchen-fired
+          sent_at:   item.sent_at || null,
           category:  item.category || null,
           seat_number: item.seat_number || null,
         };
