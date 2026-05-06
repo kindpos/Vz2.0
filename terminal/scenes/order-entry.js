@@ -713,7 +713,7 @@ defineScene({
       : [];
     _activeSeats = (_seatList.length > 0)
       ? new Set(_seatList)
-      : new Set(_allSeatList);
+      : new Set([1]);
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
     _seatTab        = 'selected';
