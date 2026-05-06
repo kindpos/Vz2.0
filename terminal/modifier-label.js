@@ -11,7 +11,7 @@
 
 /**
  * Build the display label for a modifier.
- * @param {?string} prefix  One of 'ADD', 'NO', 'EXTRA', 'SUB', 'LITE', or
+ * @param {?string} prefix  One of 'ADD', 'NO', 'EXTRA', 'LITE', or
  *                          null/undefined/'' when no prefix was chosen.
  * @param {string}  label   The modifier's own label (e.g. "Pepperoni").
  * @returns {string}
