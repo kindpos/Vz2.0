@@ -5,11 +5,12 @@
  */
 
 import { T } from '../../common/tokens.js';
+import { defineScene } from '../scene-manager.js';
 import { buildStaticCard, buildPillButton } from '../theme-manager.js';
 import { fetchWithTimeout } from '../net.js';
 
 export function defineActivationScene() {
-  return {
+  return defineScene({
     name: 'activation',
     render: (container, params, state) => {
       state._submitting = false;
@@ -33,7 +34,7 @@ export function defineActivationScene() {
       // Form card (using Nostalgia card style)
       const card = buildStaticCard();
       card.style.width = '500px';
-      card.style.padding = T.sp3;
+      card.style.padding = '24px';
 
       // Title heading
       const title = document.createElement('h1');
@@ -42,8 +43,8 @@ export function defineActivationScene() {
         font-family: 'Outfit', sans-serif;
         font-weight: 700;
         font-size: 28px;
-        margin: 0 0 ${T.sp3} 0;
-        color: ${T.fg};
+        margin: 0 0 24px 0;
+        color: ${T.text};
       `;
       card.appendChild(title);
 
@@ -52,9 +53,9 @@ export function defineActivationScene() {
       codeLabel.textContent = 'Activation Code';
       codeLabel.style.cssText = `
         display: block;
-        margin-bottom: ${T.sp1};
+        margin-bottom: 8px;
         font-size: 13px;
-        color: ${T.fg};
+        color: ${T.text};
         font-family: 'JetBrains Mono', monospace;
         font-weight: 600;
       `;
@@ -65,12 +66,12 @@ export function defineActivationScene() {
       codeInput.placeholder = 'SMYS-001-XXXX-XXXX-XXXX';
       codeInput.style.cssText = `
         width: 100%;
-        padding: ${T.sp2};
-        margin-bottom: ${T.sp2};
+        padding: 16px;
+        margin-bottom: 16px;
         border: 1px solid ${T.border};
-        border-radius: ${T.rad};
+        border-radius: 8px;
         background: ${T.card};
-        color: ${T.fg};
+        color: ${T.text};
         font-family: 'JetBrains Mono', monospace;
         font-size: 14px;
         box-sizing: border-box;
@@ -82,9 +83,9 @@ export function defineActivationScene() {
       storeLabel.textContent = 'Store Name';
       storeLabel.style.cssText = `
         display: block;
-        margin-bottom: ${T.sp1};
+        margin-bottom: 8px;
         font-size: 13px;
-        color: ${T.fg};
+        color: ${T.text};
         font-family: 'JetBrains Mono', monospace;
         font-weight: 600;
       `;
@@ -95,12 +96,12 @@ export function defineActivationScene() {
       storeInput.placeholder = 'e.g. Smile Yeshiva Springs';
       storeInput.style.cssText = `
         width: 100%;
-        padding: ${T.sp2};
-        margin-bottom: ${T.sp2};
+        padding: 16px;
+        margin-bottom: 16px;
         border: 1px solid ${T.border};
-        border-radius: ${T.rad};
+        border-radius: 8px;
         background: ${T.card};
-        color: ${T.fg};
+        color: ${T.text};
         font-family: 'JetBrains Mono', monospace;
         font-size: 14px;
         box-sizing: border-box;
@@ -112,9 +113,9 @@ export function defineActivationScene() {
       terminalLabel.textContent = 'Terminal Name';
       terminalLabel.style.cssText = `
         display: block;
-        margin-bottom: ${T.sp1};
+        margin-bottom: 8px;
         font-size: 13px;
-        color: ${T.fg};
+        color: ${T.text};
         font-family: 'JetBrains Mono', monospace;
         font-weight: 600;
       `;
@@ -125,12 +126,12 @@ export function defineActivationScene() {
       terminalInput.placeholder = 'e.g. Register-1';
       terminalInput.style.cssText = `
         width: 100%;
-        padding: ${T.sp2};
-        margin-bottom: ${T.sp3};
+        padding: 16px;
+        margin-bottom: 24px;
         border: 1px solid ${T.border};
-        border-radius: ${T.rad};
+        border-radius: 8px;
         background: ${T.card};
-        color: ${T.fg};
+        color: ${T.text};
         font-family: 'JetBrains Mono', monospace;
         font-size: 14px;
         box-sizing: border-box;
@@ -140,15 +141,15 @@ export function defineActivationScene() {
       // --- Status Text Area ---
       const statusText = document.createElement('div');
       statusText.style.cssText = `
-        margin-bottom: ${T.sp2};
-        padding: ${T.sp2};
-        border-radius: ${T.rad};
+        margin-bottom: 16px;
+        padding: 16px;
+        border-radius: 8px;
         min-height: 40px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 13px;
-        color: ${T.fg};
+        color: ${T.text};
         text-align: center;
         font-family: 'JetBrains Mono', monospace;
       `;
@@ -158,9 +159,9 @@ export function defineActivationScene() {
       const activateBtn = buildPillButton('ACTIVATE');
       activateBtn.style.cssText = `
         width: 100%;
-        padding: ${T.sp2} ${T.sp3};
+        padding: 16px 24px;
         background: ${T.green};
-        color: ${T.darkBg};
+        color: ${T.well};
         border: none;
         border-radius: 999px;
         font-weight: 700;
@@ -189,7 +190,7 @@ export function defineActivationScene() {
 
         state._submitting = true;
         statusText.style.backgroundColor = 'transparent';
-        statusText.style.color = T.fg;
+        statusText.style.color = T.text;
         statusText.textContent = 'Activating...';
         activateBtn.disabled = true;
 
@@ -209,7 +210,7 @@ export function defineActivationScene() {
           if (resp.ok) {
             await resp.json();
             statusText.style.backgroundColor = 'transparent';
-            statusText.style.color = T.fg;
+            statusText.style.color = T.text;
             statusText.textContent = 'Activation successful! Rebooting...';
             setTimeout(() => {
               if (state._alive) window.location.reload();
@@ -242,5 +243,5 @@ export function defineActivationScene() {
     },
 
     unmount: () => {}
-  };
+  });
 }
