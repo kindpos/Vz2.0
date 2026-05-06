@@ -320,6 +320,7 @@ let _seatList       = [];          // seat numbers in the overview selection
 let _allSeatList    = [];          // all seat numbers in the party
 let _seatTab        = 'selected';  // 'selected' | 'unselected'
 let _seatSelectorEl = null;        // DOM ref for the inline seat card
+let _personalBtn    = null;        // DOM ref for the PERSONAL pill in _bottomBar
 let _prevSeats       = new Set();   // snapshot of _activeSeats at last item add (for RECALL)
 let _autoSwitchArmed = false;       // true after item add → next seat tap does exclusive replace
 
@@ -720,6 +721,7 @@ defineScene({
     _autoSwitchArmed = false;
     _seatTab        = 'selected';
     _seatSelectorEl = null;
+    _personalBtn    = null;
 
     container.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
 
@@ -804,6 +806,7 @@ defineScene({
     _allSeatList    = [];
     _seatTab        = 'selected';
     _seatSelectorEl = null;
+    _personalBtn    = null;
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
     _menuFetched   = false;
@@ -1385,6 +1388,15 @@ function _repaintCatCol() {
     tile.addEventListener('pointerup', () => { _selectCat(cat); });
     _catColEl.appendChild(tile);
   });
+
+  // Sync PERSONAL button active state
+  if (_personalBtn) {
+    const isPersonal = snakeState.view === 'personal';
+    _personalBtn.style.background = isPersonal ? T.green : 'transparent';
+    _personalBtn.style.border     = isPersonal ? 'none' : `1px solid ${T.border}`;
+    _personalBtn.style.color      = isPersonal ? T.well : T.text;
+    _personalBtn.style.boxShadow  = isPersonal ? `0 6px 0 ${T.greenDk}` : 'none';
+  }
 }
 
 function _buildQsrItemTile(item, cat) {
@@ -1705,10 +1717,9 @@ function buildMain(parentEl, params) {
   // Note: buildKindModPanel mounts directly onto _mainArea as an absolute overlay
   // (position:relative is set on main to contain it)
 
-  // ── Seat selector card (above bottom bar) ─────────
+  // ── Seat selector card (built here; appended into _bottomBar by rebuildBottomBar) ──
   if (_allSeatList.length > 0) {
     _seatSelectorEl = buildSeatSelectorCard();
-    main.appendChild(_seatSelectorEl);
   }
 
   // ── Bottom action bar ─────────────────────────────
@@ -1926,8 +1937,35 @@ function buildSeatSelectorCard() {
 function rebuildBottomBar() {
   if (!_bottomBar) return;
   _bottomBar.innerHTML = '';
+  _personalBtn = null;
   _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:4px;';
 
+  // ── Col 1-2: Seat selector ────────────────────────
+  if (_seatSelectorEl) {
+    _seatSelectorEl.style.gridColumn = '1 / span 2';
+    _seatSelectorEl.style.margin = '2px 0 10px';
+    _bottomBar.appendChild(_seatSelectorEl);
+  }
+
+  // ── Col 3: PERSONAL button ────────────────────────
+  const isPersonal = snakeState.view === 'personal';
+  const personalBtn = buildPillButton({
+    label:    'PERSONAL',
+    variant:  isPersonal ? 'mint' : 'ghost',
+    fontSize: T.fsB2,
+  });
+  personalBtn.style.gridColumn = '3';
+  personalBtn.style.height = '60px';
+  personalBtn.style.margin = '2px 0 10px';
+  personalBtn.addEventListener('pointerup', () => {
+    snakeState.view = 'personal';
+    renderSnakeGrid();
+    _repaintCatCol();
+  });
+  _personalBtn = personalBtn;
+  _bottomBar.appendChild(personalBtn);
+
+  // ── Col 4-5: DONE ─────────────────────────────────
   let hasUnsent = ticket.some((i) => !i.sent);
 
   const doneLabel = isSending ? 'SENDING…' : 'DONE';
