@@ -942,8 +942,8 @@ function renderFooterToolbar(state) {
     isPrimary: true,
     fontSize: T.fsB3,
   });
-  confirmBtn.style.flex = '1';
-  confirmBtn.style.minWidth = '120px';
+  confirmBtn.style.flex = '0 0 auto';
+  confirmBtn.style.width = '140px';
   var confirmFace = confirmBtn.children[0];
   if (confirmFace) {
     confirmFace.style.fontSize = T.fsB2;
