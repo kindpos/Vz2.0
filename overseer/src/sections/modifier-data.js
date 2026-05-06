@@ -15,7 +15,7 @@ export const EMPTY_DATA = { modifiers: [], groups: [], categories: [] };
    master list. No mandatory/universal fetches
    since those endpoints no longer exist.
 ------------------------------------------ */
-export async function fetchModifierData() {
+export const fetchModifierData = async () => {
     try {
         const [menuRes, catRes] = await Promise.all([
             fetch('/api/v1/menu'),
@@ -58,7 +58,7 @@ export async function fetchModifierData() {
             }
 
             const priceByOptionMap = {};
-            allGrpMods.forEach(m => {
+            allGrpMods.forEach((m) => {
                 const mid = m.modifier_id;
                 if (!mid) return;
                 const scopedKey = `${grp.group_id}:${mid}`;
@@ -95,7 +95,7 @@ export async function fetchModifierData() {
         console.warn('[ConfigureModifiers] Failed to fetch data:', e);
         return { modifiers: [], groups: [], categories: [] };
     }
-}
+};
 
 /**
  * Save orchestrator.
@@ -122,7 +122,7 @@ export async function fetchModifierData() {
  *   buildMainView, currentWrapper,   — UI callbacks from caller
  * }
  */
-export async function handleSaveChanges(ctx) {
+export const handleSaveChanges = async (ctx) => {
     const {
         pendingChanges,
         modData,
@@ -141,10 +141,10 @@ export async function handleSaveChanges(ctx) {
 
     // 1. Collect dirty group IDs
     const dirtyGroupIds = new Set();
-    (pendingChanges.groups || []).forEach(g => dirtyGroupIds.add(g.id));
-    (pendingChanges.modifiers || []).forEach(modifier => {
+    (pendingChanges.groups || []).forEach((g) => dirtyGroupIds.add(g.id));
+    (pendingChanges.modifiers || []).forEach((modifier) => {
         const allGroups = getAllWorking('groups');
-        allGroups.forEach(g => {
+        allGroups.forEach((g) => {
             if ((g.modifier_ids || []).includes(modifier.id)) {
                 dirtyGroupIds.add(g.id);
             }
@@ -153,7 +153,7 @@ export async function handleSaveChanges(ctx) {
 
     // 2+3. Emit events per dirty group
     const orphanedModifierIds = [];
-    dirtyGroupIds.forEach(gid => {
+    dirtyGroupIds.forEach((gid) => {
         const pendingG = (pendingChanges.groups || []).find(g => g.id === gid);
         const baseG = (modData.groups || []).find(g => g.id === gid);
 
@@ -201,11 +201,11 @@ export async function handleSaveChanges(ctx) {
     });
 
     // Detect orphaned modifiers (for warning)
-    (pendingChanges.modifiers || []).forEach(modifier => {
+    (pendingChanges.modifiers || []).forEach((modifier) => {
         if (modifier._deleted) return;
         const allGroups = getAllWorking('groups');
-        const referenced = allGroups.some(g => (g.modifier_ids || []).includes(modifier.id));
-        if (!referenced && !(modData.modifiers || []).some(a => a.id === modifier.id)) {
+        const referenced = allGroups.some((g) => (g.modifier_ids || []).includes(modifier.id));
+        if (!referenced && !(modData.modifiers || []).some((a) => a.id === modifier.id)) {
             orphanedModifierIds.push(modifier.id);
         }
     });
@@ -236,11 +236,11 @@ export async function handleSaveChanges(ctx) {
     const modifiers = getAllWorking('modifiers');
     modData.modifiers = modifiers;
 
-    (pendingChanges.groups || []).forEach(g => {
+    (pendingChanges.groups || []).forEach((g) => {
         if (g._deleted) {
-            modData.groups = (modData.groups || []).filter(x => x.id !== g.id);
+            modData.groups = (modData.groups || []).filter((x) => x.id !== g.id);
         } else {
-            const idx = (modData.groups || []).findIndex(x => x.id === g.id);
+            const idx = (modData.groups || []).findIndex((x) => x.id === g.id);
             if (idx >= 0) modData.groups[idx] = clone(g);
             else modData.groups.push(clone(g));
         }
@@ -253,4 +253,4 @@ export async function handleSaveChanges(ctx) {
         ? `${events.length} saved · ${orphanedModifierIds.length} orphan modifier(s) not persisted`
         : `${events.length} change${events.length === 1 ? '' : 's'} saved`;
     showToast(msg, orphanedModifierIds.length > 0 ? 'warning' : 'confirm');
-}
+};
