@@ -41,6 +41,7 @@ import {
   buildStaticCard,
   buildActionCard,
   buildPillButton,
+  buildChamferButton,
   hexToRgba,
   darkenHex,
   lightenHex,
@@ -1083,13 +1084,10 @@ defineScene({
 
 
 // ═══════════════════════════════════════════════════
-//  ACTION BAR (bottom-right pills)
-//  State 1 (no seats selected): PRINT + VOID secondaries on the left,
-//  dashed divider, PAY (gold) + ADD ITEMS (green) primaries on the
-//  right. VOID requires a ~550 ms long-press to fire; short taps are
-//  ignored so the cashier can't void the check on an accidental tap.
-//  State 2 (seats selected) and MANAGE mode toolbars come in later
-//  steps and dispatch from this same slot.
+//  ACTION BAR (bottom-right chamfer buttons)
+//  State 1: left quad (PAY tall-left | Disc/Void stacked-right)
+//  + right quad (Manage/Print stacked-left | ADD ITEMS tall-right).
+//  buildChamferButton throughout — two-layer frame + face construction.
 // ═══════════════════════════════════════════════════
 
 function _wireLongPress(el, onFire, holdMs) {
@@ -1287,269 +1285,81 @@ function renderActionBar(state) {
   barDiv.style.margin     = '2px 0';
   bar.appendChild(barDiv);
 
-  function _actBtn(opts) {
-    let btn = document.createElement('div');
-    btn.style.borderRadius   = '10px';
-    btn.style.height         = '78px';
-    btn.style.width          = '100%';
-    btn.style.cursor         = 'pointer';
-    btn.style.display        = 'flex';
-    btn.style.flexDirection  = 'column';
-    btn.style.alignItems     = 'center';
-    btn.style.justifyContent = 'center';
-    btn.style.fontFamily     = T.fh;
-    btn.style.fontWeight     = T.fwBold;
-    btn.style.letterSpacing  = '0.03em';
-    btn.style.userSelect     = 'none';
-    btn.style.touchAction    = 'manipulation';
-    btn.style.gap            = '3px';
-    btn.style.background     = opts.bg || T.card;
-    btn.style.boxShadow      = `0 4px 0 ${(opts.dk || T.moonDk)}`;
-    btn.style.color          = opts.color || T.text;
-    btn.style.border         = opts.border || 'none';
-    btn.style.transition     = 'transform 0.07s, box-shadow 0.07s';
+  const actionsWrap = document.createElement('div');
+  actionsWrap.style.cssText =
+    'display:flex;gap:10px;align-items:stretch;height:112px;flex-shrink:0;';
 
-    const lbl = document.createElement('span');
-    lbl.style.fontSize   = opts.labelSize || '32px';
-    lbl.style.fontWeight = T.fwBold;
-    lbl.style.lineHeight = '1.2';
-    lbl.style.textAlign  = 'center';
-    lbl.style.width      = '100%';
-    lbl.style.paddingTop = '3px';
-    lbl.innerHTML        = opts.label.replace(/\n/g, '<br>');
-    btn.appendChild(lbl);
-
-    if (opts.sub !== undefined) {
-      const sub = document.createElement('span');
-      sub.style.fontFamily = T.fb;
-      sub.style.fontSize   = T.fsB4;
-      sub.style.fontWeight = T.fwBold;
-      sub.style.opacity    = '0.65';
-      sub.style.minHeight  = '14px';
-      sub.textContent      = opts.sub || '';
-      btn.appendChild(sub);
-    }
-
-    let baseShadow  = btn.style.boxShadow;
-    let pressShadow = `0 1px 0 ${(opts.dk || T.moonDk)}`;
-    btn.addEventListener('pointerdown', () => {
-      btn.style.transform = 'translateY(3px)';
-      btn.style.boxShadow = pressShadow;
-    });
-    let _up = () => { btn.style.transform = 'none'; btn.style.boxShadow = baseShadow; };
-    btn.addEventListener('pointerup',     _up);
-    btn.addEventListener('pointerleave',  _up);
-    btn.addEventListener('pointercancel', _up);
-    if (opts.onClick) btn.addEventListener('pointerup', (e) => {
-      if (e.defaultPrevented) return;
-      opts.onClick();
-    });
-    return btn;
-  }
-
-  const selCount = itemKeys.length;
-  const paySubLabel = selCount > 0 ? `(${selCount} items)` : '';
-
-  const payBtn = _actBtn({
-    label:     'Pay',
-    sub:       paySubLabel,
-    bg:        T.gold,
-    dk:        T.goldDk,
-    color:     T.well,
-    onClick:   () => { handlePay(state, state._params || {}); },
-  });
-
-  // Sub-button builder — shared press-state wiring
-  function _subBtn(opts) {
-    const btn = document.createElement('div');
-    btn.style.flex          = '1';
-    btn.style.borderRadius  = '8px';
-    btn.style.cursor        = 'pointer';
-    btn.style.display       = 'flex';
-    btn.style.alignItems    = 'center';
-    btn.style.justifyContent= 'center';
-    btn.style.fontFamily    = T.fh;
-    btn.style.fontWeight    = T.fwBold;
-    btn.style.fontSize      = '13px';
-    btn.style.letterSpacing = '0.04em';
-    btn.style.userSelect    = 'none';
-    btn.style.touchAction   = 'manipulation';
-    btn.style.background    = opts.bg;
-    btn.style.color         = opts.color;
-    btn.style.transition    = 'transform 0.07s, box-shadow 0.07s';
-    const baseShadow  = `0 3px 0 ${opts.dk}`;
-    const pressShadow = `0 1px 0 ${opts.dk}`;
-    btn.style.boxShadow = baseShadow;
-    btn.textContent = opts.label;
-    btn.addEventListener('pointerdown', () => {
-      btn.style.transform = 'translateY(2px)';
-      btn.style.boxShadow = pressShadow;
-    });
-    const _up = () => { btn.style.transform = 'none'; btn.style.boxShadow = baseShadow; };
-    btn.addEventListener('pointerup',     _up);
-    btn.addEventListener('pointerleave',  _up);
-    btn.addEventListener('pointercancel', _up);
-    if (opts.onClick) btn.addEventListener('pointerup', (e) => {
-      if (e.defaultPrevented) return;
-      opts.onClick();
-    });
-    return btn;
-  }
-
-  const manageBtn = _actBtn({
-    label:     'Manage',
-    labelSize: '20px',
-    sub:       '',
-    bg:        T.card,
-    dk:        T.moonDk,
-    color:     T.text,
-    border:    `1px solid ${T.border}`,
-    onClick:   () => { openEditSeats(state); },
-  });
-  const manageLbl = manageBtn.querySelector('span');
-  if (manageLbl) {
-    manageLbl.style.textAlign = 'center';
-    manageLbl.style.width = '100%';
-    manageLbl.style.marginTop = '10px';
-  }
-  manageBtn.style.textAlign = 'center';
-  manageBtn.style.alignItems = 'center';
-  manageBtn.style.justifyContent = 'center';
-
-  const addItemsBtn = _actBtn({
-    label:   'Add\nItems',
-    labelSize: '25px',
-    sub:     '',
-    bg:      T.greenWarm,
-    dk:      T.greenWarmDk,
-    color:   T.well,
-    onClick: () => { handleAddItems(state, state._params || {}); },
-  });
-
-  const discBtn = _subBtn({
-    label:   'Disc',
-    bg:      T.lavender,
-    dk:      darkenHex(T.lavender, 0.45),
-    color:   T.well,
-    onClick: () => { handleDiscount(state); },
-  });
-
-  const voidBtn = _subBtn({
-    label:   'Void',
-    bg:      T.verm,
-    dk:      T.vermDk,
-    color:   T.text,
-    onClick: () => { handleVoid(state); },
-  });
-
-  const printBtnNew = _actBtn({
-    label:   'Print',
-    labelSize: '20px',
-    bg:      T.elec,
-    dk:      T.elecDk,
-    color:   T.well,
-    onClick: () => { handlePrint(state); },
-  });
-
-  const printLbl = printBtnNew.querySelector('span');
-  if (printLbl) {
-    printLbl.style.textAlign = 'center';
-    printLbl.style.width = '100%';
-  }
-
-  const CUT = 20;
-
-  // ── LEFT QUAD: PAY (tall left) + Disc/Void (stacked right) ──
-  const cpPayLeft  = `polygon(0 0,100% 0,100% calc(50% - ${CUT}px),calc(100% - ${CUT}px) 50%,100% calc(50% + ${CUT}px),100% 100%,0 100%)`;
-  const cpDiscBL   = `polygon(0 0,100% 0,100% 100%,${CUT}px 100%,0 calc(100% - ${CUT}px))`;
-  const cpVoidTL   = `polygon(${CUT}px 0,100% 0,100% 100%,0 100%,0 ${CUT}px)`;
-
-  payBtn.style.cssText    += `width:100%;height:100%;clip-path:${cpPayLeft};`;
-  discBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpDiscBL};`;
-  discBtn.style.fontSize = '20px';
-  discBtn.style.fontWeight = '900';
-  discBtn.style.textAlign = 'center';
-  discBtn.style.justifyContent = 'center';
-  discBtn.style.alignItems = 'center';
-  discBtn.style.display = 'flex';
-  discBtn.style.height = '100%';
-  voidBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpVoidTL};`;
-  voidBtn.style.fontSize = '20px';
-  voidBtn.style.fontWeight = '900';
-  voidBtn.style.textAlign = 'center';
-  voidBtn.style.justifyContent = 'center';
-  voidBtn.style.alignItems = 'center';
-  voidBtn.style.display = 'flex';
-  voidBtn.style.height = '100%';
-
+  // Left quad: PAY tall-left + Disc/Void stacked-right
   const leftQuad = document.createElement('div');
-  leftQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:320px;flex-shrink:0;`;
+  leftQuad.style.cssText =
+    'display:grid;grid-template-columns:175px 150px;' +
+    'grid-template-rows:1fr 1fr;gap:5px;height:112px;';
 
-  const payCell = document.createElement('div');
-  payCell.style.cssText = 'grid-column:1;grid-row:1/3;display:flex;';
-  payCell.appendChild(payBtn);
+  const payBtn = buildChamferButton({
+    label: 'Pay', fontSize: '30px', isPrimary: true,
+    accent: T.gold, accentDk: T.goldDk,
+    onClick: () => handlePay(state, state._params || {}),
+  });
+  payBtn.style.cssText += 'grid-column:1;grid-row:1/3;';
 
-  const discCell = document.createElement('div');
-  discCell.style.cssText = 'grid-column:2;grid-row:1;display:flex;align-items:center;justify-content:center;';
-  discCell.appendChild(discBtn);
+  const discBtn = buildChamferButton({
+    label: 'Disc', fontSize: '20px', isPrimary: false,
+    accent: T.lavender, accentDk: T.lavenderDk,
+    onClick: () => handleDiscount(state),
+  });
+  discBtn.style.cssText += 'grid-column:2;grid-row:1;';
 
-  const voidCell = document.createElement('div');
-  voidCell.style.cssText = 'grid-column:2;grid-row:2;display:flex;align-items:center;justify-content:center;';
-  voidCell.appendChild(voidBtn);
+  const voidBtn = buildChamferButton({
+    label: 'Void', fontSize: '20px', isPrimary: false,
+    accent: T.verm, accentDk: T.vermDk,
+    onClick: () => handleVoid(state),
+  });
+  voidBtn.style.cssText += 'grid-column:2;grid-row:2;';
 
-  leftQuad.appendChild(payCell);
-  leftQuad.appendChild(discCell);
-  leftQuad.appendChild(voidCell);
+  leftQuad.appendChild(payBtn);
+  leftQuad.appendChild(discBtn);
+  leftQuad.appendChild(voidBtn);
 
-  // ── RIGHT QUAD: Manage/Print (stacked left) + Add Items (tall right) ──
-  const cpMgmtBR   = `polygon(0 0,100% 0,100% calc(100% - ${CUT}px),calc(100% - ${CUT}px) 100%,0 100%)`;
-  const cpPrintTR  = `polygon(0 0,calc(100% - ${CUT}px) 0,100% ${CUT}px,100% 100%,0 100%)`;
-  const cpAddRight = `polygon(0 0,100% 0,100% 100%,0 100%,0 calc(50% + ${CUT}px),${CUT}px 50%,0 calc(50% - ${CUT}px))`;
-
-  manageBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpMgmtBR};`;
-  manageBtn.style.fontSize = '20px';
-  manageBtn.style.fontWeight = '900';
-  manageBtn.style.textAlign = 'center';
-  manageBtn.style.justifyContent = 'center';
-  manageBtn.style.alignItems = 'center';
-  manageBtn.style.display = 'flex';
-  manageBtn.style.lineHeight = '1.2';
-  printBtnNew.style.cssText += `width:100%;height:100%;clip-path:${cpPrintTR};`;
-  printBtnNew.style.fontSize = '20px';
-  printBtnNew.style.fontWeight = '900';
-  printBtnNew.style.textAlign = 'center';
-  printBtnNew.style.justifyContent = 'center';
-  printBtnNew.style.alignItems = 'center';
-  printBtnNew.style.display = 'flex';
-  printBtnNew.style.lineHeight = '1.2';
-  addItemsBtn.style.cssText += `width:100%;height:100%;clip-path:${cpAddRight};`;
-
+  // Right quad: Manage/Print stacked-left + Add Items tall-right
   const rightQuad = document.createElement('div');
-  rightQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:320px;flex-shrink:0;`;
+  rightQuad.style.cssText =
+    'display:grid;grid-template-columns:150px 175px;' +
+    'grid-template-rows:1fr 1fr;gap:5px;height:112px;';
 
-  const mgmtCell = document.createElement('div');
-  mgmtCell.style.cssText = 'grid-column:1;grid-row:1;display:flex;align-items:center;justify-content:center;';
-  mgmtCell.appendChild(manageBtn);
+  const manageBtn = buildChamferButton({
+    label: 'Manage', fontSize: '20px', isPrimary: false,
+    accent: T.text, accentDk: darkenHex(T.card, 0.4),
+    onClick: () => openEditSeats(state),
+  });
+  manageBtn.style.cssText += 'grid-column:1;grid-row:1;';
 
-  const printCell = document.createElement('div');
-  printCell.style.cssText = 'grid-column:1;grid-row:2;display:flex;align-items:center;justify-content:center;';
-  printCell.appendChild(printBtnNew);
+  const printBtn = buildChamferButton({
+    label: 'Print', fontSize: '20px', isPrimary: false,
+    accent: T.elec, accentDk: T.elecDk,
+    onClick: () => handlePrint(state),
+  });
+  printBtn.style.cssText += 'grid-column:1;grid-row:2;';
 
-  const addCell = document.createElement('div');
-  addCell.style.cssText = 'grid-column:2;grid-row:1/3;display:flex;align-items:center;justify-content:center;';
-  addCell.appendChild(addItemsBtn);
+  const addItemsBtn = buildChamferButton({
+    label: 'Add\nItems', fontSize: '25px', isPrimary: true,
+    accent: T.greenWarm, accentDk: T.greenWarmDk,
+    onClick: () => handleAddItems(state, state._params || {}),
+  });
+  addItemsBtn.style.cssText += 'grid-column:2;grid-row:1/3;';
 
-  rightQuad.appendChild(mgmtCell);
-  rightQuad.appendChild(printCell);
-  rightQuad.appendChild(addCell);
+  rightQuad.appendChild(manageBtn);
+  rightQuad.appendChild(printBtn);
+  rightQuad.appendChild(addItemsBtn);
 
-  // ── SPACER + APPEND ──
+  actionsWrap.appendChild(leftQuad);
+  actionsWrap.appendChild(rightQuad);
+
+  // Natural spacer between totals and action quads
   const spacer = document.createElement('div');
   spacer.style.flex = '1';
 
-  bar.appendChild(leftQuad);
   bar.appendChild(spacer);
-  bar.appendChild(rightQuad);
+  bar.appendChild(actionsWrap);
 }
 
 
