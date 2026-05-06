@@ -59,6 +59,18 @@ vi.mock('../theme-manager.js', () => ({
     el.setColor     = vi.fn();
     return el;
   },
+  buildChamferButton: ({ label, onClick } = {}) => {
+    const el = document.createElement('div');
+    el.style.cursor = 'pointer';
+    const face = document.createElement('div');
+    face.classList.add('face');
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = label || '';
+    face.appendChild(labelSpan);
+    el.appendChild(face);
+    if (onClick) el.addEventListener('pointerup', onClick);
+    return el;
+  },
   buildSectionLabel: () => document.createElement('div'),
   hexToRgba:  (c) => c,
   darkenHex:  (c) => c,
@@ -412,12 +424,12 @@ describe('column-editor — Undo', () => {
 
     expect(state.actionLog).toHaveLength(2);
 
-    // Long-press UNDO (600ms)
-    const undoBtn = findBtn(container, 'UNDO');
-    undoBtn.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    // Long-press RESET (600ms)
+    const resetBtn = findBtn(container, 'RESET');
+    resetBtn.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     vi.advanceTimersByTime(600);
     vi.advanceTimersByTime(200); // fill animation completes
-    undoBtn.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    resetBtn.dispatchEvent(new Event('pointerup', { bubbles: true }));
 
     expect(state.actionLog).toHaveLength(0);
     expect(state.columns[0].items).toHaveLength(1);
