@@ -1948,20 +1948,20 @@ function rebuildBottomBar() {
 
   // ── Col 2: PERSONAL button ────────────────────────
   const isPersonal = snakeState.view === 'personal';
-  const personalBtn = buildPillButton({
-    label:     'PERSONAL',
-    color:     isPersonal ? T.green   : T.card,
-    darkBg:    isPersonal ? T.greenDk : T.moonDk,
-    textColor: isPersonal ? T.well    : T.text,
-    fontSize:  T.fsB2,
+  const personalBtn = buildChamferButton({
+    label:      'PERSONAL',
+    fontSize:   '20px',
+    isPrimary:  isPersonal,
+    accent:     isPersonal ? T.green : T.moon,
+    accentDk:   isPersonal ? T.greenDk : T.border,
+    onClick: () => {
+      snakeState.view = 'personal';
+      renderSnakeGrid();
+      _repaintCatCol();
+    },
   });
   personalBtn.style.gridColumn = '2';
-  personalBtn.style.margin = '2px 0';
-  personalBtn.addEventListener('pointerup', () => {
-    snakeState.view = 'personal';
-    renderSnakeGrid();
-    _repaintCatCol();
-  });
+  personalBtn.style.margin = '12px 0';
   _personalBtn = personalBtn;
   _bottomBar.appendChild(personalBtn);
 
@@ -1969,34 +1969,26 @@ function rebuildBottomBar() {
   const actionsWrap = document.createElement('div');
   actionsWrap.style.cssText = 'display:flex;gap:10px;align-items:stretch;height:112px;flex-shrink:0;margin:12px 0;';
 
-  // Left quad: PAY tall-left + Disc/Void stacked-right
+  // Left quad: Disc/Void stacked
   const leftQuad = document.createElement('div');
   leftQuad.style.cssText =
-    'display:grid;grid-template-columns:175px 150px;' +
+    'display:grid;grid-template-columns:150px;' +
     'grid-template-rows:1fr 1fr;gap:5px;height:112px;';
-
-  const payBtn = buildChamferButton({
-    label: 'Pay', fontSize: '30px', isPrimary: true,
-    accent: T.gold, accentDk: T.goldDk,
-    onClick: () => { showToast('PAY coming soon', { bg: T.gold }); },
-  });
-  payBtn.style.cssText += 'grid-column:1;grid-row:1/3;';
 
   const discBtn = buildChamferButton({
     label: 'Disc', fontSize: '20px', isPrimary: false,
     accent: T.lavender, accentDk: T.lavenderDk,
     onClick: () => { showToast('Discount coming soon', { bg: T.lavender }); },
   });
-  discBtn.style.cssText += 'grid-column:2;grid-row:1;';
+  discBtn.style.cssText += 'grid-column:1;grid-row:1;';
 
   const voidBtn = buildChamferButton({
     label: 'Void', fontSize: '20px', isPrimary: false,
     accent: T.verm, accentDk: T.vermDk,
     onClick: () => { showToast('Void coming soon', { bg: T.verm }); },
   });
-  voidBtn.style.cssText += 'grid-column:2;grid-row:2;';
+  voidBtn.style.cssText += 'grid-column:1;grid-row:2;';
 
-  leftQuad.appendChild(payBtn);
   leftQuad.appendChild(discBtn);
   leftQuad.appendChild(voidBtn);
 
