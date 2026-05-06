@@ -1626,8 +1626,55 @@ function renderSeatsGrid(state, container, mode) {
       itemsInner.style.flexDirection = 'column';
       itemsInner.style.gap           = '5px';
 
+      const rSentRaw   = [];
+      const rUnsentRaw = [];
       for (let rii = 0; rii < rSeat.items.length; rii++) {
-        itemsInner.appendChild(buildItemBlock(state, rSeatIdx, rii, true));
+        const rit = rSeat.items[rii];
+        if (rit.voided) continue;
+        if (rit.sent_at || rit.sent) rSentRaw.push(rit);
+        else rUnsentRaw.push({ it: rit, ii: rii });
+      }
+      if (rSentRaw.length > 0) {
+        itemsInner.appendChild(_coBuildSentGroups(rSentRaw));
+      }
+      if (rUnsentRaw.length > 0) {
+        if (rSentRaw.length > 0) itemsInner.appendChild(_coUnsentHeader());
+        rUnsentRaw.forEach(({ it: rit, ii: rii }) => {
+          const ep = rit.effectivePrice != null ? rit.effectivePrice : (rit.price || 0);
+          const row = document.createElement('div');
+          row.style.cssText = [
+            `background:${T.well};`,
+            `border-left:2px solid ${T.gold};`,
+            'border-radius:0 5px 5px 0;',
+            'padding:5px 8px 5px 10px;',
+            'display:flex;align-items:center;gap:7px;',
+            'margin-bottom:3px;',
+            'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+          ].join('');
+          row.addEventListener('pointerup', () => { toggleItem(state, rSeatIdx, rii); });
+
+          const nameSpan = document.createElement('span');
+          nameSpan.style.cssText = [
+            `font-family:${T.fb};`,
+            `font-size:${T.fsB2};`,
+            `color:${T.text};`,
+            'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+          ].join('') + `;font-weight:${T.fwBold};`;
+          nameSpan.textContent = (rit.qty > 1 ? rit.qty + '× ' : '') + rit.name;
+          row.appendChild(nameSpan);
+
+          const priceSpan = document.createElement('span');
+          priceSpan.style.cssText = [
+            `font-family:${T.fb};`,
+            `font-size:${T.fsB2};`,
+            `font-weight:${T.fwBold};`,
+            `color:${T.gold};`,
+          ].join('');
+          priceSpan.textContent = fmt((rit.qty || 1) * Number(ep));
+          row.appendChild(priceSpan);
+
+          itemsInner.appendChild(row);
+        });
       }
       itemsWrap.appendChild(itemsInner);
       sCard.appendChild(itemsWrap);
@@ -2171,6 +2218,150 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
   return buildItemBlock(state, seatIdx, itemIdx, false);
 }
 
+function _coBuildSentGroups(items) {
+  const container = document.createElement('div');
+  const groups = [];
+  const keyToIdx = {};
+
+  items.forEach((it) => {
+    let key = '__null__';
+    let groupTs = null;
+    if (it.sent_at) {
+      const d = new Date(it.sent_at);
+      if (!isNaN(d.getTime())) {
+        const rounded = Math.round(d.getTime() / 60000) * 60000;
+        key = '' + rounded;
+        groupTs = new Date(rounded);
+      }
+    }
+    if (keyToIdx[key] === undefined) {
+      keyToIdx[key] = groups.length;
+      groups.push({ key, ts: groupTs, items: [] });
+    }
+    groups[keyToIdx[key]].items.push(it);
+  });
+
+  groups.sort((a, b) => {
+    if (a.key === '__null__') return -1;
+    if (b.key === '__null__') return 1;
+    return parseInt(a.key, 10) - parseInt(b.key, 10);
+  });
+
+  groups.forEach((group, idx) => {
+    const label = 'Sent ' + (idx + 1);
+    let timeStr = null;
+    if (group.ts) {
+      let h = group.ts.getHours();
+      const m = group.ts.getMinutes();
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      timeStr = h + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+    }
+
+    const zone = document.createElement('div');
+    zone.style.marginBottom = '8px';
+
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;gap:7px;padding:0 2px 5px;';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.style.cssText = [
+      `font-family:${T.fb};`,
+      `font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};`,
+      'letter-spacing:0.2em;',
+      `color:${hexToRgba(T.green, 0.55)};`,
+      'text-transform:uppercase;',
+      'white-space:nowrap;',
+    ].join('');
+    labelSpan.textContent = label;
+    hdr.appendChild(labelSpan);
+
+    if (timeStr) {
+      const timeSpan = document.createElement('span');
+      timeSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        'font-size:9px;',
+        `color:${hexToRgba(T.text, 0.3)};`,
+      ].join('') + `;font-weight:${T.fwBold};`;
+      timeSpan.textContent = timeStr;
+      hdr.appendChild(timeSpan);
+    }
+
+    const line = document.createElement('div');
+    line.style.cssText = `flex:1;height:1px;background:${hexToRgba(T.green, 0.15)};`;
+    hdr.appendChild(line);
+    zone.appendChild(hdr);
+
+    group.items.forEach((it) => {
+      const ep = it.effectivePrice != null ? it.effectivePrice : (it.price || 0);
+      const total = (it.qty || 1) * Number(ep);
+
+      const row = document.createElement('div');
+      row.style.cssText = [
+        `background:${T.well};`,
+        `border-left:2px solid ${hexToRgba(T.green, 0.28)};`,
+        'border-radius:0 5px 5px 0;',
+        'padding:5px 8px 5px 10px;',
+        'display:flex;align-items:center;gap:7px;',
+        'opacity:0.6;',
+        'margin-bottom:3px;',
+      ].join('');
+
+      const nameSpan = document.createElement('span');
+      nameSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        `font-size:${T.fsB2};`,
+        `color:${T.text};`,
+        'flex:1;',
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+      ].join('') + `;font-weight:${T.fwBold};`;
+      nameSpan.textContent = (it.qty > 1 ? it.qty + '× ' : '') + it.name;
+      row.appendChild(nameSpan);
+
+      const priceSpan = document.createElement('span');
+      priceSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        `font-size:${T.fsB2};`,
+        `font-weight:${T.fwBold};`,
+        `color:${T.gold};`,
+      ].join('');
+      priceSpan.textContent = fmt(total);
+      row.appendChild(priceSpan);
+
+      zone.appendChild(row);
+    });
+
+    container.appendChild(zone);
+  });
+
+  return container;
+}
+
+function _coUnsentHeader() {
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;gap:7px;padding:0 2px 6px;margin-top:2px;';
+
+  const labelSpan = document.createElement('span');
+  labelSpan.style.cssText = [
+    `font-family:${T.fb};`,
+    'font-size:8px;',
+    `font-weight:${T.fwBold};`,
+    'letter-spacing:0.2em;',
+    'text-transform:uppercase;',
+    `color:${hexToRgba(T.gold, 0.65)};`,
+    'white-space:nowrap;',
+  ].join('');
+  labelSpan.textContent = '+ Unsent';
+  hdr.appendChild(labelSpan);
+
+  const line = document.createElement('div');
+  line.style.cssText = `flex:1;height:1px;background:${hexToRgba(T.gold, 0.18)};`;
+  hdr.appendChild(line);
+
+  return hdr;
+}
+
 function buildSeatCard(state, seatIdx) {
   let seat     = state.seats[seatIdx];
   const bevelLt  = lightenHex(T.bg, 0.08);
@@ -2271,8 +2462,56 @@ function buildSeatCard(state, seatIdx) {
     empty.style.fontStyle  = 'italic';
     itemsWrap.appendChild(empty);
   } else {
+    const sentRaw   = [];
+    const unsentRaw = [];
     for (let ii = 0; ii < seat.items.length; ii++) {
-      itemsWrap.appendChild(buildItemBlock(state, seatIdx, ii, false));
+      const it = seat.items[ii];
+      if (it.voided) continue;
+      if (it.sent_at || it.sent) sentRaw.push(it);
+      else unsentRaw.push({ it, ii });
+    }
+
+    if (sentRaw.length > 0) {
+      itemsWrap.appendChild(_coBuildSentGroups(sentRaw));
+    }
+    if (unsentRaw.length > 0) {
+      if (sentRaw.length > 0) itemsWrap.appendChild(_coUnsentHeader());
+      unsentRaw.forEach(({ it, ii }) => {
+        const ep = it.effectivePrice != null ? it.effectivePrice : (it.price || 0);
+        const row = document.createElement('div');
+        row.style.cssText = [
+          `background:${T.well};`,
+          `border-left:2px solid ${T.gold};`,
+          'border-radius:0 5px 5px 0;',
+          'padding:5px 8px 5px 10px;',
+          'display:flex;align-items:center;gap:7px;',
+          'margin-bottom:3px;',
+          'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+        ].join('');
+        row.addEventListener('pointerup', () => { toggleItem(state, seatIdx, ii); });
+
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${T.text};`,
+          'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+        ].join('') + `;font-weight:${T.fwBold};`;
+        nameSpan.textContent = (it.qty > 1 ? it.qty + '× ' : '') + it.name;
+        row.appendChild(nameSpan);
+
+        const priceSpan = document.createElement('span');
+        priceSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `font-weight:${T.fwBold};`,
+          `color:${T.gold};`,
+        ].join('');
+        priceSpan.textContent = fmt((it.qty || 1) * Number(ep));
+        row.appendChild(priceSpan);
+
+        itemsWrap.appendChild(row);
+      });
     }
   }
   card.appendChild(itemsWrap);
