@@ -1768,10 +1768,35 @@ function buildSeatSelectorCard() {
     `font-weight:${T.fwBold};`,
     `color:${T.green};`,
     'letter-spacing:0.15em;',
-    'flex:1;',
   ].join('');
   lbl.textContent = 'SEATS';
   header.appendChild(lbl);
+
+  // Add-seat button, positioned inline in header (not in grid)
+  function _buildAddBtn() {
+    let tile = document.createElement('div');
+    tile.style.cssText = [
+      'display:flex;align-items:center;justify-content:center;',
+      'border-radius:8px;',
+      'background:transparent;',
+      `border:1.5px dashed ${T.moon};`,
+      `color:${T.moon};`,
+      `font-family:${T.fh};font-weight:${T.fwBold};font-size:24px;`,
+      'cursor:pointer;user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;',
+      'width:28px;height:28px;',
+    ].join('');
+    tile.textContent = '+';
+    return tile;
+  }
+
+  const addBtn = _buildAddBtn();
+  header.appendChild(addBtn);
+
+  // Spacer to push ALL/NONE to the right
+  const spacer = document.createElement('div');
+  spacer.style.flex = '1';
+  header.appendChild(spacer);
 
   // Small pill for ALL/NONE — T.border outline, T.card fill.
   function _buildBulkPill(label) {
@@ -1803,6 +1828,21 @@ function buildSeatSelectorCard() {
   header.appendChild(noneBtn);
   card.appendChild(header);
 
+  // Attach add-seat tap handler
+  addBtn.addEventListener('pointerup', () => {
+    const usedSeats = {};
+    _allSeatList.forEach((sn) => { usedSeats[sn] = true; });
+    let newSeat = 1;
+    while (usedSeats[newSeat]) newSeat++;
+    if (newSeat > 99) { showToast('Maximum 99 seats', { bg: T.gold }); return; }
+    _allSeatList.push(newSeat);
+    _seatList.push(newSeat);
+    _activeSeats.add(newSeat);
+    _autoSwitchArmed = false;
+    repaintSeats();
+    renderTicket();
+  });
+
   // ── Body: 5-col grid (no scroll, wrapped in inner scroll div) ───────────────────
   let body = document.createElement('div');
   body.className = '_oe-seat-scroll';
@@ -1815,7 +1855,7 @@ function buildSeatSelectorCard() {
   // Inner scrollable wrapper for upward expansion
   let innerScroll = document.createElement('div');
   innerScroll.style.cssText = [
-    'overflow:visible;',
+    'max-height:200px;overflow:visible;',
     '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
   innerScroll.appendChild(body);
@@ -1846,22 +1886,6 @@ function buildSeatSelectorCard() {
     return pill;
   }
 
-  function _buildAddTile() {
-    let tile = document.createElement('div');
-    tile.style.cssText = [
-      'display:flex;align-items:center;justify-content:center;',
-      'border-radius:8px;',
-      'background:transparent;',
-      `border:1.5px dashed ${T.moon};`,
-      `color:${T.moon};`,
-      `font-family:${T.fh};font-weight:${T.fwBold};font-size:24px;`,
-      'cursor:pointer;user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    tile.textContent = '+';
-    return tile;
-  }
-
   function repaintSeats() {
     body.innerHTML = '';
     _allSeatList.forEach((sn) => {
@@ -1887,23 +1911,6 @@ function buildSeatSelectorCard() {
       })(sn));
       body.appendChild(pill);
     });
-
-    // Add-seat tile after all populated cells
-    const addTile = _buildAddTile();
-    addTile.addEventListener('pointerup', () => {
-      const usedSeats = {};
-      _allSeatList.forEach((sn) => { usedSeats[sn] = true; });
-      let newSeat = 1;
-      while (usedSeats[newSeat]) newSeat++;
-      if (newSeat > 99) { showToast('Maximum 99 seats', { bg: T.gold }); return; }
-      _allSeatList.push(newSeat);
-      _seatList.push(newSeat);
-      _activeSeats.add(newSeat);
-      _autoSwitchArmed = false;
-      repaintSeats();
-      renderTicket();
-    });
-    body.appendChild(addTile);
   }
 
   allBtn.addEventListener('pointerup', () => {
@@ -1939,14 +1946,13 @@ function rebuildBottomBar() {
   _personalBtn = null;
   _bottomBar.style.cssText = [
     'display:grid;grid-template-columns:1fr 1fr 1fr;',
-    'align-items:stretch;gap:4px;flex-shrink:0;margin-top:auto;',
-    'min-height:100px;height:auto;',
+    'gap:4px;flex-shrink:0;margin-top:auto;',
     'pointer-events:auto;touch-action:manipulation;',
     'position:relative;z-index:10;',
     'overflow:visible;',
   ].join('');
 
-  // ── Col 1: Seat selector ─────────────────────────
+  // ── Col 1: Seat selector (expands upward only) ─────────────────────────
   if (_seatSelectorEl) {
     _seatSelectorEl.style.gridColumn   = '1';
     _seatSelectorEl.style.margin       = '2px 0';
@@ -1954,10 +1960,11 @@ function rebuildBottomBar() {
     _seatSelectorEl.style.border       = `1px solid ${T.border}`;
     _seatSelectorEl.style.borderRadius = '10px';
     _seatSelectorEl.style.padding      = '8px 10px';
+    _seatSelectorEl.style.alignSelf    = 'flex-end';
     _bottomBar.appendChild(_seatSelectorEl);
   }
 
-  // ── Col 2: PERSONAL button ────────────────────────
+  // ── Col 2: PERSONAL button (fixed height) ────────────────────────
   const isPersonal = snakeState.view === 'personal';
   const personalBtn = buildChamferButton({
     label:      'PERSONAL',
@@ -1971,12 +1978,15 @@ function rebuildBottomBar() {
       _repaintCatCol();
     },
   });
-  personalBtn.style.gridColumn = '2';
-  personalBtn.style.margin = '2px 0';
+  personalBtn.style.gridColumn   = '2';
+  personalBtn.style.margin       = '2px 0';
+  personalBtn.style.alignSelf    = 'stretch';
+  personalBtn.style.height       = '100px';
+  personalBtn.style.flexShrink   = '0';
   _personalBtn = personalBtn;
   _bottomBar.appendChild(personalBtn);
 
-  // ── Col 3: DONE button ──────────────────────────────
+  // ── Col 3: DONE button (fixed height) ──────────────────────────────
   let hasUnsent = ticket.some((i) => !i.sent);
   const doneLabel = isSending ? 'SENDING…' : 'DONE';
   const doneBtn = buildChamferButton({
@@ -1994,8 +2004,11 @@ function rebuildBottomBar() {
       })();
     },
   });
-  doneBtn.style.gridColumn = '3';
-  doneBtn.style.margin = '2px 0';
+  doneBtn.style.gridColumn  = '3';
+  doneBtn.style.margin      = '2px 0';
+  doneBtn.style.alignSelf   = 'stretch';
+  doneBtn.style.height      = '100px';
+  doneBtn.style.flexShrink  = '0';
   _bottomBar.appendChild(doneBtn);
 }
 
