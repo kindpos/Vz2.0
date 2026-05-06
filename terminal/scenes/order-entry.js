@@ -1749,7 +1749,7 @@ function buildSeatSelectorCard() {
     `background:${T.well};`,
     `border:1px solid ${bevelLt};`,
     'border-radius:10px;',
-    'display:flex;flex-direction:column;',
+    'display:flex;flex-direction:column-reverse;',
     'overflow:hidden;',
   ].join('');
 
@@ -1802,26 +1802,33 @@ function buildSeatSelectorCard() {
   header.appendChild(noneBtn);
   card.appendChild(header);
 
-  // ── Body: 8-col scrollable grid ───────────────────
-  // grid-auto-rows fixes row height at 40px; max-height shows ~3 rows; scrolls beyond.
+  // ── Body: 5-col grid (no scroll, wrapped in inner scroll div) ───────────────────
   let body = document.createElement('div');
   body.className = '_oe-seat-scroll';
   body.style.cssText = [
-    'display:grid;grid-template-columns:repeat(3,1fr);',
-    'grid-auto-rows:40px;gap:4px;',
+    'display:grid;grid-template-columns:repeat(5,1fr);',
+    'grid-auto-rows:32px;gap:4px;',
     'padding:6px 8px 8px;',
-    'max-height:120px;overflow-y:auto;',
+  ].join('');
+
+  // Inner scrollable wrapper for upward expansion
+  let innerScroll = document.createElement('div');
+  innerScroll.style.cssText = [
+    'max-height:200px;overflow-y:auto;',
     '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
-  card.appendChild(body);
+  innerScroll.appendChild(body);
+  card.appendChild(innerScroll);
 
   function _buildSeatPill(sn, isActive) {
     let pill = document.createElement('div');
     pill.style.cssText = [
       'display:flex;align-items:center;justify-content:center;',
-      'border-radius:8px;',
+      'height:32px;min-width:0;',
+      'padding:0 6px;',
+      'border-radius:6px;',
       `font-family:${T.fh};font-weight:${T.fwBold};`,
-      `font-size:${T.fsB2};`,
+      'font-size:11px;',
       'cursor:pointer;user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'transition:transform 0.07s;',
