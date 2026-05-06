@@ -609,17 +609,12 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
           if (activePrefix === 'ADD') {
             if (!optState[optId]) {
               // First tap — ADD
-              optState[optId] = { prefix: 'ADD', placement: activePlacement };
+              optState[optId] = { prefix: 'ADD', placement: activePlacement, count: 1 };
               _flashTile(tile, pAdd.color, pAdd.textColor, 280);
             } else {
-              // Every subsequent tap — append another EXTRA, never auto-clear
-              if (optState[optId].prefix === 'ADD') {
-                optState[optId] = { prefix: 'EXTRA', placement: activePlacement, count: 2 };
-              } else if (optState[optId].prefix === 'EXTRA') {
-                optState[optId].count = (optState[optId].count || 1) + 1;
-              } else {
-                optState[optId] = { prefix: 'EXTRA', placement: activePlacement, count: 2 };
-              }
+              // Every subsequent tap — one more EXTRA, no limit, never clears
+              optState[optId].prefix = 'EXTRA';
+              optState[optId].count  = (optState[optId].count || 1) + 1;
               _flashTile(tile, pExtra.color, pExtra.textColor, 280);
             }
           } else {
