@@ -1363,7 +1363,7 @@ function _repaintCatCol() {
     nameEl.style.cssText = [
       `font-family:${T.fh};`,
       `font-weight:${T.fwBold};`,
-      'font-size:15px;',
+      'font-size:17px;',
       `color:${isActive ? T.well : cat.color};`,
       'text-align:center;pointer-events:none;',
     ].join('');
@@ -1373,7 +1373,7 @@ function _repaintCatCol() {
     const _items = (cat.subcats && cat.subcats[0] && cat.subcats[0].items) ? cat.subcats[0].items : [];
     countEl.style.cssText = [
       `font-family:${T.fb};`,
-      'font-size:11px;',
+      'font-size:12px;',
       `color:${isActive ? T.well : cat.color};`,
       'opacity:0.75;',
       'text-align:center;pointer-events:none;',
