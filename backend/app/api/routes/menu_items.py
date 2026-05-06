@@ -9,6 +9,7 @@ Menu Items — pricing chain write endpoints.
 """
 
 import logging
+from decimal import Decimal
 from typing import Dict, Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -30,7 +31,7 @@ async def broadcast_config_update(sections: List[str]):
 
 
 class _SizePricingBody(BaseModel):
-    size_prices: Dict[str, float] = {}
+    size_prices: Dict[str, Decimal] = {}
 
 
 class _OptionGroupOverrideBody(BaseModel):
@@ -38,7 +39,7 @@ class _OptionGroupOverrideBody(BaseModel):
 
 
 class _SizePriceOverrideBody(BaseModel):
-    price: float
+    price: Decimal
 
 
 async def _get_item(item_id: str, ledger):
@@ -63,7 +64,7 @@ async def set_item_size_pricing(
         {
             "item_id": item_id,
             "group_id": group_id,
-            "size_prices": {k: float(v) for k, v in body.size_prices.items()},
+            "size_prices": {k: v for k, v in body.size_prices.items()},
         },
         terminal_id="overseer",
     )
@@ -109,7 +110,7 @@ async def set_item_size_price_override(
             "item_id": item_id,
             "group_id": group_id,
             "size_name": size_name,
-            "price": float(body.price),
+            "price": body.price,
         },
         terminal_id="overseer",
     )
