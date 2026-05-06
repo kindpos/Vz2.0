@@ -788,7 +788,6 @@ function renderFooterToolbar(state) {
     // Face styling: active = flooded, inactive = colored text on dark
     var faceEl = btn.children[0];
     if (faceEl) {
-      faceEl.style.fontSize = T.fsB3;
       if (isActive) {
         faceEl.style.background = tool.accent;
         faceEl.style.color = T.well;
@@ -832,14 +831,12 @@ function renderFooterToolbar(state) {
     accent: T.text,
     accentDk: darkenHex(T.card, 0.4),
     isPrimary: false,
+    fontSize: T.fsB3,
   });
   undoBtn.style.position = 'relative';
   undoBtn.style.width = '96px';
   undoBtn.style.flexShrink = '0';
   var undoFace = undoBtn.children[0];
-  if (undoFace) {
-    undoFace.style.fontSize = T.fsB3;
-  }
   if (undoFace && state.actionLog.length > 0) {
     var badge = document.createElement('span');
     badge.textContent         = state.actionLog.length;
@@ -874,11 +871,11 @@ function renderFooterToolbar(state) {
     accent: T.verm,
     accentDk: T.vermDk,
     isPrimary: false,
+    fontSize: T.fsB3,
   });
   resetBtn.style.width = '96px';
   resetBtn.style.flexShrink = '0';
   var resetFace = resetBtn.children[0];
-  resetFace.style.fontSize = T.fsB3;
   resetFace.style.position = 'relative';
   var undoFill = document.createElement('div');
   undoFill.style.position        = 'absolute';
@@ -944,10 +941,6 @@ function renderFooterToolbar(state) {
   });
   confirmBtn.style.flex = '0 0 auto';
   confirmBtn.style.width = '140px';
-  var confirmFace = confirmBtn.children[0];
-  if (confirmFace) {
-    confirmFace.style.fontSize = T.fsB2;
-  }
   confirmBtn.addEventListener('pointerup', function() { handleConfirm(state); });
   state.listeners.push({ el: confirmBtn, event: 'pointerup', handler: function() { handleConfirm(state); } });
   rightGrid.appendChild(confirmBtn);
