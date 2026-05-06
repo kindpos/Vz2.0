@@ -539,12 +539,15 @@ function buildColumn(colIdx, state) {
   if (isSplitTgt) card.style.boxShadow = '0 0 0 1px ' + T.elec;
   if (isMergeTgt) card.style.boxShadow = '0 0 0 1px ' + T.greenWarm;
 
-  // Column tap for MOVE / SPLIT
+  // Column tap for MOVE / SPLIT / MERGE
   (function(idx) {
     var h = function(e) {
       if (e.target.closest('[data-item-row]')) return;
       if (e.target.closest('[data-col-header]')) return;
-      handleBodyTap(idx, state);
+      // Body tap: in MOVE mode, move items; in other modes, do nothing; in null mode, do nothing
+      if (state.mode === 'move') {
+        handleBodyTap(idx, state);
+      }
     };
     card.addEventListener('pointerup', h);
     state.listeners.push({ el: card, event: 'pointerup', handler: h });
@@ -607,9 +610,9 @@ function buildColumn(colIdx, state) {
   (function(idx) {
     var h = function(e) {
       e.stopPropagation();
-      // In MOVE/SPLIT/MERGE modes, header taps perform those actions
-      // In null mode, header taps select all items in the column
-      if (state.mode === null) {
+      // In MOVE/null modes: toggle selection of all items in the column
+      // In SPLIT/MERGE modes: perform the mode action (toggle split target, set merge target)
+      if (state.mode === 'move' || state.mode === null) {
         handleHeaderTap(idx, state);
       } else {
         handleBodyTap(idx, state);
