@@ -21,6 +21,7 @@
 
 import { T } from '../../../common/tokens.js';
 import { buildStaticCard, hexToRgba } from '../../../common/theme.js';
+import { pushChanges } from '../services/config-push.js';
 
 /* ------------------------------------------
    STATE
@@ -508,7 +509,7 @@ const buildModifierRow = (modifier) => {
     toggleCell.style.cssText = 'display: flex; justify-content: center; align-items: center;';
     const toggle = buildToggle(modifier.active !== false, async (v) => {
         try {
-            await apiPatch(`/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}`, { active: v });
+            await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, active: v } }]);
             modifier.active = v;
         } catch (e) {
             toggle.setValue(!v);
@@ -579,7 +580,7 @@ const buildModifierAddPanel = () => {
         const priceVal = priceInput.getValue();
         if (!name) { showToast('Name is required', 'error'); return; }
         try {
-            await apiPost('/api/v1/modifiers', { name, price: priceVal });
+            await pushChanges([{ event_type: 'modifier.created', payload: { name, price: priceVal } }]);
             _state.addingModifier = false;
             await refreshAll();
             showToast('Modifier created');
@@ -642,7 +643,7 @@ const buildModifierEditPanel = (modifier) => {
             return;
         }
         try {
-            await apiPatch(`/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}`, body);
+            await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, ...body } }]);
             if (body.name != null) modifier.name = body.name;
             if (body.price != null) modifier.price = body.price;
             _state.editingModifierId = null;
