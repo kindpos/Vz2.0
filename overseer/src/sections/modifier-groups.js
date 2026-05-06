@@ -30,6 +30,7 @@ import {
     hexToRgba,
     darkenHex,
 } from '../../../common/theme.js';
+import { fetchWithTimeout } from '../services/http.js';
 
 /* ------------------------------------------
    STATE
@@ -72,13 +73,13 @@ const fmtPriceAdj = (n) => {
    API
 ------------------------------------------ */
 const apiGet = async (url) => {
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
     return res.json();
 }
 
 const apiPost = async (url, body) => {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body == null ? undefined : JSON.stringify(body),
@@ -88,7 +89,7 @@ const apiPost = async (url, body) => {
 }
 
 const apiPatch = async (url, body) => {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -98,7 +99,7 @@ const apiPatch = async (url, body) => {
 }
 
 const apiPut = async (url, body) => {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -113,7 +114,7 @@ const apiGetOptional = async (url, fallback) => {
 }
 
 const apiDelete = async (url) => {
-    const res = await fetch(url, { method: 'DELETE' });
+    const res = await fetchWithTimeout(url, { method: 'DELETE' });
     if (!res.ok) throw new Error(`DELETE ${url} → ${res.status}`);
     return res.json();
 }

@@ -2,6 +2,7 @@ import { pushChanges } from '../services/config-push.js';
 import {
     C, buildScenePage, showToast, withAlpha,
 } from '../ui/forms.js';
+import { fetchWithTimeout } from '../services/http.js';
 
 /* ============================================
    KINDpos Overseer — Specials & Discounts (Nostalgia)
@@ -214,12 +215,12 @@ const migrateSpecial = (raw) => {
 const fetchPricingData = async () => {
     try {
         const [dpRes, spRes, otRes, empRes, voidRes, catRes] = await Promise.all([
-            fetch('/api/v1/config/pricing/day-parts').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/pricing/specials').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/pricing/order-types').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/pricing/employee-discount').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/pricing/void-reasons').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/menu/categories').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/day-parts').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/specials').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/order-types').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/employee-discount').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/void-reasons').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/menu/categories').catch(() => ({ ok: false })),
         ]);
 
         const day_parts   = dpRes.ok   ? (await dpRes.json()).map(migrateDayPart)  : [];

@@ -22,6 +22,7 @@
 import { T } from '../../../common/tokens.js';
 import { buildStaticCard, hexToRgba } from '../../../common/theme.js';
 import { pushChanges } from '../services/config-push.js';
+import { fetchWithTimeout } from '../services/http.js';
 
 /* ------------------------------------------
    STATE
@@ -62,12 +63,12 @@ const priceAdjColor = (n) => {
    API
 ------------------------------------------ */
 const apiGet = async (url) => {
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
     return res.json();
 }
 const apiPost = async (url, body) => {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body == null ? undefined : JSON.stringify(body),
@@ -76,7 +77,7 @@ const apiPost = async (url, body) => {
     return res.json();
 }
 const apiPatch = async (url, body) => {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

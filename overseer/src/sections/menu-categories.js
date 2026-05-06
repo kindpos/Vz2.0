@@ -2,6 +2,7 @@ import { pushChanges } from '../services/config-push.js';
 import {
     C, buildScenePage, showToast, withAlpha,
 } from '../ui/forms.js';
+import { fetchWithTimeout } from '../services/http.js';
 import {
     buildItemPricingExtensions,
     buildCategoryPricingExtensions,
@@ -151,9 +152,9 @@ const migrateCategorySchedule = (raw) => {
 const fetchMenuData = async () => {
     try {
         const [menuRes, catRes, itemRes] = await Promise.all([
-            fetch('/api/v1/menu'),
-            fetch('/api/v1/config/menu/categories'),
-            fetch('/api/v1/config/menu/items'),
+            fetchWithTimeout('/api/v1/menu'),
+            fetchWithTimeout('/api/v1/config/menu/categories'),
+            fetchWithTimeout('/api/v1/config/menu/items'),
         ]);
 
         const menu     = menuRes.ok  ? await menuRes.json()  : { modifier_groups: [] };
@@ -375,8 +376,8 @@ export function registerMenuCategories(sceneManager) {
             injectAnimations();
             menuData       = await fetchMenuData();
             const [sz, og] = await Promise.all([
-                fetch('/api/v1/sizes').then(r => r.ok ? r.json() : []).catch(() => []),
-                fetch('/api/v1/option-groups').then(r => r.ok ? r.json() : []).catch(() => []),
+                fetchWithTimeout('/api/v1/sizes').then(r => r.ok ? r.json() : []).catch(() => []),
+                fetchWithTimeout('/api/v1/option-groups').then(r => r.ok ? r.json() : []).catch(() => []),
             ]);
             sizesData        = Array.isArray(sz) ? sz : [];
             optionGroupsData = Array.isArray(og) ? og : [];
@@ -730,7 +731,7 @@ const buildAddLink = (text, onClick) => {
     return btn;
 }
 
-const apiPutItem = (url, body) => fetch(url, {
+const apiPutItem = (url, body) => fetchWithTimeout(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' ;,
         body: body == null ? undefined : JSON.stringify(body),
@@ -740,7 +741,7 @@ const apiPutItem = (url, body) => fetch(url, {
     });
 }
 
-const apiPatchItem = (itemId, patch) => fetch(`/api/v1/menu-items/${encodeURIComponent(itemId);`, {
+const apiPatchItem = (itemId, patch) => fetchWithTimeout(`/api/v1/menu-items/${encodeURIComponent(itemId);`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
@@ -750,7 +751,7 @@ const apiPatchItem = (itemId, patch) => fetch(`/api/v1/menu-items/${encodeURICom
     });
 }
 
-const apiDeleteItem = (itemId) => fetch(`/api/v1/menu-items/${encodeURIComponent(itemId);`, {
+const apiDeleteItem = (itemId) => fetchWithTimeout(`/api/v1/menu-items/${encodeURIComponent(itemId);`, {
         method: 'DELETE',
     }).then(r => {
         if (!r.ok) throw new Error(`DELETE failed: ${r.status}`);
@@ -758,7 +759,7 @@ const apiDeleteItem = (itemId) => fetch(`/api/v1/menu-items/${encodeURIComponent
     });
 }
 
-const apiPostItem86 = (itemId) => fetch(`/api/v1/menu-items/${encodeURIComponent(itemId);/86`, {
+const apiPostItem86 = (itemId) => fetchWithTimeout(`/api/v1/menu-items/${encodeURIComponent(itemId);/86`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
     }).then(r => {
