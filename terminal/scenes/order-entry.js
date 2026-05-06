@@ -1750,7 +1750,8 @@ function buildSeatSelectorCard() {
     `border:1px solid ${bevelLt};`,
     'border-radius:10px;',
     'display:flex;flex-direction:column-reverse;',
-    'overflow:hidden;',
+    'overflow:visible;',
+    'position:relative;z-index:20;',
   ].join('');
 
   // ── Header: SEATS label + ALL/NONE pills ──────────
@@ -1814,7 +1815,7 @@ function buildSeatSelectorCard() {
   // Inner scrollable wrapper for upward expansion
   let innerScroll = document.createElement('div');
   innerScroll.style.cssText = [
-    'max-height:200px;overflow-y:auto;',
+    'overflow:visible;',
     '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
   innerScroll.appendChild(body);
@@ -1942,6 +1943,7 @@ function rebuildBottomBar() {
     'height:70px;',
     'pointer-events:auto;touch-action:manipulation;',
     'position:relative;z-index:10;',
+    'overflow:visible;',
   ].join('');
 
   // ── Col 1: Seat selector ─────────────────────────
