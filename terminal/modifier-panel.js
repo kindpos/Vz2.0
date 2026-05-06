@@ -235,7 +235,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     const accWrap = document.createElement('div');
     accWrap.style.cssText = [
       'display:flex;flex-direction:column;gap:8px;',
-      'padding:8px 14px 10px;',
+      'padding:8px 14px 10px 0;',
     ].join('');
 
     const CARD_DEFS = [
