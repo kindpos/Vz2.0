@@ -1724,6 +1724,7 @@ function buildMain(parentEl, params) {
     } else {
       renderSnakeGrid();
     }
+    rebuildBottomBar();
     loadFavorites();
   });
 
