@@ -1462,15 +1462,6 @@ function renderSnakeGrid() {
     return;
   }
 
-  // ── Crumb tiles (inline, same grid) ──
-  if (view !== 'cats') {
-    crumbs.forEach((crumb, i) => {
-      let tile = buildCrumbTile(crumb, i === crumbs.length - 1);
-      tile.addEventListener('pointerup', () => { _crumbTap(i); });
-      _gridEl.appendChild(tile);
-    });
-  }
-
   // ── Category home ──
   if (view === 'cats') {
     _repaintCatCol();
