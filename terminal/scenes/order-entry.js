@@ -37,7 +37,7 @@
 
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
-import { buildCard, buildStaticCard, buildPillButton, hexToRgba, lightenHex, darkenHex, buildDataRow } from '../theme-manager.js';
+import { buildCard, buildStaticCard, buildPillButton, buildChamferButton, hexToRgba, lightenHex, darkenHex, buildDataRow } from '../theme-manager.js';
 import { showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
@@ -1928,12 +1928,16 @@ function rebuildBottomBar() {
   if (!_bottomBar) return;
   _bottomBar.innerHTML = '';
   _personalBtn = null;
-  _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:4px;';
+  _bottomBar.style.cssText = [
+    'display:grid;grid-template-columns:1fr 1fr auto;',
+    'align-items:stretch;gap:4px;flex-shrink:0;margin-top:4px;',
+    'height:136px;',
+  ].join('');
 
-  // ── Col 1-2: Seat selector ────────────────────────
+  // ── Col 1: Seat selector ─────────────────────────
   if (_seatSelectorEl) {
-    _seatSelectorEl.style.gridColumn   = '1 / span 2';
-    _seatSelectorEl.style.margin       = '2px 0 10px';
+    _seatSelectorEl.style.gridColumn   = '1';
+    _seatSelectorEl.style.margin       = '2px 0';
     _seatSelectorEl.style.background   = T.well;
     _seatSelectorEl.style.border       = `1px solid ${T.border}`;
     _seatSelectorEl.style.borderRadius = '10px';
@@ -1941,7 +1945,7 @@ function rebuildBottomBar() {
     _bottomBar.appendChild(_seatSelectorEl);
   }
 
-  // ── Col 3: PERSONAL button ────────────────────────
+  // ── Col 2: PERSONAL button ────────────────────────
   const isPersonal = snakeState.view === 'personal';
   const personalBtn = buildPillButton({
     label:     'PERSONAL',
@@ -1950,9 +1954,8 @@ function rebuildBottomBar() {
     textColor: isPersonal ? T.well    : T.text,
     fontSize:  T.fsB2,
   });
-  personalBtn.style.gridColumn = '3';
-  personalBtn.style.height = '60px';
-  personalBtn.style.margin = '2px 0 10px';
+  personalBtn.style.gridColumn = '2';
+  personalBtn.style.margin = '2px 0';
   personalBtn.addEventListener('pointerup', () => {
     snakeState.view = 'personal';
     renderSnakeGrid();
@@ -1961,32 +1964,85 @@ function rebuildBottomBar() {
   _personalBtn = personalBtn;
   _bottomBar.appendChild(personalBtn);
 
-  // ── Col 4-5: DONE ─────────────────────────────────
+  // ── Col 3: Two-quad chamfer action bar ────────────
+  const actionsWrap = document.createElement('div');
+  actionsWrap.style.cssText = 'display:flex;gap:10px;align-items:stretch;height:112px;flex-shrink:0;margin:12px 0;';
+
+  // Left quad: PAY tall-left + Disc/Void stacked-right
+  const leftQuad = document.createElement('div');
+  leftQuad.style.cssText =
+    'display:grid;grid-template-columns:175px 150px;' +
+    'grid-template-rows:1fr 1fr;gap:5px;height:112px;';
+
+  const payBtn = buildChamferButton({
+    label: 'Pay', fontSize: '30px', isPrimary: true,
+    accent: T.gold, accentDk: T.goldDk,
+    onClick: () => { showToast('PAY coming soon', { bg: T.gold }); },
+  });
+  payBtn.style.cssText += 'grid-column:1;grid-row:1/3;';
+
+  const discBtn = buildChamferButton({
+    label: 'Disc', fontSize: '20px', isPrimary: false,
+    accent: T.lavender, accentDk: T.lavenderDk,
+    onClick: () => { showToast('Discount coming soon', { bg: T.lavender }); },
+  });
+  discBtn.style.cssText += 'grid-column:2;grid-row:1;';
+
+  const voidBtn = buildChamferButton({
+    label: 'Void', fontSize: '20px', isPrimary: false,
+    accent: T.verm, accentDk: T.vermDk,
+    onClick: () => { showToast('Void coming soon', { bg: T.verm }); },
+  });
+  voidBtn.style.cssText += 'grid-column:2;grid-row:2;';
+
+  leftQuad.appendChild(payBtn);
+  leftQuad.appendChild(discBtn);
+  leftQuad.appendChild(voidBtn);
+
+  // Right quad: Print/Manage stacked-left + DONE tall-right
+  const rightQuad = document.createElement('div');
+  rightQuad.style.cssText =
+    'display:grid;grid-template-columns:150px 175px;' +
+    'grid-template-rows:1fr 1fr;gap:5px;height:112px;';
+
+  const printBtn = buildChamferButton({
+    label: 'Print', fontSize: '20px', isPrimary: false,
+    accent: T.elec, accentDk: T.elecDk,
+    onClick: () => { showToast('Print coming soon', { bg: T.elec }); },
+  });
+  printBtn.style.cssText += 'grid-column:1;grid-row:1;';
+
+  const manageBtn = buildChamferButton({
+    label: 'Manage', fontSize: '20px', isPrimary: false,
+    accent: T.text, accentDk: darkenHex(T.card, 0.4),
+    onClick: () => { showToast('Manage coming soon', { bg: T.moon }); },
+  });
+  manageBtn.style.cssText += 'grid-column:1;grid-row:2;';
+
   let hasUnsent = ticket.some((i) => !i.sent);
-
   const doneLabel = isSending ? 'SENDING…' : 'DONE';
-
-  let doneBtn = buildPillButton({
-    label:    doneLabel,
-    variant:  'mint',
-    disabled: isSending,
-    fontSize: '22px',
+  const doneBtn = buildChamferButton({
+    label: doneLabel, fontSize: '25px', isPrimary: true,
+    accent: T.greenWarm, accentDk: T.greenWarmDk,
+    onClick: () => {
+      if (isSending) return;
+      if (!hasUnsent) { handleClose(); return; }
+      (async function() {
+        try { await handleSend(); } catch (e) { return; }
+        handleClose();
+      })();
+    },
   });
-  doneBtn.style.gridColumn = '4 / span 2';
-  doneBtn.style.height = '60px';
-  doneBtn.style.width = '60%';
-  doneBtn.style.justifySelf = 'center';
-  doneBtn.style.margin = '2px 0 10px';
-  doneBtn.addEventListener('pointerup', () => {
-    if (isSending) return;
-    if (!hasUnsent) { handleClose(); return; }
-    (async function() {
-      try { await handleSend(); } catch (e) { return; }
-      handleClose();
-    })();
-  });
+  doneBtn.style.cssText += 'grid-column:2;grid-row:1/3;';
 
-  _bottomBar.appendChild(doneBtn);
+  rightQuad.appendChild(printBtn);
+  rightQuad.appendChild(manageBtn);
+  rightQuad.appendChild(doneBtn);
+
+  actionsWrap.appendChild(leftQuad);
+  actionsWrap.appendChild(rightQuad);
+
+  _bottomBar.appendChild(actionsWrap);
 }
 
 function clearModifierSelection() {
