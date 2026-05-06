@@ -1630,9 +1630,13 @@ function renderSeatsGrid(state, container, mode) {
       const rUnsentRaw = [];
       for (let rii = 0; rii < rSeat.items.length; rii++) {
         const rit = rSeat.items[rii];
-        if (rit.voided) continue;
-        if (rit.sent_at || rit.sent) rSentRaw.push({ it: rit, ii: rii });
-        else rUnsentRaw.push({ it: rit, ii: rii });
+        if (rit.voided) {
+          if (rit.sent_at || rit.sent) rSentRaw.push({ it: rit, ii: rii });
+        } else if (rit.sent_at || rit.sent) {
+          rSentRaw.push({ it: rit, ii: rii });
+        } else {
+          rUnsentRaw.push({ it: rit, ii: rii });
+        }
       }
       if (rSentRaw.length > 0) {
         itemsInner.appendChild(_coBuildSentGroups(rSentRaw, state, rSeatIdx));
@@ -2218,6 +2222,22 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
   return buildItemBlock(state, seatIdx, itemIdx, false);
 }
 
+function _applySentRowStyle(row, nameSpan, priceSpan, isSelected) {
+  if (isSelected) {
+    row.style.background  = T.green;
+    row.style.borderLeft  = `2px solid ${T.greenDk}`;
+    row.style.opacity     = '1';
+    nameSpan.style.color  = T.well;
+    priceSpan.style.color = T.well;
+  } else {
+    row.style.background  = T.well;
+    row.style.borderLeft  = `2px solid ${hexToRgba(T.green, 0.28)}`;
+    row.style.opacity     = '0.6';
+    nameSpan.style.color  = T.text;
+    priceSpan.style.color = T.gold;
+  }
+}
+
 function _coBuildSentGroups(items, state, seatIdx) {
   const container = document.createElement('div');
   const groups = [];
@@ -2299,43 +2319,101 @@ function _coBuildSentGroups(items, state, seatIdx) {
       const ii = itemData.ii;
       const ep = it.effectivePrice != null ? it.effectivePrice : (it.price || 0);
       const total = (it.qty || 1) * Number(ep);
+      const isVoided = !!it.voided;
 
       const row = document.createElement('div');
-      row.style.cssText = [
-        `background:${T.well};`,
-        `border-left:2px solid ${hexToRgba(T.green, 0.28)};`,
-        'border-radius:0 5px 5px 0;',
-        'padding:5px 8px 5px 10px;',
-        'display:flex;align-items:center;gap:7px;',
-        'opacity:0.6;',
-        'margin-bottom:3px;',
-        'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-      ].join('');
 
-      if (state && seatIdx != null) {
-        row.addEventListener('pointerup', () => { toggleItem(state, seatIdx, ii); });
+      if (isVoided) {
+        row.style.cssText = [
+          `background:${hexToRgba(T.verm, 0.06)};`,
+          `border-left:2px solid ${hexToRgba(T.verm, 0.3)};`,
+          'border-radius:0 5px 5px 0;',
+          'padding:5px 8px 5px 10px;',
+          'display:flex;align-items:center;gap:7px;',
+          'opacity:0.6;',
+          'margin-bottom:3px;',
+          'pointer-events:none;',
+        ].join('');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${hexToRgba(T.verm, 0.7)};`,
+          'text-decoration:line-through;',
+          'flex:1;',
+          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+        ].join('') + `;font-weight:${T.fwBold};`;
+        nameSpan.textContent = (it.qty > 1 ? it.qty + '× ' : '') + it.name;
+        row.appendChild(nameSpan);
+
+        const priceSpan = document.createElement('span');
+        priceSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `font-weight:${T.fwBold};`,
+          `color:${hexToRgba(T.verm, 0.7)};`,
+          'text-decoration:line-through;',
+        ].join('');
+        priceSpan.textContent = fmt(total);
+        row.appendChild(priceSpan);
+
+        const voidBadge = document.createElement('span');
+        voidBadge.style.cssText = [
+          `font-family:${T.fb};`,
+          'font-size:8px;',
+          `font-weight:${T.fwBold};`,
+          'letter-spacing:0.1em;',
+          `color:${hexToRgba(T.verm, 0.6)};`,
+        ].join('');
+        voidBadge.textContent = 'VOID';
+        row.appendChild(voidBadge);
+      } else {
+        const selKey = seatIdx + ':' + ii;
+        const isSelected = !!(state && state.selectedItems && state.selectedItems[selKey]);
+
+        row.style.cssText = [
+          `background:${isSelected ? T.green : T.well};`,
+          `border-left:2px solid ${isSelected ? T.greenDk : hexToRgba(T.green, 0.28)};`,
+          'border-radius:0 5px 5px 0;',
+          'padding:5px 8px 5px 10px;',
+          'display:flex;align-items:center;gap:7px;',
+          `opacity:${isSelected ? '1' : '0.6'};`,
+          'margin-bottom:3px;',
+          'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+        ].join('');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${isSelected ? T.well : T.text};`,
+          'flex:1;',
+          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+        ].join('') + `;font-weight:${T.fwBold};`;
+        nameSpan.textContent = (it.qty > 1 ? it.qty + '× ' : '') + it.name;
+        row.appendChild(nameSpan);
+
+        const priceSpan = document.createElement('span');
+        priceSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `font-weight:${T.fwBold};`,
+          `color:${isSelected ? T.well : T.gold};`,
+        ].join('');
+        priceSpan.textContent = fmt(total);
+        row.appendChild(priceSpan);
+
+        if (state && seatIdx != null) {
+          row.addEventListener('pointerup', () => {
+            state.selectedItems = toggleItemSelection(state.selectedItems, seatIdx, ii);
+            _syncSelectedFromItems(state);
+            const nowSelected = !!(state.selectedItems && state.selectedItems[selKey]);
+            _applySentRowStyle(row, nameSpan, priceSpan, nowSelected);
+            renderActionBar(state);
+          });
+        }
       }
-
-      const nameSpan = document.createElement('span');
-      nameSpan.style.cssText = [
-        `font-family:${T.fb};`,
-        `font-size:${T.fsB2};`,
-        `color:${T.text};`,
-        'flex:1;',
-        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
-      ].join('') + `;font-weight:${T.fwBold};`;
-      nameSpan.textContent = (it.qty > 1 ? it.qty + '× ' : '') + it.name;
-      row.appendChild(nameSpan);
-
-      const priceSpan = document.createElement('span');
-      priceSpan.style.cssText = [
-        `font-family:${T.fb};`,
-        `font-size:${T.fsB2};`,
-        `font-weight:${T.fwBold};`,
-        `color:${T.gold};`,
-      ].join('');
-      priceSpan.textContent = fmt(total);
-      row.appendChild(priceSpan);
 
       zone.appendChild(row);
     });
@@ -2474,9 +2552,14 @@ function buildSeatCard(state, seatIdx) {
     const unsentRaw = [];
     for (let ii = 0; ii < seat.items.length; ii++) {
       const it = seat.items[ii];
-      if (it.voided) continue;
-      if (it.sent_at || it.sent) sentRaw.push({ it, ii });
-      else unsentRaw.push({ it, ii });
+      if (it.voided) {
+        // voided sent items show with void treatment; voided unsent items are hidden
+        if (it.sent_at || it.sent) sentRaw.push({ it, ii });
+      } else if (it.sent_at || it.sent) {
+        sentRaw.push({ it, ii });
+      } else {
+        unsentRaw.push({ it, ii });
+      }
     }
 
     if (sentRaw.length > 0) {
