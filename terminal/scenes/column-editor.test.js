@@ -59,6 +59,18 @@ vi.mock('../theme-manager.js', () => ({
     el.setColor     = vi.fn();
     return el;
   },
+  buildChamferButton: ({ label, onClick } = {}) => {
+    const el = document.createElement('div');
+    el.style.cursor = 'pointer';
+    const face = document.createElement('div');
+    face.classList.add('face');
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = label || '';
+    face.appendChild(labelSpan);
+    el.appendChild(face);
+    if (onClick) el.addEventListener('pointerup', onClick);
+    return el;
+  },
   buildSectionLabel: () => document.createElement('div'),
   hexToRgba:  (c) => c,
   darkenHex:  (c) => c,
@@ -171,8 +183,8 @@ describe('column-editor — Move', () => {
     const itemRow = state.colEls[0].itemList.firstElementChild;
     tap(itemRow);
 
-    // Tap col 1 header to move
-    tap(state.colEls[1].hdr);
+    // Tap col 1 body to move
+    tap(state.colEls[1].el);
 
     expect(state.columns[0].items).toHaveLength(0);
     expect(state.columns[1].items).toHaveLength(1);
@@ -188,7 +200,7 @@ describe('column-editor — Move', () => {
 
     tap(findBtn(container, 'MOVE'));
     tap(state.colEls[0].itemList.firstElementChild);
-    tap(state.colEls[1].hdr);
+    tap(state.colEls[1].el);
 
     expect(state.actionLog).toHaveLength(1);
   });
@@ -202,7 +214,7 @@ describe('column-editor — Move', () => {
 
     tap(findBtn(container, 'MOVE'));
     tap(state.colEls[0].itemList.firstElementChild);
-    tap(state.colEls[1].hdr);
+    tap(state.colEls[1].el);
 
     expect(state.selectedItems).toHaveLength(0);
   });
@@ -371,7 +383,7 @@ describe('column-editor — Undo', () => {
     // Move item from col 0 to col 1
     tap(findBtn(container, 'MOVE'));
     tap(state.colEls[0].itemList.firstElementChild);
-    tap(state.colEls[1].hdr);
+    tap(state.colEls[1].el);
     expect(state.columns[1].items).toHaveLength(1);
 
     // Short-press UNDO
@@ -404,20 +416,20 @@ describe('column-editor — Undo', () => {
     // Two moves
     tap(findBtn(container, 'MOVE'));
     tap(state.colEls[0].itemList.firstElementChild);
-    tap(state.colEls[1].hdr);
+    tap(state.colEls[1].el);
     // Re-render gives fresh colEls; after move col 1 has the item
     const itemRow2 = state.colEls[1].itemList.firstElementChild;
     tap(itemRow2);
-    tap(state.colEls[0].hdr);
+    tap(state.colEls[0].el);
 
     expect(state.actionLog).toHaveLength(2);
 
-    // Long-press UNDO (600ms)
-    const undoBtn = findBtn(container, 'UNDO');
-    undoBtn.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    // Long-press RESET (600ms)
+    const resetBtn = findBtn(container, 'RESET');
+    resetBtn.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     vi.advanceTimersByTime(600);
     vi.advanceTimersByTime(200); // fill animation completes
-    undoBtn.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    resetBtn.dispatchEvent(new Event('pointerup', { bubbles: true }));
 
     expect(state.actionLog).toHaveLength(0);
     expect(state.columns[0].items).toHaveLength(1);
