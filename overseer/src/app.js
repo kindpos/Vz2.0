@@ -124,7 +124,7 @@ let _activeScene   = null;
 /* ------------------------------------------
    SIDEBAR NAV BUILDER
 ------------------------------------------ */
-function buildNav() {
+const buildNav = () => {
     const container = document.getElementById('nav-sections');
     if (!container) return;
     container.innerHTML = '';
@@ -169,7 +169,7 @@ function buildNav() {
     });
 }
 
-function toggleSection(sectionId) {
+const toggleSection = (sectionId) => {
     document.querySelectorAll('.nav-section-subs').forEach(el => {
         const isTarget = el.dataset.sectionId === sectionId;
         el.classList.toggle('open', isTarget && !el.classList.contains('open'));
@@ -181,7 +181,7 @@ function toggleSection(sectionId) {
     _activeSection = sectionId;
 }
 
-function setActiveNavItem(sceneId) {
+const setActiveNavItem = (sceneId) => {
     document.querySelectorAll('.nav-sub-item').forEach(el => {
         el.classList.toggle('active', el.dataset.id === sceneId);
     });
@@ -193,7 +193,7 @@ function setActiveNavItem(sceneId) {
 /* ------------------------------------------
    NAVIGATION
 ------------------------------------------ */
-function navigateTo(sceneId) {
+const navigateTo = (sceneId) => {
     if (sceneId === _activeScene) return;
     const prev = _activeScene;
     _activeScene = sceneId;
@@ -212,7 +212,7 @@ function navigateTo(sceneId) {
    Polls employees + menu item counts, updates footer counters,
    online dot, sync time. Runs every 60s from boot().
 ------------------------------------------ */
-async function refreshBadges() {
+const refreshBadges = async () => {
     let allOk = true;
     try {
         const [menuRes, staffRes] = await Promise.all([
@@ -251,7 +251,7 @@ async function refreshBadges() {
     }
 }
 
-async function setVersionStamp() {
+const setVersionStamp = async () => {
     // Version is no longer rendered in the shell (header removed).
     // Kept as a no-op so boot() stays simple; reintroduce if needed
     // as a tooltip on the brand wordmark.
@@ -268,7 +268,7 @@ async function setVersionStamp() {
    SceneManager v3 expects register({ name, mount, unmount }).
    This adapter bridges the two without modifying section files.
 ------------------------------------------ */
-function createLegacyAdapter(nameOverrides) {
+const createLegacyAdapter = (nameOverrides) => {
     return {
         register(name, config) {
             const resolvedName = (nameOverrides && nameOverrides[name]) || name;
@@ -291,7 +291,7 @@ function createLegacyAdapter(nameOverrides) {
 /* ------------------------------------------
    SECTION REGISTRATION
 ------------------------------------------ */
-function registerAllSections() {
+const registerAllSections = () => {
     const adapter = createLegacyAdapter();
 
     // Register-pattern sections (use adapter to bridge old format)
@@ -424,7 +424,7 @@ function registerAllSections() {
 /* ------------------------------------------
    BOOT
 ------------------------------------------ */
-async function boot() {
+const boot = async () => {
     console.log('[Overseer] Booting...');
 
     SceneManager.init({

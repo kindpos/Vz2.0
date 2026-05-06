@@ -175,8 +175,8 @@ describe('overseer/src/sections/employees — PIN-reset modal', () => {
     vi.restoreAllMocks();
   });
 
-  function mountEmployeeSection() {
-    const { registerEmployeeSections } = require('./employees.js');
+  async function mountEmployeeSection() {
+    const { registerEmployeeSections } = await import('./employees.js');
     // registerEmployeeSections is called during import side effects in this
     // project's pattern — but we invoke it explicitly to get the registration.
     // Import is already done in beforeEach; we need the registered scene.
