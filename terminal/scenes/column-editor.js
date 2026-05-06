@@ -764,6 +764,7 @@ function renderFooterToolbar(state) {
   // ── Left grid: MOVE / SPLIT / MERGE ──────────────
   var leftGrid = document.createElement('div');
   leftGrid.style.flex                  = '1';
+  leftGrid.style.minWidth              = '0';
   leftGrid.style.display               = 'grid';
   leftGrid.style.gridTemplateColumns   = 'repeat(3, 1fr)';
   leftGrid.style.gap                   = '6px';
@@ -784,12 +785,15 @@ function renderFooterToolbar(state) {
       fontSize: T.fsB3,
     });
 
-    // If active, flood the face with the accent color
-    if (isActive) {
-      var face = btn.querySelector('.face');
-      if (face) {
-        face.style.background = tool.accent;
-        face.style.color = T.well;
+    // Face styling: active = flooded, inactive = colored text on dark
+    var faceEl = btn.children[0];
+    if (faceEl) {
+      if (isActive) {
+        faceEl.style.background = tool.accent;
+        faceEl.style.color = T.well;
+      } else {
+        faceEl.style.background = '';
+        faceEl.style.color = tool.accent;
       }
     }
 
@@ -816,10 +820,10 @@ function renderFooterToolbar(state) {
 
   // ── Right grid: UNDO / CANCEL / CONFIRM ──────────
   var rightGrid = document.createElement('div');
-  rightGrid.style.flex                = '1';
-  rightGrid.style.display             = 'grid';
-  rightGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+  rightGrid.style.flexShrink          = '0';
+  rightGrid.style.display             = 'flex';
   rightGrid.style.gap                 = '6px';
+  rightGrid.style.alignItems          = 'stretch';
 
   // UNDO button
   var undoBtn = buildChamferButton({
@@ -829,7 +833,9 @@ function renderFooterToolbar(state) {
     isPrimary: false,
   });
   undoBtn.style.position = 'relative';
-  var undoFace = undoBtn.querySelector('.face');
+  undoBtn.style.width = '80px';
+  undoBtn.style.flexShrink = '0';
+  var undoFace = undoBtn.children[0];
   if (undoFace && state.actionLog.length > 0) {
     var badge = document.createElement('span');
     badge.textContent         = state.actionLog.length;
@@ -865,7 +871,9 @@ function renderFooterToolbar(state) {
     accentDk: T.vermDk,
     isPrimary: false,
   });
-  var resetFace = resetBtn.querySelector('.face');
+  resetBtn.style.width = '80px';
+  resetBtn.style.flexShrink = '0';
+  var resetFace = resetBtn.children[0];
   resetFace.style.position = 'relative';
   var undoFill = document.createElement('div');
   undoFill.style.position        = 'absolute';
@@ -930,6 +938,7 @@ function renderFooterToolbar(state) {
     fontSize: T.fsB3,
   });
   confirmBtn.style.flex = '1';
+  confirmBtn.style.minWidth = '120px';
   confirmBtn.addEventListener('pointerup', function() { handleConfirm(state); });
   state.listeners.push({ el: confirmBtn, event: 'pointerup', handler: function() { handleConfirm(state); } });
   rightGrid.appendChild(confirmBtn);
@@ -962,13 +971,12 @@ function renderSeatSelector(state) {
       height:   tileHeight,
       fontSize: tileFontSize,
     });
-    if (manySeats) {
-      tile.style.flex = '1';
-    }
+    tile.style.width = '56px';
+    tile.style.flexShrink = '0';
 
     // If active, flood the face
     if (active) {
-      var face = tile.querySelector('.face');
+      var face = tile.children[0];
       if (face) {
         face.style.background = T.green;
         face.style.color = T.well;
@@ -1011,13 +1019,12 @@ function renderSeatSelector(state) {
     height:   tileHeight,
     fontSize: tileFontSize,
   });
-  if (manySeats) {
-    allTile.style.flex = '1';
-  }
+  allTile.style.width = '56px';
+  allTile.style.flexShrink = '0';
 
   // If active, flood the face
   if (allActive) {
-    var allFace = allTile.querySelector('.face');
+    var allFace = allTile.children[0];
     if (allFace) {
       allFace.style.background = T.moon;
       allFace.style.color = T.moonText;
@@ -1051,9 +1058,8 @@ function renderSeatSelector(state) {
     height:   tileHeight,
     fontSize: manySeats ? '18px' : T.fsB2,
   });
-  if (manySeats) {
-    addTile.style.flex = '1';
-  }
+  addTile.style.width = '56px';
+  addTile.style.flexShrink = '0';
   var addH = function() { handleAddSeat(state); };
   addTile.addEventListener('pointerup', addH);
   state.listeners.push({ el: addTile, event: 'pointerup', handler: addH });
@@ -1107,6 +1113,8 @@ function buildSeatRow(state, params) {
     strip.style.scrollbarWidth  = 'none';
     strip.style.msOverflowStyle = 'none';
     strip.style.alignItems      = 'center';
+    strip.style.flexShrink      = '0';
+    strip.style.overflow        = 'visible';
     state.seatSelectorEl = strip;
     renderSeatSelector(state);
     row.appendChild(strip);
