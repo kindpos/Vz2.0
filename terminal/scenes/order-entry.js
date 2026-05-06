@@ -1392,10 +1392,10 @@ function _repaintCatCol() {
   // Sync PERSONAL button active state
   if (_personalBtn) {
     const isPersonal = snakeState.view === 'personal';
-    _personalBtn.style.background = isPersonal ? T.green : 'transparent';
-    _personalBtn.style.border     = isPersonal ? 'none' : `1px solid ${T.border}`;
-    _personalBtn.style.color      = isPersonal ? T.well : T.text;
-    _personalBtn.style.boxShadow  = isPersonal ? `0 6px 0 ${T.greenDk}` : 'none';
+    _personalBtn.style.background = isPersonal ? T.green   : T.card;
+    _personalBtn.style.border     = 'none';
+    _personalBtn.style.color      = isPersonal ? T.well    : T.text;
+    _personalBtn.style.boxShadow  = isPersonal ? `0 6px 0 ${T.greenDk}` : `0 6px 0 ${T.moonDk}`;
   }
 }
 
@@ -1460,16 +1460,6 @@ function renderSnakeGrid() {
 
   // ── PERSONAL TAB ──
   if (view === 'personal') {
-    const pCrumb = { id: 'personal', label: 'PERSONAL', color: T.green };
-    let pTile = buildCrumbTile(pCrumb, true);
-    pTile.addEventListener('pointerup', () => {
-      snakeState.view   = 'cats';
-      snakeState.crumbs = [];
-      snakeState.catId  = null;
-      snakeState.subId  = null;
-      renderSnakeGrid();
-    });
-    _gridEl.appendChild(pTile);
     _renderPersonalGrid();
     return;
   }
@@ -1772,7 +1762,7 @@ function buildSeatSelectorCard() {
   let lbl = document.createElement('span');
   lbl.style.cssText = [
     `font-family:${T.fb};`,
-    `font-size:${T.fsB4};`,
+    'font-size:10px;',
     `font-weight:${T.fwBold};`,
     `color:${T.green};`,
     'letter-spacing:0.15em;',
@@ -1781,17 +1771,17 @@ function buildSeatSelectorCard() {
   lbl.textContent = 'SEATS';
   header.appendChild(lbl);
 
-  // Outlined-pill builder for ALL/NONE — small, transparent fill, colored border + text.
-  function _buildBulkPill(label, color) {
+  // Small pill for ALL/NONE — T.border outline, T.card fill.
+  function _buildBulkPill(label) {
     const el = document.createElement('div');
     el.style.cssText = [
-      'padding:3px 12px;',
-      `border:1.5px solid ${color};`,
+      'padding:3px 10px;',
+      `border:1.5px solid ${T.border};`,
       'border-radius:6px;',
-      'background:transparent;',
-      `color:${color};`,
-      `font-family:${T.fh};font-size:${T.fsB4};font-weight:${T.fwBold};`,
-      'letter-spacing:0.15em;',
+      `background:${T.card};`,
+      `color:${T.text};`,
+      `font-family:${T.fh};font-size:10px;font-weight:${T.fwBold};`,
+      'letter-spacing:0.08em;',
       'cursor:pointer;user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'transition:opacity 0.1s;',
@@ -1805,8 +1795,8 @@ function buildSeatSelectorCard() {
     return el;
   }
 
-  const allBtn  = _buildBulkPill('ALL',  T.green);
-  const noneBtn = _buildBulkPill('NONE', T.moon);
+  const allBtn  = _buildBulkPill('ALL');
+  const noneBtn = _buildBulkPill('NONE');
   header.appendChild(allBtn);
   header.appendChild(noneBtn);
   card.appendChild(header);
@@ -1816,10 +1806,10 @@ function buildSeatSelectorCard() {
   let body = document.createElement('div');
   body.className = '_oe-seat-scroll';
   body.style.cssText = [
-    'display:grid;grid-template-columns:repeat(8,1fr);',
+    'display:grid;grid-template-columns:repeat(3,1fr);',
     'grid-auto-rows:40px;gap:4px;',
     'padding:6px 8px 8px;',
-    'max-height:140px;overflow-y:auto;',
+    'max-height:120px;overflow-y:auto;',
     '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
   card.appendChild(body);
@@ -1944,7 +1934,7 @@ function rebuildBottomBar() {
   if (_seatSelectorEl) {
     _seatSelectorEl.style.gridColumn   = '1 / span 2';
     _seatSelectorEl.style.margin       = '2px 0 10px';
-    _seatSelectorEl.style.background   = T.card;
+    _seatSelectorEl.style.background   = T.well;
     _seatSelectorEl.style.border       = `1px solid ${T.border}`;
     _seatSelectorEl.style.borderRadius = '10px';
     _seatSelectorEl.style.padding      = '8px 10px';
@@ -1954,9 +1944,11 @@ function rebuildBottomBar() {
   // ── Col 3: PERSONAL button ────────────────────────
   const isPersonal = snakeState.view === 'personal';
   const personalBtn = buildPillButton({
-    label:    'PERSONAL',
-    variant:  isPersonal ? 'mint' : 'ghost',
-    fontSize: T.fsB2,
+    label:     'PERSONAL',
+    color:     isPersonal ? T.green   : T.card,
+    darkBg:    isPersonal ? T.greenDk : T.moonDk,
+    textColor: isPersonal ? T.well    : T.text,
+    fontSize:  T.fsB2,
   });
   personalBtn.style.gridColumn = '3';
   personalBtn.style.height = '60px';
