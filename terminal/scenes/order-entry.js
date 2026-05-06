@@ -1942,8 +1942,12 @@ function rebuildBottomBar() {
 
   // ── Col 1-2: Seat selector ────────────────────────
   if (_seatSelectorEl) {
-    _seatSelectorEl.style.gridColumn = '1 / span 2';
-    _seatSelectorEl.style.margin = '2px 0 10px';
+    _seatSelectorEl.style.gridColumn   = '1 / span 2';
+    _seatSelectorEl.style.margin       = '2px 0 10px';
+    _seatSelectorEl.style.background   = T.card;
+    _seatSelectorEl.style.border       = `1px solid ${T.border}`;
+    _seatSelectorEl.style.borderRadius = '10px';
+    _seatSelectorEl.style.padding      = '8px 10px';
     _bottomBar.appendChild(_seatSelectorEl);
   }
 
