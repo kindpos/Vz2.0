@@ -607,18 +607,20 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
           const cur    = optState[optId] ? optState[optId].prefix : null;
 
           if (activePrefix === 'ADD') {
-            if (!cur) {
+            if (!optState[optId]) {
+              // First tap — ADD
               optState[optId] = { prefix: 'ADD', placement: activePlacement };
               _flashTile(tile, pAdd.color, pAdd.textColor, 280);
-            } else if (cur === 'ADD') {
-              optState[optId] = { prefix: 'EXTRA', placement: activePlacement, count: (optState[optId].count || 1) + 1 };
-              _flashTile(tile, pExtra.color, pExtra.textColor, 280);
-            } else if (cur === 'EXTRA') {
-              optState[optId].count = (optState[optId].count || 1) + 1;
-              _flashTile(tile, pExtra.color, pExtra.textColor, 280);
             } else {
-              optState[optId] = { prefix: 'ADD', placement: activePlacement };
-              _flashTile(tile, pAdd.color, pAdd.textColor, 280);
+              // Every subsequent tap — append another EXTRA, never auto-clear
+              if (optState[optId].prefix === 'ADD') {
+                optState[optId] = { prefix: 'EXTRA', placement: activePlacement, count: 2 };
+              } else if (optState[optId].prefix === 'EXTRA') {
+                optState[optId].count = (optState[optId].count || 1) + 1;
+              } else {
+                optState[optId] = { prefix: 'EXTRA', placement: activePlacement, count: 2 };
+              }
+              _flashTile(tile, pExtra.color, pExtra.textColor, 280);
             }
           } else {
             const pActive = PREFIX_MAP.find((p) => p.id === activePrefix);
