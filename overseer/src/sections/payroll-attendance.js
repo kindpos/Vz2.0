@@ -82,9 +82,8 @@ const ROLE_CHIP_COLORS = {
     host:      '#facc15', // amber
     busser:    '#a78bfa', // violet
 };
-function roleChipColor(roleId) {
-    return ROLE_CHIP_COLORS[roleId] || T.textMuted;
-}
+const roleChipColor = (roleId) => ROLE_CHIP_COLORS[roleId] || T.textMuted;
+;
 
 const TABS = [
     { id: 'clock',      label: 'Clock Records'    },
@@ -102,7 +101,7 @@ const TABS = [
    background fill. Returns the strip element plus a
    setActive(id) hook so tab content re-renders on click.
 ------------------------------------------ */
-function buildTabStrip({ tabs, activeId, onSelect }) {
+const buildTabStrip = ({ tabs, activeId, onSelect }) => {
     const strip = document.createElement('div');
     strip.style.cssText = `
         display: flex;
@@ -161,7 +160,7 @@ function buildTabStrip({ tabs, activeId, onSelect }) {
 /* ------------------------------------------
    TAB PLACEHOLDERS (real renders come in steps 10–13)
 ------------------------------------------ */
-function renderPlaceholder(body, label) {
+const renderPlaceholder = (body, label) => {
     body.innerHTML = '';
     const card = sectionCard({
         label,
@@ -191,7 +190,7 @@ function renderPlaceholder(body, label) {
    when the backend projection lands.
    ========================================== */
 
-function _computeTemplateHours(start, end) {
+const _computeTemplateHours = (start, end) => {
     if (!start || !end) return 0;
     const [sh, sm] = start.split(':').map(Number);
     const [eh, em] = end.split(':').map(Number);
@@ -199,12 +198,12 @@ function _computeTemplateHours(start, end) {
     if (mins < 0) mins += 24 * 60; // overnight template
     return mins / 60;
 }
-function _fmtTemplateHours(hrs) {
+const _fmtTemplateHours = (hrs) => {
     const v = hrs || 0;
     return (v % 1 === 0) ? `${v}h` : `${v.toFixed(1)}h`;
 }
 
-function _ensureTemplatesLoaded() {
+const _ensureTemplatesLoaded = () => {
     if (_shiftTemplatesInitialized) return;
     // Deep-copy so user edits in this scene don't mutate the
     // imported SHIFT_TEMPLATES constant.
@@ -218,7 +217,7 @@ function _ensureTemplatesLoaded() {
     _shiftTemplatesInitialized = true;
 }
 
-function renderTemplatesTab(body) {
+const renderTemplatesTab = (body) => {
     _ensureTemplatesLoaded();
     body.innerHTML = '';
 
@@ -279,7 +278,7 @@ function renderTemplatesTab(body) {
     body.appendChild(card.card);
 }
 
-function buildTemplateCard(template, tabBody) {
+const buildTemplateCard = (template, tabBody) => {
     const card = document.createElement('button');
     card.type = 'button';
     card.style.cssText = `
@@ -338,7 +337,7 @@ function buildTemplateCard(template, tabBody) {
     return card;
 }
 
-function openTemplateModal(template, tabBody) {
+const openTemplateModal = (template, tabBody) => {
     const isEdit = !!template;
     const draft = {
         id:    isEdit ? template.id : ('tpl_' + Math.random().toString(36).slice(2, 10)),
@@ -495,12 +494,12 @@ function openTemplateModal(template, tabBody) {
 
 const PAYROLL_GRID = '1.6fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr';
 
-function fmtMoneyComma(val) {
+const fmtMoneyComma = (val) => {
     const v = Number(val ?? 0);
     return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function fmtDateRange(start, end) {
+const fmtDateRange = (start, end) => {
     if (!start || !end) return '—';
     const s = new Date(start + 'T12:00:00');
     const e = new Date(end + 'T12:00:00');
@@ -510,14 +509,14 @@ function fmtDateRange(start, end) {
 
 // Color the Labor % KPI by where the value lands relative to
 // LABOR_BENCHMARKS. Same buckets the legacy scene used.
-function laborAccent(pct) {
+const laborAccent = (pct) => {
     const v = pct ?? 0;
     if (v <= LABOR_BENCHMARKS.targetLaborPct)   return T.green;
     if (v <= LABOR_BENCHMARKS.warningLaborPct)  return T.gold;
     if (v <= LABOR_BENCHMARKS.criticalLaborPct) return T.warning;
     return T.verm;
 }
-function laborSubText(pct) {
+const laborSubText = (pct) => {
     const v = pct ?? 0;
     const t = LABOR_BENCHMARKS.targetLaborPct;
     const w = LABOR_BENCHMARKS.warningLaborPct;
@@ -530,7 +529,7 @@ function laborSubText(pct) {
 
 // Generic KPI card per mockup .kpi style. Used here and (via
 // the _weekStat thin wrapper) in the Week Grid summary strip.
-function buildKpiCard({ label, value, sub = null, accent = T.gold }) {
+const buildKpiCard = ({ label, value, sub = null, accent = T.gold }) => {
     const card = document.createElement('div');
     card.style.cssText = `
         background: ${T.card};
@@ -566,7 +565,7 @@ function buildKpiCard({ label, value, sub = null, accent = T.gold }) {
     return card;
 }
 
-async function renderPayrollTab(body) {
+const renderPayrollTab = async (body) => {
     body.innerHTML = '';
 
     // Loading state
@@ -671,7 +670,7 @@ async function renderPayrollTab(body) {
     body.appendChild(card.card);
 }
 
-function buildPayrollTable(employees) {
+const buildPayrollTable = (employees) => {
     // Pool Share column only appears when at least one active pool exists.
     const hasActivePools = _tipPools.some(p => p.active !== false);
     const grid = hasActivePools
@@ -804,7 +803,7 @@ function buildPayrollTable(employees) {
     return table;
 }
 
-async function exportPayroll(formatId) {
+const exportPayroll = async (formatId) => {
     const summary = PAYROLL_SUMMARY.laborSummary || {};
     const employees = PAYROLL_SUMMARY.employees || [];
     try {
@@ -837,7 +836,7 @@ async function exportPayroll(formatId) {
 
 const TIPOUT_GRID = '1.1fr 1.1fr 0.6fr 1fr 1.6fr 120px';
 
-async function loadTipoutData() {
+const loadTipoutData = async () => {
     const [rulesRes, rolesRes, catsRes] = await Promise.all([
         fetch('/api/v1/config/tipout').catch(() => null),
         fetch('/api/v1/config/roles').catch(() => null),
@@ -856,12 +855,12 @@ async function loadTipoutData() {
     _tipoutCategories = catsRes && catsRes.ok ? await catsRes.json() : [];
 }
 
-function roleLabelById(id) {
+const roleLabelById = (id) => {
     const match = _tipoutRoles.find(r => r.role_id === id);
     return (match && (match.name || match.role_id)) || id || '—';
 }
 
-async function renderTipoutTab(body) {
+const renderTipoutTab = async (body) => {
     body.innerHTML = '';
 
     // Loading state
@@ -920,7 +919,7 @@ async function renderTipoutTab(body) {
     body.appendChild(card.card);
 }
 
-function buildTipoutTable(tabBody) {
+const buildTipoutTable = (tabBody) => {
     const table = document.createElement('div');
     table.style.cssText = `
         background: ${T.well};
@@ -1040,11 +1039,10 @@ function buildTipoutTable(tabBody) {
     return table;
 }
 
-function _newRuleId() {
-    return 'rule_' + Math.random().toString(36).slice(2, 10);
-}
+const _newRuleId = () => 'rule_' + Math.random().toString(36).slice(2, 10);
+;
 
-function openTipoutRuleModal(rule, tabBody) {
+const openTipoutRuleModal = (rule, tabBody) => {
     const isEdit = !!rule;
     const draft = {
         role_from: rule ? rule.role_from : '',
@@ -1199,7 +1197,7 @@ function openTipoutRuleModal(rule, tabBody) {
     });
 }
 
-function confirmDeleteTipoutRule(rule, tabBody) {
+const confirmDeleteTipoutRule = (rule, tabBody) => {
     const content = document.createElement('div');
     content.style.cssText = `font-size: ${T.fs.lg}px; color: ${T.text}; line-height: 1.6;`;
     content.innerHTML = `
@@ -1245,7 +1243,7 @@ function confirmDeleteTipoutRule(rule, tabBody) {
 /* ------------------------------------------
    Small helper: wrap a chipGroup with a label caption.
 ------------------------------------------ */
-function _labeledGroup(label, group) {
+const _labeledGroup = (label, group) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
     const lbl = document.createElement('div');
@@ -1287,13 +1285,12 @@ const DOW_OPTIONS = [
     { id: 'sun', label: 'Sun' },
 ];
 
-function _newPoolId() {
-    return 'pool_' + Math.random().toString(36).slice(2, 10);
-}
+const _newPoolId = () => 'pool_' + Math.random().toString(36).slice(2, 10);
+;
 
 // Formats a pool's optional schedule into a compact display string,
 // e.g. "5:00 PM–2:00 AM · Mon, Tue, Wed, Thu, Fri".
-function _fmtPoolSchedule(schedule) {
+const _fmtPoolSchedule = (schedule) => {
     if (!schedule || (!schedule.start && !schedule.end)) return null;
     const parts = [];
     const s = schedule.start ? fmtTime12(schedule.start) : '';
@@ -1310,7 +1307,7 @@ function _fmtPoolSchedule(schedule) {
 /* ------------------------------------------
    CHUNK 1 — renderPoolsTab entry + card scaffold
 ------------------------------------------ */
-async function renderPoolsTab(body) {
+const renderPoolsTab = async (body) => {
     body.innerHTML = '';
 
     const loading = document.createElement('div');
@@ -1369,7 +1366,7 @@ async function renderPoolsTab(body) {
 /* ------------------------------------------
    CHUNK 3 — card grid + individual pool cards
 ------------------------------------------ */
-function buildPoolsGrid(tabBody) {
+const buildPoolsGrid = (tabBody) => {
     if (_tipPools.length === 0) {
         const empty = document.createElement('div');
         empty.style.cssText = `
@@ -1394,7 +1391,7 @@ function buildPoolsGrid(tabBody) {
     return grid;
 }
 
-function buildPoolCard(pool, tabBody) {
+const buildPoolCard = (pool, tabBody) => {
     const isActive = pool.active !== false;
     const accentColor = isActive ? T.cyan : T.textDim;
 
@@ -1511,7 +1508,7 @@ function buildPoolCard(pool, tabBody) {
    CHUNK 2 — edit modal (name · roles · split · active)
    CHUNK 4 — schedule window (time fields + day-of-week)
 ------------------------------------------ */
-function openPoolModal(pool, tabBody) {
+const openPoolModal = (pool, tabBody) => {
     const isEdit = !!pool;
     const hasSched = isEdit && !!(pool.schedule && (pool.schedule.start || pool.schedule.end || (Array.isArray(pool.schedule.days) && pool.schedule.days.length > 0)));
     const draft = {
@@ -1694,7 +1691,7 @@ function openPoolModal(pool, tabBody) {
     });
 }
 
-function confirmDeletePool(pool, tabBody) {
+const confirmDeletePool = (pool, tabBody) => {
     const content = document.createElement('div');
     content.style.cssText = `font-size: ${T.fs.lg}px; color: ${T.text}; line-height: 1.6;`;
     content.innerHTML = `
@@ -1738,23 +1735,23 @@ function confirmDeletePool(pool, tabBody) {
    Shift drill-down + SHIFT_TIME_ADJUSTED edit land in chunks 3–4.
    ========================================== */
 
-function fmtTime12(time24) {
+const fmtTime12 = (time24) => {
     if (!time24) return '—';
     const [h, m] = time24.split(':').map(Number);
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
     return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
-function fmtTimeISO(isoStr) {
+const fmtTimeISO = (isoStr) => {
     if (!isoStr) return '—';
     const d = new Date(isoStr);
     return fmtTime12(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
 }
-function fmtHrs(val) { return (val ?? 0).toFixed(2) + 'h'; }
-function fmtMoney(val) { return '$' + (val ?? 0).toFixed(2); }
+const fmtHrs = (val) => (val ?? 0).toFixed(2) + 'h'; ;
+const fmtMoney = (val) => '$' + (val ?? 0).toFixed(2); ;
 
 // Sub-toggle pill group (mockup .sub-toggle).
-function buildClockSubToggle(activeSub, onSelect) {
+const buildClockSubToggle = (activeSub, onSelect) => {
     const toggle = document.createElement('div');
     toggle.style.cssText = `
         display: flex; gap: ${T.sp.xs}px;
@@ -1790,20 +1787,20 @@ function buildClockSubToggle(activeSub, onSelect) {
     return toggle;
 }
 
-function startClockRefresh(rerender) {
+const startClockRefresh = (rerender) => {
     stopClockRefresh();
     _clockRefreshTimer = setInterval(() => {
         if (typeof rerender === 'function') rerender();
     }, 30_000);
 }
-function stopClockRefresh() {
+const stopClockRefresh = () => {
     if (_clockRefreshTimer) {
         clearInterval(_clockRefreshTimer);
         _clockRefreshTimer = null;
     }
 }
 
-function renderClockTab(body) {
+const renderClockTab = (body) => {
     stopClockRefresh();
     body.innerHTML = '';
 
@@ -1835,7 +1832,7 @@ function renderClockTab(body) {
 ------------------------------------------ */
 const LIVE_GRID = '1.6fr 0.8fr 0.8fr 0.8fr 120px';
 
-function renderLiveDashboard(wrap) {
+const renderLiveDashboard = (wrap) => {
     wrap.innerHTML = '';
 
     const card = sectionCard({
@@ -2021,7 +2018,7 @@ function renderLiveDashboard(wrap) {
     startClockRefresh(() => renderLiveDashboard(wrap));
 }
 
-function _inlineBadge(text, color) {
+const _inlineBadge = (text, color) => {
     const b = document.createElement('span');
     b.textContent = text;
     b.style.cssText = `
@@ -2040,7 +2037,7 @@ function _inlineBadge(text, color) {
     return b;
 }
 
-function _roleChip(roleId) {
+const _roleChip = (roleId) => {
     const color = roleChipColor(roleId);
     const chip = document.createElement('span');
     chip.textContent = getRoleLabel([roleId]) || roleId;
@@ -2067,7 +2064,7 @@ function _roleChip(roleId) {
    section with no data is skipped. Edit Shift Times button in
    the footer opens the manager-PIN-gated edit modal.
    ========================================== */
-function openShiftDetailModal(shift) {
+const openShiftDetailModal = (shift) => {
     const content = document.createElement('div');
     content.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
 
@@ -2275,7 +2272,7 @@ function openShiftDetailModal(shift) {
     });
 }
 
-function _timeStat(label, value, color) {
+const _timeStat = (label, value, color) => {
     const stat = document.createElement('div');
     stat.innerHTML = `
         <div style="
@@ -2305,7 +2302,7 @@ function _timeStat(label, value, color) {
    Payload shape is identical to the legacy time-attendance scene
    so the backend projection doesn't notice the port.
    ========================================== */
-function openEditShiftModal(shift) {
+const openEditShiftModal = (shift) => {
     const draft = {
         adjustedIn:  shift.clockIn,
         adjustedOut: shift.clockOut,
@@ -2479,7 +2476,7 @@ function openEditShiftModal(shift) {
     });
 }
 
-function _miniStat(label, value) {
+const _miniStat = (label, value) => {
     const s = document.createElement('div');
     s.innerHTML = `
         <div style="
@@ -2501,7 +2498,7 @@ function _miniStat(label, value) {
     return s;
 }
 
-function _buildTimeField(label, value) {
+const _buildTimeField = (label, value) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px; flex: 1;';
     const lbl = document.createElement('label');
@@ -2549,13 +2546,13 @@ const WEEK_GRID = '1.8fr repeat(7, 1fr) 1fr';
 // Cell-color buckets match the mockup: green below 8h, gold 8–10h,
 // warning 10h+. Listed in CONFIGURABLE_SETTINGS.md for eventual
 // per-location tuning.
-function cellColor(hours) {
+const cellColor = (hours) => {
     if (hours >= 10) return T.warning;
     if (hours >= 8)  return T.gold;
     return T.green;
 }
 
-function renderWeekGrid(wrap) {
+const renderWeekGrid = (wrap) => {
     wrap.innerHTML = '';
 
     // Week range caption (Mon–Sun of the most recently completed week).
@@ -2772,7 +2769,7 @@ function renderWeekGrid(wrap) {
     wrap.appendChild(legend);
 }
 
-function _weekStat(label, value, color) {
+const _weekStat = (label, value, color) => {
     return buildKpiCard({ label, value, accent: color });
 }
 
@@ -2780,7 +2777,7 @@ function _weekStat(label, value, color) {
 // detail record in SHIFT_DETAILS. For those, synthesize a best-
 // effort detail object from the timecard row so the drill-down
 // modal still opens.
-function _synthesizeShiftDetail(tc, shift) {
+const _synthesizeShiftDetail = (tc, shift) => {
     const parts = (tc.name || '').split(' ');
     return {
         shift_id: shift.shift_id,
@@ -2827,7 +2824,7 @@ let _tcRange = {
 };
 let _tcEmployeesCache = null;
 
-async function _loadTimeclockEmployees() {
+const _loadTimeclockEmployees = async () => {
     if (_tcEmployeesCache) return _tcEmployeesCache;
     try {
         const res = await fetch('/api/v1/config/employees');
@@ -2850,7 +2847,7 @@ async function _loadTimeclockEmployees() {
     }
 }
 
-function _enumerateDates(startStr, endStr) {
+const _enumerateDates = (startStr, endStr) => {
     const out = [];
     const s = new Date(`${startStr}T00:00:00`);
     const e = new Date(`${endStr}T00:00:00`);
@@ -2863,7 +2860,7 @@ function _enumerateDates(startStr, endStr) {
     return out;
 }
 
-async function _fetchTimeclockRows(selectedIds, startStr, endStr) {
+const _fetchTimeclockRows = async (selectedIds, startStr, endStr) => {
     const dates = _enumerateDates(startStr, endStr);
     if (!dates.length || !selectedIds.length) return [];
     const selectedSet = new Set(selectedIds);
@@ -2916,7 +2913,7 @@ async function _fetchTimeclockRows(selectedIds, startStr, endStr) {
     return rows;
 }
 
-function _tcFmtDayLabel(dStr) {
+const _tcFmtDayLabel = (dStr) => {
     const dt = new Date(`${dStr}T00:00:00`);
     if (!Number.isFinite(dt.getTime())) return dStr;
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -2925,7 +2922,7 @@ function _tcFmtDayLabel(dStr) {
     return `${days[dt.getDay()]} ${mm}/${dd}`;
 }
 
-function renderTimeclockTab(body) {
+const renderTimeclockTab = (body) => {
     body.innerHTML = '';
 
     // ── Toolbar: employee tray + date range picker ──
@@ -3036,7 +3033,7 @@ function renderTimeclockTab(body) {
 
 const TC_GRID = '1.4fr 1fr 0.8fr 0.8fr 0.8fr 0.9fr';
 
-function _buildTimeclockTable(rows, onRefresh) {
+const _buildTimeclockTable = (rows, onRefresh) => {
     const table = document.createElement('div');
     table.style.cssText = `
         background: ${T.well};
@@ -3161,7 +3158,7 @@ function _buildTimeclockTable(rows, onRefresh) {
     return table;
 }
 
-function openTimecardEditModal(row, onSaved) {
+const openTimecardEditModal = (row, onSaved) => {
     const draft = {
         clock_in:  row.clock_in  || '',
         clock_out: row.clock_out || '',
@@ -3314,7 +3311,7 @@ const TAB_RENDERERS = {
    wrappers stay empty. Keeps time-attendance timers etc. from
    running in the background when the user is on another tab.
 ------------------------------------------ */
-function activateTab(tabId, stripRef) {
+const activateTab = (tabId, stripRef) => {
     // Tab-leave hooks: stop any timers that shouldn't keep running
     // in the background when the user is on a different tab.
     if (_activeTabId === 'clock' && tabId !== 'clock') stopClockRefresh();

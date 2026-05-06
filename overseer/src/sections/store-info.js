@@ -14,7 +14,7 @@ import {
 let _currentContainer = null;
 let _storeInfo = null;
 
-async function loadStoreInfo() {
+const loadStoreInfo = async () => {
   try {
     const res = await fetch('/api/v1/config/store');
     if (!res.ok) return { info: {}, branding: {} };
@@ -26,7 +26,7 @@ async function loadStoreInfo() {
   }
 }
 
-async function uploadLogo(file) {
+const uploadLogo = async (file) => {
   const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
   if (!allowed.includes(file.type)) {
     showToast('Logo must be PNG, JPG, WEBP, or GIF', 'error');
@@ -63,7 +63,7 @@ async function uploadLogo(file) {
   return await res.json();
 }
 
-function brandingSection(branding) {
+const brandingSection = (branding) => {
   const { card, body } = sectionCard({
     label: 'Branding',
     note: 'Logo shown on the terminal login screen. PNG, JPG, WEBP, or GIF. Under 2 MB.',
@@ -150,7 +150,7 @@ function brandingSection(branding) {
   return card;
 }
 
-async function mount(container) {
+const mount = async (container) => {
   _currentContainer = container;
   const loaded = await loadStoreInfo();
   _storeInfo = loaded.info;

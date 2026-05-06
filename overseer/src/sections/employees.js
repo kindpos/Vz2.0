@@ -64,7 +64,7 @@ let showInactive = false;
 let activeContainer = null; // reference to scene container
 
 /** Reset state on scene exit */
-function resetState() {
+const resetState = () => {
     searchTerm = '';
     sortField  = 'lastName';
     sortDir    = 'asc';
@@ -73,14 +73,14 @@ function resetState() {
 }
 
 /** Deep-clone EMPLOYEES into mutable working array */
-function loadEmployees() {
+const loadEmployees = () => {
     employees = EMPLOYEES.map(e => ({ ...e }));
 }
 
 /* ------------------------------------------
    FILTER + SORT
 ------------------------------------------ */
-function getFiltered(statusFilter) {
+const getFiltered = (statusFilter) => {
     let list = employees.filter(e => {
         if (statusFilter === 'active') return e.status === 'active';
         return e.status === 'inactive' || e.status === 'do_not_rehire';
@@ -108,7 +108,7 @@ function getFiltered(statusFilter) {
     return list;
 }
 
-function toggleSort(field) {
+const toggleSort = (field) => {
     if (sortField === field) {
         sortDir = sortDir === 'asc' ? 'desc' : 'asc';
     } else {
@@ -118,7 +118,7 @@ function toggleSort(field) {
     refreshTable();
 }
 
-function sortArrow(field) {
+const sortArrow = (field) => {
     if (sortField !== field) return ' ↕';
     return sortDir === 'asc' ? ' ↑' : ' ↓';
 }
@@ -126,7 +126,7 @@ function sortArrow(field) {
 /* ------------------------------------------
    REFRESH — Re-render the table in place
 ------------------------------------------ */
-function refreshTable() {
+const refreshTable = () => {
     if (!activeContainer) return;
     const wrapper = activeContainer.querySelector('#emp-table-wrapper');
     if (wrapper) {
@@ -140,14 +140,14 @@ function refreshTable() {
 ------------------------------------------ */
 const _pendingEvents = [];
 
-function emitEvent(eventType, payload) {
+const emitEvent = (eventType, payload) => {
     const event = { event_type: eventType, payload };
     _pendingEvents.push(event);
     console.log(`[Overseer] Queued: ${eventType}`, payload);
     return event;
 }
 
-async function flushEvents() {
+const flushEvents = async () => {
     if (_pendingEvents.length === 0) return true;
     const batch = _pendingEvents.splice(0);
     const result = await pushChanges(batch);
@@ -162,7 +162,7 @@ async function flushEvents() {
 /* ------------------------------------------
    MAIN VIEW: Employee List
 ------------------------------------------ */
-function buildEmployeeList(container) {
+const buildEmployeeList = (container) => {
     activeContainer = container;
 
     const { body: wrapper } = buildScenePage(container, {
@@ -211,7 +211,7 @@ function buildEmployeeList(container) {
    inactive. Inactive card's label row is wired as a click-toggle
    that collapses the body.
 ------------------------------------------ */
-function buildTableSection(wrapper) {
+const buildTableSection = (wrapper) => {
     const active   = getFiltered('active');
     const inactive = getFiltered('inactive');
 
@@ -284,7 +284,7 @@ function buildTableSection(wrapper) {
 ------------------------------------------ */
 const GRID_COLUMNS = '2.2fr 1.2fr 0.8fr 1fr 0.6fr 1.4fr';
 
-function buildTable(list, isInactive = false) {
+const buildTable = (list, isInactive = false) => {
     const table = document.createElement('div');
     table.style.cssText = `
         background: ${T.well};
@@ -396,7 +396,7 @@ function buildTable(list, isInactive = false) {
    Local textarea builder — forms.js doesn't export one yet.
    Mirrors the field() style from forms.js so glows/spacing match.
 ------------------------------------------ */
-function textArea({ label = null, value = '', rows = 3 }) {
+const textArea = ({ label = null, value = '', rows = 3 }) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px; flex: 1;';
 
@@ -441,7 +441,7 @@ function textArea({ label = null, value = '', rows = 3 }) {
    We need a "Roles" / "Tipped" / "Status" caption on top to
    match the other field builders. Returns { wrap, getSelected }.
 ------------------------------------------ */
-function labeledChipGroup({ label, options, selected, mode, onChange = null }) {
+const labeledChipGroup = ({ label, options, selected, mode, onChange = null }) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px; flex: 1;';
 
@@ -468,7 +468,7 @@ function labeledChipGroup({ label, options, selected, mode, onChange = null }) {
    Emits employee.created / employee.updated with identical
    payload shapes to the pre-port version.
    ========================================== */
-function showAddEditModal(_container, employee) {
+const showAddEditModal = (_container, employee) => {
     const isEdit = !!employee;
     const vals = isEdit ? { ...employee } : {
         firstName: '', lastName: '', roles: ['server'],
@@ -608,7 +608,7 @@ function showAddEditModal(_container, employee) {
 /* ------------------------------------------
    SAVE HANDLER (Add / Edit)
 ------------------------------------------ */
-async function handleSave(isEdit, original, values, close) {
+const handleSave = async (isEdit, original, values, close) => {
     const {
         firstName, lastName, roles, payRate, isTipped,
         status, hireDate, termDate, termReason, notes, pin,
@@ -673,7 +673,7 @@ async function handleSave(isEdit, original, values, close) {
 /* ==========================================
    PIN RESET MODAL (Step 1: Confirmation)
    ========================================== */
-function showPINResetModal(container, employee) {
+const showPINResetModal = (container, employee) => {
     const content = document.createElement('div');
     content.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
 
@@ -771,7 +771,7 @@ function showPINResetModal(container, employee) {
 /* ==========================================
    PIN DISPLAY MODAL (Step 2: One-time show)
    ========================================== */
-function showPINDisplayModal(_container, employee, pin, forceChange) {
+const showPINDisplayModal = (_container, employee, pin, forceChange) => {
     const content = document.createElement('div');
     content.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;';
 
@@ -842,7 +842,7 @@ function showPINDisplayModal(_container, employee, pin, forceChange) {
 /* ------------------------------------------
    PLACEHOLDER BUILDER (for unbuilt subsections)
 ------------------------------------------ */
-function buildPlaceholder(container, title, subtitle, items) {
+const buildPlaceholder = (container, title, subtitle, items) => {
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'padding: 0 8px; max-width: 900px; margin: 0 auto;';
 

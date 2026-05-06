@@ -55,10 +55,9 @@ let displayState = {
 const modalStack = [];
 
 /* ─── HELPERS ────────────────────────────────────────────────── */
-function clone(o) { return JSON.parse(JSON.stringify(o)); }
+const clone = (o) => JSON.parse(JSON.stringify(o)); ;
 
-function getPendingCount() {
-    return pendingChanges.day_parts_new.length
+const getPendingCount = () => pendingChanges.day_parts_new.length
          + pendingChanges.day_parts_edited.length
          + pendingChanges.day_parts_deleted.length
          + pendingChanges.specials_new.length
@@ -69,24 +68,21 @@ function getPendingCount() {
          + pendingChanges.void_reasons_new.length
          + pendingChanges.void_reasons_edited.length
          + pendingChanges.void_reasons_deleted.length;
+;
+
+const defaultWindow = () => { label: '', days: [1,1,1,1,1,1,1], start: '09:00', end: '17:00' ;;
 }
 
-function defaultWindow() {
-    return { label: '', days: [1,1,1,1,1,1,1], start: '09:00', end: '17:00' };
-}
-
-function defaultDayPart() {
-    return {
-        id:          `temp_dp_${Date.now()}`,
+const defaultDayPart = () => {
+        id:          `temp_dp_${Date.now();`,
         name:        '',
         description: '',
         windows:     [defaultWindow()],
     };
 }
 
-function defaultSpecial() {
-    return {
-        id:             `temp_spec_${Date.now()}`,
+const defaultSpecial = () => {
+        id:             `temp_spec_${Date.now();`,
         name:           '',
         discount_type:  'percentage',
         discount_value: 0,
@@ -107,8 +103,7 @@ function defaultSpecial() {
     };
 }
 
-function defaultEmployee() {
-    return {
+const defaultEmployee = () => {
         id:                 'emp_disc',
         separate_rates:     false,
         percentage:         20,
@@ -118,12 +113,11 @@ function defaultEmployee() {
         exclude_categories: [],
         requires_pin:       true,
         active:             true,
-    };
+    ;;
 }
 
-function defaultVoidReason() {
-    return {
-        id:           `temp_void_${Date.now()}`,
+const defaultVoidReason = () => {
+        id:           `temp_void_${Date.now();`,
         name:         '',
         requires_pin: true,
         max_amount:   null,
@@ -132,7 +126,7 @@ function defaultVoidReason() {
 }
 
 /* ─── DATA FETCH ─────────────────────────────────────────────── */
-function migrateDayPart(raw) {
+const migrateDayPart = (raw) => {
     if (Array.isArray(raw.windows) && raw.windows.length > 0) {
         return {
             id:          raw.id || `dp_${Date.now()}`,
@@ -160,7 +154,7 @@ function migrateDayPart(raw) {
     };
 }
 
-function migrateSpecial(raw) {
+const migrateSpecial = (raw) => {
     let schedule;
     if (raw.schedule && typeof raw.schedule === 'object') {
         schedule = {
@@ -217,7 +211,7 @@ function migrateSpecial(raw) {
     };
 }
 
-async function fetchPricingData() {
+const fetchPricingData = async () => {
     try {
         const [dpRes, spRes, otRes, empRes, voidRes, catRes] = await Promise.all([
             fetch('/api/v1/config/pricing/day-parts').catch(() => ({ ok: false })),
@@ -256,7 +250,7 @@ async function fetchPricingData() {
 }
 
 /* ─── WORKING-STATE RESOLVERS ────────────────────────────────── */
-function getAllDayParts() {
+const getAllDayParts = () => {
     const edits = new Map(pendingChanges.day_parts_edited.map(e => [e.id, e]));
     const deleted = new Set(pendingChanges.day_parts_deleted);
     return pricingData.day_parts
@@ -265,7 +259,7 @@ function getAllDayParts() {
         .concat(pendingChanges.day_parts_new);
 }
 
-function getAllSpecials() {
+const getAllSpecials = () => {
     const edits = new Map(pendingChanges.specials_edited.map(e => [e.id, e]));
     const deleted = new Set(pendingChanges.specials_deleted);
     return pricingData.specials
@@ -274,18 +268,17 @@ function getAllSpecials() {
         .concat(pendingChanges.specials_new);
 }
 
-function getAllOrderTypes() {
+const getAllOrderTypes = () => {
     const edits = new Map(pendingChanges.order_types_edited.map(e => [e.id, e]));
     return pricingData.order_types.map(o => edits.has(o.id) ? edits.get(o.id) : clone(o));
 }
 
-function getWorkingEmployee() {
-    return pendingChanges.employee_edited
+const getWorkingEmployee = () => pendingChanges.employee_edited
         ? clone(pendingChanges.employee_edited)
         : clone(pricingData.employee_discount || defaultEmployee());
-}
+;
 
-function getAllVoidReasons() {
+const getAllVoidReasons = () => {
     const edits = new Map(pendingChanges.void_reasons_edited.map(e => [e.id, e]));
     const deleted = new Set(pendingChanges.void_reasons_deleted);
     return pricingData.void_reasons
@@ -295,8 +288,8 @@ function getAllVoidReasons() {
 }
 
 /* ─── CHANGE TRACKERS ────────────────────────────────────────── */
-function trackDayPartCreate(dp) { pendingChanges.day_parts_new.push(dp); renderScene(); }
-function trackDayPartEdit(dp) {
+const trackDayPartCreate = (dp) => { pendingChanges.day_parts_new.push(dp); renderScene(); }
+const trackDayPartEdit = (dp) => {
     if (pendingChanges.day_parts_new.some(n => n.id === dp.id)) {
         const i = pendingChanges.day_parts_new.findIndex(n => n.id === dp.id);
         pendingChanges.day_parts_new[i] = dp; renderScene(); return;
@@ -306,7 +299,7 @@ function trackDayPartEdit(dp) {
     else pendingChanges.day_parts_edited.push(dp);
     renderScene();
 }
-function trackDayPartDelete(id) {
+const trackDayPartDelete = (id) => {
     const i = pendingChanges.day_parts_new.findIndex(n => n.id === id);
     if (i !== -1) { pendingChanges.day_parts_new.splice(i, 1); renderScene(); return; }
     pendingChanges.day_parts_edited = pendingChanges.day_parts_edited.filter(e => e.id !== id);
@@ -314,8 +307,8 @@ function trackDayPartDelete(id) {
     renderScene();
 }
 
-function trackSpecialCreate(sp) { pendingChanges.specials_new.push(sp); renderScene(); }
-function trackSpecialEdit(sp) {
+const trackSpecialCreate = (sp) => { pendingChanges.specials_new.push(sp); renderScene(); }
+const trackSpecialEdit = (sp) => {
     if (pendingChanges.specials_new.some(n => n.id === sp.id)) {
         const i = pendingChanges.specials_new.findIndex(n => n.id === sp.id);
         pendingChanges.specials_new[i] = sp; renderScene(); return;
@@ -325,7 +318,7 @@ function trackSpecialEdit(sp) {
     else pendingChanges.specials_edited.push(sp);
     renderScene();
 }
-function trackSpecialDelete(id) {
+const trackSpecialDelete = (id) => {
     const i = pendingChanges.specials_new.findIndex(n => n.id === id);
     if (i !== -1) { pendingChanges.specials_new.splice(i, 1); renderScene(); return; }
     pendingChanges.specials_edited = pendingChanges.specials_edited.filter(e => e.id !== id);
@@ -333,17 +326,17 @@ function trackSpecialDelete(id) {
     renderScene();
 }
 
-function trackOrderTypeEdit(ot) {
+const trackOrderTypeEdit = (ot) => {
     const i = pendingChanges.order_types_edited.findIndex(e => e.id === ot.id);
     if (i !== -1) pendingChanges.order_types_edited[i] = ot;
     else pendingChanges.order_types_edited.push(ot);
     renderScene();
 }
 
-function trackEmployeeEdit(emp) { pendingChanges.employee_edited = emp; renderScene(); }
+const trackEmployeeEdit = (emp) => { pendingChanges.employee_edited = emp; renderScene(); }
 
-function trackVoidReasonCreate(r) { pendingChanges.void_reasons_new.push(r); renderScene(); }
-function trackVoidReasonEdit(r) {
+const trackVoidReasonCreate = (r) => { pendingChanges.void_reasons_new.push(r); renderScene(); }
+const trackVoidReasonEdit = (r) => {
     if (pendingChanges.void_reasons_new.some(n => n.id === r.id)) {
         const i = pendingChanges.void_reasons_new.findIndex(n => n.id === r.id);
         pendingChanges.void_reasons_new[i] = r; renderScene(); return;
@@ -353,7 +346,7 @@ function trackVoidReasonEdit(r) {
     else pendingChanges.void_reasons_edited.push(r);
     renderScene();
 }
-function trackVoidReasonDelete(id) {
+const trackVoidReasonDelete = (id) => {
     const i = pendingChanges.void_reasons_new.findIndex(n => n.id === id);
     if (i !== -1) { pendingChanges.void_reasons_new.splice(i, 1); renderScene(); return; }
     pendingChanges.void_reasons_edited = pendingChanges.void_reasons_edited.filter(e => e.id !== id);
@@ -394,17 +387,16 @@ export function registerPricingSpecials(sceneManager) {
     });
 }
 
-function emptyChanges() {
-    return {
+const emptyChanges = () => {
         day_parts_new: [], day_parts_edited: [], day_parts_deleted: [],
         specials_new: [], specials_edited: [], specials_deleted: [],
         order_types_edited: [],
         employee_edited: null,
         void_reasons_new: [], void_reasons_edited: [], void_reasons_deleted: [],
-    };
+    ;;
 }
 
-function sceneSubtitle() {
+const sceneSubtitle = () => {
     const dp = getAllDayParts().length;
     const sp = getAllSpecials().length;
     const ot = getAllOrderTypes().length;
@@ -413,7 +405,7 @@ function sceneSubtitle() {
 }
 
 /* ─── MAIN SCENE RENDER ──────────────────────────────────────── */
-function renderScene() {
+const renderScene = () => {
     if (!bodyMount) return;
     bodyMount.innerHTML = '';
 
@@ -435,7 +427,7 @@ function renderScene() {
     updateSaveBar();
 }
 
-function buildSuperHeader(label, color) {
+const buildSuperHeader = (label, color) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         display: flex; align-items: center; gap: 14px;
@@ -456,7 +448,7 @@ function buildSuperHeader(label, color) {
     return wrap;
 }
 
-function buildAccordion(key, title, meta, accentColor, bodyBuilder, countBadge = 0) {
+const buildAccordion = (key, title, meta, accentColor, bodyBuilder, countBadge = 0) => {
     const isOpen = displayState.openSection === key;
     const wrap = document.createElement('div');
     wrap.style.cssText = `
@@ -544,7 +536,7 @@ function buildAccordion(key, title, meta, accentColor, bodyBuilder, countBadge =
 }
 
 /* ─── DAY PARTS ACCORDION ────────────────────────────────────── */
-function buildDayPartsAccordion() {
+const buildDayPartsAccordion = () => {
     const parts = getAllDayParts();
     const pendingCount = pendingChanges.day_parts_new.length
                        + pendingChanges.day_parts_edited.length
@@ -581,7 +573,7 @@ function buildDayPartsAccordion() {
     );
 }
 
-function buildDayPartCard(dp) {
+const buildDayPartCard = (dp) => {
     const pending = pendingChanges.day_parts_new.some(n => n.id === dp.id)
                  || pendingChanges.day_parts_edited.some(e => e.id === dp.id);
 
@@ -624,14 +616,14 @@ function buildDayPartCard(dp) {
     return card;
 }
 
-function summarizeWindows(windows) {
+const summarizeWindows = (windows) => {
     if (!windows || windows.length === 0) return 'No windows defined';
     if (windows.length === 1) return formatWindow(windows[0]);
     const first = formatWindow(windows[0]);
     return `${first} · ${windows.length} windows`;
 }
 
-function formatWindow(win) {
+const formatWindow = (win) => {
     const days = win.days || [1,1,1,1,1,1,1];
     const onCount = days.filter(Boolean).length;
     let daysStr;
@@ -644,7 +636,7 @@ function formatWindow(win) {
 }
 
 /* ─── SPECIALS ACCORDION ─────────────────────────────────────── */
-function buildSpecialsAccordion() {
+const buildSpecialsAccordion = () => {
     const specials = getAllSpecials();
     const pendingCount = pendingChanges.specials_new.length
                        + pendingChanges.specials_edited.length
@@ -681,7 +673,7 @@ function buildSpecialsAccordion() {
     );
 }
 
-function buildSpecialCard(sp) {
+const buildSpecialCard = (sp) => {
     const pending = pendingChanges.specials_new.some(n => n.id === sp.id)
                  || pendingChanges.specials_edited.some(e => e.id === sp.id);
     const isManual = sp.schedule.mode === 'manual';
@@ -784,14 +776,14 @@ function buildSpecialCard(sp) {
     return card;
 }
 
-function makeDot() {
+const makeDot = () => {
     const d = document.createElement('span');
     d.textContent = '·';
     d.style.color = withAlpha(C.text, 0.25);
     return d;
 }
 
-function formatDiscountValue(sp) {
+const formatDiscountValue = (sp) => {
     const v = sp.discount_value;
     if (sp.discount_type === 'percentage') return `${v > 0 ? '+' : ''}${v}%`;
     if (sp.discount_type === 'flat')       return `${v >= 0 ? '+' : '−'}$${Math.abs(v).toFixed(2)} off`;
@@ -799,7 +791,7 @@ function formatDiscountValue(sp) {
     return String(v);
 }
 
-function formatScheduleDescriptor(sp) {
+const formatScheduleDescriptor = (sp) => {
     if (sp.schedule.mode === 'manual') return '⚑ MANUAL';
     if (sp.schedule.mode === 'daypart') {
         const names = (sp.schedule.daypart_ids || [])
@@ -815,7 +807,7 @@ function formatScheduleDescriptor(sp) {
     return `⏰ ${formatWindow(win).toUpperCase()}`;
 }
 
-function formatScopeDescriptor(sp) {
+const formatScopeDescriptor = (sp) => {
     if (sp.scope.mode === 'all') return 'ALL ITEMS';
     if (sp.scope.mode === 'items') return `${sp.scope.ids.length} ITEMS`;
     const cats = (sp.scope.ids || [])
@@ -827,7 +819,7 @@ function formatScopeDescriptor(sp) {
 }
 
 /* ─── ORDER TYPES ACCORDION ──────────────────────────────────── */
-function buildOrderTypesAccordion() {
+const buildOrderTypesAccordion = () => {
     const types = getAllOrderTypes();
     const meta = types.map(t => `${t.name} ${fmtPct(t.adjustment)}`).join(' · ');
     return buildAccordion(
@@ -846,12 +838,12 @@ function buildOrderTypesAccordion() {
     );
 }
 
-function fmtPct(n) {
+const fmtPct = (n) => {
     if (!n) return '0%';
     return `${n > 0 ? '+' : ''}${n}%`;
 }
 
-function buildOrderTypeRow(ot) {
+const buildOrderTypeRow = (ot) => {
     const edited = pendingChanges.order_types_edited.some(e => e.id === ot.id);
     const row = document.createElement('div');
     row.style.cssText = `
@@ -905,7 +897,7 @@ function buildOrderTypeRow(ot) {
     return row;
 }
 
-function buildInlineToggle(initial, onChange) {
+const buildInlineToggle = (initial, onChange) => {
     const state = { on: !!initial };
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -939,7 +931,7 @@ function buildInlineToggle(initial, onChange) {
 }
 
 /* ─── EMPLOYEE DISCOUNT ACCORDION ────────────────────────────── */
-function buildEmployeeAccordion() {
+const buildEmployeeAccordion = () => {
     const emp = getWorkingEmployee();
     const meta = emp.separate_rates
         ? `On-duty ${emp.on_duty_rate}% · Off-duty ${emp.off_duty_rate}%`
@@ -993,11 +985,10 @@ function buildEmployeeAccordion() {
     );
 }
 
-function friendlyAppliesTo(a) {
-    return { everything: 'everything', food_only: 'food only', drinks_only: 'drinks only' }[a] || a;
+const friendlyAppliesTo = (a) => { everything: 'everything', food_only: 'food only', drinks_only: 'drinks only' ;[a] || a;
 }
 
-function buildRateCol(label, value, color) {
+const buildRateCol = (label, value, color) => {
     const col = document.createElement('div');
     const lbl = document.createElement('div');
     lbl.textContent = label;
@@ -1019,7 +1010,7 @@ function buildRateCol(label, value, color) {
     return col;
 }
 
-function makePill(text, tone) {
+const makePill = (text, tone) => {
     const toneMap = {
         mint:  { bg: withAlpha(C.green, 0.15),    fg: C.green  },
         gold:  { bg: withAlpha(C.gold, 0.18),     fg: C.gold   },
@@ -1039,7 +1030,7 @@ function makePill(text, tone) {
 }
 
 /* ─── VOID REASONS ACCORDION ─────────────────────────────────── */
-function buildVoidReasonsAccordion() {
+const buildVoidReasonsAccordion = () => {
     const reasons = getAllVoidReasons();
     const pinCount = reasons.filter(r => r.requires_pin).length;
     const pendingCount = pendingChanges.void_reasons_new.length
@@ -1071,7 +1062,7 @@ function buildVoidReasonsAccordion() {
     );
 }
 
-function buildVoidReasonRow(r) {
+const buildVoidReasonRow = (r) => {
     const pending = pendingChanges.void_reasons_new.some(n => n.id === r.id)
                  || pendingChanges.void_reasons_edited.some(e => e.id === r.id);
     const row = document.createElement('div');
@@ -1101,7 +1092,7 @@ function buildVoidReasonRow(r) {
 }
 
 /* ─── FOOTER / SAVE BAR ──────────────────────────────────────── */
-function buildPendingFooter() {
+const buildPendingFooter = () => {
     const wrap = document.createElement('div');
     footerMount = wrap;
     wrap.style.cssText = `
@@ -1145,7 +1136,7 @@ function buildPendingFooter() {
     return wrap;
 }
 
-function updateSaveBar() {
+const updateSaveBar = () => {
     const n = getPendingCount();
     if (footerMount) {
         footerMount.style.display = n === 0 ? 'none' : 'block';
@@ -1160,7 +1151,7 @@ function updateSaveBar() {
 }
 
 /* ─── BUTTONS ────────────────────────────────────────────────── */
-function buildPillButton(label, variant, onClick, opts = {}) {
+const buildPillButton = (label, variant, onClick, opts = {}) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = label;
@@ -1190,7 +1181,7 @@ function buildPillButton(label, variant, onClick, opts = {}) {
     return btn;
 }
 
-function buildAddBtn(label, color) {
+const buildAddBtn = (label, color) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
@@ -1213,7 +1204,7 @@ function buildAddBtn(label, color) {
 }
 
 /* ─── MODAL SYSTEM ───────────────────────────────────────────── */
-function openModal(titleText, contentBuilder, opts = {}) {
+const openModal = (titleText, contentBuilder, opts = {}) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = `
         position: fixed; inset: 0;
@@ -1271,7 +1262,7 @@ function openModal(titleText, contentBuilder, opts = {}) {
     return overlay;
 }
 
-function closeModal(target) {
+const closeModal = (target) => {
     if (modalStack.length === 0) return;
     const t = target || modalStack[modalStack.length - 1];
     const idx = modalStack.indexOf(t);
@@ -1281,7 +1272,7 @@ function closeModal(target) {
 }
 
 /* ─── FORM FIELDS ────────────────────────────────────────────── */
-function buildTextField(parent, labelText, value, opts = {}) {
+const buildTextField = (parent, labelText, value, opts = {}) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
     const lbl = document.createElement('label');
@@ -1309,7 +1300,7 @@ function buildTextField(parent, labelText, value, opts = {}) {
     return { wrap, input };
 }
 
-function buildSelectField(parent, labelText, value, choices) {
+const buildSelectField = (parent, labelText, value, choices) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
     const lbl = document.createElement('label');
@@ -1338,7 +1329,7 @@ function buildSelectField(parent, labelText, value, choices) {
     return { wrap, input: sel };
 }
 
-function buildSectionLabel(text, color) {
+const buildSectionLabel = (text, color) => {
     const lbl = document.createElement('div');
     lbl.textContent = text;
     lbl.style.cssText = `
@@ -1350,13 +1341,13 @@ function buildSectionLabel(text, color) {
     return lbl;
 }
 
-function buildDivider() {
+const buildDivider = () => {
     const d = document.createElement('div');
     d.style.cssText = `height: 1px; background: ${C2.hairline}; margin: 4px 0;`;
     return d;
 }
 
-function buildSegmented(options, currentValue, onSelect, activeColor) {
+const buildSegmented = (options, currentValue, onSelect, activeColor) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         display: flex; gap: 4px;
@@ -1409,7 +1400,7 @@ function buildSegmented(options, currentValue, onSelect, activeColor) {
     };
 }
 
-function buildDayChips(initialDays, onChange, activeColor) {
+const buildDayChips = (initialDays, onChange, activeColor) => {
     const days = (initialDays && initialDays.length === 7) ? initialDays.slice() : [1,1,1,1,1,1,1];
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; gap: 4px; flex-wrap: wrap;';
@@ -1443,7 +1434,7 @@ function buildDayChips(initialDays, onChange, activeColor) {
     return { wrap, getDays: () => days.slice(), setDays: (d) => { d.forEach((v, i) => days[i] = v ? 1 : 0); }};
 }
 
-function buildToggleRow(parent, label, initial, onChange, color) {
+const buildToggleRow = (parent, label, initial, onChange, color) => {
     const row = document.createElement('div');
     row.style.cssText = 'display: flex; align-items: center; gap: 12px;';
     const state = { on: !!initial };
@@ -1486,7 +1477,7 @@ function buildToggleRow(parent, label, initial, onChange, color) {
 }
 
 /* ─── WINDOW EDITOR (shared) ─────────────────────────────────── */
-function buildWindowEditor(parent, windows, accent) {
+const buildWindowEditor = (parent, windows, accent) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
     const windowsWrap = document.createElement('div');
@@ -1589,7 +1580,7 @@ function buildWindowEditor(parent, windows, accent) {
 }
 
 /* ─── DAY PART MODAL ─────────────────────────────────────────── */
-function openDayPartModal(existing) {
+const openDayPartModal = (existing) => {
     const isEdit = !!existing;
     const dp = existing ? clone(existing) : defaultDayPart();
 
@@ -1642,13 +1633,12 @@ function openDayPartModal(existing) {
     }, { accent: C2.lavender });
 }
 
-function findSpecialsUsingDayPart(dpId) {
-    return getAllSpecials().filter(sp =>
+const findSpecialsUsingDayPart = (dpId) => getAllSpecials().filter(sp =>
         sp.schedule.mode === 'daypart' && (sp.schedule.daypart_ids || []).includes(dpId)
     );
-}
+;
 
-function openDayPartDependentsModal(dp, dependents) {
+const openDayPartDependentsModal = (dp, dependents) => {
     openModal('Day part in use', (body, modalEl, ov) => {
         const hint = document.createElement('div');
         hint.innerHTML = `<strong style="color:${C.text};">${dp.name}</strong> is used by <strong style="color:${C2.warning};">${dependents.length}</strong> active special${dependents.length === 1 ? '' : 's'}. Remove it from them (or swap their day part) before deleting.`;
@@ -1679,7 +1669,7 @@ function openDayPartDependentsModal(dp, dependents) {
 }
 
 /* ─── SPECIAL MODAL ──────────────────────────────────────────── */
-function openSpecialModal(existing) {
+const openSpecialModal = (existing) => {
     const isEdit = !!existing;
     const sp = existing ? clone(existing) : defaultSpecial();
 
@@ -1945,7 +1935,7 @@ function openSpecialModal(existing) {
 }
 
 /* ─── EMPLOYEE DISCOUNT MODAL ────────────────────────────────── */
-function openEmployeeModal(existing) {
+const openEmployeeModal = (existing) => {
     const emp = clone(existing);
 
     openModal('Employee Discount Settings', (body, modalEl, ov) => {
@@ -2042,7 +2032,7 @@ function openEmployeeModal(existing) {
 }
 
 /* ─── VOID REASON MODAL ──────────────────────────────────────── */
-function openVoidReasonModal(existing) {
+const openVoidReasonModal = (existing) => {
     const isEdit = !!existing;
     const r = existing ? clone(existing) : defaultVoidReason();
 
@@ -2084,7 +2074,7 @@ function openVoidReasonModal(existing) {
 }
 
 /* ─── EVENT GENERATION ───────────────────────────────────────── */
-function generatePricingEvents() {
+const generatePricingEvents = () => {
     const events = [];
     const batch_id = `pricing_batch_${Date.now()}`;
     const ts = () => new Date().toISOString();
@@ -2137,7 +2127,7 @@ function generatePricingEvents() {
     return events;
 }
 
-async function handleSaveChanges() {
+const handleSaveChanges = async () => {
     const events = generatePricingEvents();
     if (events.length === 0) return;
 
@@ -2191,7 +2181,7 @@ async function handleSaveChanges() {
 }
 
 /* ─── ANIMATION ──────────────────────────────────────────────── */
-function injectAnimations() {
+const injectAnimations = () => {
     if (document.getElementById('psp-keyframes')) return;
     const s = document.createElement('style');
     s.id = 'psp-keyframes';

@@ -142,10 +142,9 @@ vi.mock('../data/sample-employees.js', () => ({
 
 // --- Helpers ---
 
-function findButtonByLabel(root, label) {
-  return Array.from(root.querySelectorAll('button'))
+const findButtonByLabel = (root, label) => Array.from(root.querySelectorAll('button'))
     .find((b) => b.textContent.trim() === label);
-}
+;
 
 // --- Tests ---
 

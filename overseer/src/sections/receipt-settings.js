@@ -7,7 +7,7 @@ import { pushChanges } from '../services/config-push.js';
 
 let currentContainer = null;
 
-function showToast(msg, type = 'success') {
+const showToast = (msg, type = 'success') => {
     const toast = document.createElement('div');
     const color = type === 'error' ? 'var(--color-vermillion)' : 'var(--color-green)';
     toast.style.cssText = `position:fixed;top:24px;right:24px;z-index:10000;background:rgba(0,0,0,0.85);border:1px solid ${color};color:${color};padding:14px 24px;border-radius:8px;font-family:var(--font-body);font-size:22px;`;
@@ -16,7 +16,7 @@ function showToast(msg, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-async function loadStoreInfo() {
+const loadStoreInfo = async () => {
     try {
         const res = await fetch('/api/v1/config/store');
         if (!res.ok) return {};
@@ -25,14 +25,14 @@ async function loadStoreInfo() {
     } catch { return {}; }
 }
 
-function section(title) {
+const section = (title) => {
     const h = document.createElement('div');
     h.style.cssText = 'font-family:var(--font-heading);font-size:22px;color:var(--color-mint);margin:24px 0 12px 0;';
     h.textContent = title;
     return h;
 }
 
-function toggle(label, checked) {
+const toggle = (label, checked) => {
     const wrap = document.createElement('label');
     wrap.style.cssText = `
         display: inline-flex; align-items: center; gap: 10px;
@@ -56,7 +56,7 @@ function toggle(label, checked) {
     return { wrap, cb };
 }
 
-function textInput(label, id, value, placeholder = '', type = 'text') {
+const textInput = (label, id, value, placeholder = '', type = 'text') => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom: 14px;';
     const lbl = document.createElement('label');
@@ -74,7 +74,7 @@ function textInput(label, id, value, placeholder = '', type = 'text') {
     return { wrap, input: inp };
 }
 
-async function mount(container) {
+const mount = async (container) => {
     const info = await loadStoreInfo();
     const receipt = info.receipt_settings || {};
 

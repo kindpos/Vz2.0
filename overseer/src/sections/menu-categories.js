@@ -75,19 +75,19 @@ let pendingChanges = {
 /* ─── DRAFT (localStorage) ───────────────────────────────────── */
 const DRAFT_KEY = 'kindpos.menu.draft';
 
-function saveDraft() {
+const saveDraft = () => {
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(pendingChanges)); }
     catch (e) { console.warn('[MenuDraft] save failed:', e); }
 }
 
-function loadDraft() {
+const loadDraft = () => {
     try {
         const raw = localStorage.getItem(DRAFT_KEY);
         return raw ? JSON.parse(raw) : null;
     } catch { return null; }
 }
 
-function clearDraft() {
+const clearDraft = () => {
     localStorage.removeItem(DRAFT_KEY);
 }
 
@@ -103,21 +103,19 @@ let displayState = {
 const modalStack = [];
 
 /* ─── DATA FETCH ─────────────────────────────────────────────── */
-function defaultSchedule() {
-    return { enabled: false, grace_minutes: 10, windows: [] };
+const defaultSchedule = () => { enabled: false, grace_minutes: 10, windows: [] ;;
 }
 
-function defaultWindow() {
-    return {
+const defaultWindow = () => {
         label: '',
         days:  [1,1,1,1,1,1,1],
         start: '09:00',
         end:   '21:00',
         price_adjustment_pct: 0,
-    };
+    ;;
 }
 
-function migrateCategorySchedule(raw) {
+const migrateCategorySchedule = (raw) => {
     if (raw.schedule && typeof raw.schedule === 'object') {
         return {
             enabled:       raw.schedule.enabled === true,
@@ -150,7 +148,7 @@ function migrateCategorySchedule(raw) {
     return defaultSchedule();
 }
 
-async function fetchMenuData() {
+const fetchMenuData = async () => {
     try {
         const [menuRes, catRes, itemRes] = await Promise.all([
             fetch('/api/v1/menu'),
@@ -274,29 +272,27 @@ async function fetchMenuData() {
 }
 
 /* ─── HELPERS ────────────────────────────────────────────────── */
-function clone(o) { return JSON.parse(JSON.stringify(o)); }
-function formatPrice(p) {
+const clone = (o) => JSON.parse(JSON.stringify(o)); ;
+const formatPrice = (p) => {
     const n = parseFloat(p);
     return isNaN(n) ? '$0.00' : '$' + n.toFixed(2);
 }
 
-function getPendingCount() {
-    return pendingChanges.new.length
+const getPendingCount = () => pendingChanges.new.length
          + pendingChanges.edited.length
          + pendingChanges.deleted.length
          + Object.keys(pendingChanges.itemOrderByCategory).length
          + (pendingChanges.categoryOrder ? 1 : 0)
          + Object.keys(pendingChanges.availability).length;
-}
+;
 
-function getWorkingItem(id) {
-    return pendingChanges.new.find(i => i.id === id)
+const getWorkingItem = (id) => pendingChanges.new.find(i => i.id === id)
         || pendingChanges.edited.find(i => i.id === id)
         || menuData.items.find(i => i.id === id)
         || null;
-}
+;
 
-function getAllWorkingItems() {
+const getAllWorkingItems = () => {
     const edits = new Map(
         pendingChanges.edited
             .filter(e => !e._isCategory)
@@ -314,7 +310,7 @@ function getAllWorkingItems() {
     });
 }
 
-function getAllWorkingCategories() {
+const getAllWorkingCategories = () => {
     const edits = new Map(
         pendingChanges.edited.filter(e => e._isCategory).map(e => [e.id, e])
     );
@@ -332,7 +328,7 @@ function getAllWorkingCategories() {
     return base;
 }
 
-function itemDrivesPricingGroup(item) {
+const itemDrivesPricingGroup = (item) => {
     const ids = item.mandatory_group_ids || [];
     return ids.some(gid => {
         const g = menuData.groupsById[gid];
@@ -340,7 +336,7 @@ function itemDrivesPricingGroup(item) {
     });
 }
 
-function modifierPriceDisplay(modifier, item) {
+const modifierPriceDisplay = (modifier, item) => {
     if (!modifier) return null;
     const hasSize = modifier.price_by_option && Object.keys(modifier.price_by_option).length > 0;
     if (!hasSize) return modifier.base_price > 0 ? '+' + formatPrice(modifier.base_price) : null;
@@ -351,7 +347,7 @@ function modifierPriceDisplay(modifier, item) {
     return min === max ? '+' + formatPrice(min) : '+$' + min.toFixed(2) + '–' + max.toFixed(2);
 }
 
-function mismatchedAtoms(item) {
+const mismatchedAtoms = (item) => {
     if (itemDrivesPricingGroup(item)) return [];
     return (item.included_modifier_ids || []).filter(aid => {
         const a = menuData.atomsById[aid];
@@ -359,7 +355,7 @@ function mismatchedAtoms(item) {
     });
 }
 
-function formatWindowSummary(win) {
+const formatWindowSummary = (win) => {
     const days = win.days || [1,1,1,1,1,1,1];
     const onCount = days.filter(Boolean).length;
     let daysStr;
@@ -425,7 +421,7 @@ export function registerMenuCategories(sceneManager) {
 }
 
 /* ─── SCENE RENDER ───────────────────────────────────────────── */
-function renderScene() {
+const renderScene = () => {
     if (!bodyMount) return;
     bodyMount.innerHTML = '';
 
@@ -510,7 +506,7 @@ function renderScene() {
 }
 
 /* ─── ITEM DETAIL PANEL (right column) ───────────────────────── */
-function buildItemDetailPanel(items) {
+const buildItemDetailPanel = (items) => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${T.card};
@@ -541,7 +537,7 @@ function buildItemDetailPanel(items) {
     return panel;
 }
 
-function buildItemDetailBody(item) {
+const buildItemDetailBody = (item) => {
     const body = document.createElement('div');
     body.style.cssText = 'padding: 18px 22px; overflow-y: auto;';
 
@@ -574,7 +570,7 @@ function buildItemDetailBody(item) {
     return body;
 }
 
-function buildDangerZone(item) {
+const buildDangerZone = (item) => {
     const wrap = document.createElement('div');
 
     const divider = document.createElement('div');
@@ -662,7 +658,7 @@ function buildDangerZone(item) {
     return wrap;
 }
 
-function buildBodyLabel(text, color) {
+const buildBodyLabel = (text, color) => {
     const el = document.createElement('div');
     el.textContent = text;
     el.style.cssText = `
@@ -676,7 +672,7 @@ function buildBodyLabel(text, color) {
     return el;
 }
 
-function buildShadowChip(label, accent) {
+const buildShadowChip = (label, accent) => {
     const chip = document.createElement('div');
     chip.style.cssText = `
         position: relative;
@@ -711,7 +707,7 @@ function buildShadowChip(label, accent) {
     return chip;
 }
 
-function buildAddLink(text, onClick) {
+const buildAddLink = (text, onClick) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = text;
@@ -734,10 +730,9 @@ function buildAddLink(text, onClick) {
     return btn;
 }
 
-function apiPutItem(url, body) {
-    return fetch(url, {
+const apiPutItem = (url, body) => fetch(url, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' ;,
         body: body == null ? undefined : JSON.stringify(body),
     }).then(r => {
         if (!r.ok) throw new Error(`PUT ${url} → ${r.status}`);
@@ -745,8 +740,7 @@ function apiPutItem(url, body) {
     });
 }
 
-function apiPatchItem(itemId, patch) {
-    return fetch(`/api/v1/menu-items/${encodeURIComponent(itemId)}`, {
+const apiPatchItem = (itemId, patch) => fetch(`/api/v1/menu-items/${encodeURIComponent(itemId);`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
@@ -756,8 +750,7 @@ function apiPatchItem(itemId, patch) {
     });
 }
 
-function apiDeleteItem(itemId) {
-    return fetch(`/api/v1/menu-items/${encodeURIComponent(itemId)}`, {
+const apiDeleteItem = (itemId) => fetch(`/api/v1/menu-items/${encodeURIComponent(itemId);`, {
         method: 'DELETE',
     }).then(r => {
         if (!r.ok) throw new Error(`DELETE failed: ${r.status}`);
@@ -765,8 +758,7 @@ function apiDeleteItem(itemId) {
     });
 }
 
-function apiPostItem86(itemId) {
-    return fetch(`/api/v1/menu-items/${encodeURIComponent(itemId)}/86`, {
+const apiPostItem86 = (itemId) => fetch(`/api/v1/menu-items/${encodeURIComponent(itemId);/86`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
     }).then(r => {
@@ -775,7 +767,7 @@ function apiPostItem86(itemId) {
     });
 }
 
-function openItemPicker(title, options, onSelect) {
+const openItemPicker = (title, options, onSelect) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = `
         position: fixed; inset: 0;
@@ -887,7 +879,7 @@ function openItemPicker(title, options, onSelect) {
     document.body.appendChild(overlay);
 }
 
-function buildBasePriceSection(parent, item, driverGroup) {
+const buildBasePriceSection = (parent, item, driverGroup) => {
     parent.appendChild(buildBodyLabel('BASE PRICE', T.gold));
 
     if (driverGroup) {
@@ -1010,7 +1002,7 @@ function buildBasePriceSection(parent, item, driverGroup) {
     parent.appendChild(card);
 }
 
-function buildItemBaseBySizeSection(parent, item, driverGroup) {
+const buildItemBaseBySizeSection = (parent, item, driverGroup) => {
     parent.appendChild(buildBodyLabel('ITEM BASE BY SIZE', T.gold));
 
     const wrap = document.createElement('div');
@@ -1144,7 +1136,7 @@ function buildItemBaseBySizeSection(parent, item, driverGroup) {
     parent.appendChild(wrap);
 }
 
-function buildMandatoryGroupsSection(parent, item) {
+const buildMandatoryGroupsSection = (parent, item) => {
     parent.appendChild(buildBodyLabel('MANDATORY GROUPS', T.green));
 
     const card = buildStaticCard({ accent: T.gold });
@@ -1199,7 +1191,7 @@ function buildMandatoryGroupsSection(parent, item) {
     parent.appendChild(card);
 }
 
-function buildIncludedModifiersSection(parent, item) {
+const buildIncludedModifiersSection = (parent, item) => {
     parent.appendChild(buildBodyLabel('INCLUDED MODIFIERS', T.green));
 
     const card = buildStaticCard({ accent: T.elec });
@@ -1264,7 +1256,7 @@ function buildIncludedModifiersSection(parent, item) {
     parent.appendChild(card);
 }
 
-function buildOptionGroupOverridesSection(parent, item) {
+const buildOptionGroupOverridesSection = (parent, item) => {
     parent.appendChild(buildBodyLabel('OPTION GROUP OVERRIDES', T.moon));
 
     const card = buildStaticCard({ accent: T.moon });
@@ -1387,7 +1379,7 @@ function buildOptionGroupOverridesSection(parent, item) {
     parent.appendChild(card);
 }
 
-function buildSizePriceOverridesSection(parent, item) {
+const buildSizePriceOverridesSection = (parent, item) => {
     parent.appendChild(buildBodyLabel('SIZE PRICE OVERRIDES', T.moon));
 
     const card = buildStaticCard({ accent: T.moon });
@@ -1538,7 +1530,7 @@ function buildSizePriceOverridesSection(parent, item) {
     parent.appendChild(card);
 }
 
-function buildItemDetailHeader(item) {
+const buildItemDetailHeader = (item) => {
     const header = document.createElement('div');
     header.style.cssText = `
         height: 80px;
@@ -1674,7 +1666,7 @@ function buildItemDetailHeader(item) {
     return header;
 }
 
-function buildItemBadge(label, bg, color) {
+const buildItemBadge = (label, bg, color) => {
     const b = document.createElement('span');
     b.textContent = label;
     b.style.cssText = `
@@ -1693,7 +1685,7 @@ function buildItemBadge(label, bg, color) {
 }
 
 /* ─── FILTER ROW ─────────────────────────────────────────────── */
-function buildFilterRow() {
+const buildFilterRow = () => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 0 12px;';
 
@@ -1816,7 +1808,7 @@ function buildFilterRow() {
     return wrap;
 }
 
-function buildFilterChip(label, active, onClick, count = null, disabled = false) {
+const buildFilterChip = (label, active, onClick, count = null, disabled = false) => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.style.cssText = `
@@ -1850,7 +1842,7 @@ function buildFilterChip(label, active, onClick, count = null, disabled = false)
 }
 
 /* ─── CATEGORY SECTION ───────────────────────────────────────── */
-function buildCategorySection(cat, allItems, isFirst, isLast) {
+const buildCategorySection = (cat, allItems, isFirst, isLast) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 10px; margin-top: 12px;';
 
@@ -2008,7 +2000,7 @@ function buildCategorySection(cat, allItems, isFirst, isLast) {
     return wrap;
 }
 
-function buildArrowButton(symbol, disabled, onClick) {
+const buildArrowButton = (symbol, disabled, onClick) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = symbol;
@@ -2029,7 +2021,7 @@ function buildArrowButton(symbol, disabled, onClick) {
 }
 
 /* ─── TILE ──────────────────────────────────────────────────── */
-function buildItemTile(item, cat, gridEl) {
+const buildItemTile = (item, cat, gridEl) => {
     const isNew     = pendingChanges.new.some(i => i.id === item.id);
     const isEdited  = pendingChanges.edited.some(i => i.id === item.id && !i._isCategory);
     const isDeleted = pendingChanges.deleted.includes(item.id);
@@ -2130,7 +2122,7 @@ function buildItemTile(item, cat, gridEl) {
     return tile;
 }
 
-function buildGrip() {
+const buildGrip = () => {
     const grip = document.createElement('div');
     grip.style.cssText = `
         position: absolute; top: 8px; right: 8px;
@@ -2150,7 +2142,7 @@ function buildGrip() {
     return grip;
 }
 
-function buildAvailabilityDot(item, tile) {
+const buildAvailabilityDot = (item, tile) => {
     const dot = document.createElement('button');
     dot.type = 'button';
     dot.className = '_tile-dot';
@@ -2178,7 +2170,7 @@ function buildAvailabilityDot(item, tile) {
     return dot;
 }
 
-function toggleItemAvailability(itemId, becomingAvailable) {
+const toggleItemAvailability = (itemId, becomingAvailable) => {
     pendingChanges.availability[itemId] = {
         available:       becomingAvailable,
         eightysixed_at:  becomingAvailable ? null : new Date().toISOString(),
@@ -2187,7 +2179,7 @@ function toggleItemAvailability(itemId, becomingAvailable) {
 }
 
 /* ─── DRAG REORDER ──────────────────────────────────────────── */
-function attachDragHandlers(tile, item, cat, gridEl) {
+const attachDragHandlers = (tile, item, cat, gridEl) => {
     let drag = null;
 
     tile.addEventListener('pointerdown', (e) => {
@@ -2288,7 +2280,7 @@ function attachDragHandlers(tile, item, cat, gridEl) {
     tile.addEventListener('pointercancel', finish);
 }
 
-function commitItemReorder(catId, newOrder) {
+const commitItemReorder = (catId, newOrder) => {
     const items = getAllWorkingItems()
         .filter(i => i.category_id === catId)
         .sort((a, b) => (a.display_order || 999) - (b.display_order || 999));
@@ -2301,9 +2293,9 @@ function commitItemReorder(catId, newOrder) {
     renderScene();
 }
 
-function moveCategoryUp(catId) { swapCategory(catId, -1); }
-function moveCategoryDown(catId) { swapCategory(catId, +1); }
-function swapCategory(catId, delta) {
+const moveCategoryUp = (catId) => { swapCategory(catId, -1); }
+const moveCategoryDown = (catId) => { swapCategory(catId, +1); }
+const swapCategory = (catId, delta) => {
     const cats = getAllWorkingCategories()
         .sort((a, b) => a.display_order - b.display_order)
         .map(c => c.id);
@@ -2322,7 +2314,7 @@ function swapCategory(catId, delta) {
 }
 
 /* ─── PENDING FOOTER ────────────────────────────────────────── */
-function buildPendingFooter() {
+const buildPendingFooter = () => {
     const wrap = document.createElement('div');
     footerMount = wrap;
     wrap.style.cssText = `position: sticky; bottom: 12px; margin-top: 12px; z-index: 40; display: none;`;
@@ -2369,7 +2361,7 @@ function buildPendingFooter() {
     return wrap;
 }
 
-function updateSaveBar() {
+const updateSaveBar = () => {
     const n = getPendingCount();
     if (footerMount) {
         footerMount.style.display = n === 0 ? 'none' : 'block';
@@ -2384,7 +2376,7 @@ function updateSaveBar() {
 }
 
 /* ─── BUTTONS ───────────────────────────────────────────────── */
-function buildPillButton(label, variant, onClick, opts = {}) {
+const buildPillButton = (label, variant, onClick, opts = {}) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = label;
@@ -2416,7 +2408,7 @@ function buildPillButton(label, variant, onClick, opts = {}) {
 }
 
 /* ─── MODAL SYSTEM ──────────────────────────────────────────── */
-function openModal(titleText, contentBuilder, opts = {}) {
+const openModal = (titleText, contentBuilder, opts = {}) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = `
         position: fixed; inset: 0;
@@ -2475,7 +2467,7 @@ function openModal(titleText, contentBuilder, opts = {}) {
     return overlay;
 }
 
-function closeModal(target) {
+const closeModal = (target) => {
     if (modalStack.length === 0) return;
     const t = target || modalStack[modalStack.length - 1];
     const idx = modalStack.indexOf(t);
@@ -2485,7 +2477,7 @@ function closeModal(target) {
 }
 
 /* ─── FORM FIELDS ──────────────────────────────────────────── */
-function buildTextField(parent, labelText, value, opts = {}) {
+const buildTextField = (parent, labelText, value, opts = {}) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
     const lbl = document.createElement('label');
@@ -2518,7 +2510,7 @@ function buildTextField(parent, labelText, value, opts = {}) {
     return { wrap, input };
 }
 
-function buildSelectField(parent, labelText, value, choices) {
+const buildSelectField = (parent, labelText, value, choices) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
     const lbl = document.createElement('label');
@@ -2548,7 +2540,7 @@ function buildSelectField(parent, labelText, value, choices) {
     return { wrap, input: sel };
 }
 
-function buildActiveChip(parent, initial, label = 'Active', colorOn = C.green) {
+const buildActiveChip = (parent, initial, label = 'Active', colorOn = C.green) => {
     const chip = document.createElement('label');
     const state = { checked: !!initial };
     const render = () => {
@@ -2575,7 +2567,7 @@ function buildActiveChip(parent, initial, label = 'Active', colorOn = C.green) {
     return { wrap: chip, input: cb };
 }
 
-function buildToggle(initial, onChange) {
+const buildToggle = (initial, onChange) => {
     const state = { on: !!initial };
     const wrap = document.createElement('button');
     wrap.type = 'button';
@@ -2618,7 +2610,7 @@ function buildToggle(initial, onChange) {
 }
 
 /* ─── CHIP TRAY + PICKER (unchanged from v1) ───────────────── */
-function buildChipTray(container, initialIds, sourceFn, opts = {}) {
+const buildChipTray = (container, initialIds, sourceFn, opts = {}) => {
     const state = { ids: [...(initialIds || [])] };
     const header = document.createElement('div');
     header.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 4px;';
@@ -2715,7 +2707,7 @@ function buildChipTray(container, initialIds, sourceFn, opts = {}) {
     };
 }
 
-function openPickerModal(currentIds, sourceFn, opts, onDone) {
+const openPickerModal = (currentIds, sourceFn, opts, onDone) => {
     const all = sourceFn();
     openModal(opts.pickerTitle || 'Pick items', (body) => {
         const selected   = new Set(currentIds);
@@ -2870,13 +2862,13 @@ function openPickerModal(currentIds, sourceFn, opts, onDone) {
 }
 
 /* ─── ITEM MODAL (unchanged from v1) ────────────────────────── */
-function openEditItemModal(itemId) {
+const openEditItemModal = (itemId) => {
     const item = getWorkingItem(itemId);
     if (!item) return;
     openItemModal({ title: `Edit item: ${item.name}`, source: item, onSave: (u) => handleEdit(u), showActions: true });
 }
 
-function openAddItemModal(preselectedCategoryId) {
+const openAddItemModal = (preselectedCategoryId) => {
     const draft = {
         id:                    `temp_item_${Date.now()}`,
         name:                  '',
@@ -2891,7 +2883,7 @@ function openAddItemModal(preselectedCategoryId) {
     openItemModal({ title: 'Add item', source: draft, onSave: (n) => handleCreate(n), showActions: false });
 }
 
-function openItemModal(cfg) {
+const openItemModal = (cfg) => {
     const item = clone(cfg.source);
     const state = {
         currentCategoryColor: (menuData.categories.find(c => c.id === item.category_id) || {}).color || C.gold,
@@ -3143,7 +3135,7 @@ function openItemModal(cfg) {
     overlay._setAccent(C.gold);
 }
 
-function buildSectionHead(labelText, color) {
+const buildSectionHead = (labelText, color) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 12px;';
     const label = document.createElement('div');
@@ -3160,14 +3152,14 @@ function buildSectionHead(labelText, color) {
     return { wrap, label, toggle };
 }
 
-function buildDivider() {
+const buildDivider = () => {
     const d = document.createElement('div');
     d.style.cssText = `height: 1px; background: ${C2.hairline}; margin: 4px 0;`;
     return d;
 }
 
 /* ─── CATEGORY MODAL ────────────────────────────────────────── */
-function openAddCategoryModal() {
+const openAddCategoryModal = () => {
     const draft = {
         id:                  null,
         name:                '',
@@ -3184,7 +3176,7 @@ function openAddCategoryModal() {
     openCategoryModal({ title: 'Add category', source: draft, onSave: (n) => handleCreateCategory(n), isNew: true });
 }
 
-function openEditCategoryModal(cat) {
+const openEditCategoryModal = (cat) => {
     const working = getAllWorkingCategories().find(c => c.id === cat.id) || cat;
     openCategoryModal({
         title: `Edit category: ${working.name}`,
@@ -3194,7 +3186,7 @@ function openEditCategoryModal(cat) {
     });
 }
 
-function openCategoryModal(cfg) {
+const openCategoryModal = (cfg) => {
     const cat = clone(cfg.source);
     if (!cat.schedule) cat.schedule = defaultSchedule();
 
@@ -3618,9 +3610,9 @@ function openCategoryModal(cfg) {
 }
 
 /* ─── CHANGE HANDLERS ───────────────────────────────────────── */
-function handleCreate(newItem) { pendingChanges.new.push(newItem); renderScene(); }
+const handleCreate = (newItem) => { pendingChanges.new.push(newItem); renderScene(); }
 
-function handleEdit(updated) {
+const handleEdit = (updated) => {
     const nIdx = pendingChanges.new.findIndex(i => i.id === updated.id);
     if (nIdx !== -1) { pendingChanges.new[nIdx] = updated; renderScene(); return; }
     const eIdx = pendingChanges.edited.findIndex(i => i.id === updated.id);
@@ -3629,7 +3621,7 @@ function handleEdit(updated) {
     renderScene();
 }
 
-function handleDelete(itemId) {
+const handleDelete = (itemId) => {
     const nIdx = pendingChanges.new.findIndex(i => i.id === itemId);
     if (nIdx !== -1) { pendingChanges.new.splice(nIdx, 1); renderScene(); return; }
     pendingChanges.edited = pendingChanges.edited.filter(i => i.id !== itemId);
@@ -3638,7 +3630,7 @@ function handleDelete(itemId) {
     renderScene();
 }
 
-function handleDuplicate(source) {
+const handleDuplicate = (source) => {
     const dupe = {
         ...clone(source),
         id:            `temp_item_${Date.now()}`,
@@ -3648,20 +3640,20 @@ function handleDuplicate(source) {
     openItemModal({ title: 'Add item (duplicated)', source: dupe, onSave: (n) => handleCreate(n), showActions: false });
 }
 
-function handleCreateCategory(newCat) {
+const handleCreateCategory = (newCat) => {
     const id = (newCat.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `cat_${Date.now()}`;
     pendingChanges.new.push({ ...newCat, id, _isCategory: true });
     renderScene();
 }
 
-function handleEditCategory(updated) {
+const handleEditCategory = (updated) => {
     const eIdx = pendingChanges.edited.findIndex(i => i.id === updated.id && i._isCategory);
     if (eIdx !== -1) pendingChanges.edited[eIdx] = updated;
     else pendingChanges.edited.push(updated);
     renderScene();
 }
 
-function handleDeleteCategory(catId) {
+const handleDeleteCategory = (catId) => {
     const nIdx = pendingChanges.new.findIndex(i => i.id === catId && i._isCategory);
     if (nIdx !== -1) { pendingChanges.new.splice(nIdx, 1); renderScene(); return; }
     pendingChanges.edited = pendingChanges.edited.filter(i => !(i.id === catId && i._isCategory));
@@ -3670,7 +3662,7 @@ function handleDeleteCategory(catId) {
 }
 
 /* ─── EVENT GENERATION ──────────────────────────────────────── */
-function generateMenuEvents(changes) {
+const generateMenuEvents = (changes) => {
     const events = [];
     const batch_id = `menu_batch_${Date.now()}`;
     const ts = () => new Date().toISOString();
@@ -3756,8 +3748,7 @@ function generateMenuEvents(changes) {
     return events;
 }
 
-function categoryPayload(cat) {
-    return {
+const categoryPayload = (cat) => {
         category_id:         cat.id,
         name:                cat.name,
         display_order:       cat.display_order,
@@ -3767,10 +3758,10 @@ function categoryPayload(cat) {
         schedule:            cat.schedule || defaultSchedule(),
         special_active:      !!cat.special_active,
         special_label:       cat.special_label || '',
-    };
+    ;;
 }
 
-function itemPayload(item, includeIdInRoot) {
+const itemPayload = (item, includeIdInRoot) => {
     const base = {
         name:                  item.name,
         price:                 item.price,
@@ -3785,7 +3776,7 @@ function itemPayload(item, includeIdInRoot) {
 }
 
 /* ─── SAVE ──────────────────────────────────────────────────── */
-async function handlePublish() {
+const handlePublish = async () => {
     const events = generateMenuEvents(pendingChanges);
     if (events.length === 0) return;
 
@@ -3848,7 +3839,7 @@ async function handlePublish() {
 }
 
 /* ─── ANIMATION ─────────────────────────────────────────────── */
-function injectAnimations() {
+const injectAnimations = () => {
     if (document.getElementById('mc-keyframes')) return;
     const s = document.createElement('style');
     s.id = 'mc-keyframes';

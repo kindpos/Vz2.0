@@ -36,17 +36,16 @@ let _currentContainer = null;
 let _abortController  = null;
 
 // ─── Utilities ───────────────────────────────────────────────────────
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
+const today = () => new Date().toISOString().slice(0, 10);
+;
 
-function daysAgo(n) {
+const daysAgo = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d.toISOString().slice(0, 10);
 }
 
-function todayLabel() {
+const todayLabel = () => {
   const d = new Date();
   const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -54,7 +53,7 @@ function todayLabel() {
 }
 
 // "This week · Apr 15 – Apr 21, 2026" — 7-day window ending today.
-function weekRangeLabel() {
+const weekRangeLabel = () => {
   const end   = new Date();
   const start = new Date(); start.setDate(end.getDate() - 6);
   const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -67,12 +66,11 @@ function weekRangeLabel() {
 
 // Per-day top-level field (e.g. net_sales, card_total). Zero for days
 // whose fetch failed.
-function weekField(week, field) {
-  return week.map(d => d.data ? (Number(d.data[field]) || 0) : 0);
-}
+const weekField = (week, field) => week.map(d => d.data ? (Number(d.data[field]) || 0) : 0);
+;
 
 // Per-day sum of a field inside hourly_sales (food / drink / other).
-function weekHourlyFieldSum(week, field) {
+const weekHourlyFieldSum = (week, field) => {
   return week.map(d => {
     if (!d.data || !Array.isArray(d.data.hourly_sales)) return 0;
     return d.data.hourly_sales.reduce((s, h) => s + (Number(h[field]) || 0), 0);
@@ -82,7 +80,7 @@ function weekHourlyFieldSum(week, field) {
 // Single-letter weekday labels for the X axis ("M T W T F S S" …).
 // Uses the date string the fetch was issued for (not data.date) so
 // gaps in the response don't shift the labels.
-function weekdayLabels(week) {
+const weekdayLabels = (week) => {
   const letters = ['S','M','T','W','T','F','S'];
   return week.map(d => {
     const dt = new Date(`${d.date}T00:00:00`);
@@ -91,10 +89,10 @@ function weekdayLabels(week) {
 }
 
 // Sum an array (handy for tender totals across the week).
-function sumArr(arr) { return arr.reduce((s, x) => s + (Number(x) || 0), 0); }
+const sumArr = (arr) => arr.reduce((s, x) => s + (Number(x) || 0), 0); ;
 
 // Format an hour-of-day integer (0..23) as a short ampm label.
-function formatHour(h) {
+const formatHour = (h) => {
   const n = Number(h);
   if (!Number.isFinite(n)) return String(h || '');
   if (n === 0)  return '12a';
@@ -104,23 +102,23 @@ function formatHour(h) {
 }
 
 // ─── Fetch ───────────────────────────────────────────────────────────
-async function fetchJson(url, signal) {
+const fetchJson = async (url, signal) => {
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`${url} ${res.status}`);
   return res.json();
 }
 
-function fetchSummary(signal) {
+const fetchSummary = (signal) => {
   return fetchJson(`/api/v1/reports/sales-summary?date=${today()}`, signal);
 }
-function fetchLastWeekSummary(signal) {
+const fetchLastWeekSummary = (signal) => {
   return fetchJson(`/api/v1/reports/sales-summary?date=${daysAgo(7)}`, signal);
 }
 
 // 7 parallel fetches: today, today-1, ..., today-6.
 // Returns an array of { date, data, error } in oldest-first order.
 // Individual failures do not reject the outer promise.
-function fetchWeek(signal) {
+const fetchWeek = (signal) => {
   const dates = [];
   for (let i = 6; i >= 0; i--) dates.push(daysAgo(i));
   return Promise.allSettled(
@@ -131,18 +129,15 @@ function fetchWeek(signal) {
     error: r.status === 'rejected'  ? r.reason  : null,
   })));
 }
-function fetchEmployees(signal) {
-  return fetchJson(`/api/v1/config/employees`, signal);
-}
-function fetchRoles(signal) {
-  return fetchJson(`/api/v1/config/roles`, signal);
-}
+const fetchEmployees = (signal) => fetchJson(`/api/v1/config/employees`, signal);
+;
+const fetchRoles = (signal) => fetchJson(`/api/v1/config/roles`, signal);
+;
 // /orders/day-summary returns a per-check list with amounts and statuses,
 // which lets us derive a real check-size distribution client-side without
 // a new backend field. Today only — endpoint has no ?date= parameter.
-function fetchDaySummary(signal) {
-  return fetchJson(`/api/v1/orders/day-summary`, signal);
-}
+const fetchDaySummary = (signal) => fetchJson(`/api/v1/orders/day-summary`, signal);
+;
 
 // Cross-reference employees ↔ roles into a lookup map so the servers
 // table can badge non-server rows (managers) and dim their tip%.
@@ -152,7 +147,7 @@ function fetchDaySummary(signal) {
 // "Manager" is detected via role.permission_level (backend uses
 // "Standard" / "Elevated" / "Manager"). If either feed is missing
 // we return an empty map and the table simply has no badges.
-function buildRoleMap(employees, roles) {
+const buildRoleMap = (employees, roles) => {
   const rolesById = new Map();
   for (const r of (roles || [])) rolesById.set(r.role_id, r);
   const map = new Map();
@@ -168,7 +163,7 @@ function buildRoleMap(employees, roles) {
 }
 
 // ─── Layout ──────────────────────────────────────────────────────────
-function buildLayout(container) {
+const buildLayout = (container) => {
   container.innerHTML = `
     <style>
       .sales-wrapper {
@@ -383,11 +378,11 @@ function buildLayout(container) {
 }
 
 // ─── Render helpers ─────────────────────────────────────────────────
-function regionEl(container, id) {
+const regionEl = (container, id) => {
   return container.querySelector(`#${id}`);
 }
 
-function renderRegionError(row, err, opts = {}) {
+const renderRegionError = (row, err, opts = {}) => {
   const { cells = 1 } = opts;
   row.innerHTML = '';
   for (let i = 0; i < cells; i++) {
@@ -403,7 +398,7 @@ function renderRegionError(row, err, opts = {}) {
 // avg check, tip%). Returns null if the prior-period value is missing or
 // zero (can't compute a fraction). Otherwise returns a shape consumable
 // by buildStatCard's `delta` prop: { text, direction, color, note }.
-function pctDelta(curr, prev, opts = {}) {
+const pctDelta = (curr, prev, opts = {}) => {
   const { fmtFn = fmtPct, note = 'vs last week' } = opts;
   if (prev == null || !Number.isFinite(Number(prev)) || Number(prev) === 0) return null;
   const c = Number(curr) || 0;
@@ -423,7 +418,7 @@ function pctDelta(curr, prev, opts = {}) {
 
 // Percentage-point delta (for metrics where the value is already a
 // percentage, like tip %). 18.4% → 18.1% is -0.3pp, NOT -1.6%.
-function ppDelta(currFrac, prevFrac, opts = {}) {
+const ppDelta = (currFrac, prevFrac, opts = {}) => {
   const { note = 'vs last week' } = opts;
   if (prevFrac == null || !Number.isFinite(Number(prevFrac))) return null;
   const diff = Number(currFrac) - Number(prevFrac);
@@ -440,7 +435,7 @@ function ppDelta(currFrac, prevFrac, opts = {}) {
 }
 
 // ─── Region renderers ───────────────────────────────────────────────
-function renderHero(container, data, lastWeek) {
+const renderHero = (container, data, lastWeek) => {
   const row = regionEl(container, 'region-hero');
   if (!row) return;
   row.innerHTML = '';
@@ -504,7 +499,7 @@ function renderHero(container, data, lastWeek) {
   }));
 }
 
-function renderComposition(container, week) {
+const renderComposition = (container, week) => {
   const row = regionEl(container, 'region-composition');
   if (!row) return;
   row.innerHTML = '';
@@ -545,7 +540,7 @@ const CHECK_SIZE_BUCKETS = [
   { label: '$100+', low: 100, high: null },
 ];
 
-function bucketizeCheckSizes(amounts) {
+const bucketizeCheckSizes = (amounts) => {
   const buckets = CHECK_SIZE_BUCKETS.map(b => ({ ...b, count: 0 }));
   for (const amt of amounts) {
     const v = Number(amt);
@@ -561,7 +556,7 @@ function bucketizeCheckSizes(amounts) {
   return buckets;
 }
 
-function median(amounts) {
+const median = (amounts) => {
   const sorted = amounts
     .map(Number)
     .filter(x => Number.isFinite(x) && x >= 0)
@@ -575,7 +570,7 @@ function median(amounts) {
 
 // Find the fractional bucket index that contains `value` — used to
 // place the median/average marker on the histogram.
-function bucketIndexForValue(buckets, value) {
+const bucketIndexForValue = (buckets, value) => {
   const v = Number(value) || 0;
   for (let i = 0; i < buckets.length; i++) {
     const b = buckets[i];
@@ -589,7 +584,7 @@ function bucketIndexForValue(buckets, value) {
   return buckets.length - 1;
 }
 
-function renderBottomRow(container, data, roleMap, daySummary) {
+const renderBottomRow = (container, data, roleMap, daySummary) => {
   const roles = roleMap || new Map();
   const row = regionEl(container, 'region-bottom');
   if (!row) return;
@@ -707,7 +702,7 @@ function renderBottomRow(container, data, roleMap, daySummary) {
   }));
 }
 
-function renderTenderHeatmap(container, { today, week }) {
+const renderTenderHeatmap = (container, { today, week }) => {
   const row = regionEl(container, 'region-tender-heatmap');
   if (!row) return;
   row.innerHTML = '';
@@ -767,7 +762,7 @@ function renderTenderHeatmap(container, { today, week }) {
   }
 }
 
-function renderTrend(container, { week }) {
+const renderTrend = (container, { week }) => {
   const row = regionEl(container, 'region-trend');
   if (!row) return;
   row.innerHTML = '';

@@ -27,7 +27,7 @@ let _container = null;
 /* ------------------------------------------
    DATA FETCH
 ------------------------------------------ */
-async function fetchTerminals() {
+const fetchTerminals = async () => {
   try {
     const res = await fetch('/api/v1/config/terminals');
     if (!res.ok) return [];
@@ -35,7 +35,7 @@ async function fetchTerminals() {
   } catch { return []; }
 }
 
-async function fetchFloorSections() {
+const fetchFloorSections = async () => {
   try {
     const res = await fetch('/api/v1/config/floorplan/sections');
     if (!res.ok) return [];
@@ -43,9 +43,8 @@ async function fetchFloorSections() {
   } catch { return []; }
 }
 
-function sectionOptions(sections) {
-  return [
-    { id: NO_SECTION, label: '(none)' },
+const sectionOptions = (sections) => [
+    { id: NO_SECTION, label: '(none)' ;,
     ...sections.map(s => ({
       id: s.id || s.section_id,
       label: s.name || s.label,
@@ -62,7 +61,7 @@ function sectionOptions(sections) {
 ------------------------------------------ */
 const TERMINAL_ID_PREFIX = 'T-';
 
-function nextTerminalId(existing) {
+const nextTerminalId = (existing) => {
   let max = 0;
   for (const t of (existing || [])) {
     const id = t && t.terminal_id;
@@ -78,7 +77,7 @@ function nextTerminalId(existing) {
 /* ------------------------------------------
    ADD / EDIT MODAL
 ------------------------------------------ */
-function openTerminalModal(terminal, sections, existingTerminals, onSaved) {
+const openTerminalModal = (terminal, sections, existingTerminals, onSaved) => {
   const isEdit = !!terminal;
 
   // IDs are assigned by us (T-01, T-02, …) so the admin only picks
@@ -262,7 +261,7 @@ function openTerminalModal(terminal, sections, existingTerminals, onSaved) {
 /* ------------------------------------------
    TERMINAL ROW
 ------------------------------------------ */
-function buildTerminalRow(terminal, sections, onRefresh) {
+const buildTerminalRow = (terminal, sections, onRefresh) => {
   const roleLabel = (ROLES.find(r => r.id === terminal.role) || {}).label || terminal.role;
   const section = terminal.default_section_id
     ? sections.find(s => (s.id || s.section_id) === terminal.default_section_id)
@@ -347,7 +346,7 @@ function buildTerminalRow(terminal, sections, onRefresh) {
 /* ------------------------------------------
    MAIN RENDER
 ------------------------------------------ */
-async function render(container) {
+const render = async (container) => {
   const [terminals, sections] = await Promise.all([fetchTerminals(), fetchFloorSections()]);
 
   const { body } = buildScenePage(container, {

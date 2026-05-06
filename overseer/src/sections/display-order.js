@@ -27,7 +27,7 @@ const COLORS = {
 /* ------------------------------------------
    MENU DATA (fetched from API)
 ------------------------------------------ */
-async function fetchOrderData() {
+const fetchOrderData = async () => {
     try {
         const [catRes, itemRes] = await Promise.all([
             fetch('/api/v1/config/menu/categories'),
@@ -63,19 +63,18 @@ let selectedCategoryId = null;
 /* ------------------------------------------
    HELPERS
 ------------------------------------------ */
-function clone(obj) { return JSON.parse(JSON.stringify(obj)); }
+const clone = (obj) => JSON.parse(JSON.stringify(obj)); ;
 
-function hasPendingChanges() {
-    return pendingChanges.categories || Object.values(pendingChanges.items).some(v => v);
-}
+const hasPendingChanges = () => pendingChanges.categories || Object.values(pendingChanges.items).some(v => v);
+;
 
-function getPendingCount() {
+const getPendingCount = () => {
     let count = pendingChanges.categories ? 1 : 0;
     count += Object.values(pendingChanges.items).filter(v => v).length;
     return count;
 }
 
-function swapItems(arr, idxA, idxB) {
+const swapItems = (arr, idxA, idxB) => {
     if (idxA < 0 || idxB < 0 || idxA >= arr.length || idxB >= arr.length) return;
     const tempOrder = arr[idxA].display_order;
     arr[idxA].display_order = arr[idxB].display_order;
@@ -86,7 +85,7 @@ function swapItems(arr, idxA, idxB) {
 /* ------------------------------------------
    MAIN VIEW
 ------------------------------------------ */
-function buildMainView(wrapper) {
+const buildMainView = (wrapper) => {
     wrapper.innerHTML = '';
 
     // Header
@@ -167,7 +166,7 @@ function buildMainView(wrapper) {
     updateFooter();
 }
 
-function buildSectionHeader(container, title, subtitle) {
+const buildSectionHeader = (container, title, subtitle) => {
     const hdr = document.createElement('div');
     hdr.style.cssText = `margin-bottom: 16px;`;
     hdr.innerHTML = `
@@ -180,7 +179,7 @@ function buildSectionHeader(container, title, subtitle) {
 /* ==========================================
    CATEGORY ORDER
    ========================================== */
-function renderCategoryOrder() {
+const renderCategoryOrder = () => {
     const container = document.getElementById('category-order-list');
     if (!container) return;
     container.innerHTML = '';
@@ -214,7 +213,7 @@ function renderCategoryOrder() {
 /* ==========================================
    ITEM ORDER
    ========================================== */
-function renderItemOrder() {
+const renderItemOrder = () => {
     const container = document.getElementById('item-order-list');
     if (!container) return;
     container.innerHTML = '';
@@ -257,7 +256,7 @@ function renderItemOrder() {
 /* ==========================================
    SHARED: ORDER ROW COMPONENT
    ========================================== */
-function buildOrderRow({ position, label, sublabel, isFirst, isLast, onMoveUp, onMoveDown }) {
+const buildOrderRow = ({ position, label, sublabel, isFirst, isLast, onMoveUp, onMoveDown }) => {
     const row = document.createElement('div');
     row.style.cssText = `
         display: flex; align-items: center; justify-content: space-between;
@@ -316,7 +315,7 @@ function buildOrderRow({ position, label, sublabel, isFirst, isLast, onMoveUp, o
     return row;
 }
 
-function buildArrowButton(symbol, disabled, onClick) {
+const buildArrowButton = (symbol, disabled, onClick) => {
     const btn = document.createElement('button');
     btn.style.cssText = `
         width: 44px; height: 44px;
@@ -347,7 +346,7 @@ function buildArrowButton(symbol, disabled, onClick) {
 /* ==========================================
    FOOTER: CHANGE TRACKER
    ========================================== */
-function updateFooter() {
+const updateFooter = () => {
     const footer = document.getElementById('order-change-footer');
     if (!footer) return;
 
@@ -411,7 +410,7 @@ function updateFooter() {
 /* ==========================================
    SAVE: EVENT GENERATION
    ========================================== */
-function handleSaveChanges() {
+const handleSaveChanges = () => {
     const events = [];
     const batch_id = `display_order_batch_${Date.now()}`;
     const ts = new Date().toISOString();
@@ -460,7 +459,7 @@ function handleSaveChanges() {
 /* ==========================================
    CONFIRM DIALOG
    ========================================== */
-function showConfirmDialog(title, message, confirmLabel, onConfirm) {
+const showConfirmDialog = (title, message, confirmLabel, onConfirm) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = `position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 300; display: flex; align-items: center; justify-content: center;`;
 
@@ -497,7 +496,7 @@ function showConfirmDialog(title, message, confirmLabel, onConfirm) {
 /* ==========================================
    TOAST
    ========================================== */
-function showToast(message) {
+const showToast = (message) => {
     const toast = document.createElement('div');
     toast.style.cssText = `position: fixed; top: 24px; right: 24px; padding: 16px 28px; background: ${COLORS.mint}; color: ${COLORS.dark}; font-family: var(--font-body); font-size: 22px; font-weight: bold; border-radius: 8px; z-index: 200; box-shadow: 0 4px 20px rgba(0,0,0,0.3);`;
     toast.textContent = `✓ ${message}`;
