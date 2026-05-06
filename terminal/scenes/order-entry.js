@@ -1655,7 +1655,7 @@ function _crumbTap(idx) {
 // ── MAIN AREA ─────────────────────────────────────
 function buildMain(parentEl, params) {
   const main = document.createElement('div');
-  main.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
+  main.style.cssText = 'flex:1;display:flex;flex-direction:column;';
   _mainArea = main;
 
   // ── Collapsible grid wrapper ──────────────────────
@@ -1714,7 +1714,7 @@ function buildMain(parentEl, params) {
 
   // ── Bottom action bar ─────────────────────────────
   _bottomBar = document.createElement('div');
-  _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:auto;';
+  _bottomBar.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;min-height:100px;height:auto;gap:4px;flex-shrink:0;margin-top:auto;';
   main.appendChild(_bottomBar);
 
   // Load menu data + favorites, then render grid
@@ -1940,7 +1940,7 @@ function rebuildBottomBar() {
   _bottomBar.style.cssText = [
     'display:grid;grid-template-columns:1fr 1fr 1fr;',
     'align-items:stretch;gap:4px;flex-shrink:0;margin-top:auto;',
-    'height:70px;',
+    'min-height:100px;height:auto;',
     'pointer-events:auto;touch-action:manipulation;',
     'position:relative;z-index:10;',
     'overflow:visible;',
