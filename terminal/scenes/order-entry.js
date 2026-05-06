@@ -1355,7 +1355,7 @@ function _repaintCatCol() {
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
       'box-sizing:border-box;padding:4px 6px;',
       isActive
-        ? `border:2px solid ${cat.color};background:${hexToRgba(cat.color, 0.18)};`
+        ? `border:2px solid ${cat.color};background:${cat.color};`
         : `border:2px solid transparent;background:${T.card};`,
     ].join('');
 
@@ -1364,7 +1364,7 @@ function _repaintCatCol() {
       `font-family:${T.fh};`,
       `font-weight:${T.fwBold};`,
       'font-size:15px;',
-      `color:${cat.color};`,
+      `color:${isActive ? T.well : cat.color};`,
       'text-align:center;pointer-events:none;',
     ].join('');
     nameEl.textContent = cat.label;
@@ -1374,7 +1374,7 @@ function _repaintCatCol() {
     countEl.style.cssText = [
       `font-family:${T.fb};`,
       'font-size:11px;',
-      `color:${cat.color};`,
+      `color:${isActive ? T.well : cat.color};`,
       'opacity:0.75;',
       'text-align:center;pointer-events:none;',
     ].join('');
