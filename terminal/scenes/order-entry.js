@@ -1660,7 +1660,7 @@ function buildMain(parentEl, params) {
 
   // ── Collapsible grid wrapper ──────────────────────
   let gridWrap = document.createElement('div');
-  gridWrap.style.cssText = 'position:relative;flex:1;min-height:0;overflow:hidden;';
+  gridWrap.style.cssText = 'position:relative;flex:1;min-height:0;overflow:visible;';
   _gridWrap = gridWrap;
 
   // ── Vertical category column ──────────────────────
@@ -1933,6 +1933,8 @@ function rebuildBottomBar() {
     'display:grid;grid-template-columns:1fr 1fr 1fr;',
     'align-items:stretch;gap:4px;flex-shrink:0;margin-top:auto;',
     'height:70px;',
+    'pointer-events:auto;touch-action:manipulation;',
+    'position:relative;z-index:10;',
   ].join('');
 
   // ── Col 1: Seat selector ─────────────────────────
@@ -1952,8 +1954,8 @@ function rebuildBottomBar() {
     label:      'PERSONAL',
     fontSize:   '20px',
     isPrimary:  isPersonal,
-    accent:     isPersonal ? T.green : T.moon,
-    accentDk:   isPersonal ? T.greenDk : darkenHex(T.moon, 0.4),
+    accent:     isPersonal ? T.green : T.text,
+    accentDk:   isPersonal ? '#1a5c2e' : '#3a3d42',
     onClick: () => {
       snakeState.view = 'personal';
       renderSnakeGrid();
