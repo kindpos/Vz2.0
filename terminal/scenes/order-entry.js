@@ -1723,7 +1723,11 @@ function buildSeatSelectorCard() {
       pill.addEventListener('pointerup', ((seatNum) => {
         return () => {
           _autoSwitchArmed = false;
-          _activeSeats = new Set([seatNum]);
+          if (_activeSeats.has(seatNum)) {
+            if (_activeSeats.size > 1) _activeSeats.delete(seatNum);
+          } else {
+            _activeSeats.add(seatNum);
+          }
           repaintSeats();
           renderTicket();
         };
