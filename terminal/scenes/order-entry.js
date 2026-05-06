@@ -1493,6 +1493,8 @@ function renderSnakeGrid() {
   } else {
     (subcats || []).forEach((s) => { itemList = itemList.concat(s.items || []); });
   }
+  itemList = itemList.slice().sort((a, b) =>
+    (a.label || a.name || '').localeCompare(b.label || b.name || ''));
 
   const anchorIdx = MENU_DATA.findIndex((c) => c.id === snakeState.catId);
   const totalRows = MENU_DATA.length;
