@@ -1855,7 +1855,7 @@ function buildSeatSelectorCard() {
   // Inner scrollable wrapper for upward expansion
   let innerScroll = document.createElement('div');
   innerScroll.style.cssText = [
-    'max-height:200px;overflow:visible;',
+    'max-height:calc(4*32px+3*6px);overflow-y:auto;',
     '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
   innerScroll.appendChild(body);
@@ -1946,7 +1946,7 @@ function rebuildBottomBar() {
   _personalBtn = null;
   _bottomBar.style.cssText = [
     'display:grid;grid-template-columns:1fr 1fr 1fr;',
-    'gap:4px;flex-shrink:0;margin-top:auto;',
+    'align-items:flex-end;gap:4px;flex-shrink:0;margin-top:auto;',
     'pointer-events:auto;touch-action:manipulation;',
     'position:relative;z-index:10;',
     'overflow:visible;',
@@ -1960,7 +1960,10 @@ function rebuildBottomBar() {
     _seatSelectorEl.style.border       = `1px solid ${T.border}`;
     _seatSelectorEl.style.borderRadius = '10px';
     _seatSelectorEl.style.padding      = '8px 10px';
+    _seatSelectorEl.style.maxHeight    = '200px';
+    _seatSelectorEl.style.overflow     = 'visible';
     _seatSelectorEl.style.alignSelf    = 'flex-end';
+    _seatSelectorEl.style.flexShrink   = '0';
     _bottomBar.appendChild(_seatSelectorEl);
   }
 
@@ -1980,8 +1983,8 @@ function rebuildBottomBar() {
   });
   personalBtn.style.gridColumn   = '2';
   personalBtn.style.margin       = '2px 0';
-  personalBtn.style.alignSelf    = 'stretch';
-  personalBtn.style.height       = '100px';
+  personalBtn.style.alignSelf    = 'flex-end';
+  personalBtn.style.height       = '88px';
   personalBtn.style.flexShrink   = '0';
   _personalBtn = personalBtn;
   _bottomBar.appendChild(personalBtn);
@@ -2006,8 +2009,8 @@ function rebuildBottomBar() {
   });
   doneBtn.style.gridColumn  = '3';
   doneBtn.style.margin      = '2px 0';
-  doneBtn.style.alignSelf   = 'stretch';
-  doneBtn.style.height      = '100px';
+  doneBtn.style.alignSelf   = 'flex-end';
+  doneBtn.style.height      = '88px';
   doneBtn.style.flexShrink  = '0';
   _bottomBar.appendChild(doneBtn);
 }
