@@ -171,6 +171,90 @@ import { buildWell, darkenHex, hexToRgba } from '../common/theme.js';
 }
 
 // ═══════════════════════════════════════════════════
+//  CHAMFER BUTTON BUILDER
+//  Two-layer frame + face construction.
+//  Frame: bevel gradient over accent color + chamfer clip-path.
+//  Face: dark panel (T.btnFace) with a 1px top-highlight strip.
+//  Text color = accent, so label reads as a colored label on dark.
+//
+//  opts:
+//    label, accent, accentDk, height, width, fontSize, isPrimary, onClick
+// ═══════════════════════════════════════════════════
+
+export function buildChamferButton(opts) {
+  const o         = opts || {};
+  const accent    = o.accent   || T.green;
+  const accentDk  = o.accentDk || darkenHex(accent, 0.3);
+  const isPrimary = !!o.isPrimary;
+  const chamferPx = T.chamferBtn;   // 6
+  const facePx    = chamferPx - 2;  // 4
+
+  const baseFilter = isPrimary
+    ? 'drop-shadow(3px 5px 0 rgba(0,0,0,.55)) drop-shadow(3px 6px 6px rgba(0,0,0,.40))'
+    : 'drop-shadow(2px 4px 0 rgba(0,0,0,.55)) drop-shadow(2px 5px 5px rgba(0,0,0,.38))';
+  const pressFilter = 'drop-shadow(1px 1px 0 rgba(0,0,0,.55))';
+  const pressTY     = isPrimary ? 'translateY(5px)' : 'translateY(3px)';
+
+  const frame = document.createElement('div');
+  frame.style.background   = `linear-gradient(to bottom, rgba(255,255,255,.22) 0%, rgba(255,255,255,.04) 25%, rgba(0,0,0,0) 55%, rgba(0,0,0,.22) 100%), ${accent}`;
+  frame.style.padding      = '2.5px';
+  frame.style.clipPath     = chamfer(chamferPx);
+  frame.style.filter       = baseFilter;
+  frame.style.transition   = 'transform .07s, filter .07s';
+  frame.style.cursor       = 'pointer';
+  frame.style.userSelect   = 'none';
+  frame.style.touchAction  = 'manipulation';
+  frame.style.display      = 'flex';
+  frame.style.width        = o.width  || '100%';
+  frame.style.height       = o.height || '100%';
+  frame.style.boxSizing    = 'border-box';
+
+  const face = document.createElement('div');
+  face.style.background     = `linear-gradient(to bottom, rgba(255,255,255,.06) 0%, rgba(255,255,255,.06) 1px, transparent 1px), ${T.btnFace}`;
+  face.style.clipPath       = chamfer(facePx);
+  face.style.flex           = '1';
+  face.style.display        = 'flex';
+  face.style.alignItems     = 'center';
+  face.style.justifyContent = 'center';
+  face.style.flexDirection  = 'column';
+  face.style.fontFamily     = T.fh;
+  face.style.fontWeight     = T.fwBold;
+  face.style.letterSpacing  = '0.04em';
+  face.style.lineHeight     = '1.1';
+  face.style.color          = accent;
+
+  const labelSpan = document.createElement('span');
+  labelSpan.style.fontSize   = o.fontSize || '30px';
+  labelSpan.style.textAlign  = 'center';
+  labelSpan.style.whiteSpace = 'pre';
+  labelSpan.textContent      = o.label || '';
+  face.appendChild(labelSpan);
+
+  frame.appendChild(face);
+
+  frame.addEventListener('pointerdown', () => {
+    frame.style.transform = pressTY;
+    frame.style.filter    = pressFilter;
+  });
+  const _rel = () => {
+    frame.style.transform = '';
+    frame.style.filter    = baseFilter;
+  };
+  frame.addEventListener('pointerup',     _rel);
+  frame.addEventListener('pointerleave',  _rel);
+  frame.addEventListener('pointercancel', _rel);
+
+  if (o.onClick) {
+    frame.addEventListener('pointerup', (e) => {
+      if (e.defaultPrevented) return;
+      o.onClick();
+    });
+  }
+
+  return frame;
+}
+
+// ═══════════════════════════════════════════════════
 //  FLOAT BUTTON BUILDER
 //  Straddles card border (OPEN/CLOSED toggle, CHECKOUT).
 //  Caller positions it absolute on the outer wrap.

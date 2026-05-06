@@ -58,12 +58,12 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
 
   // ── Scrollable content ──────────────────────────────
   const scroll = document.createElement('div');
-  scroll.style.cssText = 'flex:1;overflow-y:auto;padding:8px 14px 10px;';
+  scroll.style.cssText = 'flex:1;overflow-y:auto;padding:8px 12px 10px;';
   ov.appendChild(scroll);
 
   // ── DONE button ─────────────────────────────────────
   const doneWrap = document.createElement('div');
-  doneWrap.style.cssText = 'flex-shrink:0;padding:8px 14px 10px;';
+  doneWrap.style.cssText = 'flex-shrink:0;padding:8px 12px 10px;';
   const doneBtn = buildPillButton({ label: 'DONE — ADD TO CHECK', color: T.green, textColor: T.well });
   doneBtn.style.width = '100%';
   doneBtn.style.fontSize = '16px';
@@ -235,7 +235,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     const accWrap = document.createElement('div');
     accWrap.style.cssText = [
       'display:flex;flex-direction:column;gap:8px;',
-      'padding:8px 14px 10px;',
+      'padding:8px 14px 10px 0;',
     ].join('');
 
     const CARD_DEFS = [

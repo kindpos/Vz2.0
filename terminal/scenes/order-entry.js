@@ -333,6 +333,7 @@ let snakeState = {
 let favorites    = [];   // item ids for personal tab
 let _gridEl      = null; // inner grid DOM container
 let _gridWrap    = null; // collapsible grid wrapper
+let _catColEl    = null; // QSR-style vertical category column
 let _snakeStrip  = null; // crumb-only strip shown when mod panel open
 let _expandedItems = {}; // item id → true when mod rows are expanded
 let _collapsedSeats = new Set(); // seat numbers collapsed in multi-seat s-card view (default: all expanded)
@@ -700,6 +701,7 @@ defineScene({
     _modPanelOpen  = false;
     _gridEl        = null;
     _gridWrap      = null;
+    _catColEl      = null;
     _snakeStrip    = null;
     _expandedItems = {};
     _collapsedSeats = new Set();
@@ -713,7 +715,7 @@ defineScene({
       : [];
     _activeSeats = (_seatList.length > 0)
       ? new Set(_seatList)
-      : new Set(_allSeatList);
+      : new Set([1]);
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
     _seatTab        = 'selected';
@@ -791,6 +793,7 @@ defineScene({
     _mainArea      = null;
     _gridEl        = null;
     _gridWrap      = null;
+    _catColEl      = null;
     _snakeStrip    = null;
     _expandedItems = {};
     _collapsedSeats = new Set();
@@ -1297,6 +1300,140 @@ function buildItemTile(item, catColor, isFav) {
   return el;
 }
 
+// ── QSR VERTICAL NAV HELPERS ──────────────────────
+
+// Distribute items into grid-row chunks anchored at `anchorIdx`.
+// Returns an array of { rowOffset, items[] } where rowOffset 0 is the
+// anchor row, positive rows go down, negative rows go up.
+function distributeItems(items, cols, anchorIdx, totalRows) {
+  var chunks = [];
+  if (!items || items.length === 0) return chunks;
+
+  chunks.push({ rowOffset: 0, items: items.slice(0, cols) });
+  var i = cols;
+
+  var downOffset = 0;
+  var upOffset = -1;
+  var goingDown = true;
+  var safety = 0;
+
+  while (i < items.length && safety++ < 1000) {
+    var chunk = items.slice(i, i + cols);
+    if (goingDown) {
+      var nextDown = downOffset + 1;
+      if (anchorIdx + nextDown < totalRows) {
+        chunks.push({ rowOffset: nextDown, items: chunk });
+        downOffset = nextDown;
+        i += cols;
+      } else if (anchorIdx + upOffset < 0) {
+        break;
+      }
+      goingDown = false;
+    } else {
+      if (anchorIdx + upOffset >= 0) {
+        chunks.push({ rowOffset: upOffset, items: chunk });
+        upOffset--;
+        i += cols;
+      } else if (anchorIdx + downOffset + 1 >= totalRows) {
+        break;
+      }
+      goingDown = true;
+    }
+  }
+  return chunks;
+}
+
+function _repaintCatCol() {
+  if (!_catColEl) return;
+  _catColEl.innerHTML = '';
+  MENU_DATA.forEach((cat) => {
+    const isActive = cat.id === snakeState.catId;
+    const tile = document.createElement('div');
+    tile.style.cssText = [
+      'height:70px;flex-shrink:0;border-radius:8px;',
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;',
+      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+      'box-sizing:border-box;padding:4px 6px;',
+      isActive
+        ? `border:2px solid ${cat.color};background:${hexToRgba(cat.color, 0.18)};`
+        : `border:2px solid transparent;background:${T.card};`,
+    ].join('');
+
+    const nameEl = document.createElement('span');
+    nameEl.style.cssText = [
+      `font-family:${T.fh};`,
+      `font-weight:${T.fwBold};`,
+      'font-size:13px;',
+      `color:${cat.color};`,
+      'text-align:center;pointer-events:none;',
+    ].join('');
+    nameEl.textContent = cat.label;
+
+    const countEl = document.createElement('span');
+    const _items = (cat.subcats && cat.subcats[0] && cat.subcats[0].items) ? cat.subcats[0].items : [];
+    countEl.style.cssText = [
+      `font-family:${T.fb};`,
+      'font-size:9px;',
+      `color:${cat.color};`,
+      'opacity:0.75;',
+      'text-align:center;pointer-events:none;',
+    ].join('');
+    countEl.textContent = _items.length + ' items';
+
+    tile.appendChild(nameEl);
+    tile.appendChild(countEl);
+    tile.addEventListener('pointerup', () => { _selectCat(cat); });
+    _catColEl.appendChild(tile);
+  });
+}
+
+function _buildQsrItemTile(item, cat) {
+  const catColor = (cat && cat.color) || T.green;
+  const tile = document.createElement('div');
+  tile.style.cssText = [
+    `background:${T.well};`,
+    `border:2px solid ${catColor};`,
+    'border-radius:8px;',
+    'height:70px;',
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+    'gap:2px;padding:4px 8px;box-sizing:border-box;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    `transition:${T.transitionFast};`,
+    'overflow:hidden;',
+  ].join('');
+
+  const nameEl = document.createElement('span');
+  nameEl.style.cssText = [
+    `font-family:${T.fh};`,
+    `font-weight:${T.fwBold};`,
+    'font-size:14px;',
+    `color:${T.text};`,
+    'text-align:center;line-height:1.2;word-break:break-word;pointer-events:none;',
+  ].join('');
+  nameEl.textContent = item.label;
+
+  const priceEl = document.createElement('span');
+  priceEl.style.cssText = [
+    `font-family:${T.fb};`,
+    `font-weight:${T.fwBold};`,
+    'font-size:13px;',
+    `color:${Number(item.price) > 0 ? T.gold : T.moon};`,
+    'text-align:center;pointer-events:none;',
+  ].join('');
+  priceEl.textContent = Number(item.price) > 0 ? `$${Number(item.price).toFixed(2)}` : '—';
+
+  tile.appendChild(nameEl);
+  tile.appendChild(priceEl);
+
+  tile.addEventListener('pointerdown', () => { tile.style.background = hexToRgba(T.green, 0.15); });
+  const _restore = () => { setTimeout(() => { tile.style.background = T.well; }, 120); };
+  tile.addEventListener('pointerup',     _restore);
+  tile.addEventListener('pointerleave',  _restore);
+  tile.addEventListener('pointercancel', _restore);
+
+  return tile;
+}
+
 // ── SNAKE NAV GRID RENDERER ────────────────────────
 
 function renderSnakeGrid() {
@@ -1336,41 +1473,19 @@ function renderSnakeGrid() {
 
   // ── Category home ──
   if (view === 'cats') {
-    // Inject PERSONAL as first tile
-    const personalCat = { id: 'personal', label: 'PERSONAL', color: T.green };
-    const pTile = buildCatTile(personalCat);
-    pTile.addEventListener('pointerup', () => {
-      snakeState.view = 'personal';
-      snakeState.crumbs = [];
-      snakeState.catId = null;
-      snakeState.subId = null;
-      renderSnakeGrid();
-    });
-    _gridEl.appendChild(pTile);
-
-    MENU_DATA.forEach((cat) => {
-      let tile = buildCatTile(cat);
-      tile.addEventListener('pointerup', () => { _selectCat(cat); });
-      _gridEl.appendChild(tile);
-    });
+    _repaintCatCol();
     return;
   }
 
-  // ── Subcategory ──
+  // ── Repaint column active state for all non-cats views ──
+  _repaintCatCol();
+
+  // ── Resolve active category ──
   let menuCat = MENU_DATA.find((c) => c.id === catId);
   if (!menuCat) return;
   const subcats = menuCat.subcats;
 
-  if (view === 'subcats' && subcats && subcats.length > 1) {
-    subcats.forEach((sub) => {
-      let tile = buildSubcatTile(sub, menuCat.color);
-      tile.addEventListener('pointerup', () => { _selectSubcat(sub, menuCat); });
-      _gridEl.appendChild(tile);
-    });
-    return;
-  }
-
-  // ── Items ──
+  // ── Items (subcats and items both render via distributeItems) ──
   let itemList = [];
   if (subId) {
     let sub = (subcats || []).find((s) => s.id === subId);
@@ -1379,11 +1494,19 @@ function renderSnakeGrid() {
     (subcats || []).forEach((s) => { itemList = itemList.concat(s.items || []); });
   }
 
-  itemList.forEach((item) => {
-    const isFav = favorites.indexOf(item.id) >= 0;
-    let tile = buildItemTile(item, menuCat.color, isFav);
-    _bindItemTile(tile, item, menuCat);
-    frag.appendChild(tile);
+  const anchorIdx = MENU_DATA.findIndex((c) => c.id === snakeState.catId);
+  const totalRows = MENU_DATA.length;
+  const chunks = distributeItems(itemList, 3, anchorIdx, totalRows);
+
+  chunks.forEach((chunk) => {
+    const rowAbs = anchorIdx + chunk.rowOffset + 1; // 1-indexed for CSS grid
+    chunk.items.forEach((item, colIdx) => {
+      const tile = _buildQsrItemTile(item, menuCat);
+      tile.style.gridRowStart    = String(rowAbs);
+      tile.style.gridColumnStart = String(colIdx + 1);
+      _bindItemTile(tile, item, menuCat);
+      frag.appendChild(tile);
+    });
   });
   _gridEl.appendChild(frag);
 }
@@ -1542,14 +1665,35 @@ function buildMain(parentEl, params) {
 
   // ── Collapsible grid wrapper ──────────────────────
   let gridWrap = document.createElement('div');
-  gridWrap.style.cssText = 'flex:1;min-height:0;overflow-y:auto;';
+  gridWrap.style.cssText = 'position:relative;flex:1;min-height:0;overflow:hidden;';
   _gridWrap = gridWrap;
 
+  // ── Vertical category column ──────────────────────
+  let catCol = document.createElement('div');
+  catCol.style.cssText = [
+    'position:absolute;left:0;top:0;',
+    'width:160px;height:100%;',
+    `background:${T.well};`,
+    `border-right:1px solid ${T.border};`,
+    'overflow-y:auto;overflow-x:hidden;',
+    '-webkit-overflow-scrolling:touch;',
+    'overscroll-behavior:contain;touch-action:pan-y;',
+    'display:flex;flex-direction:column;gap:6px;padding:6px;',
+    'box-sizing:border-box;',
+  ].join('');
+  _catColEl = catCol;
+  gridWrap.appendChild(catCol);
+
+  // ── Item grid ─────────────────────────────────────
   let grid = document.createElement('div');
   grid.style.cssText = [
-    'display:grid;',
-    'grid-template-columns:repeat(auto-fill,minmax(140px,1fr));',
-    'gap:6px;padding:10px;',
+    'position:absolute;left:161px;top:0;right:0;height:100%;',
+    'overflow-y:auto;overflow-x:hidden;',
+    '-webkit-overflow-scrolling:touch;',
+    'overscroll-behavior:contain;touch-action:pan-y;',
+    'display:grid;grid-template-columns:repeat(3,1fr);',
+    'grid-auto-rows:70px;gap:6px;padding:6px;',
+    'box-sizing:border-box;',
   ].join('');
   _gridEl = grid;
   gridWrap.appendChild(grid);
@@ -1722,8 +1866,18 @@ function buildSeatSelectorCard() {
       let pill = _buildSeatPill(sn, isActive);
       pill.addEventListener('pointerup', ((seatNum) => {
         return () => {
-          _autoSwitchArmed = false;
-          _activeSeats = new Set([seatNum]);
+          if (_autoSwitchArmed) {
+            // After item add: reset to single seat
+            _activeSeats = new Set([seatNum]);
+            _autoSwitchArmed = false;
+          } else {
+            // Normal multiselect toggle
+            if (_activeSeats.has(seatNum)) {
+              if (_activeSeats.size > 1) _activeSeats.delete(seatNum);
+            } else {
+              _activeSeats.add(seatNum);
+            }
+          }
           repaintSeats();
           renderTicket();
         };
@@ -2555,7 +2709,7 @@ function buildKindModPanel(container, item, modConfig, catColor, enablePlacement
     const accWrap = document.createElement('div');
     accWrap.style.cssText = [
       'display:flex;flex-direction:column;gap:8px;',
-      'padding:8px 14px 10px;',
+      'padding:8px 14px 10px 0;',
     ].join('');
 
     const CARD_DEFS = [
@@ -3777,8 +3931,153 @@ function _buildModTree(mods, opts) {
   return tree;
 }
 
+function _buildSentGroups(sentItems) {
+  const container = document.createElement('div');
+  const groups = [];
+  const keyToIdx = {};
+
+  sentItems.forEach((inst) => {
+    let key = '__null__';
+    let groupTs = null;
+    if (inst.sent_at) {
+      const d = new Date(inst.sent_at);
+      if (!isNaN(d.getTime())) {
+        const floored = Math.floor(d.getTime() / 60000);
+        key = '' + floored;
+        groupTs = new Date(floored * 60000);
+      }
+    }
+    if (keyToIdx[key] === undefined) {
+      keyToIdx[key] = groups.length;
+      groups.push({ key, ts: groupTs, items: [] });
+    }
+    groups[keyToIdx[key]].items.push(inst);
+  });
+
+  groups.sort((a, b) => {
+    if (a.key === '__null__') return -1;
+    if (b.key === '__null__') return 1;
+    return parseInt(a.key, 10) - parseInt(b.key, 10);
+  });
+
+  groups.forEach((group, idx) => {
+    const label = 'Sent';
+    let timeStr = null;
+    if (group.ts) {
+      let h = group.ts.getHours();
+      const m = group.ts.getMinutes();
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      timeStr = h + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+    }
+
+    const zone = document.createElement('div');
+    zone.style.marginBottom = '8px';
+
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;gap:7px;padding:0 2px 5px;';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.style.cssText = [
+      `font-family:${T.fb};`,
+      `font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};`,
+      'letter-spacing:0.2em;',
+      `color:${hexToRgba(T.green, 0.55)};`,
+      'text-transform:uppercase;',
+      'white-space:nowrap;',
+    ].join('');
+    labelSpan.textContent = label;
+    hdr.appendChild(labelSpan);
+
+    if (timeStr) {
+      const timeSpan = document.createElement('span');
+      timeSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        'font-size:9px;',
+        `color:${T.text};`,
+      ].join('') + `;font-weight:${T.fwBold};`;
+      timeSpan.textContent = timeStr;
+      hdr.appendChild(timeSpan);
+    }
+
+    const line = document.createElement('div');
+    line.style.cssText = `flex:1;height:1px;background:${hexToRgba(T.green, 0.15)};`;
+    hdr.appendChild(line);
+    zone.appendChild(hdr);
+
+    group.items.forEach((inst) => {
+      const modTotal = (inst.mods || []).reduce((s, m) => s + (Number(m.price) || 0), 0);
+      const totalPrice = (Number(inst.unitPrice) || 0) + modTotal;
+
+      const row = document.createElement('div');
+      row.style.cssText = [
+        `background:${T.well};`,
+        `border-left:2px solid ${hexToRgba(T.green, 0.28)};`,
+        'border-radius:0 5px 5px 0;',
+        'padding:5px 8px 5px 10px;',
+        'display:flex;align-items:center;gap:7px;',
+        'opacity:0.6;',
+        'margin-bottom:3px;',
+      ].join('');
+
+      const nameSpan = document.createElement('span');
+      nameSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        `font-size:${T.fsB2};`,
+        `color:${T.text};`,
+        'flex:1;',
+        'white-space:nowrap;',
+        'overflow:hidden;',
+        'text-overflow:ellipsis;',
+      ].join('') + `;font-weight:${T.fwBold};`;
+      nameSpan.textContent = inst.name;
+      row.appendChild(nameSpan);
+
+      const priceSpan = document.createElement('span');
+      priceSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        `font-size:${T.fsB2};`,
+        `font-weight:${T.fwBold};`,
+        `color:${T.gold};`,
+      ].join('');
+      priceSpan.textContent = _fmtPrice(totalPrice);
+      row.appendChild(priceSpan);
+
+      zone.appendChild(row);
+    });
+
+    container.appendChild(zone);
+  });
+
+  return container;
+}
+
+function _buildUnsentHeader() {
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;gap:7px;padding:0 2px 6px;margin-top:2px;';
+
+  const labelSpan = document.createElement('span');
+  labelSpan.style.cssText = [
+    `font-family:${T.fb};`,
+    'font-size:8px;',
+    `font-weight:${T.fwBold};`,
+    'letter-spacing:0.2em;',
+    'text-transform:uppercase;',
+    `color:${hexToRgba(T.gold, 0.65)};`,
+    'white-space:nowrap;',
+  ].join('');
+  labelSpan.textContent = '+ Unsent';
+  hdr.appendChild(labelSpan);
+
+  const line = document.createElement('div');
+  line.style.cssText = `flex:1;height:1px;background:${hexToRgba(T.gold, 0.18)};`;
+  hdr.appendChild(line);
+
+  return hdr;
+}
+
 function _buildItemSubCard(inst, isMultiSeat) {
-  const sent = !!inst.sent;
   let catColor = _catColorForItem(inst);
   const bevelLt = lightenHex(T.bg, 0.08);
   let bevelDk = darkenHex(T.bg, 0.2);
@@ -3788,8 +4087,7 @@ function _buildItemSubCard(inst, isMultiSeat) {
   const qty = inst.qty || 1;
   const displayName = qty > 1 ? qty + `× ${inst.name}` : inst.name;
 
-  // Wrapper — flex row containing item-block (card + mod tree) + optional
-  // chevron column for sent items.
+  // Wrapper — flex row containing item-block (card + mod tree)
   const wrapper = document.createElement('div');
   wrapper.style.cssText = [
     'display:flex;align-items:stretch;gap:8px;',
@@ -3802,29 +4100,17 @@ function _buildItemSubCard(inst, isMultiSeat) {
   block.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;';
 
   // ── Card body ────────────────────────────────────
+  // Bevel chrome with cat-color left border
   const card = document.createElement('div');
-  if (sent) {
-    // All-4 green border (Mode B treatment from check-overview)
-    card.style.cssText = [
-      `background:${T.well};`,
-      `border:2px solid ${T.green};`,
-      'border-left-width:3px;',
-      'border-radius:8px;',
-      'padding:6px 10px;',
-      `box-shadow:0 2px 0 ${T.greenDk};`,
-    ].join('');
-  } else {
-    // Bevel chrome with cat-color left border
-    card.style.cssText = [
-      `background:${T.well};`,
-      `border-top:2px solid ${bevelLt};`,
-      `border-right:2px solid ${bevelDk};`,
-      `border-bottom:2px solid ${bevelDk};`,
-      `border-left:3px solid ${catColor};`,
-      'border-radius:8px;',
-      'padding:6px 10px;',
-    ].join('');
-  }
+  card.style.cssText = [
+    `background:${T.well};`,
+    `border-top:2px solid ${bevelLt};`,
+    `border-right:2px solid ${bevelDk};`,
+    `border-bottom:2px solid ${bevelDk};`,
+    `border-left:3px solid ${catColor};`,
+    'border-radius:8px;',
+    'padding:6px 10px;',
+  ].join('');
 
   // Main row: name + price + (× delete for unsent)
   const mainRow = document.createElement('div');
@@ -3853,52 +4139,48 @@ function _buildItemSubCard(inst, isMultiSeat) {
   priceEl.textContent = _fmtPrice(totalPrice);
   mainRow.appendChild(priceEl);
 
-  if (!sent) {
-    const xBtn = document.createElement('div');
-    xBtn.style.cssText = [
-      'width:22px;height:22px;flex-shrink:0;',
-      'display:flex;align-items:center;justify-content:center;',
-      `border-radius:4px;background:${T.verm};`,
-      `color:#fff;font-family:${T.fb};font-size:15px;font-weight:${T.fwBold};`,
-      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    xBtn.textContent = '×';
-    xBtn.dataset.deleteBtn = '1';
-    xBtn.addEventListener('pointerup', ((instance) => {
-      return (e) => {
-        e.stopPropagation();
-        let idx = ticket.indexOf(instance);
-        if (idx !== -1) ticket.splice(idx, 1);
-        delete _expandedItems[instance.id];
-        renderTicket();
-        rebuildBottomBar();
-      };
-    })(inst));
-    mainRow.appendChild(xBtn);
-  }
+  const xBtn = document.createElement('div');
+  xBtn.style.cssText = [
+    'width:22px;height:22px;flex-shrink:0;',
+    'display:flex;align-items:center;justify-content:center;',
+    `border-radius:4px;background:${T.verm};`,
+    `color:#fff;font-family:${T.fb};font-size:15px;font-weight:${T.fwBold};`,
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  xBtn.textContent = '×';
+  xBtn.dataset.deleteBtn = '1';
+  xBtn.addEventListener('pointerup', ((instance) => {
+    return (e) => {
+      e.stopPropagation();
+      let idx = ticket.indexOf(instance);
+      if (idx !== -1) ticket.splice(idx, 1);
+      delete _expandedItems[instance.id];
+      renderTicket();
+      rebuildBottomBar();
+    };
+  })(inst));
+  mainRow.appendChild(xBtn);
 
-  if (!sent) {
-    card.style.cursor = 'pointer';
-    card.style.pointerEvents = 'auto';
-    card.style.touchAction = 'manipulation';
-    card.addEventListener('pointerup', (e) => {
-      if (e.target.closest('[data-delete-btn]')) return;
-      const _itemId  = inst.menu_item_id;
-      const _catId   = inst.category;
-      const _bkCfg   = resolveBackendModifierConfig(_itemId, _catId);
-      const _ovInc   = _itemId ? INCLUDED_BY_ITEM[_itemId] : null;
-      if (!_bkCfg && !(_ovInc && _ovInc.length > 0)) return;
-      const _eCfg    = _bkCfg ? Object.assign({}, _bkCfg) : {};
-      if (_ovInc && _ovInc.length > 0) _eCfg.includedItems = _ovInc;
-      const _mCat    = _catId ? getMenuCat(_catId) : null;
-      const _enPl    = _mCat ? !!_mCat.enablePlacement : false;
-      const _cc      = _catColorForItem(inst);
-      openModifierPanel(
-        { label: inst.name, price: inst.unitPrice, id: inst.menu_item_id },
-        _eCfg, _cc, _enPl, inst
-      );
-    });
-  }
+  card.style.cursor = 'pointer';
+  card.style.pointerEvents = 'auto';
+  card.style.touchAction = 'manipulation';
+  card.addEventListener('pointerup', (e) => {
+    if (e.target.closest('[data-delete-btn]')) return;
+    const _itemId  = inst.menu_item_id;
+    const _catId   = inst.category;
+    const _bkCfg   = resolveBackendModifierConfig(_itemId, _catId);
+    const _ovInc   = _itemId ? INCLUDED_BY_ITEM[_itemId] : null;
+    if (!_bkCfg && !(_ovInc && _ovInc.length > 0)) return;
+    const _eCfg    = _bkCfg ? Object.assign({}, _bkCfg) : {};
+    if (_ovInc && _ovInc.length > 0) _eCfg.includedItems = _ovInc;
+    const _mCat    = _catId ? getMenuCat(_catId) : null;
+    const _enPl    = _mCat ? !!_mCat.enablePlacement : false;
+    const _cc      = _catColorForItem(inst);
+    openModifierPanel(
+      { label: inst.name, price: inst.unitPrice, id: inst.menu_item_id },
+      _eCfg, _cc, _enPl, inst
+    );
+  });
 
   card.appendChild(mainRow);
   block.appendChild(card);
@@ -3910,53 +4192,16 @@ function _buildItemSubCard(inst, isMultiSeat) {
     const _rightMods = inst.mods.filter((m) => m.prefix === 'Right');
     if (_wholeMods.length > 0) {
       block.appendChild(_buildModTree(_wholeMods, {
-        variant: sent ? 'sent' : 'default',
+        variant: 'default',
         catColor: catColor,
       }));
     }
     if (_leftMods.length > 0 || _rightMods.length > 0) {
-      block.appendChild(buildHalfTable(_leftMods, _rightMods, T.fsB4, sent ? null : inst));
+      block.appendChild(buildHalfTable(_leftMods, _rightMods, T.fsB4, inst));
     }
   }
 
   wrapper.appendChild(block);
-
-  // ── Sent: chevron column to right ────────────────
-  if (sent) {
-    const chevCol = document.createElement('div');
-    chevCol.style.cssText = [
-      'flex:0 0 auto;min-width:48px;',
-      'display:flex;flex-direction:column;',
-      'align-items:center;justify-content:center;',
-      'padding-left:4px;gap:4px;',
-    ].join('');
-
-    const chev = document.createElement('span');
-    chev.style.cssText = [
-      `font-family:${T.fb};`,
-      `font-weight:${T.fwBold};`,
-      'font-size:18px;',
-      `color:${T.green};`,
-      'letter-spacing:0.08em;line-height:1;',
-    ].join('');
-    chev.textContent = '>>>';
-    chevCol.appendChild(chev);
-
-    if (inst.sent_at) {
-      const stamp = document.createElement('span');
-      stamp.style.cssText = [
-        `font-family:${T.fb};`,
-        'font-size:11px;',
-        `color:${T.text};`,
-        'font-style:italic;',
-      ].join('') + `;font-weight:${T.fwBold};`;
-      stamp.textContent = inst.sent_at;
-      chevCol.appendChild(stamp);
-    }
-
-    wrapper.appendChild(chevCol);
-  }
-
   return wrapper;
 }
 
@@ -3966,24 +4211,18 @@ function renderTicket() {
   if (!list) return;
   list.innerHTML = '';
 
-  // In check-overview mode, only show unsent items
-  let displayTicket = ticket;
-  if (sceneParams.returnScene === 'check-overview') {
-    displayTicket = ticket.filter((inst) => !inst.sent);
-  }
-
   // Filter to items whose seat_number is in _activeSeats
-  if (_activeSeats.size > 0) {
-    displayTicket = displayTicket.filter((inst) => _activeSeats.has(inst.seat_number));
-  }
+  let ticketView = _activeSeats.size > 0
+    ? ticket.filter((inst) => _activeSeats.has(inst.seat_number))
+    : ticket;
 
-  if (displayTicket.length === 0 && !_modPanelItem) {
+  if (ticketView.length === 0 && !_modPanelItem) {
     const hint = document.createElement('div');
     hint.style.cssText = `padding:20px 8px;font-family:${T.fb};font-size:${T.fsB3};color:${hexToRgba(T.text, 0.6)};text-align:center;;font-weight:${T.fwBold};`;
     hint.textContent = 'Tap items to add';
     list.appendChild(hint);
     _appendModPreview(list);
-    _updateTicketTotals(displayTicket);
+    _updateTicketTotals(ticketView);
     return;
   }
 
@@ -3994,7 +4233,7 @@ function renderTicket() {
     const bevelDk = darkenHex(T.bg, 0.2);
     let seatOrder = Array.from(_activeSeats).sort((a, b) => a - b);
     seatOrder.forEach((sn) => {
-      const seatItems = displayTicket.filter((i) => i.seat_number === sn);
+      const seatItems = ticketView.filter((i) => i.seat_number === sn);
       const seatSubtotal = seatItems.reduce((s, i) => {
         return s + (Number(i.unitPrice) || 0) + (i.mods || []).reduce((ms, m) => ms + (Number(m.price) || 0), 0);
       }, 0);
@@ -4056,7 +4295,13 @@ function renderTicket() {
       const itemsInner = document.createElement('div');
       itemsInner.style.cssText = 'padding:6px 8px 8px;display:flex;flex-direction:column;';
 
-      seatItems.forEach((inst) => {
+      const seatSent   = seatItems.filter((i) => i.sent);
+      const seatUnsent = seatItems.filter((i) => !i.sent);
+      if (seatSent.length > 0) {
+        itemsInner.appendChild(_buildSentGroups(seatSent));
+        itemsInner.appendChild(_buildUnsentHeader());
+      }
+      seatUnsent.forEach((inst) => {
         itemsInner.appendChild(_buildItemSubCard(inst, false));
       });
 
@@ -4066,13 +4311,19 @@ function renderTicket() {
     });
   } else {
     // Single seat — items render flush, no header
-    displayTicket.forEach((inst) => {
+    const sentItems   = ticketView.filter((inst) => inst.sent);
+    const unsentItems = ticketView.filter((inst) => !inst.sent);
+    if (sentItems.length > 0) {
+      list.appendChild(_buildSentGroups(sentItems));
+      list.appendChild(_buildUnsentHeader());
+    }
+    unsentItems.forEach((inst) => {
       list.appendChild(_buildItemSubCard(inst, false));
     });
   }
 
   _appendModPreview(list);
-  _updateTicketTotals(displayTicket);
+  _updateTicketTotals(ticketView);
 }
 
 function _appendModPreview(list) {
@@ -4811,6 +5062,7 @@ function recallFromBackend(orderId) {
           }),
           selected:  false,
           sent:      !!(item.sent_at),  // true only if actually kitchen-fired
+          sent_at:   item.sent_at || null,
           category:  item.category || null,
           seat_number: item.seat_number || null,
         };
@@ -4819,41 +5071,8 @@ function recallFromBackend(orderId) {
       renderTicket();
       rebuildBottomBar();
 
-      // Populate the left panel with the existing check's sent items so the
-      // cashier can see what's already on the check while adding new ones.
-      // All recalled items are sent:true (set above). Filter to the selected
-      // seat when exactly one seat was chosen before entering add-items mode.
-      if (sceneParams.returnScene === 'check-overview') {
-        const selSeats = sceneParams.selectedSeatNumbers || [];
-        let sentItems = ticket;
-
-        if (selSeats.length === 1) {
-          sentItems = sentItems.filter((i) => i.seat_number === selSeats[0]);
-        }
-
-        let leftItems = [];
-        if (selSeats.length !== 1 && sentItems.length > 0) {
-          const seatGroups = {};
-          const seatOrder  = [];
-          sentItems.forEach((i) => {
-            const sn = i.seat_number || 1;
-            if (!seatGroups[sn]) { seatGroups[sn] = []; seatOrder.push(sn); }
-            seatGroups[sn].push(i);
-          });
-          seatOrder.sort((a, b) => a - b);
-          seatOrder.forEach((sn) => {
-            const seatTot = seatGroups[sn].reduce((s, i) => s + (i.unitPrice || 0), 0);
-            leftItems.push({ seatHeader: true, seatId: `SEAT ${sn}`, seatTotal: seatTot });
-            seatGroups[sn].forEach((i) => { leftItems.push(i); });
-          });
-        } else {
-          leftItems = sentItems;
-        }
-
-        OrderSummary.unlockItemRender();
-        OrderSummary.update({ items: leftItems });
-        OrderSummary.lockItemRender();
-      }
+      // Sent items are now shown as settled group rows in the ticket list;
+      // the left panel no longer needs a separate population pass.
     })
     .catch((err) => {
       console.warn('[KINDpos] Failed to recall order:', err);
