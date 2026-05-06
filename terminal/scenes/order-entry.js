@@ -1350,7 +1350,7 @@ function _repaintCatCol() {
     const isActive = cat.id === snakeState.catId;
     const tile = document.createElement('div');
     tile.style.cssText = [
-      'height:70px;flex-shrink:0;border-radius:8px;',
+      'height:88px;flex-shrink:0;border-radius:8px;',
       'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;',
       'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
       'box-sizing:border-box;padding:4px 6px;',
@@ -1363,7 +1363,7 @@ function _repaintCatCol() {
     nameEl.style.cssText = [
       `font-family:${T.fh};`,
       `font-weight:${T.fwBold};`,
-      'font-size:13px;',
+      'font-size:15px;',
       `color:${cat.color};`,
       'text-align:center;pointer-events:none;',
     ].join('');
@@ -1373,7 +1373,7 @@ function _repaintCatCol() {
     const _items = (cat.subcats && cat.subcats[0] && cat.subcats[0].items) ? cat.subcats[0].items : [];
     countEl.style.cssText = [
       `font-family:${T.fb};`,
-      'font-size:9px;',
+      'font-size:11px;',
       `color:${cat.color};`,
       'opacity:0.75;',
       'text-align:center;pointer-events:none;',
@@ -1394,7 +1394,7 @@ function _buildQsrItemTile(item, cat) {
     `background:${T.well};`,
     `border:2px solid ${catColor};`,
     'border-radius:8px;',
-    'height:70px;',
+    'height:88px;',
     'display:flex;flex-direction:column;align-items:center;justify-content:center;',
     'gap:2px;padding:4px 8px;box-sizing:border-box;',
     'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
@@ -1694,7 +1694,7 @@ function buildMain(parentEl, params) {
     '-webkit-overflow-scrolling:touch;',
     'overscroll-behavior:contain;touch-action:pan-y;',
     'display:grid;grid-template-columns:repeat(3,1fr);',
-    'grid-auto-rows:70px;gap:6px;padding:6px;',
+    'grid-auto-rows:88px;gap:6px;padding:6px;',
     'box-sizing:border-box;',
   ].join('');
   _gridEl = grid;
