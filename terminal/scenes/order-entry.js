@@ -1930,9 +1930,9 @@ function rebuildBottomBar() {
   _bottomBar.innerHTML = '';
   _personalBtn = null;
   _bottomBar.style.cssText = [
-    'display:grid;grid-template-columns:1fr 1fr auto;',
-    'align-items:stretch;gap:4px;flex-shrink:0;margin-top:4px;',
-    'height:136px;',
+    'display:grid;grid-template-columns:1fr 1fr 1fr;',
+    'align-items:stretch;gap:4px;flex-shrink:0;margin-top:auto;',
+    'height:70px;',
   ].join('');
 
   // ── Col 1: Seat selector ─────────────────────────
@@ -1953,7 +1953,7 @@ function rebuildBottomBar() {
     fontSize:   '20px',
     isPrimary:  isPersonal,
     accent:     isPersonal ? T.green : T.moon,
-    accentDk:   isPersonal ? T.greenDk : T.border,
+    accentDk:   isPersonal ? T.greenDk : darkenHex(T.moon, 0.4),
     onClick: () => {
       snakeState.view = 'personal';
       renderSnakeGrid();
@@ -1961,62 +1961,19 @@ function rebuildBottomBar() {
     },
   });
   personalBtn.style.gridColumn = '2';
-  personalBtn.style.margin = '12px 0';
+  personalBtn.style.margin = '2px 0';
   _personalBtn = personalBtn;
   _bottomBar.appendChild(personalBtn);
 
-  // ── Col 3: Two-quad chamfer action bar ────────────
-  const actionsWrap = document.createElement('div');
-  actionsWrap.style.cssText = 'display:flex;gap:10px;align-items:stretch;height:112px;flex-shrink:0;margin:12px 0;';
-
-  // Left quad: Disc/Void stacked
-  const leftQuad = document.createElement('div');
-  leftQuad.style.cssText =
-    'display:grid;grid-template-columns:150px;' +
-    'grid-template-rows:1fr 1fr;gap:5px;height:112px;';
-
-  const discBtn = buildChamferButton({
-    label: 'Disc', fontSize: '20px', isPrimary: false,
-    accent: T.lavender, accentDk: T.lavenderDk,
-    onClick: () => { showToast('Discount coming soon', { bg: T.lavender }); },
-  });
-  discBtn.style.cssText += 'grid-column:1;grid-row:1;';
-
-  const voidBtn = buildChamferButton({
-    label: 'Void', fontSize: '20px', isPrimary: false,
-    accent: T.verm, accentDk: T.vermDk,
-    onClick: () => { showToast('Void coming soon', { bg: T.verm }); },
-  });
-  voidBtn.style.cssText += 'grid-column:1;grid-row:2;';
-
-  leftQuad.appendChild(discBtn);
-  leftQuad.appendChild(voidBtn);
-
-  // Right quad: Print/Manage stacked-left + DONE tall-right
-  const rightQuad = document.createElement('div');
-  rightQuad.style.cssText =
-    'display:grid;grid-template-columns:150px 175px;' +
-    'grid-template-rows:1fr 1fr;gap:5px;height:112px;';
-
-  const printBtn = buildChamferButton({
-    label: 'Print', fontSize: '20px', isPrimary: false,
-    accent: T.elec, accentDk: T.elecDk,
-    onClick: () => { showToast('Print coming soon', { bg: T.elec }); },
-  });
-  printBtn.style.cssText += 'grid-column:1;grid-row:1;';
-
-  const manageBtn = buildChamferButton({
-    label: 'Manage', fontSize: '20px', isPrimary: false,
-    accent: T.text, accentDk: darkenHex(T.card, 0.4),
-    onClick: () => { showToast('Manage coming soon', { bg: T.moon }); },
-  });
-  manageBtn.style.cssText += 'grid-column:1;grid-row:2;';
-
+  // ── Col 3: DONE button ──────────────────────────────
   let hasUnsent = ticket.some((i) => !i.sent);
   const doneLabel = isSending ? 'SENDING…' : 'DONE';
   const doneBtn = buildChamferButton({
-    label: doneLabel, fontSize: '25px', isPrimary: true,
-    accent: T.greenWarm, accentDk: T.greenWarmDk,
+    label:     doneLabel,
+    fontSize:  '25px',
+    isPrimary: true,
+    accent:    T.greenWarm,
+    accentDk:  T.greenWarmDk,
     onClick: () => {
       if (isSending) return;
       if (!hasUnsent) { handleClose(); return; }
@@ -2026,16 +1983,9 @@ function rebuildBottomBar() {
       })();
     },
   });
-  doneBtn.style.cssText += 'grid-column:2;grid-row:1/3;';
-
-  rightQuad.appendChild(printBtn);
-  rightQuad.appendChild(manageBtn);
-  rightQuad.appendChild(doneBtn);
-
-  actionsWrap.appendChild(leftQuad);
-  actionsWrap.appendChild(rightQuad);
-
-  _bottomBar.appendChild(actionsWrap);
+  doneBtn.style.gridColumn = '3';
+  doneBtn.style.margin = '2px 0';
+  _bottomBar.appendChild(doneBtn);
 }
 
 function clearModifierSelection() {
