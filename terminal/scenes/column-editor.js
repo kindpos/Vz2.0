@@ -763,8 +763,8 @@ function renderFooterToolbar(state) {
 
   // ── Left grid: MOVE / SPLIT / MERGE ──────────────
   var leftGrid = document.createElement('div');
-  leftGrid.style.flex                  = '1';
-  leftGrid.style.minWidth              = '0';
+  leftGrid.style.flex                  = '0 0 auto';
+  leftGrid.style.width                 = '380px';
   leftGrid.style.display               = 'grid';
   leftGrid.style.gridTemplateColumns   = 'repeat(3, 1fr)';
   leftGrid.style.gap                   = '6px';
@@ -788,6 +788,7 @@ function renderFooterToolbar(state) {
     // Face styling: active = flooded, inactive = colored text on dark
     var faceEl = btn.children[0];
     if (faceEl) {
+      faceEl.style.fontSize = T.fsB3;
       if (isActive) {
         faceEl.style.background = tool.accent;
         faceEl.style.color = T.well;
@@ -820,7 +821,7 @@ function renderFooterToolbar(state) {
 
   // ── Right grid: UNDO / CANCEL / CONFIRM ──────────
   var rightGrid = document.createElement('div');
-  rightGrid.style.flexShrink          = '0';
+  rightGrid.style.flex                = '1';
   rightGrid.style.display             = 'flex';
   rightGrid.style.gap                 = '6px';
   rightGrid.style.alignItems          = 'stretch';
@@ -833,9 +834,12 @@ function renderFooterToolbar(state) {
     isPrimary: false,
   });
   undoBtn.style.position = 'relative';
-  undoBtn.style.width = '80px';
+  undoBtn.style.width = '96px';
   undoBtn.style.flexShrink = '0';
   var undoFace = undoBtn.children[0];
+  if (undoFace) {
+    undoFace.style.fontSize = T.fsB3;
+  }
   if (undoFace && state.actionLog.length > 0) {
     var badge = document.createElement('span');
     badge.textContent         = state.actionLog.length;
@@ -871,9 +875,10 @@ function renderFooterToolbar(state) {
     accentDk: T.vermDk,
     isPrimary: false,
   });
-  resetBtn.style.width = '80px';
+  resetBtn.style.width = '96px';
   resetBtn.style.flexShrink = '0';
   var resetFace = resetBtn.children[0];
+  resetFace.style.fontSize = T.fsB3;
   resetFace.style.position = 'relative';
   var undoFill = document.createElement('div');
   undoFill.style.position        = 'absolute';
@@ -939,6 +944,10 @@ function renderFooterToolbar(state) {
   });
   confirmBtn.style.flex = '1';
   confirmBtn.style.minWidth = '120px';
+  var confirmFace = confirmBtn.children[0];
+  if (confirmFace) {
+    confirmFace.style.fontSize = T.fsB2;
+  }
   confirmBtn.addEventListener('pointerup', function() { handleConfirm(state); });
   state.listeners.push({ el: confirmBtn, event: 'pointerup', handler: function() { handleConfirm(state); } });
   rightGrid.appendChild(confirmBtn);
