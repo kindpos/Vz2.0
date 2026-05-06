@@ -333,6 +333,7 @@ let snakeState = {
 let favorites    = [];   // item ids for personal tab
 let _gridEl      = null; // inner grid DOM container
 let _gridWrap    = null; // collapsible grid wrapper
+let _catColEl    = null; // QSR-style vertical category column
 let _snakeStrip  = null; // crumb-only strip shown when mod panel open
 let _expandedItems = {}; // item id → true when mod rows are expanded
 let _collapsedSeats = new Set(); // seat numbers collapsed in multi-seat s-card view (default: all expanded)
@@ -700,6 +701,7 @@ defineScene({
     _modPanelOpen  = false;
     _gridEl        = null;
     _gridWrap      = null;
+    _catColEl      = null;
     _snakeStrip    = null;
     _expandedItems = {};
     _collapsedSeats = new Set();
@@ -791,6 +793,7 @@ defineScene({
     _mainArea      = null;
     _gridEl        = null;
     _gridWrap      = null;
+    _catColEl      = null;
     _snakeStrip    = null;
     _expandedItems = {};
     _collapsedSeats = new Set();
@@ -1297,6 +1300,140 @@ function buildItemTile(item, catColor, isFav) {
   return el;
 }
 
+// ── QSR VERTICAL NAV HELPERS ──────────────────────
+
+// Distribute items into grid-row chunks anchored at `anchorIdx`.
+// Returns an array of { rowOffset, items[] } where rowOffset 0 is the
+// anchor row, positive rows go down, negative rows go up.
+function distributeItems(items, cols, anchorIdx, totalRows) {
+  var chunks = [];
+  if (!items || items.length === 0) return chunks;
+
+  chunks.push({ rowOffset: 0, items: items.slice(0, cols) });
+  var i = cols;
+
+  var downOffset = 0;
+  var upOffset = -1;
+  var goingDown = true;
+  var safety = 0;
+
+  while (i < items.length && safety++ < 1000) {
+    var chunk = items.slice(i, i + cols);
+    if (goingDown) {
+      var nextDown = downOffset + 1;
+      if (anchorIdx + nextDown < totalRows) {
+        chunks.push({ rowOffset: nextDown, items: chunk });
+        downOffset = nextDown;
+        i += cols;
+      } else if (anchorIdx + upOffset < 0) {
+        break;
+      }
+      goingDown = false;
+    } else {
+      if (anchorIdx + upOffset >= 0) {
+        chunks.push({ rowOffset: upOffset, items: chunk });
+        upOffset--;
+        i += cols;
+      } else if (anchorIdx + downOffset + 1 >= totalRows) {
+        break;
+      }
+      goingDown = true;
+    }
+  }
+  return chunks;
+}
+
+function _repaintCatCol() {
+  if (!_catColEl) return;
+  _catColEl.innerHTML = '';
+  MENU_DATA.forEach((cat) => {
+    const isActive = cat.id === snakeState.catId;
+    const tile = document.createElement('div');
+    tile.style.cssText = [
+      'height:70px;flex-shrink:0;border-radius:8px;',
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;',
+      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+      'box-sizing:border-box;padding:4px 6px;',
+      isActive
+        ? `border:2px solid ${cat.color};background:${hexToRgba(cat.color, 0.18)};`
+        : `border:2px solid transparent;background:${T.card};`,
+    ].join('');
+
+    const nameEl = document.createElement('span');
+    nameEl.style.cssText = [
+      `font-family:${T.fh};`,
+      `font-weight:${T.fwBold};`,
+      'font-size:13px;',
+      `color:${cat.color};`,
+      'text-align:center;pointer-events:none;',
+    ].join('');
+    nameEl.textContent = cat.label;
+
+    const countEl = document.createElement('span');
+    const _items = (cat.subcats && cat.subcats[0] && cat.subcats[0].items) ? cat.subcats[0].items : [];
+    countEl.style.cssText = [
+      `font-family:${T.fb};`,
+      'font-size:9px;',
+      `color:${cat.color};`,
+      'opacity:0.75;',
+      'text-align:center;pointer-events:none;',
+    ].join('');
+    countEl.textContent = _items.length + ' items';
+
+    tile.appendChild(nameEl);
+    tile.appendChild(countEl);
+    tile.addEventListener('pointerup', () => { _selectCat(cat); });
+    _catColEl.appendChild(tile);
+  });
+}
+
+function _buildQsrItemTile(item, cat) {
+  const catColor = (cat && cat.color) || T.green;
+  const tile = document.createElement('div');
+  tile.style.cssText = [
+    `background:${T.well};`,
+    `border:2px solid ${catColor};`,
+    'border-radius:8px;',
+    'height:70px;',
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+    'gap:2px;padding:4px 8px;box-sizing:border-box;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    `transition:${T.transitionFast};`,
+    'overflow:hidden;',
+  ].join('');
+
+  const nameEl = document.createElement('span');
+  nameEl.style.cssText = [
+    `font-family:${T.fh};`,
+    `font-weight:${T.fwBold};`,
+    'font-size:14px;',
+    `color:${T.text};`,
+    'text-align:center;line-height:1.2;word-break:break-word;pointer-events:none;',
+  ].join('');
+  nameEl.textContent = item.label;
+
+  const priceEl = document.createElement('span');
+  priceEl.style.cssText = [
+    `font-family:${T.fb};`,
+    `font-weight:${T.fwBold};`,
+    'font-size:13px;',
+    `color:${Number(item.price) > 0 ? T.gold : T.moon};`,
+    'text-align:center;pointer-events:none;',
+  ].join('');
+  priceEl.textContent = Number(item.price) > 0 ? `$${Number(item.price).toFixed(2)}` : '—';
+
+  tile.appendChild(nameEl);
+  tile.appendChild(priceEl);
+
+  tile.addEventListener('pointerdown', () => { tile.style.background = hexToRgba(T.green, 0.15); });
+  const _restore = () => { setTimeout(() => { tile.style.background = T.well; }, 120); };
+  tile.addEventListener('pointerup',     _restore);
+  tile.addEventListener('pointerleave',  _restore);
+  tile.addEventListener('pointercancel', _restore);
+
+  return tile;
+}
+
 // ── SNAKE NAV GRID RENDERER ────────────────────────
 
 function renderSnakeGrid() {
@@ -1336,41 +1473,19 @@ function renderSnakeGrid() {
 
   // ── Category home ──
   if (view === 'cats') {
-    // Inject PERSONAL as first tile
-    const personalCat = { id: 'personal', label: 'PERSONAL', color: T.green };
-    const pTile = buildCatTile(personalCat);
-    pTile.addEventListener('pointerup', () => {
-      snakeState.view = 'personal';
-      snakeState.crumbs = [];
-      snakeState.catId = null;
-      snakeState.subId = null;
-      renderSnakeGrid();
-    });
-    _gridEl.appendChild(pTile);
-
-    MENU_DATA.forEach((cat) => {
-      let tile = buildCatTile(cat);
-      tile.addEventListener('pointerup', () => { _selectCat(cat); });
-      _gridEl.appendChild(tile);
-    });
+    _repaintCatCol();
     return;
   }
 
-  // ── Subcategory ──
+  // ── Repaint column active state for all non-cats views ──
+  _repaintCatCol();
+
+  // ── Resolve active category ──
   let menuCat = MENU_DATA.find((c) => c.id === catId);
   if (!menuCat) return;
   const subcats = menuCat.subcats;
 
-  if (view === 'subcats' && subcats && subcats.length > 1) {
-    subcats.forEach((sub) => {
-      let tile = buildSubcatTile(sub, menuCat.color);
-      tile.addEventListener('pointerup', () => { _selectSubcat(sub, menuCat); });
-      _gridEl.appendChild(tile);
-    });
-    return;
-  }
-
-  // ── Items ──
+  // ── Items (subcats and items both render via distributeItems) ──
   let itemList = [];
   if (subId) {
     let sub = (subcats || []).find((s) => s.id === subId);
@@ -1379,11 +1494,19 @@ function renderSnakeGrid() {
     (subcats || []).forEach((s) => { itemList = itemList.concat(s.items || []); });
   }
 
-  itemList.forEach((item) => {
-    const isFav = favorites.indexOf(item.id) >= 0;
-    let tile = buildItemTile(item, menuCat.color, isFav);
-    _bindItemTile(tile, item, menuCat);
-    frag.appendChild(tile);
+  const anchorIdx = MENU_DATA.findIndex((c) => c.id === snakeState.catId);
+  const totalRows = MENU_DATA.length;
+  const chunks = distributeItems(itemList, 3, anchorIdx, totalRows);
+
+  chunks.forEach((chunk) => {
+    const rowAbs = anchorIdx + chunk.rowOffset + 1; // 1-indexed for CSS grid
+    chunk.items.forEach((item, colIdx) => {
+      const tile = _buildQsrItemTile(item, menuCat);
+      tile.style.gridRowStart    = String(rowAbs);
+      tile.style.gridColumnStart = String(colIdx + 1);
+      _bindItemTile(tile, item, menuCat);
+      frag.appendChild(tile);
+    });
   });
   _gridEl.appendChild(frag);
 }
@@ -1542,14 +1665,35 @@ function buildMain(parentEl, params) {
 
   // ── Collapsible grid wrapper ──────────────────────
   let gridWrap = document.createElement('div');
-  gridWrap.style.cssText = 'flex:1;min-height:0;overflow-y:auto;';
+  gridWrap.style.cssText = 'position:relative;flex:1;min-height:0;overflow:hidden;';
   _gridWrap = gridWrap;
 
+  // ── Vertical category column ──────────────────────
+  let catCol = document.createElement('div');
+  catCol.style.cssText = [
+    'position:absolute;left:0;top:0;',
+    'width:160px;height:100%;',
+    `background:${T.well};`,
+    `border-right:1px solid ${T.border};`,
+    'overflow-y:auto;overflow-x:hidden;',
+    '-webkit-overflow-scrolling:touch;',
+    'overscroll-behavior:contain;touch-action:pan-y;',
+    'display:flex;flex-direction:column;gap:6px;padding:6px;',
+    'box-sizing:border-box;',
+  ].join('');
+  _catColEl = catCol;
+  gridWrap.appendChild(catCol);
+
+  // ── Item grid ─────────────────────────────────────
   let grid = document.createElement('div');
   grid.style.cssText = [
-    'display:grid;',
-    'grid-template-columns:repeat(auto-fill,minmax(140px,1fr));',
-    'gap:6px;padding:10px;',
+    'position:absolute;left:161px;top:0;right:0;height:100%;',
+    'overflow-y:auto;overflow-x:hidden;',
+    '-webkit-overflow-scrolling:touch;',
+    'overscroll-behavior:contain;touch-action:pan-y;',
+    'display:grid;grid-template-columns:repeat(3,1fr);',
+    'grid-auto-rows:70px;gap:6px;padding:6px;',
+    'box-sizing:border-box;',
   ].join('');
   _gridEl = grid;
   gridWrap.appendChild(grid);
