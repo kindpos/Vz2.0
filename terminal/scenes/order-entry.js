@@ -1722,11 +1722,17 @@ function buildSeatSelectorCard() {
       let pill = _buildSeatPill(sn, isActive);
       pill.addEventListener('pointerup', ((seatNum) => {
         return () => {
-          _autoSwitchArmed = false;
-          if (_activeSeats.has(seatNum)) {
-            if (_activeSeats.size > 1) _activeSeats.delete(seatNum);
+          if (_autoSwitchArmed) {
+            // After item add: reset to single seat
+            _activeSeats = new Set([seatNum]);
+            _autoSwitchArmed = false;
           } else {
-            _activeSeats.add(seatNum);
+            // Normal multiselect toggle
+            if (_activeSeats.has(seatNum)) {
+              if (_activeSeats.size > 1) _activeSeats.delete(seatNum);
+            } else {
+              _activeSeats.add(seatNum);
+            }
           }
           repaintSeats();
           renderTicket();
