@@ -13,9 +13,46 @@ import { fetchWithTimeout } from '../services/http.js';
 import { T, withAlpha } from '../ui/tokens.js';
 import {
     buildScenePage, sectionCard, button, field,
-    numberField, row, openModal, showToast, buildPillButton, buildGhostButton,
+    numberField, row, openModal, showToast,
 } from '../ui/forms.js';
 import { hexToRgba, buildStaticCard } from '../../../common/theme.js';
+
+/* ─── LOCAL UI HELPERS ────────────────────────────────────────── */
+const buildPillButton = (label, fillColor, textColor, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    const shadow = hexToRgba(fillColor, 0.45);
+    b.style.cssText = `
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 6px 14px; background: ${fillColor}; color: ${textColor};
+        border: none; border-radius: 999px; font-family: ${T.fb};
+        font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+        text-transform: uppercase; cursor: pointer; outline: none;
+        box-shadow: 0 3px 0 ${shadow}; transition: transform 0.08s ease, box-shadow 0.08s ease;
+        white-space: nowrap;
+    `;
+    b.addEventListener('mousedown', () => { b.style.transform = 'translateY(2px)'; b.style.boxShadow = `0 1px 0 ${shadow}`; });
+    const reset = () => { b.style.transform = 'translateY(0)'; b.style.boxShadow = `0 3px 0 ${shadow}`; };
+    b.addEventListener('mouseup', reset);
+    b.addEventListener('mouseleave', reset);
+    if (onClick) b.addEventListener('click', onClick);
+    return b;
+};
+
+const buildGhostButton = (label, color, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.style.cssText = `
+        background: transparent; border: 1px solid ${hexToRgba(color, 0.5)};
+        color: ${color}; font-family: ${T.fb}; font-size: 9px; font-weight: 700;
+        letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 14px;
+        border-radius: 999px; cursor: pointer; outline: none; white-space: nowrap;
+    `;
+    if (onClick) b.addEventListener('click', onClick);
+    return b;
+};
 
 /* ─── STATE ───────────────────────────────────────────────────── */
 let _state = {
