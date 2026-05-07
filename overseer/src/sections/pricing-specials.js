@@ -1191,8 +1191,8 @@ const openDiscountModal = (existing, opts) => {
         unitDiv.textContent = d.type === 'percentage' ? '%' : '$';
         unitDiv.style.cssText = `font-weight: 600; padding-bottom: 12px; color: ${C.textMuted};`;
         row1.appendChild(unitDiv);
-        typeField.select.addEventListener('change', () => {
-            d.type = typeField.select.value;
+        typeField.input.addEventListener('change', () => {
+            d.type = typeField.input.value;
             unitDiv.textContent = d.type === 'percentage' ? '%' : '$';
         });
         body.appendChild(row1);
@@ -1291,7 +1291,7 @@ const openDiscountModal = (existing, opts) => {
             const gathered = {
                 ...d,
                 name,
-                type: typeField.select.value,
+                type: typeField.input.value,
                 value: parseFloat(valField.input.value) || 0,
             };
             if (isEdit) trackDiscountEdit(gathered);
@@ -1563,7 +1563,7 @@ const openModal = (titleText, contentBuilder, opts = {}) => {
     modal.appendChild(header);
 
     const body = document.createElement('div');
-    body.style.cssText = `padding: 18px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px;`;
+    body.style.cssText = `padding: 18px 22px; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px;`;
     modal.appendChild(body);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -1743,6 +1743,39 @@ const buildDayChips = (initialDays, onChange, activeColor) => {
         wrap.appendChild(chip);
     });
     return { wrap, getDays: () => days.slice(), setDays: (d) => { d.forEach((v, i) => days[i] = v ? 1 : 0); }};
+}
+
+const buildToggle = (initial, onChange) => {
+    const state = { on: !!initial };
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.style.cssText = `
+        position: relative;
+        width: 46px; height: 24px;
+        border-radius: 999px;
+        border: none; padding: 0;
+        background: ${state.on ? withAlpha(C.green, 0.2) : withAlpha(C.text, 0.12)};
+        cursor: pointer;
+        transition: background 0.15s ease;
+        flex-shrink: 0;
+    `;
+    const knob = document.createElement('div');
+    knob.style.cssText = `
+        position: absolute; top: 3px;
+        left: ${state.on ? 'calc(100% - 21px)' : '3px'};
+        width: 18px; height: 18px; border-radius: 50%;
+        background: ${state.on ? C.green : withAlpha(C.text, 0.4)};
+        transition: all 0.15s ease;
+    `;
+    btn.appendChild(knob);
+    btn.addEventListener('click', () => {
+        state.on = !state.on;
+        btn.style.background = state.on ? withAlpha(C.green, 0.2) : withAlpha(C.text, 0.12);
+        knob.style.left = state.on ? 'calc(100% - 21px)' : '3px';
+        knob.style.background = state.on ? C.green : withAlpha(C.text, 0.4);
+        if (onChange) onChange(state.on);
+    });
+    return btn;
 }
 
 const buildToggleRow = (parent, label, initial, onChange, color) => {
