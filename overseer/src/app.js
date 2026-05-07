@@ -97,8 +97,8 @@ const NAV = [
             { id: 'menu-categories',     label: 'Items'             },
             { id: 'modifiers',           label: 'Modifiers & Options' },
             { id: 'modifier-groups',     label: 'Groups'            },
-            { id: 'pricing-setup',       label: 'Pricing Setup'     },
-            { id: 'pricing-specials',    label: 'Discounts & Specials' },
+            { id: 'pricing-setup',       label: 'Sizes'             },
+            { id: 'pricing-specials',    label: 'Menu Pricing'       },
             { id: 'import-excel',        label: 'Import Menu'       },
         ]
     },

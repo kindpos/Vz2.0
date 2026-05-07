@@ -33,6 +33,7 @@ let currentSaveBar = null;
 let footerMount = null;
 
 let pricingData = {
+    sizes:              [],
     day_parts:          [],
     specials:           [],
     order_types:        [],
@@ -211,7 +212,8 @@ const migrateSpecial = (raw) => {
 
 const fetchPricingData = async () => {
     try {
-        const [dpRes, spRes, otRes, empRes, voidRes, discRes, catRes] = await Promise.all([
+        const [sizesRes, dpRes, spRes, otRes, empRes, voidRes, discRes, catRes] = await Promise.all([
+            fetchWithTimeout('/api/v1/sizes').catch(() => ({ ok: false })),
             fetchWithTimeout('/api/v1/config/pricing/day-parts').catch(() => ({ ok: false })),
             fetchWithTimeout('/api/v1/config/pricing/specials').catch(() => ({ ok: false })),
             fetchWithTimeout('/api/v1/config/pricing/order-types').catch(() => ({ ok: false })),
@@ -221,6 +223,8 @@ const fetchPricingData = async () => {
             fetchWithTimeout('/api/v1/config/menu/categories').catch(() => ({ ok: false })),
         ]);
 
+        const sizesData = sizesRes.ok ? await sizesRes.json() : [];
+        const sizes = Array.isArray(sizesData) ? sizesData : (sizesData.sizes || []);
         const dpData = dpRes.ok ? await dpRes.json() : {};
         const day_parts   = Array.isArray(dpData) ? dpData.map(migrateDayPart) : (dpData.day_parts || []).map(migrateDayPart);
         const spData = spRes.ok ? await spRes.json() : [];
@@ -253,11 +257,11 @@ const fetchPricingData = async () => {
             color: c.hex_color || c.color || C.gold,
         }));
 
-        return { day_parts, specials, order_types, employee_discount, void_reasons, discounts, categories };
+        return { sizes, day_parts, specials, order_types, employee_discount, void_reasons, discounts, categories };
     } catch (e) {
         console.warn('[PricingSpecials] Failed to fetch:', e);
         return {
-            day_parts: [], specials: [], order_types: [],
+            sizes: [], day_parts: [], specials: [], order_types: [],
             employee_discount: defaultEmployee(),
             void_reasons: [], discounts: [], categories: [],
         };
@@ -369,7 +373,7 @@ export function registerPricingSpecials(sceneManager) {
             displayState   = { openSection: 'specials' };
 
             const { body, saveBar } = buildScenePage(container, {
-                title:     'Specials & Discounts',
+                title:     'Menu Pricing',
                 subtitle:  sceneSubtitle(),
                 saveLabel: 'Save Changes',
                 onSave:    handleSaveChanges,
@@ -382,7 +386,7 @@ export function registerPricingSpecials(sceneManager) {
             modalStack.splice(0).forEach(o => o.parentNode && o.remove());
             bodyMount = footerMount = currentSaveBar = null;
             pricingData = {
-                day_parts: [], specials: [], order_types: [],
+                sizes: [], day_parts: [], specials: [], order_types: [],
                 employee_discount: null, void_reasons: [], discounts: [], categories: [],
             };
             pendingChanges = emptyChanges();
@@ -401,11 +405,12 @@ const emptyChanges = () => ({
     });
 
 const sceneSubtitle = () => {
+    const sz = (pricingData.sizes || []).length;
     const dp = getAllDayParts().length;
-    const dc = getAllDiscounts().length;
-    const ot = getAllOrderTypes().length;
+    const sp = getAllDiscounts().filter(d => d.auto).length;
+    const dc = getAllDiscounts().filter(d => !d.auto).length;
     const cr = getAllVoidReasons().length;
-    return `${dp} day part${dp===1?'':'s'} · ${dc} discount${dc===1?'':'s'} · ${ot} order types · ${cr} void reason${cr===1?'':'s'}`;
+    return `${sz} size${sz===1?'':'s'} · ${dp} day part${dp===1?'':'s'} · ${sp} special${sp===1?'':'s'} · ${dc} discount${dc===1?'':'s'} · ${cr} void reason${cr===1?'':'s'}`;
 }
 
 /* ─── MAIN SCENE RENDER ──────────────────────────────────────── */
@@ -413,10 +418,19 @@ const renderScene = () => {
     if (!bodyMount) return;
     bodyMount.innerHTML = '';
 
+    bodyMount.appendChild(buildSectionLabel('SIZES', C.gold));
+    bodyMount.appendChild(buildSizesAccordion());
+
     bodyMount.appendChild(buildSectionLabel('DAY PARTS', C2.lavender));
     bodyMount.appendChild(buildDayPartsAccordion());
 
     bodyMount.appendChild(buildOrderTypesAccordion());
+
+    const specialsSpacer = document.createElement('div');
+    specialsSpacer.style.marginTop = '24px';
+    bodyMount.appendChild(specialsSpacer);
+    bodyMount.appendChild(buildSectionLabel('SPECIALS', C.greenWarm));
+    bodyMount.appendChild(buildSpecialsAccordion());
 
     const discountsSpacer = document.createElement('div');
     discountsSpacer.style.marginTop = '24px';
@@ -540,6 +554,273 @@ const buildAccordion = (key, title, meta, accentColor, bodyBuilder, countBadge =
         wrap.appendChild(body);
     }
     return wrap;
+}
+
+/* ─── SIZES ACCORDION ────────────────────────────────────────── */
+const buildSizesAccordion = () => {
+    const sizes = pricingData.sizes || [];
+    return buildAccordion(
+        'sizes', 'Sizes',
+        `${sizes.length} size${sizes.length === 1 ? '' : 's'}`,
+        C.gold,
+        (body) => {
+            if (sizes.length === 0) {
+                const empty = document.createElement('div');
+                empty.textContent = 'NO SIZES DEFINED';
+                empty.style.cssText = `
+                    padding: 20px; text-align: center;
+                    font-family: ui-monospace, monospace;
+                    font-size: 11px; color: ${C.textDim};
+                    letter-spacing: 1.5px; text-transform: uppercase;
+                `;
+                body.appendChild(empty);
+            } else {
+                sizes.forEach(sz => body.appendChild(buildSizeCard(sz)));
+            }
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD SIZE', 'mint', () => openSizeModal(null), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
+        },
+        0
+    );
+}
+
+const buildSizeCard = (sz) => {
+    const adj = Number(sz.price_adjustment || 0);
+    const card = document.createElement('div');
+    card.style.cssText = `
+        background: ${C.well};
+        border: 1px solid ${withAlpha(C.text, 0.08)};
+        border-left: 3px solid ${C.gold};
+        border-radius: 8px;
+        padding: 12px 14px;
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 8px;
+    `;
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;';
+
+    const nameRow = document.createElement('div');
+    nameRow.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;';
+
+    const name = document.createElement('div');
+    name.textContent = sz.name || '(unnamed)';
+    name.style.cssText = `font-size: 14px; font-weight: 600; color: ${C.text};`;
+    nameRow.appendChild(name);
+
+    const adjText = adj > 0 ? `Adds +${adj.toFixed(2)} per item`
+                 : adj < 0 ? `Subtracts ${Math.abs(adj).toFixed(2)} per item`
+                 : 'No adjustment';
+    const subLabel = document.createElement('div');
+    subLabel.textContent = adjText;
+    subLabel.style.cssText = `
+        font-family: ui-monospace, monospace;
+        font-size: 11px; color: ${C.textMuted};
+    `;
+    nameRow.appendChild(subLabel);
+
+    info.appendChild(nameRow);
+    card.appendChild(info);
+
+    const toggle = buildToggle(sz.active !== false, async (next) => {
+        try {
+            await fetchWithTimeout(`/api/v1/sizes/${encodeURIComponent(sz.size_id)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: next }),
+            }, 10000);
+            pricingData.sizes = await fetchWithTimeout('/api/v1/sizes', {}, 8000).then(r => r.json());
+            const [dpRes, spRes, otRes, empRes, voidRes, discRes] = await Promise.all([
+                fetchWithTimeout('/api/v1/config/pricing/day-parts', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/specials', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/order-types', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/employee-discount', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/void-reasons', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/discounts', {}, 8000),
+            ]);
+            if (dpRes.ok) pricingData.day_parts = (await dpRes.json()).map(migrateDayPart);
+            if (spRes.ok) pricingData.specials = (await spRes.json()).map(migrateSpecial);
+            if (otRes.ok) pricingData.order_types = await otRes.json();
+            if (empRes.ok) pricingData.employee_discount = await empRes.json();
+            if (voidRes.ok) pricingData.void_reasons = await voidRes.json();
+            if (discRes.ok) {
+                const ddata = await discRes.json();
+                pricingData.discounts = (ddata.discounts || []).map(d => ({ id: d.id || `disc_${Date.now()}`, name: d.name || '', type: d.type || 'percentage', value: d.value || 0, timing_type: d.timing_type || 'always', day_part_id: d.day_part_id || null, custom_start: d.custom_start || '09:00', custom_end: d.custom_end || '17:00', auto: d.auto !== false, requires_pin: d.requires_pin !== false, active: d.active !== false }));
+            }
+            renderScene();
+        } catch (e) {
+            toggle.setValue(!next);
+            showToast('Failed to update size', 'error');
+        }
+    });
+    card.appendChild(toggle);
+
+    const editBtn = buildPillButton('Edit', 'ghost', () => openSizeModal(sz), { small: true });
+    card.appendChild(editBtn);
+
+    return card;
+}
+
+const openSizeModal = (existing) => {
+    const title = existing ? `Edit ${existing.name}` : 'Add Size';
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: ${C.card}; border: 1px solid ${C2.hairline};
+        border-radius: 8px; padding: 24px; z-index: 5000;
+        max-width: 400px; width: 90%;
+    `;
+
+    const heading = document.createElement('div');
+    heading.textContent = title;
+    heading.style.cssText = `
+        font-size: 16px; font-weight: 700; color: ${C.text};
+        margin-bottom: 16px;
+    `;
+    modal.appendChild(heading);
+
+    const form = document.createElement('div');
+    form.style.cssText = 'display: flex; flex-direction: column; gap: 12px;';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Size name';
+    nameInput.value = existing?.name || '';
+    nameInput.style.cssText = `padding: 8px 12px; border: 1px solid ${C2.hairline}; border-radius: 4px; font-family: ${C.fb}; background: ${C.well}; color: ${C.text};`;
+    form.appendChild(nameInput);
+
+    const adjInput = document.createElement('input');
+    adjInput.type = 'number';
+    adjInput.placeholder = 'Price Adjustment';
+    adjInput.step = '0.01';
+    adjInput.value = (existing?.price_adjustment || 0).toString();
+    adjInput.style.cssText = `padding: 8px 12px; border: 1px solid ${C2.hairline}; border-radius: 4px; font-family: ${C.fb}; background: ${C.well}; color: ${C.text};`;
+    form.appendChild(adjInput);
+
+    modal.appendChild(form);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end;';
+
+    const cancelBtn = buildPillButton('Cancel', 'tertiary', () => modal.remove(), { small: true });
+    actions.appendChild(cancelBtn);
+
+    const saveBtn = buildPillButton('Save', 'confirm', async () => {
+        const name = nameInput.value.trim();
+        if (!name) { showToast('Name is required', 'error'); return; }
+        const adj = parseFloat(adjInput.value) || 0;
+
+        try {
+            if (existing) {
+                await fetchWithTimeout(`/api/v1/sizes/${encodeURIComponent(existing.size_id)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, price_adjustment: adj }),
+                }, 10000);
+            } else {
+                await fetchWithTimeout('/api/v1/sizes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, price_adjustment: adj }),
+                }, 10000);
+            }
+            pricingData.sizes = await fetchWithTimeout('/api/v1/sizes', {}, 8000).then(r => r.json());
+            renderScene();
+            modal.remove();
+            showToast(existing ? 'Size updated' : 'Size added');
+        } catch (e) {
+            showToast('Failed to save size', 'error');
+        }
+    }, { small: true });
+    actions.appendChild(saveBtn);
+
+    modal.appendChild(actions);
+    document.body.appendChild(modal);
+}
+
+/* ─── SPECIALS ACCORDION ─────────────────────────────────────── */
+const buildSpecialsAccordion = () => {
+    const specials = getAllDiscounts().filter(d => d.auto);
+    return buildAccordion(
+        'specials', 'Specials',
+        `${specials.length} special${specials.length === 1 ? '' : 's'}`,
+        C.greenWarm,
+        (body) => {
+            if (specials.length === 0) {
+                const empty = document.createElement('div');
+                empty.textContent = 'NO SPECIALS DEFINED';
+                empty.style.cssText = `
+                    padding: 20px; text-align: center;
+                    font-family: ui-monospace, monospace;
+                    font-size: 11px; color: ${C.textDim};
+                    letter-spacing: 1.5px; text-transform: uppercase;
+                `;
+                body.appendChild(empty);
+            } else {
+                specials.forEach(sp => body.appendChild(buildSpecialRow(sp)));
+            }
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD SPECIAL', 'mint', () => openDiscountModal(null, { defaultAuto: true }), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
+        },
+        0
+    );
+}
+
+const buildSpecialRow = (sp) => {
+    const row = document.createElement('div');
+    row.style.cssText = `
+        padding: 12px 14px; background: ${C.well}; border-radius: 4px;
+        display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+    `;
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex: 1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;';
+
+    const name = document.createElement('div');
+    name.textContent = sp.name;
+    name.style.cssText = `font-weight: 600; color: ${C.text};`;
+    info.appendChild(name);
+
+    const amount = document.createElement('div');
+    amount.textContent = sp.type === 'percentage' ? `${sp.value}%` : `$${Number(sp.value).toFixed(2)} flat`;
+    amount.style.cssText = `font-family: ui-monospace, monospace; font-size: 11px; color: ${C.textMuted};`;
+    info.appendChild(amount);
+
+    const timing = document.createElement('div');
+    let timingLabel = 'always active';
+    if (sp.timing_type === 'day_part') {
+        const dp = pricingData.day_parts.find(d => d.id === sp.day_part_id);
+        timingLabel = dp ? dp.name : 'unknown day part';
+    } else if (sp.timing_type === 'custom') {
+        timingLabel = `${sp.custom_start} – ${sp.custom_end}`;
+    }
+    timing.textContent = timingLabel;
+    timing.style.cssText = `font-family: ui-monospace, monospace; font-size: 10px; color: ${C.textDim};`;
+    info.appendChild(timing);
+
+    row.appendChild(info);
+
+    const editBtn = buildPillButton('EDIT', 'dark', () => openDiscountModal(sp), { small: true });
+    row.appendChild(editBtn);
+
+    const deleteBtn = buildPillButton('DELETE', 'danger', () => {
+        const i = pendingChanges.discounts_new.findIndex(n => n.id === sp.id);
+        if (i !== -1) { pendingChanges.discounts_new.splice(i, 1); renderScene(); return; }
+        pendingChanges.discounts_edited = pendingChanges.discounts_edited.filter(e => e.id !== sp.id);
+        if (!pendingChanges.discounts_deleted.includes(sp.id)) pendingChanges.discounts_deleted.push(sp.id);
+        renderScene();
+    }, { small: true });
+    row.appendChild(deleteBtn);
+
+    return row;
 }
 
 /* ─── DAY PARTS ACCORDION ────────────────────────────────────── */
@@ -750,13 +1031,13 @@ const buildInlineToggle = (initial, onChange) => {
 
 /* ─── DISCOUNTS ACCORDION ────────────────────────────────────── */
 const buildDiscountsAccordion = () => {
-    const discounts = getAllDiscounts();
+    const discounts = getAllDiscounts().filter(d => !d.auto);
     const pendingCount = pendingChanges.discounts_new.length
                        + pendingChanges.discounts_edited.length
                        + pendingChanges.discounts_deleted.length;
     return buildAccordion(
         'discounts', 'Discounts',
-        `${discounts.length} discount${discounts.length === 1 ? '' : 's'}`,
+        `${discounts.length} manual discount${discounts.length === 1 ? '' : 's'}`,
         C.green,
         (body) => {
             if (discounts.length === 0) {
@@ -871,8 +1152,9 @@ const getTimingLabel = (d) => {
     return 'unknown timing';
 }
 
-const openDiscountModal = (existing) => {
+const openDiscountModal = (existing, opts) => {
     const isEdit = !!existing;
+    const defaultAuto = opts?.defaultAuto ?? false;
     const d = existing ? clone(existing) : {
         id: `disc_${Date.now()}`,
         name: '',
@@ -882,7 +1164,7 @@ const openDiscountModal = (existing) => {
         day_part_id: null,
         custom_start: '09:00',
         custom_end: '17:00',
-        auto: true,
+        auto: defaultAuto,
         requires_pin: false,
         active: true,
     };
