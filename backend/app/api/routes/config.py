@@ -780,3 +780,109 @@ async def delete_void_reason(
     await ledger.append(event)
     background_tasks.add_task(broadcast_config_update, ["pricing"])
     return {"status": "ok"}
+
+
+# =============================================================================
+# PRICING CONFIG — Day Parts, Specials, Order Types, Employee Discount
+# =============================================================================
+
+_DEFAULT_ORDER_TYPES = [
+    {"id": "ot_dinein",   "name": "Dine-In",  "adjustment": 0.0, "active": True},
+    {"id": "ot_takeout",  "name": "Takeout",  "adjustment": 0.0, "active": True},
+    {"id": "ot_delivery", "name": "Delivery", "adjustment": 0.0, "active": True},
+]
+
+_DEFAULT_EMPLOYEE_DISCOUNT = {
+    "id": "emp_disc",
+    "separate_rates": False,
+    "percentage": 20,
+    "on_duty_rate": 50,
+    "off_duty_rate": 20,
+    "applies_to": "food_only",
+    "exclude_categories": [],
+    "requires_pin": True,
+    "active": True,
+}
+
+
+async def _project_day_parts(ledger: EventLedger) -> list[dict]:
+    created = await ledger.get_events_by_type(EventType.PRICING_DAYPART_CREATED, limit=500)
+    updated = await ledger.get_events_by_type(EventType.PRICING_DAYPART_UPDATED, limit=500)
+    deleted = await ledger.get_events_by_type(EventType.PRICING_DAYPART_DELETED, limit=500)
+    items: dict[str, dict] = {}
+    for ev in sorted(created + updated + deleted, key=lambda e: e.sequence_number or 0):
+        p = ev.payload
+        eid = p.get("id", "")
+        if ev.event_type == EventType.PRICING_DAYPART_CREATED:
+            items[eid] = dict(p)
+        elif ev.event_type == EventType.PRICING_DAYPART_UPDATED:
+            if eid in items:
+                items[eid].update(p)
+        elif ev.event_type == EventType.PRICING_DAYPART_DELETED:
+            items.pop(eid, None)
+    return list(items.values())
+
+
+async def _project_specials(ledger: EventLedger) -> list[dict]:
+    created = await ledger.get_events_by_type(EventType.PRICING_SPECIAL_CREATED, limit=500)
+    updated = await ledger.get_events_by_type(EventType.PRICING_SPECIAL_UPDATED, limit=500)
+    deleted = await ledger.get_events_by_type(EventType.PRICING_SPECIAL_DELETED, limit=500)
+    items: dict[str, dict] = {}
+    for ev in sorted(created + updated + deleted, key=lambda e: e.sequence_number or 0):
+        p = ev.payload
+        eid = p.get("id", "")
+        if ev.event_type == EventType.PRICING_SPECIAL_CREATED:
+            items[eid] = dict(p)
+        elif ev.event_type == EventType.PRICING_SPECIAL_UPDATED:
+            if eid in items:
+                items[eid].update(p)
+        elif ev.event_type == EventType.PRICING_SPECIAL_DELETED:
+            items.pop(eid, None)
+    return list(items.values())
+
+
+async def _project_order_types(ledger: EventLedger) -> list[dict]:
+    updated = await ledger.get_events_by_type(EventType.PRICING_ORDER_TYPE_UPDATED, limit=500)
+    # Start from defaults so records always exist even with no ledger events
+    by_id: dict[str, dict] = {ot["id"]: dict(ot) for ot in _DEFAULT_ORDER_TYPES}
+    for ev in sorted(updated, key=lambda e: e.sequence_number or 0):
+        p = ev.payload
+        eid = p.get("id", "")
+        if eid in by_id:
+            by_id[eid].update(p)
+        else:
+            by_id[eid] = dict(p)
+    return list(by_id.values())
+
+
+async def _project_employee_discount(ledger: EventLedger) -> dict:
+    events = await ledger.get_events_by_type(EventType.PRICING_EMPLOYEE_DISCOUNT_UPDATED, limit=200)
+    events.sort(key=lambda e: e.sequence_number or 0)
+    result = dict(_DEFAULT_EMPLOYEE_DISCOUNT)
+    for ev in events:
+        result.update(ev.payload)
+    return result
+
+
+@router.get("/pricing/day-parts")
+async def list_day_parts(ledger: EventLedger = Depends(get_ledger)):
+    """Return all day parts from the config projection."""
+    return await _project_day_parts(ledger)
+
+
+@router.get("/pricing/specials")
+async def list_specials(ledger: EventLedger = Depends(get_ledger)):
+    """Return all specials from the config projection."""
+    return await _project_specials(ledger)
+
+
+@router.get("/pricing/order-types")
+async def list_order_types(ledger: EventLedger = Depends(get_ledger)):
+    """Return order type pricing adjustments, falling back to defaults when no ledger events exist."""
+    return await _project_order_types(ledger)
+
+
+@router.get("/pricing/employee-discount")
+async def get_employee_discount(ledger: EventLedger = Depends(get_ledger)):
+    """Return the employee discount policy, falling back to defaults when no ledger events exist."""
+    return await _project_employee_discount(ledger)

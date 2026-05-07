@@ -314,6 +314,14 @@ class EventType(str, Enum):
     PRICING_VOID_REASON_CREATED = "pricing.void_reason_created"
     PRICING_VOID_REASON_UPDATED = "pricing.void_reason_updated"
     PRICING_VOID_REASON_DELETED = "pricing.void_reason_deleted"
+    PRICING_DAYPART_CREATED             = "pricing.daypart_created"
+    PRICING_DAYPART_UPDATED             = "pricing.daypart_updated"
+    PRICING_DAYPART_DELETED             = "pricing.daypart_deleted"
+    PRICING_SPECIAL_CREATED             = "pricing.special_created"
+    PRICING_SPECIAL_UPDATED             = "pricing.special_updated"
+    PRICING_SPECIAL_DELETED             = "pricing.special_deleted"
+    PRICING_ORDER_TYPE_UPDATED          = "pricing.order_type_updated"
+    PRICING_EMPLOYEE_DISCOUNT_UPDATED   = "pricing.employee_discount_updated"
 
 
 # Legacy UPPERCASE values from existing ledger data → canonical EventType
