@@ -199,12 +199,11 @@ const sortArrow = (field) => {
 const getSortedEmployees = () => [...PAYROLL_SUMMARY.employees].sort((a, b) => {
         let av = a[sortField] ?? 0;
         let bv = b[sortField] ?? 0;
-        if (typeof av === 'string') { av = av.toLowerCase(); bv = bv.toLowerCase(); ;
+        if (typeof av === 'string') { av = av.toLowerCase(); bv = bv.toLowerCase(); }
         if (av < bv) return sortDir === 'asc' ? -1 : 1;
         if (av > bv) return sortDir === 'asc' ? 1 : -1;
         return 0;
     });
-}
 
 const refreshEmployeeTable = () => {
     if (!currentContainer) return;
