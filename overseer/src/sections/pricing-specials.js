@@ -303,12 +303,13 @@ const getAllVoidReasons = () => {
 }
 
 const getAllDiscounts = () => {
-    const edits = new Map(pendingChanges.discounts_edited.map(e => [e.id, e]));
-    const deleted = new Set(pendingChanges.discounts_deleted);
-    return pricingData.discounts
+    const edits = new Map((pendingChanges.discounts_edited || []).map(e => [e.id, e]));
+    const deleted = new Set(pendingChanges.discounts_deleted || []);
+    const base = Array.isArray(pricingData.discounts) ? pricingData.discounts : [];
+    return base
         .map(d => edits.has(d.id) ? edits.get(d.id) : clone(d))
         .filter(d => !deleted.has(d.id))
-        .concat(pendingChanges.discounts_new);
+        .concat(pendingChanges.discounts_new || []);
 }
 
 /* ─── CHANGE TRACKERS ────────────────────────────────────────── */
@@ -395,15 +396,16 @@ const emptyChanges = () => ({
         specials_new: [], specials_edited: [], specials_deleted: [],
         order_types_edited: [],
         employee_edited: null,
+        discounts_new: [], discounts_edited: [], discounts_deleted: [],
         void_reasons_new: [], void_reasons_edited: [], void_reasons_deleted: [],
     });
 
 const sceneSubtitle = () => {
     const dp = getAllDayParts().length;
-    const sp = getAllSpecials().length;
+    const dc = getAllDiscounts().length;
     const ot = getAllOrderTypes().length;
     const cr = getAllVoidReasons().length;
-    return `${dp} day part${dp===1?'':'s'} · ${sp} special${sp===1?'':'s'} · ${ot} order types · ${cr} void reason${cr===1?'':'s'}`;
+    return `${dp} day part${dp===1?'':'s'} · ${dc} discount${dc===1?'':'s'} · ${ot} order types · ${cr} void reason${cr===1?'':'s'}`;
 }
 
 /* ─── MAIN SCENE RENDER ──────────────────────────────────────── */
