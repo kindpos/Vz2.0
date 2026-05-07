@@ -1745,6 +1745,39 @@ const buildDayChips = (initialDays, onChange, activeColor) => {
     return { wrap, getDays: () => days.slice(), setDays: (d) => { d.forEach((v, i) => days[i] = v ? 1 : 0); }};
 }
 
+const buildToggle = (initial, onChange) => {
+    const state = { on: !!initial };
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.style.cssText = `
+        position: relative;
+        width: 46px; height: 24px;
+        border-radius: 999px;
+        border: none; padding: 0;
+        background: ${state.on ? withAlpha(C.green, 0.2) : withAlpha(C.text, 0.12)};
+        cursor: pointer;
+        transition: background 0.15s ease;
+        flex-shrink: 0;
+    `;
+    const knob = document.createElement('div');
+    knob.style.cssText = `
+        position: absolute; top: 3px;
+        left: ${state.on ? 'calc(100% - 21px)' : '3px'};
+        width: 18px; height: 18px; border-radius: 50%;
+        background: ${state.on ? C.green : withAlpha(C.text, 0.4)};
+        transition: all 0.15s ease;
+    `;
+    btn.appendChild(knob);
+    btn.addEventListener('click', () => {
+        state.on = !state.on;
+        btn.style.background = state.on ? withAlpha(C.green, 0.2) : withAlpha(C.text, 0.12);
+        knob.style.left = state.on ? 'calc(100% - 21px)' : '3px';
+        knob.style.background = state.on ? C.green : withAlpha(C.text, 0.4);
+        if (onChange) onChange(state.on);
+    });
+    return btn;
+}
+
 const buildToggleRow = (parent, label, initial, onChange, color) => {
     const row = document.createElement('div');
     row.style.cssText = 'display: flex; align-items: center; gap: 12px;';
