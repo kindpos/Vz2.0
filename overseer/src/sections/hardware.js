@@ -28,6 +28,9 @@ let _state = {
     editingReaderId: null,
     container: null,
     lastSyncTime: null,
+    isScanning: false,
+    discoveredDevices: [],
+    scanEventSource: null,
 };
 
 const resetState = () => {
@@ -41,6 +44,9 @@ const resetState = () => {
         editingReaderId: null,
         container: null,
         lastSyncTime: null,
+        isScanning: false,
+        discoveredDevices: [],
+        scanEventSource: null,
     };
 };
 
@@ -82,6 +88,151 @@ const isValidPort = (port) => {
     return !isNaN(num) && num >= 0 && num <= 65535;
 };
 
+/* ─── TEST CONNECTION ───────────────────────────────────────────── */
+const buildTestConnectionButton = (ipInput, portInput) => {
+    const btn = buildGhostButton('TEST', T.cyan, async () => {
+        const ip = ipInput.value.trim();
+        const port = portInput.value.trim();
+
+        if (!ip || !isValidIP(ip)) {
+            showToast('Invalid IP address', 'error');
+            return;
+        }
+
+        if (!port || !isValidPort(port)) {
+            showToast('Invalid port (0-65535)', 'error');
+            return;
+        }
+
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = 'TESTING...';
+
+        try {
+            const resp = await fetchWithTimeout('/api/v1/hardware/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip, port: parseInt(port, 10) })
+            }, 5000);
+
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const result = await resp.json();
+
+            if (result.status === 'online') {
+                btn.textContent = '✓ REACHABLE';
+                btn.style.color = T.green;
+                showToast(`${ip}:${port} is reachable`);
+            } else {
+                btn.textContent = '✗ UNREACHABLE';
+                btn.style.color = T.verm;
+                showToast(`${ip}:${port} is unreachable`, 'warn');
+            }
+
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.color = T.cyan;
+                btn.disabled = false;
+            }, 2000);
+        } catch (e) {
+            btn.textContent = '✗ ERROR';
+            btn.style.color = T.verm;
+            showToast(`Connection test failed: ${e.message}`, 'error');
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.color = T.cyan;
+                btn.disabled = false;
+            }, 2000);
+        }
+    });
+
+    const updateDisabled = () => {
+        const ip = ipInput.value.trim();
+        const port = portInput.value.trim();
+        btn.disabled = !ip || !port;
+    };
+
+    ipInput.addEventListener('input', updateDisabled);
+    portInput.addEventListener('input', updateDisabled);
+    updateDisabled();
+
+    return btn;
+};
+
+/* ─── DISCOVERED DEVICES LIST ───────────────────────────────────── */
+const buildDiscoveredDevicesList = () => {
+    const container = document.createElement('div');
+
+    if (_state.discoveredDevices.length === 0) {
+        if (!_state.isScanning) {
+            return container;
+        }
+        container.style.cssText = `
+            padding: 16px;
+            text-align: center;
+            color: ${T.textMuted};
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+        `;
+        container.textContent = 'Scanning network...';
+        return container;
+    }
+
+    container.style.cssText = `
+        padding: 16px;
+        background: ${withAlpha(T.green, 0.08)};
+        border-top: 1px solid ${T.border};
+    `;
+
+    const title = document.createElement('div');
+    title.style.cssText = `
+        font-family: 'Orbitron', sans-serif;
+        font-size: 12px;
+        font-weight: bold;
+        color: ${T.text};
+        margin-bottom: 12px;
+    `;
+    title.textContent = `DISCOVERED — ${_state.discoveredDevices.length} device${_state.discoveredDevices.length === 1 ? '' : 's'}`;
+    container.appendChild(title);
+
+    const list = document.createElement('div');
+    list.style.cssText = `
+        display: grid;
+        gap: 8px;
+    `;
+
+    _state.discoveredDevices.forEach(dev => {
+        const item = document.createElement('div');
+        item.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            background: ${T.card};
+            border-radius: 4px;
+            border: 1px solid ${T.border};
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+        `;
+
+        const info = document.createElement('div');
+        info.style.cssText = `flex: 1;`;
+        info.innerHTML = `<div>${dev.ip || 'unknown'}</div><div style="color: ${T.textMuted}; margin-top: 2px;">${dev.type || 'unknown'}</div>`;
+
+        const addBtn = buildGhostButton('ADD', T.green, () => {
+            showToast(`Added ${dev.ip} to pending devices`, 'success');
+            _state.discoveredDevices = _state.discoveredDevices.filter(d => d !== dev);
+            rebuild();
+        });
+
+        item.appendChild(info);
+        item.appendChild(addBtn);
+        list.appendChild(item);
+    });
+
+    container.appendChild(list);
+    return container;
+};
+
 /* ─── SYNC STATUS BAR ───────────────────────────────────────────── */
 const buildSyncStatusBar = () => {
     const bar = document.createElement('div');
@@ -89,6 +240,7 @@ const buildSyncStatusBar = () => {
         display: flex;
         gap: 16px;
         align-items: center;
+        justify-content: space-between;
         padding: 12px 16px;
         background: ${T.well};
         border-bottom: 1px solid ${T.border};
@@ -97,12 +249,15 @@ const buildSyncStatusBar = () => {
         color: ${T.textMuted};
     `;
 
+    const left = document.createElement('div');
+    left.style.cssText = `display: flex; gap: 16px; align-items: center;`;
+
     const hub = getHubTerminal();
     const hubStatus = hub
         ? `🟢 HUB ONLINE — ${hub.name || 'Hub'} (${hub.ip_address || 'unknown'})`
         : `⚪ NO HUB CONFIGURED`;
 
-    bar.innerHTML = `
+    left.innerHTML = `
         <div>${hubStatus}</div>
         <div>•</div>
         <div>${_state.terminals.length} terminals</div>
@@ -110,7 +265,57 @@ const buildSyncStatusBar = () => {
         <div>Sync: ${_state.lastSyncTime || 'never'}</div>
     `;
 
+    const scanBtn = buildPillButton(
+        _state.isScanning ? 'SCANNING...' : 'SCAN NETWORK',
+        _state.isScanning ? T.textMuted : T.gold,
+        _state.isScanning ? T.card : T.bg,
+        async () => {
+            if (_state.isScanning) return;
+            await startNetworkScan();
+        }
+    );
+    scanBtn.disabled = _state.isScanning;
+
+    bar.appendChild(left);
+    bar.appendChild(scanBtn);
+
     return bar;
+};
+
+const startNetworkScan = async () => {
+    _state.isScanning = true;
+    _state.discoveredDevices = [];
+    rebuild();
+
+    if (_state.scanEventSource) {
+        _state.scanEventSource.close();
+    }
+
+    try {
+        _state.scanEventSource = new EventSource('/api/v1/hardware/scan/stream');
+
+        _state.scanEventSource.onmessage = (e) => {
+            try {
+                const device = JSON.parse(e.data);
+                _state.discoveredDevices.push(device);
+                rebuild();
+            } catch (err) {
+                console.error('[Scan] Parse error:', err);
+            }
+        };
+
+        _state.scanEventSource.onerror = (e) => {
+            _state.scanEventSource.close();
+            _state.scanEventSource = null;
+            _state.isScanning = false;
+            showToast(`Scan complete — ${_state.discoveredDevices.length} devices found`, 'success');
+            rebuild();
+        };
+    } catch (e) {
+        _state.isScanning = false;
+        showToast(`Scan failed: ${e.message}`, 'error');
+        rebuild();
+    }
 };
 
 /* ─── TERMINALS TAB ───────────────────────────────────────────── */
@@ -255,6 +460,19 @@ const buildTerminalEditPanel = (term) => {
     roleInput.value = term.role || '';
     roleInput.style.cssText = nameInput.style.cssText;
 
+    const ipInput = document.createElement('input');
+    ipInput.type = 'text';
+    ipInput.placeholder = 'IP Address';
+    ipInput.value = term.ip_address || '';
+    ipInput.style.cssText = nameInput.style.cssText;
+
+    const ipRow = document.createElement('div');
+    ipRow.style.cssText = `display: flex; gap: 8px; align-items: center;`;
+    ipRow.appendChild(ipInput);
+    const testBtn = buildTestConnectionButton(ipInput, { value: '22' });
+    testBtn.style.whiteSpace = 'nowrap';
+    ipRow.appendChild(testBtn);
+
     const trainingChk = document.createElement('input');
     trainingChk.type = 'checkbox';
     trainingChk.checked = term.training_mode || false;
@@ -304,6 +522,7 @@ const buildTerminalEditPanel = (term) => {
 
     panel.appendChild(nameInput);
     panel.appendChild(roleInput);
+    panel.appendChild(ipRow);
     panel.appendChild(trainingLabel);
     panel.appendChild(btnRow);
 
@@ -419,6 +638,7 @@ const buildPrinterCard = (printer) => {
         gap: 8px;
         padding-top: 8px;
         border-top: 1px solid ${T.border};
+        flex-wrap: wrap;
     `;
 
     const testBtn = buildGhostButton('TEST', T.green, async () => {
@@ -435,6 +655,25 @@ const buildPrinterCard = (printer) => {
             }
         } catch (e) {
             showToast(`Test error: ${e.message}`, 'error');
+        }
+    });
+
+    const connBtn = buildGhostButton('PING', T.cyan, async () => {
+        try {
+            const resp = await fetchWithTimeout('/api/v1/hardware/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: printer.ip, port: printer.port || 9100 })
+            }, 5000);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const result = await resp.json();
+            if (result.status === 'online') {
+                showToast(`${printer.ip}:${printer.port} is reachable`, 'success');
+            } else {
+                showToast(`${printer.ip}:${printer.port} is unreachable`, 'warn');
+            }
+        } catch (e) {
+            showToast(`Connection test failed: ${e.message}`, 'error');
         }
     });
 
@@ -460,6 +699,7 @@ const buildPrinterCard = (printer) => {
     });
 
     actions.appendChild(testBtn);
+    actions.appendChild(connBtn);
     actions.appendChild(editBtn);
     actions.appendChild(removeBtn);
     card.appendChild(actions);
@@ -674,6 +914,13 @@ const buildTabBar = () => {
 const rebuild = () => {
     if (!_state.container) return;
 
+    const status = _state.container.querySelector('[data-hardware-status]');
+    if (status) {
+        status.innerHTML = '';
+        status.appendChild(buildSyncStatusBar());
+        status.appendChild(buildDiscoveredDevicesList());
+    }
+
     const main = _state.container.querySelector('[data-hardware-main]');
     if (!main) return;
 
@@ -699,7 +946,12 @@ export const buildHardwareScene = async (container) => {
     const page = buildScenePage(container);
     const { root, body } = page;
 
-    body.appendChild(buildSyncStatusBar());
+    const statusWrapper = document.createElement('div');
+    statusWrapper.setAttribute('data-hardware-status', '');
+    statusWrapper.style.cssText = `flex-shrink: 0;`;
+    statusWrapper.appendChild(buildSyncStatusBar());
+    statusWrapper.appendChild(buildDiscoveredDevicesList());
+    body.appendChild(statusWrapper);
 
     const main = document.createElement('div');
     main.setAttribute('data-hardware-main', '');
@@ -714,6 +966,10 @@ export const buildHardwareScene = async (container) => {
     rebuild();
 
     return () => {
+        if (_state.scanEventSource) {
+            _state.scanEventSource.close();
+            _state.scanEventSource = null;
+        }
         resetState();
     };
 };
