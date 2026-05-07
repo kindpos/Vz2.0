@@ -989,7 +989,7 @@ const buildOptionEditPanel = (option) => {
 }
 
 const editLabelCSS = () => `
-        font-family: ${T.fb;;
+        font-family: ${T.fb};
         font-size: 9px;
         font-weight: 700;
         color: ${T.moon};
@@ -998,7 +998,6 @@ const editLabelCSS = () => `
         width: 96px;
         flex-shrink: 0;
     `;
-}
 
 /* ============================================
    RENDER + LIFECYCLE
