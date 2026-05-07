@@ -70,7 +70,7 @@ async function loadPricingConfig() {
   ]);
   var otRes = results[0], dpRes = results[1], discRes = results[2];
   try { if (otRes && otRes.ok) { var ot = await otRes.json(); pricingConfig.orderTypes = Array.isArray(ot) ? ot : []; } } catch(e) {}
-  try { if (dpRes && dpRes.ok) { var dp = await dpRes.json(); pricingConfig.dayParts = Array.isArray(dp) ? dp : []; } } catch(e) {}
+  try { if (dpRes && dpRes.ok) { var dpData = await dpRes.json(); pricingConfig.dayParts = (dpData && Array.isArray(dpData.day_parts)) ? dpData.day_parts : []; } } catch(e) {}
   try { if (discRes && discRes.ok) { var discData = await discRes.json(); pricingConfig.discounts = (discData && Array.isArray(discData.discounts)) ? discData.discounts : []; } } catch(e) {}
   console.log('[KINDpos] Pricing config loaded:', {
     orderTypes: pricingConfig.orderTypes.length,

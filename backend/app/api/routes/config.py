@@ -609,8 +609,71 @@ async def get_terminal_bundle(ledger: EventLedger = Depends(get_ledger)):
 
 
 # =============================================================================
-# PRICING CONFIG — Discounts & Void Reasons
+# PRICING CONFIG — Day Parts, Discounts & Void Reasons
 # =============================================================================
+
+async def _project_day_parts(ledger: EventLedger) -> list[dict]:
+    """Replay PRICING_DAY_PART_* events into a current day-parts list."""
+    created = await ledger.get_events_by_type(EventType.PRICING_DAY_PART_CREATED, limit=500)
+    updated = await ledger.get_events_by_type(EventType.PRICING_DAY_PART_UPDATED, limit=500)
+    deleted = await ledger.get_events_by_type(EventType.PRICING_DAY_PART_DELETED, limit=500)
+
+    day_parts: dict[str, dict] = {}
+    for ev in sorted(created + updated + deleted, key=lambda e: e.sequence_number or 0):
+        p = ev.payload
+        if ev.event_type == EventType.PRICING_DAY_PART_CREATED:
+            day_parts[p["id"]] = dict(p)
+        elif ev.event_type == EventType.PRICING_DAY_PART_UPDATED:
+            if p["id"] in day_parts:
+                day_parts[p["id"]].update(p)
+        elif ev.event_type == EventType.PRICING_DAY_PART_DELETED:
+            day_parts.pop(p.get("id", ""), None)
+
+    return list(day_parts.values())
+
+
+def _day_name_from_weekday(weekday: int) -> str:
+    """Convert Python weekday (0=Mon, 6=Sun) to 3-letter day name."""
+    names = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+    return names[weekday % 7]
+
+
+def _parse_time(hhmm: str) -> int:
+    """Parse HH:MM to minutes since midnight."""
+    parts = (hhmm or '00:00').split(':')
+    return int(parts[0]) * 60 + int(parts[1] if len(parts) > 1 else 0)
+
+
+def _is_window_active(window: dict, now: datetime = None) -> bool:
+    """Check if a schedule window is currently active."""
+    if now is None:
+        now = datetime.now()
+
+    now_min = now.hour * 60 + now.minute
+    current_weekday = now.weekday()
+    day_names = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+    current_day = day_names[current_weekday]
+
+    w_days = window.get("days", [])
+    # days is typically a 7-element array [Mon, Tue, ..., Sun] where 1 = active
+    if len(w_days) == 7:
+        if not w_days[current_weekday]:
+            return False
+
+    start_min = _parse_time(window.get("start", "00:00"))
+    end_min = _parse_time(window.get("end", "23:59"))
+
+    return now_min >= start_min and now_min < end_min
+
+
+def get_active_day_part(day_parts: list[dict], now: datetime = None) -> dict | None:
+    """Find the first day-part with an active window at the given time."""
+    for dp in day_parts:
+        windows = dp.get("windows", [])
+        if any(_is_window_active(w, now) for w in windows):
+            return dp
+    return None
+
 
 async def _project_discounts(ledger: EventLedger) -> list[dict]:
     """Replay PRICING_DISCOUNT_* events into a current discount list."""
@@ -712,6 +775,22 @@ async def delete_discount(
 
 
 # Void-reason endpoints: config router already has prefix="/config" so
+# "/pricing/day-parts" resolves to /api/v1/config/pricing/day-parts.
+@router.get("/pricing/day-parts")
+async def list_pricing_day_parts(ledger: EventLedger = Depends(get_ledger)):
+    """Return all active day-parts from the config projection (PRICING_DAY_PART_* events)."""
+    rows = await _project_day_parts(ledger)
+    return {"day_parts": rows}
+
+
+@router.get("/pricing/active-day-part")
+async def get_current_active_day_part(ledger: EventLedger = Depends(get_ledger)):
+    """Return the currently active day-part based on time-of-day, or null if none."""
+    day_parts = await _project_day_parts(ledger)
+    active = get_active_day_part(day_parts)
+    return {"day_part": active}
+
+
 # "/pricing/discounts" resolves to /api/v1/config/pricing/discounts.
 @router.get("/pricing/discounts")
 async def list_pricing_discounts(ledger: EventLedger = Depends(get_ledger)):
