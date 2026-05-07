@@ -71,19 +71,17 @@ const getPendingCount = () => pendingChanges.day_parts_new.length
          + pendingChanges.void_reasons_deleted.length;
 ;
 
-const defaultWindow = () => { label: '', days: [1,1,1,1,1,1,1], start: '09:00', end: '17:00' ;;
-}
+const defaultWindow = () => ({ label: '', days: [1,1,1,1,1,1,1], start: '09:00', end: '17:00' });
 
-const defaultDayPart = () => {
-        id:          `temp_dp_${Date.now();`,
+const defaultDayPart = () => ({
+        id:          `temp_dp_${Date.now()}`,
         name:        '',
         description: '',
         windows:     [defaultWindow()],
-    };
-}
+    });
 
-const defaultSpecial = () => {
-        id:             `temp_spec_${Date.now();`,
+const defaultSpecial = () => ({
+        id:             `temp_spec_${Date.now()}`,
         name:           '',
         discount_type:  'percentage',
         discount_value: 0,
@@ -101,10 +99,9 @@ const defaultSpecial = () => {
         stacking:      false,
         priority:      1,
         active:        true,
-    };
-}
+    });
 
-const defaultEmployee = () => {
+const defaultEmployee = () => ({
         id:                 'emp_disc',
         separate_rates:     false,
         percentage:         20,
@@ -114,17 +111,15 @@ const defaultEmployee = () => {
         exclude_categories: [],
         requires_pin:       true,
         active:             true,
-    ;;
-}
+    });
 
-const defaultVoidReason = () => {
-        id:           `temp_void_${Date.now();`,
+const defaultVoidReason = () => ({
+        id:           `temp_void_${Date.now()}`,
         name:         '',
         requires_pin: true,
         max_amount:   null,
         active:       true,
-    };
-}
+    });
 
 /* ─── DATA FETCH ─────────────────────────────────────────────── */
 const migrateDayPart = (raw) => {
@@ -388,14 +383,13 @@ export function registerPricingSpecials(sceneManager) {
     });
 }
 
-const emptyChanges = () => {
+const emptyChanges = () => ({
         day_parts_new: [], day_parts_edited: [], day_parts_deleted: [],
         specials_new: [], specials_edited: [], specials_deleted: [],
         order_types_edited: [],
         employee_edited: null,
         void_reasons_new: [], void_reasons_edited: [], void_reasons_deleted: [],
-    ;;
-}
+    });
 
 const sceneSubtitle = () => {
     const dp = getAllDayParts().length;
