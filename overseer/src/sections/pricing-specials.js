@@ -1191,8 +1191,8 @@ const openDiscountModal = (existing, opts) => {
         unitDiv.textContent = d.type === 'percentage' ? '%' : '$';
         unitDiv.style.cssText = `font-weight: 600; padding-bottom: 12px; color: ${C.textMuted};`;
         row1.appendChild(unitDiv);
-        typeField.select.addEventListener('change', () => {
-            d.type = typeField.select.value;
+        typeField.input.addEventListener('change', () => {
+            d.type = typeField.input.value;
             unitDiv.textContent = d.type === 'percentage' ? '%' : '$';
         });
         body.appendChild(row1);
@@ -1291,7 +1291,7 @@ const openDiscountModal = (existing, opts) => {
             const gathered = {
                 ...d,
                 name,
-                type: typeField.select.value,
+                type: typeField.input.value,
                 value: parseFloat(valField.input.value) || 0,
             };
             if (isEdit) trackDiscountEdit(gathered);
