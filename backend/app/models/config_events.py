@@ -379,6 +379,7 @@ class Terminal(BaseModel):
     role: str
     default_section_id: Optional[str] = None
     training_mode: bool = False
+    is_hub: bool = False
 
 class Printer(BaseModel):
     printer_id: str

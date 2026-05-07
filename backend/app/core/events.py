@@ -1333,6 +1333,62 @@ def payment_processor_configured(
     )
 
 
+def terminal_registered(
+        terminal_id: str,
+        name: str,
+        role: str,
+        is_hub: bool = False,
+        default_section_id: Optional[str] = None,
+        training_mode: bool = False,
+        **kwargs
+) -> Event:
+    """TERMINAL_REGISTERED: emitted when a terminal is registered in the system.
+    Only one terminal may have is_hub=True; this is enforced at the endpoint level."""
+    return create_event(
+        event_type=EventType.TERMINAL_REGISTERED,
+        terminal_id=terminal_id,
+        payload={
+            "terminal_id": terminal_id,
+            "name": name,
+            "role": role,
+            "is_hub": is_hub,
+            "default_section_id": default_section_id,
+            "training_mode": training_mode,
+        },
+        **kwargs,
+    )
+
+
+def terminal_updated(
+        terminal_id: str,
+        name: Optional[str] = None,
+        role: Optional[str] = None,
+        is_hub: Optional[bool] = None,
+        default_section_id: Optional[str] = None,
+        training_mode: Optional[bool] = None,
+        **kwargs
+) -> Event:
+    """TERMINAL_UPDATED: emitted when a terminal's configuration is updated.
+    Only one terminal may have is_hub=True; this is enforced at the endpoint level."""
+    payload = {"terminal_id": terminal_id}
+    if name is not None:
+        payload["name"] = name
+    if role is not None:
+        payload["role"] = role
+    if is_hub is not None:
+        payload["is_hub"] = is_hub
+    if default_section_id is not None:
+        payload["default_section_id"] = default_section_id
+    if training_mode is not None:
+        payload["training_mode"] = training_mode
+    return create_event(
+        event_type=EventType.TERMINAL_UPDATED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
 def printer_status_changed(
         terminal_id: str,
         printer_id: str,
