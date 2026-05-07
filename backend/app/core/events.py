@@ -309,6 +309,9 @@ class EventType(str, Enum):
     TIMECARD_ADJUSTED = "timecard.adjusted"
 
     # ── Pricing Config (LEDGER_OPERATIONAL) ───────────────────────────
+    PRICING_DAY_PART_CREATED    = "pricing.daypart_created"
+    PRICING_DAY_PART_UPDATED    = "pricing.daypart_updated"
+    PRICING_DAY_PART_DELETED    = "pricing.daypart_deleted"
     PRICING_DISCOUNT_CREATED    = "pricing.discount_created"
     PRICING_DISCOUNT_UPDATED    = "pricing.discount_updated"
     PRICING_DISCOUNT_DELETED    = "pricing.discount_deleted"

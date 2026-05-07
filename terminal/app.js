@@ -41,6 +41,92 @@ import './scenes/shared-interrupts.js';
 window._SM = SceneManager;
 
 // ═══════════════════════════════════════════════════
+//  PRICING CONFIG STORE
+//  Populated at boot and refreshed on config version
+//  change. Exposed as window.pricingConfig so scenes
+//  can read it without a separate import.
+// ═══════════════════════════════════════════════════
+
+var pricingConfig = window.pricingConfig = {
+  orderTypes:       [],   // GET /config/pricing/order-types
+  dayParts:         [],   // GET /config/pricing/day-parts
+  discounts:        [],   // GET /config/pricing/discounts (unified specials + employee_discount)
+};
+
+// 2dp monetary rounding, ROUND_HALF_UP-safe for positive values.
+// Number.EPSILON nudge prevents float drift like 1.005*100 → 100.4999…
+function roundHalfUp(value) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+window.roundHalfUp = roundHalfUp;
+
+function _timeToMinutes(hhmm) {
+  var parts = (hhmm || '00:00').split(':');
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
+}
+
+function getActiveDayPartWindow() {
+  var now = new Date();
+  var dayOfWeek = now.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+  // Convert to Mon-based index: backend days[] is [Mon,Tue,Wed,Thu,Fri,Sat,Sun]
+  var dayIdx = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  var nowMins = now.getHours() * 60 + now.getMinutes();
+
+  var dayParts = window.pricingConfig?.dayParts ?? [];
+  for (var i = 0; i < dayParts.length; i++) {
+    var dp = dayParts[i];
+    var windows = dp.windows ?? [];
+    for (var j = 0; j < windows.length; j++) {
+      var win = windows[j];
+      // Check day of week
+      var wDays = win.days || [];
+      if (wDays.length > 0 && !wDays[dayIdx]) continue;
+      // Check time window
+      var start = _timeToMinutes(win.start);
+      var end = _timeToMinutes(win.end);
+      var inWindow = start <= end
+        ? nowMins >= start && nowMins < end
+        : nowMins >= start || nowMins < end; // overnight window
+      if (inWindow) return { dayPart: dp, window: win };
+    }
+  }
+  return null;
+}
+window.getActiveDayPartWindow = getActiveDayPartWindow;
+
+var _lastConfigVersion = null;
+
+async function loadPricingConfig() {
+  var results = await Promise.all([
+    fetchWithTimeout('/api/v1/config/pricing/order-types', {}, 8000).catch(function() { return null; }),
+    fetchWithTimeout('/api/v1/config/pricing/day-parts',   {}, 8000).catch(function() { return null; }),
+    fetchWithTimeout('/api/v1/config/pricing/discounts',   {}, 8000).catch(function() { return null; }),
+  ]);
+  var otRes = results[0], dpRes = results[1], discRes = results[2];
+  try { if (otRes && otRes.ok) { var ot = await otRes.json(); pricingConfig.orderTypes = Array.isArray(ot) ? ot : []; } } catch(e) {}
+  try { if (dpRes && dpRes.ok) { var dpData = await dpRes.json(); pricingConfig.dayParts = (dpData && Array.isArray(dpData.day_parts)) ? dpData.day_parts : []; } } catch(e) {}
+  try { if (discRes && discRes.ok) { var discData = await discRes.json(); pricingConfig.discounts = (discData && Array.isArray(discData.discounts)) ? discData.discounts : []; } } catch(e) {}
+  console.log('[KINDpos] Pricing config loaded:', {
+    orderTypes: pricingConfig.orderTypes.length,
+    dayParts:   pricingConfig.dayParts.length,
+    discounts:  pricingConfig.discounts.length,
+  });
+}
+
+async function pollConfigVersion() {
+  try {
+    var res  = await fetchWithTimeout('/api/v1/config/version', {}, 8000);
+    var data = await res.json();
+    var ver  = data.version != null ? data.version : null;
+    if (ver !== null && _lastConfigVersion !== null && ver !== _lastConfigVersion) {
+      console.log('[KINDpos] Config changed — reloading pricing config...');
+      await loadPricingConfig();
+    }
+    _lastConfigVersion = ver;
+  } catch(e) { /* silent */ }
+}
+
+// ═══════════════════════════════════════════════════
 //  BOOT
 // ═══════════════════════════════════════════════════
 
@@ -240,7 +326,15 @@ async function boot() {
     console.info('[app] Store config unavailable, using defaults');
   }
 
-  // 5. Open gate → login scene (only reached if license is activated)
+  // 5. Load pricing config (order types, day parts, specials, employee discount)
+  await loadPricingConfig();
+
+  // 6. Start config-version polling — detects Overseer changes while terminal
+  //    is active and reloads pricing config when the version advances.
+  setInterval(pollConfigVersion, 30000);
+  pollConfigVersion();
+
+  // 7. Open gate → login scene (only reached if license is activated)
   SceneManager.openGate('login');
 }
 

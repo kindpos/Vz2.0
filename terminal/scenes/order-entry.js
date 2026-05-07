@@ -50,6 +50,7 @@ import { entReport } from '../entomology-client.js';
 import { formatModifierLabel } from '../modifier-label.js';
 import { buildCheckOverviewParams } from './transitions.js';
 import { buildKindModPanel } from '../modifier-panel.js';
+import { getActiveSpecials, getItemSpecialDiscount } from '../specials.js';
 
 const PAD      = 16;
 const GAP      = 16;
@@ -1144,7 +1145,7 @@ function computeTicketTotals() {
   const summaryItems = [];  // item summary for ORDER RECAP
   ticket.forEach((inst) => {
     let modTotal = inst.mods.reduce((s, m) => s + Number(m.price || 0), 0);
-    const lineTotal = Number(inst.unitPrice || 0) + modTotal;
+    const lineTotal = Number(inst.unitPrice || 0) + modTotal - (Number(inst._specialDisc) || 0);
     counts[inst.name] = counts[inst.name] || { unitPrice: inst.unitPrice, qty: 0 };
     counts[inst.name].qty += 1;
     subtotal += lineTotal;
@@ -2870,6 +2871,27 @@ function resolveBackendModifierConfig(itemId, catId) {
 }
 
 function _pushToAllSeats(item) {
+  // Apply day-part price adjustment (if any) before special discounts.
+  const _activeDPW = window.getActiveDayPartWindow?.();
+  if (_activeDPW) {
+    const adjPct = _activeDPW.window.price_adjustment_pct ?? 0;
+    if (adjPct !== 0) {
+      item._dayPartOriginalPrice = item.unitPrice;
+      item._dayPartAdjPct = adjPct;
+      item._dayPartAdjAmt = window.roundHalfUp(item.unitPrice * adjPct / 100);
+      item._dayPartName = _activeDPW.dayPart.name;
+      item.unitPrice = window.roundHalfUp(item.unitPrice + item._dayPartAdjAmt);
+    }
+  }
+
+  // Compute and attach day-part special discount for this item.
+  const _actSp = getActiveSpecials();
+  const _discResult = getItemSpecialDiscount(item, _actSp);
+  item._specialDisc         = _discResult.amount;
+  item._specialName         = _discResult.special ? (_discResult.special.name || '') : '';
+  item._specialId           = _discResult.special ? (_discResult.special.id   || '') : '';
+  item._specialRequiresPin  = _discResult.special ? !!_discResult.special.requires_pin : false;
+
   let seatArr = Array.from(_activeSeats);
   if (seatArr.length === 0) seatArr = [_seatList[0] || 1];
   item.seat_number = seatArr[0];
@@ -3450,6 +3472,58 @@ function _buildItemSubCard(inst, isMultiSeat) {
   });
 
   card.appendChild(mainRow);
+
+  // Special discount sub-row (shown when a day-part special is active for this item)
+  if (inst._specialDisc && inst._specialDisc > 0) {
+    const discRow = document.createElement('div');
+    discRow.style.cssText = [
+      'display:flex;align-items:center;justify-content:space-between;',
+      'padding-top:3px;',
+    ].join('');
+    const discLabel = document.createElement('span');
+    discLabel.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.greenWarm || T.green};font-weight:${T.fwBold};`,
+      'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+    ].join('');
+    discLabel.textContent = (inst._specialName || 'SPECIAL') + ':';
+    const discAmt = document.createElement('span');
+    discAmt.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.greenWarm || T.green};font-weight:${T.fwBold};flex-shrink:0;`,
+    ].join('');
+    discAmt.textContent = '-' + _fmtPrice(inst._specialDisc);
+    discRow.appendChild(discLabel);
+    discRow.appendChild(discAmt);
+    card.appendChild(discRow);
+  }
+
+  // Day-part price adjustment sub-row (shown when day-part pricing is active)
+  if (inst._dayPartAdjPct && inst._dayPartAdjPct !== 0) {
+    const dpRow = document.createElement('div');
+    dpRow.style.cssText = [
+      'display:flex;align-items:center;justify-content:space-between;',
+      'padding-top:3px;',
+    ].join('');
+    const dpLabel = document.createElement('span');
+    dpLabel.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.elec};font-weight:${T.fwBold};`,
+      'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+    ].join('');
+    dpLabel.textContent = (inst._dayPartName || 'PRICING') + ' PRICING';
+    const dpAmt = document.createElement('span');
+    dpAmt.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.elec};font-weight:${T.fwBold};flex-shrink:0;`,
+    ].join('');
+    const sign = inst._dayPartAdjAmt >= 0 ? '+' : '−';
+    dpAmt.textContent = sign + _fmtPrice(Math.abs(inst._dayPartAdjAmt));
+    dpRow.appendChild(dpLabel);
+    dpRow.appendChild(dpAmt);
+    card.appendChild(dpRow);
+  }
+
   block.appendChild(card);
 
   // ── Mod tree below card ──────────────────────────
@@ -3697,7 +3771,7 @@ function _updateTicketTotals(filteredTicket) {
   const src = filteredTicket || ticket;
   src.forEach((inst) => {
     const modTotal = (inst.mods || []).reduce((s, m) => s + (Number(m.price) || 0), 0);
-    subtotal += (Number(inst.unitPrice) || 0) + modTotal;
+    subtotal += (Number(inst.unitPrice) || 0) + modTotal - (Number(inst._specialDisc) || 0);
   });
   if (_modPanelItem) {
     const previewMods = (_modPanelItem.mods || []);
@@ -4228,6 +4302,43 @@ async function handleSend() {
 
     // Mark remaining items as sent (order-level confirmation)
     ticket.forEach((inst) => { inst.sent = true; });
+
+    // Step 4 — auto-apply day-part special discounts that don't require a PIN.
+    // Groups by special ID so each named special fires one DISCOUNT_APPROVED event.
+    // Uses sceneParams.pin (the server's own PIN) as approver — valid because
+    // validate_pin_for_operation accepts any active employee's PIN, and day-part
+    // specials with requires_pin=false are system-authorised.
+    if (sceneParams.pin) {
+      const _specialGroups = {};
+      ticket.forEach(function(inst) {
+        if (!inst._specialDisc || inst._specialDisc <= 0) return;
+        if (inst._specialRequiresPin) return;
+        var sid = inst._specialId || '__default__';
+        if (!_specialGroups[sid]) {
+          _specialGroups[sid] = { name: inst._specialName, id: inst._specialId, totalDisc: 0 };
+        }
+        _specialGroups[sid].totalDisc += inst._specialDisc;
+      });
+      Object.keys(_specialGroups).forEach(function(sid) {
+        var grp = _specialGroups[sid];
+        var amt = Math.round((grp.totalDisc + 1e-10) * 100) / 100;
+        if (amt <= 0) return;
+        fetchWithTimeout(API + `/orders/${state.currentOrderId}/discount`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            discount_type: grp.name || 'Day-Part Special',
+            amount:        amt,
+            reason:        'Day-part special: ' + (grp.name || 'Special'),
+            pin:           sceneParams.pin,
+            discount_id:   grp.id || null,
+            item_ids:      null,
+          }),
+        }, 15000).catch(function(e) {
+          console.warn('[KINDpos] Special discount POST failed:', e);
+        });
+      });
+    }
 
     // Fire kitchen print — non-blocking, dispatcher handles retry
     fetchWithTimeout(API + `/print/ticket/${state.currentOrderId}`, { method: 'POST' }, 15000)
