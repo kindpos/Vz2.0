@@ -569,11 +569,11 @@ export function convertParsedDataToEvents(data) {
    Unchanged.
 ------------------------------------------ */
 const VIEW_REGISTRY = {
-    'file-select':  buildFileSelect,
-    'parsing':      buildParsing,
-    'preview':      buildPreview,
-    'success':      buildSuccess,
-    'error':        buildError,
+    'file-select':  (w, d) => buildFileSelect(w, d),
+    'parsing':      (w, d) => buildParsing(w, d),
+    'preview':      (w, d) => buildPreview(w, d),
+    'success':      (w, d) => buildSuccess(w, d),
+    'error':        (w, d) => buildError(w, d),
 };
 
 const pushView = (viewName, data) => {
