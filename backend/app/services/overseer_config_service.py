@@ -67,6 +67,19 @@ class OverseerConfigService:
             if e.event_type == EventType.EMPLOYEE_ROLE_DELETED:
                 roles.pop(rid, None)
             else:
+                # Coerce legacy payload shapes to match current Role schema
+                if isinstance(payload.get('permission_level'), int):
+                    payload['permission_level'] = str(payload['permission_level'])
+
+                if isinstance(payload.get('permissions'), list):
+                    payload['permissions'] = {p: True for p in payload['permissions']}
+
+                if 'service_types' in payload:
+                    allowed = {'full_service', 'qsr'}
+                    payload['service_types'] = [
+                        t for t in payload['service_types'] if t in allowed
+                    ] or ['full_service']
+
                 roles[rid] = Role(**payload)
         result = list(roles.values())
         cache.set(seq, result)

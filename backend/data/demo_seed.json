@@ -21,32 +21,32 @@
     {
       "role_id": "role_manager",
       "name": "Manager",
-      "permission_level": 100,
-      "permissions": ["all"],
+      "permission_level": "100",
+      "permissions": {"all": true},
       "tipout_eligible": false,
       "can_receive_tips": false,
       "can_be_tipped_out_to": false,
-      "service_types": ["management"]
+      "service_types": ["full_service"]
     },
     {
       "role_id": "role_server",
       "name": "Server",
-      "permission_level": 10,
-      "permissions": ["order", "payment", "checkout"],
+      "permission_level": "10",
+      "permissions": {"order": true, "payment": true, "checkout": true},
       "tipout_eligible": true,
       "can_receive_tips": true,
       "can_be_tipped_out_to": false,
-      "service_types": ["table", "counter"]
+      "service_types": ["full_service"]
     },
     {
       "role_id": "role_cook",
       "name": "Cook",
-      "permission_level": 5,
-      "permissions": ["view_orders"],
+      "permission_level": "5",
+      "permissions": {"view_orders": true},
       "tipout_eligible": false,
       "can_receive_tips": false,
       "can_be_tipped_out_to": false,
-      "service_types": ["kitchen"]
+      "service_types": ["full_service"]
     }
   ],
 
