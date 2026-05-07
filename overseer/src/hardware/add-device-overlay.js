@@ -93,28 +93,38 @@ function divider() {
 
 // ── Enter IP tab ─────────────────────────────────────────────────────
 
+const _IP_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
 function buildEnterIpTab(terminals, onClose) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 0;';
 
-    let probeResult = null;
-    let selectedType = 'KITCHEN';
-    const types = ['KITCHEN', 'RECEIPT', 'BAR', 'EXPO'];
+    let probeDevice = null;   // device object from the SSE `device` event
+    let probeSource = null;   // active EventSource
+    const ipSelected = new Set();
 
-    // Step 1: IP input row
+    // ── Step 1: IP input ─────────────────────────────────────────────
     const step1 = document.createElement('div');
     step1.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
-
     step1.appendChild(sectionLabel('DEVICE IP ADDRESS'));
 
     const ipRow = document.createElement('div');
     ipRow.style.cssText = 'display: flex; gap: 8px; align-items: center;';
     const ipInput = inputEl('10.0.0.x');
     ipInput.style.fontWeight = '700';
-    const findBtn = actionBtn('FIND', 'gold', null);
+    const probeBtn = actionBtn('PROBE', 'gold', null);
     ipRow.appendChild(ipInput);
-    ipRow.appendChild(findBtn);
+    ipRow.appendChild(probeBtn);
     step1.appendChild(ipRow);
+
+    const statusEl = document.createElement('div');
+    statusEl.style.cssText = `
+        font-family: ui-monospace, monospace;
+        font-size: ${T.fs.xs}px;
+        color: ${T.textDim};
+        min-height: 16px;
+    `;
+    step1.appendChild(statusEl);
 
     const errorEl = document.createElement('div');
     errorEl.style.cssText = `
@@ -124,79 +134,23 @@ function buildEnterIpTab(terminals, onClose) {
         min-height: 16px;
     `;
     step1.appendChild(errorEl);
-
     wrap.appendChild(step1);
 
-    // Step 2: Result card (hidden until probe succeeds)
-    const resultCard = document.createElement('div');
-    resultCard.style.cssText = `
-        display: none;
-        background: ${T.well};
-        border: 1px solid ${T.green};
-        border-radius: 8px;
-        padding: 12px 14px;
-        margin-top: 10px;
-        position: relative;
-        flex-direction: column;
-        gap: 4px;
-    `;
+    // ── Step 2: Device row (shown after SSE device event) ────────────
+    const deviceRowWrap = document.createElement('div');
+    deviceRowWrap.style.cssText = 'margin-top: 10px; display: none; flex-direction: column; gap: 4px;';
+    wrap.appendChild(deviceRowWrap);
 
-    const foundChip = document.createElement('div');
-    foundChip.style.cssText = `
-        display: inline-flex; align-items: center; gap: 4px;
-        background: ${withAlpha(T.green, 0.18)};
-        color: ${T.green};
-        border-radius: 999px;
-        padding: 2px 10px;
-        font-family: var(--font-heading);
-        font-size: ${T.fs.xs}px;
-        font-weight: 700;
-        letter-spacing: 1px;
-        margin-bottom: 6px;
-        width: fit-content;
-    `;
-    foundChip.textContent = 'FOUND ✓';
-
-    const printerIconWrap = document.createElement('div');
-    printerIconWrap.style.cssText = `
-        position: absolute; top: 12px; right: 14px; opacity: 0.6;
-    `;
-    printerIconWrap.appendChild(buildPrinterSVG(T.green, 28));
-
-    const modelEl = document.createElement('div');
-    modelEl.style.cssText = `
-        font-family: var(--font-heading);
-        font-size: ${T.fs.base}px;
-        font-weight: 700;
-        color: ${T.text};
-    `;
-    const ipPortEl = document.createElement('div');
-    ipPortEl.style.cssText = `font-family: ui-monospace, monospace; font-size: ${T.fs.xs}px; color: ${T.green};`;
-    const macEl = document.createElement('div');
-    macEl.style.cssText = `font-family: ui-monospace, monospace; font-size: ${T.fs.xs}px; color: ${T.textMuted};`;
-    const protocolEl = document.createElement('div');
-    protocolEl.style.cssText = `font-family: ui-monospace, monospace; font-size: ${T.fs.xs}px; color: ${T.textMuted};`;
-
-    resultCard.appendChild(foundChip);
-    resultCard.appendChild(printerIconWrap);
-    resultCard.appendChild(modelEl);
-    resultCard.appendChild(ipPortEl);
-    resultCard.appendChild(macEl);
-    resultCard.appendChild(protocolEl);
-    wrap.appendChild(resultCard);
-
-    // Step 3: Name / assign / type (shown after probe)
+    // ── Step 3: Name / assign / save (shown after device found) ──────
     const step3 = document.createElement('div');
     step3.style.cssText = 'display: none; flex-direction: column; gap: 14px; margin-top: 14px;';
 
-    // Display name
     const nameWrap = document.createElement('div');
     nameWrap.appendChild(sectionLabel('DISPLAY NAME'));
     const nameInput = inputEl('Kitchen Printer');
     nameWrap.appendChild(nameInput);
     step3.appendChild(nameWrap);
 
-    // Assign to terminal (hidden when single terminal)
     const assignWrap = document.createElement('div');
     assignWrap.style.display = terminals.length <= 1 ? 'none' : 'flex';
     assignWrap.style.flexDirection = 'column';
@@ -224,108 +178,223 @@ function buildEnterIpTab(terminals, onClose) {
     assignWrap.appendChild(termSelect);
     step3.appendChild(assignWrap);
 
-    // Device type pills
-    const typeWrap = document.createElement('div');
-    typeWrap.appendChild(sectionLabel('DEVICE TYPE'));
-    const typePillRow = document.createElement('div');
-    typePillRow.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap;';
-    const typeBtns = {};
-    function refreshTypePills() {
-        types.forEach(t => {
-            const btn = typeBtns[t];
-            const isActive = t === selectedType;
-            btn.style.background = isActive ? T.gold : 'transparent';
-            btn.style.color = isActive ? '#1a1000' : T.textMuted;
-            btn.style.borderColor = isActive ? T.gold : T.border;
-        });
-    }
-    types.forEach(t => {
-        const btn = actionBtn(t, 'ghost', () => { selectedType = t; refreshTypePills(); });
-        typeBtns[t] = btn;
-        typePillRow.appendChild(btn);
-    });
-    refreshTypePills();
-    typeWrap.appendChild(typePillRow);
-    step3.appendChild(typeWrap);
+    // No-MAC warning (shown when SSE device has no MAC)
+    const macWarnEl = document.createElement('div');
+    macWarnEl.style.cssText = `
+        display: none;
+        font-family: ui-monospace, monospace;
+        font-size: ${T.fs.xs}px;
+        color: ${T.gold};
+        background: ${withAlpha(T.gold, 0.08)};
+        border: 1px solid ${withAlpha(T.gold, 0.25)};
+        border-radius: 6px;
+        padding: 8px 10px;
+        line-height: 1.5;
+    `;
+    macWarnEl.textContent = 'Could not resolve MAC — device will be saved by IP only. Consider assigning a static IP for this device.';
+    step3.appendChild(macWarnEl);
+
+    // Duplicate-device warning (populated just before save attempt)
+    const dupWarnEl = document.createElement('div');
+    dupWarnEl.style.cssText = `
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        background: ${withAlpha(T.verm, 0.08)};
+        border: 1px solid ${withAlpha(T.verm, 0.3)};
+        border-radius: 6px;
+        padding: 10px 12px;
+        font-family: ui-monospace, monospace;
+        font-size: ${T.fs.xs}px;
+        color: ${T.verm};
+    `;
+    const dupMsgEl = document.createElement('div');
+    dupMsgEl.style.lineHeight = '1.5';
+    const dupBtnRow = document.createElement('div');
+    dupBtnRow.style.cssText = 'display: flex; gap: 8px;';
+    dupWarnEl.appendChild(dupMsgEl);
+    dupWarnEl.appendChild(dupBtnRow);
+    step3.appendChild(dupWarnEl);
 
     // Save
     const saveWrap = document.createElement('div');
     saveWrap.style.cssText = 'display: flex; justify-content: center; padding-top: 4px;';
-    const saveBtn = actionBtn('SAVE DEVICE', 'gold', async () => {
-        if (!probeResult) return;
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Saving…';
-        saveBtn.style.opacity = '0.65';
-        const body = {
-            ip:   probeResult.ip,
-            port: probeResult.port || 9100,
-            mac:  probeResult.mac,
-            type: selectedType.toLowerCase(),
-            name: nameInput.value.trim() || probeResult.model || 'Printer',
-        };
-        try {
-            // TODO: wire to real endpoint — /api/v1/hardware/devices
-            const res = await fetch('/api/v1/hardware/devices', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            window.dispatchEvent(new CustomEvent('kindpos:devicesAdded'));
-            onClose();
-        } catch (e) {
-            saveBtn.textContent = 'Save failed';
-            setTimeout(() => { saveBtn.disabled = false; saveBtn.textContent = 'SAVE DEVICE'; saveBtn.style.opacity = '1'; }, 2000);
-        }
-    });
+    const saveBtn = actionBtn('SAVE DEVICE', 'gold', null);
     saveWrap.appendChild(saveBtn);
     step3.appendChild(saveWrap);
     wrap.appendChild(step3);
 
-    // FIND handler
-    findBtn.addEventListener('click', async () => {
+    // ── Helpers ───────────────────────────────────────────────────────
+
+    function resetProbe() {
+        probeDevice = null;
+        ipSelected.clear();
+        deviceRowWrap.innerHTML = '';
+        deviceRowWrap.style.display = 'none';
+        step3.style.display = 'none';
+        dupWarnEl.style.display = 'none';
+        macWarnEl.style.display = 'none';
+        errorEl.textContent = '';
+        statusEl.textContent = '';
+    }
+
+    function stopSource() {
+        if (probeSource) { probeSource.close(); probeSource = null; }
+    }
+
+    function showDevice(data) {
+        const port = data.port || 9100;
+        const isReader = data.saved_type === 'card_reader' || CARD_READER_PORTS.includes(port);
+        probeDevice = {
+            ip: data.ip,
+            mac: data.mac || '',
+            model: data.name || data.saved_name || 'Unknown Device',
+            port,
+            assignedType: data.saved_type || (isReader ? 'card_reader' : 'kitchen'),
+        };
+        const key = probeDevice.mac || probeDevice.ip;
+        ipSelected.add(key);
+
+        deviceRowWrap.innerHTML = '';
+        deviceRowWrap.appendChild(buildDeviceRow(probeDevice, ipSelected, () => {
+            // re-render checkbox state only
+            deviceRowWrap.innerHTML = '';
+            deviceRowWrap.appendChild(buildDeviceRow(probeDevice, ipSelected, () => {}));
+        }));
+        deviceRowWrap.style.display = 'flex';
+
+        nameInput.value = probeDevice.model !== 'Unknown Device' ? probeDevice.model : '';
+        macWarnEl.style.display = probeDevice.mac ? 'none' : 'block';
+        step3.style.display = 'flex';
+    }
+
+    // ── PROBE handler (SSE) ───────────────────────────────────────────
+
+    probeBtn.addEventListener('click', () => {
         const ip = ipInput.value.trim();
         errorEl.textContent = '';
-        if (!ip) { errorEl.textContent = 'Enter an IP address.'; return; }
+        if (!_IP_RE.test(ip)) {
+            errorEl.textContent = 'Invalid IP address';
+            return;
+        }
 
-        findBtn.disabled = true;
-        findBtn.textContent = '…';
-        findBtn.style.opacity = '0.65';
+        stopSource();
+        resetProbe();
 
+        probeBtn.disabled = true;
+        probeBtn.textContent = '…';
+        probeBtn.style.opacity = '0.65';
+        statusEl.textContent = `Probing ${ip}…`;
+
+        probeSource = new EventSource(`/api/v1/hardware/scan/stream?ip=${encodeURIComponent(ip)}`);
+
+        probeSource.onmessage = (e) => {
+            let data;
+            try { data = JSON.parse(e.data); } catch { return; }
+
+            if (data.type === 'diagnostic') {
+                statusEl.textContent = data.message || `Probing ${ip}…`;
+            } else if (data.type === 'device') {
+                statusEl.textContent = '';
+                showDevice(data);
+            } else if (data.type === 'complete') {
+                stopSource();
+                probeBtn.disabled = false;
+                probeBtn.textContent = 'PROBE';
+                probeBtn.style.opacity = '1';
+                statusEl.textContent = '';
+                if (!probeDevice) {
+                    errorEl.textContent = `No device responded at ${ip}`;
+                }
+            } else if (data.type === 'error') {
+                stopSource();
+                probeBtn.disabled = false;
+                probeBtn.textContent = 'PROBE';
+                probeBtn.style.opacity = '1';
+                statusEl.textContent = '';
+                errorEl.textContent = data.message || `Error probing ${ip}`;
+            }
+        };
+
+        probeSource.onerror = () => {
+            stopSource();
+            probeBtn.disabled = false;
+            probeBtn.textContent = 'PROBE';
+            probeBtn.style.opacity = '1';
+            statusEl.textContent = '';
+            errorEl.textContent = `Could not reach ${ip} — check network connection.`;
+        };
+    });
+
+    // Enter key triggers probe
+    ipInput.addEventListener('keydown', e => { if (e.key === 'Enter') probeBtn.click(); });
+
+    // ── Save handler with persistence checks ─────────────────────────
+
+    saveBtn.addEventListener('click', async () => {
+        if (!probeDevice) return;
+
+        // Duplicate check: fetch current saved devices, look for matching MAC
+        let savedDevices = [];
         try {
-            // TODO: wire to real endpoint — /api/v1/hardware/probe
-            const res = await fetch('/api/v1/hardware/probe', {
-                method: 'POST',
+            const r = await fetch('/api/v1/hardware/devices');
+            if (r.ok) savedDevices = await r.json();
+        } catch { /* non-fatal */ }
+
+        if (probeDevice.mac) {
+            const existing = savedDevices.find(d => d.mac === probeDevice.mac);
+            if (existing) {
+                dupMsgEl.textContent = `This device is already saved as "${existing.name || existing.type}" at ${existing.ip}. Update its IP instead?`;
+                dupBtnRow.innerHTML = '';
+                const confirmBtn = actionBtn('CONFIRM UPDATE', 'gold', async () => {
+                    dupWarnEl.style.display = 'none';
+                    await doSave(true);
+                });
+                confirmBtn.style.fontSize = T.fs.xs + 'px';
+                const cancelBtn = actionBtn('CANCEL', 'ghost', () => {
+                    dupWarnEl.style.display = 'none';
+                });
+                cancelBtn.style.fontSize = T.fs.xs + 'px';
+                dupBtnRow.appendChild(confirmBtn);
+                dupBtnRow.appendChild(cancelBtn);
+                dupWarnEl.style.display = 'flex';
+                return;
+            }
+        }
+
+        await doSave(false);
+    });
+
+    async function doSave(isUpdate) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+        saveBtn.style.opacity = '0.65';
+        const record = {
+            ip:   probeDevice.ip,
+            port: probeDevice.port || 9100,
+            mac:  probeDevice.mac || null,
+            type: probeDevice.assignedType || 'kitchen',
+            name: nameInput.value.trim() || probeDevice.model || 'Device',
+        };
+        try {
+            const method = isUpdate ? 'PATCH' : 'POST';
+            const res = await fetch('/api/v1/hardware/devices', {
+                method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ip, port: 9100 }),
+                body: JSON.stringify(record),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-
-            if (!data.found) {
-                errorEl.textContent = `No device found at ${ip}:9100`;
-                resultCard.style.display = 'none';
-                step3.style.display = 'none';
-            } else {
-                probeResult = { ...data, ip };
-                modelEl.textContent = data.model || 'Unknown Device';
-                ipPortEl.textContent = `${ip}:${data.port || 9100}`;
-                macEl.textContent = `MAC: ${data.mac || '—'}`;
-                protocolEl.textContent = `Protocol: ${data.protocol || '—'}`;
-                nameInput.value = data.model || '';
-                resultCard.style.display = 'flex';
-                step3.style.display = 'flex';
-            }
+            window.dispatchEvent(new CustomEvent('kindpos:devicesAdded'));
+            onClose();
         } catch {
-            errorEl.textContent = `Could not reach ${ip} — check connection.`;
-            resultCard.style.display = 'none';
-            step3.style.display = 'none';
-        } finally {
-            findBtn.disabled = false;
-            findBtn.textContent = 'FIND';
-            findBtn.style.opacity = '1';
+            saveBtn.textContent = 'Save failed';
+            setTimeout(() => {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'SAVE DEVICE';
+                saveBtn.style.opacity = '1';
+            }, 2000);
         }
-    });
+    }
 
     return wrap;
 }
@@ -335,6 +404,100 @@ function buildEnterIpTab(terminals, onClose) {
 // Ports that identify a payment terminal (Dejavoo SPIn). Defined here so
 // the isReader classification below stays in sync with the backend constant.
 const CARD_READER_PORTS = [9000, 8443, 9443];
+
+// ── Shared device row ────────────────────────────────────────────────
+// Used by both Scan LAN and Enter IP tabs.
+// selectedDevices: Set of keys (mac or ip) that are checked.
+// onSelectionChange: called after toggling a checkbox.
+
+function buildDeviceRow(dev, selectedDevices, onSelectionChange) {
+    const isReader = dev.assignedType === 'card_reader';
+    const row = document.createElement('div');
+    row.style.cssText = `
+        display: flex; align-items: center; gap: 10px;
+        background: ${T.well};
+        border-radius: 6px;
+        padding: 8px 12px;
+    `;
+
+    const checkKey = dev.mac || dev.ip;
+    const isChecked = selectedDevices.has(checkKey);
+    const checkbox = document.createElement('div');
+    checkbox.style.cssText = `
+        width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
+        border: 1.5px solid ${isChecked ? T.green : T.border};
+        background: ${isChecked ? withAlpha(T.green, 0.2) : 'transparent'};
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; touch-action: manipulation;
+        font-size: 10px; color: ${T.green};
+    `;
+    checkbox.textContent = isChecked ? '✓' : '';
+    checkbox.addEventListener('click', () => {
+        if (selectedDevices.has(checkKey)) selectedDevices.delete(checkKey);
+        else selectedDevices.add(checkKey);
+        onSelectionChange();
+    });
+    row.appendChild(checkbox);
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex: 1; min-width: 0;';
+    const nameEl = document.createElement('div');
+    nameEl.style.cssText = `font-size: ${T.fs.base}px; color: ${T.text}; font-weight: 600;`;
+    nameEl.textContent = dev.model || (isReader ? 'Card Reader' : 'Unknown Device');
+    const detailEl = document.createElement('div');
+    detailEl.style.cssText = `font-family: ui-monospace, monospace; font-size: ${T.fs.xs}px; color: ${T.textMuted};`;
+    detailEl.textContent = `${dev.ip}  ·  ${dev.mac || ''}`;
+    info.appendChild(nameEl);
+    info.appendChild(detailEl);
+    row.appendChild(info);
+
+    if (isReader) {
+        const badge = document.createElement('div');
+        badge.style.cssText = `
+            background: ${withAlpha(T.cyan, 0.12)};
+            border: 1px solid ${withAlpha(T.cyan, 0.3)};
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-family: var(--font-heading);
+            font-size: ${T.fs.xs}px;
+            color: ${T.cyan};
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        `;
+        badge.textContent = 'CARD READER';
+        row.appendChild(badge);
+    } else {
+        const typeSel = document.createElement('select');
+        typeSel.style.cssText = `
+            background: ${withAlpha(T.gold, 0.12)};
+            border: 1px solid ${withAlpha(T.gold, 0.3)};
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-family: var(--font-heading);
+            font-size: ${T.fs.xs}px;
+            color: ${T.gold};
+            font-weight: 700;
+            outline: none;
+            cursor: pointer;
+            color-scheme: dark;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        `;
+        ['KITCHEN', 'RECEIPT', 'BAR', 'EXPO'].forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.toLowerCase();
+            opt.textContent = t;
+            typeSel.appendChild(opt);
+        });
+        typeSel.value = dev.assignedType || 'kitchen';
+        typeSel.addEventListener('change', () => { dev.assignedType = typeSel.value; });
+        row.appendChild(typeSel);
+    }
+
+    return row;
+}
 
 function buildScanLanTab(terminals, onClose) {
     const wrap = document.createElement('div');
@@ -424,97 +587,6 @@ function buildScanLanTab(terminals, onClose) {
     discoveredSection.appendChild(deviceList);
     wrap.appendChild(discoveredSection);
 
-    function buildDeviceRow(dev) {
-        const isReader = dev.assignedType === 'card_reader';
-        const row = document.createElement('div');
-        row.style.cssText = `
-            display: flex; align-items: center; gap: 10px;
-            background: ${T.well};
-            border-radius: 6px;
-            padding: 8px 12px;
-        `;
-
-        const checkKey = dev.mac || dev.ip;
-        const isChecked = selectedDevices.has(checkKey);
-        const checkbox = document.createElement('div');
-        checkbox.style.cssText = `
-            width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
-            border: 1.5px solid ${isChecked ? T.green : T.border};
-            background: ${isChecked ? withAlpha(T.green, 0.2) : 'transparent'};
-            display: flex; align-items: center; justify-content: center;
-            cursor: pointer; touch-action: manipulation;
-            font-size: 10px; color: ${T.green};
-        `;
-        checkbox.textContent = isChecked ? '✓' : '';
-        checkbox.addEventListener('click', () => {
-            if (selectedDevices.has(checkKey)) selectedDevices.delete(checkKey);
-            else selectedDevices.add(checkKey);
-            refreshDeviceList();
-        });
-        row.appendChild(checkbox);
-
-        const info = document.createElement('div');
-        info.style.cssText = 'flex: 1; min-width: 0;';
-        const nameEl = document.createElement('div');
-        nameEl.style.cssText = `font-size: ${T.fs.base}px; color: ${T.text}; font-weight: 600;`;
-        nameEl.textContent = dev.model || (isReader ? 'Card Reader' : 'Unknown Device');
-        const detailEl = document.createElement('div');
-        detailEl.style.cssText = `font-family: ui-monospace, monospace; font-size: ${T.fs.xs}px; color: ${T.textMuted};`;
-        detailEl.textContent = `${dev.ip}  ·  ${dev.mac || ''}`;
-        info.appendChild(nameEl);
-        info.appendChild(detailEl);
-        row.appendChild(info);
-
-        if (isReader) {
-            // Static badge — card readers have no sub-type
-            const badge = document.createElement('div');
-            badge.style.cssText = `
-                background: ${withAlpha(T.cyan, 0.12)};
-                border: 1px solid ${withAlpha(T.cyan, 0.3)};
-                border-radius: 6px;
-                padding: 4px 8px;
-                font-family: var(--font-heading);
-                font-size: ${T.fs.xs}px;
-                color: ${T.cyan};
-                font-weight: 700;
-                letter-spacing: 0.5px;
-                text-transform: uppercase;
-                white-space: nowrap;
-            `;
-            badge.textContent = 'CARD READER';
-            row.appendChild(badge);
-        } else {
-            // Type dropdown for printers
-            const typeSel = document.createElement('select');
-            typeSel.style.cssText = `
-                background: ${withAlpha(T.gold, 0.12)};
-                border: 1px solid ${withAlpha(T.gold, 0.3)};
-                border-radius: 6px;
-                padding: 4px 8px;
-                font-family: var(--font-heading);
-                font-size: ${T.fs.xs}px;
-                color: ${T.gold};
-                font-weight: 700;
-                outline: none;
-                cursor: pointer;
-                color-scheme: dark;
-                letter-spacing: 0.5px;
-                text-transform: uppercase;
-            `;
-            ['KITCHEN', 'RECEIPT', 'BAR', 'EXPO'].forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t.toLowerCase();
-                opt.textContent = t;
-                typeSel.appendChild(opt);
-            });
-            typeSel.value = dev.assignedType || 'kitchen';
-            typeSel.addEventListener('change', () => { dev.assignedType = typeSel.value; });
-            row.appendChild(typeSel);
-        }
-
-        return row;
-    }
-
     function refreshDeviceList() {
         deviceList.innerHTML = '';
         discoveredHeader.textContent = `DISCOVERED DEVICES — ${discovered.length} found`;
@@ -536,7 +608,7 @@ function buildScanLanTab(terminals, onClose) {
             `;
             lbl.textContent = 'PRINT DEVICES';
             deviceList.appendChild(lbl);
-            printers.forEach(dev => deviceList.appendChild(buildDeviceRow(dev)));
+            printers.forEach(dev => deviceList.appendChild(buildDeviceRow(dev, selectedDevices, refreshDeviceList)));
         }
 
         if (printers.length > 0 && readers.length > 0) {
@@ -557,7 +629,7 @@ function buildScanLanTab(terminals, onClose) {
             `;
             lbl.textContent = 'PAYMENT';
             deviceList.appendChild(lbl);
-            readers.forEach(dev => deviceList.appendChild(buildDeviceRow(dev)));
+            readers.forEach(dev => deviceList.appendChild(buildDeviceRow(dev, selectedDevices, refreshDeviceList)));
         }
     }
 
