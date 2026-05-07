@@ -404,18 +404,22 @@ const renderScene = () => {
     if (!bodyMount) return;
     bodyMount.innerHTML = '';
 
-    bodyMount.appendChild(buildSuperHeader('SPECIALS', C.gold));
+    bodyMount.appendChild(buildSectionLabel('SPECIALS', C.gold));
     bodyMount.appendChild(buildDayPartsAccordion());
     bodyMount.appendChild(buildSpecialsAccordion());
 
     bodyMount.appendChild(buildOrderTypesAccordion());
-    bodyMount.appendChild(buildSuperHeader('DISCOUNTS', C.green));
+
+    const discountsSpacer = document.createElement('div');
+    discountsSpacer.style.marginTop = '24px';
+    bodyMount.appendChild(discountsSpacer);
+    bodyMount.appendChild(buildSectionLabel('DISCOUNTS', C.green));
     bodyMount.appendChild(buildEmployeeAccordion());
 
     const voidsSpacer = document.createElement('div');
     voidsSpacer.style.marginTop = '24px';
     bodyMount.appendChild(voidsSpacer);
-    bodyMount.appendChild(buildSuperHeader('VOIDS', C.verm));
+    bodyMount.appendChild(buildSectionLabel('VOIDS', C.verm));
     bodyMount.appendChild(buildVoidReasonsAccordion());
 
     bodyMount.appendChild(buildPendingFooter());
@@ -521,7 +525,7 @@ const buildAccordion = (key, title, meta, accentColor, bodyBuilder, countBadge =
         body.style.cssText = `
             padding: 0 16px 16px;
             padding-top: 14px;
-            display: flex; flex-direction: column; gap: 10px;
+            display: flex; flex-direction: column; gap: 8px;
             border-top: 1px solid ${C2.hairline};
         `;
         bodyBuilder(body);
@@ -582,6 +586,7 @@ const buildDayPartCard = (dp) => {
         display: flex; flex-direction: column; gap: 6px;
         cursor: pointer;
         transition: background 0.15s ease;
+        margin-bottom: 8px;
     `;
     card.addEventListener('mouseenter', () => card.style.background = C.card);
     card.addEventListener('mouseleave', () => card.style.background = C.well);
@@ -685,6 +690,7 @@ const buildSpecialCard = (sp) => {
         cursor: pointer;
         opacity: ${sp.active ? '1' : '0.55'};
         transition: background 0.15s ease;
+        margin-bottom: 8px;
     `;
     card.addEventListener('mouseenter', () => card.style.background = C.card);
     card.addEventListener('mouseleave', () => card.style.background = C.well);
@@ -848,6 +854,7 @@ const buildOrderTypeRow = (ot) => {
         border: 1px solid ${edited ? C.gold : withAlpha(C.text, 0.08)};
         border-radius: 8px;
         opacity: ${ot.active ? '1' : '0.55'};
+        margin-bottom: 8px;
     `;
 
     const name = document.createElement('div');
@@ -1069,6 +1076,7 @@ const buildVoidReasonRow = (r) => {
         border-radius: 8px;
         cursor: pointer;
         transition: background 0.15s ease;
+        margin-bottom: 8px;
     `;
     row.addEventListener('mouseenter', () => row.style.background = C.card);
     row.addEventListener('mouseleave', () => row.style.background = C.well);

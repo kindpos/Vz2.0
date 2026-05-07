@@ -123,7 +123,7 @@ export function buildScenePage(container, { title, subtitle = null, saveLabel = 
   const titleCol = document.createElement('div');
   titleCol.style.cssText = 'flex: 1; min-width: 0;';
   titleCol.innerHTML = `
-    <div style="font-family: var(--font-heading); font-size: 34px; font-weight: 700; color: ${C.text}; letter-spacing: 0.5px; line-height: 1.1;">${title}</div>
+    <div style="font-family: ${C.fh}; font-size: ${C.fs.hero}px; font-weight: 700; /* TODO: tokenize when T.fwBold is added to tokens.js */ color: ${C.text}; letter-spacing: 0.5px; line-height: 1.1;">${title}</div>
     ${subtitle ? `<div style="font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 2px; color: ${C.textMuted}; margin-top: 8px; text-transform: uppercase;">${subtitle}</div>` : ''}
   `;
   header.appendChild(titleCol);
