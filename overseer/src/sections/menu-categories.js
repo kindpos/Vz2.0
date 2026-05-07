@@ -2865,7 +2865,7 @@ const openEditItemModal = (itemId) => {
 
 const openAddItemModal = (preselectedCategoryId) => {
     const draft = {
-        id:                    `temp_item_${Date.now()}`,
+        id:                    crypto.randomUUID(),
         name:                  '',
         price:                 0,
         description:            '',
@@ -3628,7 +3628,7 @@ const handleDelete = (itemId) => {
 const handleDuplicate = (source) => {
     const dupe = {
         ...clone(source),
-        id:            `temp_item_${Date.now()}`,
+        id:            crypto.randomUUID(),
         name:          (source.name || 'Item') + ' (Copy)',
         display_order: 999,
     };
@@ -3765,7 +3765,12 @@ const itemPayload = (item, includeIdInRoot) => {
         mandatory_group_ids:   item.mandatory_group_ids || [],
         included_modifier_ids: item.included_modifier_ids || [],
     };
-    if (includeIdInRoot) base.item_id = item.id.replace(/^temp_/, '');
+    if (includeIdInRoot) {
+        base.item_id = item.id;
+        // Set display_order to count of items in category + 1 (place new item last)
+        const itemsInCategory = menuData.items.filter(i => i.category_id === item.category_id).length;
+        base.display_order = itemsInCategory + 1;
+    }
     return base;
 }
 

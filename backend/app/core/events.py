@@ -209,15 +209,11 @@ class EventType(str, Enum):
     MENU_CATEGORY_CREATED = "menu.category_created"
     MENU_CATEGORY_UPDATED = "menu.category_updated"
     MENU_CATEGORY_DELETED = "menu.category_deleted"
-    CATEGORY_DEACTIVATED = "category.deactivated"
-    CATEGORY_REACTIVATED = "category.reactivated"
     MENU_ITEM_86D = "menu.item_86d"
     MENU_ITEM_RESTORED = "menu.item_restored"
     ITEM_86ED = "item.86ed"
     ITEM_86_CLEARED = "item.86_cleared"
     ITEM_PRICE_CHANGED = "item.price_changed"
-    ITEM_DEACTIVATED = "item.deactivated"
-    ITEM_REACTIVATED = "item.reactivated"
     SPECIAL_CREATED = "special.created"
     SPECIAL_UPDATED = "special.updated"
     SPECIAL_ACTIVATED = "special.activated"
@@ -2832,46 +2828,6 @@ def item_price_changed(
     )
 
 
-def item_deactivated(
-        terminal_id: str,
-        item_id: str,
-        deactivated_by: Optional[str] = None,
-        reason: Optional[str] = None,
-        **kwargs
-) -> Event:
-    """ITEM_DEACTIVATED: soft-delete -- item is hidden from new orders
-    but historical references remain valid."""
-    payload = {"item_id": item_id}
-    if deactivated_by is not None:
-        payload["deactivated_by"] = deactivated_by
-    if reason is not None:
-        payload["reason"] = reason
-    return create_event(
-        event_type=EventType.ITEM_DEACTIVATED,
-        terminal_id=terminal_id,
-        payload=payload,
-        **kwargs,
-    )
-
-
-def item_reactivated(
-        terminal_id: str,
-        item_id: str,
-        reactivated_by: Optional[str] = None,
-        **kwargs
-) -> Event:
-    """ITEM_REACTIVATED: undo for item_deactivated."""
-    payload = {"item_id": item_id}
-    if reactivated_by is not None:
-        payload["reactivated_by"] = reactivated_by
-    return create_event(
-        event_type=EventType.ITEM_REACTIVATED,
-        terminal_id=terminal_id,
-        payload=payload,
-        **kwargs,
-    )
-
-
 def special_created(
         terminal_id: str,
         special_id: str,
@@ -3169,47 +3125,6 @@ def tipout_override(
     }
     return create_event(
         event_type=EventType.TIPOUT_OVERRIDE,
-        terminal_id=terminal_id,
-        payload=payload,
-        **kwargs,
-    )
-
-
-def category_deactivated(
-        terminal_id: str,
-        category_id: str,
-        deactivated_by: Optional[str] = None,
-        reason: Optional[str] = None,
-        **kwargs
-) -> Event:
-    """CATEGORY_DEACTIVATED: soft-delete -- category is hidden from
-    new orders but historical references stay valid. Distinct from
-    MENU_CATEGORY_DELETED which is a hard catalog removal."""
-    payload = {"category_id": category_id}
-    if deactivated_by is not None:
-        payload["deactivated_by"] = deactivated_by
-    if reason is not None:
-        payload["reason"] = reason
-    return create_event(
-        event_type=EventType.CATEGORY_DEACTIVATED,
-        terminal_id=terminal_id,
-        payload=payload,
-        **kwargs,
-    )
-
-
-def category_reactivated(
-        terminal_id: str,
-        category_id: str,
-        reactivated_by: Optional[str] = None,
-        **kwargs
-) -> Event:
-    """CATEGORY_REACTIVATED: undo for category_deactivated."""
-    payload = {"category_id": category_id}
-    if reactivated_by is not None:
-        payload["reactivated_by"] = reactivated_by
-    return create_event(
-        event_type=EventType.CATEGORY_REACTIVATED,
         terminal_id=terminal_id,
         payload=payload,
         **kwargs,

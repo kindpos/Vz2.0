@@ -202,6 +202,7 @@ class OverseerConfigService:
             if e.event_type == EventType.MENU_CATEGORY_DELETED:
                 cats.pop(cid, None)
             else:
+                # active flag toggled via UPDATE payload (no separate deactivate event — see menu.category_updated)
                 cats[cid] = MenuCategory(**payload)
         result = list(cats.values())
         cache.set(seq, result)
@@ -256,6 +257,7 @@ class OverseerConfigService:
                 if existing is not None:
                     items[iid] = existing.model_copy(update={"is_86ed": False})
             elif e.event_type == EventType.MENU_ITEM_UPDATED:
+                # active flag toggled via UPDATE payload (no separate deactivate event — see menu.item_updated)
                 # UPDATED payload can be either shape:
                 #   {item_id, ...fields}   (legacy/direct)
                 #   {item_id, changes: {...fields}}   (from menu-categories.js v2)
@@ -273,6 +275,65 @@ class OverseerConfigService:
                     items[iid] = MenuItem(**{k: v for k, v in fields.items() if k != 'changes'})
             else:
                 items[iid] = MenuItem(**payload)
+
+        # Apply pricing chain events (size pricing, option group overrides, size price overrides)
+        pricing_event_types = [
+            EventType.MENU_ITEM_SIZE_PRICING_SET,
+            EventType.MENU_ITEM_OPTION_GROUP_OVERRIDE_SET,
+            EventType.MENU_ITEM_SIZE_PRICE_OVERRIDE_SET,
+        ]
+        pricing_events = []
+        for et in pricing_event_types:
+            pricing_events += await self.ledger.get_events_by_type(et, limit=5000)
+        if pricing_events:
+            pricing_events.sort(key=lambda x: x.sequence_number or 0)
+            for e in pricing_events:
+                payload = e.payload
+                item_id = payload.get("item_id")
+                if not item_id or item_id not in items:
+                    continue
+
+                item = items[item_id]
+                data = item.model_dump()
+
+                if e.event_type == EventType.MENU_ITEM_SIZE_PRICING_SET:
+                    # payload: {item_id, group_id, size_prices}
+                    group_id = payload.get("group_id")
+                    size_prices = payload.get("size_prices", {})
+                    if group_id:
+                        if "price_by_size" not in data:
+                            data["price_by_size"] = {}
+                        data["price_by_size"][group_id] = size_prices
+
+                elif e.event_type == EventType.MENU_ITEM_OPTION_GROUP_OVERRIDE_SET:
+                    # payload: {item_id, group_id, option_group_id}
+                    group_id = payload.get("group_id")
+                    option_group_id = payload.get("option_group_id")
+                    if group_id:
+                        if "option_group_overrides" not in data:
+                            data["option_group_overrides"] = {}
+                        if option_group_id:
+                            data["option_group_overrides"][group_id] = option_group_id
+                        else:
+                            data["option_group_overrides"].pop(group_id, None)
+
+                elif e.event_type == EventType.MENU_ITEM_SIZE_PRICE_OVERRIDE_SET:
+                    # payload: {item_id, group_id, size_name, price}
+                    group_id = payload.get("group_id")
+                    size_name = payload.get("size_name")
+                    price = payload.get("price")
+                    if group_id and size_name:
+                        if "size_price_overrides" not in data:
+                            data["size_price_overrides"] = {}
+                        if group_id not in data["size_price_overrides"]:
+                            data["size_price_overrides"][group_id] = {}
+                        if price is not None:
+                            data["size_price_overrides"][group_id][size_name] = price
+                        else:
+                            data["size_price_overrides"][group_id].pop(size_name, None)
+
+                items[item_id] = MenuItem(**data)
+
         result = list(items.values())
         cache.set(seq, result)
         return result
