@@ -71,7 +71,10 @@ class StoreConfigService:
             "operating_hours": {},
             "order_types": { "enabled_types": [] },
             "auto_gratuity": { "enabled": False, "party_size_threshold": 6, "rate_percent": Decimal("20.0"), "applies_to_order_types": ["dine_in"] },
-            "cash_discount_rate": Decimal("0.0")
+            "cash_discount_rate": Decimal("0.0"),
+            "receipt_header": "",
+            "receipt_footer": "",
+            "receipt_settings": {},
         }
 
         for event in events:
@@ -83,6 +86,13 @@ class StoreConfigService:
                 # Normalise: production events may use "name" instead of "restaurant_name"
                 if "name" in info and "restaurant_name" not in info:
                     info["restaurant_name"] = info.pop("name")
+                # Extract receipt fields before merging into StoreInfo (which doesn't have them)
+                if "receipt_header" in info:
+                    config["receipt_header"] = info.pop("receipt_header")
+                if "receipt_footer" in info:
+                    config["receipt_footer"] = info.pop("receipt_footer")
+                if "receipt_settings" in info:
+                    config["receipt_settings"].update(info.pop("receipt_settings"))
                 config["info"].update(info)
             elif etype == EventType.STORE_BRANDING_UPDATED:
                 config["branding"].update(dict(payload))
