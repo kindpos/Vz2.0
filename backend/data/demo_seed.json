@@ -1,0 +1,167 @@
+{
+  "restaurant": {
+    "name": "In the PIT",
+    "address": "1234 Del Prado Blvd, Cape Coral FL 33990",
+    "phone": "239-555-0182",
+    "timezone": "US/Eastern",
+    "tax_rate": 0.06,
+    "cash_discount_rate": 0.04,
+    "operating_hours": {
+      "monday":    { "enabled": true, "open": "11:00", "close": "21:00" },
+      "tuesday":   { "enabled": true, "open": "11:00", "close": "21:00" },
+      "wednesday": { "enabled": true, "open": "11:00", "close": "21:00" },
+      "thursday":  { "enabled": true, "open": "11:00", "close": "21:00" },
+      "friday":    { "enabled": true, "open": "11:00", "close": "22:00" },
+      "saturday":  { "enabled": true, "open": "11:00", "close": "22:00" },
+      "sunday":    { "enabled": true, "open": "12:00", "close": "20:00" }
+    }
+  },
+
+  "employees": [
+    { "employee_id": "emp_001", "name": "Dorothy Zbornak",
+      "role": "manager", "pin": "0000", "hourly_rate": 25.00 },
+    { "employee_id": "emp_002", "name": "Blanche Devereaux",
+      "role": "server",  "pin": "1001", "hourly_rate": 15.00 },
+    { "employee_id": "emp_003", "name": "Rose Nylund",
+      "role": "server",  "pin": "1002", "hourly_rate": 15.00 },
+    { "employee_id": "emp_004", "name": "Sophia Petrillo",
+      "role": "cook",    "pin": "2001", "hourly_rate": 18.00 },
+    { "employee_id": "emp_005", "name": "Stanley Zbornak",
+      "role": "cook",    "pin": "2002", "hourly_rate": 18.00 }
+  ],
+
+  "tipout_rules": [
+    { "rule_id": "tip_001", "role": "Expo",    "percentage": 2.0, "basis": "net_sales" },
+    { "rule_id": "tip_002", "role": "Support", "percentage": 1.0, "basis": "net_sales" }
+  ],
+
+  "categories": [
+    { "category_id": "mains",  "name": "Mains",  "label": "MAINS",
+      "color": "#c0392b", "display_order": 1 },
+    { "category_id": "loaded", "name": "Loaded", "label": "LOADED",
+      "color": "#e67e22", "display_order": 2 },
+    { "category_id": "sides",  "name": "Sides",  "label": "SIDES",
+      "color": "#27ae60", "display_order": 3 },
+    { "category_id": "drinks", "name": "Drinks", "label": "DRINKS",
+      "color": "#2980b9", "display_order": 4 },
+    { "category_id": "snacks", "name": "Snacks", "label": "SNACKS",
+      "color": "#8e44ad", "display_order": 5 }
+  ],
+
+  "items": [
+    { "item_id": "brisket",        "name": "Brisket",
+      "price": 11.00, "category": "Mains",  "display_order": 1 },
+    { "item_id": "pork",           "name": "Pork",
+      "price":  8.00, "category": "Mains",  "display_order": 2 },
+    { "item_id": "chicken",        "name": "Chicken",
+      "price":  8.00, "category": "Mains",  "display_order": 3 },
+    { "item_id": "cheeseburger",   "name": "Cheeseburger",
+      "price":  7.00, "category": "Mains",  "display_order": 4 },
+    { "item_id": "burrito",        "name": "Burrito",
+      "price": 14.00, "category": "Mains",  "display_order": 5 },
+    { "item_id": "pork_mac",       "name": "Pork Mac",
+      "price": 15.00, "category": "Loaded", "display_order": 1 },
+    { "item_id": "brisket_mac",    "name": "Brisket Mac",
+      "price": 17.00, "category": "Loaded", "display_order": 2 },
+    { "item_id": "meat_mac",       "name": "Meat Mac",
+      "price": 19.00, "category": "Loaded", "display_order": 3 },
+    { "item_id": "pork_nachos",    "name": "Pork Nachos",
+      "price": 13.00, "category": "Loaded", "display_order": 4 },
+    { "item_id": "chicken_nachos", "name": "Chicken Nachos",
+      "price": 13.00, "category": "Loaded", "display_order": 5 },
+    { "item_id": "brisket_nachos", "name": "Brisket Nachos",
+      "price": 15.00, "category": "Loaded", "display_order": 6 },
+    { "item_id": "mac_cheese",     "name": "Mac/Cheese",
+      "price":  6.00, "category": "Sides",  "display_order": 1 },
+    { "item_id": "cheese_curds",   "name": "Cheese Curds",
+      "price":  7.00, "category": "Sides",  "display_order": 2 },
+    { "item_id": "loaded_fries",   "name": "Loaded Fries",
+      "price":  8.00, "category": "Sides",  "display_order": 3 },
+    { "item_id": "fries",          "name": "Fries",
+      "price":  5.00, "category": "Sides",  "display_order": 4 },
+    { "item_id": "coleslaw",       "name": "Coleslaw",
+      "price":  2.00, "category": "Sides",  "display_order": 5 },
+    { "item_id": "pop",            "name": "Pop",
+      "price":  3.00, "category": "Drinks", "display_order": 1 },
+    { "item_id": "water",          "name": "Water",
+      "price":  2.00, "category": "Drinks", "display_order": 2 },
+    { "item_id": "chips",          "name": "Chips",
+      "price":  1.00, "category": "Snacks", "display_order": 1 }
+  ],
+
+  "modifier_groups": [
+    {
+      "group_id": "burrito_style",
+      "name": "Burrito Style",
+      "type": "mandatory",
+      "applies_to": ["burrito"],
+      "display_order": 1,
+      "modifiers": [
+        { "modifier_id": "mild",  "name": "Mild",  "price": 0.00 },
+        { "modifier_id": "spicy", "name": "Spicy", "price": 0.00 }
+      ]
+    },
+    {
+      "group_id": "burger_style",
+      "name": "Burger Style",
+      "type": "mandatory",
+      "applies_to": ["cheeseburger"],
+      "display_order": 2,
+      "modifiers": [
+        { "modifier_id": "regular_burger", "name": "Cheeseburger", "price": 0.00 },
+        { "modifier_id": "mac_burger",     "name": "Mac Burger",   "price": 1.00 }
+      ]
+    },
+    {
+      "group_id": "pop_flavor",
+      "name": "Pop Flavor",
+      "type": "mandatory",
+      "applies_to": ["pop"],
+      "display_order": 3,
+      "modifiers": [
+        { "modifier_id": "pepsi",      "name": "Pepsi",      "price": 0.00 },
+        { "modifier_id": "diet_pepsi", "name": "Diet Pepsi", "price": 0.00 },
+        { "modifier_id": "mtn_dew",    "name": "Mtn Dew",    "price": 0.00 },
+        { "modifier_id": "dr_pepper",  "name": "Dr. Pepper", "price": 0.00 },
+        { "modifier_id": "diet_drp",   "name": "Diet Dr. P", "price": 0.00 }
+      ]
+    },
+    {
+      "group_id": "chips_flavor",
+      "name": "Chips Flavor",
+      "type": "mandatory",
+      "applies_to": ["chips"],
+      "display_order": 4,
+      "modifiers": [
+        { "modifier_id": "doritos", "name": "Doritos", "price": 0.00 },
+        { "modifier_id": "cheetos", "name": "Cheetos", "price": 0.00 }
+      ]
+    },
+    {
+      "group_id": "sour_cream",
+      "name": "Sour Cream",
+      "type": "optional",
+      "applies_to": ["burrito", "pork_nachos", "chicken_nachos", "brisket_nachos",
+                     "pork_mac", "brisket_mac", "meat_mac"],
+      "display_order": 5,
+      "modifiers": [
+        { "modifier_id": "sour_cream_add", "name": "Sour Cream", "price": 0.00 }
+      ]
+    }
+  ],
+
+  "floor_plan": {
+    "sections": [
+      {
+        "section_id": "window",
+        "name": "Window",
+        "seats": ["W1", "W2", "W3", "W4", "W5", "W6"]
+      },
+      {
+        "section_id": "patio",
+        "name": "Patio",
+        "seats": ["T1", "T2", "T3", "T4"]
+      }
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 """
-Sample order seeder — generates 30 days of realistic pizza shop order history.
+Sample order seeder — generates 30 days of realistic BBQ truck order history.
 
 Called automatically on first boot (when no orders exist) so the dashboard
 graphs are populated for demos.  Idempotent: skips if ORDER_CREATED events
@@ -18,12 +18,34 @@ from app.core.money import money_round
 # ─── Configuration ───────────────────────────────────────────────────────────
 
 TERMINAL_ID = "terminal_01"
-TAX_RATE = Decimal("0.07")
+TAX_RATE = Decimal("0.06")
 CASH_DISCOUNT_RATE = Decimal("0.04")
 DAYS_OF_HISTORY = 30
 SEED = 42
 
-TABLES = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "B1", "B2", "B3", "B4"]
+WINDOW_SEATS = ["W1", "W2", "W3", "W4", "W5", "W6"]
+PATIO_SEATS  = ["T1", "T2", "T3", "T4"]
+
+# Mandatory modifier options per item_id: list of (modifier_id, display_name)
+MANDATORY_MODS = {
+    "burrito":      [("mild",           "Mild"),
+                     ("spicy",          "Spicy")],
+    "cheeseburger": [("regular_burger", "Cheeseburger"),
+                     ("mac_burger",     "Mac Burger")],
+    "pop":          [("pepsi",          "Pepsi"),
+                     ("diet_pepsi",     "Diet Pepsi"),
+                     ("mtn_dew",        "Mtn Dew"),
+                     ("dr_pepper",      "Dr. Pepper"),
+                     ("diet_drp",       "Diet Dr. P")],
+    "chips":        [("doritos",        "Doritos"),
+                     ("cheetos",        "Cheetos")],
+}
+
+# Items eligible for the optional sour-cream add-on (30% chance)
+SOUR_CREAM_ITEMS = frozenset({
+    "burrito", "pork_nachos", "chicken_nachos", "brisket_nachos",
+    "pork_mac", "brisket_mac", "meat_mac",
+})
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -47,6 +69,13 @@ def _make_event(event_type, payload, timestamp, user_id=None, correlation_id=Non
     return event
 
 
+def _pick_table():
+    """60 % window seats, 40 % patio seats."""
+    if random.random() < 0.60:
+        return random.choice(WINDOW_SEATS)
+    return random.choice(PATIO_SEATS)
+
+
 def _order_volume(day_date):
     dow = day_date.weekday()
     if dow == 4:       # Friday
@@ -63,26 +92,25 @@ def _order_volume(day_date):
 def _pick_order_hour():
     weights = {
         11: 12, 12: 15, 13: 13, 14: 8,
-        15: 4, 16: 5,
+        15: 4,  16: 5,
         17: 10, 18: 14, 19: 15, 20: 12, 21: 6,
     }
-    hours = list(weights.keys())
-    w = list(weights.values())
-    return random.choices(hours, weights=w, k=1)[0]
+    return random.choices(list(weights.keys()), weights=list(weights.values()), k=1)[0]
 
 
 def _build_weighted_items(menu_items):
-    """Build weighted item list from menu items for realistic ordering."""
-    # Default weights by category — pizza slices and drinks are most popular
+    """Build weighted item pool — BBQ-truck category weights."""
     category_weights = {
-        "Pizza": 12, "Appetizers": 7, "Apps": 7,
-        "Subs": 5, "Sides": 5,
+        "Mains":  12,
+        "Loaded": 10,
+        "Sides":   5,
         "Drinks": 15,
+        "Snacks":  8,
     }
-    # Cheaper items ordered more often
     weighted = []
     for item in menu_items:
-        cat = item.get("category", "")
+        # Accept both "category" (display name) and "category_id" (slug)
+        cat = item.get("category") or item.get("category_id", "")
         base_w = category_weights.get(cat, 5)
         price = item.get("price", 10)
         if price <= 5:
@@ -98,55 +126,84 @@ def _pick_items(weighted_items):
     return [random.choice(weighted_items) for _ in range(num)]
 
 
-def _generate_shift_events(day_date, staff):
+def _mod_events(order_id, item_id, item_menu_id, item_ts):
+    """Return MODIFIER_APPLIED events for mandatory + optional sour cream."""
     events = []
-    for emp in staff:
-        clock_in_hour = random.choice([10, 10, 11])
-        clock_in_min = random.randint(0, 30)
-        clock_in_ts = _ts(day_date, clock_in_hour, clock_in_min)
 
+    if item_menu_id in MANDATORY_MODS:
+        mod_id, mod_name = random.choice(MANDATORY_MODS[item_menu_id])
         events.append(_make_event(
-            EventType.USER_LOGGED_IN,
-            {"employee_id": emp["employee_id"], "employee_name": emp["display_name"]},
-            clock_in_ts,
-            user_id=emp["employee_id"],
+            EventType.MODIFIER_APPLIED,
+            {
+                "order_id":      order_id,
+                "item_id":       item_id,
+                "modifier_id":   mod_id,
+                "modifier_name": mod_name,
+                "price":         0.00,
+            },
+            item_ts + timedelta(seconds=2),
+            correlation_id=order_id,
         ))
 
-        shift_hours = random.randint(6, 9)
-        clock_out_ts = clock_in_ts + timedelta(hours=shift_hours, minutes=random.randint(0, 30))
+    if item_menu_id in SOUR_CREAM_ITEMS and random.random() < 0.30:
         events.append(_make_event(
-            EventType.USER_LOGGED_OUT,
-            {"employee_id": emp["employee_id"], "employee_name": emp["display_name"]},
-            clock_out_ts,
-            user_id=emp["employee_id"],
+            EventType.MODIFIER_APPLIED,
+            {
+                "order_id":      order_id,
+                "item_id":       item_id,
+                "modifier_id":   "sour_cream_add",
+                "modifier_name": "Sour Cream",
+                "price":         0.00,
+            },
+            item_ts + timedelta(seconds=3),
+            correlation_id=order_id,
         ))
+
     return events
+
+
+def _emit_payment(events, order_id, pay_id, amount, method, ts):
+    """Append PAYMENT_INITIATED + PAYMENT_CONFIRMED to events list."""
+    events.append(_make_event(
+        EventType.PAYMENT_INITIATED,
+        {"order_id": order_id, "payment_id": pay_id,
+         "amount": float(amount), "method": method},
+        ts,
+        correlation_id=order_id,
+    ))
+    confirm_ts = ts + timedelta(seconds=random.randint(3, 15))
+    events.append(_make_event(
+        EventType.PAYMENT_CONFIRMED,
+        {"order_id": order_id, "payment_id": pay_id,
+         "transaction_id": f"txn-{uuid.uuid4().hex[:12]}",
+         "amount": float(amount)},
+        confirm_ts,
+        correlation_id=order_id,
+    ))
 
 
 def _generate_order_events(day_date, order_num, servers, weighted_items):
     events = []
     order_id = f"ord-{day_date.strftime('%Y%m%d')}-{order_num:04d}"
 
-    hour = _pick_order_hour()
+    hour   = _pick_order_hour()
     minute = random.randint(0, 59)
     second = random.randint(0, 59)
     order_ts = _ts(day_date, hour, minute, second)
 
-    server = random.choice(servers)
+    server      = random.choice(servers)
     guest_count = random.choices([1, 2, 3, 4, 5, 6], weights=[15, 35, 25, 15, 7, 3], k=1)[0]
-    table = random.choice(TABLES)
-    check_number = f"C-{order_num:03d}"
+    table       = _pick_table()
 
-    # ORDER_CREATED
     events.append(_make_event(
         EventType.ORDER_CREATED,
         {
-            "order_id": order_id,
-            "check_number": check_number,
-            "table": table,
-            "server_id": server["employee_id"],
-            "server_name": server["display_name"],
-            "guest_count": guest_count,
+            "order_id":     order_id,
+            "check_number": f"C-{order_num:03d}",
+            "table":        table,
+            "server_id":    server["employee_id"],
+            "server_name":  server["display_name"],
+            "guest_count":  guest_count,
             "customer_name": None,
         },
         order_ts,
@@ -154,27 +211,27 @@ def _generate_order_events(day_date, order_num, servers, weighted_items):
         correlation_id=order_id,
     ))
 
-    # ITEM_ADDED + ITEM_SENT
-    items = _pick_items(weighted_items)
+    # ── Items ────────────────────────────────────────────────────────────────
+    items    = _pick_items(weighted_items)
     subtotal = Decimal("0.00")
     for idx, menu_item in enumerate(items):
-        item_id = f"{order_id}-i{idx+1}"
+        item_id = f"{order_id}-i{idx + 1}"
         item_ts = order_ts + timedelta(seconds=30 * (idx + 1))
-        price = Decimal(str(menu_item["price"]))
+        price   = Decimal(str(menu_item["price"]))
         subtotal += price
 
         events.append(_make_event(
             EventType.ITEM_ADDED,
             {
-                "order_id": order_id,
-                "item_id": item_id,
+                "order_id":     order_id,
+                "item_id":      item_id,
                 "menu_item_id": menu_item["item_id"],
-                "name": menu_item["name"],
-                "price": float(price),
-                "quantity": 1,
-                "category": menu_item.get("category"),
-                "notes": None,
-                "seat_number": random.randint(1, guest_count),
+                "name":         menu_item["name"],
+                "price":        float(price),
+                "quantity":     1,
+                "category":     menu_item.get("category"),
+                "notes":        None,
+                "seat_number":  random.randint(1, guest_count),
             },
             item_ts,
             user_id=server["employee_id"],
@@ -185,18 +242,20 @@ def _generate_order_events(day_date, order_num, servers, weighted_items):
         events.append(_make_event(
             EventType.ITEM_SENT,
             {
-                "order_id": order_id,
-                "item_id": item_id,
-                "name": menu_item["name"],
+                "order_id":  order_id,
+                "item_id":   item_id,
+                "name":      menu_item["name"],
                 "seat_number": None,
-                "category": menu_item.get("category"),
-                "sent_at": sent_ts.isoformat(),
+                "category":  menu_item.get("category"),
+                "sent_at":   sent_ts.isoformat(),
             },
             sent_ts,
             correlation_id=order_id,
         ))
 
-    # ~2% void rate
+        events.extend(_mod_events(order_id, item_id, menu_item["item_id"], item_ts))
+
+    # ── ~2% void rate ─────────────────────────────────────────────────────────
     if random.random() < 0.02:
         void_ts = order_ts + timedelta(minutes=random.randint(5, 20))
         events.append(_make_event(
@@ -208,66 +267,86 @@ def _generate_order_events(day_date, order_num, servers, weighted_items):
         ))
         return events
 
-    # PAYMENT
-    tax = money_round(subtotal * TAX_RATE)
+    # ── Payment — 70% card, 25% cash, 5% split ───────────────────────────────
+    tax        = money_round(subtotal * TAX_RATE)
     card_total = money_round(subtotal + tax)
-    payment_id = f"pay-{order_id}"
-    payment_ts = order_ts + timedelta(minutes=random.randint(15, 45))
-    method = random.choices(["card", "cash"], weights=[70, 30], k=1)[0]
+    pay_ts     = order_ts + timedelta(minutes=random.randint(15, 45))
+    method     = random.choices(["card", "cash", "split"], weights=[70, 25, 5], k=1)[0]
 
     if method == "cash":
-        cash_discount = money_round(card_total * CASH_DISCOUNT_RATE)
-        sale_amount = money_round(card_total - cash_discount)
+        discount   = money_round(card_total * CASH_DISCOUNT_RATE)
+        sale_amount = money_round(card_total - discount)
         events.append(_make_event(
             EventType.DISCOUNT_APPROVED,
-            {
-                "order_id": order_id,
-                "discount_type": "cash_dual_pricing",
-                "amount": cash_discount,
-                "reason": "Cash dual-pricing discount",
-            },
-            payment_ts,
-            correlation_id=order_id,
+            {"order_id": order_id, "discount_type": "cash_dual_pricing",
+             "amount": float(discount), "reason": "Cash dual-pricing discount"},
+            pay_ts, correlation_id=order_id,
         ))
-    else:
-        sale_amount = card_total
-
-    events.append(_make_event(
-        EventType.PAYMENT_INITIATED,
-        {"order_id": order_id, "payment_id": payment_id, "amount": sale_amount, "method": method},
-        payment_ts,
-        correlation_id=order_id,
-    ))
-
-    confirm_ts = payment_ts + timedelta(seconds=random.randint(3, 15))
-    transaction_id = f"txn-{uuid.uuid4().hex[:12]}"
-    events.append(_make_event(
-        EventType.PAYMENT_CONFIRMED,
-        {"order_id": order_id, "payment_id": payment_id, "transaction_id": transaction_id, "amount": sale_amount},
-        confirm_ts,
-        correlation_id=order_id,
-    ))
-
-    # TIP (card orders, ~90%)
-    if method == "card" and random.random() < 0.90:
-        tip_pct = random.choices([0.15, 0.18, 0.20, 0.22, 0.25], weights=[20, 30, 30, 15, 5], k=1)[0]
-        tip_amount = money_round(card_total * tip_pct)
-        tip_ts = confirm_ts + timedelta(seconds=random.randint(5, 60))
+        _emit_payment(events, order_id, f"pay-{order_id}", sale_amount, "cash", pay_ts)
+        close_ts = pay_ts + timedelta(seconds=random.randint(30, 120))
         events.append(_make_event(
-            EventType.TIP_ADJUSTED,
-            {"order_id": order_id, "payment_id": payment_id, "tip_amount": tip_amount, "previous_tip": 0.0},
-            tip_ts,
-            correlation_id=order_id,
+            EventType.ORDER_CLOSED,
+            {"order_id": order_id, "total": float(sale_amount)},
+            close_ts, correlation_id=order_id,
         ))
 
-    # ORDER_CLOSED
-    close_ts = confirm_ts + timedelta(seconds=random.randint(10, 120))
-    events.append(_make_event(
-        EventType.ORDER_CLOSED,
-        {"order_id": order_id, "total": sale_amount},
-        close_ts,
-        correlation_id=order_id,
-    ))
+    elif method == "card":
+        pay_id = f"pay-{order_id}"
+        _emit_payment(events, order_id, pay_id, card_total, "card", pay_ts)
+        if random.random() < 0.90:
+            tip_pct    = random.choices([0.15, 0.18, 0.20, 0.22, 0.25],
+                                        weights=[20, 30, 30, 15, 5], k=1)[0]
+            tip_amount = money_round(card_total * Decimal(str(tip_pct)))
+            tip_ts     = pay_ts + timedelta(seconds=random.randint(15, 90))
+            events.append(_make_event(
+                EventType.TIP_ADJUSTED,
+                {"order_id": order_id, "payment_id": pay_id,
+                 "tip_amount": float(tip_amount), "previous_tip": 0.0},
+                tip_ts, correlation_id=order_id,
+            ))
+        close_ts = pay_ts + timedelta(seconds=random.randint(30, 120))
+        events.append(_make_event(
+            EventType.ORDER_CLOSED,
+            {"order_id": order_id, "total": float(card_total)},
+            close_ts, correlation_id=order_id,
+        ))
+
+    else:  # split: 50 % cash + 50 % card
+        half      = money_round(card_total / 2)
+        remainder = money_round(card_total - half)
+
+        discount = money_round(half * CASH_DISCOUNT_RATE)
+        cash_amt = money_round(half - discount)
+        events.append(_make_event(
+            EventType.DISCOUNT_APPROVED,
+            {"order_id": order_id, "discount_type": "cash_dual_pricing",
+             "amount": float(discount), "reason": "Cash dual-pricing discount"},
+            pay_ts, correlation_id=order_id,
+        ))
+        _emit_payment(events, order_id, f"pay-cash-{order_id}", cash_amt, "cash", pay_ts)
+
+        card_ts    = pay_ts + timedelta(seconds=30)
+        card_pay_id = f"pay-card-{order_id}"
+        _emit_payment(events, order_id, card_pay_id, remainder, "card", card_ts)
+        if random.random() < 0.90:
+            tip_pct    = random.choices([0.15, 0.18, 0.20, 0.22, 0.25],
+                                        weights=[20, 30, 30, 15, 5], k=1)[0]
+            tip_amount = money_round(remainder * Decimal(str(tip_pct)))
+            tip_ts     = card_ts + timedelta(seconds=random.randint(15, 60))
+            events.append(_make_event(
+                EventType.TIP_ADJUSTED,
+                {"order_id": order_id, "payment_id": card_pay_id,
+                 "tip_amount": float(tip_amount), "previous_tip": 0.0},
+                tip_ts, correlation_id=order_id,
+            ))
+
+        total_paid = money_round(cash_amt + remainder)
+        close_ts   = card_ts + timedelta(seconds=random.randint(30, 90))
+        events.append(_make_event(
+            EventType.ORDER_CLOSED,
+            {"order_id": order_id, "total": float(total_paid)},
+            close_ts, correlation_id=order_id,
+        ))
 
     return events
 
@@ -275,23 +354,24 @@ def _generate_order_events(day_date, order_num, servers, weighted_items):
 def _generate_day(day_date, staff, weighted_items, is_today=False):
     all_events = []
 
-    # Pick 2-4 servers and 1-2 cooks for the day
-    servers = [s for s in staff if "server" in s.get("role_ids", [])]
-    cooks = [s for s in staff if "cook" in s.get("role_ids", [])]
+    servers  = [s for s in staff if "server" in s.get("role_ids", [])
+                                  and "manager" not in s.get("role_ids", [])]
+    cooks    = [s for s in staff if "cook" in s.get("role_ids", [])]
+
     num_servers = min(random.choices([2, 3, 4], weights=[30, 50, 20], k=1)[0], len(servers))
-    num_cooks = min(random.choices([1, 2], weights=[40, 60], k=1)[0], len(cooks))
-    servers_on = random.sample(servers, num_servers) if servers else staff[:2]
-    cooks_on = random.sample(cooks, num_cooks) if cooks else []
+    num_cooks   = min(random.choices([1, 2],    weights=[40, 60],     k=1)[0], len(cooks))
+    servers_on  = random.sample(servers, num_servers) if servers else staff[:2]
+    cooks_on    = random.sample(cooks,   num_cooks)   if cooks   else []
 
-    all_events.extend(_generate_shift_events(day_date, servers_on + cooks_on))
+    # Clock events for this day are generated by seed_employees.seed_clock_records_if_empty
 
-    num_orders = _order_volume(day_date)
-    day_total_sales = 0.0
-    day_total_tips = 0.0
-    day_cash = 0.0
-    day_card = 0.0
-    order_ids = []
-    payment_count = 0
+    num_orders      = _order_volume(day_date)
+    day_total_sales = Decimal("0.00")
+    day_total_tips  = Decimal("0.00")
+    day_cash        = Decimal("0.00")
+    day_card        = Decimal("0.00")
+    order_ids       = []
+    payment_count   = 0
 
     for i in range(1, num_orders + 1):
         order_events = _generate_order_events(day_date, i, servers_on, weighted_items)
@@ -299,15 +379,15 @@ def _generate_day(day_date, staff, weighted_items, is_today=False):
 
         for e in order_events:
             if e.event_type == EventType.PAYMENT_CONFIRMED:
-                day_total_sales += e.payload.get("amount", 0)
+                day_total_sales += Decimal(str(e.payload.get("amount", 0)))
                 payment_count += 1
             if e.event_type == EventType.TIP_ADJUSTED:
-                day_total_tips += e.payload.get("tip_amount", 0)
+                day_total_tips += Decimal(str(e.payload.get("tip_amount", 0)))
             if e.event_type == EventType.PAYMENT_INITIATED:
                 if e.payload.get("method") == "cash":
-                    day_cash += e.payload.get("amount", 0)
+                    day_cash += Decimal(str(e.payload.get("amount", 0)))
                 else:
-                    day_card += e.payload.get("amount", 0)
+                    day_card += Decimal(str(e.payload.get("amount", 0)))
             if e.event_type == EventType.ORDER_CREATED:
                 order_ids.append(e.payload["order_id"])
 
@@ -318,13 +398,13 @@ def _generate_day(day_date, staff, weighted_items, is_today=False):
         all_events.append(_make_event(
             EventType.DAY_CLOSED,
             {
-                "date": day_date.strftime("%Y-%m-%d"),
-                "total_orders": len(order_ids),
-                "total_sales": money_round(day_total_sales),
-                "total_tips": money_round(day_total_tips),
-                "cash_total": money_round(day_cash),
-                "card_total": money_round(day_card),
-                "order_ids": order_ids,
+                "date":          day_date.strftime("%Y-%m-%d"),
+                "total_orders":  len(order_ids),
+                "total_sales":   float(money_round(day_total_sales)),
+                "total_tips":    float(money_round(day_total_tips)),
+                "cash_total":    float(money_round(day_cash)),
+                "card_total":    float(money_round(day_card)),
+                "order_ids":     order_ids,
                 "payment_count": payment_count,
             },
             close_ts,
@@ -340,6 +420,7 @@ async def seed_sample_orders_if_empty(ledger: EventLedger) -> None:
 
     Reads employees and menu items from the ledger so it works with
     whatever was seeded by demo_seeder (or seed_demo_data.py).
+    Also seeds 30 days of clock records via seed_employees.
     """
     existing = await ledger.get_events_by_type(EventType.ORDER_CREATED, limit=1)
     if existing:
@@ -347,7 +428,7 @@ async def seed_sample_orders_if_empty(ledger: EventLedger) -> None:
 
     random.seed(SEED)
 
-    # Read employees from ledger
+    # ── Load employees ───────────────────────────────────────────────────────
     emp_events = await ledger.get_events_by_type(EventType.EMPLOYEE_CREATED, limit=100)
     if not emp_events:
         print("  No employees in ledger — skipping sample order seeding")
@@ -362,13 +443,11 @@ async def seed_sample_orders_if_empty(ledger: EventLedger) -> None:
             "role_ids": p.get("role_ids", [p.get("role", "server")]),
         })
 
-    # Ensure at least one server exists
     servers = [s for s in staff if "server" in s.get("role_ids", [])]
     if not servers:
-        # Treat first employee as a server
         staff[0]["role_ids"] = staff[0].get("role_ids", []) + ["server"]
 
-    # Read menu items from ledger
+    # ── Load menu items ──────────────────────────────────────────────────────
     item_events = await ledger.get_events_by_type(EventType.MENU_ITEM_CREATED, limit=200)
     if not item_events:
         print("  No menu items in ledger — skipping sample order seeding")
@@ -378,30 +457,34 @@ async def seed_sample_orders_if_empty(ledger: EventLedger) -> None:
     for e in item_events:
         p = e.payload
         menu_items.append({
-            "item_id": p["item_id"],
-            "name": p["name"],
-            "price": p["price"],
-            "category": p.get("category"),
+            "item_id":  p["item_id"],
+            "name":     p["name"],
+            "price":    p["price"],
+            "category": p.get("category") or p.get("category_id"),
         })
 
     weighted_items = _build_weighted_items(menu_items)
 
-    today = datetime.now(timezone.utc).date()
+    today      = datetime.now(timezone.utc).date()
     start_date = today - timedelta(days=DAYS_OF_HISTORY)
 
-    # Seed only previous days — today starts empty so real usage isn't mixed with demo data
-    print(f"  Seeding {DAYS_OF_HISTORY} days of sample orders ({start_date} → {today - timedelta(days=1)})...")
+    print(f"  Seeding {DAYS_OF_HISTORY} days of sample orders "
+          f"({start_date} → {today - timedelta(days=1)})...")
 
     total_events = 0
     for day_offset in range(DAYS_OF_HISTORY):
-        day_date = start_date + timedelta(days=day_offset)
-
+        day_date   = start_date + timedelta(days=day_offset)
         day_events = _generate_day(day_date, staff, weighted_items, is_today=False)
         if day_events:
             await ledger.append_batch(day_events)
             total_events += len(day_events)
 
-    print(f"  Sample order seed complete — {total_events:,} events across {DAYS_OF_HISTORY + 1} days")
+    print(f"  Sample order seed complete — {total_events:,} events across {DAYS_OF_HISTORY} days")
+
+    # ── Seed clock records (separate idempotency gate) ───────────────────────
+    from app.services.seed_employees import seed_clock_records_if_empty
+    await seed_clock_records_if_empty(ledger)
+
 
 async def seed_today_demo(ledger: EventLedger) -> None:
     """Seed today's data for demo: partial orders + open checks + clocked-in staff.
@@ -410,22 +493,18 @@ async def seed_today_demo(ledger: EventLedger) -> None:
     by whether today already has orders. Intended for demo/Fly environments where
     the home dashboard needs to look alive.
     """
-    # Idempotency: skip if today already has orders
-    today = datetime.now(timezone.utc).date()
+    today      = datetime.now(timezone.utc).date()
     today_start = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=timezone.utc)
-    today_end = today_start + timedelta(days=1)
 
     existing = await ledger.get_events_by_date_range(
         today.strftime("%Y-%m-%d"),
         (today + timedelta(days=1)).strftime("%Y-%m-%d"),
         limit=1,
     )
-    # Check if any ORDER_CREATED events exist for today
     has_orders_today = any(e.event_type == EventType.ORDER_CREATED for e in existing)
     if has_orders_today:
         return
 
-    # Pull staff and menu from ledger (same pattern as seed_sample_orders_if_empty)
     emp_events = await ledger.get_events_by_type(EventType.EMPLOYEE_CREATED, limit=100)
     if not emp_events:
         print("  [seed_today_demo] No employees — skipping")
@@ -440,7 +519,8 @@ async def seed_today_demo(ledger: EventLedger) -> None:
             "role_ids": p.get("role_ids", [p.get("role", "server")]),
         })
 
-    servers = [s for s in staff if "server" in s.get("role_ids", [])]
+    servers = [s for s in staff if "server" in s.get("role_ids", [])
+               and "manager" not in s.get("role_ids", [])]
     if not servers:
         staff[0]["role_ids"] = staff[0].get("role_ids", []) + ["server"]
         servers = [staff[0]]
@@ -454,29 +534,27 @@ async def seed_today_demo(ledger: EventLedger) -> None:
     for e in item_events:
         p = e.payload
         menu_items.append({
-            "item_id": p["item_id"],
-            "name": p["name"],
-            "price": p["price"],
-            "category": p.get("category"),
+            "item_id":  p["item_id"],
+            "name":     p["name"],
+            "price":    p["price"],
+            "category": p.get("category") or p.get("category_id"),
         })
 
-    # Use a fresh seed for today so it varies day to day
     random.seed(int(today.strftime("%Y%m%d")))
     weighted_items = _build_weighted_items(menu_items)
 
-    # Current hour cutoff — only emit events up to "now"
-    now = datetime.now(timezone.utc)
+    now          = datetime.now(timezone.utc)
     current_hour = now.hour
     events_to_append = []
 
-    # ── Clock in 2-3 servers (no clock-out yet — they're still working) ──
-    num_working = min(random.choices([2, 3], weights=[40, 60], k=1)[0], len(servers))
+    # ── Clock in 2–3 servers ──────────────────────────────────────────────────
+    num_working     = min(random.choices([2, 3], weights=[40, 60], k=1)[0], len(servers))
     working_servers = random.sample(servers, num_working)
     for server in working_servers:
         clock_in_hour = random.choice([10, 10, 11])
-        clock_in_min = random.randint(0, 30)
+        clock_in_min  = random.randint(0, 30)
         if clock_in_hour > current_hour:
-            continue  # future hour, skip
+            continue
         clock_in_ts = _ts(today_start, clock_in_hour, clock_in_min)
         events_to_append.append(_make_event(
             EventType.USER_LOGGED_IN,
@@ -485,17 +563,15 @@ async def seed_today_demo(ledger: EventLedger) -> None:
             user_id=server["employee_id"],
         ))
 
-    # ── Completed orders earlier today (proportional to hour of day) ──
-    # Scale volume: if it's 2pm, roughly half the day's volume should exist
+    # ── Completed orders earlier today ────────────────────────────────────────
     full_day_volume = _order_volume(today_start)
-    hours_open = max(1, current_hour - 10)  # roughly, open at 11
-    total_hours = 11  # 11am to 10pm
-    progress = min(1.0, hours_open / total_hours)
-    num_closed = int(full_day_volume * progress * 0.85)  # 85% closed, 15% open
+    hours_open  = max(1, current_hour - 10)
+    total_hours = 11
+    progress    = min(1.0, hours_open / total_hours)
+    num_closed  = int(full_day_volume * progress * 0.85)
 
     order_num = 1
     for _ in range(num_closed):
-        # Pick an hour we've already passed
         hour = _pick_order_hour()
         if hour > current_hour:
             hour = current_hour
@@ -505,7 +581,7 @@ async def seed_today_demo(ledger: EventLedger) -> None:
         events_to_append.extend(order_events)
         order_num += 1
 
-    # ── Open checks (3-5 orders, no payment yet) ──
+    # ── Open checks ───────────────────────────────────────────────────────────
     num_open = random.choices([3, 4, 5], weights=[30, 40, 30], k=1)[0]
     for _ in range(num_open):
         open_events = _generate_open_order(
@@ -514,34 +590,34 @@ async def seed_today_demo(ledger: EventLedger) -> None:
         events_to_append.extend(open_events)
         order_num += 1
 
-    # Sort by timestamp and append
     events_to_append.sort(key=lambda e: e.timestamp)
     if events_to_append:
         await ledger.append_batch(events_to_append)
-        print(f"  [seed_today_demo] Seeded {len(events_to_append)} events for today ({num_closed} closed, {num_open} open)")
+        print(f"  [seed_today_demo] Seeded {len(events_to_append)} events for today "
+              f"({num_closed} closed, {num_open} open)")
 
 
 def _generate_order_events_for_hour(day_date, order_num, servers, weighted_items, hour):
     """Variant of _generate_order_events that forces a specific hour."""
     events = []
     order_id = f"ord-{day_date.strftime('%Y%m%d')}-{order_num:04d}"
-    minute = random.randint(0, 59)
-    second = random.randint(0, 59)
+    minute   = random.randint(0, 59)
+    second   = random.randint(0, 59)
     order_ts = _ts(day_date, hour, minute, second)
 
-    server = random.choice(servers)
+    server      = random.choice(servers)
     guest_count = random.choices([1, 2, 3, 4, 5, 6], weights=[15, 35, 25, 15, 7, 3], k=1)[0]
-    table = random.choice(TABLES)
+    table       = _pick_table()
 
     events.append(_make_event(
         EventType.ORDER_CREATED,
         {
-            "order_id": order_id,
-            "check_number": f"C-{order_num:03d}",
-            "table": table,
-            "server_id": server["employee_id"],
-            "server_name": server["display_name"],
-            "guest_count": guest_count,
+            "order_id":      order_id,
+            "check_number":  f"C-{order_num:03d}",
+            "table":         table,
+            "server_id":     server["employee_id"],
+            "server_name":   server["display_name"],
+            "guest_count":   guest_count,
             "customer_name": None,
         },
         order_ts,
@@ -549,21 +625,21 @@ def _generate_order_events_for_hour(day_date, order_num, servers, weighted_items
         correlation_id=order_id,
     ))
 
-    items = _pick_items(weighted_items)
+    items    = _pick_items(weighted_items)
     subtotal = Decimal("0.00")
     for idx, menu_item in enumerate(items):
-        item_id = f"{order_id}-i{idx+1}"
+        item_id = f"{order_id}-i{idx + 1}"
         item_ts = order_ts + timedelta(seconds=30 * (idx + 1))
-        price = Decimal(str(menu_item["price"]))
+        price   = Decimal(str(menu_item["price"]))
         subtotal += price
 
         events.append(_make_event(
             EventType.ITEM_ADDED,
             {
-                "order_id": order_id, "item_id": item_id,
+                "order_id":     order_id, "item_id": item_id,
                 "menu_item_id": menu_item["item_id"], "name": menu_item["name"],
-                "price": float(price), "quantity": 1, "category": menu_item.get("category"),
-                "notes": None,
+                "price": float(price), "quantity": 1,
+                "category": menu_item.get("category"), "notes": None,
                 "seat_number": random.randint(1, guest_count),
             },
             item_ts, user_id=server["employee_id"], correlation_id=order_id,
@@ -575,106 +651,127 @@ def _generate_order_events_for_hour(day_date, order_num, servers, weighted_items
             {
                 "order_id": order_id, "item_id": item_id,
                 "name": menu_item["name"], "seat_number": None,
-                "category": menu_item.get("category"),
-                "sent_at": sent_ts.isoformat(),
+                "category": menu_item.get("category"), "sent_at": sent_ts.isoformat(),
             },
             sent_ts, correlation_id=order_id,
         ))
 
-    # Payment
-    tax = money_round(subtotal * TAX_RATE)
+        events.extend(_mod_events(order_id, item_id, menu_item["item_id"], item_ts))
+
+    tax        = money_round(subtotal * TAX_RATE)
     card_total = money_round(subtotal + tax)
-    payment_id = f"pay-{order_id}"
-    payment_ts = order_ts + timedelta(minutes=random.randint(15, 45))
-    method = random.choices(["card", "cash"], weights=[70, 30], k=1)[0]
+    pay_ts     = order_ts + timedelta(minutes=random.randint(15, 45))
+    method     = random.choices(["card", "cash", "split"], weights=[70, 25, 5], k=1)[0]
 
     if method == "cash":
-        cash_discount = money_round(card_total * CASH_DISCOUNT_RATE)
-        sale_amount = money_round(card_total - cash_discount)
+        discount    = money_round(card_total * CASH_DISCOUNT_RATE)
+        sale_amount = money_round(card_total - discount)
         events.append(_make_event(
             EventType.DISCOUNT_APPROVED,
             {"order_id": order_id, "discount_type": "cash_dual_pricing",
-             "amount": cash_discount, "reason": "Cash dual-pricing discount"},
-            payment_ts, correlation_id=order_id,
+             "amount": float(discount), "reason": "Cash dual-pricing discount"},
+            pay_ts, correlation_id=order_id,
         ))
-    else:
-        sale_amount = card_total
-
-    events.append(_make_event(
-        EventType.PAYMENT_INITIATED,
-        {"order_id": order_id, "payment_id": payment_id, "amount": sale_amount, "method": method},
-        payment_ts, correlation_id=order_id,
-    ))
-
-    confirm_ts = payment_ts + timedelta(seconds=random.randint(3, 15))
-    transaction_id = f"txn-{uuid.uuid4().hex[:12]}"
-    events.append(_make_event(
-        EventType.PAYMENT_CONFIRMED,
-        {"order_id": order_id, "payment_id": payment_id,
-         "transaction_id": transaction_id, "amount": sale_amount},
-        confirm_ts, correlation_id=order_id,
-    ))
-
-    if method == "card" and random.random() < 0.90:
-        tip_pct = random.choices([0.15, 0.18, 0.20, 0.22, 0.25], weights=[20, 30, 30, 15, 5], k=1)[0]
-        tip_amount = money_round(card_total * tip_pct)
-        tip_ts = confirm_ts + timedelta(seconds=random.randint(5, 60))
+        _emit_payment(events, order_id, f"pay-{order_id}", sale_amount, "cash", pay_ts)
+        close_ts = pay_ts + timedelta(seconds=random.randint(30, 120))
         events.append(_make_event(
-            EventType.TIP_ADJUSTED,
-            {"order_id": order_id, "payment_id": payment_id,
-             "tip_amount": tip_amount, "previous_tip": 0.0},
-            tip_ts, correlation_id=order_id,
+            EventType.ORDER_CLOSED,
+            {"order_id": order_id, "total": float(sale_amount)},
+            close_ts, correlation_id=order_id,
         ))
 
-    close_ts = confirm_ts + timedelta(seconds=random.randint(10, 120))
-    events.append(_make_event(
-        EventType.ORDER_CLOSED,
-        {"order_id": order_id, "total": sale_amount},
-        close_ts, correlation_id=order_id,
-    ))
+    elif method == "card":
+        pay_id = f"pay-{order_id}"
+        _emit_payment(events, order_id, pay_id, card_total, "card", pay_ts)
+        if random.random() < 0.90:
+            tip_pct    = random.choices([0.15, 0.18, 0.20, 0.22, 0.25],
+                                        weights=[20, 30, 30, 15, 5], k=1)[0]
+            tip_amount = money_round(card_total * Decimal(str(tip_pct)))
+            tip_ts     = pay_ts + timedelta(seconds=random.randint(15, 90))
+            events.append(_make_event(
+                EventType.TIP_ADJUSTED,
+                {"order_id": order_id, "payment_id": pay_id,
+                 "tip_amount": float(tip_amount), "previous_tip": 0.0},
+                tip_ts, correlation_id=order_id,
+            ))
+        close_ts = pay_ts + timedelta(seconds=random.randint(30, 120))
+        events.append(_make_event(
+            EventType.ORDER_CLOSED,
+            {"order_id": order_id, "total": float(card_total)},
+            close_ts, correlation_id=order_id,
+        ))
+
+    else:  # split
+        half      = money_round(card_total / 2)
+        remainder = money_round(card_total - half)
+        discount  = money_round(half * CASH_DISCOUNT_RATE)
+        cash_amt  = money_round(half - discount)
+        events.append(_make_event(
+            EventType.DISCOUNT_APPROVED,
+            {"order_id": order_id, "discount_type": "cash_dual_pricing",
+             "amount": float(discount), "reason": "Cash dual-pricing discount"},
+            pay_ts, correlation_id=order_id,
+        ))
+        _emit_payment(events, order_id, f"pay-cash-{order_id}", cash_amt, "cash", pay_ts)
+        card_ts    = pay_ts + timedelta(seconds=30)
+        card_pay_id = f"pay-card-{order_id}"
+        _emit_payment(events, order_id, card_pay_id, remainder, "card", card_ts)
+        if random.random() < 0.90:
+            tip_pct    = random.choices([0.15, 0.18, 0.20, 0.22, 0.25],
+                                        weights=[20, 30, 30, 15, 5], k=1)[0]
+            tip_amount = money_round(remainder * Decimal(str(tip_pct)))
+            tip_ts     = card_ts + timedelta(seconds=random.randint(15, 60))
+            events.append(_make_event(
+                EventType.TIP_ADJUSTED,
+                {"order_id": order_id, "payment_id": card_pay_id,
+                 "tip_amount": float(tip_amount), "previous_tip": 0.0},
+                tip_ts, correlation_id=order_id,
+            ))
+        total_paid = money_round(cash_amt + remainder)
+        close_ts   = card_ts + timedelta(seconds=random.randint(30, 90))
+        events.append(_make_event(
+            EventType.ORDER_CLOSED,
+            {"order_id": order_id, "total": float(total_paid)},
+            close_ts, correlation_id=order_id,
+        ))
 
     return events
 
 
 def _generate_open_order(day_date, order_num, servers, weighted_items, current_hour):
-    """Generate an OPEN order — created + items added + sent, but NO payment yet."""
-    events = []
+    """Generate an OPEN order — items added + sent, but NO payment yet."""
+    events   = []
     order_id = f"ord-{day_date.strftime('%Y%m%d')}-{order_num:04d}"
 
-    # Open checks are staggered across the last hour or so — some older, some newer
     minutes_ago = random.choices(
-        [5, 15, 25, 35, 45, 60, 90],
-        weights=[25, 25, 20, 15, 8, 5, 2],
-        k=1
+        [5, 15, 25, 35, 45, 60, 90], weights=[25, 25, 20, 15, 8, 5, 2], k=1
     )[0]
     order_ts = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
 
-    server = random.choice(servers)
+    server      = random.choice(servers)
     guest_count = random.choices([1, 2, 3, 4], weights=[10, 40, 30, 20], k=1)[0]
-    table = random.choice(TABLES)
+    table       = _pick_table()
 
     events.append(_make_event(
         EventType.ORDER_CREATED,
         {
-            "order_id": order_id, "check_number": f"C-{order_num:03d}",
-            "table": table,
-            "server_id": server["employee_id"], "server_name": server["display_name"],
-            "guest_count": guest_count,
-            "customer_name": None,
+            "order_id":      order_id, "check_number": f"C-{order_num:03d}",
+            "table":         table,
+            "server_id":     server["employee_id"], "server_name": server["display_name"],
+            "guest_count":   guest_count, "customer_name": None,
         },
         order_ts, user_id=server["employee_id"], correlation_id=order_id,
     ))
 
-    # Items but NO payment
     items = _pick_items(weighted_items)
     for idx, menu_item in enumerate(items):
-        item_id = f"{order_id}-i{idx+1}"
+        item_id = f"{order_id}-i{idx + 1}"
         item_ts = order_ts + timedelta(seconds=30 * (idx + 1))
 
         events.append(_make_event(
             EventType.ITEM_ADDED,
             {
-                "order_id": order_id, "item_id": item_id,
+                "order_id":     order_id, "item_id": item_id,
                 "menu_item_id": menu_item["item_id"], "name": menu_item["name"],
                 "price": float(menu_item["price"]), "quantity": 1,
                 "category": menu_item.get("category"), "notes": None,
@@ -689,10 +786,11 @@ def _generate_open_order(day_date, order_num, servers, weighted_items, current_h
             {
                 "order_id": order_id, "item_id": item_id,
                 "name": menu_item["name"], "seat_number": None,
-                "category": menu_item.get("category"),
-                "sent_at": sent_ts.isoformat(),
+                "category": menu_item.get("category"), "sent_at": sent_ts.isoformat(),
             },
             sent_ts, correlation_id=order_id,
         ))
+
+        events.extend(_mod_events(order_id, item_id, menu_item["item_id"], item_ts))
 
     return events
