@@ -77,14 +77,14 @@ const getPendingCount = () => pendingChanges.day_parts_new.length
 const defaultWindow = () => ({ label: '', days: [1,1,1,1,1,1,1], start: '09:00', end: '17:00' });
 
 const defaultDayPart = () => ({
-        id:          `temp_dp_${Date.now()}`,
+        id:          `temp_dp_${crypto.randomUUID()}`,
         name:        '',
         description: '',
         windows:     [defaultWindow()],
     });
 
 const defaultSpecial = () => ({
-        id:             `temp_spec_${Date.now()}`,
+        id:             `temp_spec_${crypto.randomUUID()}`,
         name:           '',
         discount_type:  'percentage',
         discount_value: 0,
@@ -117,7 +117,7 @@ const defaultEmployee = () => ({
     });
 
 const defaultVoidReason = () => ({
-        id:           `temp_void_${Date.now()}`,
+        id:           `temp_void_${crypto.randomUUID()}`,
         name:         '',
         requires_pin: true,
         max_amount:   null,
@@ -128,7 +128,7 @@ const defaultVoidReason = () => ({
 const migrateDayPart = (raw) => {
     if (Array.isArray(raw.windows) && raw.windows.length > 0) {
         return {
-            id:          raw.id || `dp_${Date.now()}`,
+            id:          raw.id || `dp_${crypto.randomUUID()}`,
             name:        raw.name || '',
             description: raw.description || '',
             windows:     raw.windows.map(w => ({
@@ -141,7 +141,7 @@ const migrateDayPart = (raw) => {
     }
     // legacy single-window shape
     return {
-        id:          raw.id || `dp_${Date.now()}`,
+        id:          raw.id || `dp_${crypto.randomUUID()}`,
         name:        raw.name || '',
         description: raw.description || '',
         windows: [{
@@ -238,7 +238,7 @@ const fetchPricingData = async () => {
         const void_reasons = voidRes.ok ? await voidRes.json() : [];
         const discData = discRes.ok ? await discRes.json() : {};
         const discounts = (discData.discounts || []).map(d => ({
-            id: d.id || `disc_${Date.now()}`,
+            id: d.id || `disc_${crypto.randomUUID()}`,
             name: d.name || '',
             type: d.type || 'percentage',
             value: d.value || 0,
@@ -649,7 +649,7 @@ const buildSizeCard = (sz) => {
             if (voidRes.ok) pricingData.void_reasons = await voidRes.json();
             if (discRes.ok) {
                 const ddata = await discRes.json();
-                pricingData.discounts = (ddata.discounts || []).map(d => ({ id: d.id || `disc_${Date.now()}`, name: d.name || '', type: d.type || 'percentage', value: d.value || 0, timing_type: d.timing_type || 'always', day_part_id: d.day_part_id || null, custom_start: d.custom_start || '09:00', custom_end: d.custom_end || '17:00', auto: d.auto !== false, requires_pin: d.requires_pin !== false, active: d.active !== false }));
+                pricingData.discounts = (ddata.discounts || []).map(d => ({ id: d.id || `disc_${crypto.randomUUID()}`, name: d.name || '', type: d.type || 'percentage', value: d.value || 0, timing_type: d.timing_type || 'always', day_part_id: d.day_part_id || null, custom_start: d.custom_start || '09:00', custom_end: d.custom_end || '17:00', auto: d.auto !== false, requires_pin: d.requires_pin !== false, active: d.active !== false }));
             }
             renderScene();
         } catch (e) {
@@ -812,6 +812,7 @@ const buildSpecialRow = (sp) => {
     row.appendChild(editBtn);
 
     const deleteBtn = buildPillButton('DELETE', 'danger', () => {
+        if (!confirm(`Delete "${sp.name}"?`)) return;
         const i = pendingChanges.discounts_new.findIndex(n => n.id === sp.id);
         if (i !== -1) { pendingChanges.discounts_new.splice(i, 1); renderScene(); return; }
         pendingChanges.discounts_edited = pendingChanges.discounts_edited.filter(e => e.id !== sp.id);
@@ -1156,7 +1157,7 @@ const openDiscountModal = (existing, opts) => {
     const isEdit = !!existing;
     const defaultAuto = opts?.defaultAuto ?? false;
     const d = existing ? clone(existing) : {
-        id: `disc_${Date.now()}`,
+        id: `disc_${crypto.randomUUID()}`,
         name: '',
         type: 'percentage',
         value: 0,
@@ -2100,16 +2101,34 @@ const generatePricingEvents = () => {
         events.push({ event_type: 'pricing.daypart_deleted', batch_id, timestamp: ts(), payload: { id } });
     });
 
-    pendingChanges.specials_new.forEach(sp => {
+    pendingChanges.discounts_new.filter(d => d.auto).forEach(sp => {
         const id = sp.id.replace(/^temp_/, '');
         events.push({ event_type: 'pricing.special_created', batch_id, timestamp: ts(),
             payload: { ...sp, id } });
     });
-    pendingChanges.specials_edited.forEach(sp => {
+    pendingChanges.discounts_edited.filter(d => d.auto).forEach(sp => {
         events.push({ event_type: 'pricing.special_updated', batch_id, timestamp: ts(), payload: sp });
     });
-    pendingChanges.specials_deleted.forEach(id => {
-        events.push({ event_type: 'pricing.special_deleted', batch_id, timestamp: ts(), payload: { id } });
+    pendingChanges.discounts_deleted.forEach(id => {
+        const isSpecial = getAllDiscounts().some(d => d.id === id && d.auto);
+        if (isSpecial) {
+            events.push({ event_type: 'pricing.special_deleted', batch_id, timestamp: ts(), payload: { id } });
+        }
+    });
+
+    pendingChanges.discounts_new.filter(d => !d.auto).forEach(d => {
+        const id = d.id.replace(/^temp_/, '');
+        events.push({ event_type: 'pricing.discount_created', batch_id, timestamp: ts(),
+            payload: { ...d, id } });
+    });
+    pendingChanges.discounts_edited.filter(d => !d.auto).forEach(d => {
+        events.push({ event_type: 'pricing.discount_updated', batch_id, timestamp: ts(), payload: d });
+    });
+    pendingChanges.discounts_deleted.forEach(id => {
+        const isDiscount = getAllDiscounts().some(d => d.id === id && !d.auto);
+        if (isDiscount) {
+            events.push({ event_type: 'pricing.discount_deleted', batch_id, timestamp: ts(), payload: { id } });
+        }
     });
 
     pendingChanges.order_types_edited.forEach(ot => {
@@ -2173,6 +2192,15 @@ const handleSaveChanges = async () => {
     if (pendingChanges.employee_edited) {
         pricingData.employee_discount = clone(pendingChanges.employee_edited);
     }
+
+    pendingChanges.discounts_new.forEach(d => pricingData.discounts.push(clone(d)));
+    pendingChanges.discounts_edited.forEach(d => {
+        const idx = pricingData.discounts.findIndex(x => x.id === d.id);
+        if (idx !== -1) pricingData.discounts[idx] = clone(d);
+    });
+    pendingChanges.discounts_deleted.forEach(id => {
+        pricingData.discounts = pricingData.discounts.filter(x => x.id !== id);
+    });
 
     pendingChanges.void_reasons_new.forEach(r => pricingData.void_reasons.push(clone(r)));
     pendingChanges.void_reasons_edited.forEach(r => {
