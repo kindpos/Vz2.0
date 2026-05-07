@@ -52,9 +52,9 @@ let refreshTimer = null;
 
 /** View registry: name → builder function */
 const VIEW_REGISTRY = {
-    'live-dashboard': buildLiveDashboard,
-    'week-grid':      buildWeekGrid,
-    'shift-detail':   buildShiftDetail,
+    'live-dashboard': (w, d) => buildLiveDashboard(w, d),
+    'week-grid':      (w, d) => buildWeekGrid(w, d),
+    'shift-detail':   (w, d) => buildShiftDetail(w, d),
 };
 
 /* ------------------------------------------
