@@ -908,7 +908,7 @@ const buildCheckHistory = (wrapper) => {
                 tr.innerHTML = `
                     <span style="color: ${COLORS.mint}; flex: 0 0 80px;">${row.check_number || '—'}</span>
                     <span style="color: ${COLORS.mint}; flex: 1;">${row.server_name || '—'}</span>
-                    <span style="color: ${COLORS.yellow}; font-family: var(--font-display); flex: 0 0 100px; text-align: right;">$${parseFloat(row.total).toFixed(2)}</span>
+                    <span style="color: ${COLORS.yellow}; font-family: var(--font-display); flex: 0 0 100px; text-align: right;">$${row.total}</span>
                     <span style="color: rgba(var(--color-mint-rgb), 0.4); flex: 0 0 80px; text-align: right;">${closedAt}</span>
                 `;
                 table.appendChild(tr);

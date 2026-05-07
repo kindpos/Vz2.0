@@ -1018,10 +1018,11 @@ async def get_transactions(
         if order:
             projected_orders.append(order)
 
-    # Filter: only closed orders, optionally exclude voids
-    closed_orders = [o for o in projected_orders if o.status in ("closed", "paid")]
-    if not include_voids:
-        closed_orders = [o for o in closed_orders if o.status != "voided"]
+    # Filter: only closed orders, optionally include voided
+    if include_voids:
+        closed_orders = [o for o in projected_orders if o.status in ("closed", "paid", "voided")]
+    else:
+        closed_orders = [o for o in projected_orders if o.status in ("closed", "paid")]
 
     # Apply multi-value filters (OR within group, AND across groups)
     filtered_orders = closed_orders
@@ -1145,8 +1146,14 @@ async def get_transactions(
             for d in order.discounts
         ]
 
-        # Voids list (placeholder)
+        # Voids list — order-level void data only; individual item void
+        # tracking is not yet projected onto the order model.
         voids_list = []
+        if order.status == "voided" and (order.voided_at or order.void_reason):
+            voids_list = [{
+                "voided_at": order.voided_at.isoformat() if order.voided_at else None,
+                "void_reason": order.void_reason,
+            }]
 
         row = {
             "order_id": order.order_id,
