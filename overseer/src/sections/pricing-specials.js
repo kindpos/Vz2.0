@@ -69,6 +69,9 @@ const getPendingCount = () => pendingChanges.day_parts_new.length
          + pendingChanges.specials_deleted.length
          + pendingChanges.order_types_edited.length
          + (pendingChanges.employee_edited ? 1 : 0)
+         + pendingChanges.discounts_new.length
+         + pendingChanges.discounts_edited.length
+         + pendingChanges.discounts_deleted.length
          + pendingChanges.void_reasons_new.length
          + pendingChanges.void_reasons_edited.length
          + pendingChanges.void_reasons_deleted.length;
