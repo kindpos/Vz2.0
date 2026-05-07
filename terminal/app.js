@@ -41,6 +41,55 @@ import './scenes/shared-interrupts.js';
 window._SM = SceneManager;
 
 // ═══════════════════════════════════════════════════
+//  PRICING CONFIG STORE
+//  Populated at boot and refreshed on config version
+//  change. Exposed as window.pricingConfig so scenes
+//  can read it without a separate import.
+// ═══════════════════════════════════════════════════
+
+var pricingConfig = window.pricingConfig = {
+  orderTypes:       [],   // GET /config/pricing/order-types
+  dayParts:         [],   // GET /config/pricing/day-parts
+  specials:         [],   // GET /config/pricing/specials
+  employeeDiscount: null, // GET /config/pricing/employee-discount
+};
+
+var _lastConfigVersion = null;
+
+async function loadPricingConfig() {
+  var results = await Promise.all([
+    fetchWithTimeout('/api/v1/config/pricing/order-types',       {}, 8000).catch(function() { return null; }),
+    fetchWithTimeout('/api/v1/config/pricing/day-parts',         {}, 8000).catch(function() { return null; }),
+    fetchWithTimeout('/api/v1/config/pricing/specials',          {}, 8000).catch(function() { return null; }),
+    fetchWithTimeout('/api/v1/config/pricing/employee-discount', {}, 8000).catch(function() { return null; }),
+  ]);
+  var otRes = results[0], dpRes = results[1], spRes = results[2], edRes = results[3];
+  try { if (otRes && otRes.ok) { var ot = await otRes.json(); pricingConfig.orderTypes       = Array.isArray(ot) ? ot : []; } } catch(e) {}
+  try { if (dpRes && dpRes.ok) { var dp = await dpRes.json(); pricingConfig.dayParts         = Array.isArray(dp) ? dp : []; } } catch(e) {}
+  try { if (spRes && spRes.ok) { var sp = await spRes.json(); pricingConfig.specials         = Array.isArray(sp) ? sp : []; } } catch(e) {}
+  try { if (edRes && edRes.ok) { var ed = await edRes.json(); pricingConfig.employeeDiscount = (ed && typeof ed === 'object' && !Array.isArray(ed)) ? ed : null; } } catch(e) {}
+  console.log('[KINDpos] Pricing config loaded:', {
+    orderTypes:  pricingConfig.orderTypes.length,
+    dayParts:    pricingConfig.dayParts.length,
+    specials:    pricingConfig.specials.length,
+    empDiscount: !!pricingConfig.employeeDiscount,
+  });
+}
+
+async function pollConfigVersion() {
+  try {
+    var res  = await fetchWithTimeout('/api/v1/config/version', {}, 8000);
+    var data = await res.json();
+    var ver  = data.version != null ? data.version : null;
+    if (ver !== null && _lastConfigVersion !== null && ver !== _lastConfigVersion) {
+      console.log('[KINDpos] Config changed — reloading pricing config...');
+      await loadPricingConfig();
+    }
+    _lastConfigVersion = ver;
+  } catch(e) { /* silent */ }
+}
+
+// ═══════════════════════════════════════════════════
 //  BOOT
 // ═══════════════════════════════════════════════════
 
@@ -240,7 +289,15 @@ async function boot() {
     console.info('[app] Store config unavailable, using defaults');
   }
 
-  // 5. Open gate → login scene (only reached if license is activated)
+  // 5. Load pricing config (order types, day parts, specials, employee discount)
+  await loadPricingConfig();
+
+  // 6. Start config-version polling — detects Overseer changes while terminal
+  //    is active and reloads pricing config when the version advances.
+  setInterval(pollConfigVersion, 30000);
+  pollConfigVersion();
+
+  // 7. Open gate → login scene (only reached if license is activated)
   SceneManager.openGate('login');
 }
 
