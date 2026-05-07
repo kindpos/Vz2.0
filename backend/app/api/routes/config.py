@@ -712,6 +712,14 @@ async def delete_discount(
 
 
 # Void-reason endpoints: config router already has prefix="/config" so
+# "/pricing/discounts" resolves to /api/v1/config/pricing/discounts.
+@router.get("/pricing/discounts")
+async def list_pricing_discounts(ledger: EventLedger = Depends(get_ledger)):
+    """Return all active discounts from the config projection (PRICING_DISCOUNT_* events)."""
+    rows = await _project_discounts(ledger)
+    return {"discounts": rows}
+
+
 # "/pricing/void-reasons" resolves to /api/v1/config/pricing/void-reasons.
 @router.get("/pricing/void-reasons", response_model=List[VoidReason])
 async def list_void_reasons(ledger: EventLedger = Depends(get_ledger)):

@@ -50,8 +50,7 @@ window._SM = SceneManager;
 var pricingConfig = window.pricingConfig = {
   orderTypes:       [],   // GET /config/pricing/order-types
   dayParts:         [],   // GET /config/pricing/day-parts
-  specials:         [],   // GET /config/pricing/specials
-  employeeDiscount: null, // GET /config/pricing/employee-discount
+  discounts:        [],   // GET /config/pricing/discounts (unified specials + employee_discount)
 };
 
 // 2dp monetary rounding, ROUND_HALF_UP-safe for positive values.
@@ -65,21 +64,18 @@ var _lastConfigVersion = null;
 
 async function loadPricingConfig() {
   var results = await Promise.all([
-    fetchWithTimeout('/api/v1/config/pricing/order-types',       {}, 8000).catch(function() { return null; }),
-    fetchWithTimeout('/api/v1/config/pricing/day-parts',         {}, 8000).catch(function() { return null; }),
-    fetchWithTimeout('/api/v1/config/pricing/specials',          {}, 8000).catch(function() { return null; }),
-    fetchWithTimeout('/api/v1/config/pricing/employee-discount', {}, 8000).catch(function() { return null; }),
+    fetchWithTimeout('/api/v1/config/pricing/order-types', {}, 8000).catch(function() { return null; }),
+    fetchWithTimeout('/api/v1/config/pricing/day-parts',   {}, 8000).catch(function() { return null; }),
+    fetchWithTimeout('/api/v1/config/pricing/discounts',   {}, 8000).catch(function() { return null; }),
   ]);
-  var otRes = results[0], dpRes = results[1], spRes = results[2], edRes = results[3];
-  try { if (otRes && otRes.ok) { var ot = await otRes.json(); pricingConfig.orderTypes       = Array.isArray(ot) ? ot : []; } } catch(e) {}
-  try { if (dpRes && dpRes.ok) { var dp = await dpRes.json(); pricingConfig.dayParts         = Array.isArray(dp) ? dp : []; } } catch(e) {}
-  try { if (spRes && spRes.ok) { var sp = await spRes.json(); pricingConfig.specials         = Array.isArray(sp) ? sp : []; } } catch(e) {}
-  try { if (edRes && edRes.ok) { var ed = await edRes.json(); pricingConfig.employeeDiscount = (ed && typeof ed === 'object' && !Array.isArray(ed)) ? ed : null; } } catch(e) {}
+  var otRes = results[0], dpRes = results[1], discRes = results[2];
+  try { if (otRes && otRes.ok) { var ot = await otRes.json(); pricingConfig.orderTypes = Array.isArray(ot) ? ot : []; } } catch(e) {}
+  try { if (dpRes && dpRes.ok) { var dp = await dpRes.json(); pricingConfig.dayParts = Array.isArray(dp) ? dp : []; } } catch(e) {}
+  try { if (discRes && discRes.ok) { var discData = await discRes.json(); pricingConfig.discounts = (discData && Array.isArray(discData.discounts)) ? discData.discounts : []; } } catch(e) {}
   console.log('[KINDpos] Pricing config loaded:', {
-    orderTypes:  pricingConfig.orderTypes.length,
-    dayParts:    pricingConfig.dayParts.length,
-    specials:    pricingConfig.specials.length,
-    empDiscount: !!pricingConfig.employeeDiscount,
+    orderTypes: pricingConfig.orderTypes.length,
+    dayParts:   pricingConfig.dayParts.length,
+    discounts:  pricingConfig.discounts.length,
   });
 }
 
