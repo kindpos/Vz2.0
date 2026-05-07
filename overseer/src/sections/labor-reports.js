@@ -25,14 +25,13 @@ import {
 import { fmt, fmtPct, fmtInt } from '../ui/money.js';
 import { buildDatePicker } from '../components/date-picker.js';
 
+// ─── Date helpers ───────────────────────────────────────────────────
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
 // ─── State ──────────────────────────────────────────────────────────
 let _currentContainer = null;
 let _currentDate      = todayStr();
 let _abortController  = null;
-
-// ─── Date helpers ───────────────────────────────────────────────────
-const todayStr = () => new Date().toISOString().slice(0, 10);
-;
 
 const prettyDate = (d) => {
   const dt = new Date(`${d}T00:00:00`);
