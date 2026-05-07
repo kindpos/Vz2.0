@@ -512,6 +512,7 @@ const buildModifierRow = (modifier) => {
         try {
             await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, active: v } }]);
             modifier.active = v;
+            await refreshAll();
         } catch (e) {
             toggle.setValue(!v);
             showToast('Failed to update modifier', 'error');
@@ -581,7 +582,7 @@ const buildModifierAddPanel = () => {
         const priceVal = priceInput.getValue();
         if (!name) { showToast('Name is required', 'error'); return; }
         try {
-            await pushChanges([{ event_type: 'modifier.created', payload: { name, price: priceVal } }]);
+            await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: crypto.randomUUID(), name, price: priceVal } }]);
             _state.addingModifier = false;
             await refreshAll();
             showToast('Modifier created');

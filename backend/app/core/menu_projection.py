@@ -4,6 +4,7 @@ Menu Projection
 Projects the current menu state from the Event Ledger.
 """
 
+import uuid
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 from .events import Event, EventType
@@ -175,6 +176,20 @@ def project_menu(events: List[Event]) -> MenuState:
             group_id = payload.get('group_id')
             if group_id in modifier_groups_map:
                 del modifier_groups_map[group_id]
+
+        elif event.event_type == EventType.MODIFIER_CREATED:
+            mid = payload.get('modifier_id') or str(uuid.uuid4())
+            modifiers_map[mid] = {
+                'modifier_id': mid,
+                'name': payload.get('name', ''),
+                'price': payload.get('price', '0.00'),
+                'active': payload.get('active', True),
+            }
+
+        elif event.event_type == EventType.MODIFIER_UPDATED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid].update(payload)
 
         elif event.event_type == EventType.MODIFIER_GROUP_MODIFIER_ADDED:
             gid = payload.get('group_id')
