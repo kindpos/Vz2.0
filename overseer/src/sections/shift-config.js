@@ -52,9 +52,9 @@ let currentContainer = null;
 let swapRequests = null; // mutable working copy
 
 const VIEW_REGISTRY = {
-    'daily-timeline':  buildDailyTimeline,
-    'shift-templates': buildShiftTemplates,
-    'swap-queue':      buildSwapQueue,
+    'daily-timeline':  (w, d) => buildDailyTimeline(w, d),
+    'shift-templates': (w, d) => buildShiftTemplates(w, d),
+    'swap-queue':      (w, d) => buildSwapQueue(w, d),
 };
 
 /* ------------------------------------------
