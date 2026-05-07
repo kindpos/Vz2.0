@@ -158,7 +158,7 @@ function _adaptItem(it) {
   let mods = [];
   const first  = [];
   const second = [];
-  const rawMods = it.mods || [];
+  const rawMods = it.modifiers || it.mods || [];
   for (let i = 0; i < rawMods.length; i++) {
     let raw = rawMods[i];
     if (raw.prefix === 'Left')       first.push(_adaptHalfItem(raw));
