@@ -57,7 +57,7 @@ let sortField = 'totalComp';
 let sortDir = 'desc';
 
 const VIEW_REGISTRY = {
-    'payroll-summary': buildPayrollSummary,
+    'payroll-summary': (w, d) => buildPayrollSummary(w, d),
 };
 
 /* ------------------------------------------
