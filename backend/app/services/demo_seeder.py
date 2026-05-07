@@ -123,7 +123,58 @@ async def seed_demo_data_if_empty(ledger: EventLedger) -> None:
     if mod_count:
         print(f"  seeded {mod_count} modifier groups")
 
-    print(f"Demo seed complete — {len(seed_data.get('employees', []))} employees loaded")
+    # Seed void reasons
+    existing_voids = await ledger.get_events_by_type(EventType.PRICING_VOID_REASON_CREATED, limit=1000)
+    existing_void_names = {e.payload.get("name") for e in existing_voids}
+
+    void_reasons = seed_data.get("void_reasons", [])
+    for reason in void_reasons:
+        if reason["name"] in existing_void_names:
+            print(f"  skip  void reason: {reason['name']} (already in ledger)")
+            continue
+        event = create_event(
+            event_type=EventType.PRICING_VOID_REASON_CREATED,
+            terminal_id="SEED",
+            payload=reason,
+        )
+        await ledger.append(event)
+        print(f"  seeded void reason: {reason['name']}")
+
+    # Seed discounts
+    existing_discounts = await ledger.get_events_by_type(EventType.PRICING_DISCOUNT_CREATED, limit=1000)
+    existing_discount_names = {e.payload.get("name") for e in existing_discounts}
+
+    discounts = seed_data.get("discounts", [])
+    for discount in discounts:
+        if discount["name"] in existing_discount_names:
+            print(f"  skip  discount: {discount['name']} (already in ledger)")
+            continue
+        event = create_event(
+            event_type=EventType.PRICING_DISCOUNT_CREATED,
+            terminal_id="SEED",
+            payload=discount,
+        )
+        await ledger.append(event)
+        print(f"  seeded discount: {discount['name']}")
+
+    # Seed specials
+    existing_specials = await ledger.get_events_by_type(EventType.PRICING_SPECIAL_CREATED, limit=1000)
+    existing_special_names = {e.payload.get("name") for e in existing_specials}
+
+    specials = seed_data.get("specials", [])
+    for special in specials:
+        if special["name"] in existing_special_names:
+            print(f"  skip  special: {special['name']} (already in ledger)")
+            continue
+        event = create_event(
+            event_type=EventType.PRICING_SPECIAL_CREATED,
+            terminal_id="SEED",
+            payload=special,
+        )
+        await ledger.append(event)
+        print(f"  seeded special: {special['name']}")
+
+    print(f"Demo seed complete — {len(seed_data.get('employees', []))} employees, {len(void_reasons)} void reasons, {len(discounts)} discounts, {len(specials)} specials loaded")
 
     # Seed sample orders so dashboard graphs are populated
     await seed_sample_orders_if_empty(ledger)

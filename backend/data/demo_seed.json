@@ -183,6 +183,66 @@
     }
   ],
 
+  "void_reasons": [
+    { "id": "void_001", "name": "Customer Changed Mind", "active": true },
+    { "id": "void_002", "name": "Incorrect Order", "active": true },
+    { "id": "void_003", "name": "Item Unavailable", "active": true },
+    { "id": "void_004", "name": "Duplicate Order", "active": true },
+    { "id": "void_005", "name": "Manager Override", "active": true }
+  ],
+
+  "discounts": [
+    {
+      "id": "disc_001",
+      "name": "Employee Meal",
+      "type": "percentage",
+      "value": 50,
+      "timing_type": "always",
+      "day_part_id": null,
+      "auto": false,
+      "requires_pin": true,
+      "active": true
+    },
+    {
+      "id": "disc_002",
+      "name": "First Responder",
+      "type": "percentage",
+      "value": 10,
+      "timing_type": "always",
+      "day_part_id": null,
+      "auto": false,
+      "requires_pin": true,
+      "active": true
+    }
+  ],
+
+  "specials": [
+    {
+      "id": "spec_001",
+      "name": "Happy Hour",
+      "type": "percentage",
+      "value": 15,
+      "auto": true,
+      "timing_type": "daily_window",
+      "start_time": "15:00",
+      "end_time": "17:00",
+      "applies_on_days": [1,1,1,1,1,0,0],
+      "active": true
+    },
+    {
+      "id": "spec_002",
+      "name": "Weekend Special",
+      "type": "percentage",
+      "value": 10,
+      "auto": true,
+      "timing_type": "daily_window",
+      "start_time": "00:00",
+      "end_time": "23:59",
+      "applies_on_days": [0,0,0,0,0,1,1],
+      "active": true
+    }
+  ],
+
   "floor_plan": {
     "sections": [
       {
