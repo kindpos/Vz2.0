@@ -731,15 +731,14 @@ const buildAddLink = (text, onClick) => {
 
 const apiPutItem = (url, body) => fetchWithTimeout(url, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' ;,
+        headers: { 'Content-Type': 'application/json' },
         body: body == null ? undefined : JSON.stringify(body),
     }).then(r => {
         if (!r.ok) throw new Error(`PUT ${url} → ${r.status}`);
         return r.json();
     });
-}
 
-const apiPatchItem = (itemId, patch) => fetchWithTimeout(`/api/v1/menu-items/${encodeURIComponent(itemId);`, {
+const apiPatchItem = (itemId, patch) => fetchWithTimeout(`/api/v1/menu-items/${encodeURIComponent(itemId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
@@ -747,24 +746,21 @@ const apiPatchItem = (itemId, patch) => fetchWithTimeout(`/api/v1/menu-items/${e
         if (!r.ok) throw new Error(`PATCH failed: ${r.status}`);
         return r.json().catch(() => ({}));
     });
-}
 
-const apiDeleteItem = (itemId) => fetchWithTimeout(`/api/v1/menu-items/${encodeURIComponent(itemId);`, {
+const apiDeleteItem = (itemId) => fetchWithTimeout(`/api/v1/menu-items/${encodeURIComponent(itemId)}`, {
         method: 'DELETE',
     }).then(r => {
         if (!r.ok) throw new Error(`DELETE failed: ${r.status}`);
         return r.json().catch(() => ({}));
     });
-}
 
-const apiPostItem86 = (itemId) => fetchWithTimeout(`/api/v1/menu-items/${encodeURIComponent(itemId);/86`, {
+const apiPostItem86 = (itemId) => fetchWithTimeout(`/api/v1/menu-items/${encodeURIComponent(itemId)}/86`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
     }).then(r => {
         if (!r.ok) throw new Error(`POST 86 failed: ${r.status}`);
         return r.json().catch(() => ({}));
     });
-}
 
 const openItemPicker = (title, options, onSelect) => {
     const overlay = document.createElement('div');
