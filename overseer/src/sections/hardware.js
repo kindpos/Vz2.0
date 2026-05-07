@@ -980,8 +980,8 @@ const rebuild = () => {
 export const buildHardwareScene = async (container) => {
     _state.container = container;
 
-    const page = buildScenePage(container);
-    const { root, body } = page;
+    const page = buildScenePage(container, { title: 'Hardware Management', onSave: null });
+    const { body } = page;
 
     const statusWrapper = document.createElement('div');
     statusWrapper.setAttribute('data-hardware-status', '');
