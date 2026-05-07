@@ -980,8 +980,7 @@ const buildEmployeeAccordion = () => {
     );
 }
 
-const friendlyAppliesTo = (a) => { everything: 'everything', food_only: 'food only', drinks_only: 'drinks only' ;[a] || a;
-}
+const friendlyAppliesTo = (a) => ({ everything: 'everything', food_only: 'food only', drinks_only: 'drinks only' })[a] || a;
 
 const buildRateCol = (label, value, color) => {
     const col = document.createElement('div');
