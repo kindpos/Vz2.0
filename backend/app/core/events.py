@@ -200,6 +200,7 @@ class EventType(str, Enum):
     TIPOUT_CALCULATED = "tipout.calculated"
     TIPOUT_ADJUSTED = "tipout.adjusted"
     TIPOUT_DISTRIBUTED = "tipout.distributed"
+    TIPOUT_OVERRIDE = "tipout.override"
 
     # ── Menu management (LEDGER_OPERATIONAL) ─────────────────────────
     MENU_ITEM_CREATED = "menu.item_created"
@@ -3115,6 +3116,7 @@ def checkout_finalized(
         card_tips: Decimal,
         tipout_amount: Decimal,
         open_checks_count: int = 0,
+        tipout_breakdown: Optional[list[dict]] = None,
         **kwargs
 ) -> Event:
     """CHECKOUT_FINALIZED: server checkout completed with tip distribution.
@@ -3132,8 +3134,38 @@ def checkout_finalized(
         "tipout_amount": str(money_round(tipout_amount)),
         "open_checks_count": open_checks_count,
     }
+    if tipout_breakdown:
+        payload["tipout_breakdown"] = tipout_breakdown
     return create_event(
         event_type=EventType.CHECKOUT_FINALIZED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def tipout_override(
+        terminal_id: str,
+        server_id: str,
+        shift_id: str,
+        overrides: list[dict],
+        manager_id: str,
+        overridden_at: str,
+        **kwargs
+) -> Event:
+    """TIPOUT_OVERRIDE: manager override of calculated tipout percentages.
+
+    Emitted when a manager modifies tipout percentages at checkout.
+    """
+    payload = {
+        "server_id": server_id,
+        "shift_id": shift_id,
+        "overrides": overrides,
+        "manager_id": manager_id,
+        "overridden_at": overridden_at,
+    }
+    return create_event(
+        event_type=EventType.TIPOUT_OVERRIDE,
         terminal_id=terminal_id,
         payload=payload,
         **kwargs,
