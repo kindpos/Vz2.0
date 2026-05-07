@@ -50,6 +50,8 @@ import { buildPricingSetupScene, cleanupPricingSetup } from './sections/pricing-
 import { buildModifierGroupsScene, cleanupModifierGroups } from './sections/modifier-groups.js';
 import { buildModifiersScene, cleanupModifiers } from './sections/modifiers.js';
 import mountTransactionLog, { unmount as unmountTransactionLog } from './sections/transaction-log.js';
+import { buildKINDnosticStoreScene, cleanupKINDnosticStore } from './sections/kindnostic-store.js';
+import { buildKINDnosticSettingsScene, cleanupKINDnosticSettings } from './sections/kindnostic-settings.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -113,6 +115,14 @@ const NAV = [
             // { id: 'card-readers',      label: 'Card Readers'      },
             { id: 'receipt-settings',  label: 'Receipt Settings'  },
             { id: 'terminal-settings', label: 'Terminal Settings' },
+        ]
+    },
+    {
+        id: 'kindnostic',
+        label: 'KINDNOSTIC',
+        subs: [
+            { id: 'kindnostic-store',    label: 'Archive & Export'  },
+            { id: 'kindnostic-settings', label: 'Configuration'     },
         ]
     },
 ];
@@ -425,6 +435,16 @@ const registerAllSections = () => {
         name: 'transaction-log',
         mount: (container) => mountTransactionLog(container),
         unmount: () => unmountTransactionLog(),
+    });
+    SceneManager.register({
+        name: 'kindnostic-store',
+        mount: (container) => buildKINDnosticStoreScene(container),
+        unmount: (container) => cleanupKINDnosticStore(container),
+    });
+    SceneManager.register({
+        name: 'kindnostic-settings',
+        mount: (container) => buildKINDnosticSettingsScene(container),
+        unmount: (container) => cleanupKINDnosticSettings(container),
     });
 }
 
