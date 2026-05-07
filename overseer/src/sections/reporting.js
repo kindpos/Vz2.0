@@ -853,69 +853,308 @@ const buildAdjustmentsDetail = (wrapper) => {
     wrapper.appendChild(totalRow);
 }
 
+/* ------------------------------------------
+   CHECK HISTORY HELPERS
+   (module-scope so they survive hot-reload)
+------------------------------------------ */
+
+const _fmtOrderType = (t) => {
+    const map = { dine_in: 'Dine In', takeout: 'Takeout', delivery: 'Delivery' };
+    return map[t] || (t || '—');
+};
+
+const _fmtPayment = (p) => {
+    const map = { cash: 'Cash', card: 'Card', split: 'Split', comp: 'Comp' };
+    return map[p] || (p || '—');
+};
+
+const _fmtTime = (isoStr) => {
+    if (!isoStr) return '—';
+    return new Date(isoStr).toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+};
+
+const _TXN_GRID = '90px 1fr 76px 46px 80px 64px 64px 84px 68px 80px';
+
+const _renderTxnTable = (container, rows) => {
+    const hdrRow = document.createElement('div');
+    hdrRow.style.cssText = `
+        display: grid; grid-template-columns: ${_TXN_GRID};
+        gap: 8px; padding: 6px 8px;
+        border-bottom: 2px solid rgba(var(--color-mint-rgb), 0.2);
+        font-size: 16px; color: rgba(var(--color-mint-rgb), 0.45);
+        text-transform: uppercase; letter-spacing: 1px;
+    `;
+    hdrRow.innerHTML = `
+        <span>#</span><span>Server</span><span>Type</span>
+        <span style="text-align:right">Items</span>
+        <span style="text-align:right">Sub</span>
+        <span style="text-align:right">Tax</span>
+        <span style="text-align:right">Tip</span>
+        <span style="text-align:right">Total</span>
+        <span>Payment</span>
+        <span style="text-align:right">Time</span>
+    `;
+    container.appendChild(hdrRow);
+
+    rows.forEach(row => {
+        const hasVoids = row.voids && row.voids.length > 0;
+        let expanded = false;
+
+        const tr = document.createElement('div');
+        tr.style.cssText = `
+            display: grid; grid-template-columns: ${_TXN_GRID};
+            gap: 8px; align-items: center;
+            padding: 9px 8px;
+            border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.08);
+            font-size: 20px;
+            ${hasVoids ? 'cursor: pointer;' : ''}
+        `;
+
+        // # column: expand indicator + check number + VOID badge
+        const checkCol = document.createElement('span');
+        checkCol.style.cssText = 'display: flex; align-items: center; gap: 5px; flex-wrap: wrap;';
+
+        const indicator = document.createElement('span');
+        indicator.style.cssText = `color: rgba(var(--color-mint-rgb), 0.5); font-size: 14px; width: 12px;`;
+        indicator.textContent = hasVoids ? '▶' : '';
+
+        const checkNum = document.createElement('span');
+        checkNum.style.color = COLORS.mint;
+        checkNum.textContent = row.check_number || '—';
+        checkCol.appendChild(indicator);
+        checkCol.appendChild(checkNum);
+
+        if (row.is_voided) {
+            const badge = document.createElement('span');
+            badge.textContent = 'VOID';
+            badge.style.cssText = `
+                font-size: 12px; color: ${COLORS.red};
+                border: 1px solid ${COLORS.red};
+                padding: 0 3px; border-radius: 2px; line-height: 1.5;
+            `;
+            checkCol.appendChild(badge);
+        }
+
+        tr.appendChild(checkCol);
+
+        const itemCount = row.item_count != null ? row.item_count : '—';
+        const sub = row.subtotal != null ? `$${row.subtotal}` : '—';
+        const tax = row.tax != null ? `$${row.tax}` : '—';
+        const tip = row.tip_total != null ? `$${row.tip_total}` : '—';
+
+        tr.insertAdjacentHTML('beforeend', `
+            <span style="color:${COLORS.mint};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.server_name || '—'}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6)">${_fmtOrderType(row.order_type)}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6);text-align:right">${itemCount}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.7);text-align:right">${sub}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6);text-align:right">${tax}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6);text-align:right">${tip}</span>
+            <span style="color:${COLORS.yellow};font-family:var(--font-display);text-align:right">$${row.total}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6)">${_fmtPayment(row.payment_method)}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.45);text-align:right">${_fmtTime(row.closed_at)}</span>
+        `);
+        container.appendChild(tr);
+
+        // Expandable void detail sub-table
+        if (hasVoids) {
+            const detailEl = document.createElement('div');
+            detailEl.style.cssText = `
+                display: none;
+                background: rgba(var(--color-vermillion-rgb), 0.05);
+                border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.08);
+                padding: 8px 16px 12px 28px;
+                font-size: 18px;
+            `;
+            detailEl.innerHTML = `
+                <div style="display:grid;grid-template-columns:1fr 80px 1fr 90px;gap:8px;
+                            padding:4px 0 6px;
+                            color:rgba(var(--color-mint-rgb),0.4);font-size:14px;
+                            text-transform:uppercase;letter-spacing:1px;
+                            border-bottom:1px solid rgba(var(--color-mint-rgb),0.1);">
+                    <span>Item</span><span style="text-align:right">Price</span>
+                    <span>Reason</span><span>Voided At</span>
+                </div>
+            `;
+            row.voids.forEach(v => {
+                const vr = document.createElement('div');
+                vr.style.cssText = 'display:grid;grid-template-columns:1fr 80px 1fr 90px;gap:8px;padding:4px 0;';
+                vr.innerHTML = `
+                    <span style="color:${COLORS.mint}">${v.item_name || '—'}</span>
+                    <span style="color:rgba(var(--color-mint-rgb),0.6);text-align:right">${v.price != null ? '$'+v.price : '—'}</span>
+                    <span style="color:rgba(var(--color-mint-rgb),0.6)">${v.void_reason || '—'}</span>
+                    <span style="color:rgba(var(--color-mint-rgb),0.5)">${v.voided_at ? _fmtTime(v.voided_at) : '—'}</span>
+                `;
+                detailEl.appendChild(vr);
+            });
+            container.appendChild(detailEl);
+
+            tr.addEventListener('click', () => {
+                expanded = !expanded;
+                detailEl.style.display = expanded ? 'block' : 'none';
+                indicator.textContent = expanded ? '▼' : '▶';
+            });
+            tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(var(--color-mint-rgb), 0.04)'; });
+            tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+        }
+    });
+};
+
+const _exportTransactionsCSV = (rows, date) => {
+    const headers = ['Check #', 'Server', 'Type', 'Items', 'Subtotal', 'Tax', 'Tip', 'Total', 'Payment', 'Time'];
+    const lines = [headers.join(',')];
+    rows.forEach(r => {
+        const serverName = (r.server_name || '').replace(/"/g, '""');
+        lines.push([
+            r.check_number || '',
+            `"${serverName}"`,
+            _fmtOrderType(r.order_type),
+            r.item_count != null ? r.item_count : '',
+            r.subtotal || '',
+            r.tax || '',
+            r.tip_total || '',
+            r.total || '',
+            _fmtPayment(r.payment_method),
+            _fmtTime(r.closed_at),
+        ].join(','));
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transactions_${date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+};
+
 const buildCheckHistory = (wrapper) => {
     buildBackButton(wrapper, 'Daily Flash');
     buildDateSubheader(wrapper, 'Check History');
 
-    const loadingMsg = document.createElement('div');
-    loadingMsg.style.cssText = `
-        text-align: center;
-        padding: 40px 20px;
-        font-size: 25px;
-        color: rgba(var(--color-mint-rgb), 0.5);
-    `;
-    loadingMsg.textContent = 'Loading transactions…';
-    wrapper.appendChild(loadingMsg);
-
-    // Fetch transactions for today
+    // Per-render state
     const today = new Date().toISOString().slice(0, 10);
-    fetch(`/api/v1/reports/transactions?date_from=${today}&date_to=${today}&page=1&page_size=100`)
-        .then(r => r.ok ? r.json() : null)
-        .catch(() => null)
-        .then(data => {
-            wrapper.innerHTML = '';
-            buildBackButton(wrapper, 'Daily Flash');
-            buildDateSubheader(wrapper, 'Check History');
+    let _date = today;
+    let _filters = { dayPart: '', orderType: '', paymentMethod: '', serverId: '' };
+    let _lastResults = [];
 
-            if (!data || !data.results || data.results.length === 0) {
-                const empty = document.createElement('div');
-                empty.style.cssText = `
-                    text-align: center;
-                    padding: 40px 20px;
-                    font-size: 22px;
-                    color: rgba(var(--color-mint-rgb), 0.5);
-                `;
-                empty.textContent = 'No transactions for this date';
-                wrapper.appendChild(empty);
-                return;
-            }
+    // ── Filter toolbar ──────────────────────────────────────────────────
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = `
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        margin-bottom: 14px; padding: 10px 0;
+        border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.1);
+    `;
 
-            // Build table
-            const table = document.createElement('div');
-            table.style.cssText = 'margin-bottom: 16px;';
+    const selStyle = `
+        background: rgba(var(--color-mint-rgb), 0.06);
+        border: 1px solid rgba(var(--color-mint-rgb), 0.2);
+        color: var(--color-mint);
+        font-family: var(--font-body);
+        font-size: 19px;
+        padding: 5px 10px; border-radius: 4px; cursor: pointer;
+    `;
 
-            data.results.forEach(row => {
-                const tr = document.createElement('div');
-                tr.style.cssText = `
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    padding: 12px 8px;
-                    border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.08);
-                    font-size: 22px;
-                `;
-                const closedAt = row.closed_at ? new Date(row.closed_at).toLocaleTimeString() : '—';
-                tr.innerHTML = `
-                    <span style="color: ${COLORS.mint}; flex: 0 0 80px;">${row.check_number || '—'}</span>
-                    <span style="color: ${COLORS.mint}; flex: 1;">${row.server_name || '—'}</span>
-                    <span style="color: ${COLORS.yellow}; font-family: var(--font-display); flex: 0 0 100px; text-align: right;">$${row.total}</span>
-                    <span style="color: rgba(var(--color-mint-rgb), 0.4); flex: 0 0 80px; text-align: right;">${closedAt}</span>
-                `;
-                table.appendChild(tr);
-            });
-
-            wrapper.appendChild(table);
+    const mkSel = (options) => {
+        const sel = document.createElement('select');
+        sel.style.cssText = selStyle;
+        options.forEach(([val, label]) => {
+            const opt = document.createElement('option');
+            opt.value = val; opt.textContent = label;
+            sel.appendChild(opt);
         });
+        return sel;
+    };
+
+    const dayPartSel = mkSel([
+        ['', 'All Day'], ['breakfast', 'Breakfast'], ['lunch', 'Lunch'],
+        ['dinner', 'Dinner'], ['late_night', 'Late Night'],
+    ]);
+    const orderTypeSel = mkSel([
+        ['', 'All Types'], ['dine_in', 'Dine In'], ['takeout', 'Takeout'], ['delivery', 'Delivery'],
+    ]);
+    const paymentSel = mkSel([
+        ['', 'All Payments'], ['cash', 'Cash'], ['card', 'Card'], ['split', 'Split'], ['comp', 'Comp'],
+    ]);
+    const serverSel = mkSel([['', 'All Servers']]);
+
+    fetch('/api/v1/config/employees')
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => [])
+        .then(emps => {
+            (emps || []).forEach(emp => {
+                const opt = document.createElement('option');
+                opt.value = emp.employee_id;
+                opt.textContent = `${emp.first_name} ${emp.last_name}`.trim() || emp.employee_id;
+                serverSel.appendChild(opt);
+            });
+        });
+
+    const exportBtn = document.createElement('button');
+    exportBtn.textContent = 'Export CSV';
+    exportBtn.style.cssText = selStyle + 'margin-left: auto; border-color: rgba(var(--color-mint-rgb), 0.3);';
+    exportBtn.addEventListener('click', () => _exportTransactionsCSV(_lastResults, _date));
+
+    toolbar.appendChild(dayPartSel);
+    toolbar.appendChild(orderTypeSel);
+    toolbar.appendChild(paymentSel);
+    toolbar.appendChild(serverSel);
+    toolbar.appendChild(exportBtn);
+    wrapper.appendChild(toolbar);
+
+    // ── Results area ────────────────────────────────────────────────────
+    const resultsArea = document.createElement('div');
+    wrapper.appendChild(resultsArea);
+
+    const fetchAndRender = () => {
+        resultsArea.innerHTML = '';
+        const loadingMsg = document.createElement('div');
+        loadingMsg.style.cssText = `
+            text-align: center; padding: 40px 20px;
+            font-size: 25px; color: rgba(var(--color-mint-rgb), 0.5);
+        `;
+        loadingMsg.textContent = 'Loading transactions…';
+        resultsArea.appendChild(loadingMsg);
+
+        let url = `/api/v1/reports/transactions?date_from=${_date}&date_to=${_date}&page=1&page_size=200`;
+        if (_filters.dayPart)       url += `&day_part=${encodeURIComponent(_filters.dayPart)}`;
+        if (_filters.orderType)     url += `&order_type=${encodeURIComponent(_filters.orderType)}`;
+        if (_filters.paymentMethod) url += `&payment_method=${encodeURIComponent(_filters.paymentMethod)}`;
+        if (_filters.serverId)      url += `&server_id=${encodeURIComponent(_filters.serverId)}`;
+
+        fetch(url)
+            .then(r => r.ok ? r.json() : null)
+            .catch(() => null)
+            .then(data => {
+                resultsArea.innerHTML = '';
+                _lastResults = (data && data.results) ? data.results : [];
+
+                if (!_lastResults.length) {
+                    const empty = document.createElement('div');
+                    empty.style.cssText = `
+                        text-align: center; padding: 40px 20px;
+                        font-size: 22px; color: rgba(var(--color-mint-rgb), 0.5);
+                    `;
+                    empty.textContent = 'No transactions found';
+                    resultsArea.appendChild(empty);
+                    return;
+                }
+
+                _renderTxnTable(resultsArea, _lastResults);
+            });
+    };
+
+    [dayPartSel, orderTypeSel, paymentSel, serverSel].forEach(sel => {
+        sel.addEventListener('change', () => {
+            _filters.dayPart       = dayPartSel.value;
+            _filters.orderType     = orderTypeSel.value;
+            _filters.paymentMethod = paymentSel.value;
+            _filters.serverId      = serverSel.value;
+            fetchAndRender();
+        });
+    });
+
+    fetchAndRender();
 }
 
 /* ==========================================
