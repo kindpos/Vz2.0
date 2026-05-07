@@ -32,6 +32,7 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 let _currentContainer = null;
 let _currentDate      = todayStr();
 let _abortController  = null;
+let _lastData         = null;
 
 const prettyDate = (d) => {
   const dt = new Date(`${d}T00:00:00`);
@@ -234,6 +235,23 @@ const buildLayout = (container) => {
       },
     });
     toolbar.appendChild(picker);
+
+    // Export button
+    const exportBtn = document.createElement('button');
+    exportBtn.textContent = 'Export CSV';
+    exportBtn.style.cssText = `
+      padding: 8px 16px;
+      background: rgba(${T.mint_rgb}, 0.06);
+      border: 1px solid rgba(${T.mint_rgb}, 0.15);
+      border-radius: 4px;
+      color: ${T.mint};
+      cursor: pointer;
+      font-family: ${T.font.body};
+      font-size: 14px;
+      margin-left: 12px;
+    `;
+    exportBtn.addEventListener('click', () => exportLaborCSV(_currentDate, _lastData));
+    toolbar.appendChild(exportBtn);
   }
 
   // Deep-link to the staff payroll view (period scope).
@@ -598,10 +616,50 @@ const renderAll = async (container) => {
   }
 
   const roleMap = buildRoleMap(employees, roles);
+  _lastData = data;
   renderHero(container, data);
   renderCob(container, data);
   renderTips(container, data);
   renderBreakdown(container, data, roleMap);
+}
+
+// ─── Export ─────────────────────────────────────────────────────────
+const exportLaborCSV = (date, data) => {
+  if (!data) return;
+  const rows = [
+    ['KINDpos Labor Report'],
+    ['Date', date],
+    [''],
+    ['Metric', 'Value'],
+    ['Net Sales', data.net_sales || 0],
+    ['Total Hours', data.total_hours || 0],
+    ['Total Labor', data.total_labor || 0],
+    ['Labor %', (data.net_sales > 0) ? ((data.total_labor / data.net_sales) * 100).toFixed(1) : 0],
+    ['COB %', data.cob_percent || 0],
+    ['Card Tips', data.card_tips_total || 0],
+    ['Tip Pool', data.tip_pool || 0],
+  ];
+
+  if ((data.employees || []).length) {
+    rows.push([''], ['Employees'], ['Name', 'Hours', 'Rate', 'Gross Pay', 'Tips']);
+    (data.employees || []).forEach(e => {
+      rows.push([e.name || '', e.hours || 0, e.hourly_rate || 0, e.gross_pay || 0, e.tips || 0]);
+    });
+  }
+
+  if ((data.cob_trend || []).length) {
+    rows.push([''], ['7-Day COB Trend'], ['Day', '%']);
+    (data.cob_trend || []).forEach(d => rows.push([d.day || '', d.percent || 0]));
+  }
+
+  const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `kindpos-labor-${date}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Public API ─────────────────────────────────────────────────────

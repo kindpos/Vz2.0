@@ -131,6 +131,7 @@ const VIEW_REGISTRY = {
     'tax-breakdown':      buildTaxBreakdown,
     'tips-by-server':     buildTipsByServer,
     'adjustments':        buildAdjustmentsDetail,
+    'check-history':      buildCheckHistory,
 };
 
 /* ------------------------------------------
@@ -850,6 +851,71 @@ const buildAdjustmentsDetail = (wrapper) => {
         <span style="color: rgba(var(--color-mint-rgb), 0.4); margin-left: 8px;">(${pctOfSales}% of net sales)</span>
     `;
     wrapper.appendChild(totalRow);
+}
+
+const buildCheckHistory = (wrapper) => {
+    buildBackButton(wrapper, 'Daily Flash');
+    buildDateSubheader(wrapper, 'Check History');
+
+    const loadingMsg = document.createElement('div');
+    loadingMsg.style.cssText = `
+        text-align: center;
+        padding: 40px 20px;
+        font-size: 25px;
+        color: rgba(var(--color-mint-rgb), 0.5);
+    `;
+    loadingMsg.textContent = 'Loading transactions…';
+    wrapper.appendChild(loadingMsg);
+
+    // Fetch transactions for today
+    const today = new Date().toISOString().slice(0, 10);
+    fetch(`/api/v1/reports/transactions?date_from=${today}&date_to=${today}&page=1&page_size=100`)
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null)
+        .then(data => {
+            wrapper.innerHTML = '';
+            buildBackButton(wrapper, 'Daily Flash');
+            buildDateSubheader(wrapper, 'Check History');
+
+            if (!data || !data.results || data.results.length === 0) {
+                const empty = document.createElement('div');
+                empty.style.cssText = `
+                    text-align: center;
+                    padding: 40px 20px;
+                    font-size: 22px;
+                    color: rgba(var(--color-mint-rgb), 0.5);
+                `;
+                empty.textContent = 'No transactions for this date';
+                wrapper.appendChild(empty);
+                return;
+            }
+
+            // Build table
+            const table = document.createElement('div');
+            table.style.cssText = 'margin-bottom: 16px;';
+
+            data.results.forEach(row => {
+                const tr = document.createElement('div');
+                tr.style.cssText = `
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 12px 8px;
+                    border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.08);
+                    font-size: 22px;
+                `;
+                const closedAt = row.closed_at ? new Date(row.closed_at).toLocaleTimeString() : '—';
+                tr.innerHTML = `
+                    <span style="color: ${COLORS.mint}; flex: 0 0 80px;">${row.check_number || '—'}</span>
+                    <span style="color: ${COLORS.mint}; flex: 1;">${row.server_name || '—'}</span>
+                    <span style="color: ${COLORS.yellow}; font-family: var(--font-display); flex: 0 0 100px; text-align: right;">$${parseFloat(row.total).toFixed(2)}</span>
+                    <span style="color: rgba(var(--color-mint-rgb), 0.4); flex: 0 0 80px; text-align: right;">${closedAt}</span>
+                `;
+                table.appendChild(tr);
+            });
+
+            wrapper.appendChild(table);
+        });
 }
 
 /* ==========================================

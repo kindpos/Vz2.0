@@ -192,6 +192,116 @@ def _build_tip_map(events):
     return builder.build_tip_map(events)
 
 
+async def _calculate_cob_trend(date: str, ledger: EventLedger, emp_rates: dict, builder):
+    """Calculate COB (Cost of Business) trend for past 7 days."""
+    cob_trend = []
+    try:
+        # Fetch timecard adjustments for all dates
+        adj_events_all = await ledger.get_events_by_type(EventType.TIMECARD_ADJUSTED)
+        adj_events_all += await ledger.get_events_by_type(EventType.SHIFT_TIME_ADJUSTED)
+        adj_map: dict[tuple[str, str], dict] = {}
+        for e in sorted(adj_events_all, key=lambda x: x.sequence_number or 0):
+            p = e.payload or {}
+            eid = p.get("employee_id")
+            if e.event_type == EventType.SHIFT_TIME_ADJUSTED:
+                iso = p.get("original_clock_in") or ""
+                d = iso[:10] if len(iso) >= 10 else None
+                clock_in  = p.get("adjusted_clock_in")
+                clock_out = p.get("adjusted_clock_out")
+            else:
+                d = p.get("date")
+                clock_in  = p.get("clock_in")
+                clock_out = p.get("clock_out")
+            if not d or not eid:
+                continue
+            adj_map[(d, eid)] = {
+                "clock_in":  clock_in,
+                "clock_out": clock_out,
+                "name":      p.get("employee_name"),
+            }
+
+        def _parse_hhmm(d_str: str, hhmm: str):
+            try:
+                dt = datetime.strptime(f"{d_str}T{hhmm}", "%Y-%m-%dT%H:%M")
+                return dt.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                return None
+
+        def _apply_adjustments(d_str, ins, outs, names):
+            for (target_date, eid), adj in adj_map.items():
+                if target_date != d_str:
+                    continue
+                if adj.get("name"):
+                    names.setdefault(eid, adj["name"])
+                ci = adj.get("clock_in")
+                co = adj.get("clock_out")
+                if ci:
+                    ts = _parse_hhmm(d_str, ci)
+                    if ts is not None:
+                        ins[eid] = SimpleNamespace(
+                            timestamp=ts,
+                            event_type=EventType.USER_LOGGED_IN,
+                            payload={"employee_id": eid, "employee_name": names.get(eid, "")},
+                            sequence_number=None,
+                        )
+                else:
+                    ins.pop(eid, None)
+                if co:
+                    ts = _parse_hhmm(d_str, co)
+                    if ts is not None:
+                        outs[eid] = SimpleNamespace(
+                            timestamp=ts,
+                            event_type=EventType.USER_LOGGED_OUT,
+                            payload={"employee_id": eid, "employee_name": names.get(eid, "")},
+                            sequence_number=None,
+                        )
+                else:
+                    outs.pop(eid, None)
+
+        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        target = datetime.strptime(date, "%Y-%m-%d")
+        for i in range(6, -1, -1):
+            d = target - timedelta(days=i)
+            d_str = d.strftime("%Y-%m-%d")
+            # Get sales for the day
+            d_events = await _get_events_for_date(ledger, d_str)
+            d_orders = project_orders(d_events)
+            d_tip_map = builder.build_tip_map(d_events)
+            d_agg = builder.aggregate_orders(list(d_orders.values()), d_tip_map)
+            d_sales = d_agg["net_sales"]
+
+            # Get labor cost per employee using their configured rate,
+            # after admin timecard adjustments are overlaid.
+            d_logins, d_logouts, d_names = {}, {}, {}
+            for e in sorted(d_events, key=lambda x: x.sequence_number or 0):
+                if e.event_type == EventType.USER_LOGGED_IN:
+                    eid = e.payload["employee_id"]
+                    d_logins[eid] = e
+                    d_names[eid] = e.payload.get("employee_name", d_names.get(eid, "Unknown"))
+                elif e.event_type == EventType.USER_LOGGED_OUT:
+                    eid = e.payload["employee_id"]
+                    d_logouts[eid] = e
+                    d_names[eid] = e.payload.get("employee_name", d_names.get(eid, "Unknown"))
+            _apply_adjustments(d_str, d_logins, d_logouts, d_names)
+
+            d_labor_cost = Decimal("0.00")
+            for eid, login_ev in d_logins.items():
+                logout_ev = d_logouts.get(eid)
+                start = login_ev.timestamp
+                end = logout_ev.timestamp if (logout_ev and logout_ev.timestamp > start) else start + timedelta(hours=8)
+                emp_hours = (end - start).total_seconds() / 3600.0
+                d_labor_cost += Decimal(str(emp_hours)) * emp_rates.get(eid, Decimal("0.00"))
+
+            cob_pct = round(float(d_labor_cost / d_sales) * 100, 1) if d_sales > 0 else 0.0
+            cob_trend.append({
+                "day": day_names[d.weekday()],
+                "percent": cob_pct,
+            })
+    except Exception:
+        _log.exception("Failed to build COB trend; section will be empty")
+    return cob_trend
+
+
 # ── sales-summary ──────────────────────────────────────────────────────────
 
 @router.get("/sales-summary")
@@ -724,42 +834,7 @@ async def get_labor_summary(
             })
 
     # ── COB trend (past 7 days) ───────────────────────────────────────────
-    # Labor cost uses the configured per-employee `hourly_rate` loaded
-    # above (emp_rates). Employees without a configured rate contribute
-    # 0 — the percentage is intentionally low rather than fabricated
-    # from a flat $15/hr estimate.
-    cob_trend = []
-    try:
-        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        target = datetime.strptime(date, "%Y-%m-%d")
-        for i in range(6, -1, -1):
-            d = target - timedelta(days=i)
-            d_str = d.strftime("%Y-%m-%d")
-            # Get sales for the day
-            d_events = await _get_events_for_date(ledger, d_str)
-            d_orders = project_orders(d_events)
-            d_tip_map = builder.build_tip_map(d_events)
-            d_agg = builder.aggregate_orders(list(d_orders.values()), d_tip_map)
-            d_sales = d_agg["net_sales"]
-
-            # Get labor cost per employee using their configured rate,
-            # after admin timecard adjustments are overlaid.
-            d_labor_cost = Decimal("0.00")
-            d_logins, d_logouts, _d_names = await _clocks_for_date(d_str)
-            for eid, login_ev in d_logins.items():
-                logout_ev = d_logouts.get(eid)
-                start = login_ev.timestamp
-                end = logout_ev.timestamp if (logout_ev and logout_ev.timestamp > start) else start + timedelta(hours=8)
-                emp_hours = (end - start).total_seconds() / 3600.0
-                d_labor_cost += Decimal(str(emp_hours)) * emp_rates.get(eid, Decimal("0.00"))
-
-            cob_pct = round(float(d_labor_cost / d_sales) * 100, 1) if d_sales > 0 else 0.0
-            cob_trend.append({
-                "day": day_names[d.weekday()],
-                "percent": cob_pct,
-            })
-    except Exception:
-        _log.exception("Failed to build COB trend; section will be empty")
+    cob_trend = await _calculate_cob_trend(date, ledger, emp_rates, builder)
 
     # Surface net_sales so the Overseer's Labor % KPI has a denominator
     # without having to fetch sales-summary separately.
@@ -782,6 +857,37 @@ async def get_labor_summary(
         "cob_percent": float(cob_trend[-1]["percent"]) if cob_trend else 0.0,
         "employees": employees,
         "ot_alerts": ot_alerts,
+        "cob_trend": cob_trend,
+    }
+
+
+# =============================================================================
+# COB TREND (7-day trend)
+# =============================================================================
+
+@router.get("/cob-trend")
+async def get_cob_trend(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """
+    Cost of Business trend for past 7 days ending on the given date.
+    Returns array of {day, percent} for each day.
+    """
+    # Load employee hourly rates for wage calculations
+    emp_rates: dict[str, Decimal] = {}
+    try:
+        cfg_service = OverseerConfigService(ledger)
+        for emp in await cfg_service.get_employees():
+            emp_rates[emp.employee_id] = Decimal(str(emp.hourly_rate or 0))
+    except Exception:
+        _log.exception("Failed to load employee hourly rates; COB trend will show as 0%")
+
+    builder = PrintContextBuilder(ledger)
+    cob_trend = await _calculate_cob_trend(date, ledger, emp_rates, builder)
+
+    return {
+        "date": date,
         "cob_trend": cob_trend,
     }
 
