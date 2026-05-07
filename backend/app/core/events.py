@@ -189,6 +189,7 @@ class EventType(str, Enum):
     SHIFT_TIME_ADJUSTED    = "shift.time_adjusted"
     SHIFT_SWAP_APPROVED    = "shift.swap_approved"
     SHIFT_SWAP_DENIED      = "shift.swap_denied"
+    CHECKOUT_FINALIZED = "checkout.finalized"
     TIPOUT_RULE_CREATED = "tipout.rule_created"
     TIPOUT_RULE_UPDATED = "tipout.rule_updated"
     TIPOUT_RULE_DELETED = "tipout.rule_deleted"
@@ -199,6 +200,7 @@ class EventType(str, Enum):
     TIPOUT_CALCULATED = "tipout.calculated"
     TIPOUT_ADJUSTED = "tipout.adjusted"
     TIPOUT_DISTRIBUTED = "tipout.distributed"
+    TIPOUT_OVERRIDE = "tipout.override"
 
     # ── Menu management (LEDGER_OPERATIONAL) ─────────────────────────
     MENU_ITEM_CREATED = "menu.item_created"
@@ -3098,6 +3100,72 @@ def shift_deleted(
         payload["reason"] = reason
     return create_event(
         event_type=EventType.SHIFT_DELETED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def checkout_finalized(
+        terminal_id: str,
+        server_id: str,
+        shift_id: str,
+        checkout_time: str,
+        total_tips: Decimal,
+        cash_tips: Decimal,
+        card_tips: Decimal,
+        tipout_amount: Decimal,
+        open_checks_count: int = 0,
+        tipout_breakdown: Optional[list[dict]] = None,
+        **kwargs
+) -> Event:
+    """CHECKOUT_FINALIZED: server checkout completed with tip distribution.
+
+    Emitted when a server finalizes their shift checkout, capturing
+    their tips and tipout obligations for the shift.
+    """
+    payload = {
+        "server_id": server_id,
+        "shift_id": shift_id,
+        "checkout_time": checkout_time,
+        "total_tips": str(money_round(total_tips)),
+        "cash_tips": str(money_round(cash_tips)),
+        "card_tips": str(money_round(card_tips)),
+        "tipout_amount": str(money_round(tipout_amount)),
+        "open_checks_count": open_checks_count,
+    }
+    if tipout_breakdown:
+        payload["tipout_breakdown"] = tipout_breakdown
+    return create_event(
+        event_type=EventType.CHECKOUT_FINALIZED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def tipout_override(
+        terminal_id: str,
+        server_id: str,
+        shift_id: str,
+        overrides: list[dict],
+        manager_id: str,
+        overridden_at: str,
+        **kwargs
+) -> Event:
+    """TIPOUT_OVERRIDE: manager override of calculated tipout percentages.
+
+    Emitted when a manager modifies tipout percentages at checkout.
+    """
+    payload = {
+        "server_id": server_id,
+        "shift_id": shift_id,
+        "overrides": overrides,
+        "manager_id": manager_id,
+        "overridden_at": overridden_at,
+    }
+    return create_event(
+        event_type=EventType.TIPOUT_OVERRIDE,
         terminal_id=terminal_id,
         payload=payload,
         **kwargs,
