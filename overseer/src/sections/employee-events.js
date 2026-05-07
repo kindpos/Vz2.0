@@ -22,14 +22,14 @@
  * @param {boolean} forceChange  Prompt the employee to change on next login.
  * @returns {{employee_id:string, pin:string, force_change_on_login:boolean, reset_reason:string}}
  */
-export function buildPinResetPayload(employeeId, newPIN, forceChange) {
+export const buildPinResetPayload = (employeeId, newPIN, forceChange) => {
     return {
         employee_id: employeeId,
         pin: newPIN,
         force_change_on_login: !!forceChange,
         reset_reason: 'Manager-initiated reset',
     };
-}
+};
 
 /**
  * Payload for an edit-without-reset. CRUCIAL: must NOT include `pin`.
@@ -38,17 +38,17 @@ export function buildPinResetPayload(employeeId, newPIN, forceChange) {
  * @param {{id:string, firstName:string, lastName:string, roles:Array<string>, payRate:number, status:string}} employee
  * @returns {{employee_id:string, first_name:string, last_name:string, display_name:string, role_ids:Array<string>, hourly_rate:number, active:boolean}}
  */
-export function buildEmployeeUpdatePayload(employee) {
+export const buildEmployeeUpdatePayload = (employee) => {
     return {
         employee_id:  employee.id,
         first_name:   employee.firstName,
         last_name:    employee.lastName,
-        display_name: (employee.firstName || '') + ' ' + (employee.lastName || ''),
+        display_name: `${employee.firstName || ''} ${employee.lastName || ''}`,
         role_ids:     employee.roles || [],
         hourly_rate:  employee.payRate,
         active:       employee.status === 'active',
     };
-}
+};
 
 /**
  * Payload for create. New employees DO carry a plaintext pin which the
@@ -58,15 +58,15 @@ export function buildEmployeeUpdatePayload(employee) {
  * @param {string} pin
  * @returns {object}
  */
-export function buildEmployeeCreatePayload(employee, pin) {
+export const buildEmployeeCreatePayload = (employee, pin) => {
     return {
         employee_id:  employee.id,
         first_name:   employee.firstName,
         last_name:    employee.lastName,
-        display_name: (employee.firstName || '') + ' ' + (employee.lastName || ''),
+        display_name: `${employee.firstName || ''} ${employee.lastName || ''}`,
         role_ids:     employee.roles || [],
         hourly_rate:  employee.payRate,
-        pin:          pin,
+        pin,
         active:       employee.status === 'active',
     };
-}
+};

@@ -52,15 +52,15 @@ let currentContainer = null;
 let swapRequests = null; // mutable working copy
 
 const VIEW_REGISTRY = {
-    'daily-timeline':  buildDailyTimeline,
-    'shift-templates': buildShiftTemplates,
-    'swap-queue':      buildSwapQueue,
+    'daily-timeline':  (w, d) => buildDailyTimeline(w, d),
+    'shift-templates': (w, d) => buildShiftTemplates(w, d),
+    'swap-queue':      (w, d) => buildSwapQueue(w, d),
 };
 
 /* ------------------------------------------
    VIEW STACK
 ------------------------------------------ */
-function pushView(viewName, data) {
+const pushView = (viewName, data) => {
     if (!currentContainer) return;
     const wrapper = currentContainer.querySelector('#sc-view-wrapper');
     if (!wrapper) return;
@@ -73,7 +73,7 @@ function pushView(viewName, data) {
     }
 }
 
-function popView() {
+const popView = () => {
     if (viewHistory.length <= 1) return;
     viewHistory.pop();
     const prev = viewHistory[viewHistory.length - 1];
@@ -84,7 +84,7 @@ function popView() {
 /* ------------------------------------------
    BACK BUTTON
 ------------------------------------------ */
-function buildBackButton(wrapper, label) {
+const buildBackButton = (wrapper, label) => {
     const btn = document.createElement('button');
     btn.textContent = `← Back to ${label}`;
     btn.style.cssText = `
@@ -103,7 +103,7 @@ function buildBackButton(wrapper, label) {
 /* ------------------------------------------
    TOAST
 ------------------------------------------ */
-function showToast(message, type = 'success') {
+const showToast = (message, type = 'success') => {
     if (!currentContainer) return;
     const old = currentContainer.querySelector('.sc-toast');
     if (old) old.remove();
@@ -139,7 +139,7 @@ function showToast(message, type = 'success') {
 ------------------------------------------ */
 const _pendingEvents = [];
 
-function emitEvent(eventType, payload) {
+const emitEvent = (eventType, payload) => {
     const event = { event_type: eventType, payload };
     _pendingEvents.push(event);
     pushChanges([event]).catch(e => console.warn("[Overseer] Event push failed:", e));
@@ -149,7 +149,7 @@ function emitEvent(eventType, payload) {
 /* ------------------------------------------
    FORMAT HELPERS
 ------------------------------------------ */
-function fmtTime12(time24) {
+const fmtTime12 = (time24) => {
     if (!time24) return '—';
     const [h, m] = time24.split(':').map(Number);
     const ampm = h >= 12 ? 'PM' : 'AM';
@@ -157,13 +157,13 @@ function fmtTime12(time24) {
     return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-function fmtDateShort(dateStr) {
+const fmtDateShort = (dateStr) => {
     if (!dateStr) return '—';
     const d = new Date(dateStr + 'T12:00:00');
     return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function timeAgo(isoStr) {
+const timeAgo = (isoStr) => {
     const now = new Date();
     const then = new Date(isoStr);
     const diffH = Math.floor((now - then) / 3600000);
@@ -176,7 +176,7 @@ function timeAgo(isoStr) {
 /* ==========================================
    VIEW 1: DAILY TIMELINE (Gantt-style)
    ========================================== */
-function buildDailyTimeline(wrapper) {
+const buildDailyTimeline = (wrapper) => {
     wrapper.style.cssText = 'padding: 0 8px; max-width: 1200px; margin: 0 auto;';
 
     const todayDate = new Date().toLocaleDateString('en-US', {
@@ -426,7 +426,7 @@ function buildDailyTimeline(wrapper) {
    COVERAGE ANALYSIS
    Minimum staffing vs actual
 ------------------------------------------ */
-function buildCoverageAnalysis(wrapper) {
+const buildCoverageAnalysis = (wrapper) => {
     const section = document.createElement('div');
     section.style.cssText = `
         background: rgba(var(--color-mint-rgb), 0.04); border: 1px solid ${C.mintBorder};
@@ -553,7 +553,7 @@ function buildCoverageAnalysis(wrapper) {
    VIEW 2: SHIFT TEMPLATES
    Reusable shift patterns
    ========================================== */
-function buildShiftTemplates(wrapper) {
+const buildShiftTemplates = (wrapper) => {
     wrapper.style.cssText = 'padding: 0 8px; max-width: 1100px; margin: 0 auto;';
 
     buildBackButton(wrapper, 'Daily Timeline');
@@ -712,7 +712,7 @@ function buildShiftTemplates(wrapper) {
    VIEW 3: SWAP QUEUE
    Approve/deny shift swap requests
    ========================================== */
-function buildSwapQueue(wrapper) {
+const buildSwapQueue = (wrapper) => {
     wrapper.style.cssText = 'padding: 0 8px; max-width: 1100px; margin: 0 auto;';
 
     buildBackButton(wrapper, 'Daily Timeline');
@@ -795,7 +795,7 @@ function buildSwapQueue(wrapper) {
 /* ------------------------------------------
    SWAP CARD BUILDER
 ------------------------------------------ */
-function buildSwapCard(swap, showActions) {
+const buildSwapCard = (swap, showActions) => {
     const card = document.createElement('div');
     card.style.cssText = `
         padding: 20px; border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.08);
@@ -977,7 +977,7 @@ function buildSwapCard(swap, showActions) {
 /* ------------------------------------------
    REUSABLE UI COMPONENTS
 ------------------------------------------ */
-function buildTab(label, active, onClick) {
+const buildTab = (label, active, onClick) => {
     const tab = document.createElement('button');
     tab.textContent = label;
     tab.style.cssText = `
@@ -996,7 +996,7 @@ function buildTab(label, active, onClick) {
     return tab;
 }
 
-function buildSummaryCard(label, value, color) {
+const buildSummaryCard = (label, value, color) => {
     const card = document.createElement('div');
     card.style.cssText = `
         background: rgba(var(--color-mint-rgb), 0.04); border: 1px solid ${C.mintBorder};

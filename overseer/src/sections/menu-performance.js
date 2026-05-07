@@ -27,21 +27,20 @@ let _startDate        = null;
 let _endDate          = null;
 let _abortController  = null;
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-function daysAgoStr(n) {
+const todayStr = () => new Date().toISOString().slice(0, 10);
+;
+const daysAgoStr = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d.toISOString().slice(0, 10);
 }
 
-function initDates() {
+const initDates = () => {
   _endDate   = todayStr();
   _startDate = daysAgoStr(6);
 }
 
-function prettyRange(start, end) {
+const prettyRange = (start, end) => {
   const s = new Date(`${start}T12:00:00`);
   const e = new Date(`${end}T12:00:00`);
   if (!Number.isFinite(s.getTime()) || !Number.isFinite(e.getTime())) return '';
@@ -64,7 +63,7 @@ const CAT_COLORS = {
   DRINKS:  '#ff9f43',
 };
 const CAT_FALLBACKS = [T.cyan, T.gold, T.mint, T.lavender, T.greenUp, T.warning];
-function colorForCategory(name, seenIndex) {
+const colorForCategory = (name, seenIndex) => {
   if (!name) return CAT_FALLBACKS[seenIndex % CAT_FALLBACKS.length];
   const hit = CAT_COLORS[String(name).toUpperCase()];
   if (hit) return hit;
@@ -72,7 +71,7 @@ function colorForCategory(name, seenIndex) {
 }
 
 // ─── Fetch + aggregate ──────────────────────────────────────────────
-function enumerateDates(start, end) {
+const enumerateDates = (start, end) => {
   const out = [];
   const s = new Date(`${start}T12:00:00`);
   const e = new Date(`${end}T12:00:00`);
@@ -85,7 +84,7 @@ function enumerateDates(start, end) {
   return out;
 }
 
-async function fetchDay(date, signal) {
+const fetchDay = async (date, signal) => {
   try {
     const res = await fetch(`/api/v1/reports/sales-summary?date=${date}`, { signal });
     if (!res.ok) return null;
@@ -96,7 +95,7 @@ async function fetchDay(date, signal) {
   }
 }
 
-function aggregateItems(dayResponses) {
+const aggregateItems = (dayResponses) => {
   const byItem = new Map();
   for (const day of dayResponses) {
     if (!day || !Array.isArray(day.top_items)) continue;
@@ -120,7 +119,7 @@ function aggregateItems(dayResponses) {
   return [...byItem.values()].sort((a, b) => b.revenue - a.revenue);
 }
 
-function rollupCategories(items) {
+const rollupCategories = (items) => {
   const byCat = new Map();
   for (const it of items) {
     const key = it.category || 'Other';
@@ -133,7 +132,7 @@ function rollupCategories(items) {
 }
 
 // ─── Layout ─────────────────────────────────────────────────────────
-function buildLayout(container) {
+const buildLayout = (container) => {
   container.innerHTML = `
     <style>
       .menu-wrapper {
@@ -252,11 +251,11 @@ function buildLayout(container) {
   }
 }
 
-function regionEl(container, id) {
+const regionEl = (container, id) => {
   return container.querySelector(`#${id}`);
 }
 
-function renderRegionEmpty(row, msg, cells = 1) {
+const renderRegionEmpty = (row, msg, cells = 1) => {
   if (!row) return;
   row.innerHTML = '';
   for (let i = 0; i < cells; i++) {
@@ -267,7 +266,7 @@ function renderRegionEmpty(row, msg, cells = 1) {
   }
 }
 
-function renderRegionError(row, err, cells = 1) {
+const renderRegionError = (row, err, cells = 1) => {
   if (!row) return;
   row.innerHTML = '';
   for (let i = 0; i < cells; i++) {
@@ -279,7 +278,7 @@ function renderRegionError(row, err, cells = 1) {
 }
 
 // ─── Region: hero KPIs ──────────────────────────────────────────────
-function renderHero(container, items) {
+const renderHero = (container, items) => {
   const row = regionEl(container, 'region-hero');
   if (!row) return;
   row.innerHTML = '';
@@ -328,7 +327,7 @@ function renderHero(container, items) {
 }
 
 // ─── Region: revenue by category ────────────────────────────────────
-function renderCategories(container, items) {
+const renderCategories = (container, items) => {
   const row = regionEl(container, 'region-categories');
   if (!row) return;
   row.innerHTML = '';
@@ -355,7 +354,7 @@ function renderCategories(container, items) {
 }
 
 // ─── Region: item ranking ───────────────────────────────────────────
-function renderRanking(container, items) {
+const renderRanking = (container, items) => {
   const row = regionEl(container, 'region-ranking');
   if (!row) return;
   row.innerHTML = '';
@@ -423,7 +422,7 @@ function renderRanking(container, items) {
 }
 
 // ─── Orchestration ──────────────────────────────────────────────────
-async function renderAll(container) {
+const renderAll = async (container) => {
   const sub = container.querySelector('#menu-subtitle');
   if (sub) sub.textContent = prettyRange(_startDate, _endDate);
 

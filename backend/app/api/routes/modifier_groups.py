@@ -29,7 +29,7 @@ class _SetOptionGroupBody(BaseModel):
 
 
 class _SizeAdjustmentsBody(BaseModel):
-    size_price_adjustments: Dict[str, float] = {}
+    size_price_adjustments: Dict[str, Decimal] = {}
 
 
 async def _get_group(group_id: str, ledger):
@@ -81,7 +81,7 @@ async def update_size_adjustments(
         evt.EventType.MODIFIER_GROUP_SIZE_ADJUSTMENTS_UPDATED,
         {
             "group_id": group_id,
-            "size_price_adjustments": {k: float(v) for k, v in body.size_price_adjustments.items()},
+            "size_price_adjustments": {k: v for k, v in body.size_price_adjustments.items()},
         },
         terminal_id="overseer",
     )

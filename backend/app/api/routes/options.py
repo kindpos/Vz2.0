@@ -56,7 +56,6 @@ async def create_option(
     option_id = body.option_id or _slugify(body.name)
     payload = body.model_dump()
     payload["option_id"] = option_id
-    payload["price_adjustment"] = float(payload["price_adjustment"])
     event = create_event(
         event_type=EventType.OPTION_CREATED,
         terminal_id="OVERSEER",
@@ -103,8 +102,6 @@ async def update_option(
         raise HTTPException(status_code=404, detail=f"option '{option_id}' not found")
 
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
-    if "price_adjustment" in fields:
-        fields["price_adjustment"] = float(fields["price_adjustment"])
     payload = {"option_id": option_id, **fields}
     event = create_event(
         event_type=EventType.OPTION_UPDATED,

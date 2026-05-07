@@ -21,6 +21,8 @@
 
 import { T } from '../../../common/tokens.js';
 import { buildStaticCard, hexToRgba } from '../../../common/theme.js';
+import { pushChanges } from '../services/config-push.js';
+import { fetchWithTimeout } from '../services/http.js';
 
 /* ------------------------------------------
    STATE
@@ -43,14 +45,14 @@ const _state = {
 /* ------------------------------------------
    FORMATTERS
 ------------------------------------------ */
-function fmtPrice(n) { return '$' + Number(n || 0).toFixed(2); }
-function fmtPriceAdj(n) {
+const fmtPrice = (n) => '$' + Number(n || 0).toFixed(2); ;
+const fmtPriceAdj = (n) => {
     const v = Number(n || 0);
     if (v > 0) return '+$' + v.toFixed(2);
     if (v < 0) return '−$' + Math.abs(v).toFixed(2);
     return '±$0.00';
 }
-function priceAdjColor(n) {
+const priceAdjColor = (n) => {
     const v = Number(n || 0);
     if (v > 0) return T.gold;
     if (v < 0) return T.verm;
@@ -60,13 +62,13 @@ function priceAdjColor(n) {
 /* ------------------------------------------
    API
 ------------------------------------------ */
-async function apiGet(url) {
-    const res = await fetch(url);
+const apiGet = async (url) => {
+    const res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
     return res.json();
 }
-async function apiPost(url, body) {
-    const res = await fetch(url, {
+const apiPost = async (url, body) => {
+    const res = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body == null ? undefined : JSON.stringify(body),
@@ -74,8 +76,8 @@ async function apiPost(url, body) {
     if (!res.ok) throw new Error(`POST ${url} → ${res.status}`);
     return res.json();
 }
-async function apiPatch(url, body) {
-    const res = await fetch(url, {
+const apiPatch = async (url, body) => {
+    const res = await fetchWithTimeout(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -87,7 +89,7 @@ async function apiPatch(url, body) {
 /* ------------------------------------------
    TOAST
 ------------------------------------------ */
-function showToast(msg, kind = 'ok') {
+const showToast = (msg, kind = 'ok') => {
     const toast = document.createElement('div');
     const bg = kind === 'error' ? T.verm : T.greenWarm;
     toast.textContent = msg;
@@ -115,7 +117,7 @@ function showToast(msg, kind = 'ok') {
 /* ------------------------------------------
    PRIMITIVES
 ------------------------------------------ */
-function buildToggle(initial, onChange) {
+const buildToggle = (initial, onChange) => {
     let state = !!initial;
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -160,7 +162,7 @@ function buildToggle(initial, onChange) {
     return btn;
 }
 
-function buildPillButton(label, fillColor, textColor, onClick) {
+const buildPillButton = (label, fillColor, textColor, onClick) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
@@ -197,7 +199,7 @@ function buildPillButton(label, fillColor, textColor, onClick) {
     return b;
 }
 
-function buildGhostButton(label, onClick) {
+const buildGhostButton = (label, onClick) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
@@ -220,7 +222,7 @@ function buildGhostButton(label, onClick) {
     return b;
 }
 
-function buildNegatesBadge() {
+const buildNegatesBadge = () => {
     const el = document.createElement('span');
     el.textContent = 'NEGATES';
     el.style.cssText = `
@@ -238,7 +240,7 @@ function buildNegatesBadge() {
     return el;
 }
 
-function buildTextInput(value, opts = {}) {
+const buildTextInput = (value, opts = {}) => {
     const input = document.createElement('input');
     input.type = 'text';
     input.value = value || '';
@@ -262,7 +264,7 @@ function buildTextInput(value, opts = {}) {
     return input;
 }
 
-function buildPriceInput(value, opts = {}) {
+const buildPriceInput = (value, opts = {}) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; align-items: center; gap: 2px;';
 
@@ -333,7 +335,7 @@ function buildPriceInput(value, opts = {}) {
     return wrap;
 }
 
-function buildErrorState(retry) {
+const buildErrorState = (retry) => {
     const el = document.createElement('div');
     el.textContent = 'Failed to load — tap to retry';
     el.style.cssText = `
@@ -348,7 +350,7 @@ function buildErrorState(retry) {
     return el;
 }
 
-function buildEmptyState(text) {
+const buildEmptyState = (text) => {
     const el = document.createElement('div');
     el.textContent = text;
     el.style.cssText = `
@@ -366,7 +368,7 @@ function buildEmptyState(text) {
 ============================================ */
 const MODIFIER_GRID = '1.6fr 100px 50px';
 
-function buildModifiersCard() {
+const buildModifiersCard = () => {
     const card = buildStaticCard({ accent: T.gold });
     card.className = 'kindpos-scrollbar-hide';
     card.style.flex = '1';
@@ -428,7 +430,7 @@ function buildModifiersCard() {
     return card;
 }
 
-function buildModifierColHeaders() {
+const buildModifierColHeaders = () => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         display: grid;
@@ -456,7 +458,7 @@ function buildModifierColHeaders() {
     return wrap;
 }
 
-function buildModifierRow(modifier) {
+const buildModifierRow = (modifier) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         border-bottom: 1px solid rgba(255,255,255,0.04);
@@ -508,7 +510,7 @@ function buildModifierRow(modifier) {
     toggleCell.style.cssText = 'display: flex; justify-content: center; align-items: center;';
     const toggle = buildToggle(modifier.active !== false, async (v) => {
         try {
-            await apiPatch(`/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}`, { active: v });
+            await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, active: v } }]);
             modifier.active = v;
         } catch (e) {
             toggle.setValue(!v);
@@ -536,7 +538,7 @@ function buildModifierRow(modifier) {
     return wrap;
 }
 
-function buildModifierAddPanel() {
+const buildModifierAddPanel = () => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${hexToRgba(T.gold, 0.06)};
@@ -579,7 +581,7 @@ function buildModifierAddPanel() {
         const priceVal = priceInput.getValue();
         if (!name) { showToast('Name is required', 'error'); return; }
         try {
-            await apiPost('/api/v1/modifiers', { name, price: priceVal });
+            await pushChanges([{ event_type: 'modifier.created', payload: { name, price: priceVal } }]);
             _state.addingModifier = false;
             await refreshAll();
             showToast('Modifier created');
@@ -591,7 +593,7 @@ function buildModifierAddPanel() {
     return panel;
 }
 
-function buildModifierEditPanel(modifier) {
+const buildModifierEditPanel = (modifier) => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${hexToRgba(T.gold, 0.06)};
@@ -642,7 +644,7 @@ function buildModifierEditPanel(modifier) {
             return;
         }
         try {
-            await apiPatch(`/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}`, body);
+            await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, ...body } }]);
             if (body.name != null) modifier.name = body.name;
             if (body.price != null) modifier.price = body.price;
             _state.editingModifierId = null;
@@ -662,7 +664,7 @@ function buildModifierEditPanel(modifier) {
 ============================================ */
 const OPTION_GRID = '1.4fr 100px 100px 50px';
 
-function buildOptionsCard() {
+const buildOptionsCard = () => {
     const card = buildStaticCard({ accent: T.lavender });
     card.className = 'kindpos-scrollbar-hide';
     card.style.flex = '1';
@@ -724,7 +726,7 @@ function buildOptionsCard() {
     return card;
 }
 
-function buildOptionColHeaders() {
+const buildOptionColHeaders = () => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         display: grid;
@@ -752,7 +754,7 @@ function buildOptionColHeaders() {
     return wrap;
 }
 
-function buildOptionRow(option) {
+const buildOptionRow = (option) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         border-bottom: 1px solid rgba(255,255,255,0.04);
@@ -837,7 +839,7 @@ function buildOptionRow(option) {
     return wrap;
 }
 
-function buildOptionAddPanel() {
+const buildOptionAddPanel = () => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${hexToRgba(T.lavender, 0.07)};
@@ -907,7 +909,7 @@ function buildOptionAddPanel() {
     return panel;
 }
 
-function buildOptionEditPanel(option) {
+const buildOptionEditPanel = (option) => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${hexToRgba(T.lavender, 0.07)};
@@ -986,8 +988,7 @@ function buildOptionEditPanel(option) {
     return panel;
 }
 
-function editLabelCSS() {
-    return `
+const editLabelCSS = () => `
         font-family: ${T.fb};
         font-size: 9px;
         font-weight: 700;
@@ -997,19 +998,18 @@ function editLabelCSS() {
         width: 96px;
         flex-shrink: 0;
     `;
-}
 
 /* ============================================
    RENDER + LIFECYCLE
 ============================================ */
-function rebuild() {
+const rebuild = () => {
     if (!_state.wrapper) return;
     _state.wrapper.replaceChildren();
     _state.wrapper.appendChild(buildModifiersCard());
     _state.wrapper.appendChild(buildOptionsCard());
 }
 
-async function refreshAll() {
+const refreshAll = async () => {
     _state.loadError = false;
     try {
         const [modifiers, options] = await Promise.all([

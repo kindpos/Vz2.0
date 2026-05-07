@@ -29,12 +29,12 @@ import {
 /* ============================================
    API
 ============================================ */
-async function apiGet(url) {
+const apiGet = async (url) => {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
     return res.json();
 }
-async function apiPut(url, body) {
+const apiPut = async (url, body) => {
     const res = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -43,7 +43,7 @@ async function apiPut(url, body) {
     if (!res.ok) throw new Error(`PUT ${url} → ${res.status}`);
     return res.json();
 }
-async function apiPatch(url, body) {
+const apiPatch = async (url, body) => {
     const res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -52,7 +52,7 @@ async function apiPatch(url, body) {
     if (!res.ok) throw new Error(`PATCH ${url} → ${res.status}`);
     return res.json();
 }
-async function apiOptional(url, fallback) {
+const apiOptional = async (url, fallback) => {
     try { return await apiGet(url); }
     catch (e) { console.warn(`[PricingExtensions] ${url} unavailable:`, e.message); return fallback; }
 }
@@ -60,7 +60,7 @@ async function apiOptional(url, fallback) {
 /* ============================================
    TOAST
 ============================================ */
-function toast(msg, kind = 'ok') {
+const toast = (msg, kind = 'ok') => {
     const el = document.createElement('div');
     const bg = kind === 'error' ? T.verm : T.greenWarm;
     el.textContent = msg;
@@ -87,9 +87,9 @@ function toast(msg, kind = 'ok') {
 /* ============================================
    PRIMITIVES
 ============================================ */
-function fmtPrice(n) { return '$' + Number(n || 0).toFixed(2); }
+const fmtPrice = (n) => '$' + Number(n || 0).toFixed(2); ;
 
-function makeLabel(text, color) {
+const makeLabel = (text, color) => {
     const el = document.createElement('div');
     el.textContent = text;
     el.style.cssText = `
@@ -104,7 +104,7 @@ function makeLabel(text, color) {
     return el;
 }
 
-function makeNote(text, color) {
+const makeNote = (text, color) => {
     const el = document.createElement('div');
     el.textContent = text;
     el.style.cssText = `
@@ -117,7 +117,7 @@ function makeNote(text, color) {
     return el;
 }
 
-function makeChip(text, color, opts = {}) {
+const makeChip = (text, color, opts = {}) => {
     const wrap = document.createElement('span');
     wrap.style.cssText = `
         display: inline-flex; align-items: center; gap: 6px;
@@ -158,7 +158,7 @@ function makeChip(text, color, opts = {}) {
     return wrap;
 }
 
-function makeAddLink(text, color, onClick) {
+const makeAddLink = (text, color, onClick) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = text;
@@ -178,7 +178,7 @@ function makeAddLink(text, color, onClick) {
     return btn;
 }
 
-function makePriceInput(value, opts = {}) {
+const makePriceInput = (value, opts = {}) => {
     const input = document.createElement('input');
     input.type = 'number';
     input.step = '0.01';
@@ -200,7 +200,7 @@ function makePriceInput(value, opts = {}) {
     return input;
 }
 
-function makeSelectMock(value, opts, onChange) {
+const makeSelectMock = (value, opts, onChange) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position: relative; display: inline-block;';
     const sel = document.createElement('select');
@@ -242,7 +242,7 @@ function makeSelectMock(value, opts, onChange) {
     return wrap;
 }
 
-function makeToggle(initial, onChange) {
+const makeToggle = (initial, onChange) => {
     let state = !!initial;
     const wrap = document.createElement('button');
     wrap.type = 'button';
@@ -285,7 +285,7 @@ function makeToggle(initial, onChange) {
 /* ============================================
    COLLAPSIBLE SECTION SHELL
 ============================================ */
-function buildSectionShell(opts) {
+const buildSectionShell = (opts) => {
     const card = buildStaticCard({ accent: opts.accent });
     card.style.padding = '14px 16px 14px 22px';
     card.style.marginBottom = '12px';
@@ -390,7 +390,7 @@ export async function buildItemPricingExtensions(container, item, menuData) {
 }
 
 /* ── 1) Item Base by Size ────────────────────────────────── */
-function buildItemBaseBySize(item, sizes, allGroups) {
+const buildItemBaseBySize = (item, sizes, allGroups) => {
     const driverGroup = (allGroups || []).find(g =>
         g.drives_pricing &&
         ((item.mandatory_group_ids || []).includes(g.group_id))
@@ -529,7 +529,7 @@ function buildItemBaseBySize(item, sizes, allGroups) {
 }
 
 /* ── 2) Mandatory Groups ─────────────────────────────────── */
-function buildItemMandatoryGroups(item, allGroups) {
+const buildItemMandatoryGroups = (item, allGroups) => {
     const { card, body } = buildSectionShell({
         accent: T.gold,
         title: 'Mandatory Groups',
@@ -661,7 +661,7 @@ function buildItemMandatoryGroups(item, allGroups) {
 }
 
 /* ── 3) Included Modifiers ───────────────────────────────── */
-function buildItemIncludedModifiers(item, allModifiers) {
+const buildItemIncludedModifiers = (item, allModifiers) => {
     const { card, body } = buildSectionShell({
         accent: T.elec,
         title: 'Included Modifiers',
@@ -793,7 +793,7 @@ function buildItemIncludedModifiers(item, allModifiers) {
 }
 
 /* ── 4) Overrides (option-group + size-price) ────────────── */
-function buildItemOverrides(item, allGroups, optionGroups, sizes) {
+const buildItemOverrides = (item, allGroups, optionGroups, sizes) => {
     const { card, body } = buildSectionShell({
         accent: T.moon,
         title: 'Overrides',
@@ -815,7 +815,7 @@ function buildItemOverrides(item, allGroups, optionGroups, sizes) {
     return card;
 }
 
-function buildOptionGroupOverrides(item, allGroups, optionGroups) {
+const buildOptionGroupOverrides = (item, allGroups, optionGroups) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
 
@@ -998,7 +998,7 @@ function buildOptionGroupOverrides(item, allGroups, optionGroups) {
     return wrap;
 }
 
-function buildSizePriceOverrides(item, allGroups, sizes) {
+const buildSizePriceOverrides = (item, allGroups, sizes) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
 
@@ -1223,7 +1223,7 @@ export async function buildCategoryPricingExtensions(container, category, menuDa
     container.appendChild(buildCategoryEnablePlacement(category));
 }
 
-function buildCategoryUniversalGroups(category, allGroups) {
+const buildCategoryUniversalGroups = (category, allGroups) => {
     const { card, body } = buildSectionShell({
         accent: T.green,
         title: 'Universal Groups',
@@ -1352,7 +1352,7 @@ function buildCategoryUniversalGroups(category, allGroups) {
     return card;
 }
 
-function buildCategoryEnablePlacement(category) {
+const buildCategoryEnablePlacement = (category) => {
     const { card, body } = buildSectionShell({
         accent: T.green,
         title: 'Enable Placement',

@@ -89,3 +89,31 @@ def set_print_dispatcher(dispatcher: PrintDispatcher) -> None:
     """Register a PrintDispatcher instance (called during startup)."""
     global _print_dispatcher
     _print_dispatcher = dispatcher
+
+
+async def check_license_activation(app) -> None:
+    """
+    Boot probe: check license activation status and set app.state.activated.
+
+    Called during FastAPI startup to determine if the node is activated.
+    Sets app.state.activated = True if license exists and is valid, False otherwise.
+    This flag is read by the frontend to route to the activation scene if needed.
+    """
+    if _diagnostic_collector is None:
+        app.state.activated = False
+        return
+
+    try:
+        result = await _diagnostic_collector.check_license()
+        app.state.activated = result.get("passed", False)
+    except Exception as e:
+        app.state.activated = False
+        if _diagnostic_collector:
+            await _diagnostic_collector.record(
+                category="system",
+                severity="warning",
+                source="check_license_activation",
+                event_code="SEC-006",
+                message=f"License check failed: {str(e)}",
+                context={"error": str(e)},
+            )

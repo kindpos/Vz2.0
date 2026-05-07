@@ -32,7 +32,7 @@ export const C = T;
 export const withAlpha = _withAlpha;
 
 // ─── Keyframes (injected once) ─────────────────────────────────────
-function ensureKeyframes() {
+const ensureKeyframes = () => {
   if (document.getElementById('ov-form-keyframes')) return;
   const style = document.createElement('style');
   style.id = 'ov-form-keyframes';
@@ -40,11 +40,11 @@ function ensureKeyframes() {
     @keyframes ov-fade-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
   `;
   document.head.appendChild(style);
-}
+};
 
 // ─── Toast ────────────────────────────────────────────────────────
 let _toastMount = null;
-function ensureToastMount() {
+const ensureToastMount = () => {
   if (_toastMount && document.body.contains(_toastMount)) return _toastMount;
   _toastMount = document.createElement('div');
   _toastMount.id = 'ov-toast-root';
@@ -55,7 +55,7 @@ function ensureToastMount() {
   `;
   document.body.appendChild(_toastMount);
   return _toastMount;
-}
+};
 
 export function showToast(msg, type = 'success') {
   ensureKeyframes();
@@ -200,7 +200,7 @@ function buildStickySaveBar({ label = 'Save Changes', onSave = null }) {
         await onSave();
       } catch (e) {
         console.error('[saveBar] onSave threw:', e);
-        showToast('Save failed: ' + (e.message || e), 'error');
+        showToast(`Save failed: ${e.message || e}`, 'error');
       } finally {
         setBusy(false);
       }
@@ -616,7 +616,7 @@ export function openPickerModal({
   list.style.cssText = 'max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;';
   content.appendChild(list);
 
-  function renderDelta() {
+  const renderDelta = () => {
     const added   = [...selected].filter(id => !originally.has(id)).length;
     const removed = [...originally].filter(id => !selected.has(id)).length;
     const total   = selected.size;
@@ -626,9 +626,9 @@ export function openPickerModal({
     if (!added && !removed) parts.push(`<span style="color:${C.textDim};">no changes</span>`);
     parts.push(`<span style="color:${C.textDim};">· ${total} total</span>`);
     delta.innerHTML = parts.join('  ');
-  }
+  };
 
-  function renderList() {
+  const renderList = () => {
     list.innerHTML = '';
     const q = search.value.trim().toLowerCase();
     const filtered = q ? all.filter(a => (a.name || '').toLowerCase().includes(q)) : all;
@@ -723,7 +723,7 @@ export function openPickerModal({
       });
       list.appendChild(row);
     });
-  }
+  };
 
   search.addEventListener('input', renderList);
   renderList();
@@ -818,7 +818,7 @@ export function buildChipTray({
   `;
   wrap.appendChild(tray);
 
-  function render() {
+  const render = () => {
     tray.innerHTML = '';
     if (state.ids.length === 0) {
       const empty = document.createElement('div');
@@ -881,7 +881,7 @@ export function buildChipTray({
       chip.appendChild(x);
       tray.appendChild(chip);
     });
-  }
+  };
 
   render();
   return {

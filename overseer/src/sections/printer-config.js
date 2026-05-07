@@ -109,7 +109,7 @@ export function registerPrinterConfig(sm) {
 
 // ─── SCAN EXECUTION ─────────────────────────────────────
 
-async function startScan() {
+const startScan = async () => {
     const scanBtn = document.getElementById('scan-btn');
     const stopBtn = document.getElementById('stop-scan-btn');
     const statusEl = document.getElementById('scan-status');
@@ -205,7 +205,7 @@ async function startScan() {
 
 // ─── SSE EVENT ROUTING ──────────────────────────────────
 
-function handleScanEvent(data) {
+const handleScanEvent = (data) => {
     switch (data.type) {
         case 'scan_start':
             appendScanLine(`Scan started: ${data.network} (${data.methods.join(', ')})`, 'line-header');
@@ -242,7 +242,7 @@ function handleScanEvent(data) {
 
 // ─── TERMINAL OUTPUT ────────────────────────────────────
 
-function appendScanLine(text, style = 'normal') {
+const appendScanLine = (text, style = 'normal') => {
     const output = document.getElementById('scan-output');
     if (!output) return;
 
@@ -257,7 +257,7 @@ function appendScanLine(text, style = 'normal') {
 
 // ─── PRINTER CARDS ──────────────────────────────────────
 
-function renderPrinterCard(printer) {
+const renderPrinterCard = (printer) => {
     const cardsEl = document.getElementById('printer-cards');
     if (!cardsEl) return;
 
@@ -320,7 +320,7 @@ function renderPrinterCard(printer) {
 
 // ─── TEST PRINT ─────────────────────────────────────────
 
-async function sendTestPrint(ip, port, btn) {
+const sendTestPrint = async (ip, port, btn) => {
     const resultId = `print-result-${ip.replace(/\./g, '-')}`;
     const resultEl = document.getElementById(resultId);
 
@@ -375,7 +375,7 @@ async function sendTestPrint(ip, port, btn) {
 
 // ─── COMPLETION ─────────────────────────────────────────
 
-function handleScanComplete(data) {
+const handleScanComplete = (data) => {
     const scanBtn = document.getElementById('scan-btn');
     const stopBtn = document.getElementById('stop-scan-btn');
     const statusEl = document.getElementById('scan-status');
@@ -409,7 +409,7 @@ function handleScanComplete(data) {
     }
 }
 
-function updatePrintersFound() {
+const updatePrintersFound = () => {
     const el = document.getElementById('printers-found');
     if (el) {
         el.textContent = discoveredPrinters.length || '...';
@@ -419,7 +419,7 @@ function updatePrintersFound() {
 
 // ─── CONTROLS ───────────────────────────────────────────
 
-function stopScan() {
+const stopScan = () => {
     if (scanStream) {
         scanStream.abort();
         scanStream = null;

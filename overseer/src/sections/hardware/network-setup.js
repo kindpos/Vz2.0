@@ -57,7 +57,7 @@ const SEED_TERMINALS = [
 
 // ── Gateway row ───────────────────────────────────────────────────────
 
-function buildGatewayRow(terminals) {
+const buildGatewayRow = (terminals) => {
     const row = document.createElement('div');
     row.style.cssText = `
         display: flex; align-items: center; gap: 14px;
@@ -180,7 +180,7 @@ function buildGatewayRow(terminals) {
 
 // ── Ghost "Add Terminal" card ─────────────────────────────────────────
 
-function buildGhostCard() {
+const buildGhostCard = () => {
     const card = document.createElement('div');
     card.style.cssText = `
         height: 72px;

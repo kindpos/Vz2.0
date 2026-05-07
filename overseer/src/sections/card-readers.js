@@ -11,7 +11,7 @@ const READER_TYPES = [
 
 let currentContainer = null;
 
-function showToast(msg, type = 'success') {
+const showToast = (msg, type = 'success') => {
     const toast = document.createElement('div');
     const color = type === 'error' ? 'var(--color-vermillion)' : 'var(--color-green)';
     toast.style.cssText = `position:fixed;top:24px;right:24px;z-index:10000;background:rgba(0,0,0,0.85);border:1px solid ${color};color:${color};padding:14px 24px;border-radius:8px;font-family:var(--font-body);font-size:22px;`;
@@ -20,7 +20,7 @@ function showToast(msg, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-async function fetchDevices() {
+const fetchDevices = async () => {
     try {
         const res = await fetch('/api/v1/hardware/devices');
         if (!res.ok) return [];
@@ -29,7 +29,7 @@ async function fetchDevices() {
     } catch { return []; }
 }
 
-async function saveDevice(device) {
+const saveDevice = async (device) => {
     const res = await fetch('/api/v1/hardware/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -38,14 +38,14 @@ async function saveDevice(device) {
     return res.ok;
 }
 
-async function deleteDevice(mac) {
+const deleteDevice = async (mac) => {
     const res = await fetch(`/api/v1/hardware/devices/${encodeURIComponent(mac)}`, {
         method: 'DELETE',
     });
     return res.ok;
 }
 
-async function testDevice(mac) {
+const testDevice = async (mac) => {
     try {
         const res = await fetch('/api/v1/payments/test-device');
         if (!res.ok) return false;
@@ -54,7 +54,7 @@ async function testDevice(mac) {
     } catch { return false; }
 }
 
-function input(label, id, value, placeholder = '', type = 'text') {
+const input = (label, id, value, placeholder = '', type = 'text') => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom: 14px;';
     const lbl = document.createElement('label');
@@ -72,7 +72,7 @@ function input(label, id, value, placeholder = '', type = 'text') {
     return { wrap, input: inp };
 }
 
-function openAddModal(onSave) {
+const openAddModal = (onSave) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:5000;display:flex;align-items:center;justify-content:center;';
 
@@ -159,7 +159,7 @@ function openAddModal(onSave) {
     document.body.appendChild(overlay);
 }
 
-async function render(container) {
+const render = async (container) => {
     container.innerHTML = '';
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'max-width: 900px; margin: 0 auto; padding: 30px 24px 60px;';

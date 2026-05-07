@@ -68,7 +68,7 @@ const PERMISSION_DEFS = [
 /* ------------------------------------------
    LOAD
 ------------------------------------------ */
-async function loadRoles() {
+const loadRoles = async () => {
     try {
         const res = await fetch('/api/v1/config/roles');
         if (res.ok) {
@@ -83,11 +83,10 @@ async function loadRoles() {
     }
 }
 
-function _newRoleId() {
-    return 'role_' + Math.random().toString(36).slice(2, 10);
-}
+const _newRoleId = () => 'role_' + Math.random().toString(36).slice(2, 10);
+;
 
-function _permissionCount(role) {
+const _permissionCount = (role) => {
     const p = role.permissions || {};
     return Object.values(p).filter(Boolean).length;
 }
@@ -97,7 +96,7 @@ function _permissionCount(role) {
    One tile per role — name in role color, permission level chip,
    tipped dot, default rate, permission count. Click → edit.
 ------------------------------------------ */
-function buildRoleCard(role) {
+const buildRoleCard = (role) => {
     const card = document.createElement('button');
     card.type = 'button';
     card.style.cssText = `
@@ -192,7 +191,7 @@ function buildRoleCard(role) {
     return card;
 }
 
-function _metaItem(text, color) {
+const _metaItem = (text, color) => {
     const span = document.createElement('span');
     span.textContent = text;
     span.style.color = color;
@@ -203,7 +202,7 @@ function _metaItem(text, color) {
 /* ------------------------------------------
    RENDER
 ------------------------------------------ */
-async function renderRoles(wrapper) {
+const renderRoles = async (wrapper) => {
     wrapper.innerHTML = '';
 
     const loading = document.createElement('div');
@@ -285,7 +284,7 @@ async function renderRoles(wrapper) {
    employee.role_created / role_updated on save,
    employee.role_deleted on delete.
    ========================================== */
-function openRoleModal(role) {
+const openRoleModal = (role) => {
     const isEdit = !!role;
     const draft = {
         role_id:     isEdit ? role.role_id : _newRoleId(),
@@ -628,7 +627,7 @@ function openRoleModal(role) {
     });
 }
 
-function confirmDeleteRole(role) {
+const confirmDeleteRole = (role) => {
     const content = document.createElement('div');
     content.style.cssText = `font-size: ${T.fs.lg}px; color: ${T.text}; line-height: 1.6;`;
     content.innerHTML = `

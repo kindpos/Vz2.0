@@ -64,6 +64,11 @@ vi.mock('../theme-manager.js', () => ({
     el.setAccent = vi.fn();
     return el;
   },
+  buildChamferButton: ({ onClick } = {}) => {
+    const el = document.createElement('div');
+    if (onClick) el.addEventListener('pointerup', onClick);
+    return el;
+  },
 }));
 
 vi.mock('../net.js', () => ({

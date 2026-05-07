@@ -16,15 +16,15 @@
 
 const _KEY = 'kindpos.overseer.session';
 
-function _read() {
+const _read = () => {
     try { return JSON.parse(sessionStorage.getItem(_KEY) || 'null'); }
     catch (e) { return null; }
-}
+};
 
-function _write(obj) {
+const _write = (obj) => {
     try { sessionStorage.setItem(_KEY, JSON.stringify(obj)); }
     catch (e) { /* quota exceeded / private mode — ignore */ }
-}
+};
 
 export function setToken(data) {
     if (!data || !data.token) return;
@@ -109,7 +109,7 @@ export function installAuthFetchInterceptor() {
 
     _originalFetch = window.fetch.bind(window);
 
-    window.fetch = async function(input, init) {
+    window.fetch = async (input, init) => {
         const attach = (initArg) => {
             const url = (typeof input === 'string') ? input
                       : (input && input.url) ? input.url : '';
@@ -123,7 +123,7 @@ export function installAuthFetchInterceptor() {
             const out = initArg ? { ...initArg } : {};
             const headers = new Headers(out.headers || {});
             if (!headers.has('Authorization')) {
-                headers.set('Authorization', 'Bearer ' + tok);
+                headers.set('Authorization', `Bearer ${tok}`);
                 out.headers = headers;
             }
             return out;

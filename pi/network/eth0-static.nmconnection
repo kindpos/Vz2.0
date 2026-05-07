@@ -1,0 +1,20 @@
+# KINDpos eth0 static IP — NetworkManager connection profile
+#
+# This documents the proven working configuration applied via:
+#   sudo nmcli connection modify netplan-eth0 ipv4.addresses 192.168.50.1/24 ipv4.method manual
+#
+# To apply on a fresh Pi:
+#   sudo nmcli connection modify netplan-eth0 ipv4.addresses 192.168.50.1/24 ipv4.method manual
+#   sudo nmcli connection up netplan-eth0
+
+[connection]
+id=netplan-eth0
+type=ethernet
+interface-name=eth0
+
+[ipv4]
+method=manual
+addresses=192.168.50.1/24
+
+[ipv6]
+method=disabled

@@ -336,6 +336,26 @@ async def push_changes(changes: List[PendingChange], background_tasks: Backgroun
         # call on a value that might already be hashed.
         if change.event_type.startswith("employee.") and payload.get("pin"):
             payload["pin"] = ensure_hashed_pin(payload["pin"])
+
+        # Hub constraint: only one terminal may have is_hub=True. If setting
+        # is_hub=True on a terminal, first reset any existing hub terminal.
+        if (change.event_type in ("terminal.registered", "terminal.updated")
+            and payload.get("is_hub") is True):
+            service = OverseerConfigService(ledger)
+            existing_terminals = await service.get_terminals()
+            target_id = payload.get("terminal_id")
+            # Find any other terminal that is marked as hub and disable it
+            for term in existing_terminals:
+                if term.is_hub and term.terminal_id != target_id:
+                    # Create an event to disable the old hub
+                    old_hub_event = create_event(
+                        event_type=EventType.TERMINAL_UPDATED,
+                        terminal_id="OVERSEER",
+                        payload={"terminal_id": term.terminal_id, "is_hub": False}
+                    )
+                    events.append(old_hub_event)
+                    break
+
         # Auto-wire order_id from payload as correlation_id so that
         # order-scoped events (seat.*, check.seat_*, seat.transferred_*)
         # are retrievable via get_events_by_correlation(order_id). Non-order

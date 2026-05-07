@@ -25,17 +25,15 @@ import {
 import { fmt, fmtPct, fmtInt } from '../ui/money.js';
 import { buildDatePicker } from '../components/date-picker.js';
 
+// ─── Date helpers ───────────────────────────────────────────────────
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
 // ─── State ──────────────────────────────────────────────────────────
 let _currentContainer = null;
 let _currentDate      = todayStr();
 let _abortController  = null;
 
-// ─── Date helpers ───────────────────────────────────────────────────
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function prettyDate(d) {
+const prettyDate = (d) => {
   const dt = new Date(`${d}T00:00:00`);
   if (!Number.isFinite(dt.getTime())) return d;
   const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
@@ -44,34 +42,34 @@ function prettyDate(d) {
 }
 
 // ─── Formatters ─────────────────────────────────────────────────────
-function fmtHrs(v) { return (Number(v) || 0).toFixed(2) + 'h'; }
+const fmtHrs = (v) => (Number(v) || 0).toFixed(2) + 'h'; ;
 
 // ─── Fetch ──────────────────────────────────────────────────────────
-async function fetchJson(url, signal) {
+const fetchJson = async (url, signal) => {
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`${url} ${res.status}`);
   return res.json();
 }
 
-async function fetchLabor(date, signal) {
+const fetchLabor = async (date, signal) => {
   try {
     return await fetchJson(`/api/v1/reports/labor-summary?date=${date}`, signal);
   } catch { return null; }
 }
 
-async function fetchEmployees(signal) {
+const fetchEmployees = async (signal) => {
   try { return await fetchJson('/api/v1/config/employees', signal); }
   catch { return []; }
 }
 
-async function fetchRoles(signal) {
+const fetchRoles = async (signal) => {
   try { return await fetchJson('/api/v1/config/roles', signal); }
   catch { return []; }
 }
 
 // Build { [employee_id]: { isManager, roleName } } the same way sales-reports
 // does so manager rows can be badged.
-function buildRoleMap(employees, roles) {
+const buildRoleMap = (employees, roles) => {
   const byId = new Map();
   for (const r of (roles || [])) byId.set(r.role_id, r);
   const map = new Map();
@@ -87,7 +85,7 @@ function buildRoleMap(employees, roles) {
 }
 
 // ─── Layout ─────────────────────────────────────────────────────────
-function buildLayout(container) {
+const buildLayout = (container) => {
   container.innerHTML = `
     <style>
       .labor-wrapper {
@@ -252,11 +250,11 @@ function buildLayout(container) {
   }
 }
 
-function regionEl(container, id) {
+const regionEl = (container, id) => {
   return container.querySelector(`#${id}`);
 }
 
-function renderRegionError(row, err, cells = 1) {
+const renderRegionError = (row, err, cells = 1) => {
   if (!row) return;
   row.innerHTML = '';
   for (let i = 0; i < cells; i++) {
@@ -267,7 +265,7 @@ function renderRegionError(row, err, cells = 1) {
   }
 }
 
-function renderRegionEmpty(row, msg, cells = 1) {
+const renderRegionEmpty = (row, msg, cells = 1) => {
   if (!row) return;
   row.innerHTML = '';
   for (let i = 0; i < cells; i++) {
@@ -281,15 +279,14 @@ function renderRegionEmpty(row, msg, cells = 1) {
 // ─── Labor KPI math ─────────────────────────────────────────────────
 // Federal overtime: any weekly hours beyond 40, summed across the
 // roster. Matches the per-row calc so KPI + rows stay in lockstep.
-function computeOvertime(employees) {
-  return (employees || []).reduce(
+const computeOvertime = (employees) => (employees || []).reduce(
     (s, e) => s + Math.max(0, (Number(e.weekly_hours) || 0) - 40),
     0,
   );
-}
+;
 
 // ─── Region: hero KPIs ──────────────────────────────────────────────
-function renderHero(container, data) {
+const renderHero = (container, data) => {
   const row = regionEl(container, 'region-hero');
   if (!row) return;
   row.innerHTML = '';
@@ -341,7 +338,7 @@ function renderHero(container, data) {
 }
 
 // ─── Region: COB gauge + 7-day trend ────────────────────────────────
-function renderCob(container, data) {
+const renderCob = (container, data) => {
   const row = regionEl(container, 'region-cob');
   if (!row) return;
   row.innerHTML = '';
@@ -379,7 +376,7 @@ function renderCob(container, data) {
 // Pulls directly from labor-summary fields so tipout% and tip_pool
 // stay consistent with the backend's tipout math (see reporting.py
 // get_labor_summary — tip_pool = total_tips − tipout_deducted).
-function renderTips(container, data) {
+const renderTips = (container, data) => {
   const row = regionEl(container, 'region-tips');
   if (!row) return;
   row.innerHTML = '';
@@ -428,7 +425,7 @@ function renderTips(container, data) {
 }
 
 // ─── Region: employee breakdown + OT watch ──────────────────────────
-function renderBreakdown(container, data, roleMap) {
+const renderBreakdown = (container, data, roleMap) => {
   const row = regionEl(container, 'region-breakdown');
   if (!row) return;
   row.innerHTML = '';
@@ -566,7 +563,7 @@ function renderBreakdown(container, data, roleMap) {
 }
 
 // ─── Orchestration ──────────────────────────────────────────────────
-async function renderAll(container) {
+const renderAll = async (container) => {
   const sub = container.querySelector('#labor-subtitle');
   if (sub) sub.textContent = prettyDate(_currentDate);
 

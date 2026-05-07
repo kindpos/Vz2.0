@@ -30,6 +30,7 @@ import {
     hexToRgba,
     darkenHex,
 } from '../../../common/theme.js';
+import { fetchWithTimeout } from '../services/http.js';
 
 /* ------------------------------------------
    STATE
@@ -60,8 +61,8 @@ const _state = {
 /* ------------------------------------------
    FORMATTERS
 ------------------------------------------ */
-function fmtPrice(n) { return '$' + Number(n || 0).toFixed(2); }
-function fmtPriceAdj(n) {
+const fmtPrice = (n) => '$' + Number(n || 0).toFixed(2); ;
+const fmtPriceAdj = (n) => {
     const v = Number(n || 0);
     if (v > 0) return '+ ' + fmtPrice(v);
     if (v < 0) return '− ' + fmtPrice(Math.abs(v));
@@ -71,14 +72,14 @@ function fmtPriceAdj(n) {
 /* ------------------------------------------
    API
 ------------------------------------------ */
-async function apiGet(url) {
-    const res = await fetch(url);
+const apiGet = async (url) => {
+    const res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
     return res.json();
 }
 
-async function apiPost(url, body) {
-    const res = await fetch(url, {
+const apiPost = async (url, body) => {
+    const res = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body == null ? undefined : JSON.stringify(body),
@@ -87,8 +88,8 @@ async function apiPost(url, body) {
     return res.json();
 }
 
-async function apiPatch(url, body) {
-    const res = await fetch(url, {
+const apiPatch = async (url, body) => {
+    const res = await fetchWithTimeout(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -97,8 +98,8 @@ async function apiPatch(url, body) {
     return res.json();
 }
 
-async function apiPut(url, body) {
-    const res = await fetch(url, {
+const apiPut = async (url, body) => {
+    const res = await fetchWithTimeout(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -107,13 +108,13 @@ async function apiPut(url, body) {
     return res.json();
 }
 
-async function apiGetOptional(url, fallback) {
+const apiGetOptional = async (url, fallback) => {
     try { return await apiGet(url); }
     catch (e) { console.warn(`[Modifiers] ${url} unavailable:`, e.message); return fallback; }
 }
 
-async function apiDelete(url) {
-    const res = await fetch(url, { method: 'DELETE' });
+const apiDelete = async (url) => {
+    const res = await fetchWithTimeout(url, { method: 'DELETE' });
     if (!res.ok) throw new Error(`DELETE ${url} → ${res.status}`);
     return res.json();
 }
@@ -123,7 +124,7 @@ async function apiDelete(url) {
    dropdown <select> populated from an async fetch.
    Used by Wire 1 / 3 / 5 in the spec.
 ------------------------------------------ */
-async function openModifierPickerInline(host, currentIds, onPick) {
+const openModifierPickerInline = async (host, currentIds, onPick) => {
     const original = host.textContent;
     host.disabled = true;
     host.textContent = 'Loading…';
@@ -144,7 +145,7 @@ async function openModifierPickerInline(host, currentIds, onPick) {
     }
 }
 
-async function openMicromodGroupPickerInline(host, takenMicromodIds, onPick) {
+const openMicromodGroupPickerInline = async (host, takenMicromodIds, onPick) => {
     const original = host.textContent;
     host.disabled = true;
     host.textContent = 'Loading…';
@@ -169,7 +170,7 @@ async function openMicromodGroupPickerInline(host, takenMicromodIds, onPick) {
     }
 }
 
-function buildPickerSelect(placeholder, options, onPick) {
+const buildPickerSelect = (placeholder, options, onPick) => {
     const select = document.createElement('select');
     select.style.cssText = `
         background: ${T.well};
@@ -204,7 +205,7 @@ function buildPickerSelect(placeholder, options, onPick) {
     return select;
 }
 
-function buildErrorState(retry) {
+const buildErrorState = (retry) => {
     const el = document.createElement('div');
     el.textContent = 'Failed to load — tap to retry';
     el.style.cssText = `
@@ -223,7 +224,7 @@ function buildErrorState(retry) {
 /* ------------------------------------------
    TOAST
 ------------------------------------------ */
-function showToast(msg, kind = 'ok') {
+const showToast = (msg, kind = 'ok') => {
     const toast = document.createElement('div');
     const bg = kind === 'error' ? T.verm : T.greenWarm;
     toast.textContent = msg;
@@ -251,7 +252,7 @@ function showToast(msg, kind = 'ok') {
 /* ------------------------------------------
    PRIMITIVES
 ------------------------------------------ */
-function buildToggle(initial, onChange) {
+const buildToggle = (initial, onChange) => {
     let state = !!initial;
     const wrap = document.createElement('button');
     wrap.type = 'button';
@@ -294,7 +295,7 @@ function buildToggle(initial, onChange) {
     return wrap;
 }
 
-function buildPillButton(label, variant, onClick, opts = {}) {
+const buildPillButton = (label, variant, onClick, opts = {}) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
@@ -339,7 +340,7 @@ function buildPillButton(label, variant, onClick, opts = {}) {
     return b;
 }
 
-function buildBadge(text, color) {
+const buildBadge = (text, color) => {
     const el = document.createElement('span');
     el.textContent = text;
     el.style.cssText = `
@@ -357,7 +358,7 @@ function buildBadge(text, color) {
     return el;
 }
 
-function buildMoonBadge(text) {
+const buildMoonBadge = (text) => {
     const el = document.createElement('span');
     el.textContent = text;
     el.style.cssText = `
@@ -374,7 +375,7 @@ function buildMoonBadge(text) {
     return el;
 }
 
-function buildSelectMock(value, onChange, options) {
+const buildSelectMock = (value, onChange, options) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position: relative; display: inline-block;';
 
@@ -419,7 +420,7 @@ function buildSelectMock(value, onChange, options) {
     return wrap;
 }
 
-function buildPriceInput(value, opts = {}) {
+const buildPriceInput = (value, opts = {}) => {
     const input = document.createElement('input');
     input.type = 'number';
     input.step = '0.01';
@@ -445,7 +446,7 @@ function buildPriceInput(value, opts = {}) {
    LEFT PANEL — group list
 ============================================ */
 
-function buildLeftPanel() {
+const buildLeftPanel = () => {
     const leftCard = buildStaticCard({ accent: T.green });
     leftCard.style.width = '680px';
     leftCard.style.flexShrink = '0';
@@ -539,7 +540,7 @@ function buildLeftPanel() {
     return leftCard;
 }
 
-function buildGroupListItem(group) {
+const buildGroupListItem = (group) => {
     const isSelected = _state.selectedGroupId === group.group_id;
     const isDriver = !!group.drives_pricing;
     const accent = isDriver ? T.gold : T.green;
@@ -617,7 +618,7 @@ function buildGroupListItem(group) {
     return item;
 }
 
-function buildAddGroupForm() {
+const buildAddGroupForm = () => {
     const form = document.createElement('div');
     form.style.cssText = `
         padding: 10px;
@@ -688,7 +689,7 @@ function buildAddGroupForm() {
    RIGHT PANEL
 ============================================ */
 
-function buildRightPanel() {
+const buildRightPanel = () => {
     const rightCard = buildStaticCard({ accent: T.elec });
     rightCard.className = 'kindpos-scrollbar-hide';
     rightCard.style.flex = '1';
@@ -730,7 +731,7 @@ function buildRightPanel() {
     return rightCard;
 }
 
-function buildGroupHeaderBar(group) {
+const buildGroupHeaderBar = (group) => {
     const bar = document.createElement('div');
     bar.style.cssText = `
         background: ${T.card};
@@ -974,7 +975,7 @@ function buildGroupHeaderBar(group) {
     return bar;
 }
 
-function buildModifierChipsRow(group) {
+const buildModifierChipsRow = (group) => {
     const strip = document.createElement('div');
     strip.style.cssText = `
         background: ${T.bg};
@@ -1005,7 +1006,7 @@ function buildModifierChipsRow(group) {
     return strip;
 }
 
-function buildModifierChip(modifier, group) {
+const buildModifierChip = (modifier, group) => {
     const isSelected = _state.selectedModifierId === modifier.modifier_id;
     const price = Number(modifier.price || 0);
     const accent = price > 0 ? T.gold : T.green;
@@ -1115,7 +1116,7 @@ function buildModifierChip(modifier, group) {
     return chip;
 }
 
-function buildAddModifierChip(group) {
+const buildAddModifierChip = (group) => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.textContent = '+ Add Modifier';
@@ -1161,7 +1162,7 @@ function buildAddModifierChip(group) {
    MODIFIER DETAIL CARD
 ============================================ */
 
-function buildModifierDetail(group, modifier) {
+const buildModifierDetail = (group, modifier) => {
     const wrap = document.createElement('div');
 
     const sectionLabel = document.createElement('div');
@@ -1358,7 +1359,7 @@ function buildModifierDetail(group, modifier) {
 /* ------------------------------------------
    SIZE PRICING column
 ------------------------------------------ */
-function buildSizePricingCol(group, modifier) {
+const buildSizePricingCol = (group, modifier) => {
     const col = document.createElement('div');
     col.style.cssText = 'display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0;';
 
@@ -1574,7 +1575,7 @@ function buildSizePricingCol(group, modifier) {
 /* ------------------------------------------
    MICROMODS column
 ------------------------------------------ */
-function buildMicromodsCol(modifier) {
+const buildMicromodsCol = (modifier) => {
     const col = document.createElement('div');
     col.style.cssText = 'display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0;';
 
@@ -1680,7 +1681,7 @@ function buildMicromodsCol(modifier) {
     return col;
 }
 
-function buildMicromodRow(mm, modifier) {
+const buildMicromodRow = (mm, modifier) => {
     const row = document.createElement('div');
     row.style.cssText = `
         background: ${hexToRgba(T.lavender, 0.07)};
@@ -1787,7 +1788,7 @@ function buildMicromodRow(mm, modifier) {
     return row;
 }
 
-function buildIncludedItemsSection(modifier) {
+const buildIncludedItemsSection = (modifier) => {
     const wrap = document.createElement('div');
 
     const label = document.createElement('div');
@@ -1866,17 +1867,17 @@ function buildIncludedItemsSection(modifier) {
 /* ============================================
    HELPERS — current-selection lookups
 ============================================ */
-function currentGroup() {
+const currentGroup = () => {
     if (!_state.selectedGroupId) return null;
     return _state.groups.find(g => g.group_id === _state.selectedGroupId) || null;
 }
 
-function currentModifier(group) {
+const currentModifier = (group) => {
     if (!group || !_state.selectedModifierId) return null;
     return (group.modifiers || []).find(m => m.modifier_id === _state.selectedModifierId) || null;
 }
 
-function optionGroupName(id) {
+const optionGroupName = (id) => {
     if (!id) return null;
     const og = _state.optionGroups.find(o => o.option_group_id === id);
     return og ? og.name : null;
@@ -1885,7 +1886,7 @@ function optionGroupName(id) {
 /* ============================================
    TAB BAR
 ============================================ */
-function buildTabBar() {
+const buildTabBar = () => {
     const bar = document.createElement('div');
     bar.style.cssText = `
         background: ${T.card};
@@ -1905,7 +1906,7 @@ function buildTabBar() {
     return bar;
 }
 
-function buildTab(id, label) {
+const buildTab = (id, label) => {
     const isActive = _state.activeTab === id;
     const tab = document.createElement('div');
     tab.textContent = label;
@@ -1933,7 +1934,7 @@ function buildTab(id, label) {
 /* ============================================
    MICROMOD GROUPS TAB
 ============================================ */
-function buildMicromodTab() {
+const buildMicromodTab = () => {
     const wrap = document.createElement('div');
     wrap.className = 'kindpos-scrollbar-hide';
     wrap.style.cssText = `
@@ -2017,7 +2018,7 @@ function buildMicromodTab() {
     return wrap;
 }
 
-function buildMicromodGroupCard(group) {
+const buildMicromodGroupCard = (group) => {
     const card = buildStaticCard({ accent: T.lavender });
     card.style.padding = '14px 16px 14px 22px';
     card.style.display = 'flex';
@@ -2047,7 +2048,7 @@ function buildMicromodGroupCard(group) {
     return card;
 }
 
-function buildAttachesToSection(group) {
+const buildAttachesToSection = (group) => {
     const wrap = document.createElement('div');
 
     const label = document.createElement('div');
@@ -2082,7 +2083,7 @@ function buildAttachesToSection(group) {
     return wrap;
 }
 
-function buildAttachChip(label) {
+const buildAttachChip = (label) => {
     const chip = document.createElement('span');
     chip.textContent = label;
     chip.style.cssText = `
@@ -2101,7 +2102,7 @@ function buildAttachChip(label) {
     return chip;
 }
 
-function buildDefaultOptionGroupSection(group) {
+const buildDefaultOptionGroupSection = (group) => {
     const wrap = document.createElement('div');
 
     const label = document.createElement('div');
@@ -2165,7 +2166,7 @@ function buildDefaultOptionGroupSection(group) {
     return wrap;
 }
 
-function buildMicromodModifiersSection(group) {
+const buildMicromodModifiersSection = (group) => {
     const wrap = document.createElement('div');
 
     const label = document.createElement('div');
@@ -2198,7 +2199,7 @@ function buildMicromodModifiersSection(group) {
     return wrap;
 }
 
-function buildMicromodAddModifierChip(group) {
+const buildMicromodAddModifierChip = (group) => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.textContent = '+ ADD MODIFIER';
@@ -2233,7 +2234,7 @@ function buildMicromodAddModifierChip(group) {
     return chip;
 }
 
-function buildMicromodModifierChip(modifier) {
+const buildMicromodModifierChip = (modifier) => {
     const baseShadow = `0 4px 0 ${darkenHex(T.card, 0.35)}, inset 0 1px 0 rgba(255,255,255,0.08)`;
     const chip = document.createElement('div');
     chip.style.cssText = `
@@ -2275,13 +2276,13 @@ function buildMicromodModifierChip(modifier) {
 /* ------------------------------------------
    MICROMOD HELPERS
 ------------------------------------------ */
-function isMicromodGroup(g) {
+const isMicromodGroup = (g) => {
     if (!g || g.hidden) return false;
     const t = (g.template_id || '').toLowerCase();
     return t === 'micromod' || t.includes('micromod') || g.is_micromod === true;
 }
 
-function attachesToModifierIds(group) {
+const attachesToModifierIds = (group) => {
     if (Array.isArray(group.attaches_to_modifier_ids) && group.attaches_to_modifier_ids.length) {
         return group.attaches_to_modifier_ids.slice();
     }
@@ -2298,7 +2299,7 @@ function attachesToModifierIds(group) {
     return [...ids];
 }
 
-function modifierNameById(id) {
+const modifierNameById = (id) => {
     if (!id) return null;
     for (const g of _state.groups) {
         const found = (g.modifiers || []).find(m => m.modifier_id === id);
@@ -2314,7 +2315,7 @@ function modifierNameById(id) {
 /* ============================================
    RENDER + LIFECYCLE
 ============================================ */
-function buildModTab() {
+const buildModTab = () => {
     const row = document.createElement('div');
     row.style.cssText = `
         display: flex;
@@ -2333,7 +2334,7 @@ function buildModTab() {
 /* ============================================
    OPTION GROUPS TAB
 ============================================ */
-function buildOptionGroupTab() {
+const buildOptionGroupTab = () => {
     const wrap = document.createElement('div');
     wrap.className = 'kindpos-scrollbar-hide';
     wrap.style.cssText = `
@@ -2381,7 +2382,7 @@ function buildOptionGroupTab() {
     return wrap;
 }
 
-function buildOptionGroupAddPanel() {
+const buildOptionGroupAddPanel = () => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${hexToRgba(T.lavender, 0.08)};
@@ -2448,7 +2449,7 @@ function buildOptionGroupAddPanel() {
     return panel;
 }
 
-function buildOptionGroupCard(group) {
+const buildOptionGroupCard = (group) => {
     const card = buildStaticCard({ accent: T.lavender });
     card.style.padding = '14px 18px 14px 20px';
     card.style.display = 'flex';
@@ -2567,7 +2568,7 @@ function buildOptionGroupCard(group) {
     return card;
 }
 
-function buildOptionGroupChip(option, onRemove) {
+const buildOptionGroupChip = (option, onRemove) => {
     const negates = !!option.negates_price;
     const baseColor = negates ? T.verm : T.lavender;
     const adj = Number(option.price_adjustment || 0);
@@ -2630,7 +2631,7 @@ function buildOptionGroupChip(option, onRemove) {
     return chip;
 }
 
-function buildOptionGroupAddOptionControl(group) {
+const buildOptionGroupAddOptionControl = (group) => {
     const taken = new Set(group.option_ids || []);
     const candidates = (_state.options || []).filter(
         o => !taken.has(o.option_id) && o.active !== false,
@@ -2685,7 +2686,7 @@ function buildOptionGroupAddOptionControl(group) {
     return select;
 }
 
-function findGroupsUsingOptionGroup(ogId) {
+const findGroupsUsingOptionGroup = (ogId) => {
     if (!ogId) return [];
     const consumers = [];
     [..._state.groups, ..._state.micromodGroups].forEach(g => {
@@ -2694,7 +2695,7 @@ function findGroupsUsingOptionGroup(ogId) {
     return consumers;
 }
 
-function rebuild() {
+const rebuild = () => {
     if (!_state.contentMount) return;
     _state.contentMount.replaceChildren();
     if (_state.activeTab === 'micromod') {
@@ -2710,7 +2711,7 @@ function rebuild() {
     }
 }
 
-async function refreshAll() {
+const refreshAll = async () => {
     _state.loadError = false;
     let groups, micromodGroups, optionGroups, options, sizes, micromods, items;
     try {

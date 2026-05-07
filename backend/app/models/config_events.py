@@ -1,6 +1,6 @@
 from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 import uuid
 
 class StoreInfo(BaseModel):
@@ -63,6 +63,9 @@ class StoreConfigBundle(BaseModel):
     order_types: StoreOrderTypes
     auto_gratuity: StoreAutoGratuity
     cash_discount_rate: float = 0.0
+    receipt_header: str = ""
+    receipt_footer: str = ""
+    receipt_settings: Dict[str, Any] = Field(default_factory=dict)
 
 # Employee Models
 class Role(BaseModel):
@@ -379,6 +382,7 @@ class Terminal(BaseModel):
     role: str
     default_section_id: Optional[str] = None
     training_mode: bool = False
+    is_hub: bool = False
 
 class Printer(BaseModel):
     printer_id: str

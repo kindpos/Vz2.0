@@ -183,8 +183,8 @@ T.embCyanEdge  = '#005050';
 T.embVermEdge  = '#5a0800';
 
 export function chamfer(s) {
-  var c = s || T.chamfer;
-  return 'polygon(' + c + 'px 0%, calc(100% - ' + c + 'px) 0%, 100% ' + c + 'px, 100% calc(100% - ' + c + 'px), calc(100% - ' + c + 'px) 100%, ' + c + 'px 100%, 0% calc(100% - ' + c + 'px), 0% ' + c + 'px)';
+  const c = s || T.chamfer;
+  return `polygon(${c}px 0%, calc(100% - ${c}px) 0%, 100% ${c}px, 100% calc(100% - ${c}px), calc(100% - ${c}px) 100%, ${c}px 100%, 0% calc(100% - ${c}px), 0% ${c}px)`;
 }
 
 export function bevelEdges(fillColor) {
@@ -236,31 +236,31 @@ export function shadowColor(fillColor) {
 //  chamfer: 5px clip-path polygon (buttons + cards only)
 // ═══════════════════════════════════════════════════
 
-var _EMB_VARIANTS = {
+const _EMB_VARIANTS = {
   dark: {
     bg: T.embDarkBg, label: T.textPrimary,
-    shadow: 'inset 0 2px 0 rgba(255,255,255,0.12),inset 0 -2px 0 rgba(0,0,0,0.60),inset 2px 0 0 rgba(255,255,255,0.05),inset -2px 0 0 rgba(0,0,0,0.30),inset 0 4px 8px rgba(0,0,0,0.50),0 2px 8px rgba(0,0,0,0.60),0 0 0 1px ' + T.embEdge,
-    shadowActive: 'inset 0 2px 0 rgba(255,255,255,0.12),inset 0 -2px 0 rgba(0,0,0,0.60),inset 2px 0 0 rgba(255,255,255,0.05),inset -2px 0 0 rgba(0,0,0,0.30),inset 0 8px 16px rgba(0,0,0,0.50),0 2px 8px rgba(0,0,0,0.60),0 0 0 1px ' + T.embEdge,
+    shadow: `inset 0 2px 0 rgba(255,255,255,0.12),inset 0 -2px 0 rgba(0,0,0,0.60),inset 2px 0 0 rgba(255,255,255,0.05),inset -2px 0 0 rgba(0,0,0,0.30),inset 0 4px 8px rgba(0,0,0,0.50),0 2px 8px rgba(0,0,0,0.60),0 0 0 1px ${T.embEdge}`,
+    shadowActive: `inset 0 2px 0 rgba(255,255,255,0.12),inset 0 -2px 0 rgba(0,0,0,0.60),inset 2px 0 0 rgba(255,255,255,0.05),inset -2px 0 0 rgba(0,0,0,0.30),inset 0 8px 16px rgba(0,0,0,0.50),0 2px 8px rgba(0,0,0,0.60),0 0 0 1px ${T.embEdge}`,
   },
   gold: {
     bg: T.embGoldBg, label: T.embGoldLabel,
-    shadow: 'inset 0 2px 0 rgba(255,225,150,0.45),inset 0 -2px 0 rgba(0,0,0,0.45),inset 0 4px 8px rgba(180,100,0,0.30),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(251,176,59,0.20),0 0 0 1px ' + T.embGoldEdge,
-    shadowActive: 'inset 0 2px 0 rgba(255,225,150,0.45),inset 0 -2px 0 rgba(0,0,0,0.45),inset 0 8px 16px rgba(180,100,0,0.30),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(251,176,59,0.20),0 0 0 1px ' + T.embGoldEdge,
+    shadow: `inset 0 2px 0 rgba(255,225,150,0.45),inset 0 -2px 0 rgba(0,0,0,0.45),inset 0 4px 8px rgba(180,100,0,0.30),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(251,176,59,0.20),0 0 0 1px ${T.embGoldEdge}`,
+    shadowActive: `inset 0 2px 0 rgba(255,225,150,0.45),inset 0 -2px 0 rgba(0,0,0,0.45),inset 0 8px 16px rgba(180,100,0,0.30),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(251,176,59,0.20),0 0 0 1px ${T.embGoldEdge}`,
   },
   mint: {
     bg: T.embMintBg, label: T.embMintLabel,
-    shadow: 'inset 0 2px 0 rgba(220,255,230,0.60),inset 0 -2px 0 rgba(0,0,0,0.35),inset 0 4px 8px rgba(0,80,20,0.20),0 2px 10px rgba(0,0,0,0.50),0 0 16px rgba(135,247,156,0.25),0 0 0 1px ' + T.embMintEdge,
-    shadowActive: 'inset 0 2px 0 rgba(220,255,230,0.60),inset 0 -2px 0 rgba(0,0,0,0.35),inset 0 8px 16px rgba(0,80,20,0.20),0 2px 10px rgba(0,0,0,0.50),0 0 16px rgba(135,247,156,0.25),0 0 0 1px ' + T.embMintEdge,
+    shadow: `inset 0 2px 0 rgba(220,255,230,0.60),inset 0 -2px 0 rgba(0,0,0,0.35),inset 0 4px 8px rgba(0,80,20,0.20),0 2px 10px rgba(0,0,0,0.50),0 0 16px rgba(135,247,156,0.25),0 0 0 1px ${T.embMintEdge}`,
+    shadowActive: `inset 0 2px 0 rgba(220,255,230,0.60),inset 0 -2px 0 rgba(0,0,0,0.35),inset 0 8px 16px rgba(0,80,20,0.20),0 2px 10px rgba(0,0,0,0.50),0 0 16px rgba(135,247,156,0.25),0 0 0 1px ${T.embMintEdge}`,
   },
   cyan: {
     bg: T.embCyanBg, label: T.embCyanLabel,
-    shadow: 'inset 0 2px 0 rgba(140,255,255,0.45),inset 0 -2px 0 rgba(0,0,0,0.45),inset 0 4px 8px rgba(0,80,80,0.30),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(51,255,255,0.15),0 0 0 1px ' + T.embCyanEdge,
-    shadowActive: 'inset 0 2px 0 rgba(140,255,255,0.45),inset 0 -2px 0 rgba(0,0,0,0.45),inset 0 8px 16px rgba(0,80,80,0.30),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(51,255,255,0.15),0 0 0 1px ' + T.embCyanEdge,
+    shadow: `inset 0 2px 0 rgba(140,255,255,0.45),inset 0 -2px 0 rgba(0,0,0,0.45),inset 0 4px 8px rgba(0,80,80,0.30),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(51,255,255,0.15),0 0 0 1px ${T.embCyanEdge}`,
+    shadowActive: `inset 0 2px 0 rgba(140,255,255,0.45),inset 0 -2px 0 rgba(0,0,0,0.45),inset 0 8px 16px rgba(0,80,80,0.30),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(51,255,255,0.15),0 0 0 1px ${T.embCyanEdge}`,
   },
   vermillion: {
     bg: T.embVermBg, label: T.embVermLabel,
-    shadow: 'inset 0 2px 0 rgba(255,160,140,0.35),inset 0 -2px 0 rgba(0,0,0,0.50),inset 0 4px 8px rgba(100,0,0,0.40),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(255,68,34,0.15),0 0 0 1px ' + T.embVermEdge,
-    shadowActive: 'inset 0 2px 0 rgba(255,160,140,0.35),inset 0 -2px 0 rgba(0,0,0,0.50),inset 0 8px 16px rgba(100,0,0,0.40),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(255,68,34,0.15),0 0 0 1px ' + T.embVermEdge,
+    shadow: `inset 0 2px 0 rgba(255,160,140,0.35),inset 0 -2px 0 rgba(0,0,0,0.50),inset 0 4px 8px rgba(100,0,0,0.40),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(255,68,34,0.15),0 0 0 1px ${T.embVermEdge}`,
+    shadowActive: `inset 0 2px 0 rgba(255,160,140,0.35),inset 0 -2px 0 rgba(0,0,0,0.50),inset 0 8px 16px rgba(100,0,0,0.40),0 2px 10px rgba(0,0,0,0.60),0 0 16px rgba(255,68,34,0.15),0 0 0 1px ${T.embVermEdge}`,
   },
   ghost: {
     bg: T.embGhostBg, label: T.textPrimary,
@@ -269,36 +269,36 @@ var _EMB_VARIANTS = {
   },
 };
 
-var _EMB_SIZES = {
+const _EMB_SIZES = {
   sm: { h: '40px', w: '110px', fs: '18px', ls: '2px', pad: '4px 14px' },
   md: { h: '55px', w: '220px', fs: '22px', ls: '3px', pad: '6px 18px' },
   lg: { h: '62px', w: '220px', fs: '31px', ls: '3px', pad: '8px 22px' },
 };
 
-function _fillToVariant(fill) {
+const _fillToVariant = (fill) => {
   if (fill === T.darkBtn || fill === T.bg) return 'dark';
   if (fill === T.gold) return 'gold';
   if (fill === T.mint || fill === T.goGreen || fill === T.green || fill === T.numpadChassis || fill === T.mintB) return 'mint';
   if (fill === T.cyan) return 'cyan';
   if (fill === T.red || fill === T.vermillion || fill === T.redB) return 'vermillion';
   return 'ghost';
-}
+};
 
-function _injectEmbossedStyles() {
+const _injectEmbossedStyles = () => {
   if (document.getElementById('embossed-btn-styles')) return;
-  var s = document.createElement('style');
+  const s = document.createElement('style');
   s.id = 'embossed-btn-styles';
   s.textContent =
     '.embossed-btn{position:relative;clip-path:polygon(5px 0%,calc(100% - 5px) 0%,100% 5px,100% calc(100% - 5px),calc(100% - 5px) 100%,5px 100%,0% calc(100% - 5px),0% 5px);cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:manipulation;transition:transform 50ms,filter 50ms,box-shadow 50ms;box-sizing:border-box;border:none;outline:none;isolation:isolate;}' +
     '.embossed-btn-inner{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;text-align:center;width:100%;height:100%;box-sizing:border-box;}';
   document.head.appendChild(s);
-}
+};
 
 export function buildStyledButton(arg) {
   _injectEmbossedStyles();
 
-  var isNewApi = (typeof arg === 'object' && arg !== null && arg.variant !== undefined);
-  var variant, sizeKey, label, onClick, disabled;
+  const isNewApi = (typeof arg === 'object' && arg !== null && arg.variant !== undefined);
+  let variant, sizeKey, label, onClick, disabled;
 
   if (isNewApi) {
     variant = arg.variant || 'dark';
@@ -314,10 +314,10 @@ export function buildStyledButton(arg) {
     disabled = false;
   }
 
-  var v = _EMB_VARIANTS[variant] || _EMB_VARIANTS.dark;
-  var sz = sizeKey ? (_EMB_SIZES[sizeKey] || _EMB_SIZES.md) : null;
+  const v = _EMB_VARIANTS[variant] || _EMB_VARIANTS.dark;
+  const sz = sizeKey ? (_EMB_SIZES[sizeKey] || _EMB_SIZES.md) : null;
 
-  var wrap = document.createElement('div');
+  const wrap = document.createElement('div');
   wrap.className = 'embossed-btn';
   wrap.style.background = v.bg;
   wrap.style.boxShadow = v.shadow;
@@ -326,7 +326,7 @@ export function buildStyledButton(arg) {
     wrap.style.minWidth = sz.w;
   }
 
-  var inner = document.createElement('div');
+  const inner = document.createElement('div');
   inner.className = 'embossed-btn-inner';
   inner.style.color = v.label;
   inner.style.fontFamily = isNewApi ? T.fhr : T.fb;
@@ -384,23 +384,23 @@ export function buildStyledButton(arg) {
 }
 
 export function applySunkenStyle(el) {
-  var b = T.bevel;
-  el.style.borderTop    = b + 'px solid ' + T.bgEdge;
-  el.style.borderLeft   = b + 'px solid ' + T.bgEdge;
-  el.style.borderBottom = b + 'px solid ' + T.bgLight;
-  el.style.borderRight  = b + 'px solid ' + T.bgLight;
+  const b = T.bevel;
+  el.style.borderTop    = `${b}px solid ${T.bgEdge}`;
+  el.style.borderLeft   = `${b}px solid ${T.bgEdge}`;
+  el.style.borderBottom = `${b}px solid ${T.bgLight}`;
+  el.style.borderRight  = `${b}px solid ${T.bgLight}`;
   el.style.clipPath = chamfer();
 }
 
 export function applyRaisedStyle(el, fillColor) {
-  var fill = fillColor || T.darkBtn;
-  var edges = bevelEdges(fill);
-  var b = T.bevel;
+  const fill = fillColor || T.darkBtn;
+  const edges = bevelEdges(fill);
+  const b = T.bevel;
   el.style.background = fill;
-  el.style.borderTop    = b + 'px solid ' + edges.light;
-  el.style.borderLeft   = b + 'px solid ' + edges.light;
-  el.style.borderBottom = b + 'px solid ' + edges.dark;
-  el.style.borderRight  = b + 'px solid ' + edges.dark;
+  el.style.borderTop    = `${b}px solid ${edges.light}`;
+  el.style.borderLeft   = `${b}px solid ${edges.light}`;
+  el.style.borderBottom = `${b}px solid ${edges.dark}`;
+  el.style.borderRight  = `${b}px solid ${edges.dark}`;
   el.style.clipPath = chamfer(10);
 }
 
@@ -411,12 +411,12 @@ export function applyRaisedStyle(el, fillColor) {
 // ═══════════════════════════════════════════════════
 
 // Snapshot of every T key at load time (flat + object values)
-var _defaults = {};
-var _defaultObjects = {};
-(function() {
-  var keys = Object.keys(T);
-  for (var i = 0; i < keys.length; i++) {
-    var v = T[keys[i]];
+const _defaults = {};
+const _defaultObjects = {};
+(() => {
+  const keys = Object.keys(T);
+  for (let i = 0; i < keys.length; i++) {
+    const v = T[keys[i]];
     if (typeof v === 'function') continue;
     if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
       _defaultObjects[keys[i]] = JSON.parse(JSON.stringify(v));
@@ -426,7 +426,7 @@ var _defaultObjects = {};
   }
 })();
 
-var _themeListeners = [];
+const _themeListeners = [];
 
 export function onThemeChange(fn) {
   _themeListeners.push(fn);
@@ -434,14 +434,14 @@ export function onThemeChange(fn) {
 
 export function setTheme(overrides) {
   if (!overrides) return;
-  var keys = Object.keys(overrides);
-  for (var i = 0; i < keys.length; i++) {
-    var val = overrides[keys[i]];
+  const keys = Object.keys(overrides);
+  for (let i = 0; i < keys.length; i++) {
+    const val = overrides[keys[i]];
     if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
       // Merge objects (e.g. categoryPalette, roles)
       T[keys[i]] = T[keys[i]] || {};
-      var oKeys = Object.keys(val);
-      for (var k = 0; k < oKeys.length; k++) {
+      const oKeys = Object.keys(val);
+      for (let k = 0; k < oKeys.length; k++) {
         T[keys[i]][oKeys[k]] = val[oKeys[k]];
       }
     } else {
@@ -451,23 +451,23 @@ export function setTheme(overrides) {
   // Recompute derived values
   _recomputeEmbossed();
   // Notify listeners (SceneManager re-applies geometry, etc.)
-  for (var j = 0; j < _themeListeners.length; j++) {
+  for (let j = 0; j < _themeListeners.length; j++) {
     _themeListeners[j](T);
   }
 }
 
 export function resetTheme() {
-  var keys = Object.keys(_defaults);
-  for (var i = 0; i < keys.length; i++) {
+  const keys = Object.keys(_defaults);
+  for (let i = 0; i < keys.length; i++) {
     T[keys[i]] = _defaults[keys[i]];
   }
   // Restore object properties (categoryPalette, roles, etc.)
-  var oKeys = Object.keys(_defaultObjects);
-  for (var j = 0; j < oKeys.length; j++) {
+  const oKeys = Object.keys(_defaultObjects);
+  for (let j = 0; j < oKeys.length; j++) {
     T[oKeys[j]] = JSON.parse(JSON.stringify(_defaultObjects[oKeys[j]]));
   }
   _recomputeEmbossed();
-  for (var k = 0; k < _themeListeners.length; k++) {
+  for (let k = 0; k < _themeListeners.length; k++) {
     _themeListeners[k](T);
   }
 }
@@ -476,7 +476,7 @@ export function getThemeDefaults() {
   return _defaults;
 }
 
-function _recomputeEmbossed() {
+const _recomputeEmbossed = () => {
   // Refresh embossed variant table when theme colors change
   _EMB_VARIANTS.dark.bg = T.embDarkBg;
   _EMB_VARIANTS.dark.label = T.textPrimary;
@@ -490,4 +490,4 @@ function _recomputeEmbossed() {
   _EMB_VARIANTS.vermillion.label = T.embVermLabel;
   _EMB_VARIANTS.ghost.bg = T.embGhostBg;
   _EMB_VARIANTS.ghost.label = T.textPrimary;
-}
+};

@@ -21,7 +21,7 @@ const DAYS = [
   { id: 'sunday',    label: 'Sunday'    },
 ];
 
-async function loadConfig() {
+const loadConfig = async () => {
   try {
     const [storeRes, pricingRes] = await Promise.all([
       fetch('/api/v1/config/store'),
@@ -34,7 +34,7 @@ async function loadConfig() {
   } catch { return {}; }
 }
 
-async function mount(container) {
+const mount = async (container) => {
   const config = await loadConfig();
 
   // Refs we need in save handler

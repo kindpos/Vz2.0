@@ -17,7 +17,7 @@ vi.mock('../components/date-picker.js', () => ({
   buildDatePicker: () => document.createElement('div'),
 }));
 
-function jsonResponse(body, status = 200) {
+const jsonResponse = (body, status = 200) => {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
@@ -27,7 +27,7 @@ function jsonResponse(body, status = 200) {
 // fetch mock — the scene hits three endpoints: labor-summary (required),
 // config/employees and config/roles (optional, used for the MGR badge).
 // We return the labor-summary payload and empty arrays for the other two.
-function installFetchMock(laborPayload) {
+const installFetchMock = (laborPayload) => {
   const fetchMock = vi.fn((url) => {
     if (typeof url === 'string' && url.includes('/reports/labor-summary')) {
       return Promise.resolve(jsonResponse(laborPayload));
@@ -39,7 +39,7 @@ function installFetchMock(laborPayload) {
   return fetchMock;
 }
 
-async function mount(container, laborPayload) {
+const mount = async (container, laborPayload) => {
   const fetchMock = installFetchMock(laborPayload);
 
   const { buildLaborReportsScene } = await import('./labor-reports.js');
@@ -58,7 +58,7 @@ async function mount(container, laborPayload) {
 // Find the Overtime KPI stat card and return its big-number value. The hero
 // row lives in #region-hero and each card contains a mono-caps eyebrow
 // ("OVERTIME") above a 36px value element (the only child with font-size:36px).
-function kpiOvertimeValue(container) {
+const kpiOvertimeValue = (container) => {
   const hero = container.querySelector('#region-hero');
   if (!hero) return null;
   for (const card of hero.children) {
@@ -79,7 +79,7 @@ function kpiOvertimeValue(container) {
 // `display: grid` container; each cell is an inner <div> with a <span>
 // for the text. The breakdown columns are:
 //   0 Employee · 1 In · 2 Out · 3 Today · 4 OT · 5 Rate · 6 Gross
-function rowOvertime(container, name) {
+const rowOvertime = (container, name) => {
   const scope = container.querySelector('#region-breakdown') || container;
   const rows = scope.querySelectorAll('div[style*="grid-template-columns"]');
   for (const row of rows) {
