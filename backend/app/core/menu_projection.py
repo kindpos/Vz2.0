@@ -271,6 +271,16 @@ def project_menu(events: List[Event]) -> MenuState:
             if oid in options_map:
                 options_map[oid]['active'] = True
 
+        elif event.event_type == EventType.OPTION_DELETED:
+            oid = payload.get('option_id')
+            if oid:
+                options_map.pop(oid, None)
+                for grp in option_groups_map.values():
+                    grp['option_ids'] = [
+                        i for i in grp.get('option_ids', [])
+                        if i != oid
+                    ]
+
         # ── OptionGroups ──────────────────────────────────────────────
         elif event.event_type == EventType.OPTION_GROUP_CREATED:
             option_groups_map[payload['option_group_id']] = dict(payload)

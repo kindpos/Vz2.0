@@ -498,6 +498,7 @@ class OverseerConfigService:
         event_types = [
             EventType.OPTION_CREATED,
             EventType.OPTION_UPDATED,
+            EventType.OPTION_DELETED,
             EventType.OPTION_DEACTIVATED,
             EventType.OPTION_REACTIVATED,
         ]
@@ -514,6 +515,8 @@ class OverseerConfigService:
                 continue
             if e.event_type == EventType.OPTION_CREATED:
                 options[oid] = dict(payload)
+            elif e.event_type == EventType.OPTION_DELETED:
+                options.pop(oid, None)
             elif oid in options:
                 if e.event_type == EventType.OPTION_UPDATED:
                     options[oid].update(payload)

@@ -247,6 +247,7 @@ class EventType(str, Enum):
     # ── Options (LEDGER_OPERATIONAL) ─────────────────────────────────
     OPTION_CREATED = "option.created"
     OPTION_UPDATED = "option.updated"
+    OPTION_DELETED = "option.deleted"
     OPTION_DEACTIVATED = "option.deactivated"
     OPTION_REACTIVATED = "option.reactivated"
 

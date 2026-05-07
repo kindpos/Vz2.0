@@ -39,6 +39,7 @@ const _state = {
     addingModifier: false,
     addingOption: false,
     confirmingDeleteModifierId: null,
+    confirmingDeleteOptionId: null,
 
     modifiersList: null,
     optionsList: null,
@@ -759,7 +760,7 @@ const buildModifierEditPanel = (modifier) => {
 /* ============================================
    RIGHT CARD — OPTIONS
 ============================================ */
-const OPTION_GRID = '1.4fr 100px 100px 50px';
+const OPTION_GRID = '1.4fr 100px 100px 50px 34px';
 
 const buildOptionsCard = () => {
     const card = buildStaticCard({ accent: T.lavender });
@@ -841,7 +842,7 @@ const buildOptionColHeaders = () => {
         padding: 0 0 6px;
         border-bottom: 1px solid ${hexToRgba(T.border, 0.5)};
     `;
-    const labels = ['NAME', 'PRICE ADJ', 'FLAGS', 'ACTIVE'];
+    const labels = ['NAME', 'PRICE ADJ', 'FLAGS', 'ACTIVE', ''];
     labels.forEach((label, i) => {
         const cell = document.createElement('div');
         cell.textContent = label;
@@ -926,12 +927,45 @@ const buildOptionRow = (option) => {
     toggleCell.appendChild(toggle);
     row.appendChild(toggleCell);
 
+    const deleteCell = document.createElement('div');
+    deleteCell.style.cssText = 'display: flex; justify-content: center; align-items: center;';
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = '✕';
+    deleteBtn.style.cssText = `
+        background: ${T.verm};
+        border-radius: 6px;
+        width: 28px;
+        height: 28px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 0 #6b1a0e;
+        flex-shrink: 0;
+        outline: none;
+    `;
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        _state.confirmingDeleteOptionId = option.option_id;
+        _state.editingOptionId = null;
+        _state.addingOption = false;
+        rebuild();
+    });
+    deleteCell.appendChild(deleteBtn);
+    row.appendChild(deleteCell);
+
     row.addEventListener('click', (e) => {
         if (e.target.closest('button')) return;
         _state.editingOptionId =
             _state.editingOptionId === option.option_id ? null : option.option_id;
         _state.editingModifierId = null;
         _state.addingOption = false;
+        _state.confirmingDeleteOptionId = null;
         rebuild();
     });
 
@@ -941,7 +975,58 @@ const buildOptionRow = (option) => {
         wrap.appendChild(buildOptionEditPanel(option));
     }
 
+    if (_state.confirmingDeleteOptionId === option.option_id) {
+        wrap.appendChild(buildOptionDeleteConfirm(option));
+    }
+
     return wrap;
+}
+
+const buildOptionDeleteConfirm = (option) => {
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        background: ${hexToRgba(T.verm, 0.08)};
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin: 2px 0 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    `;
+
+    const label = document.createElement('div');
+    label.textContent = `Delete "${option.name || option.option_id}"?`;
+    label.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 11px;
+        font-weight: 700;
+        color: ${T.verm};
+        flex: 1;
+    `;
+    panel.appendChild(label);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 8px;';
+
+    btnRow.appendChild(buildGhostButton('Cancel', () => {
+        _state.confirmingDeleteOptionId = null;
+        rebuild();
+    }));
+
+    btnRow.appendChild(buildPillButton('Delete', T.verm, T.well, async () => {
+        try {
+            await pushChanges([{ event_type: 'option.deleted', payload: { option_id: option.option_id } }]);
+            _state.confirmingDeleteOptionId = null;
+            await refreshAll();
+            showToast('Option deleted');
+        } catch (e) {
+            showToast('Failed to delete option', 'error');
+        }
+    }));
+
+    panel.appendChild(btnRow);
+    return panel;
 }
 
 const buildOptionAddPanel = () => {
@@ -1170,6 +1255,7 @@ export function buildModifiersScene(container) {
     _state.addingModifier = false;
     _state.addingOption = false;
     _state.confirmingDeleteModifierId = null;
+    _state.confirmingDeleteOptionId = null;
     _state.modifiersList = null;
     _state.optionsList = null;
     _state.loadError = false;
@@ -1205,6 +1291,7 @@ export function cleanupModifiers(container) {
     _state.addingModifier = false;
     _state.addingOption = false;
     _state.confirmingDeleteModifierId = null;
+    _state.confirmingDeleteOptionId = null;
     _state.modifiersList = null;
     _state.optionsList = null;
     _state.loadError = false;
