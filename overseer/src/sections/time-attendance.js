@@ -925,7 +925,7 @@ const showTimeEditModal = (shift) => {
 
         if (!reason) { showToast('Please select a reason for this edit.', 'error'); return; }
 
-        emitEvent('SHIFT_TIME_ADJUSTED', {
+        emitEvent('shift.time_adjusted', {
             shift_id: shift.shift_id,
             employee_id: shift.employee_id,
             original_clock_in: shift.clockIn,

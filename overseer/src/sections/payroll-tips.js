@@ -592,7 +592,7 @@ const showExportModal = () => {
             return;
         }
 
-        emitEvent('PAYROLL_EXPORTED', {
+        emitEvent('payroll.exported', {
             format: selectedFormat.id,
             period_start: PAYROLL_SUMMARY.period.start,
             period_end: PAYROLL_SUMMARY.period.end,

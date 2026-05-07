@@ -808,7 +808,7 @@ const exportPayroll = async (formatId) => {
     const employees = PAYROLL_SUMMARY.employees || [];
     try {
         await pushChanges([{
-            event_type: 'PAYROLL_EXPORTED',
+            event_type: 'payroll.exported',
             payload: {
                 format: formatId,
                 period_start: PAYROLL_SUMMARY.period.start,
@@ -2441,7 +2441,7 @@ const openEditShiftModal = (shift) => {
 
             try {
                 await pushChanges([{
-                    event_type: 'SHIFT_TIME_ADJUSTED',
+                    event_type: 'shift.time_adjusted',
                     payload: {
                         shift_id: shift.shift_id,
                         employee_id: shift.employee_id,
