@@ -96,6 +96,7 @@ class EventType(str, Enum):
     PRINTER_REMOVED = "printer.removed"                    # LEDGER_OPERATIONAL
     PRINTER_ASSIGNMENT_CHANGED = "printer.assignment_changed"  # LEDGER_OPERATIONAL
     PAYMENT_PROCESSOR_CONFIGURED = "payment.processor_configured"  # LEDGER_OPERATIONAL
+    PAYMENT_PROCESSOR_REMOVED    = "payment.processor_removed"      # LEDGER_OPERATIONAL
     PRINTER_STATUS_CHANGED = "printer.status_changed"      # EPHEMERAL
     PRINTER_ERROR = "printer.error"                        # EPHEMERAL
     PRINTER_ROLE_CREATED = "printer.role_created"          # EPHEMERAL
@@ -181,6 +182,13 @@ class EventType(str, Enum):
     STAFF_REACTIVATED = "staff.reactivated"
     CLOCK_EDIT = "clock.edit"
     SHIFT_DELETED = "shift.deleted"
+    SHIFT_TEMPLATE_CREATED = "shift.template_created"
+    SHIFT_TEMPLATE_UPDATED = "shift.template_updated"
+    SHIFT_TEMPLATE_DELETED = "shift.template_deleted"
+    PAYROLL_EXPORTED       = "payroll.exported"
+    SHIFT_TIME_ADJUSTED    = "shift.time_adjusted"
+    SHIFT_SWAP_APPROVED    = "shift.swap_approved"
+    SHIFT_SWAP_DENIED      = "shift.swap_denied"
     TIPOUT_RULE_CREATED = "tipout.rule_created"
     TIPOUT_RULE_UPDATED = "tipout.rule_updated"
     TIPOUT_RULE_DELETED = "tipout.rule_deleted"
@@ -363,6 +371,10 @@ _LEGACY_ALIASES: dict[str, EventType] = {
     "MODIFIER_GROUP_CREATED": EventType.MODIFIER_GROUP_CREATED,
     "MODIFIER_GROUP_UPDATED": EventType.MODIFIER_GROUP_UPDATED,
     "MODIFIER_GROUP_DELETED": EventType.MODIFIER_GROUP_DELETED,
+    "PAYROLL_EXPORTED":    EventType.PAYROLL_EXPORTED,
+    "SHIFT_TIME_ADJUSTED": EventType.SHIFT_TIME_ADJUSTED,
+    "SHIFT_SWAP_APPROVED": EventType.SHIFT_SWAP_APPROVED,
+    "SHIFT_SWAP_DENIED":   EventType.SHIFT_SWAP_DENIED,
     "TERMINAL_REGISTERED": EventType.TERMINAL_REGISTERED,
     "CHECK_ABANDONED": EventType.CHECK_ABANDONED,
     "USER_LOGGED_IN": EventType.USER_LOGGED_IN,
