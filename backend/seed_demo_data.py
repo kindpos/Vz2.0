@@ -44,6 +44,42 @@ async def main():
 
     seeded = 0
 
+    # ── Seed roles ────────────────────────────────────────────────────────
+    existing_roles = await ledger.get_events_by_type(EventType.EMPLOYEE_ROLE_CREATED, limit=1000)
+    existing_role_ids = {e.payload.get("role_id") for e in existing_roles}
+
+    roles = seed_data.get("roles", [])
+    for role in roles:
+        if role["role_id"] in existing_role_ids:
+            print(f"  skip  role: {role['name']} (already in ledger)")
+            continue
+        event = create_event(
+            event_type=EventType.EMPLOYEE_ROLE_CREATED,
+            terminal_id="SEED",
+            payload=role,
+        )
+        await ledger.append(event)
+        print(f"  added role: {role['name']}")
+        seeded += 1
+
+    # ── Seed tipout rules ─────────────────────────────────────────────────
+    existing_tips = await ledger.get_events_by_type(EventType.TIPOUT_RULE_CREATED, limit=1000)
+    existing_tip_ids = {e.payload.get("rule_id") for e in existing_tips}
+
+    tipout_rules = seed_data.get("tipout_rules", [])
+    for rule in tipout_rules:
+        if rule["rule_id"] in existing_tip_ids:
+            print(f"  skip  tipout rule: {rule['rule_id']} (already in ledger)")
+            continue
+        event = create_event(
+            event_type=EventType.TIPOUT_RULE_CREATED,
+            terminal_id="SEED",
+            payload=rule,
+        )
+        await ledger.append(event)
+        print(f"  added tipout rule: {rule['role']}  {rule['percentage']}% → {rule['basis']}")
+        seeded += 1
+
     # ── Seed categories ───────────────────────────────────────────────────
     categories = seed_data.get("categories", [])
     for cat in categories:
@@ -91,7 +127,7 @@ async def main():
         seeded += 1
 
     await ledger.close()
-    print(f"\nDone — {seeded} event(s) seeded ({len(items)} items, {len(categories)} categories, {len(mod_groups)} modifier groups).")
+    print(f"\nDone — {seeded} event(s) seeded ({len(roles)} roles, {len(tipout_rules)} tipout rules, {len(items)} items, {len(categories)} categories, {len(mod_groups)} modifier groups).")
 
 
 if __name__ == "__main__":

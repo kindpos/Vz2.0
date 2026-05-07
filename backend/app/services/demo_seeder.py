@@ -37,6 +37,26 @@ async def seed_demo_data_if_empty(ledger: EventLedger) -> None:
     with open(seed_path, 'r') as f:
         seed_data = json.load(f)
 
+    # Seed roles first (so role_ids resolve)
+    for role in seed_data.get("roles", []):
+        event = create_event(
+            event_type=EventType.EMPLOYEE_ROLE_CREATED,
+            terminal_id="SEED",
+            payload=role,
+        )
+        await ledger.append(event)
+        print(f"  seeded role: {role['name']}")
+
+    # Seed tipout rules
+    for rule in seed_data.get("tipout_rules", []):
+        event = create_event(
+            event_type=EventType.TIPOUT_RULE_CREATED,
+            terminal_id="SEED",
+            payload=rule,
+        )
+        await ledger.append(event)
+        print(f"  seeded tipout rule: {rule['role']} {rule['percentage']}%")
+
     # Seed employees
     for emp in seed_data.get("employees", []):
         name = emp["name"]
@@ -46,9 +66,9 @@ async def seed_demo_data_if_empty(ledger: EventLedger) -> None:
             "first_name": parts[0],
             "last_name": parts[1] if len(parts) > 1 else "",
             "display_name": name,
-            "role_ids": [emp["role"]],
+            "role_ids": emp.get("role_ids", []),
             "pin": emp["pin"],
-            "hourly_rate": {"manager": 25.0, "cook": 18.0, "server": 15.0}.get(emp["role"], 15.0),
+            "hourly_rate": emp["hourly_rate"],
             "active": True,
         }
         event = create_event(
@@ -57,7 +77,8 @@ async def seed_demo_data_if_empty(ledger: EventLedger) -> None:
             payload=payload,
         )
         await ledger.append(event)
-        print(f"  seeded {name} [{emp['role']}] PIN:{emp['pin']}")
+        roles_str = ", ".join(emp.get("role_ids", []))
+        print(f"  seeded {name} [{roles_str}] PIN:{emp['pin']}")
 
     # Seed restaurant config
     restaurant = seed_data.get("restaurant")

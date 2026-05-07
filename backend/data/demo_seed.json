@@ -17,17 +17,50 @@
     }
   },
 
+  "roles": [
+    {
+      "role_id": "role_manager",
+      "name": "Manager",
+      "permission_level": 100,
+      "permissions": ["all"],
+      "tipout_eligible": false,
+      "can_receive_tips": false,
+      "can_be_tipped_out_to": false,
+      "service_types": ["management"]
+    },
+    {
+      "role_id": "role_server",
+      "name": "Server",
+      "permission_level": 10,
+      "permissions": ["order", "payment", "checkout"],
+      "tipout_eligible": true,
+      "can_receive_tips": true,
+      "can_be_tipped_out_to": false,
+      "service_types": ["table", "counter"]
+    },
+    {
+      "role_id": "role_cook",
+      "name": "Cook",
+      "permission_level": 5,
+      "permissions": ["view_orders"],
+      "tipout_eligible": false,
+      "can_receive_tips": false,
+      "can_be_tipped_out_to": false,
+      "service_types": ["kitchen"]
+    }
+  ],
+
   "employees": [
     { "employee_id": "emp_001", "name": "Dorothy Zbornak",
-      "role": "manager", "pin": "0000", "hourly_rate": 25.00 },
+      "role_ids": ["role_manager"], "pin": "0000", "hourly_rate": 25.00 },
     { "employee_id": "emp_002", "name": "Blanche Devereaux",
-      "role": "server",  "pin": "1001", "hourly_rate": 15.00 },
+      "role_ids": ["role_server"],  "pin": "1001", "hourly_rate": 15.00 },
     { "employee_id": "emp_003", "name": "Rose Nylund",
-      "role": "server",  "pin": "1002", "hourly_rate": 15.00 },
+      "role_ids": ["role_server"],  "pin": "1002", "hourly_rate": 15.00 },
     { "employee_id": "emp_004", "name": "Sophia Petrillo",
-      "role": "cook",    "pin": "2001", "hourly_rate": 18.00 },
+      "role_ids": ["role_cook"],    "pin": "2001", "hourly_rate": 18.00 },
     { "employee_id": "emp_005", "name": "Stanley Zbornak",
-      "role": "cook",    "pin": "2002", "hourly_rate": 18.00 }
+      "role_ids": ["role_cook"],    "pin": "2002", "hourly_rate": 18.00 }
   ],
 
   "tipout_rules": [
