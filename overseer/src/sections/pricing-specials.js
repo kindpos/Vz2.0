@@ -1563,7 +1563,7 @@ const openModal = (titleText, contentBuilder, opts = {}) => {
     modal.appendChild(header);
 
     const body = document.createElement('div');
-    body.style.cssText = `padding: 18px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px;`;
+    body.style.cssText = `padding: 18px 22px; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px;`;
     modal.appendChild(body);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
