@@ -44,13 +44,12 @@ const fetchFloorSections = async () => {
 }
 
 const sectionOptions = (sections) => [
-    { id: NO_SECTION, label: '(none)' ;,
+    { id: NO_SECTION, label: '(none)' },
     ...sections.map(s => ({
       id: s.id || s.section_id,
       label: s.name || s.label,
     })),
   ];
-}
 
 /* ------------------------------------------
    ID ASSIGNMENT
