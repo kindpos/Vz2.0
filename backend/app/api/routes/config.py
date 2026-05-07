@@ -212,6 +212,13 @@ async def get_routing(ledger: EventLedger = Depends(get_ledger)):
     return await service.get_routing_matrix()
 
 
+@router.get("/shift-templates")
+async def get_shift_templates(ledger: EventLedger = Depends(get_ledger)):
+    """Return all shift templates projected from the ledger."""
+    service = OverseerConfigService(ledger)
+    return await service.get_shift_templates()
+
+
 @router.post("/store/logo", dependencies=[Depends(require_manager)])
 async def upload_store_logo(
         req: LogoUploadRequest,

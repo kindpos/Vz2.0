@@ -17,8 +17,10 @@ from datetime import datetime, timezone
 
 from app.api.dependencies import get_ledger
 from app.api.routes.auth import auth_required, require_manager
+from app.services.overseer_config_service import OverseerConfigService
 from app.core.event_ledger import EventLedger
-from app.core.events import EventType, order_transferred
+from app.core.events import EventType, order_transferred, checkout_finalized, tipout_override
+from app.core.pin_hash import verify_pin_hash
 from app.core.projections import project_orders
 from app.core.money import money_round
 from app.config import settings
@@ -253,11 +255,18 @@ async def patch_tipout(
 # SHIFT ACTIONS
 # =============================================================================
 
+class TipoutOverrideInput(BaseModel):
+    rule_id: str
+    override_percentage: Decimal
+
+
 class FinalizeCheckoutRequest(BaseModel):
     employee_id: str
     take_home: Decimal
     cash_expected: Decimal
     manager_pin_verified: bool
+    overrides: Optional[list[TipoutOverrideInput]] = None
+    manager_pin: Optional[str] = None
 
 
 @router.post("/finalize-checkout", dependencies=[Depends(require_manager)])
@@ -268,10 +277,188 @@ async def finalize_checkout(
 ):
     """Record that a server has finalized their shift checkout.
 
-    Currently returns success to allow the frontend to proceed.
-    A future version will record a CHECKOUT_FINALIZED event.
+    Guards against open checks, calculates tipout from rules, emits
+    optional TIPOUT_OVERRIDE event if percentages are overridden, and
+    emits CHECKOUT_FINALIZED with full tipout breakdown.
     """
-    return {"success": True}
+    server_id = request.employee_id
+
+    # Get current day events and project orders
+    boundary = await ledger.get_last_day_close_sequence()
+    events = await ledger.get_events_since(boundary, limit=50000)
+    all_orders = project_orders(events)
+
+    # Filter orders for this server
+    server_orders = [
+        o for o in all_orders.values()
+        if o.server_id == server_id
+    ]
+
+    # Guard: server must have no open checks
+    open_checks = [o for o in server_orders if o.status == "open" and (not o.is_empty or o.seat_numbers)]
+    if open_checks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot finalize checkout — {len(open_checks)} open check(s) remain. Close or void them first.",
+        )
+
+    # Calculate tips from confirmed payments
+    total_tips = _ZERO
+    cash_tips = _ZERO
+    card_tips = _ZERO
+    tip_map: dict[str, Decimal] = {}
+
+    # Build tip map from TIP_ADJUSTED events (last-write-wins per payment_id)
+    for e in events:
+        if e.event_type == EventType.TIP_ADJUSTED:
+            tip_map[e.payload.get("payment_id", "")] = Decimal(str(e.payload.get("tip_amount", "0.00")))
+
+    # Sum tips from confirmed payments
+    for order in server_orders:
+        if order.status in ("closed", "paid"):
+            for p in order.payments:
+                if p.status == "confirmed":
+                    tip = tip_map.get(p.payment_id, Decimal(str(p.tip_amount or "0.00")))
+                    total_tips += tip
+                    if p.method == "cash":
+                        cash_tips += tip
+                    else:
+                        card_tips += tip
+
+    # Round tip totals
+    total_tips = money_round(total_tips)
+    cash_tips = money_round(cash_tips)
+    card_tips = money_round(card_tips)
+
+    # Fetch all tipout rules from config
+    rules_by_id: dict[str, dict] = {}
+    try:
+        rules_events = await ledger.get_events_by_type(EventType.TIPOUT_RULE_CREATED)
+        for rule_evt in rules_events:
+            rule_id = rule_evt.payload.get("rule_id", "")
+            rules_by_id[rule_id] = {
+                "rule_id": rule_id,
+                "role": rule_evt.payload.get("role", ""),
+                "percentage": Decimal(str(rule_evt.payload.get("percentage", "0"))),
+            }
+    except Exception:
+        pass  # If rule fetch fails, continue with empty rules
+
+    # Calculate original tipout breakdown
+    tipout_breakdown = []
+    original_tipout_total = _ZERO
+    for rule_id, rule in rules_by_id.items():
+        original_pct = rule["percentage"]
+        original_amount = money_round(total_tips * original_pct / 100)
+        original_tipout_total += original_amount
+        tipout_breakdown.append({
+            "rule_id": rule_id,
+            "role": rule["role"],
+            "calculated_percentage": str(original_pct),
+            "actual_percentage": str(original_pct),
+            "calculated_amount": str(original_amount),
+            "actual_amount": str(original_amount),
+            "was_overridden": False,
+        })
+
+    # Handle overrides if provided
+    override_events_to_emit = []
+    actual_tipout_total = original_tipout_total
+    if request.overrides and len(request.overrides) > 0:
+        # Validate manager PIN
+        if not request.manager_pin:
+            raise HTTPException(status_code=400, detail="manager_pin required when overriding tipout")
+
+        service = OverseerConfigService(ledger)
+        employees = await service.get_employees()
+        manager_id = None
+        pin_valid = False
+        for emp in employees:
+            if not emp.active or not emp.pin:
+                continue
+            if verify_pin_hash(request.manager_pin, emp.pin):
+                pin_valid = True
+                manager_id = emp.employee_id
+                break
+
+        if not pin_valid:
+            raise HTTPException(status_code=401, detail="Invalid manager PIN")
+
+        # Build override lookup
+        override_lookup: dict[str, Decimal] = {}
+        for override in request.overrides:
+            pct = Decimal(str(override.override_percentage))
+            if pct < 0 or pct > 100:
+                raise HTTPException(status_code=400, detail=f"Override percentage must be 0-100, got {pct}")
+            override_lookup[override.rule_id] = pct
+
+        # Recalculate breakdown with overrides
+        override_records = []
+        actual_tipout_total = _ZERO
+        for breakdown_item in tipout_breakdown:
+            rule_id = breakdown_item["rule_id"]
+            if rule_id in override_lookup:
+                override_pct = override_lookup[rule_id]
+                override_amount = money_round(total_tips * override_pct / 100)
+                breakdown_item["actual_percentage"] = str(override_pct)
+                breakdown_item["actual_amount"] = str(override_amount)
+                breakdown_item["was_overridden"] = True
+                override_records.append({
+                    "rule_id": rule_id,
+                    "role": breakdown_item["role"],
+                    "original_percentage": breakdown_item["calculated_percentage"],
+                    "override_percentage": str(override_pct),
+                    "calculated_amount": breakdown_item["calculated_amount"],
+                    "override_amount": str(override_amount),
+                })
+            actual_tipout_total += Decimal(breakdown_item["actual_amount"])
+
+        actual_tipout_total = money_round(actual_tipout_total)
+
+        # Emit TIPOUT_OVERRIDE event
+        now = datetime.now(timezone.utc).isoformat()
+        shift_id = f"shift_{server_id}_{now.split('T')[0]}"
+        override_evt = tipout_override(
+            terminal_id=settings.terminal_id,
+            server_id=server_id,
+            shift_id=shift_id,
+            overrides=override_records,
+            manager_id=manager_id,
+            overridden_at=now,
+        )
+        override_events_to_emit.append(override_evt)
+
+    # Emit CHECKOUT_FINALIZED event
+    now = datetime.now(timezone.utc).isoformat()
+    shift_id = f"shift_{server_id}_{now.split('T')[0]}"
+    evt = checkout_finalized(
+        terminal_id=settings.terminal_id,
+        server_id=server_id,
+        shift_id=shift_id,
+        checkout_time=now,
+        total_tips=total_tips,
+        cash_tips=cash_tips,
+        card_tips=card_tips,
+        tipout_amount=actual_tipout_total,
+        open_checks_count=0,
+        tipout_breakdown=tipout_breakdown,
+    )
+
+    # Emit events atomically
+    all_events = override_events_to_emit + [evt]
+    appended_evts = await ledger.append_batch(all_events)
+    final_evt = appended_evts[-1]  # The CHECKOUT_FINALIZED event
+
+    return {
+        "success": True,
+        "event_seq": final_evt.sequence_number,
+        "checkout": {
+            "total_tips": str(total_tips),
+            "cash_tips": str(cash_tips),
+            "card_tips": str(card_tips),
+            "tipout_amount": str(actual_tipout_total),
+        },
+    }
 
 
 class ShiftTransferRequest(BaseModel):

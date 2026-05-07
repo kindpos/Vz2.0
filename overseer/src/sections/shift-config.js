@@ -926,7 +926,7 @@ const buildSwapCard = (swap, showActions) => {
             swap.resolvedAt = new Date().toISOString();
             swap.resolvedBy = 'Tyler Johnson';
 
-            emitEvent('SHIFT_SWAP_APPROVED', {
+            emitEvent('shift.swap_approved', {
                 swap_id: swap.id,
                 requested_by: swap.requestedBy.id,
                 swap_with: swap.swapWith?.id || null,
@@ -955,7 +955,7 @@ const buildSwapCard = (swap, showActions) => {
             swap.resolvedBy = 'Tyler Johnson';
             swap.denyReason = 'Coverage requirements not met';
 
-            emitEvent('SHIFT_SWAP_DENIED', {
+            emitEvent('shift.swap_denied', {
                 swap_id: swap.id,
                 requested_by: swap.requestedBy.id,
                 reason: swap.denyReason,

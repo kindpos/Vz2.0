@@ -17,6 +17,8 @@ _log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/licenses", tags=["licenses"])
 
+DEMO_MODE = os.environ.get("KINDPOS_STORE_MODE") == "demo"
+
 LICENSE_FILE = "/home/kindpos/data/license.json"
 WORKER_URL = "https://kindpos.com/api/activate"
 
@@ -85,6 +87,8 @@ class ActivateLicenseResponse(BaseModel):
 @router.post("/activate", response_model=ActivateLicenseResponse)
 async def activate_license(request: ActivateLicenseRequest):
     """Activate a license on this Pi."""
+    if DEMO_MODE:
+        return {"activated": True, "demo": True, "message": "Demo mode — no activation required"}
     hardware_fingerprint = _get_hardware_fingerprint()
 
     try:
@@ -130,6 +134,9 @@ async def activate_license(request: ActivateLicenseRequest):
 @router.get("/status")
 async def get_license_status():
     """Check license activation status."""
+    if DEMO_MODE:
+        return {"activated": True, "demo": True, "store_name": "KINDpos Demo",
+                "terminal_name": "Demo Terminal", "prefix": "DM", "node_number": 1}
     license_data = _read_license_file()
 
     if license_data:

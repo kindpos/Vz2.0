@@ -461,13 +461,19 @@ class OverseerConfigService:
             return cached
 
         events = await self.ledger.get_events_by_type(EventType.PRINTER_REGISTERED, limit=1000)
+        events += await self.ledger.get_events_by_type(EventType.PRINTER_REMOVED, limit=1000)
         events.sort(key=lambda x: x.sequence_number or 0)
 
         printers = {}
         for e in events:
             payload = e.payload
-            pid = payload["printer_id"]
-            printers[pid] = Printer(**payload)
+            pid = payload.get("printer_id")
+            if not pid:
+                continue
+            if e.event_type == EventType.PRINTER_REMOVED:
+                printers.pop(pid, None)
+            else:
+                printers[pid] = Printer(**payload)
         result = list(printers.values())
         cache.set(seq, result)
         return result
@@ -614,6 +620,42 @@ class OverseerConfigService:
                     sizes[sid]["active"] = True
 
         result = [Size(**s) for s in sizes.values()]
+        cache.set(seq, result)
+        return result
+
+    async def get_shift_templates(self) -> List[Dict[str, Any]]:
+        cache = self._get_cache("shift_templates")
+        seq = await self._max_seq()
+        cached = cache.get(seq)
+        if cached is not None:
+            return cached
+
+        event_types = [
+            EventType.SHIFT_TEMPLATE_CREATED,
+            EventType.SHIFT_TEMPLATE_UPDATED,
+            EventType.SHIFT_TEMPLATE_DELETED,
+        ]
+        events: list = []
+        for et in event_types:
+            events += await self.ledger.get_events_by_type(et, limit=1000)
+        events.sort(key=lambda x: x.sequence_number or 0)
+
+        templates: Dict[str, Dict[str, Any]] = {}
+        for e in events:
+            payload = e.payload
+            tid = payload.get("template_id")
+            if not tid:
+                continue
+            if e.event_type == EventType.SHIFT_TEMPLATE_DELETED:
+                templates.pop(tid, None)
+            elif e.event_type == EventType.SHIFT_TEMPLATE_CREATED:
+                templates[tid] = dict(payload)
+            else:  # SHIFT_TEMPLATE_UPDATED — merge onto existing
+                existing = templates.get(tid, {})
+                existing.update(payload)
+                templates[tid] = existing
+
+        result = list(templates.values())
         cache.set(seq, result)
         return result
 
