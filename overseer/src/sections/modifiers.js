@@ -40,6 +40,9 @@ const _state = {
     addingOption: false,
     confirmingDeleteModifierId: null,
 
+    modifiersList: null,
+    optionsList: null,
+
     loadError: false,
 };
 
@@ -371,23 +374,20 @@ const MODIFIER_GRID = '1.6fr 100px 50px 34px';
 
 const buildModifiersCard = () => {
     const card = buildStaticCard({ accent: T.gold });
-    card.className = 'kindpos-scrollbar-hide';
     card.style.flex = '1';
     card.style.alignSelf = 'stretch';
     card.style.minHeight = '0';
     card.style.padding = '0';
-    card.style.overflowY = 'auto';
-    card.style.scrollbarWidth = 'none';
-    card.style.msOverflowStyle = 'none';
     card.style.display = 'flex';
     card.style.flexDirection = 'column';
+    card.style.overflow = 'hidden';
 
     const content = document.createElement('div');
-    content.style.cssText = 'flex: 1; min-height: 0; padding: 14px 16px 14px 22px; box-sizing: border-box;';
+    content.style.cssText = 'flex: 1; min-height: 0; padding: 14px 16px 14px 22px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;';
     card.appendChild(content);
 
     const header = document.createElement('div');
-    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;';
+    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-shrink: 0;';
 
     const title = document.createElement('div');
     title.textContent = 'MODIFIERS';
@@ -420,14 +420,25 @@ const buildModifiersCard = () => {
 
     if (_state.addingModifier) content.appendChild(buildModifierAddPanel());
 
-    content.appendChild(buildModifierColHeaders());
+    const colHeaderWrap = document.createElement('div');
+    colHeaderWrap.style.flexShrink = '0';
+    colHeaderWrap.appendChild(buildModifierColHeaders());
+    content.appendChild(colHeaderWrap);
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = 'flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth;';
+    listEl.style.scrollbarWidth = 'thin';
+    listEl.style.scrollbarColor = `${T.moon} ${T.well}`;
+    listEl.className = 'kp-mod-list';
+    _state.modifiersList = listEl;
 
     if (_state.modifiers.length === 0) {
-        content.appendChild(buildEmptyState('No modifiers yet — tap + Add Modifier'));
+        listEl.appendChild(buildEmptyState('No modifiers yet — tap + Add Modifier'));
     } else {
-        _state.modifiers.forEach(m => content.appendChild(buildModifierRow(m)));
+        _state.modifiers.forEach(m => listEl.appendChild(buildModifierRow(m)));
     }
 
+    content.appendChild(listEl);
     return card;
 }
 
@@ -752,23 +763,20 @@ const OPTION_GRID = '1.4fr 100px 100px 50px';
 
 const buildOptionsCard = () => {
     const card = buildStaticCard({ accent: T.lavender });
-    card.className = 'kindpos-scrollbar-hide';
     card.style.flex = '1';
     card.style.alignSelf = 'stretch';
     card.style.minHeight = '0';
     card.style.padding = '0';
-    card.style.overflowY = 'auto';
-    card.style.scrollbarWidth = 'none';
-    card.style.msOverflowStyle = 'none';
     card.style.display = 'flex';
     card.style.flexDirection = 'column';
+    card.style.overflow = 'hidden';
 
     const content = document.createElement('div');
-    content.style.cssText = 'flex: 1; min-height: 0; padding: 14px 16px 14px 22px; box-sizing: border-box;';
+    content.style.cssText = 'flex: 1; min-height: 0; padding: 14px 16px 14px 22px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;';
     card.appendChild(content);
 
     const header = document.createElement('div');
-    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;';
+    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-shrink: 0;';
 
     const title = document.createElement('div');
     title.textContent = 'OPTIONS';
@@ -801,14 +809,25 @@ const buildOptionsCard = () => {
 
     if (_state.addingOption) content.appendChild(buildOptionAddPanel());
 
-    content.appendChild(buildOptionColHeaders());
+    const colHeaderWrap = document.createElement('div');
+    colHeaderWrap.style.flexShrink = '0';
+    colHeaderWrap.appendChild(buildOptionColHeaders());
+    content.appendChild(colHeaderWrap);
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = 'flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth;';
+    listEl.style.scrollbarWidth = 'thin';
+    listEl.style.scrollbarColor = `${T.moon} ${T.well}`;
+    listEl.className = 'kp-opt-list';
+    _state.optionsList = listEl;
 
     if (_state.options.length === 0) {
-        content.appendChild(buildEmptyState('No options yet — tap + Add Option'));
+        listEl.appendChild(buildEmptyState('No options yet — tap + Add Option'));
     } else {
-        _state.options.forEach(o => content.appendChild(buildOptionRow(o)));
+        _state.options.forEach(o => listEl.appendChild(buildOptionRow(o)));
     }
 
+    content.appendChild(listEl);
     return card;
 }
 
@@ -1090,9 +1109,15 @@ const editLabelCSS = () => `
 ============================================ */
 const rebuild = () => {
     if (!_state.wrapper) return;
+    const modScrollTop = _state.modifiersList ? _state.modifiersList.scrollTop : 0;
+    const optScrollTop = _state.optionsList ? _state.optionsList.scrollTop : 0;
+    _state.modifiersList = null;
+    _state.optionsList = null;
     _state.wrapper.replaceChildren();
     _state.wrapper.appendChild(buildModifiersCard());
     _state.wrapper.appendChild(buildOptionsCard());
+    if (_state.modifiersList) _state.modifiersList.scrollTop = modScrollTop;
+    if (_state.optionsList) _state.optionsList.scrollTop = optScrollTop;
 }
 
 const refreshAll = async () => {
@@ -1122,6 +1147,22 @@ const refreshAll = async () => {
     rebuild();
 }
 
+let _scrollStyleInjected = false;
+function _ensureScrollStyles() {
+    if (_scrollStyleInjected) return;
+    _scrollStyleInjected = true;
+    const s = document.createElement('style');
+    s.textContent = `
+        .kp-mod-list::-webkit-scrollbar,
+        .kp-opt-list::-webkit-scrollbar { width: 4px; }
+        .kp-mod-list::-webkit-scrollbar-track,
+        .kp-opt-list::-webkit-scrollbar-track { background: transparent; }
+        .kp-mod-list::-webkit-scrollbar-thumb,
+        .kp-opt-list::-webkit-scrollbar-thumb { background: #7e8896; border-radius: 2px; }
+    `;
+    document.head.appendChild(s);
+}
+
 export function buildModifiersScene(container) {
     _state.container = container;
     _state.editingModifierId = null;
@@ -1129,8 +1170,11 @@ export function buildModifiersScene(container) {
     _state.addingModifier = false;
     _state.addingOption = false;
     _state.confirmingDeleteModifierId = null;
+    _state.modifiersList = null;
+    _state.optionsList = null;
     _state.loadError = false;
 
+    _ensureScrollStyles();
     container.replaceChildren();
 
     _state.wrapper = document.createElement('div');
@@ -1161,5 +1205,7 @@ export function cleanupModifiers(container) {
     _state.addingModifier = false;
     _state.addingOption = false;
     _state.confirmingDeleteModifierId = null;
+    _state.modifiersList = null;
+    _state.optionsList = null;
     _state.loadError = false;
 }
