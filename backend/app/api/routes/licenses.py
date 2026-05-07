@@ -17,7 +17,7 @@ _log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/licenses", tags=["licenses"])
 
-DEMO_MODE = os.environ.get("KINDPOS_MODE") == "demo"
+DEMO_MODE = os.environ.get("KINDPOS_STORE_MODE") == "demo"
 
 LICENSE_FILE = "/home/kindpos/data/license.json"
 WORKER_URL = "https://kindpos.com/api/activate"
