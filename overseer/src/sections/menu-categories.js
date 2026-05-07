@@ -104,17 +104,15 @@ let displayState = {
 const modalStack = [];
 
 /* ─── DATA FETCH ─────────────────────────────────────────────── */
-const defaultSchedule = () => { enabled: false, grace_minutes: 10, windows: [] ;;
-}
+const defaultSchedule = () => ({ enabled: false, grace_minutes: 10, windows: [] });
 
-const defaultWindow = () => {
+const defaultWindow = () => ({
         label: '',
         days:  [1,1,1,1,1,1,1],
         start: '09:00',
         end:   '21:00',
         price_adjustment_pct: 0,
-    ;;
-}
+    });
 
 const migrateCategorySchedule = (raw) => {
     if (raw.schedule && typeof raw.schedule === 'object') {
@@ -3749,7 +3747,7 @@ const generateMenuEvents = (changes) => {
     return events;
 }
 
-const categoryPayload = (cat) => {
+const categoryPayload = (cat) => ({
         category_id:         cat.id,
         name:                cat.name,
         display_order:       cat.display_order,
@@ -3759,8 +3757,7 @@ const categoryPayload = (cat) => {
         schedule:            cat.schedule || defaultSchedule(),
         special_active:      !!cat.special_active,
         special_label:       cat.special_label || '',
-    ;;
-}
+    });
 
 const itemPayload = (item, includeIdInRoot) => {
     const base = {
