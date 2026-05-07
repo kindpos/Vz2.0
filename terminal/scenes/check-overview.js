@@ -2416,6 +2416,122 @@ function _coBuildSentGroups(items, state, seatIdx) {
       }
 
       zone.appendChild(row);
+
+      if (!isVoided) {
+        const mods = it.mods || [];
+        const leftMods = [];
+        const rightMods = [];
+        const regularMods = [];
+        for (let mi = 0; mi < mods.length; mi++) {
+          const m = mods[mi];
+          if (m.prefix === 'Left')       leftMods.push(m);
+          else if (m.prefix === 'Right') rightMods.push(m);
+          else                           regularMods.push(m);
+        }
+
+        for (let mi = 0; mi < regularMods.length; mi++) {
+          const mod = regularMods[mi];
+          const pp = _parsePrefix(mod.name || '');
+          const badge = pp.prefix;
+          const cleanName = pp.clean;
+          const price = Number(mod.price) || 0;
+          const isMand = !badge;
+
+          const modRow = document.createElement('div');
+          modRow.style.cssText = 'display:flex;align-items:center;gap:5px;padding:1px 8px 1px 22px;';
+
+          const arrow = document.createElement('span');
+          arrow.style.cssText = `font-family:${T.fb};font-size:10px;color:${T.moon};flex-shrink:0;`;
+          arrow.textContent = '↳';
+          modRow.appendChild(arrow);
+
+          if (badge) {
+            const badgeEl = document.createElement('span');
+            badgeEl.style.cssText = [
+              `font-family:${T.fb};`,
+              'font-size:8px;',
+              `font-weight:${T.fwBold};`,
+              'letter-spacing:0.1em;',
+              `color:${T.elec};`,
+              'flex-shrink:0;',
+            ].join('');
+            badgeEl.textContent = badge;
+            modRow.appendChild(badgeEl);
+          }
+
+          const nameEl = document.createElement('span');
+          nameEl.style.cssText = [
+            `font-family:${T.fb};`,
+            'font-size:11px;',
+            `color:${isMand ? T.catColor(it.category) : T.text};`,
+            'flex:1;',
+            'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+          ].join('');
+          nameEl.textContent = cleanName;
+          modRow.appendChild(nameEl);
+
+          if (price !== 0) {
+            const priceEl = document.createElement('span');
+            priceEl.style.cssText = [
+              `font-family:${T.fb};`,
+              'font-size:11px;',
+              `font-weight:${T.fwBold};`,
+              `color:${T.elec};`,
+              'flex-shrink:0;',
+            ].join('');
+            priceEl.textContent = `+${fmt(price)}`;
+            modRow.appendChild(priceEl);
+          }
+
+          zone.appendChild(modRow);
+        }
+
+        if (leftMods.length > 0 || rightMods.length > 0) {
+          const halvesGrid = document.createElement('div');
+          halvesGrid.style.cssText = [
+            'display:grid;grid-template-columns:1fr 1fr;gap:3px;',
+            'padding:3px 8px 3px 22px;margin-bottom:1px;',
+          ].join('');
+
+          const leftCol = document.createElement('div');
+          leftCol.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+          const rightCol = document.createElement('div');
+          rightCol.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+
+          const hdrCss = [
+            `font-family:${T.fb};font-size:8px;font-weight:${T.fwBold};`,
+            `letter-spacing:0.12em;color:${T.gold};text-transform:uppercase;`,
+          ].join('');
+
+          const leftHdr = document.createElement('div');
+          leftHdr.style.cssText = hdrCss;
+          leftHdr.textContent = '1ST';
+          leftCol.appendChild(leftHdr);
+
+          const rightHdr = document.createElement('div');
+          rightHdr.style.cssText = hdrCss;
+          rightHdr.textContent = '2ND';
+          rightCol.appendChild(rightHdr);
+
+          for (let mi = 0; mi < leftMods.length; mi++) {
+            const modEl = document.createElement('div');
+            modEl.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.text};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
+            modEl.textContent = leftMods[mi].name || '';
+            leftCol.appendChild(modEl);
+          }
+
+          for (let mi = 0; mi < rightMods.length; mi++) {
+            const modEl = document.createElement('div');
+            modEl.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.text};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
+            modEl.textContent = rightMods[mi].name || '';
+            rightCol.appendChild(modEl);
+          }
+
+          halvesGrid.appendChild(leftCol);
+          halvesGrid.appendChild(rightCol);
+          zone.appendChild(halvesGrid);
+        }
+      }
     });
 
     container.appendChild(zone);
