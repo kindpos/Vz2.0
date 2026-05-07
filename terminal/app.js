@@ -60,6 +60,40 @@ function roundHalfUp(value) {
 }
 window.roundHalfUp = roundHalfUp;
 
+function _timeToMinutes(hhmm) {
+  var parts = (hhmm || '00:00').split(':');
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
+}
+
+function getActiveDayPartWindow() {
+  var now = new Date();
+  var dayOfWeek = now.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+  // Convert to Mon-based index: backend days[] is [Mon,Tue,Wed,Thu,Fri,Sat,Sun]
+  var dayIdx = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  var nowMins = now.getHours() * 60 + now.getMinutes();
+
+  var dayParts = window.pricingConfig?.dayParts ?? [];
+  for (var i = 0; i < dayParts.length; i++) {
+    var dp = dayParts[i];
+    var windows = dp.windows ?? [];
+    for (var j = 0; j < windows.length; j++) {
+      var win = windows[j];
+      // Check day of week
+      var wDays = win.days || [];
+      if (wDays.length > 0 && !wDays[dayIdx]) continue;
+      // Check time window
+      var start = _timeToMinutes(win.start);
+      var end = _timeToMinutes(win.end);
+      var inWindow = start <= end
+        ? nowMins >= start && nowMins < end
+        : nowMins >= start || nowMins < end; // overnight window
+      if (inWindow) return { dayPart: dp, window: win };
+    }
+  }
+  return null;
+}
+window.getActiveDayPartWindow = getActiveDayPartWindow;
+
 var _lastConfigVersion = null;
 
 async function loadPricingConfig() {

@@ -3877,6 +3877,7 @@ function handlePay(state, params) {
           return;
         }
         state._paymentInProgress = true;
+        const _activeDPW = window.getActiveDayPartWindow?.();
         SceneManager.mountWorking('payment', {
           orderId:              state.orderId,
           seatIds:              selectedIds,
@@ -3900,6 +3901,8 @@ function handlePay(state, params) {
           employeeId:   params.employeeId,
           employeeName: params.employeeName,
           pin:          params.pin,
+          day_part_id:   _activeDPW?.dayPart?.id ?? null,
+          day_part_name: _activeDPW?.dayPart?.name ?? null,
           onComplete:   () => { state._paymentInProgress = false; },
           onCancel:     () => { state._paymentInProgress = false; },
         });

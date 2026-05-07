@@ -2871,6 +2871,19 @@ function resolveBackendModifierConfig(itemId, catId) {
 }
 
 function _pushToAllSeats(item) {
+  // Apply day-part price adjustment (if any) before special discounts.
+  const _activeDPW = window.getActiveDayPartWindow?.();
+  if (_activeDPW) {
+    const adjPct = _activeDPW.window.price_adjustment_pct ?? 0;
+    if (adjPct !== 0) {
+      item._dayPartOriginalPrice = item.unitPrice;
+      item._dayPartAdjPct = adjPct;
+      item._dayPartAdjAmt = window.roundHalfUp(item.unitPrice * adjPct / 100);
+      item._dayPartName = _activeDPW.dayPart.name;
+      item.unitPrice = window.roundHalfUp(item.unitPrice + item._dayPartAdjAmt);
+    }
+  }
+
   // Compute and attach day-part special discount for this item.
   const _actSp = getActiveSpecials();
   const _discResult = getItemSpecialDiscount(item, _actSp);
@@ -3483,6 +3496,32 @@ function _buildItemSubCard(inst, isMultiSeat) {
     discRow.appendChild(discLabel);
     discRow.appendChild(discAmt);
     card.appendChild(discRow);
+  }
+
+  // Day-part price adjustment sub-row (shown when day-part pricing is active)
+  if (inst._dayPartAdjPct && inst._dayPartAdjPct !== 0) {
+    const dpRow = document.createElement('div');
+    dpRow.style.cssText = [
+      'display:flex;align-items:center;justify-content:space-between;',
+      'padding-top:3px;',
+    ].join('');
+    const dpLabel = document.createElement('span');
+    dpLabel.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.elec};font-weight:${T.fwBold};`,
+      'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+    ].join('');
+    dpLabel.textContent = (inst._dayPartName || 'PRICING') + ' PRICING';
+    const dpAmt = document.createElement('span');
+    dpAmt.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.elec};font-weight:${T.fwBold};flex-shrink:0;`,
+    ].join('');
+    const sign = inst._dayPartAdjAmt >= 0 ? '+' : '−';
+    dpAmt.textContent = sign + _fmtPrice(Math.abs(inst._dayPartAdjAmt));
+    dpRow.appendChild(dpLabel);
+    dpRow.appendChild(dpAmt);
+    card.appendChild(dpRow);
   }
 
   block.appendChild(card);
