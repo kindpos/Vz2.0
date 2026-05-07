@@ -524,17 +524,33 @@ const buildModifierRow = (modifier) => {
 
     const deleteCell = document.createElement('div');
     deleteCell.style.cssText = 'display: flex; justify-content: center; align-items: center;';
-    const deleteBtn = buildGhostButton('×', (e) => {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = '✕';
+    deleteBtn.style.cssText = `
+        background: ${T.verm};
+        border-radius: 6px;
+        width: 28px;
+        height: 28px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 0 #6b1a0e;
+        flex-shrink: 0;
+        outline: none;
+    `;
+    deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         _state.confirmingDeleteModifierId = modifier.modifier_id;
         _state.editingModifierId = null;
         _state.addingModifier = false;
         rebuild();
     });
-    deleteBtn.style.color = T.verm;
-    deleteBtn.style.borderColor = hexToRgba(T.verm, 0.4);
-    deleteBtn.style.fontSize = '13px';
-    deleteBtn.style.padding = '3px 8px';
     deleteCell.appendChild(deleteBtn);
     row.appendChild(deleteCell);
 
