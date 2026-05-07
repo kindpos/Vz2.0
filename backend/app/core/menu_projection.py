@@ -193,8 +193,14 @@ def project_menu(events: List[Event]) -> MenuState:
 
         elif event.event_type == EventType.MODIFIER_DELETED:
             mid = payload.get('modifier_id')
-            if mid and mid in modifiers_map:
-                del modifiers_map[mid]
+            if mid:
+                modifiers_map.pop(mid, None)
+                for grp in modifier_groups_map.values():
+                    grp['modifiers'] = [
+                        m for m in grp.get('modifiers', [])
+                        if not (isinstance(m, dict) and
+                                m.get('modifier_id') == mid)
+                    ]
 
         elif event.event_type == EventType.MODIFIER_GROUP_MODIFIER_ADDED:
             gid = payload.get('group_id')
