@@ -15,6 +15,7 @@ import subprocess
 import urllib.parse
 import platform
 import xml.etree.ElementTree as ET
+import ipaddress
 from datetime import datetime
 from typing import List, Optional
 
@@ -22,7 +23,7 @@ import aiosqlite
 import httpx
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ...api.dependencies import get_ledger
 from ...api.routes.auth import require_manager
@@ -103,12 +104,44 @@ class DeviceRecord(BaseModel):
     auth_key: str = ''     # SPIn Auth Key for card readers
     categories: str = ''   # Comma-separated category IDs for kitchen printers
 
+    @field_validator('ip')
+    @classmethod
+    def validate_ip(cls, v):
+        try:
+            ipaddress.ip_address(v)
+        except ValueError:
+            raise ValueError(f'Invalid IP address: {v}')
+        return v
+
+    @field_validator('port')
+    @classmethod
+    def validate_port(cls, v):
+        if not (0 <= v <= 65535):
+            raise ValueError(f'Port must be 0-65535, got {v}')
+        return v
+
 class TestRequest(BaseModel):
     mac: str
 
 class TestPrintRequest(BaseModel):
     ip:   str
     port: int = 9100
+
+    @field_validator('ip')
+    @classmethod
+    def validate_ip(cls, v):
+        try:
+            ipaddress.ip_address(v)
+        except ValueError:
+            raise ValueError(f'Invalid IP address: {v}')
+        return v
+
+    @field_validator('port')
+    @classmethod
+    def validate_port(cls, v):
+        if not (0 <= v <= 65535):
+            raise ValueError(f'Port must be 0-65535, got {v}')
+        return v
 
 # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 #  NETWORK SCANNER ΓÇö ARP-first discovery
@@ -357,7 +390,15 @@ async def scan_network_stream(
 
     # Determine mode: direct IPs vs subnet sweep
     if ip:
-        direct_ips = [addr.strip() for addr in ip.split(',') if addr.strip()]
+        direct_ips = []
+        for addr in ip.split(','):
+            addr = addr.strip()
+            if addr:
+                try:
+                    ipaddress.ip_address(addr)
+                    direct_ips.append(addr)
+                except ValueError:
+                    logger.warning(f"Skipping malformed IP address: {addr}")
         mode = 'direct'
     else:
         direct_ips = []
@@ -708,6 +749,22 @@ class ProbeRequest(BaseModel):
     ip: str
     port: int = 9100
 
+    @field_validator('ip')
+    @classmethod
+    def validate_ip(cls, v):
+        try:
+            ipaddress.ip_address(v)
+        except ValueError:
+            raise ValueError(f'Invalid IP address: {v}')
+        return v
+
+    @field_validator('port')
+    @classmethod
+    def validate_port(cls, v):
+        if not (0 <= v <= 65535):
+            raise ValueError(f'Port must be 0-65535, got {v}')
+        return v
+
 
 @router.post("/probe", dependencies=[Depends(require_manager)])
 async def probe_device(req: ProbeRequest):
@@ -736,6 +793,22 @@ class TestConnectionRequest(BaseModel):
     ip: str
     port: int
     timeout: float = 2.0
+
+    @field_validator('ip')
+    @classmethod
+    def validate_ip(cls, v):
+        try:
+            ipaddress.ip_address(v)
+        except ValueError:
+            raise ValueError(f'Invalid IP address: {v}')
+        return v
+
+    @field_validator('port')
+    @classmethod
+    def validate_port(cls, v):
+        if not (0 <= v <= 65535):
+            raise ValueError(f'Port must be 0-65535, got {v}')
+        return v
 
 
 @router.post("/test-connection", dependencies=[Depends(require_manager)])
