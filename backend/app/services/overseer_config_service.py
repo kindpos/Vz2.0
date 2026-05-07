@@ -202,7 +202,8 @@ class OverseerConfigService:
             if e.event_type == EventType.MENU_CATEGORY_DELETED:
                 cats.pop(cid, None)
             else:
-                # active flag toggled via UPDATE payload (no separate deactivate event — see menu.category_updated)
+                # Note: CATEGORY_DEACTIVATED/REACTIVATED events exist but are not used by the UI
+                # UI toggles active flag via UPDATE payload instead (see menu.category_updated)
                 cats[cid] = MenuCategory(**payload)
         result = list(cats.values())
         cache.set(seq, result)
@@ -257,7 +258,8 @@ class OverseerConfigService:
                 if existing is not None:
                     items[iid] = existing.model_copy(update={"is_86ed": False})
             elif e.event_type == EventType.MENU_ITEM_UPDATED:
-                # active flag toggled via UPDATE payload (no separate deactivate event — see menu.item_updated)
+                # Note: ITEM_DEACTIVATED/REACTIVATED events exist but are not used by the UI
+                # UI toggles active flag via UPDATE payload instead (see menu.item_updated)
                 # UPDATED payload can be either shape:
                 #   {item_id, ...fields}   (legacy/direct)
                 #   {item_id, changes: {...fields}}   (from menu-categories.js v2)
