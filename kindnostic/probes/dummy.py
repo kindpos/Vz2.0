@@ -1,8 +1,9 @@
 """Dummy probe — always passes. Used to verify the pipeline end-to-end."""
 
-from kindnostic.types import Category, ProbeResult, Status
+from kindnostic.types import Category, ProbeResult, ProbeTier, Status
 
 CATEGORY = Category.LOW
+PROBE_TIER = ProbeTier.PASSIVE
 
 
 def probe_dummy() -> ProbeResult:

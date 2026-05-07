@@ -42,6 +42,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+try:
+    from kindnostic.types import ProbeTier
+except ImportError:
+    ProbeTier = None
+
 
 def require_collector(
     collector: Optional[DiagnosticCollector] = Depends(get_diagnostic_collector),
@@ -113,6 +118,57 @@ def _run_probes_sync() -> list[dict]:
     return results
 
 
+def _run_probes_by_tier_sync(tier: str) -> dict:
+    """Run probes matching a specific tier. Returns tier, results, ran_at."""
+    try:
+        from kindnostic.runner import run_probes_for_tier
+        from kindnostic.types import ProbeTier
+    except ImportError as exc:
+        return {
+            "tier": tier,
+            "error": f"kindnostic package not importable: {exc}",
+            "ran_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    try:
+        tier_enum = ProbeTier(tier)
+    except ValueError:
+        return {
+            "tier": tier,
+            "error": f"Invalid tier: {tier}. Must be one of: {', '.join(t.value for t in ProbeTier)}",
+            "ran_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    results: list[dict] = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    try:
+        probe_results = run_probes_for_tier(tier_enum)
+        for result, duration_ms in probe_results:
+            results.append(
+                {
+                    "id": result.probe_name,
+                    "category": result.category.value,
+                    "status": result.status.value,
+                    "message": result.message,
+                    "duration_ms": duration_ms,
+                    "last_checked": now_iso,
+                }
+            )
+    except Exception as exc:
+        return {
+            "tier": tier,
+            "error": f"Probe execution failed: {str(exc)}",
+            "ran_at": now_iso,
+        }
+
+    return {
+        "tier": tier,
+        "results": results,
+        "ran_at": now_iso,
+    }
+
+
 @router.get("/snapshot")
 async def get_snapshot(
     session: dict = Depends(get_current_session),
@@ -164,6 +220,26 @@ async def get_settlement_drift(
             for ev in sorted(events, key=lambda e: e.sequence_number or 0, reverse=True)
         ],
     }
+
+
+@router.get("/run-probes")
+async def run_probes_by_tier(
+    tier: str = Query(..., description="Probe tier: passive, polite, or deep"),
+    session: dict = Depends(get_current_session),
+) -> dict:
+    """
+    Run probes matching a specific tier.
+
+    Deep probes require auth (already gated by get_current_session).
+    Returns { tier, results: [...], ran_at: ISO timestamp } or { tier, error: message }.
+    """
+    result = await asyncio.to_thread(_run_probes_by_tier_sync, tier)
+    if "error" in result:
+        raise HTTPException(
+            status_code=400,
+            detail=result["error"],
+        )
+    return result
 
 
 def _serialize_event(ev) -> dict:

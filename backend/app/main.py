@@ -4,6 +4,7 @@ KINDpos FastAPI Application
 The main entry point for the backend API.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -88,6 +89,18 @@ async def _init_printer_manager(ledger, ephemeral_log=None):
     return manager
 
 
+async def _run_daily_retention(collector: DiagnosticCollector) -> None:
+    """Run diagnostic retention once per day (every 86400 seconds)."""
+    while True:
+        try:
+            await asyncio.sleep(86400)  # 24 hours
+            archive_path = await collector.run_retention()
+            if archive_path:
+                print(f"Diagnostic retention: archived to {archive_path}")
+        except Exception as e:
+            print(f"Diagnostic retention failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _dispatcher
@@ -109,6 +122,10 @@ async def lifespan(app: FastAPI):
     await diagnostic_collector.connect()
     set_diagnostic_collector(diagnostic_collector)
     print(f"DiagnosticCollector initialized at {diagnostic_db_path}")
+
+    # Start daily retention background task
+    asyncio.create_task(_run_daily_retention(diagnostic_collector))
+    print("Diagnostic retention scheduler started (daily)")
 
     if settings.store_mode == "demo":
         await seed_demo_data_if_empty(ledger)
