@@ -461,13 +461,19 @@ class OverseerConfigService:
             return cached
 
         events = await self.ledger.get_events_by_type(EventType.PRINTER_REGISTERED, limit=1000)
+        events += await self.ledger.get_events_by_type(EventType.PRINTER_REMOVED, limit=1000)
         events.sort(key=lambda x: x.sequence_number or 0)
 
         printers = {}
         for e in events:
             payload = e.payload
-            pid = payload["printer_id"]
-            printers[pid] = Printer(**payload)
+            pid = payload.get("printer_id")
+            if not pid:
+                continue
+            if e.event_type == EventType.PRINTER_REMOVED:
+                printers.pop(pid, None)
+            else:
+                printers[pid] = Printer(**payload)
         result = list(printers.values())
         cache.set(seq, result)
         return result
