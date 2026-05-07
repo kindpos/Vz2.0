@@ -424,16 +424,27 @@ async def get_labor_summary(
     # A missing clock_in/clock_out means "clear that side"; both missing
     # effectively deletes the clock record for that (date, eid).
     adj_events_all = await ledger.get_events_by_type(EventType.TIMECARD_ADJUSTED)
+    adj_events_all += await ledger.get_events_by_type(EventType.SHIFT_TIME_ADJUSTED)
     adj_map: dict[tuple[str, str], dict] = {}
     for e in sorted(adj_events_all, key=lambda x: x.sequence_number or 0):
-        d = (e.payload or {}).get("date")
-        eid = (e.payload or {}).get("employee_id")
+        p = e.payload or {}
+        eid = p.get("employee_id")
+        if e.event_type == EventType.SHIFT_TIME_ADJUSTED:
+            # Payload: { shift_id, employee_id, original_clock_in (ISO), adjusted_clock_in (HH:MM), ... }
+            iso = p.get("original_clock_in") or ""
+            d = iso[:10] if len(iso) >= 10 else None
+            clock_in  = p.get("adjusted_clock_in")
+            clock_out = p.get("adjusted_clock_out")
+        else:
+            d = p.get("date")
+            clock_in  = p.get("clock_in")
+            clock_out = p.get("clock_out")
         if not d or not eid:
             continue
         adj_map[(d, eid)] = {
-            "clock_in":  e.payload.get("clock_in"),
-            "clock_out": e.payload.get("clock_out"),
-            "name":      e.payload.get("employee_name"),
+            "clock_in":  clock_in,
+            "clock_out": clock_out,
+            "name":      p.get("employee_name"),
         }
 
     def _parse_hhmm(d_str: str, hhmm: str):
