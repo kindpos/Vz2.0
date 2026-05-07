@@ -836,7 +836,17 @@ defineScene({
         lbl.textContent = 'DISCOUNT';
         panel.appendChild(lbl);
 
-        DISCOUNT_OPTIONS.forEach((opt) => {
+        const _manualDiscounts = (window.pricingConfig?.discounts ?? []).filter(d => !d.auto);
+        const _discOptions = _manualDiscounts.length
+          ? _manualDiscounts.map(d => ({
+              id:    d.id,
+              label: d.name,
+              pct:   d.type === 'percentage'  ? Number(d.value) : null,
+              rate:  d.type === 'flat_dollar'  ? Number(d.value) : null,
+            }))
+          : DISCOUNT_OPTIONS;
+
+        _discOptions.forEach((opt) => {
           let btn = buildPillButton({
             label:    opt.label,
             color:    T.gold,
@@ -4130,7 +4140,7 @@ function handleDiscount(state) {
     state._discountInProgress = true;
     SceneManager.interrupt('disc-select', {
       onConfirm: (opt) => {
-        _applyDiscount(state, opt.pct, itemRefs, seatIds, _params.employeeId || 'manager');
+        _applyDiscount(state, opt, itemRefs, seatIds, _params.employeeId || 'manager');
       },
       onCancel: () => { state._discountInProgress = false; },
     });
@@ -4143,7 +4153,7 @@ function handleDiscount(state) {
     onConfirm: (_pin, empId) => {
       SceneManager.interrupt('disc-select', {
         onConfirm: (opt) => {
-          _applyDiscount(state, opt.pct, itemRefs, seatIds, empId);
+          _applyDiscount(state, opt, itemRefs, seatIds, empId);
         },
         onCancel: () => { state._discountInProgress = false; },
       });
@@ -4152,7 +4162,12 @@ function handleDiscount(state) {
   });
 }
 
-function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
+function _applyDiscount(state, optOrPct, itemRefs, seatIds, approvedBy) {
+  // Accept either a legacy numeric pct or a full option object {pct, rate, label, id}.
+  const opt     = typeof optOrPct === 'number' ? { pct: optOrPct } : (optOrPct || {});
+  const pct     = opt.pct  ?? null;
+  const flatRate = opt.rate ?? null;
+
   // Track whether this is a whole-seat discount (selected by seat) vs item-level
   const isWholeSeatDiscount = itemRefs.length === 0 && seatIds.length > 0;
   // Expand seat selections into item refs
@@ -4181,7 +4196,18 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     showToast('Send items to kitchen before applying a discount.', { bg: T.gold });
     return;
   }
-  const amount = computeDiscountAmount(lines, pct);
+
+  // Compute amount: percentage uses computeDiscountAmount helper;
+  // flat-rate multiplies the rate by each item's qty.
+  let amount;
+  if (pct != null) {
+    amount = computeDiscountAmount(lines, pct);
+  } else if (flatRate != null) {
+    amount = Number(lines.reduce((s, it) => s + flatRate * (it.qty || 1), 0).toFixed(2));
+  } else {
+    amount = 0;
+  }
+
   const itemIds = extractItemIds(lines);
   if (amount <= 0 || !state.orderId) {
     state._discountInProgress = false;
@@ -4190,7 +4216,11 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
   }
 
   const discountTxId = `disc-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-  const discountBody = buildDiscountBody(pct, amount, itemIds, approvedBy);
+  const discountBody = buildDiscountBody(pct ?? 0, amount, itemIds, approvedBy);
+  if (pct == null && opt.label) {
+    discountBody.discount_type = opt.label;
+    discountBody.reason        = `Manager discount: ${opt.label}`;
+  }
   discountBody.idempotency_key = discountTxId;
 
   fetchWithTimeout(`/api/v1/orders/${state.orderId}/discount`, {
@@ -4211,10 +4241,15 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     for (let _di = 0; _di < lines.length; _di++) {
       const _dItem = lines[_di];
       const _dRef  = itemRefs[_di];
-      const _dAmt  = Math.round((_dItem.price || 0) * (_dItem.qty || 1) * pct / 100 * 100) / 100;
+      let _dAmt;
+      if (pct != null) {
+        _dAmt = Math.round((_dItem.price || 0) * (_dItem.qty || 1) * pct / 100 * 100) / 100;
+      } else {
+        _dAmt = Math.round((flatRate ?? 0) * (_dItem.qty || 1) * 100) / 100;
+      }
       // Per-item cache (keyed by backend item_id)
       if (_dItem.item_id) {
-        state._itemDiscounts[_dItem.item_id] = { pct, amount: _dAmt };
+        state._itemDiscounts[_dItem.item_id] = { pct: pct ?? 0, amount: _dAmt };
       }
       // Per-seat cache only for whole-seat discounts, not item-level discounts.
       // Item-level discounts should only be indicated via _itemDiscounts.
@@ -4222,7 +4257,7 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
         const _dSeat = _dRef && state.seats[_dRef.seatIdx];
         if (_dSeat && _dSeat.id) {
           if (!state._seatDiscounts[_dSeat.id]) {
-            state._seatDiscounts[_dSeat.id] = { pct, amount: 0 };
+            state._seatDiscounts[_dSeat.id] = { pct: pct ?? 0, amount: 0 };
           }
           state._seatDiscounts[_dSeat.id].amount =
             Math.round((state._seatDiscounts[_dSeat.id].amount + _dAmt) * 100) / 100;
@@ -4236,7 +4271,8 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     // panels (e.g. server-landing) that the order has changed.
     SceneManager.emit('order:updated', { orderId: state.orderId });
     if (typeof refreshOrder === 'function') refreshOrder(state, {});
-    showToast(pct + '% discount applied', { bg: T.greenWarm });
+    const toastLabel = pct != null ? `${pct}% discount applied` : `${opt.label || 'Discount'} applied`;
+    showToast(toastLabel, { bg: T.greenWarm });
   }).catch((err) => {
     state._discountInProgress = false;
     showToast(`Discount failed: ${(err && err.message ? err.message : 'unknown')}`, { bg: T.verm });

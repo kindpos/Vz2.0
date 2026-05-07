@@ -1,121 +1,93 @@
 // ═══════════════════════════════════════════════════
-//  KINDpos Terminal — Day-Part Specials Engine
+//  KINDpos Terminal — Unified Discount Engine
 //
-//  Reads window.pricingConfig (populated by app.js at boot)
-//  and answers two questions:
-//    1. Which specials are active right now?
-//    2. How much does a given ticket item get discounted?
+//  Reads window.pricingConfig.discounts (populated by app.js at boot,
+//  refreshed every 30s). Answers two questions:
+//    1. Which auto discounts are currently active?
+//    2. What is the best auto discount for a given ticket item?
 //
-//  Schema notes (actual backend fields):
-//    special.schedule.mode          — 'dayparts' | 'custom' | absent
-//    special.schedule.daypart_ids   — string[] of day-part IDs
-//    special.schedule.custom_windows — window[] used when mode='custom'
-//    special.scope.mode             — 'all' | 'items' | 'categories'
-//    special.scope.ids              — string[] of item or category IDs
-//    special.discount_type          — 'percentage' | 'flat' | 'fixed_price'
-//    special.discount_value         — number
-//    special.requires_pin           — boolean
-//    special.priority               — number (higher wins)
-//    daypart.windows[]              — {label, days:string[], start:'HH:MM', end:'HH:MM'}
+//  Discount schema (backend fields):
+//    discount.id              — string
+//    discount.name            — string
+//    discount.type            — "percentage" | "flat_dollar"
+//    discount.value           — number (pct or dollar amount)
+//    discount.auto            — bool  (true = applies automatically)
+//    discount.timing_type     — "always" | "day_part" | "custom"
+//    discount.timing_day_part_id — string | null
+//    discount.timing_start    — "HH:MM" | null
+//    discount.timing_end      — "HH:MM" | null
 //
 //  Nice. Dependable. Yours.
 // ═══════════════════════════════════════════════════
 
-var _DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-
-function _parseMinutes(hhmm) {
-  var parts = (hhmm || '00:00').split(':');
-  return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
+function _mins(hhmm) {
+  if (!hhmm) return 0;
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
 }
 
-function _windowActive(w, nowMin, currentDay) {
-  var wDays = w.days || [];
-  if (wDays.length > 0 && wDays.indexOf(currentDay) === -1) return false;
-  return nowMin >= _parseMinutes(w.start) && nowMin < _parseMinutes(w.end);
-}
+// Returns all auto=true discounts whose timing window is currently active.
+export function getActiveAutoDiscounts() {
+  const now      = new Date();
+  const nowMins  = now.getHours() * 60 + now.getMinutes();
+  const activeDPW = window.getActiveDayPartWindow?.();
 
-// Returns the array of specials that are currently scheduled (active flag
-// + day-part or custom-window time match). Reads from window.pricingConfig
-// which is refreshed every 30s by app.js pollConfigVersion.
-export function getActiveSpecials() {
-  var cfg      = window.pricingConfig || {};
-  var specials = cfg.specials  || [];
-  var dayParts = cfg.dayParts  || [];
+  return (window.pricingConfig?.discounts ?? []).filter(d => {
+    if (!d.auto) return false;
 
-  var now        = new Date();
-  var nowMin     = now.getHours() * 60 + now.getMinutes();
-  var currentDay = _DAY_NAMES[now.getDay()];
+    const t = d.timing_type ?? 'always';
 
-  return specials.filter(function(sp) {
-    if (!sp.active) return false;
+    if (t === 'always') return true;
 
-    var sched = sp.schedule || {};
+    if (t === 'day_part')
+      return activeDPW?.dayPart?.id === d.timing_day_part_id;
 
-    if (sched.mode === 'dayparts') {
-      var dpIds = sched.daypart_ids || [];
-      if (dpIds.length === 0) return true; // no restriction → always active
-      return dpIds.some(function(id) {
-        var dp = dayParts.find(function(d) { return d.id === id; });
-        if (!dp) return false;
-        return (dp.windows || []).some(function(w) {
-          return _windowActive(w, nowMin, currentDay);
-        });
-      });
+    if (t === 'custom') {
+      const s = _mins(d.timing_start);
+      const e = _mins(d.timing_end);
+      return s <= e
+        ? nowMins >= s && nowMins < e
+        : nowMins >= s || nowMins < e;
     }
 
-    if (sched.mode === 'custom') {
-      var wins = sched.custom_windows || [];
-      if (wins.length === 0) return true;
-      return wins.some(function(w) { return _windowActive(w, nowMin, currentDay); });
-    }
-
-    return true; // no schedule restriction
-  });
-}
-
-// Given a ticket item (with unitPrice, menu_item_id, category, mods fields)
-// and an array of active specials, returns the best matching discount.
-// Returns { amount: number (2dp), special: object|null }.
-// amount is 0 and special is null when no special applies.
-export function getItemSpecialDiscount(item, activeSpecials) {
-  if (!activeSpecials || activeSpecials.length === 0) return { amount: 0, special: null };
-
-  var itemId = item.menu_item_id || '';
-  var catId  = item.category     || '';
-
-  var matching = activeSpecials.filter(function(sp) {
-    var scope = sp.scope || {};
-    if (!scope.mode || scope.mode === 'all') return true;
-    if (scope.mode === 'items')              return (scope.ids || []).indexOf(itemId) !== -1;
-    if (scope.mode === 'categories')         return (scope.ids || []).indexOf(catId)  !== -1;
     return false;
   });
+}
 
-  if (matching.length === 0) return { amount: 0, special: null };
+// Returns the best matching auto discount for an item.
+// Percentage discounts are compared by effective percentage;
+// flat discounts are converted to an effective percentage for comparison.
+// Most favorable wins. No stacking.
+export function getItemAutoDiscount(item, activeDiscounts) {
+  if (!activeDiscounts?.length) return null;
 
-  // Highest priority wins; ties broken by array order.
-  matching.sort(function(a, b) { return (b.priority || 0) - (a.priority || 0); });
-  var best = matching[0];
+  const price = item.unitPrice ?? item.unit_price ?? 0;
 
-  // Line price = base + charged modifiers only.
-  var chargedMods = (item.mods || []).reduce(function(s, m) {
-    return s + (m.charged ? (Number(m.price) || 0) : 0);
-  }, 0);
-  var linePrice = (Number(item.unitPrice) || 0) + chargedMods;
+  const best = activeDiscounts.reduce((winner, d) => {
+    const dv = _effectivePct(d, price);
+    const wv = winner ? _effectivePct(winner, price) : -1;
+    return dv > wv ? d : winner;
+  }, null);
 
-  var rnd = window.roundHalfUp || function(v) {
-    return Math.round((v + 1e-10) * 100) / 100;
-  };
+  if (!best) return null;
 
-  var amount = 0;
-  var dv = Number(best.discount_value) || 0;
-  if (best.discount_type === 'percentage') {
-    amount = rnd(linePrice * dv / 100);
-  } else if (best.discount_type === 'flat') {
-    amount = rnd(Math.min(dv, linePrice));
-  } else if (best.discount_type === 'fixed_price') {
-    amount = rnd(Math.max(0, linePrice - dv));
-  }
+  const amt = _discountAmount(best, price);
+  if (amt <= 0) return null;
 
-  return { amount: amount, special: best };
+  return { discount: best, amount: amt };
+}
+
+// Compute the dollar amount a discount removes from a given price.
+function _discountAmount(d, price) {
+  const rnd = window.roundHalfUp || (v => Math.round((v + 1e-10) * 100) / 100);
+  if (d.type === 'percentage') return rnd(price * Number(d.value) / 100);
+  if (d.type === 'flat_dollar') return rnd(Math.min(Number(d.value), price));
+  return 0;
+}
+
+// Convert a discount to an effective percentage for comparison purposes.
+function _effectivePct(d, price) {
+  if (d.type === 'percentage') return Number(d.value);
+  if (d.type === 'flat_dollar') return price > 0 ? Number(d.value) / price * 100 : 0;
+  return 0;
 }

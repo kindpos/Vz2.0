@@ -422,6 +422,11 @@ class Discount(BaseModel):
     value: Decimal
     requires_pin: bool = True
     active: bool = True
+    auto: bool = False
+    timing_type: str = "always"          # "always" | "day_part" | "custom"
+    timing_day_part_id: Optional[str] = None
+    timing_start: Optional[str] = None  # "HH:MM"
+    timing_end: Optional[str] = None    # "HH:MM"
 
 
 class VoidReason(BaseModel):
