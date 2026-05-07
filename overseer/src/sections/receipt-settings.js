@@ -4,6 +4,7 @@
    ============================================ */
 
 import { pushChanges } from '../services/config-push.js';
+import { fetchWithTimeout } from '../services/http.js';
 
 let currentContainer = null;
 
@@ -18,10 +19,9 @@ const showToast = (msg, type = 'success') => {
 
 const loadStoreInfo = async () => {
     try {
-        const res = await fetch('/api/v1/config/store');
+        const res = await fetchWithTimeout('/api/v1/config/store');
         if (!res.ok) return {};
-        const bundle = await res.json();
-        return bundle.info || {};
+        return await res.json();
     } catch { return {}; }
 }
 
@@ -75,8 +75,9 @@ const textInput = (label, id, value, placeholder = '', type = 'text') => {
 }
 
 const mount = async (container) => {
-    const info = await loadStoreInfo();
-    const receipt = info.receipt_settings || {};
+    const bundle = await loadStoreInfo();
+    const info = bundle.info || {};
+    const receipt = bundle.receipt_settings || {};
 
     container.innerHTML = '';
     const wrapper = document.createElement('div');
@@ -93,8 +94,8 @@ const mount = async (container) => {
 
     // Receipt header/footer text
     wrapper.appendChild(section('HEADER / FOOTER TEXT'));
-    const headerF = textInput('Header Text', 'rs-header', info.receipt_header || '', 'Thank you for visiting!');
-    const footerF = textInput('Footer Text', 'rs-footer', info.receipt_footer || '', 'Come back soon!');
+    const headerF = textInput('Header Text', 'rs-header', bundle.receipt_header || '', 'Thank you for visiting!');
+    const footerF = textInput('Footer Text', 'rs-footer', bundle.receipt_footer || '', 'Come back soon!');
     headerF.input.style.maxWidth = '100%';
     footerF.input.style.maxWidth = '100%';
     wrapper.appendChild(headerF.wrap);

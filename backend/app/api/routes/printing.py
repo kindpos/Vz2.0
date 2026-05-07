@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from pathlib import Path
@@ -27,19 +27,56 @@ print_queue = PrintJobQueue()
 
 _logger = logging.getLogger(__name__)
 
+
+async def _resolve_receipt_printer(terminal_id: str) -> str:
+    """Return the MAC address for this terminal's assigned receipt printer.
+
+    Lookup order:
+      1. Receipt printers in hardware_config.db assigned to terminal_id
+         (stored in the `terminal_id` column added by the hardware section)
+      2. First available receipt printer in hardware_config.db (any terminal)
+      3. Sentinel "DEFAULT_RECEIPT" — preserves original fallback behaviour
+    """
+    await _ensure_db()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # Check for a terminal-specific assignment first
+        async with db.execute(
+            "SELECT mac FROM devices WHERE type = 'receipt' AND terminal_id = ? LIMIT 1",
+            (terminal_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if row:
+            return row["mac"]
+
+        # Fall back to the first receipt printer regardless of terminal
+        async with db.execute(
+            "SELECT mac FROM devices WHERE type = 'receipt' ORDER BY saved_at LIMIT 1"
+        ) as cur:
+            row = await cur.fetchone()
+        if row:
+            return row["mac"]
+
+    return "DEFAULT_RECEIPT"
+
+
 @router.post("/receipt/{order_id}", dependencies=[Depends(require_manager)])
 async def print_receipt(
+    request: Request,
     order_id: str,
     copy_type: str = "customer",   # query param: customer | merchant | itemized
     ledger: EventLedger = Depends(get_ledger),
 ):
     """Trigger receipt print for completed order. copy_type defaults to customer."""
+    terminal_id = request.headers.get("X-Terminal-Id", "")
+    printer_mac = await _resolve_receipt_printer(terminal_id)
+
     builder = PrintContextBuilder(ledger)
     context = await builder.build_receipt_context(order_id, copy_type=copy_type)
     job_id  = await print_queue.enqueue(
         order_id=order_id,
         template_id="guest_receipt",
-        printer_mac="DEFAULT_RECEIPT",
+        printer_mac=printer_mac,
         ticket_number=context.get("ticket_number", "N/A"),
         context=context,
         copy_type=copy_type,
