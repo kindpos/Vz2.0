@@ -67,6 +67,19 @@ class OverseerConfigService:
             if e.event_type == EventType.EMPLOYEE_ROLE_DELETED:
                 roles.pop(rid, None)
             else:
+                # Coerce legacy payload shapes to match current Role schema
+                if isinstance(payload.get('permission_level'), int):
+                    payload['permission_level'] = str(payload['permission_level'])
+
+                if isinstance(payload.get('permissions'), list):
+                    payload['permissions'] = {p: True for p in payload['permissions']}
+
+                if 'service_types' in payload:
+                    allowed = {'full_service', 'qsr'}
+                    payload['service_types'] = [
+                        t for t in payload['service_types'] if t in allowed
+                    ] or ['full_service']
+
                 roles[rid] = Role(**payload)
         result = list(roles.values())
         cache.set(seq, result)
@@ -189,6 +202,8 @@ class OverseerConfigService:
             if e.event_type == EventType.MENU_CATEGORY_DELETED:
                 cats.pop(cid, None)
             else:
+                # Note: CATEGORY_DEACTIVATED/REACTIVATED events exist but are not used by the UI
+                # UI toggles active flag via UPDATE payload instead (see menu.category_updated)
                 cats[cid] = MenuCategory(**payload)
         result = list(cats.values())
         cache.set(seq, result)
@@ -243,6 +258,8 @@ class OverseerConfigService:
                 if existing is not None:
                     items[iid] = existing.model_copy(update={"is_86ed": False})
             elif e.event_type == EventType.MENU_ITEM_UPDATED:
+                # Note: ITEM_DEACTIVATED/REACTIVATED events exist but are not used by the UI
+                # UI toggles active flag via UPDATE payload instead (see menu.item_updated)
                 # UPDATED payload can be either shape:
                 #   {item_id, ...fields}   (legacy/direct)
                 #   {item_id, changes: {...fields}}   (from menu-categories.js v2)
@@ -260,6 +277,65 @@ class OverseerConfigService:
                     items[iid] = MenuItem(**{k: v for k, v in fields.items() if k != 'changes'})
             else:
                 items[iid] = MenuItem(**payload)
+
+        # Apply pricing chain events (size pricing, option group overrides, size price overrides)
+        pricing_event_types = [
+            EventType.MENU_ITEM_SIZE_PRICING_SET,
+            EventType.MENU_ITEM_OPTION_GROUP_OVERRIDE_SET,
+            EventType.MENU_ITEM_SIZE_PRICE_OVERRIDE_SET,
+        ]
+        pricing_events = []
+        for et in pricing_event_types:
+            pricing_events += await self.ledger.get_events_by_type(et, limit=5000)
+        if pricing_events:
+            pricing_events.sort(key=lambda x: x.sequence_number or 0)
+            for e in pricing_events:
+                payload = e.payload
+                item_id = payload.get("item_id")
+                if not item_id or item_id not in items:
+                    continue
+
+                item = items[item_id]
+                data = item.model_dump()
+
+                if e.event_type == EventType.MENU_ITEM_SIZE_PRICING_SET:
+                    # payload: {item_id, group_id, size_prices}
+                    group_id = payload.get("group_id")
+                    size_prices = payload.get("size_prices", {})
+                    if group_id:
+                        if "price_by_size" not in data:
+                            data["price_by_size"] = {}
+                        data["price_by_size"][group_id] = size_prices
+
+                elif e.event_type == EventType.MENU_ITEM_OPTION_GROUP_OVERRIDE_SET:
+                    # payload: {item_id, group_id, option_group_id}
+                    group_id = payload.get("group_id")
+                    option_group_id = payload.get("option_group_id")
+                    if group_id:
+                        if "option_group_overrides" not in data:
+                            data["option_group_overrides"] = {}
+                        if option_group_id:
+                            data["option_group_overrides"][group_id] = option_group_id
+                        else:
+                            data["option_group_overrides"].pop(group_id, None)
+
+                elif e.event_type == EventType.MENU_ITEM_SIZE_PRICE_OVERRIDE_SET:
+                    # payload: {item_id, group_id, size_name, price}
+                    group_id = payload.get("group_id")
+                    size_name = payload.get("size_name")
+                    price = payload.get("price")
+                    if group_id and size_name:
+                        if "size_price_overrides" not in data:
+                            data["size_price_overrides"] = {}
+                        if group_id not in data["size_price_overrides"]:
+                            data["size_price_overrides"][group_id] = {}
+                        if price is not None:
+                            data["size_price_overrides"][group_id][size_name] = price
+                        else:
+                            data["size_price_overrides"][group_id].pop(size_name, None)
+
+                items[item_id] = MenuItem(**data)
+
         result = list(items.values())
         cache.set(seq, result)
         return result
@@ -461,13 +537,19 @@ class OverseerConfigService:
             return cached
 
         events = await self.ledger.get_events_by_type(EventType.PRINTER_REGISTERED, limit=1000)
+        events += await self.ledger.get_events_by_type(EventType.PRINTER_REMOVED, limit=1000)
         events.sort(key=lambda x: x.sequence_number or 0)
 
         printers = {}
         for e in events:
             payload = e.payload
-            pid = payload["printer_id"]
-            printers[pid] = Printer(**payload)
+            pid = payload.get("printer_id")
+            if not pid:
+                continue
+            if e.event_type == EventType.PRINTER_REMOVED:
+                printers.pop(pid, None)
+            else:
+                printers[pid] = Printer(**payload)
         result = list(printers.values())
         cache.set(seq, result)
         return result
@@ -498,6 +580,7 @@ class OverseerConfigService:
         event_types = [
             EventType.OPTION_CREATED,
             EventType.OPTION_UPDATED,
+            EventType.OPTION_DELETED,
             EventType.OPTION_DEACTIVATED,
             EventType.OPTION_REACTIVATED,
         ]
@@ -514,6 +597,8 @@ class OverseerConfigService:
                 continue
             if e.event_type == EventType.OPTION_CREATED:
                 options[oid] = dict(payload)
+            elif e.event_type == EventType.OPTION_DELETED:
+                options.pop(oid, None)
             elif oid in options:
                 if e.event_type == EventType.OPTION_UPDATED:
                     options[oid].update(payload)
@@ -611,6 +696,42 @@ class OverseerConfigService:
                     sizes[sid]["active"] = True
 
         result = [Size(**s) for s in sizes.values()]
+        cache.set(seq, result)
+        return result
+
+    async def get_shift_templates(self) -> List[Dict[str, Any]]:
+        cache = self._get_cache("shift_templates")
+        seq = await self._max_seq()
+        cached = cache.get(seq)
+        if cached is not None:
+            return cached
+
+        event_types = [
+            EventType.SHIFT_TEMPLATE_CREATED,
+            EventType.SHIFT_TEMPLATE_UPDATED,
+            EventType.SHIFT_TEMPLATE_DELETED,
+        ]
+        events: list = []
+        for et in event_types:
+            events += await self.ledger.get_events_by_type(et, limit=1000)
+        events.sort(key=lambda x: x.sequence_number or 0)
+
+        templates: Dict[str, Dict[str, Any]] = {}
+        for e in events:
+            payload = e.payload
+            tid = payload.get("template_id")
+            if not tid:
+                continue
+            if e.event_type == EventType.SHIFT_TEMPLATE_DELETED:
+                templates.pop(tid, None)
+            elif e.event_type == EventType.SHIFT_TEMPLATE_CREATED:
+                templates[tid] = dict(payload)
+            else:  # SHIFT_TEMPLATE_UPDATED — merge onto existing
+                existing = templates.get(tid, {})
+                existing.update(payload)
+                templates[tid] = existing
+
+        result = list(templates.values())
         cache.set(seq, result)
         return result
 

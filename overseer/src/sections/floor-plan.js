@@ -20,7 +20,7 @@ const SECTION_COLORS = [
 
 let _currentContainer = null;
 
-async function fetchSections() {
+const fetchSections = async () => {
   try {
     const res = await fetch('/api/v1/config/floorplan/sections');
     if (!res.ok) return [];
@@ -28,7 +28,7 @@ async function fetchSections() {
   } catch { return []; }
 }
 
-function openSectionEditor(section, onSaved) {
+const openSectionEditor = (section, onSaved) => {
   const isEdit = !!section;
 
   // Build content
@@ -118,7 +118,7 @@ function openSectionEditor(section, onSaved) {
   setTimeout(() => nameField.input.focus(), 50);
 }
 
-async function confirmDelete(section, onDone) {
+const confirmDelete = async (section, onDone) => {
   const content = document.createElement('div');
   content.innerHTML = `
     <div style="font-family: var(--font-body); font-size: 15px; color: ${C.text}; line-height: 1.5;">
@@ -164,7 +164,7 @@ async function confirmDelete(section, onDone) {
   });
 }
 
-function buildSectionRow(section, onChanged) {
+const buildSectionRow = (section, onChanged) => {
   const id = section.section_id || section.id;
   const color = section.color || C.gold;
   const active = section.active !== false;
@@ -212,7 +212,7 @@ function buildSectionRow(section, onChanged) {
   return row;
 }
 
-async function render(container) {
+const render = async (container) => {
   // Field refs aren't needed — no save on this page, only per-row actions.
   const { body } = buildScenePage(container, {
     title: 'Floor Plan',

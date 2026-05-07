@@ -66,7 +66,7 @@ let selectedFile = null;
  * Nostalgia card with left accent bar.
  * Returns the outer element; caller appends children.
  */
-function buildCard(accent, opts = {}) {
+const buildCard = (accent, opts = {}) => {
     const card = document.createElement('div');
     card.style.cssText = `
         background: ${C.card};
@@ -84,7 +84,7 @@ function buildCard(accent, opts = {}) {
  * Micro label — 12-13px letter-spaced caps in ui-monospace.
  * Matches home.js .card-label / .card-mini-label.
  */
-function buildLabel(text, opts = {}) {
+const buildLabel = (text, opts = {}) => {
     const el = document.createElement('div');
     el.style.cssText = `
         font-size: ${opts.size || '13px'};
@@ -104,7 +104,7 @@ function buildLabel(text, opts = {}) {
  * Variants: primary (gold), confirm (greenUp), secondary (ghost green),
  * tertiary (dim link), danger (verm).
  */
-function buildPillButton(label, variant, onClick) {
+const buildPillButton = (label, variant, onClick) => {
     const btn = document.createElement('button');
 
     const variants = {
@@ -178,7 +178,7 @@ function buildPillButton(label, variant, onClick) {
  * Toast — top-right corner, fades out after 3s.
  * Reskinned: dark card with accent-left in the semantic color.
  */
-function showToast(msg, type = 'success') {
+const showToast = (msg, type = 'success') => {
     const accent = type === 'error' ? C.verm
                  : type === 'warning' ? C.warning
                  : C.greenUp;
@@ -227,19 +227,17 @@ function showToast(msg, type = 'success') {
         menu.item_size_price_override_set
     10. tax / discounts
 ------------------------------------------ */
-function _slugify(name) {
-    return String(name || '').toLowerCase()
+const _slugify = (name) => String(name || '').toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/_+$/, '')
         .replace(/^_+/, '');
-}
+;
 
-function _slugifyDash(name) {
-    return String(name || '').toLowerCase()
+const _slugifyDash = (name) => String(name || '').toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/-+$/, '')
         .replace(/^-+/, '');
-}
+;
 
 export function convertParsedDataToEvents(data) {
     const events = [];
@@ -571,14 +569,14 @@ export function convertParsedDataToEvents(data) {
    Unchanged.
 ------------------------------------------ */
 const VIEW_REGISTRY = {
-    'file-select':  buildFileSelect,
-    'parsing':      buildParsing,
-    'preview':      buildPreview,
-    'success':      buildSuccess,
-    'error':        buildError,
+    'file-select':  (w, d) => buildFileSelect(w, d),
+    'parsing':      (w, d) => buildParsing(w, d),
+    'preview':      (w, d) => buildPreview(w, d),
+    'success':      (w, d) => buildSuccess(w, d),
+    'error':        (w, d) => buildError(w, d),
 };
 
-function pushView(viewName, data) {
+const pushView = (viewName, data) => {
     if (!currentWrapper) return;
 
     currentWrapper.innerHTML = '';
@@ -594,7 +592,7 @@ function pushView(viewName, data) {
     currentWrapper.scrollTop = 0;
 }
 
-function popView() {
+const popView = () => {
     if (viewHistory.length <= 1) return;
 
     viewHistory.pop();
@@ -609,7 +607,7 @@ function popView() {
    Small ghost pill. Matches tertiary variant
    but with a left arrow caret.
 ------------------------------------------ */
-function buildBackButton(container, label) {
+const buildBackButton = (container, label) => {
     const btn = buildPillButton(`← Back to ${label}`, 'tertiary', () => popView());
     btn.style.fontSize = '12px';
     btn.style.padding = '8px 18px';
@@ -623,7 +621,7 @@ function buildBackButton(container, label) {
 /* ------------------------------------------
    COMING SOON PLACEHOLDER
 ------------------------------------------ */
-function buildComingSoon(container, viewName) {
+const buildComingSoon = (container, viewName) => {
     buildBackButton(container, 'File Select');
 
     const displayName = viewName
@@ -654,7 +652,7 @@ function buildComingSoon(container, viewName) {
    Tap opens native picker, drag-drop works
    as a bonus.
    ========================================== */
-function buildFileSelect(wrapper) {
+const buildFileSelect = (wrapper) => {
     // --- Scene title row (matches home.js pattern) ---
     const titleRow = document.createElement('div');
     titleRow.style.cssText = `margin-bottom: 28px;`;
@@ -821,7 +819,7 @@ function buildFileSelect(wrapper) {
 /**
  * Handle file selected. Swap drop zone to "ready" state.
  */
-function handleFileSelected(file, dzSelected, importBtn, dzText, dzIcon) {
+const handleFileSelected = (file, dzSelected, importBtn, dzText, dzIcon) => {
     selectedFile = file;
 
     dzIcon.textContent = '✓';
@@ -840,7 +838,7 @@ function handleFileSelected(file, dzSelected, importBtn, dzText, dzIcon) {
    Animated step card. Gold accent while
    working, greenUp on complete, verm on error.
    ========================================== */
-function buildParsing(wrapper) {
+const buildParsing = (wrapper) => {
     // --- Header ---
     const headerWrap = document.createElement('div');
     headerWrap.style.cssText = `text-align: center; margin-bottom: 28px;`;
@@ -974,7 +972,7 @@ function buildParsing(wrapper) {
 /**
  * Animate progress steps. Each step ticks greenUp before the next starts.
  */
-function animateSteps(stepElements, header) {
+const animateSteps = (stepElements, header) => {
     return new Promise(resolve => {
         let i = 0;
         const interval = setInterval(() => {
@@ -1000,7 +998,7 @@ function animateSteps(stepElements, header) {
    collapsible section cards for each data
    group. Confirm button at bottom.
    ========================================== */
-function buildPreview(wrapper) {
+const buildPreview = (wrapper) => {
     if (!parsedData) {
         buildComingSoon(wrapper, 'preview');
         return;
@@ -1416,7 +1414,7 @@ function buildPreview(wrapper) {
 }
 
 /** Helper: empty-state placeholder inside a section. */
-function appendEmpty(content, msg) {
+const appendEmpty = (content, msg) => {
     const empty = document.createElement('div');
     empty.style.cssText = `
         color: ${C.textDim};
@@ -1434,7 +1432,7 @@ function appendEmpty(content, msg) {
    the first row of the card, content expands
    below it.
 ------------------------------------------ */
-function buildCollapsibleSection(wrapper, title, accent, startOpen, contentBuilder) {
+const buildCollapsibleSection = (wrapper, title, accent, startOpen, contentBuilder) => {
     const card = buildCard(accent, {
         padding: '0',
         margin: '0 0 12px 0'
@@ -1511,7 +1509,7 @@ function buildCollapsibleSection(wrapper, title, accent, startOpen, contentBuild
 /* ==========================================
    SUCCESS VIEW
    ========================================== */
-function buildSuccess(wrapper) {
+const buildSuccess = (wrapper) => {
     if (!parsedData) {
         buildComingSoon(wrapper, 'success');
         return;
@@ -1690,7 +1688,7 @@ function buildSuccess(wrapper) {
 /* ==========================================
    ERROR VIEW
    ========================================== */
-function buildError(wrapper) {
+const buildError = (wrapper) => {
     // --- Header ---
     const header = document.createElement('div');
     header.style.cssText = `text-align: center; margin-bottom: 24px;`;

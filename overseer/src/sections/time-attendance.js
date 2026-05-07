@@ -52,15 +52,15 @@ let refreshTimer = null;
 
 /** View registry: name → builder function */
 const VIEW_REGISTRY = {
-    'live-dashboard': buildLiveDashboard,
-    'week-grid':      buildWeekGrid,
-    'shift-detail':   buildShiftDetail,
+    'live-dashboard': (w, d) => buildLiveDashboard(w, d),
+    'week-grid':      (w, d) => buildWeekGrid(w, d),
+    'shift-detail':   (w, d) => buildShiftDetail(w, d),
 };
 
 /* ------------------------------------------
    VIEW STACK (same pattern as reporting.js)
 ------------------------------------------ */
-function pushView(viewName, data) {
+const pushView = (viewName, data) => {
     if (!currentContainer) return;
     const wrapper = currentContainer.querySelector('#ta-view-wrapper');
     if (!wrapper) return;
@@ -73,7 +73,7 @@ function pushView(viewName, data) {
     }
 }
 
-function popView() {
+const popView = () => {
     if (viewHistory.length <= 1) return;
     viewHistory.pop();
     const prev = viewHistory[viewHistory.length - 1];
@@ -84,7 +84,7 @@ function popView() {
 /* ------------------------------------------
    BACK BUTTON BUILDER
 ------------------------------------------ */
-function buildBackButton(wrapper, label) {
+const buildBackButton = (wrapper, label) => {
     const btn = document.createElement('button');
     btn.textContent = `← Back to ${label}`;
     btn.style.cssText = `
@@ -103,7 +103,7 @@ function buildBackButton(wrapper, label) {
 /* ------------------------------------------
    TOAST (reuse pattern from employees.js)
 ------------------------------------------ */
-function showToast(message, type = 'success') {
+const showToast = (message, type = 'success') => {
     if (!currentContainer) return;
     const old = currentContainer.querySelector('.ta-toast');
     if (old) old.remove();
@@ -139,7 +139,7 @@ function showToast(message, type = 'success') {
 ------------------------------------------ */
 const _pendingEvents = [];
 
-function emitEvent(eventType, payload) {
+const emitEvent = (eventType, payload) => {
     const event = { event_type: eventType, payload };
     _pendingEvents.push(event);
     pushChanges([event]).catch(e => console.warn("[Overseer] Event push failed:", e));
@@ -150,9 +150,9 @@ function emitEvent(eventType, payload) {
    FORMAT HELPERS
 ------------------------------------------ */
 function fmt$(val) { return '$' + val.toFixed(2); }
-function fmtHrs(val) { return val.toFixed(2) + 'h'; }
+const fmtHrs = (val) => val.toFixed(2) + 'h'; ;
 
-function fmtTime12(time24) {
+const fmtTime12 = (time24) => {
     if (!time24) return '—';
     const [h, m] = time24.split(':').map(Number);
     const ampm = h >= 12 ? 'PM' : 'AM';
@@ -160,7 +160,7 @@ function fmtTime12(time24) {
     return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-function fmtTimeISO(isoStr) {
+const fmtTimeISO = (isoStr) => {
     if (!isoStr) return '—';
     const d = new Date(isoStr);
     return fmtTime12(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
@@ -170,7 +170,7 @@ function fmtTimeISO(isoStr) {
    VIEW 1: LIVE DASHBOARD
    "Who's on the clock right now?"
    ========================================== */
-function buildLiveDashboard(wrapper) {
+const buildLiveDashboard = (wrapper) => {
     wrapper.style.cssText = 'padding: 0 8px; max-width: 1100px; margin: 0 auto;';
 
     // ── Header ──
@@ -348,7 +348,7 @@ function buildLiveDashboard(wrapper) {
 /* ------------------------------------------
    CLOCK REFRESH (updates time display)
 ------------------------------------------ */
-function startClockRefresh() {
+const startClockRefresh = () => {
     stopClockRefresh();
     refreshTimer = setInterval(() => {
         const el = document.getElementById('ta-clock');
@@ -359,7 +359,7 @@ function startClockRefresh() {
     }, 30000);
 }
 
-function stopClockRefresh() {
+const stopClockRefresh = () => {
     if (refreshTimer) {
         clearInterval(refreshTimer);
         refreshTimer = null;
@@ -370,7 +370,7 @@ function stopClockRefresh() {
    VIEW 2: WEEK GRID
    Spreadsheet-style time cards for all employees
    ========================================== */
-function buildWeekGrid(wrapper) {
+const buildWeekGrid = (wrapper) => {
     wrapper.style.cssText = 'padding: 0 8px; max-width: 1200px; margin: 0 auto;';
 
     buildBackButton(wrapper, 'Live Dashboard');
@@ -569,7 +569,7 @@ function buildWeekGrid(wrapper) {
    VIEW 3: SHIFT DETAIL
    Drill-down into individual shift
    ========================================== */
-function buildShiftDetail(wrapper, shift) {
+const buildShiftDetail = (wrapper, shift) => {
     if (!shift) return;
     wrapper.style.cssText = 'padding: 0 8px; max-width: 1000px; margin: 0 auto;';
 
@@ -771,7 +771,7 @@ function buildShiftDetail(wrapper, shift) {
    TIME EDIT MODAL
    Manager PIN + reason code + audit trail
    ========================================== */
-function showTimeEditModal(shift) {
+const showTimeEditModal = (shift) => {
     if (!currentContainer) return;
 
     const backdrop = document.createElement('div');
@@ -925,7 +925,7 @@ function showTimeEditModal(shift) {
 
         if (!reason) { showToast('Please select a reason for this edit.', 'error'); return; }
 
-        emitEvent('SHIFT_TIME_ADJUSTED', {
+        emitEvent('shift.time_adjusted', {
             shift_id: shift.shift_id,
             employee_id: shift.employee_id,
             original_clock_in: shift.clockIn,
@@ -959,7 +959,7 @@ function showTimeEditModal(shift) {
 /* ------------------------------------------
    REUSABLE UI COMPONENTS
 ------------------------------------------ */
-function buildTab(label, active, onClick) {
+const buildTab = (label, active, onClick) => {
     const tab = document.createElement('button');
     tab.textContent = label;
     tab.style.cssText = `
@@ -978,7 +978,7 @@ function buildTab(label, active, onClick) {
     return tab;
 }
 
-function buildSummaryCard(label, value, color) {
+const buildSummaryCard = (label, value, color) => {
     const card = document.createElement('div');
     card.style.cssText = `
         background: rgba(var(--color-mint-rgb), 0.04); border: 1px solid ${C.mintBorder};
@@ -993,7 +993,7 @@ function buildSummaryCard(label, value, color) {
     return card;
 }
 
-function buildTimeInput(label, id, value) {
+const buildTimeInput = (label, id, value) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'flex: 1;';
     wrap.innerHTML = `

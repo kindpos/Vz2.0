@@ -32,9 +32,9 @@ const _state = {
 /* ------------------------------------------
    FORMATTERS / UTILS
 ------------------------------------------ */
-function formatPrice(n) { return '$' + Number(n || 0).toFixed(2); }
+const formatPrice = (n) => '$' + Number(n || 0).toFixed(2); ;
 
-function formatPriceAdjustment(n) {
+const formatPriceAdjustment = (n) => {
     const v = Number(n || 0);
     if (v > 0) return '+ ' + formatPrice(v);
     if (v < 0) return '− ' + formatPrice(Math.abs(v));
@@ -44,13 +44,13 @@ function formatPriceAdjustment(n) {
 /* ------------------------------------------
    API
 ------------------------------------------ */
-async function apiGet(url) {
+const apiGet = async (url) => {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
     return res.json();
 }
 
-async function apiPost(url, body) {
+const apiPost = async (url, body) => {
     const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -60,7 +60,7 @@ async function apiPost(url, body) {
     return res.json();
 }
 
-async function apiPatch(url, body) {
+const apiPatch = async (url, body) => {
     const res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -70,12 +70,12 @@ async function apiPatch(url, body) {
     return res.json();
 }
 
-async function fetchSizes() { return apiGet('/api/v1/sizes'); }
+const fetchSizes = async () => { return apiGet('/api/v1/sizes'); }
 
 /* ------------------------------------------
    TOAST (uses tokens for color)
 ------------------------------------------ */
-function showToast(msg, kind = 'ok') {
+const showToast = (msg, kind = 'ok') => {
     const toast = document.createElement('div');
     const bg = kind === 'error' ? T.verm : T.greenWarm;
     toast.textContent = msg;
@@ -103,7 +103,7 @@ function showToast(msg, kind = 'ok') {
 /* ------------------------------------------
    PRIMITIVES — text input, toggle, pill button
 ------------------------------------------ */
-function buildTextInput(value, opts = {}) {
+const buildTextInput = (value, opts = {}) => {
     const input = document.createElement('input');
     input.type = opts.type || 'text';
     input.value = value ?? '';
@@ -129,7 +129,7 @@ function buildTextInput(value, opts = {}) {
     return input;
 }
 
-function buildToggle(initial, onChange) {
+const buildToggle = (initial, onChange) => {
     let state = !!initial;
     const wrap = document.createElement('button');
     wrap.type = 'button';
@@ -173,7 +173,7 @@ function buildToggle(initial, onChange) {
     return wrap;
 }
 
-function buildPillButton(label, variant, onClick, opts = {}) {
+const buildPillButton = (label, variant, onClick, opts = {}) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
@@ -244,7 +244,7 @@ function buildPillButton(label, variant, onClick, opts = {}) {
 /* ------------------------------------------
    BADGE — small inline label
 ------------------------------------------ */
-function buildBadge(text, color) {
+const buildBadge = (text, color) => {
     const el = document.createElement('span');
     el.textContent = text;
     el.style.cssText = `
@@ -265,7 +265,7 @@ function buildBadge(text, color) {
 /* ------------------------------------------
    INFO BANNER
 ------------------------------------------ */
-function buildInfoBanner(text) {
+const buildInfoBanner = (text) => {
     const el = document.createElement('div');
     el.textContent = text;
     el.style.cssText = `
@@ -286,7 +286,7 @@ function buildInfoBanner(text) {
    PAGE FRAME — header.
 ============================================ */
 
-function buildPageHeader(wrapper) {
+const buildPageHeader = (wrapper) => {
     const header = document.createElement('div');
     header.style.cssText = `
         display: flex; align-items: flex-start; justify-content: space-between;
@@ -331,7 +331,7 @@ function buildPageHeader(wrapper) {
    SIZES
 ============================================ */
 
-function buildSizesTab(content) {
+const buildSizesTab = (content) => {
     content.appendChild(buildInfoBanner(
         'Sizes scale item base prices. A positive Price Adjustment is added on top of the item price for that size.'
     ));
@@ -356,7 +356,7 @@ function buildSizesTab(content) {
     }
 }
 
-function buildSizeCard(size) {
+const buildSizeCard = (size) => {
     const adj = Number(size.price_adjustment || 0);
     const card = buildStaticCard({
         accent: adj > 0 ? T.gold : T.moon,
@@ -436,7 +436,7 @@ function buildSizeCard(size) {
     return card;
 }
 
-function buildSizeEditForm(size) {
+const buildSizeEditForm = (size) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
 
@@ -502,7 +502,7 @@ function buildSizeEditForm(size) {
     return wrap;
 }
 
-function buildSizeAddForm() {
+const buildSizeAddForm = () => {
     const form = buildAddFormShell('Add Size');
 
     const nameInput = buildField(form, 'Name *', buildTextInput('', { placeholder: 'e.g. Large, X-Large…' }));
@@ -534,7 +534,7 @@ function buildSizeAddForm() {
    inline Add form.
 ------------------------------------------ */
 
-function buildAddFormShell(title) {
+const buildAddFormShell = (title) => {
     const form = document.createElement('div');
     form.style.cssText = `
         margin-top: 18px;
@@ -556,7 +556,7 @@ function buildAddFormShell(title) {
     return form;
 }
 
-function buildField(form, labelText, inputEl, hintText) {
+const buildField = (form, labelText, inputEl, hintText) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom: 14px;';
     const label = document.createElement('div');
@@ -587,7 +587,7 @@ function buildField(form, labelText, inputEl, hintText) {
     return inputEl;
 }
 
-function buildFormActions(form, onSave) {
+const buildFormActions = (form, onSave) => {
     const actions = document.createElement('div');
     actions.style.cssText = `
         display: flex; gap: 10px; justify-content: flex-end;
@@ -607,7 +607,7 @@ function buildFormActions(form, onSave) {
 /* ------------------------------------------
    EMPTY STATE
 ------------------------------------------ */
-function buildEmptyState(text) {
+const buildEmptyState = (text) => {
     const el = document.createElement('div');
     el.textContent = text;
     el.style.cssText = `
@@ -624,7 +624,7 @@ function buildEmptyState(text) {
 /* ------------------------------------------
    ERROR STATE — clickable to retry
 ------------------------------------------ */
-function buildErrorState(retry) {
+const buildErrorState = (retry) => {
     const el = document.createElement('div');
     el.textContent = 'Failed to load — tap to retry';
     el.style.cssText = `
@@ -644,7 +644,7 @@ function buildErrorState(retry) {
    RENDER + LIFECYCLE
 ============================================ */
 
-function rebuild() {
+const rebuild = () => {
     if (!_state.wrapper) return;
     _state.wrapper.replaceChildren();
 
@@ -657,7 +657,7 @@ function rebuild() {
     buildSizesTab(content);
 }
 
-async function refreshSizes() {
+const refreshSizes = async () => {
     _state.loadError = false;
     try {
         _state.sizes = await fetchSizes();

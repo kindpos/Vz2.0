@@ -32,7 +32,21 @@ async def test_finalize_checkout_route(ledger):
         manager_pin_verified=True
     )
     resp = await finalize_checkout(req, ledger)
-    assert resp == {"success": True}
+    assert resp["success"] is True
+    assert "event_seq" in resp
+    assert resp["event_seq"] is not None
+    assert "checkout" in resp
+    assert "total_tips" in resp["checkout"]
+    assert "cash_tips" in resp["checkout"]
+    assert "card_tips" in resp["checkout"]
+    assert "tipout_amount" in resp["checkout"]
+
+    # Verify CHECKOUT_FINALIZED event was emitted
+    events = await ledger.get_events_since(0)
+    assert len(events) >= 1
+    checkout_events = [e for e in events if e.event_type == EventType.CHECKOUT_FINALIZED]
+    assert len(checkout_events) == 1
+    assert checkout_events[0].payload["server_id"] == "emp_01"
 
 @pytest.mark.asyncio
 async def test_transfer_route(ledger):

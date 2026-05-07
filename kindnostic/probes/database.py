@@ -4,9 +4,10 @@ import os
 import sqlite3
 from typing import Optional
 
-from kindnostic.types import Category, ProbeResult, Status
+from kindnostic.types import Category, ProbeResult, ProbeTier, Status
 
 CATEGORY = Category.CRITICAL
+PROBE_TIER = ProbeTier.POLITE
 
 _DEFAULT_LEDGER_PATH = "./data/event_ledger.db"
 _DEFAULT_HW_PATH = "./hardware_config.db"

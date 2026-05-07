@@ -33,7 +33,7 @@ export let _pillValues    = {};
 export let _activeFilters = [];
 
 // ─── Helpers ─────────────────────────────────────────────────────────
-function formatTime(isoString) {
+const formatTime = (isoString) => {
     const d = new Date(isoString);
     let h = d.getHours();
     const m = String(d.getMinutes()).padStart(2, '0');
@@ -43,13 +43,13 @@ function formatTime(isoString) {
 }
 
 // ─── Fetch ────────────────────────────────────────────────────────────
-async function fetchJson(url, signal) {
+const fetchJson = async (url, signal) => {
     const res = await fetch(url, { signal });
     if (!res.ok) throw new Error(`${url} ${res.status}`);
     return res.json();
 }
 
-function buildTransactionsUrl() {
+const buildTransactionsUrl = () => {
     const from = document.getElementById('tl-date-from');
     const to   = document.getElementById('tl-date-to');
     const params = new URLSearchParams();
@@ -80,7 +80,7 @@ function buildTransactionsUrl() {
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────
-function still() { return _currentContainer !== null; }
+const still = () => _currentContainer !== null; ;
 
 export default function mount(container) {
     if (_abortController) _abortController.abort();
@@ -95,7 +95,7 @@ export function unmount() {
     _currentContainer = null;
 }
 
-async function loadTransactions() {
+const loadTransactions = async () => {
     _activeTab = 'transactions';
     const container = _currentContainer;
     if (!still()) return;
@@ -118,7 +118,7 @@ async function loadTransactions() {
     renderPage_data(container, data, employees);
 }
 
-function renderError(container, err) {
+const renderError = (container, err) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'max-width: 480px; margin: 40px auto; text-align: center;';
 
@@ -174,7 +174,7 @@ function renderError(container, err) {
     container.appendChild(wrap);
 }
 
-function populateServerChips(employees) {
+const populateServerChips = (employees) => {
     if (!_currentContainer) return;
     const group = _currentContainer.querySelector('[data-group="server"]');
     if (!group) return;
@@ -189,7 +189,7 @@ function populateServerChips(employees) {
     });
 }
 
-function updateStatPills(data) {
+const updateStatPills = (data) => {
     const set = (id, text) => { if (_pillValues[id]) _pillValues[id].textContent = text; };
     const setSub = (id, text) => {
         const el = _pillValues[id];
@@ -206,7 +206,7 @@ function updateStatPills(data) {
     if (data.void_count     != null) setSub('voids',     `${data.void_count} items`);
 }
 
-function renderTabs(container, data) {
+const renderTabs = (container, data) => {
     const tabs = [
         { id: 'transactions', label: 'Transactions', count: data.total_count    || 0 },
         { id: 'discounts',    label: 'Discounts',    count: data.discount_count || 0 },
@@ -274,7 +274,7 @@ function renderTabs(container, data) {
     container.appendChild(_tabRowEl);
 }
 
-function renderPage_data(container, data, employees) {
+const renderPage_data = (container, data, employees) => {
     populateServerChips(employees);
     updateStatPills(data);
     renderTabs(container, data);
@@ -282,7 +282,7 @@ function renderPage_data(container, data, employees) {
     renderPagination(container, data);
 }
 
-function renderTable(container, rows) {
+const renderTable = (container, rows) => {
     _tableWrapEl = document.createElement('div');
     _tableWrapEl.style.cssText = `
         background: ${T.card};
@@ -491,7 +491,7 @@ function renderTable(container, rows) {
     container.appendChild(_tableWrapEl);
 }
 
-function renderPagination(container, data) {
+const renderPagination = (container, data) => {
     if (!_tableWrapEl) return;
     const totalPages = data.total_pages || 1;
     const totalCount = data.total_count || 0;
@@ -593,7 +593,7 @@ function renderPagination(container, data) {
 }
 
 // ─── Tab switching ────────────────────────────────────────────────────
-function setActiveTab(tabId) {
+const setActiveTab = (tabId) => {
     const colors = { transactions: T.green, discounts: T.lavender, voids: T.verm };
     ['transactions', 'discounts', 'voids'].forEach(id => {
         const btn   = _tabEls[id];
@@ -608,7 +608,7 @@ function setActiveTab(tabId) {
     });
 }
 
-function renderTabContent(wrapEl, data) {
+const renderTabContent = (wrapEl, data) => {
     if (!data) return;
     if (wrapEl && wrapEl.parentNode) wrapEl.parentNode.removeChild(wrapEl);
     switch (_activeTab) {
@@ -627,7 +627,7 @@ function renderTabContent(wrapEl, data) {
     }
 }
 
-function _makeTabTable(container) {
+const _makeTabTable = (container) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         background: ${T.card};
@@ -641,7 +641,7 @@ function _makeTabTable(container) {
     return wrap;
 }
 
-function _makeTabEmpty(text) {
+const _makeTabEmpty = (text) => {
     const el = document.createElement('div');
     el.style.cssText = `
         text-align: center;
@@ -654,7 +654,7 @@ function _makeTabEmpty(text) {
     return el;
 }
 
-function _makeTabThead(wrap, cols) {
+const _makeTabThead = (wrap, cols) => {
     const table = document.createElement('table');
     table.style.cssText = 'width: 100%; border-collapse: collapse;';
     const thead = document.createElement('thead');
@@ -680,7 +680,7 @@ function _makeTabThead(wrap, cols) {
     return table;
 }
 
-function _makeBadge(color, text) {
+const _makeBadge = (color, text) => {
     const b = document.createElement('span');
     b.style.cssText = `
         background: ${withAlpha(color, 0.1)};
@@ -696,7 +696,7 @@ function _makeBadge(color, text) {
     return b;
 }
 
-function _makeSrvChip(row, idx) {
+const _makeSrvChip = (row, idx) => {
     const flex = document.createElement('div');
     flex.style.cssText = 'display: flex; align-items: center; gap: 6px;';
     const dot = document.createElement('span');
@@ -712,7 +712,7 @@ function _makeSrvChip(row, idx) {
     return flex;
 }
 
-function renderDiscountsTable(container, rows) {
+const renderDiscountsTable = (container, rows) => {
     const wrap = _makeTabTable(container);
 
     if (rows.length === 0) {
@@ -812,7 +812,7 @@ function renderDiscountsTable(container, rows) {
     table.appendChild(tbody);
 }
 
-function renderVoidsTable(container, rows) {
+const renderVoidsTable = (container, rows) => {
     const wrap = _makeTabTable(container);
 
     if (rows.length === 0) {
@@ -911,7 +911,7 @@ function renderVoidsTable(container, rows) {
     table.appendChild(tbody);
 }
 
-function renderDiscountsPagination(wrapEl, data) {
+const renderDiscountsPagination = (wrapEl, data) => {
     if (!wrapEl) return;
     const rows = data.discounts || [];
     const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
@@ -931,7 +931,7 @@ function renderDiscountsPagination(wrapEl, data) {
     wrapEl.appendChild(footer);
 }
 
-function renderVoidsPagination(wrapEl, data) {
+const renderVoidsPagination = (wrapEl, data) => {
     if (!wrapEl) return;
     const rows = data.voids || [];
     const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
@@ -952,7 +952,7 @@ function renderVoidsPagination(wrapEl, data) {
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────
-function ensureModal() {
+const ensureModal = () => {
     if (_modalEl) return;
 
     _modalEl = document.createElement('div');
@@ -1128,7 +1128,7 @@ function ensureModal() {
     document.body.appendChild(_modalEl);
 }
 
-function openModal(row) {
+const openModal = (row) => {
     ensureModal();
     _modalOrderId = row.order_id;
 
@@ -1219,7 +1219,7 @@ function openModal(row) {
     document.body.style.overflow = 'hidden';
 }
 
-function closeModal() {
+const closeModal = () => {
     if (!_modalEl) return;
     _modalEl.style.display = 'none';
     document.body.style.overflow = '';
@@ -1227,7 +1227,7 @@ function closeModal() {
 }
 
 // ─── Modal content ────────────────────────────────────────────────────
-function renderModalContent(row) {
+const renderModalContent = (row) => {
     renderModalItems(row);
     renderModalSeats(row);
     if (row.discounts?.length) renderModalDiscounts(row);
@@ -1237,7 +1237,7 @@ function renderModalContent(row) {
     renderModalTimeline(row);
 }
 
-function buildModalSection(title) {
+const buildModalSection = (title) => {
     const wrapper = document.createElement('div');
     const lbl = document.createElement('div');
     lbl.style.cssText = `
@@ -1257,7 +1257,7 @@ function buildModalSection(title) {
     return wrapper;
 }
 
-function renderModalItems(row) {
+const renderModalItems = (row) => {
     const sec = buildModalSection('Items');
     const items = row.items || [];
 
@@ -1385,7 +1385,7 @@ function renderModalItems(row) {
     _modalLeftEl.appendChild(sec);
 }
 
-function renderModalSeats(row) {
+const renderModalSeats = (row) => {
     if (!row.seats?.length) return;
     const sec = buildModalSection('By Seat');
     row.seats.forEach((seat, idx) => {
@@ -1424,7 +1424,7 @@ function renderModalSeats(row) {
     _modalLeftEl.appendChild(sec);
 }
 
-function renderModalDiscounts(row) {
+const renderModalDiscounts = (row) => {
     const sec = buildModalSection('Discount Applied');
     row.discounts.forEach(discount => {
         const card = document.createElement('div');
@@ -1456,7 +1456,7 @@ function renderModalDiscounts(row) {
     _modalLeftEl.appendChild(sec);
 }
 
-function renderModalVoids(row) {
+const renderModalVoids = (row) => {
     const sec = buildModalSection('Void');
     row.voids.forEach(v => {
         const card = document.createElement('div');
@@ -1488,7 +1488,7 @@ function renderModalVoids(row) {
     _modalLeftEl.appendChild(sec);
 }
 
-function renderModalTotals(row) {
+const renderModalTotals = (row) => {
     const sec = buildModalSection('Totals');
     const c = sec.content;
     const discountTotal = row.discount_total || 0;
@@ -1541,7 +1541,7 @@ function renderModalTotals(row) {
     _modalRightEl.appendChild(sec);
 }
 
-function renderModalPayment(row) {
+const renderModalPayment = (row) => {
     const sec = buildModalSection('Payment');
     const card = document.createElement('div');
     card.style.cssText = `
@@ -1618,7 +1618,7 @@ function renderModalPayment(row) {
     _modalRightEl.appendChild(sec);
 }
 
-function renderModalTimeline(row) {
+const renderModalTimeline = (row) => {
     const sec = buildModalSection('Timeline');
 
     const events = [
@@ -1659,7 +1659,7 @@ function renderModalTimeline(row) {
 }
 
 // ─── Skeleton (loading state) ─────────────────────────────────────────
-function renderSkeleton(container) {
+const renderSkeleton = (container) => {
     if (!document.getElementById('tl-styles')) {
         const style = document.createElement('style');
         style.id = 'tl-styles';
@@ -1695,7 +1695,7 @@ function renderSkeleton(container) {
 }
 
 // ─── Page-level styles (appended to tl-styles once) ──────────────────
-function ensurePageStyles() {
+const ensurePageStyles = () => {
     const style = document.getElementById('tl-styles');
     if (!style || style.dataset.full) return;
     style.dataset.full = '1';
@@ -1740,7 +1740,7 @@ function ensurePageStyles() {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────
-function renderPage(container) {
+const renderPage = (container) => {
     container.innerHTML = '';
     _clearAllBtn   = null;
     _activeTagsEl  = null;
@@ -1755,7 +1755,7 @@ function renderPage(container) {
 }
 
 // ─── Page Header ──────────────────────────────────────────────────────
-function renderPageHeader(container) {
+const renderPageHeader = (container) => {
     const header = document.createElement('div');
     header.style.cssText = `
         display: flex;
@@ -1830,7 +1830,7 @@ function renderPageHeader(container) {
 }
 
 // ─── Stat Pills ───────────────────────────────────────────────────────
-function renderStatPills(container) {
+const renderStatPills = (container) => {
     const row = document.createElement('div');
     row.style.cssText = `
         display: flex;
@@ -1903,7 +1903,7 @@ function renderStatPills(container) {
 }
 
 // ─── Filter Bar helpers ───────────────────────────────────────────────
-function _makeDivider() {
+const _makeDivider = () => {
     const d = document.createElement('div');
     d.style.cssText = `
         width: 1px;
@@ -1915,7 +1915,7 @@ function _makeDivider() {
     return d;
 }
 
-function _makeDateInput(value) {
+const _makeDateInput = (value) => {
     const input = document.createElement('input');
     input.type = 'text';
     input.value = value;
@@ -1933,7 +1933,7 @@ function _makeDateInput(value) {
     return input;
 }
 
-function _makeFilterGroup(label, values, groupName) {
+const _makeFilterGroup = (label, values, groupName) => {
     const group = document.createElement('div');
     group.dataset.group = groupName;
     group.style.cssText = 'display: flex; align-items: center; gap: 6px;';
@@ -1956,7 +1956,7 @@ function _makeFilterGroup(label, values, groupName) {
 }
 
 // ─── Filter Bar ───────────────────────────────────────────────────────
-function renderFilterBar(container) {
+const renderFilterBar = (container) => {
     const todayStr = new Date().toISOString().slice(0, 10);
 
     const card = document.createElement('div');
@@ -2101,12 +2101,12 @@ function renderFilterBar(container) {
 }
 
 // ─── Filter interaction ───────────────────────────────────────────────
-function toggleChip(chip, groupName) {
+const toggleChip = (chip, groupName) => {
     chip.classList.toggle('tl-chip-selected');
     updateFilterSummary();
 }
 
-function clearAllFilters() {
+const clearAllFilters = () => {
     if (!_currentContainer) return;
     _currentContainer.querySelectorAll('.tl-chip-selected').forEach(chip => {
         chip.classList.remove('tl-chip-selected');
@@ -2114,7 +2114,7 @@ function clearAllFilters() {
     updateFilterSummary();
 }
 
-function updateFilterSummary() {
+const updateFilterSummary = () => {
     if (!_currentContainer) return;
 
     _activeFilters = [];

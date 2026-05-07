@@ -5,9 +5,10 @@ import json
 import os
 import sqlite3
 
-from kindnostic.types import Category, ProbeResult, Status
+from kindnostic.types import Category, ProbeResult, ProbeTier, Status
 
 CATEGORY = Category.CRITICAL
+PROBE_TIER = ProbeTier.DEEP
 
 _DEFAULT_DB_PATH = "./data/event_ledger.db"
 

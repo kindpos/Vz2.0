@@ -17,13 +17,13 @@ import { buildDatePicker, buildDateRangePicker } from '../components/date-picker
    variables to concrete values at module load so charts render
    in the actual theme colors.
 ------------------------------------------ */
-function _cssVar(name, fallback) {
+const _cssVar = (name, fallback) => {
     try {
         const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
         return v || fallback;
     } catch (_) { return fallback; }
 }
-function _rgba(rgbVarName, alpha, fallbackRgb) {
+const _rgba = (rgbVarName, alpha, fallbackRgb) => {
     const rgb = _cssVar(rgbVarName, fallbackRgb);
     return `rgba(${rgb}, ${alpha})`;
 }
@@ -59,9 +59,9 @@ const COLORS = {
 let _categoryColorMap = null;
 let _categoryColorPromise = null;
 
-function _normalizeName(s) { return (s || '').toString().trim().toLowerCase(); }
+const _normalizeName = (s) => (s || '').toString().trim().toLowerCase(); ;
 
-function ensureCategoryColors() {
+const ensureCategoryColors = () => {
     if (_categoryColorPromise) return _categoryColorPromise;
     _categoryColorPromise = fetch('/api/v1/config/menu/categories')
         .then(r => r.ok ? r.json() : [])
@@ -81,7 +81,7 @@ function ensureCategoryColors() {
     return _categoryColorPromise;
 }
 
-function categoryColor(name, fallback) {
+const categoryColor = (name, fallback) => {
     if (!_categoryColorMap) return fallback;
     return _categoryColorMap[_normalizeName(name)] || fallback;
 }
@@ -92,7 +92,7 @@ ensureCategoryColors();
 /* ------------------------------------------
    CHART.JS GLOBAL DEFAULTS
 ------------------------------------------ */
-function applyChartDefaults() {
+const applyChartDefaults = () => {
     if (typeof Chart === 'undefined') {
         console.warn('[Reporting] Chart.js not loaded — charts will be skipped');
         return false;
@@ -131,6 +131,7 @@ const VIEW_REGISTRY = {
     'tax-breakdown':      buildTaxBreakdown,
     'tips-by-server':     buildTipsByServer,
     'adjustments':        buildAdjustmentsDetail,
+    'check-history':      buildCheckHistory,
 };
 
 /* ------------------------------------------
@@ -145,7 +146,7 @@ const VIEW_REGISTRY = {
  * Chart.js canvases are destroyed automatically
  * when innerHTML is cleared — no memory leaks.
  */
-function pushView(viewName, data) {
+const pushView = (viewName, data) => {
     if (!currentWrapper) return;
 
     // Clear current content
@@ -173,7 +174,7 @@ function pushView(viewName, data) {
  * this is a no-op — the scene manager's own
  * back button handles returning to hex nav.
  */
-function popView() {
+const popView = () => {
     if (viewHistory.length <= 1) return;
 
     // Remove current view
@@ -196,7 +197,7 @@ function popView() {
    at the top. Daily Flash does NOT get one —
    the scene manager handles that level.
 ------------------------------------------ */
-function buildBackButton(container, label) {
+const buildBackButton = (container, label) => {
     const btn = document.createElement('button');
     btn.style.cssText = `
         display: inline-flex;
@@ -232,7 +233,7 @@ function buildBackButton(container, label) {
    Includes a working back button so navigation
    still functions during incremental builds.
 ------------------------------------------ */
-function buildComingSoon(container, viewName) {
+const buildComingSoon = (container, viewName) => {
     buildBackButton(container, 'Daily Flash');
 
     const notice = document.createElement('div');
@@ -264,7 +265,7 @@ function buildComingSoon(container, viewName) {
    Lighter than the full Daily Flash header.
    Shows the report date under a view title.
 ------------------------------------------ */
-function buildDateSubheader(container, title) {
+const buildDateSubheader = (container, title) => {
     const dateStr = new Date(SAMPLE_DATA.dailyFlash.date + 'T12:00:00').toLocaleDateString('en-US', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
@@ -290,7 +291,7 @@ function buildDateSubheader(container, title) {
    Zero changes to the existing builders —
    just relocated into this function.
    ========================================== */
-function buildDailyFlash(wrapper) {
+const buildDailyFlash = (wrapper) => {
     buildDateHeader(wrapper);
     buildKPICards(wrapper);
 
@@ -332,7 +333,7 @@ function buildDailyFlash(wrapper) {
    proving the view stack works.
    ========================================== */
 
-function buildSalesByCategory(wrapper) {
+const buildSalesByCategory = (wrapper) => {
     const data = SAMPLE_DATA.salesByCategory;
 
     // Back button
@@ -489,7 +490,7 @@ function buildSalesByCategory(wrapper) {
     wrapper.appendChild(totalRow);
 }
 
-function buildTaxBreakdown(wrapper) {
+const buildTaxBreakdown = (wrapper) => {
     const taxes = SAMPLE_DATA.taxBreakdown;
     const netSales = SAMPLE_DATA.dailyFlash.today.net_sales;
     const flashTax = SAMPLE_DATA.dailyFlash.today.tax_collected;
@@ -583,7 +584,7 @@ function buildTaxBreakdown(wrapper) {
     wrapper.appendChild(verify);
 }
 
-function buildTipsByServer(wrapper) {
+const buildTipsByServer = (wrapper) => {
     const data = SAMPLE_DATA.tipsByServer;
 
     // Find highest tip % for callout
@@ -731,7 +732,7 @@ function buildTipsByServer(wrapper) {
     wrapper.appendChild(totalRow);
 }
 
-function buildAdjustmentsDetail(wrapper) {
+const buildAdjustmentsDetail = (wrapper) => {
     const flash = SAMPLE_DATA.dailyFlash.today;
     const details = SAMPLE_DATA.adjustmentDetails;
     const total = flash.discounts + flash.comps + flash.voids;
@@ -852,6 +853,71 @@ function buildAdjustmentsDetail(wrapper) {
     wrapper.appendChild(totalRow);
 }
 
+const buildCheckHistory = (wrapper) => {
+    buildBackButton(wrapper, 'Daily Flash');
+    buildDateSubheader(wrapper, 'Check History');
+
+    const loadingMsg = document.createElement('div');
+    loadingMsg.style.cssText = `
+        text-align: center;
+        padding: 40px 20px;
+        font-size: 25px;
+        color: rgba(var(--color-mint-rgb), 0.5);
+    `;
+    loadingMsg.textContent = 'Loading transactions…';
+    wrapper.appendChild(loadingMsg);
+
+    // Fetch transactions for today
+    const today = new Date().toISOString().slice(0, 10);
+    fetch(`/api/v1/reports/transactions?date_from=${today}&date_to=${today}&page=1&page_size=100`)
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null)
+        .then(data => {
+            wrapper.innerHTML = '';
+            buildBackButton(wrapper, 'Daily Flash');
+            buildDateSubheader(wrapper, 'Check History');
+
+            if (!data || !data.results || data.results.length === 0) {
+                const empty = document.createElement('div');
+                empty.style.cssText = `
+                    text-align: center;
+                    padding: 40px 20px;
+                    font-size: 22px;
+                    color: rgba(var(--color-mint-rgb), 0.5);
+                `;
+                empty.textContent = 'No transactions for this date';
+                wrapper.appendChild(empty);
+                return;
+            }
+
+            // Build table
+            const table = document.createElement('div');
+            table.style.cssText = 'margin-bottom: 16px;';
+
+            data.results.forEach(row => {
+                const tr = document.createElement('div');
+                tr.style.cssText = `
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 12px 8px;
+                    border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.08);
+                    font-size: 22px;
+                `;
+                const closedAt = row.closed_at ? new Date(row.closed_at).toLocaleTimeString() : '—';
+                tr.innerHTML = `
+                    <span style="color: ${COLORS.mint}; flex: 0 0 80px;">${row.check_number || '—'}</span>
+                    <span style="color: ${COLORS.mint}; flex: 1;">${row.server_name || '—'}</span>
+                    <span style="color: ${COLORS.yellow}; font-family: var(--font-display); flex: 0 0 100px; text-align: right;">$${parseFloat(row.total).toFixed(2)}</span>
+                    <span style="color: rgba(var(--color-mint-rgb), 0.4); flex: 0 0 80px; text-align: right;">${closedAt}</span>
+                `;
+                table.appendChild(tr);
+            });
+
+            wrapper.appendChild(table);
+        });
+}
+
 /* ==========================================
    DAILY FLASH COMPONENT BUILDERS
 
@@ -864,7 +930,7 @@ function buildAdjustmentsDetail(wrapper) {
 /* ------------------------------------------
    KPI CARD BUILDER
 ------------------------------------------ */
-function buildKPICards(container) {
+const buildKPICards = (container) => {
     const data = SAMPLE_DATA.dailyFlash;
     const isToday = data.date === new Date().toISOString().slice(0, 10);
     const kpis = [
@@ -923,7 +989,7 @@ function buildKPICards(container) {
 /* ------------------------------------------
    SECTION HEADING BUILDER
 ------------------------------------------ */
-function buildSectionHeading(container, text) {
+const buildSectionHeading = (container, text) => {
     const h = document.createElement('div');
     h.style.cssText = `
         font-family: var(--font-display);
@@ -940,7 +1006,7 @@ function buildSectionHeading(container, text) {
 /* ------------------------------------------
    HOURLY SALES LINE CHART
 ------------------------------------------ */
-function buildHourlySalesChart(container) {
+const buildHourlySalesChart = (container) => {
     const data = SAMPLE_DATA.hourlySales;
 
     const wrapper = document.createElement('div');
@@ -1013,7 +1079,7 @@ function buildHourlySalesChart(container) {
 /* ------------------------------------------
    TOP SELLERS HORIZONTAL BAR CHART
 ------------------------------------------ */
-function buildTopSellersChart(container) {
+const buildTopSellersChart = (container) => {
     const data = SAMPLE_DATA.topSellers.slice(0, 6);
 
     const wrapper = document.createElement('div');
@@ -1078,7 +1144,7 @@ function buildTopSellersChart(container) {
 /* ------------------------------------------
    PAYMENT BREAKDOWN DONUT CHART
 ------------------------------------------ */
-function buildPaymentDonut(container) {
+const buildPaymentDonut = (container) => {
     const data = SAMPLE_DATA.paymentBreakdown;
 
     const row = document.createElement('div');
@@ -1156,7 +1222,7 @@ function buildPaymentDonut(container) {
 /* ------------------------------------------
    DAYPART BREAKDOWN DONUT + TABLE
 ------------------------------------------ */
-function buildDaypartSection(container) {
+const buildDaypartSection = (container) => {
     const data = SAMPLE_DATA.dayparts;
 
     const row = document.createElement('div');
@@ -1232,7 +1298,7 @@ function buildDaypartSection(container) {
    Now wired up to pushView() instead of
    the previous commented-out placeholder.
 ------------------------------------------ */
-function buildDrillDownLinks(container) {
+const buildDrillDownLinks = (container) => {
     const links = [
         { label: 'Sales by Category',  target: 'sales-by-category' },
         { label: 'Tax Breakdown',       target: 'tax-breakdown' },
@@ -1272,7 +1338,7 @@ function buildDrillDownLinks(container) {
 /* ------------------------------------------
    ADJUSTMENTS SUMMARY (Discounts/Comps/Voids)
 ------------------------------------------ */
-function buildAdjustmentsSummary(container) {
+const buildAdjustmentsSummary = (container) => {
     const data = SAMPLE_DATA.dailyFlash.today;
     const total = data.discounts + data.comps + data.voids;
     const pctOfSales = ((total / data.net_sales) * 100).toFixed(1);
@@ -1329,7 +1395,7 @@ function buildAdjustmentsSummary(container) {
 /* ------------------------------------------
    CSV EXPORT
 ------------------------------------------ */
-function exportReportCSV() {
+const exportReportCSV = () => {
     const d = SAMPLE_DATA.dailyFlash;
     const rows = [
         ['KINDpos Daily Flash Report'],
@@ -1368,7 +1434,7 @@ function exportReportCSV() {
 /* ------------------------------------------
    DATE HEADER (Daily Flash full header)
 ------------------------------------------ */
-function buildDateHeader(container) {
+const buildDateHeader = (container) => {
     const header = document.createElement('div');
     header.style.cssText = `
         display: flex;

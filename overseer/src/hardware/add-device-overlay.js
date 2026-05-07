@@ -332,6 +332,10 @@ function buildEnterIpTab(terminals, onClose) {
 
 // ── Scan LAN tab ─────────────────────────────────────────────────────
 
+// Ports that identify a payment terminal (Dejavoo SPIn). Defined here so
+// the isReader classification below stays in sync with the backend constant.
+const CARD_READER_PORTS = [9000, 8443, 9443];
+
 function buildScanLanTab(terminals, onClose) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 0;';
@@ -659,9 +663,10 @@ function buildScanLanTab(terminals, onClose) {
                 const label = data.name || data.type || 'device';
                 logLine(`Found: ${data.ip} — ${label}`, T.green);
                 // Infer device type: backend overwrites inner 'type' with 'device' in the event,
-                // so use saved_type if present, else infer from port (9100-9102 = printer, rest = card_reader)
+                // so use saved_type if present, else check against the known card-reader port list.
+                // The old arithmetic check (port >= 9000 && ...) incorrectly excluded port 8443.
                 const port = data.port || 9100;
-                const isReader = data.saved_type === 'card_reader' || (port >= 9000 && port !== 9100 && port !== 9101 && port !== 9102);
+                const isReader = data.saved_type === 'card_reader' || CARD_READER_PORTS.includes(port);
                 const inferredType = data.saved_type || (isReader ? 'card_reader' : 'kitchen');
                 discovered.push({
                     ip: data.ip, mac: data.mac || '', model: data.name || data.saved_name || 'Unknown',

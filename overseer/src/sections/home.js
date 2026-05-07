@@ -41,12 +41,12 @@ const CAT_COLORS = {
   DRINKS:  '#ff9f43',
 };
 
-function catColor(name) {
+const catColor = (name) => {
   if (!name) return C.lavender;
   return CAT_COLORS[String(name).toUpperCase()] || C.lavender;
 }
 
-function withAlpha(hex, alpha) {
+const withAlpha = (hex, alpha) => {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
@@ -56,7 +56,7 @@ function withAlpha(hex, alpha) {
 // ─── Inline card sparkline ────────────────────────────────────────
 // Small trend chart intended to sit next to a stat card's big number.
 // Renders a filled area + stroked line with square data points.
-function buildCardSparkline(values, color, options = {}) {
+const buildCardSparkline = (values, color, options = {}) => {
   const { height = 56, showPoints = true } = options;
   if (!values || values.length === 0) {
     return `<div style="flex: 1; min-height: ${height}px;"></div>`;
@@ -93,9 +93,8 @@ let _abortController = null;
 let _currentContainer = null;
 
 // ─── Utilities ───────────────────────────────────────────────────────
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
+const today = () => new Date().toISOString().slice(0, 10);
+;
 
 function fmt$(n) {
   const v = n ?? 0;
@@ -108,11 +107,10 @@ function fmt$K(n) {
   return '$' + Math.round(v).toLocaleString();
 }
 
-function fmtPct(n) {
-  return (n ?? 0).toFixed(1) + '%';
-}
+const fmtPct = (n) => (n ?? 0).toFixed(1) + '%';
+;
 
-function nowLabel() {
+const nowLabel = () => {
   const d = new Date();
   const days = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
@@ -125,7 +123,7 @@ function nowLabel() {
 //   11 or 12 → AM (lunch)
 //   1-4 → PM (afternoon/dinner)
 //   5-11 → LATE (dinner/late)
-function splitDayparts(hourly_sales) {
+const splitDayparts = (hourly_sales) => {
   const out = { am: 0, pm: 0, late: 0 };
   for (const h of (hourly_sales || [])) {
     const hourNum = parseInt(String(h.hour).split(':')[0], 10);
@@ -137,7 +135,7 @@ function splitDayparts(hourly_sales) {
 }
 
 // ─── Fetch ───────────────────────────────────────────────────────────
-async function fetchAll(signal) {
+const fetchAll = async (signal) => {
   const date = today();
   const [salesRes, laborRes] = await Promise.all([
     fetch(`/api/v1/reports/sales-summary?date=${date}`, { signal }),
@@ -152,7 +150,7 @@ async function fetchAll(signal) {
 }
 
 // ─── Layout scaffold ─────────────────────────────────────────────────
-function buildLayout(container) {
+const buildLayout = (container) => {
   container.innerHTML = `
     <style>
       .home-wrapper { padding: 30px 32px; color: ${C.text}; }
@@ -277,7 +275,7 @@ function buildLayout(container) {
 
 // ─── Card builders ───────────────────────────────────────────────────
 
-function buildNetSalesCard(sales) {
+const buildNetSalesCard = (sales) => {
   const dp = splitDayparts(sales.hourly_sales);
   const hourlyNet = (sales.hourly_sales || []).map(h => h.net);
   return `
@@ -310,7 +308,7 @@ function buildNetSalesCard(sales) {
   `;
 }
 
-function buildOpenChecksCard(sales) {
+const buildOpenChecksCard = (sales) => {
   const count = sales.open_checks ?? 0;
   const total = sales.open_total ?? 0;
   const oldest = sales.oldest_open_minutes;
@@ -343,7 +341,7 @@ function buildOpenChecksCard(sales) {
   `;
 }
 
-function buildLaborCard(labor) {
+const buildLaborCard = (labor) => {
   const pct = labor.cob_percent ?? 0;
   // Cap visual fill at 100% but show the real number
   const fillPct = Math.min(100, pct);
@@ -384,7 +382,7 @@ function buildLaborCard(labor) {
   `;
 }
 
-function buildCobSparkline(trend, targetLow, targetHigh) {
+const buildCobSparkline = (trend, targetLow, targetHigh) => {
   if (!trend || trend.length === 0) {
     return `<div class="home-empty" style="padding: 12px 0;">No trend data</div>`;
   }
@@ -421,7 +419,7 @@ function buildCobSparkline(trend, targetLow, targetHigh) {
   `;
 }
 
-function buildAvgTicketCard(sales) {
+const buildAvgTicketCard = (sales) => {
   const avg = sales.check_avg ?? 0;
 
   // Sparkline: hourly avg ticket = net/checks per hour
@@ -443,7 +441,7 @@ function buildAvgTicketCard(sales) {
   `;
 }
 
-function buildRevenueChartCard(hourly) {
+const buildRevenueChartCard = (hourly) => {
   return `
     <div class="home-card home-card-tall" style="--accent: ${C.gold};">
       <div class="card-label">Revenue — This Week vs Last Week</div>
@@ -454,7 +452,7 @@ function buildRevenueChartCard(hourly) {
   `;
 }
 
-function buildTenderCard(sales) {
+const buildTenderCard = (sales) => {
   const cash = sales.cash_total ?? 0;
   const card = sales.card_total ?? 0;
   const total = cash + card;
@@ -497,7 +495,7 @@ function buildTenderCard(sales) {
   `;
 }
 
-function buildTopCategoriesCard(sales) {
+const buildTopCategoriesCard = (sales) => {
   const cats = (sales.category_breakdown || []).slice(0, 5);
   if (cats.length === 0) {
     return `
@@ -530,7 +528,7 @@ function buildTopCategoriesCard(sales) {
   `;
 }
 
-function buildTopServersCard(sales) {
+const buildTopServersCard = (sales) => {
   const servers = (sales.top_servers || []);
   if (servers.length === 0) {
     return `
@@ -563,7 +561,7 @@ function buildTopServersCard(sales) {
 }
 
 // ─── Chart.js revenue chart ──────────────────────────────────────────
-function drawRevenueChart(canvas, hourly) {
+const drawRevenueChart = (canvas, hourly) => {
   if (!window.Chart) {
     console.warn('[home] Chart.js not loaded — revenue chart unavailable');
     return;
@@ -654,7 +652,7 @@ function drawRevenueChart(canvas, hourly) {
 }
 
 // ─── Render ──────────────────────────────────────────────────────────
-function render(container, data) {
+const render = (container, data) => {
   const { sales, labor } = data;
 
   const contentEl = container.querySelector('#home-content');
@@ -673,7 +671,7 @@ function render(container, data) {
   // (Leaving Chart.js still loaded in index.html for when it returns in REPORTING.)
 }
 
-function renderError(container, err) {
+const renderError = (container, err) => {
   const contentEl = container.querySelector('#home-content');
   if (!contentEl) return;
   contentEl.innerHTML = `
