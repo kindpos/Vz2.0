@@ -5,7 +5,6 @@ MAC-as-identity: IPs change, MACs don't.
 """
 
 import asyncio
-import threading
 import json
 import logging
 import os
@@ -928,56 +927,4 @@ async def test_connection(req: TestConnectionRequest):
         status = "unreachable"
     return {"ip": req.ip, "port": req.port, "status": status}
 
-# ── Overseer: Printer Discovery (SSE) ────────────────────────────────────────
-
-from app.scanner.printer_detector import PrinterDiscovery
-
-class ScanRequest(BaseModel):
-    network: Optional[str] = None
-    timeout: Optional[float] = None
-
-
-def _run_scan_in_thread(queue: asyncio.Queue, loop, network: str):
-    scanner = PrinterDiscovery()
-
-    def on_progress(event_type: str, data: dict):
-        event = {"type": event_type, **data}
-        asyncio.run_coroutine_threadsafe(queue.put(event), loop)
-
-    scanner.on_progress = on_progress
-
-    try:
-        printers = scanner.scan_network(network, methods=["port_scan"])
-        for printer in printers:
-            config = printer.to_printer_config_dict()
-            asyncio.run_coroutine_threadsafe(
-                queue.put({"type": "printer_config", **config}), loop)
-    except Exception as e:
-        asyncio.run_coroutine_threadsafe(
-            queue.put({"type": "error", "message": f"Scan failed: {str(e)}"}), loop)
-
-    asyncio.run_coroutine_threadsafe(queue.put({"type": "__DONE__"}), loop)
-
-
-@router.post("/discover-printers", dependencies=[Depends(require_manager)])
-async def discover_printers(request: ScanRequest = ScanRequest()):
-    network = request.network or settings.default_subnet
-
-    async def discovery_stream():
-        queue = asyncio.Queue()
-        loop = asyncio.get_event_loop()
-        thread = threading.Thread(
-            target=_run_scan_in_thread, args=(queue, loop, network), daemon=True)
-        thread.start()
-        while True:
-            event = await queue.get()
-            if event.get("type") == "__DONE__":
-                break
-            yield f"data: {json.dumps(event)}\n\n"
-
-    return StreamingResponse(
-        discovery_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
-    )
 
