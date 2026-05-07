@@ -54,6 +54,13 @@ var pricingConfig = window.pricingConfig = {
   employeeDiscount: null, // GET /config/pricing/employee-discount
 };
 
+// 2dp monetary rounding, ROUND_HALF_UP-safe for positive values.
+// Number.EPSILON nudge prevents float drift like 1.005*100 → 100.4999…
+function roundHalfUp(value) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+window.roundHalfUp = roundHalfUp;
+
 var _lastConfigVersion = null;
 
 async function loadPricingConfig() {

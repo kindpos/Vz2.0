@@ -1184,6 +1184,24 @@ function renderActionBar(state) {
     }
   }
 
+  // ── Order type pricing modifier (STEP 2) ──
+  // Looks up the current order's order_type in the boot-loaded pricingConfig
+  // and applies the adjustment % (positive = surcharge, negative = discount).
+  const _otConf = (window.pricingConfig && window.pricingConfig.orderTypes) || [];
+  const _ot = _otConf.find(function(t) { return t.id === ((state.order || {}).order_type || ''); });
+  const _modifierPct = (_ot && typeof _ot.adjustment === 'number') ? _ot.adjustment : 0;
+  let _modifierAmt = 0;
+  if (_modifierPct !== 0) {
+    _modifierAmt = (window.roundHalfUp || function(v) { return Math.round(v * 100) / 100; })(subtotal * _modifierPct / 100);
+    const _adjSub = subtotal + _modifierAmt;
+    tax      = Math.round(_adjSub * getTaxRate() * 100) / 100;
+    total    = Math.round((_adjSub + tax) * 100) / 100;
+    cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+  }
+  // Preserve on state so handlePay can include in payment-launch params.
+  state._otModPct = _modifierPct;
+  state._otModAmt = _modifierAmt;
+
   // ── Bar shell ──
   const bar = document.createElement('div');
   bar.style.height        = '136px';
@@ -1251,11 +1269,21 @@ function renderActionBar(state) {
     return row;
   }
 
-  // Sub/Disc/Tax box
+  // Sub/Disc/Modifier/Tax box
   const subBox = _totBox({ minWidth: '168px', gap: '4px' });
   subBox.appendChild(_totRow('Subtotal:', fmt(subtotal), T.gold));
   if (managerDiscount > 0) {
     subBox.appendChild(_totRow('Discounts:', `-${fmt(managerDiscount)}`, T.lavender));
+  }
+  if (_modifierPct !== 0) {
+    const _modLabel = (_modifierPct > 0
+      ? (_ot.name || 'Order Type').toUpperCase() + ' SURCHARGE'
+      : (_ot.name || 'Order Type').toUpperCase() + ' DISCOUNT') + ':';
+    const _modDisplay = _modifierPct > 0
+      ? '+' + fmt(_modifierAmt)
+      : '-' + fmt(Math.abs(_modifierAmt));
+    const _modColor = _modifierPct > 0 ? T.gold : (T.greenWarm || T.green);
+    subBox.appendChild(_totRow(_modLabel, _modDisplay, _modColor));
   }
   subBox.appendChild(_totRow('Tax:', fmt(tax), T.gold));
   totalsWrap.appendChild(subBox);
@@ -3857,8 +3885,10 @@ function handlePay(state, params) {
           cashPrice:            cashPrice,
           subtotal:             subtotal,
           tax:                  tax,
-          managerDiscountTotal: freshOrder.manager_discount_total || 0,
-          isLastPayment:        isLastPayment,
+          managerDiscountTotal:      freshOrder.manager_discount_total || 0,
+          order_type_modifier_pct:  state._otModPct || 0,
+          order_type_modifier_amt:  state._otModAmt || 0,
+          isLastPayment:            isLastPayment,
           returnTo:      'check-overview',
           returnParams: {
             checkId:       state.orderId,
