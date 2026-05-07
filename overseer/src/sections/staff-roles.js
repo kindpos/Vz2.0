@@ -83,8 +83,7 @@ const loadRoles = async () => {
     }
 }
 
-const _newRoleId = () => 'role_' + Math.random().toString(36).slice(2, 10);
-;
+const _newRoleId = () => crypto.randomUUID();
 
 const _permissionCount = (role) => {
     const p = role.permissions || {};
@@ -588,6 +587,12 @@ const openRoleModal = (role) => {
             draft.name = name;
 
             try {
+                // Validate service_types
+                const VALID_SERVICE_TYPES = ['full_service', 'qsr'];
+                let service_types = (draft.service_types || [])
+                    .filter(t => VALID_SERVICE_TYPES.includes(t));
+                if (!service_types.length) service_types = ['full_service'];
+
                 await pushChanges([{
                     event_type: isEdit ? 'employee.role_updated' : 'employee.role_created',
                     payload: {
@@ -601,7 +606,7 @@ const openRoleModal = (role) => {
                         tipout_eligible: draft.tipout_eligible,
                         can_receive_tips: draft.can_receive_tips,
                         can_be_tipped_out_to: draft.can_be_tipped_out_to,
-                        service_types: draft.service_types,
+                        service_types: service_types,
                     },
                 }]);
                 showToast(isEdit ? 'Role updated' : 'Role created', 'success');

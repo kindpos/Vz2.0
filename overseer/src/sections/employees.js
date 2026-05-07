@@ -666,6 +666,7 @@ const handleSave = async (isEdit, original, values, close) => {
     }
 
     await flushEvents();
+    await loadEmployeeData().catch(() => {});
     close();
     refreshTable();
 }

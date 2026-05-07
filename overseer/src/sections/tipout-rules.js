@@ -42,8 +42,7 @@ let roles = [];          // loaded Role records
 let categories = [];     // loaded MenuCategory records
 let editingRuleId = null;
 
-const _uid = () => 'rule_' + Math.random().toString(36).slice(2, 10);
-;
+const _uid = () => crypto.randomUUID();
 
 const _load = async () => {
     const [rulesRes, rolesRes, catsRes] = await Promise.all([
