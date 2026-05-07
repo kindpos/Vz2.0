@@ -564,9 +564,12 @@ const buildDayPartsAccordion = () => {
                 parts.forEach(dp => body.appendChild(buildDayPartCard(dp)));
             }
 
-            const addBtn = buildAddBtn('+ Add day part', C2.lavender);
-            addBtn.addEventListener('click', () => openDayPartModal(null));
-            body.appendChild(addBtn);
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD DAY PART', 'mint', () => openDayPartModal(null), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
         },
         pendingCount
     );
@@ -583,19 +586,17 @@ const buildDayPartCard = (dp) => {
         border-left: 3px solid ${C2.lavender};
         border-radius: 8px;
         padding: 12px 14px;
-        display: flex; flex-direction: column; gap: 6px;
-        cursor: pointer;
-        transition: background 0.15s ease;
+        display: flex; align-items: center; gap: 10px;
         margin-bottom: 8px;
     `;
-    card.addEventListener('mouseenter', () => card.style.background = C.card);
-    card.addEventListener('mouseleave', () => card.style.background = C.well);
-    card.addEventListener('click', () => openDayPartModal(dp));
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;';
 
     const name = document.createElement('div');
     name.textContent = dp.name || '(unnamed)';
     name.style.cssText = `font-size: 14px; font-weight: 600; color: ${C.text};`;
-    card.appendChild(name);
+    info.appendChild(name);
 
     const desc = document.createElement('div');
     desc.textContent = summarizeWindows(dp.windows);
@@ -604,14 +605,24 @@ const buildDayPartCard = (dp) => {
         font-size: 11px; color: ${C.textMuted};
         letter-spacing: 1.2px;
     `;
-    card.appendChild(desc);
+    info.appendChild(desc);
 
     if (dp.description) {
         const extra = document.createElement('div');
         extra.textContent = dp.description;
         extra.style.cssText = `font-size: 11px; color: ${C.textDim}; font-style: italic;`;
-        card.appendChild(extra);
+        info.appendChild(extra);
     }
+
+    card.appendChild(info);
+
+    const editBtn = buildPillButton('EDIT', 'dark', () => openDayPartModal(dp), { small: true });
+    editBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    card.appendChild(editBtn);
+
+    const delBtn = buildPillButton('DELETE', 'vermillion', () => confirmDeleteDayPart(dp.id), { small: true });
+    delBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    card.appendChild(delBtn);
 
     return card;
 }
@@ -665,9 +676,12 @@ const buildSpecialsAccordion = () => {
                     .forEach(sp => body.appendChild(buildSpecialCard(sp)));
             }
 
-            const addBtn = buildAddBtn('+ Add special', C.gold);
-            addBtn.addEventListener('click', () => openSpecialModal(null));
-            body.appendChild(addBtn);
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD SPECIAL', 'mint', () => openSpecialModal(null), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
         },
         pendingCount
     );
@@ -687,14 +701,9 @@ const buildSpecialCard = (sp) => {
         border-radius: 8px;
         padding: 12px 14px;
         display: flex; flex-direction: column; gap: 6px;
-        cursor: pointer;
         opacity: ${sp.active ? '1' : '0.55'};
-        transition: background 0.15s ease;
         margin-bottom: 8px;
     `;
-    card.addEventListener('mouseenter', () => card.style.background = C.card);
-    card.addEventListener('mouseleave', () => card.style.background = C.well);
-    card.addEventListener('click', () => openSpecialModal(sp));
 
     // Headline row
     const headline = document.createElement('div');
@@ -774,6 +783,17 @@ const buildSpecialCard = (sp) => {
     desc.appendChild(rulesPart);
 
     card.appendChild(desc);
+
+    const actionRow = document.createElement('div');
+    actionRow.style.cssText = 'display: flex; gap: 6px; margin-top: 4px;';
+    const editBtn = buildPillButton('EDIT', 'dark', () => openSpecialModal(sp), { small: true });
+    editBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    actionRow.appendChild(editBtn);
+    const delBtn = buildPillButton('DELETE', 'vermillion', () => confirmDeleteSpecial(sp.id), { small: true });
+    delBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    actionRow.appendChild(delBtn);
+    card.appendChild(actionRow);
+
     return card;
 }
 
@@ -975,11 +995,12 @@ const buildEmployeeAccordion = () => {
             if (emp.separate_rates) pillRow.appendChild(makePill('separate rates', 'muted'));
             card.appendChild(pillRow);
 
-            const editBtn = buildAddBtn('Edit settings', C.green);
-            editBtn.style.alignSelf = 'stretch';
-            editBtn.style.textAlign = 'center';
-            editBtn.addEventListener('click', () => openEmployeeModal(emp));
-            card.appendChild(editBtn);
+            const editBtnWrap = document.createElement('div');
+            editBtnWrap.style.cssText = `padding: 4px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const editBtn = buildPillButton('EDIT', 'dark', () => openEmployeeModal(emp), { small: true });
+            editBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            editBtnWrap.appendChild(editBtn);
+            card.appendChild(editBtnWrap);
 
             body.appendChild(card);
         },
@@ -1055,9 +1076,12 @@ const buildVoidReasonsAccordion = () => {
             } else {
                 reasons.forEach(r => body.appendChild(buildVoidReasonRow(r)));
             }
-            const addBtn = buildAddBtn('+ Add reason', C.verm);
-            addBtn.addEventListener('click', () => openVoidReasonModal(null));
-            body.appendChild(addBtn);
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD REASON', 'mint', () => openVoidReasonModal(null), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
         },
         pendingCount
     );
@@ -1074,13 +1098,8 @@ const buildVoidReasonRow = (r) => {
         border: 1px solid ${pending ? C.gold : withAlpha(C.text, 0.08)};
         border-left: 3px solid ${C.verm};
         border-radius: 8px;
-        cursor: pointer;
-        transition: background 0.15s ease;
         margin-bottom: 8px;
     `;
-    row.addEventListener('mouseenter', () => row.style.background = C.card);
-    row.addEventListener('mouseleave', () => row.style.background = C.well);
-    row.addEventListener('click', () => openVoidReasonModal(r));
 
     const name = document.createElement('div');
     name.textContent = r.name || '(unnamed)';
@@ -1089,6 +1108,14 @@ const buildVoidReasonRow = (r) => {
 
     if (r.requires_pin) row.appendChild(makePill('PIN', 'gold'));
     if (r.max_amount != null) row.appendChild(makePill(`max $${Number(r.max_amount).toFixed(2)}`, 'verm'));
+
+    const editBtn = buildPillButton('EDIT', 'dark', () => openVoidReasonModal(r), { small: true });
+    editBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    row.appendChild(editBtn);
+
+    const delBtn = buildPillButton('DELETE', 'vermillion', () => confirmDeleteVoidReason(r.id), { small: true });
+    delBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    row.appendChild(delBtn);
 
     return row;
 }
@@ -1152,17 +1179,31 @@ const updateSaveBar = () => {
     }
 }
 
+/* ─── CONFIRM-DELETE HELPERS ─────────────────────────────────── */
+const confirmDeleteDayPart = (id) => {
+    if (confirm('Delete this day part?')) trackDayPartDelete(id);
+}
+const confirmDeleteSpecial = (id) => {
+    if (confirm('Delete this special?')) trackSpecialDelete(id);
+}
+const confirmDeleteVoidReason = (id) => {
+    if (confirm('Delete this void reason?')) trackVoidReasonDelete(id);
+}
+
 /* ─── BUTTONS ────────────────────────────────────────────────── */
 const buildPillButton = (label, variant, onClick, opts = {}) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = label;
     const variants = {
-        primary:   `background: ${C.gold};   color: #1a1000;    border: none;`,
-        confirm:   `background: ${C.greenUp || C.green}; color: ${C.well};  border: none;`,
-        danger:    `background: transparent; color: ${C.verm};  border: 1px solid ${C.verm};`,
-        ghost:     `background: transparent; color: ${C.text};  border: 1px solid ${withAlpha(C.text, 0.2)};`,
-        tertiary:  `background: transparent; color: ${C.textMuted}; border: 1px solid ${C.border};`,
+        primary:    `background: ${C.gold};   color: #1a1000;    border: none;`,
+        confirm:    `background: ${C.greenUp || C.green}; color: ${C.well};  border: none;`,
+        danger:     `background: transparent; color: ${C.verm};  border: 1px solid ${C.verm};`,
+        ghost:      `background: transparent; color: ${C.text};  border: 1px solid ${withAlpha(C.text, 0.2)};`,
+        tertiary:   `background: transparent; color: ${C.textMuted}; border: 1px solid ${C.border};`,
+        dark:       `background: ${C.card};   color: ${C.text};  border: 1px solid ${withAlpha(C.text, 0.2)};`,
+        vermillion: `background: transparent; color: ${C.verm};  border: 1px solid ${C.verm};`,
+        mint:       `background: ${withAlpha(C.green, 0.15)}; color: ${C.green}; border: 1px solid ${C.green};`,
     };
     btn.style.cssText = `
         ${variants[variant] || variants.primary}
