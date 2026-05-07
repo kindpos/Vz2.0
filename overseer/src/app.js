@@ -52,6 +52,8 @@ import { buildModifiersScene, cleanupModifiers } from './sections/modifiers.js';
 import mountTransactionLog, { unmount as unmountTransactionLog } from './sections/transaction-log.js';
 import { buildKINDnosticStoreScene, cleanupKINDnosticStore } from './sections/kindnostic-store.js';
 import { buildKINDnosticSettingsScene, cleanupKINDnosticSettings } from './sections/kindnostic-settings.js';
+import { buildKINDnosticSurveyScene, cleanupKINDnosticSurvey } from './sections/kindnostic-survey.js';
+import { buildKINDnosticInterpreterScene, cleanupKINDnosticInterpreter } from './sections/kindnostic-interpreter.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -123,6 +125,8 @@ const NAV = [
         subs: [
             { id: 'kindnostic-store',    label: 'Archive & Export'  },
             { id: 'kindnostic-settings', label: 'Configuration'     },
+            { id: 'kindnostic-survey',   label: 'Survey'            },
+            { id: 'kindnostic-interpreter', label: 'Interpreter'    },
         ]
     },
 ];
@@ -445,6 +449,16 @@ const registerAllSections = () => {
         name: 'kindnostic-settings',
         mount: (container) => buildKINDnosticSettingsScene(container),
         unmount: (container) => cleanupKINDnosticSettings(container),
+    });
+    SceneManager.register({
+        name: 'kindnostic-survey',
+        mount: (container) => buildKINDnosticSurveyScene(container),
+        unmount: (container) => cleanupKINDnosticSurvey(container),
+    });
+    SceneManager.register({
+        name: 'kindnostic-interpreter',
+        mount: (container) => buildKINDnosticInterpreterScene(container),
+        unmount: (container) => cleanupKINDnosticInterpreter(container),
     });
 }
 
