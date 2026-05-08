@@ -4118,6 +4118,24 @@ function _voidItems(state, refs, approvedBy) {
           const _dup = state._voidedItems.some((e) => e.item.item_id && e.item.item_id === _ve.item.item_id);
           if (!_dup) state._voidedItems.push({ seatNumber: _vs.number, item: _ve.item });
         }
+
+        // Re-sync order from server after confirmed void
+        if (state.orderId) {
+          fetch(`/api/v1/orders/${state.orderId}`)
+            .then(r => r.json())
+            .then(freshOrder => {
+              if (!state._alive) return;
+              state.order = freshOrder;
+              state._voidedItems = [];  // clear local void list —
+                                        // server state is now authoritative
+              rerenderTopArea(state);
+            })
+            .catch(() => {
+              // Non-fatal: local void list remains as fallback
+              if (!state._alive) return;
+              rerenderTopArea(state);
+            });
+        }
       }
     });
 }
