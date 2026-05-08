@@ -512,7 +512,7 @@ class PrintContextBuilder:
         card_sales = agg["card_total"]
         total_tips = agg["total_tips"]
         cc_tips_total = agg["card_tips"]
-        gross_tips = cc_tips_total + (declared_cash_tips or _ZERO)
+        gross_tips = cc_tips_total + (Decimal(str(declared_cash_tips)) if declared_cash_tips is not None else _ZERO)
 
         # ── Clock in/out ───────────────────
         clock_in = None
@@ -677,6 +677,7 @@ class PrintContextBuilder:
             "total_tip_out": money_round(total_tip_out),
             "net_tips": money_round(net_tips),
             "cash_collected": money_round(cash_sales),
+            "cash_expected": money_round(cash_sales - cc_tips_total),
             "terminal_id": settings.terminal_id,
             "require_manager_sign": getattr(settings, "require_manager_sign", True),
         }
