@@ -42,7 +42,7 @@ const DAYS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
    Same items as menu-categories.js for
    consistency.
 ------------------------------------------ */
-async function fetchAvailabilityData() {
+const fetchAvailabilityData = async () => {
     try {
         const [catRes, itemRes] = await Promise.all([
             fetch("/api/v1/config/menu/categories"),
@@ -79,32 +79,29 @@ let displayState = { searchTerm: '', expandedCategories: {} };
 /* ------------------------------------------
    HELPERS
 ------------------------------------------ */
-function clone(obj) {
-    return JSON.parse(JSON.stringify(obj));
-}
+const clone = (obj) => JSON.parse(JSON.stringify(obj));
+;
 
-function formatPrice(price) {
-    return '$' + Number(price).toFixed(2);
-}
+const formatPrice = (price) => '$' + Number(price).toFixed(2);
+;
 
-function getPendingCount() {
-    return pendingChanges.categories.length + pendingChanges.items.length;
-}
+const getPendingCount = () => pendingChanges.categories.length + pendingChanges.items.length;
+;
 
 /** Get the working copy of a category (pending edit or base) */
-function getWorkingCategory(catId) {
+const getWorkingCategory = (catId) => {
     const pending = pendingChanges.categories.find(c => c.id === catId);
     return pending || availData.categories.find(c => c.id === catId);
 }
 
 /** Get the working copy of an item */
-function getWorkingItem(itemId) {
+const getWorkingItem = (itemId) => {
     const pending = pendingChanges.items.find(i => i.id === itemId);
     return pending || availData.items.find(i => i.id === itemId);
 }
 
 /** Track a category change */
-function trackCategoryChange(updatedCat) {
+const trackCategoryChange = (updatedCat) => {
     const idx = pendingChanges.categories.findIndex(c => c.id === updatedCat.id);
     if (idx !== -1) {
         pendingChanges.categories[idx] = updatedCat;
@@ -115,7 +112,7 @@ function trackCategoryChange(updatedCat) {
 }
 
 /** Track an item change */
-function trackItemChange(updatedItem) {
+const trackItemChange = (updatedItem) => {
     const idx = pendingChanges.items.findIndex(i => i.id === updatedItem.id);
     if (idx !== -1) {
         pendingChanges.items[idx] = updatedItem;
@@ -126,7 +123,7 @@ function trackItemChange(updatedItem) {
 }
 
 /** Format time string nicely on blur */
-function formatTimeString(raw) {
+const formatTimeString = (raw) => {
     if (!raw || !raw.trim()) return '';
     let cleaned = raw.trim().toUpperCase();
 
@@ -163,7 +160,7 @@ function formatTimeString(raw) {
 /* ------------------------------------------
    RENDER: MAIN VIEW
 ------------------------------------------ */
-function buildMainView(wrapper) {
+const buildMainView = (wrapper) => {
     wrapper.innerHTML = '';
 
     // --- HEADER ---
@@ -339,7 +336,7 @@ function buildMainView(wrapper) {
    One expandable card per category with
    schedule type, time inputs, grace slider
 ------------------------------------------ */
-function buildCategoryScheduleCard(baseCat) {
+const buildCategoryScheduleCard = (baseCat) => {
     const cat = getWorkingCategory(baseCat.id);
     const isExpanded = displayState.expandedCategories[cat.id] || false;
     const hasPending = pendingChanges.categories.some(c => c.id === cat.id);
@@ -812,7 +809,7 @@ function buildCategoryScheduleCard(baseCat) {
 }
 
 /** Rebuild a single category card without re-rendering everything */
-function rebuildCategoryCard(catId) {
+const rebuildCategoryCard = (catId) => {
     const existing = document.getElementById(`cat-sched-${catId}`);
     if (!existing) return;
 
@@ -825,7 +822,7 @@ function rebuildCategoryCard(catId) {
 /* ------------------------------------------
    RENDER: 86 BOARD (Item Toggle List)
 ------------------------------------------ */
-function renderItemBoard() {
+const renderItemBoard = () => {
     const container = document.getElementById('avail-item-board');
     if (!container) return;
 
@@ -886,7 +883,7 @@ function renderItemBoard() {
 /* ------------------------------------------
    RENDER: SINGLE ITEM ROW (86 Board)
 ------------------------------------------ */
-function buildItemRow(item) {
+const buildItemRow = (item) => {
     const hasPending = pendingChanges.items.some(i => i.id === item.id);
 
     const row = document.createElement('div');
@@ -969,7 +966,7 @@ function buildItemRow(item) {
    Reusable on/off toggle with smooth
    animation. Mint = on, Red = off.
 ------------------------------------------ */
-function buildToggleSwitch(isOn, onChange) {
+const buildToggleSwitch = (isOn, onChange) => {
     const track = document.createElement('div');
     track.style.cssText = `
         width: 64px;
@@ -1008,7 +1005,7 @@ function buildToggleSwitch(isOn, onChange) {
 /* ------------------------------------------
    FOOTER: CHANGE TRACKER
 ------------------------------------------ */
-function updateFooter() {
+const updateFooter = () => {
     const footer = document.getElementById('avail-change-footer');
     if (!footer) return;
 
@@ -1099,7 +1096,7 @@ function updateFooter() {
 /* ------------------------------------------
    SAVE: Generate Events & Log
 ------------------------------------------ */
-function handleSaveChanges() {
+const handleSaveChanges = () => {
     const events = generateAvailabilityEvents(pendingChanges);
 
     console.log('%c[KINDpos] Availability Events Generated', 'background: #333; color: var(--color-gold); font-size: 14px; padding: 2px 8px;');
@@ -1127,7 +1124,7 @@ function handleSaveChanges() {
 /* ------------------------------------------
    EVENT GENERATION
 ------------------------------------------ */
-function generateAvailabilityEvents(changes) {
+const generateAvailabilityEvents = (changes) => {
     const events = [];
     const batch_id = `avail_batch_${Date.now()}`;
 
@@ -1170,7 +1167,7 @@ function generateAvailabilityEvents(changes) {
    Replaces native confirm() to match
    the retro Overseer aesthetic.
 ------------------------------------------ */
-function showConfirmDialog(title, message, confirmLabel, onConfirm) {
+const showConfirmDialog = (title, message, confirmLabel, onConfirm) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = `
         position: fixed;
@@ -1282,7 +1279,7 @@ function showConfirmDialog(title, message, confirmLabel, onConfirm) {
 /* ------------------------------------------
    TOAST NOTIFICATION
 ------------------------------------------ */
-function showToast(message) {
+const showToast = (message) => {
     const toast = document.createElement('div');
     toast.style.cssText = `
         position: fixed;
@@ -1312,7 +1309,7 @@ function showToast(message) {
    CSS: SLIDER STYLING
    Injected once for the range input thumb
 ------------------------------------------ */
-function injectStyles() {
+const injectStyles = () => {
     if (document.getElementById('avail-scene-styles')) return;
 
     const style = document.createElement('style');

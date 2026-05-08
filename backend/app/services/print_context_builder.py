@@ -13,6 +13,7 @@ from ..core.financial_invariants import (
     gate as invariant_gate,
     max_abs_diff,
 )
+from .store_config_service import StoreConfigService
 
 _ZERO = Decimal('0')
 _BEVERAGE_CATS = {"Drinks", "Soda", "Beverage"}
@@ -318,6 +319,18 @@ class PrintContextBuilder:
         # ── Tax lines — template iterates a list ──────────────────────────────
         tax_lines = [{"label": "Tax", "amount": money_round(order.tax or 0)}]
 
+        # ── Store config — receipt settings from ledger projection ────────────
+        store_cfg = await StoreConfigService(self.ledger).get_projected_config()
+        rs = store_cfg.receipt_settings
+        venue = {
+            "name":                    store_cfg.info.restaurant_name,
+            "address":                 store_cfg.info.address_line_1,
+            "phone":                   store_cfg.info.phone,
+            "footer_message":          store_cfg.receipt_footer or "Thank you! Please come again.",
+            "tip_suggestion_percentages": rs.get("tip_suggestions", [15, 18, 20]),
+            "tip_calculation_base":    rs.get("tip_calc_base", "pretax"),
+        }
+
         return {
             "order_id":                   order_id,
             "ticket_number":              ticket_number,
@@ -336,13 +349,13 @@ class PrintContextBuilder:
             "tip_amount":                 tip_amount,
             "payment_method":             payment_method,
             "card_last_four":             card_last_four,
-            "tip_suggestion_percentages": [15, 18, 20],
-            "tip_calculation_base":       "pretax",
-            # Restaurant — from config eventually
-            "restaurant_name":  "KINDpos Demo",
-            "address":          "",
-            "phone":            "",
-            "footer_message":   "Thank you!",
+            "venue":                      venue,
+            "tip_suggestion_percentages": venue["tip_suggestion_percentages"],
+            "tip_calculation_base":       venue["tip_calculation_base"],
+            "restaurant_name":            venue["name"],
+            "address":                    venue["address"],
+            "phone":                      venue["phone"],
+            "footer_message":             venue["footer_message"],
         }
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -499,7 +512,7 @@ class PrintContextBuilder:
         card_sales = agg["card_total"]
         total_tips = agg["total_tips"]
         cc_tips_total = agg["card_tips"]
-        gross_tips = cc_tips_total + (declared_cash_tips or _ZERO)
+        gross_tips = cc_tips_total + (Decimal(str(declared_cash_tips)) if declared_cash_tips is not None else _ZERO)
 
         # ── Clock in/out ───────────────────
         clock_in = None
@@ -664,6 +677,7 @@ class PrintContextBuilder:
             "total_tip_out": money_round(total_tip_out),
             "net_tips": money_round(net_tips),
             "cash_collected": money_round(cash_sales),
+            "cash_expected": money_round(cash_sales - cc_tips_total),
             "terminal_id": settings.terminal_id,
             "require_manager_sign": getattr(settings, "require_manager_sign", True),
         }

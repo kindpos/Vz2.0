@@ -1766,7 +1766,7 @@ defineScene({
         discount_total:       state.data.discTotal,
         tax_total:            state.data.taxCollected,
         cash_expected:        state.data.cashExpected,
-        cash_counted:         countedCash,
+        actual_cash_counted:  countedCash,
         cash_variance:        parseFloat((countedCash - state.data.cashExpected).toFixed(2)),
         cash_bypassed:        state.cashCounted === 'bypass',
         cc_batch_total:       state.data.batchTotal,

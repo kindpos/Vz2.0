@@ -4,6 +4,7 @@ Menu Projection
 Projects the current menu state from the Event Ledger.
 """
 
+import uuid
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 from .events import Event, EventType
@@ -176,6 +177,31 @@ def project_menu(events: List[Event]) -> MenuState:
             if group_id in modifier_groups_map:
                 del modifier_groups_map[group_id]
 
+        elif event.event_type == EventType.MODIFIER_CREATED:
+            mid = payload.get('modifier_id') or str(uuid.uuid4())
+            modifiers_map[mid] = {
+                'modifier_id': mid,
+                'name': payload.get('name', ''),
+                'price': payload.get('price', '0.00'),
+                'active': payload.get('active', True),
+            }
+
+        elif event.event_type == EventType.MODIFIER_UPDATED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid].update(payload)
+
+        elif event.event_type == EventType.MODIFIER_DELETED:
+            mid = payload.get('modifier_id')
+            if mid:
+                modifiers_map.pop(mid, None)
+                for grp in modifier_groups_map.values():
+                    grp['modifiers'] = [
+                        m for m in grp.get('modifiers', [])
+                        if not (isinstance(m, dict) and
+                                m.get('modifier_id') == mid)
+                    ]
+
         elif event.event_type == EventType.MODIFIER_GROUP_MODIFIER_ADDED:
             gid = payload.get('group_id')
             mid = payload.get('modifier_id')
@@ -244,6 +270,16 @@ def project_menu(events: List[Event]) -> MenuState:
             oid = payload.get('option_id')
             if oid in options_map:
                 options_map[oid]['active'] = True
+
+        elif event.event_type == EventType.OPTION_DELETED:
+            oid = payload.get('option_id')
+            if oid:
+                options_map.pop(oid, None)
+                for grp in option_groups_map.values():
+                    grp['option_ids'] = [
+                        i for i in grp.get('option_ids', [])
+                        if i != oid
+                    ]
 
         # ── OptionGroups ──────────────────────────────────────────────
         elif event.event_type == EventType.OPTION_GROUP_CREATED:

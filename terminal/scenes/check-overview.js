@@ -41,6 +41,7 @@ import {
   buildStaticCard,
   buildActionCard,
   buildPillButton,
+  buildChamferButton,
   hexToRgba,
   darkenHex,
   lightenHex,
@@ -157,7 +158,7 @@ function _adaptItem(it) {
   let mods = [];
   const first  = [];
   const second = [];
-  const rawMods = it.mods || [];
+  const rawMods = it.modifiers || it.mods || [];
   for (let i = 0; i < rawMods.length; i++) {
     let raw = rawMods[i];
     if (raw.prefix === 'Left')       first.push(_adaptHalfItem(raw));
@@ -835,7 +836,17 @@ defineScene({
         lbl.textContent = 'DISCOUNT';
         panel.appendChild(lbl);
 
-        DISCOUNT_OPTIONS.forEach((opt) => {
+        const _manualDiscounts = (window.pricingConfig?.discounts ?? []).filter(d => !d.auto);
+        const _discOptions = _manualDiscounts.length
+          ? _manualDiscounts.map(d => ({
+              id:    d.id,
+              label: d.name,
+              pct:   d.type === 'percentage'  ? Number(d.value) : null,
+              rate:  d.type === 'flat_dollar'  ? Number(d.value) : null,
+            }))
+          : DISCOUNT_OPTIONS;
+
+        _discOptions.forEach((opt) => {
           let btn = buildPillButton({
             label:    opt.label,
             color:    T.gold,
@@ -1083,13 +1094,10 @@ defineScene({
 
 
 // ═══════════════════════════════════════════════════
-//  ACTION BAR (bottom-right pills)
-//  State 1 (no seats selected): PRINT + VOID secondaries on the left,
-//  dashed divider, PAY (gold) + ADD ITEMS (green) primaries on the
-//  right. VOID requires a ~550 ms long-press to fire; short taps are
-//  ignored so the cashier can't void the check on an accidental tap.
-//  State 2 (seats selected) and MANAGE mode toolbars come in later
-//  steps and dispatch from this same slot.
+//  ACTION BAR (bottom-right chamfer buttons)
+//  State 1: left quad (PAY tall-left | Disc/Void stacked-right)
+//  + right quad (Manage/Print stacked-left | ADD ITEMS tall-right).
+//  buildChamferButton throughout — two-layer frame + face construction.
 // ═══════════════════════════════════════════════════
 
 function _wireLongPress(el, onFire, holdMs) {
@@ -1186,6 +1194,24 @@ function renderActionBar(state) {
     }
   }
 
+  // ── Order type pricing modifier (STEP 2) ──
+  // Looks up the current order's order_type in the boot-loaded pricingConfig
+  // and applies the adjustment % (positive = surcharge, negative = discount).
+  const _otConf = (window.pricingConfig && window.pricingConfig.orderTypes) || [];
+  const _ot = _otConf.find(function(t) { return t.id === ((state.order || {}).order_type || ''); });
+  const _modifierPct = (_ot && typeof _ot.adjustment === 'number') ? _ot.adjustment : 0;
+  let _modifierAmt = 0;
+  if (_modifierPct !== 0) {
+    _modifierAmt = (window.roundHalfUp || function(v) { return Math.round(v * 100) / 100; })(subtotal * _modifierPct / 100);
+    const _adjSub = subtotal + _modifierAmt;
+    tax      = Math.round(_adjSub * getTaxRate() * 100) / 100;
+    total    = Math.round((_adjSub + tax) * 100) / 100;
+    cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+  }
+  // Preserve on state so handlePay can include in payment-launch params.
+  state._otModPct = _modifierPct;
+  state._otModAmt = _modifierAmt;
+
   // ── Bar shell ──
   const bar = document.createElement('div');
   bar.style.height        = '136px';
@@ -1253,11 +1279,21 @@ function renderActionBar(state) {
     return row;
   }
 
-  // Sub/Disc/Tax box
+  // Sub/Disc/Modifier/Tax box
   const subBox = _totBox({ minWidth: '168px', gap: '4px' });
   subBox.appendChild(_totRow('Subtotal:', fmt(subtotal), T.gold));
   if (managerDiscount > 0) {
     subBox.appendChild(_totRow('Discounts:', `-${fmt(managerDiscount)}`, T.lavender));
+  }
+  if (_modifierPct !== 0) {
+    const _modLabel = (_modifierPct > 0
+      ? (_ot.name || 'Order Type').toUpperCase() + ' SURCHARGE'
+      : (_ot.name || 'Order Type').toUpperCase() + ' DISCOUNT') + ':';
+    const _modDisplay = _modifierPct > 0
+      ? '+' + fmt(_modifierAmt)
+      : '-' + fmt(Math.abs(_modifierAmt));
+    const _modColor = _modifierPct > 0 ? T.gold : (T.greenWarm || T.green);
+    subBox.appendChild(_totRow(_modLabel, _modDisplay, _modColor));
   }
   subBox.appendChild(_totRow('Tax:', fmt(tax), T.gold));
   totalsWrap.appendChild(subBox);
@@ -1287,269 +1323,81 @@ function renderActionBar(state) {
   barDiv.style.margin     = '2px 0';
   bar.appendChild(barDiv);
 
-  function _actBtn(opts) {
-    let btn = document.createElement('div');
-    btn.style.borderRadius   = '10px';
-    btn.style.height         = '78px';
-    btn.style.width          = '100%';
-    btn.style.cursor         = 'pointer';
-    btn.style.display        = 'flex';
-    btn.style.flexDirection  = 'column';
-    btn.style.alignItems     = 'center';
-    btn.style.justifyContent = 'center';
-    btn.style.fontFamily     = T.fh;
-    btn.style.fontWeight     = T.fwBold;
-    btn.style.letterSpacing  = '0.03em';
-    btn.style.userSelect     = 'none';
-    btn.style.touchAction    = 'manipulation';
-    btn.style.gap            = '3px';
-    btn.style.background     = opts.bg || T.card;
-    btn.style.boxShadow      = `0 4px 0 ${(opts.dk || T.moonDk)}`;
-    btn.style.color          = opts.color || T.text;
-    btn.style.border         = opts.border || 'none';
-    btn.style.transition     = 'transform 0.07s, box-shadow 0.07s';
+  const actionsWrap = document.createElement('div');
+  actionsWrap.style.cssText =
+    'display:flex;gap:10px;align-items:stretch;height:112px;flex-shrink:0;';
 
-    const lbl = document.createElement('span');
-    lbl.style.fontSize   = opts.labelSize || '32px';
-    lbl.style.fontWeight = T.fwBold;
-    lbl.style.lineHeight = '1.2';
-    lbl.style.textAlign  = 'center';
-    lbl.style.width      = '100%';
-    lbl.style.paddingTop = '3px';
-    lbl.innerHTML        = opts.label.replace(/\n/g, '<br>');
-    btn.appendChild(lbl);
-
-    if (opts.sub !== undefined) {
-      const sub = document.createElement('span');
-      sub.style.fontFamily = T.fb;
-      sub.style.fontSize   = T.fsB4;
-      sub.style.fontWeight = T.fwBold;
-      sub.style.opacity    = '0.65';
-      sub.style.minHeight  = '14px';
-      sub.textContent      = opts.sub || '';
-      btn.appendChild(sub);
-    }
-
-    let baseShadow  = btn.style.boxShadow;
-    let pressShadow = `0 1px 0 ${(opts.dk || T.moonDk)}`;
-    btn.addEventListener('pointerdown', () => {
-      btn.style.transform = 'translateY(3px)';
-      btn.style.boxShadow = pressShadow;
-    });
-    let _up = () => { btn.style.transform = 'none'; btn.style.boxShadow = baseShadow; };
-    btn.addEventListener('pointerup',     _up);
-    btn.addEventListener('pointerleave',  _up);
-    btn.addEventListener('pointercancel', _up);
-    if (opts.onClick) btn.addEventListener('pointerup', (e) => {
-      if (e.defaultPrevented) return;
-      opts.onClick();
-    });
-    return btn;
-  }
-
-  const selCount = itemKeys.length;
-  const paySubLabel = selCount > 0 ? `(${selCount} items)` : '';
-
-  const payBtn = _actBtn({
-    label:     'Pay',
-    sub:       paySubLabel,
-    bg:        T.gold,
-    dk:        T.goldDk,
-    color:     T.well,
-    onClick:   () => { handlePay(state, state._params || {}); },
-  });
-
-  // Sub-button builder — shared press-state wiring
-  function _subBtn(opts) {
-    const btn = document.createElement('div');
-    btn.style.flex          = '1';
-    btn.style.borderRadius  = '8px';
-    btn.style.cursor        = 'pointer';
-    btn.style.display       = 'flex';
-    btn.style.alignItems    = 'center';
-    btn.style.justifyContent= 'center';
-    btn.style.fontFamily    = T.fh;
-    btn.style.fontWeight    = T.fwBold;
-    btn.style.fontSize      = '13px';
-    btn.style.letterSpacing = '0.04em';
-    btn.style.userSelect    = 'none';
-    btn.style.touchAction   = 'manipulation';
-    btn.style.background    = opts.bg;
-    btn.style.color         = opts.color;
-    btn.style.transition    = 'transform 0.07s, box-shadow 0.07s';
-    const baseShadow  = `0 3px 0 ${opts.dk}`;
-    const pressShadow = `0 1px 0 ${opts.dk}`;
-    btn.style.boxShadow = baseShadow;
-    btn.textContent = opts.label;
-    btn.addEventListener('pointerdown', () => {
-      btn.style.transform = 'translateY(2px)';
-      btn.style.boxShadow = pressShadow;
-    });
-    const _up = () => { btn.style.transform = 'none'; btn.style.boxShadow = baseShadow; };
-    btn.addEventListener('pointerup',     _up);
-    btn.addEventListener('pointerleave',  _up);
-    btn.addEventListener('pointercancel', _up);
-    if (opts.onClick) btn.addEventListener('pointerup', (e) => {
-      if (e.defaultPrevented) return;
-      opts.onClick();
-    });
-    return btn;
-  }
-
-  const manageBtn = _actBtn({
-    label:     'Manage',
-    labelSize: '20px',
-    sub:       '',
-    bg:        T.card,
-    dk:        T.moonDk,
-    color:     T.text,
-    border:    `1px solid ${T.border}`,
-    onClick:   () => { openEditSeats(state); },
-  });
-  const manageLbl = manageBtn.querySelector('span');
-  if (manageLbl) {
-    manageLbl.style.textAlign = 'center';
-    manageLbl.style.width = '100%';
-    manageLbl.style.marginTop = '10px';
-  }
-  manageBtn.style.textAlign = 'center';
-  manageBtn.style.alignItems = 'center';
-  manageBtn.style.justifyContent = 'center';
-
-  const addItemsBtn = _actBtn({
-    label:   'Add\nItems',
-    labelSize: '25px',
-    sub:     '',
-    bg:      T.greenWarm,
-    dk:      T.greenWarmDk,
-    color:   T.well,
-    onClick: () => { handleAddItems(state, state._params || {}); },
-  });
-
-  const discBtn = _subBtn({
-    label:   'Disc',
-    bg:      T.lavender,
-    dk:      darkenHex(T.lavender, 0.45),
-    color:   T.well,
-    onClick: () => { handleDiscount(state); },
-  });
-
-  const voidBtn = _subBtn({
-    label:   'Void',
-    bg:      T.verm,
-    dk:      T.vermDk,
-    color:   T.text,
-    onClick: () => { handleVoid(state); },
-  });
-
-  const printBtnNew = _actBtn({
-    label:   'Print',
-    labelSize: '20px',
-    bg:      T.elec,
-    dk:      T.elecDk,
-    color:   T.well,
-    onClick: () => { handlePrint(state); },
-  });
-
-  const printLbl = printBtnNew.querySelector('span');
-  if (printLbl) {
-    printLbl.style.textAlign = 'center';
-    printLbl.style.width = '100%';
-  }
-
-  const CUT = 20;
-
-  // ── LEFT QUAD: PAY (tall left) + Disc/Void (stacked right) ──
-  const cpPayLeft  = `polygon(0 0,100% 0,100% calc(50% - ${CUT}px),calc(100% - ${CUT}px) 50%,100% calc(50% + ${CUT}px),100% 100%,0 100%)`;
-  const cpDiscBL   = `polygon(0 0,100% 0,100% 100%,${CUT}px 100%,0 calc(100% - ${CUT}px))`;
-  const cpVoidTL   = `polygon(${CUT}px 0,100% 0,100% 100%,0 100%,0 ${CUT}px)`;
-
-  payBtn.style.cssText    += `width:100%;height:100%;clip-path:${cpPayLeft};`;
-  discBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpDiscBL};`;
-  discBtn.style.fontSize = '20px';
-  discBtn.style.fontWeight = '900';
-  discBtn.style.textAlign = 'center';
-  discBtn.style.justifyContent = 'center';
-  discBtn.style.alignItems = 'center';
-  discBtn.style.display = 'flex';
-  discBtn.style.height = '100%';
-  voidBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpVoidTL};`;
-  voidBtn.style.fontSize = '20px';
-  voidBtn.style.fontWeight = '900';
-  voidBtn.style.textAlign = 'center';
-  voidBtn.style.justifyContent = 'center';
-  voidBtn.style.alignItems = 'center';
-  voidBtn.style.display = 'flex';
-  voidBtn.style.height = '100%';
-
+  // Left quad: PAY tall-left + Disc/Void stacked-right
   const leftQuad = document.createElement('div');
-  leftQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:320px;flex-shrink:0;`;
+  leftQuad.style.cssText =
+    'display:grid;grid-template-columns:175px 150px;' +
+    'grid-template-rows:1fr 1fr;gap:5px;height:112px;';
 
-  const payCell = document.createElement('div');
-  payCell.style.cssText = 'grid-column:1;grid-row:1/3;display:flex;';
-  payCell.appendChild(payBtn);
+  const payBtn = buildChamferButton({
+    label: 'Pay', fontSize: '30px', isPrimary: true,
+    accent: T.gold, accentDk: T.goldDk,
+    onClick: () => handlePay(state, state._params || {}),
+  });
+  payBtn.style.cssText += 'grid-column:1;grid-row:1/3;';
 
-  const discCell = document.createElement('div');
-  discCell.style.cssText = 'grid-column:2;grid-row:1;display:flex;align-items:center;justify-content:center;';
-  discCell.appendChild(discBtn);
+  const discBtn = buildChamferButton({
+    label: 'Disc', fontSize: '20px', isPrimary: false,
+    accent: T.lavender, accentDk: T.lavenderDk,
+    onClick: () => handleDiscount(state),
+  });
+  discBtn.style.cssText += 'grid-column:2;grid-row:1;';
 
-  const voidCell = document.createElement('div');
-  voidCell.style.cssText = 'grid-column:2;grid-row:2;display:flex;align-items:center;justify-content:center;';
-  voidCell.appendChild(voidBtn);
+  const voidBtn = buildChamferButton({
+    label: 'Void', fontSize: '20px', isPrimary: false,
+    accent: T.verm, accentDk: T.vermDk,
+    onClick: () => handleVoid(state),
+  });
+  voidBtn.style.cssText += 'grid-column:2;grid-row:2;';
 
-  leftQuad.appendChild(payCell);
-  leftQuad.appendChild(discCell);
-  leftQuad.appendChild(voidCell);
+  leftQuad.appendChild(payBtn);
+  leftQuad.appendChild(discBtn);
+  leftQuad.appendChild(voidBtn);
 
-  // ── RIGHT QUAD: Manage/Print (stacked left) + Add Items (tall right) ──
-  const cpMgmtBR   = `polygon(0 0,100% 0,100% calc(100% - ${CUT}px),calc(100% - ${CUT}px) 100%,0 100%)`;
-  const cpPrintTR  = `polygon(0 0,calc(100% - ${CUT}px) 0,100% ${CUT}px,100% 100%,0 100%)`;
-  const cpAddRight = `polygon(0 0,100% 0,100% 100%,0 100%,0 calc(50% + ${CUT}px),${CUT}px 50%,0 calc(50% - ${CUT}px))`;
-
-  manageBtn.style.cssText   += `width:100%;height:100%;clip-path:${cpMgmtBR};`;
-  manageBtn.style.fontSize = '20px';
-  manageBtn.style.fontWeight = '900';
-  manageBtn.style.textAlign = 'center';
-  manageBtn.style.justifyContent = 'center';
-  manageBtn.style.alignItems = 'center';
-  manageBtn.style.display = 'flex';
-  manageBtn.style.lineHeight = '1.2';
-  printBtnNew.style.cssText += `width:100%;height:100%;clip-path:${cpPrintTR};`;
-  printBtnNew.style.fontSize = '20px';
-  printBtnNew.style.fontWeight = '900';
-  printBtnNew.style.textAlign = 'center';
-  printBtnNew.style.justifyContent = 'center';
-  printBtnNew.style.alignItems = 'center';
-  printBtnNew.style.display = 'flex';
-  printBtnNew.style.lineHeight = '1.2';
-  addItemsBtn.style.cssText += `width:100%;height:100%;clip-path:${cpAddRight};`;
-
+  // Right quad: Manage/Print stacked-left + Add Items tall-right
   const rightQuad = document.createElement('div');
-  rightQuad.style.cssText = `display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:5px;height:112px;width:320px;flex-shrink:0;`;
+  rightQuad.style.cssText =
+    'display:grid;grid-template-columns:150px 175px;' +
+    'grid-template-rows:1fr 1fr;gap:5px;height:112px;';
 
-  const mgmtCell = document.createElement('div');
-  mgmtCell.style.cssText = 'grid-column:1;grid-row:1;display:flex;align-items:center;justify-content:center;';
-  mgmtCell.appendChild(manageBtn);
+  const manageBtn = buildChamferButton({
+    label: 'Manage', fontSize: '20px', isPrimary: false,
+    accent: T.text, accentDk: darkenHex(T.card, 0.4),
+    onClick: () => openEditSeats(state),
+  });
+  manageBtn.style.cssText += 'grid-column:1;grid-row:1;';
 
-  const printCell = document.createElement('div');
-  printCell.style.cssText = 'grid-column:1;grid-row:2;display:flex;align-items:center;justify-content:center;';
-  printCell.appendChild(printBtnNew);
+  const printBtn = buildChamferButton({
+    label: 'Print', fontSize: '20px', isPrimary: false,
+    accent: T.elec, accentDk: T.elecDk,
+    onClick: () => handlePrint(state),
+  });
+  printBtn.style.cssText += 'grid-column:1;grid-row:2;';
 
-  const addCell = document.createElement('div');
-  addCell.style.cssText = 'grid-column:2;grid-row:1/3;display:flex;align-items:center;justify-content:center;';
-  addCell.appendChild(addItemsBtn);
+  const addItemsBtn = buildChamferButton({
+    label: 'Add\nItems', fontSize: '25px', isPrimary: true,
+    accent: T.greenWarm, accentDk: T.greenWarmDk,
+    onClick: () => handleAddItems(state, state._params || {}),
+  });
+  addItemsBtn.style.cssText += 'grid-column:2;grid-row:1/3;';
 
-  rightQuad.appendChild(mgmtCell);
-  rightQuad.appendChild(printCell);
-  rightQuad.appendChild(addCell);
+  rightQuad.appendChild(manageBtn);
+  rightQuad.appendChild(printBtn);
+  rightQuad.appendChild(addItemsBtn);
 
-  // ── SPACER + APPEND ──
+  actionsWrap.appendChild(leftQuad);
+  actionsWrap.appendChild(rightQuad);
+
+  // Natural spacer between totals and action quads
   const spacer = document.createElement('div');
   spacer.style.flex = '1';
 
-  bar.appendChild(leftQuad);
   bar.appendChild(spacer);
-  bar.appendChild(rightQuad);
+  bar.appendChild(actionsWrap);
 }
 
 
@@ -1816,8 +1664,59 @@ function renderSeatsGrid(state, container, mode) {
       itemsInner.style.flexDirection = 'column';
       itemsInner.style.gap           = '5px';
 
+      const rSentRaw   = [];
+      const rUnsentRaw = [];
       for (let rii = 0; rii < rSeat.items.length; rii++) {
-        itemsInner.appendChild(buildItemBlock(state, rSeatIdx, rii, true));
+        const rit = rSeat.items[rii];
+        if (rit.voided) {
+          if (rit.sent_at || rit.sent) rSentRaw.push({ it: rit, ii: rii });
+        } else if (rit.sent_at || rit.sent) {
+          rSentRaw.push({ it: rit, ii: rii });
+        } else {
+          rUnsentRaw.push({ it: rit, ii: rii });
+        }
+      }
+      if (rSentRaw.length > 0) {
+        itemsInner.appendChild(_coBuildSentGroups(rSentRaw, state, rSeatIdx));
+      }
+      if (rUnsentRaw.length > 0) {
+        if (rSentRaw.length > 0) itemsInner.appendChild(_coUnsentHeader());
+        rUnsentRaw.forEach(({ it: rit, ii: rii }) => {
+          const ep = rit.effectivePrice != null ? rit.effectivePrice : (rit.price || 0);
+          const row = document.createElement('div');
+          row.style.cssText = [
+            `background:${T.well};`,
+            `border-left:2px solid ${T.gold};`,
+            'border-radius:0 5px 5px 0;',
+            'padding:5px 8px 5px 10px;',
+            'display:flex;align-items:center;gap:7px;',
+            'margin-bottom:3px;',
+            'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+          ].join('');
+          row.addEventListener('pointerup', () => { toggleItem(state, rSeatIdx, rii); });
+
+          const nameSpan = document.createElement('span');
+          nameSpan.style.cssText = [
+            `font-family:${T.fb};`,
+            `font-size:${T.fsB2};`,
+            `color:${T.text};`,
+            'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+          ].join('') + `;font-weight:${T.fwBold};`;
+          nameSpan.textContent = (rit.qty > 1 ? rit.qty + '× ' : '') + rit.name;
+          row.appendChild(nameSpan);
+
+          const priceSpan = document.createElement('span');
+          priceSpan.style.cssText = [
+            `font-family:${T.fb};`,
+            `font-size:${T.fsB2};`,
+            `font-weight:${T.fwBold};`,
+            `color:${T.gold};`,
+          ].join('');
+          priceSpan.textContent = fmt((rit.qty || 1) * Number(ep));
+          row.appendChild(priceSpan);
+
+          itemsInner.appendChild(row);
+        });
       }
       itemsWrap.appendChild(itemsInner);
       sCard.appendChild(itemsWrap);
@@ -2361,6 +2260,348 @@ function _buildItemSubCard(state, seatIdx, itemIdx) {
   return buildItemBlock(state, seatIdx, itemIdx, false);
 }
 
+function _applySentRowStyle(row, nameSpan, priceSpan, isSelected) {
+  if (isSelected) {
+    row.style.background  = T.green;
+    row.style.borderLeft  = `2px solid ${T.greenDk}`;
+    row.style.opacity     = '1';
+    nameSpan.style.color  = T.well;
+    priceSpan.style.color = T.well;
+  } else {
+    row.style.background  = T.well;
+    row.style.borderLeft  = `2px solid ${hexToRgba(T.green, 0.28)}`;
+    row.style.opacity     = '0.6';
+    nameSpan.style.color  = T.text;
+    priceSpan.style.color = T.gold;
+  }
+}
+
+function _coBuildSentGroups(items, state, seatIdx) {
+  const container = document.createElement('div');
+  const groups = [];
+  const keyToIdx = {};
+
+  items.forEach((itemData) => {
+    const it = itemData.it;
+    let key = '__null__';
+    let groupTs = null;
+    if (it.sent_at) {
+      const d = new Date(it.sent_at);
+      if (!isNaN(d.getTime())) {
+        const floored = Math.floor(d.getTime() / 60000);
+        key = '' + floored;
+        groupTs = new Date(floored * 60000);
+      }
+    }
+    if (keyToIdx[key] === undefined) {
+      keyToIdx[key] = groups.length;
+      groups.push({ key, ts: groupTs, items: [] });
+    }
+    groups[keyToIdx[key]].items.push(itemData);
+  });
+
+  groups.sort((a, b) => {
+    if (a.key === '__null__') return -1;
+    if (b.key === '__null__') return 1;
+    return parseInt(a.key, 10) - parseInt(b.key, 10);
+  });
+
+  groups.forEach((group, idx) => {
+    const label = 'Sent';
+    let timeStr = null;
+    if (group.ts) {
+      let h = group.ts.getHours();
+      const m = group.ts.getMinutes();
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      timeStr = h + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+    }
+
+    const zone = document.createElement('div');
+    zone.style.marginBottom = '8px';
+
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;gap:7px;padding:0 2px 5px;';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.style.cssText = [
+      `font-family:${T.fb};`,
+      `font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};`,
+      'letter-spacing:0.2em;',
+      `color:${hexToRgba(T.green, 0.55)};`,
+      'text-transform:uppercase;',
+      'white-space:nowrap;',
+    ].join('');
+    labelSpan.textContent = label;
+    hdr.appendChild(labelSpan);
+
+    if (timeStr) {
+      const timeSpan = document.createElement('span');
+      timeSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        'font-size:9px;',
+        `color:${T.text};`,
+      ].join('') + `;font-weight:${T.fwBold};`;
+      timeSpan.textContent = timeStr;
+      hdr.appendChild(timeSpan);
+    }
+
+    const line = document.createElement('div');
+    line.style.cssText = `flex:1;height:1px;background:${hexToRgba(T.green, 0.15)};`;
+    hdr.appendChild(line);
+    zone.appendChild(hdr);
+
+    group.items.forEach((itemData) => {
+      const it = itemData.it;
+      const ii = itemData.ii;
+      const ep = it.effectivePrice != null ? it.effectivePrice : (it.price || 0);
+      const total = (it.qty || 1) * Number(ep);
+      const isVoided = !!it.voided;
+
+      const row = document.createElement('div');
+
+      if (isVoided) {
+        row.style.cssText = [
+          `background:${hexToRgba(T.verm, 0.06)};`,
+          `border-left:2px solid ${hexToRgba(T.verm, 0.3)};`,
+          'border-radius:0 5px 5px 0;',
+          'padding:5px 8px 5px 10px;',
+          'display:flex;align-items:center;gap:7px;',
+          'opacity:0.6;',
+          'margin-bottom:3px;',
+          'pointer-events:none;',
+        ].join('');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${hexToRgba(T.verm, 0.7)};`,
+          'text-decoration:line-through;',
+          'flex:1;',
+          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+        ].join('') + `;font-weight:${T.fwBold};`;
+        nameSpan.textContent = (it.qty > 1 ? it.qty + '× ' : '') + it.name;
+        row.appendChild(nameSpan);
+
+        const priceSpan = document.createElement('span');
+        priceSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `font-weight:${T.fwBold};`,
+          `color:${hexToRgba(T.verm, 0.7)};`,
+          'text-decoration:line-through;',
+        ].join('');
+        priceSpan.textContent = fmt(total);
+        row.appendChild(priceSpan);
+
+        const voidBadge = document.createElement('span');
+        voidBadge.style.cssText = [
+          `font-family:${T.fb};`,
+          'font-size:8px;',
+          `font-weight:${T.fwBold};`,
+          'letter-spacing:0.1em;',
+          `color:${hexToRgba(T.verm, 0.6)};`,
+        ].join('');
+        voidBadge.textContent = 'VOID';
+        row.appendChild(voidBadge);
+      } else {
+        const selKey = seatIdx + ':' + ii;
+        const isSelected = !!(state && state.selectedItems && state.selectedItems[selKey]);
+
+        row.style.cssText = [
+          `background:${isSelected ? T.green : T.well};`,
+          `border-left:2px solid ${isSelected ? T.greenDk : hexToRgba(T.green, 0.28)};`,
+          'border-radius:0 5px 5px 0;',
+          'padding:5px 8px 5px 10px;',
+          'display:flex;align-items:center;gap:7px;',
+          `opacity:${isSelected ? '1' : '0.6'};`,
+          'margin-bottom:3px;',
+          'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+        ].join('');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${isSelected ? T.well : T.text};`,
+          'flex:1;',
+          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+        ].join('') + `;font-weight:${T.fwBold};`;
+        nameSpan.textContent = (it.qty > 1 ? it.qty + '× ' : '') + it.name;
+        row.appendChild(nameSpan);
+
+        const priceSpan = document.createElement('span');
+        priceSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `font-weight:${T.fwBold};`,
+          `color:${isSelected ? T.well : T.gold};`,
+        ].join('');
+        priceSpan.textContent = fmt(total);
+        row.appendChild(priceSpan);
+
+        if (state && seatIdx != null) {
+          row.addEventListener('pointerup', () => {
+            state.selectedItems = toggleItemSelection(state.selectedItems, seatIdx, ii);
+            _syncSelectedFromItems(state);
+            const nowSelected = !!(state.selectedItems && state.selectedItems[selKey]);
+            _applySentRowStyle(row, nameSpan, priceSpan, nowSelected);
+            renderActionBar(state);
+          });
+        }
+      }
+
+      zone.appendChild(row);
+
+      if (!isVoided) {
+        const mods = it.mods || [];
+        const leftMods = [];
+        const rightMods = [];
+        const regularMods = [];
+        for (let mi = 0; mi < mods.length; mi++) {
+          const m = mods[mi];
+          if (m.prefix === 'Left')       leftMods.push(m);
+          else if (m.prefix === 'Right') rightMods.push(m);
+          else                           regularMods.push(m);
+        }
+
+        for (let mi = 0; mi < regularMods.length; mi++) {
+          const mod = regularMods[mi];
+          const pp = _parsePrefix(mod.name || '');
+          const badge = pp.prefix;
+          const cleanName = pp.clean;
+          const price = Number(mod.price) || 0;
+          const isMand = !badge;
+
+          const modRow = document.createElement('div');
+          modRow.style.cssText = 'display:flex;align-items:center;gap:5px;padding:1px 8px 1px 22px;';
+
+          const arrow = document.createElement('span');
+          arrow.style.cssText = `font-family:${T.fb};font-size:10px;color:${T.moon};flex-shrink:0;`;
+          arrow.textContent = '↳';
+          modRow.appendChild(arrow);
+
+          if (badge) {
+            const badgeEl = document.createElement('span');
+            badgeEl.style.cssText = [
+              `font-family:${T.fb};`,
+              'font-size:8px;',
+              `font-weight:${T.fwBold};`,
+              'letter-spacing:0.1em;',
+              `color:${T.elec};`,
+              'flex-shrink:0;',
+            ].join('');
+            badgeEl.textContent = badge;
+            modRow.appendChild(badgeEl);
+          }
+
+          const nameEl = document.createElement('span');
+          nameEl.style.cssText = [
+            `font-family:${T.fb};`,
+            'font-size:11px;',
+            `color:${isMand ? T.catColor(it.category) : T.text};`,
+            'flex:1;',
+            'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+          ].join('');
+          nameEl.textContent = cleanName;
+          modRow.appendChild(nameEl);
+
+          if (price !== 0) {
+            const priceEl = document.createElement('span');
+            priceEl.style.cssText = [
+              `font-family:${T.fb};`,
+              'font-size:11px;',
+              `font-weight:${T.fwBold};`,
+              `color:${T.elec};`,
+              'flex-shrink:0;',
+            ].join('');
+            priceEl.textContent = `+${fmt(price)}`;
+            modRow.appendChild(priceEl);
+          }
+
+          zone.appendChild(modRow);
+        }
+
+        if (leftMods.length > 0 || rightMods.length > 0) {
+          const halvesGrid = document.createElement('div');
+          halvesGrid.style.cssText = [
+            'display:grid;grid-template-columns:1fr 1fr;gap:3px;',
+            'padding:3px 8px 3px 22px;margin-bottom:1px;',
+          ].join('');
+
+          const leftCol = document.createElement('div');
+          leftCol.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+          const rightCol = document.createElement('div');
+          rightCol.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+
+          const hdrCss = [
+            `font-family:${T.fb};font-size:8px;font-weight:${T.fwBold};`,
+            `letter-spacing:0.12em;color:${T.gold};text-transform:uppercase;`,
+          ].join('');
+
+          const leftHdr = document.createElement('div');
+          leftHdr.style.cssText = hdrCss;
+          leftHdr.textContent = '1ST';
+          leftCol.appendChild(leftHdr);
+
+          const rightHdr = document.createElement('div');
+          rightHdr.style.cssText = hdrCss;
+          rightHdr.textContent = '2ND';
+          rightCol.appendChild(rightHdr);
+
+          for (let mi = 0; mi < leftMods.length; mi++) {
+            const modEl = document.createElement('div');
+            modEl.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.text};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
+            modEl.textContent = leftMods[mi].name || '';
+            leftCol.appendChild(modEl);
+          }
+
+          for (let mi = 0; mi < rightMods.length; mi++) {
+            const modEl = document.createElement('div');
+            modEl.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.text};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
+            modEl.textContent = rightMods[mi].name || '';
+            rightCol.appendChild(modEl);
+          }
+
+          halvesGrid.appendChild(leftCol);
+          halvesGrid.appendChild(rightCol);
+          zone.appendChild(halvesGrid);
+        }
+      }
+    });
+
+    container.appendChild(zone);
+  });
+
+  return container;
+}
+
+function _coUnsentHeader() {
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;gap:7px;padding:0 2px 6px;margin-top:2px;';
+
+  const labelSpan = document.createElement('span');
+  labelSpan.style.cssText = [
+    `font-family:${T.fb};`,
+    'font-size:8px;',
+    `font-weight:${T.fwBold};`,
+    'letter-spacing:0.2em;',
+    'text-transform:uppercase;',
+    `color:${hexToRgba(T.gold, 0.65)};`,
+    'white-space:nowrap;',
+  ].join('');
+  labelSpan.textContent = '+ Unsent';
+  hdr.appendChild(labelSpan);
+
+  const line = document.createElement('div');
+  line.style.cssText = `flex:1;height:1px;background:${hexToRgba(T.gold, 0.18)};`;
+  hdr.appendChild(line);
+
+  return hdr;
+}
+
 function buildSeatCard(state, seatIdx) {
   let seat     = state.seats[seatIdx];
   const bevelLt  = lightenHex(T.bg, 0.08);
@@ -2461,8 +2702,61 @@ function buildSeatCard(state, seatIdx) {
     empty.style.fontStyle  = 'italic';
     itemsWrap.appendChild(empty);
   } else {
+    const sentRaw   = [];
+    const unsentRaw = [];
     for (let ii = 0; ii < seat.items.length; ii++) {
-      itemsWrap.appendChild(buildItemBlock(state, seatIdx, ii, false));
+      const it = seat.items[ii];
+      if (it.voided) {
+        // voided sent items show with void treatment; voided unsent items are hidden
+        if (it.sent_at || it.sent) sentRaw.push({ it, ii });
+      } else if (it.sent_at || it.sent) {
+        sentRaw.push({ it, ii });
+      } else {
+        unsentRaw.push({ it, ii });
+      }
+    }
+
+    if (sentRaw.length > 0) {
+      itemsWrap.appendChild(_coBuildSentGroups(sentRaw, state, seatIdx));
+    }
+    if (unsentRaw.length > 0) {
+      if (sentRaw.length > 0) itemsWrap.appendChild(_coUnsentHeader());
+      unsentRaw.forEach(({ it, ii }) => {
+        const ep = it.effectivePrice != null ? it.effectivePrice : (it.price || 0);
+        const row = document.createElement('div');
+        row.style.cssText = [
+          `background:${T.well};`,
+          `border-left:2px solid ${T.gold};`,
+          'border-radius:0 5px 5px 0;',
+          'padding:5px 8px 5px 10px;',
+          'display:flex;align-items:center;gap:7px;',
+          'margin-bottom:3px;',
+          'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+        ].join('');
+        row.addEventListener('pointerup', () => { toggleItem(state, seatIdx, ii); });
+
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `color:${T.text};`,
+          'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+        ].join('') + `;font-weight:${T.fwBold};`;
+        nameSpan.textContent = (it.qty > 1 ? it.qty + '× ' : '') + it.name;
+        row.appendChild(nameSpan);
+
+        const priceSpan = document.createElement('span');
+        priceSpan.style.cssText = [
+          `font-family:${T.fb};`,
+          `font-size:${T.fsB2};`,
+          `font-weight:${T.fwBold};`,
+          `color:${T.gold};`,
+        ].join('');
+        priceSpan.textContent = fmt((it.qty || 1) * Number(ep));
+        row.appendChild(priceSpan);
+
+        itemsWrap.appendChild(row);
+      });
     }
   }
   card.appendChild(itemsWrap);
@@ -3593,6 +3887,7 @@ function handlePay(state, params) {
           return;
         }
         state._paymentInProgress = true;
+        const _activeDPW = window.getActiveDayPartWindow?.();
         SceneManager.mountWorking('payment', {
           orderId:              state.orderId,
           seatIds:              selectedIds,
@@ -3601,8 +3896,10 @@ function handlePay(state, params) {
           cashPrice:            cashPrice,
           subtotal:             subtotal,
           tax:                  tax,
-          managerDiscountTotal: freshOrder.manager_discount_total || 0,
-          isLastPayment:        isLastPayment,
+          managerDiscountTotal:      freshOrder.manager_discount_total || 0,
+          order_type_modifier_pct:  state._otModPct || 0,
+          order_type_modifier_amt:  state._otModAmt || 0,
+          isLastPayment:            isLastPayment,
           returnTo:      'check-overview',
           returnParams: {
             checkId:       state.orderId,
@@ -3614,6 +3911,8 @@ function handlePay(state, params) {
           employeeId:   params.employeeId,
           employeeName: params.employeeName,
           pin:          params.pin,
+          day_part_id:   _activeDPW?.dayPart?.id ?? null,
+          day_part_name: _activeDPW?.dayPart?.name ?? null,
           onComplete:   () => { state._paymentInProgress = false; },
           onCancel:     () => { state._paymentInProgress = false; },
         });
@@ -3841,7 +4140,7 @@ function handleDiscount(state) {
     state._discountInProgress = true;
     SceneManager.interrupt('disc-select', {
       onConfirm: (opt) => {
-        _applyDiscount(state, opt.pct, itemRefs, seatIds, _params.employeeId || 'manager');
+        _applyDiscount(state, opt, itemRefs, seatIds, _params.employeeId || 'manager');
       },
       onCancel: () => { state._discountInProgress = false; },
     });
@@ -3854,7 +4153,7 @@ function handleDiscount(state) {
     onConfirm: (_pin, empId) => {
       SceneManager.interrupt('disc-select', {
         onConfirm: (opt) => {
-          _applyDiscount(state, opt.pct, itemRefs, seatIds, empId);
+          _applyDiscount(state, opt, itemRefs, seatIds, empId);
         },
         onCancel: () => { state._discountInProgress = false; },
       });
@@ -3863,7 +4162,12 @@ function handleDiscount(state) {
   });
 }
 
-function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
+function _applyDiscount(state, optOrPct, itemRefs, seatIds, approvedBy) {
+  // Accept either a legacy numeric pct or a full option object {pct, rate, label, id}.
+  const opt     = typeof optOrPct === 'number' ? { pct: optOrPct } : (optOrPct || {});
+  const pct     = opt.pct  ?? null;
+  const flatRate = opt.rate ?? null;
+
   // Track whether this is a whole-seat discount (selected by seat) vs item-level
   const isWholeSeatDiscount = itemRefs.length === 0 && seatIds.length > 0;
   // Expand seat selections into item refs
@@ -3892,7 +4196,18 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     showToast('Send items to kitchen before applying a discount.', { bg: T.gold });
     return;
   }
-  const amount = computeDiscountAmount(lines, pct);
+
+  // Compute amount: percentage uses computeDiscountAmount helper;
+  // flat-rate multiplies the rate by each item's qty.
+  let amount;
+  if (pct != null) {
+    amount = computeDiscountAmount(lines, pct);
+  } else if (flatRate != null) {
+    amount = Number(lines.reduce((s, it) => s + flatRate * (it.qty || 1), 0).toFixed(2));
+  } else {
+    amount = 0;
+  }
+
   const itemIds = extractItemIds(lines);
   if (amount <= 0 || !state.orderId) {
     state._discountInProgress = false;
@@ -3901,7 +4216,11 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
   }
 
   const discountTxId = `disc-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-  const discountBody = buildDiscountBody(pct, amount, itemIds, approvedBy);
+  const discountBody = buildDiscountBody(pct ?? 0, amount, itemIds, approvedBy);
+  if (pct == null && opt.label) {
+    discountBody.discount_type = opt.label;
+    discountBody.reason        = `Manager discount: ${opt.label}`;
+  }
   discountBody.idempotency_key = discountTxId;
 
   fetchWithTimeout(`/api/v1/orders/${state.orderId}/discount`, {
@@ -3922,10 +4241,15 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     for (let _di = 0; _di < lines.length; _di++) {
       const _dItem = lines[_di];
       const _dRef  = itemRefs[_di];
-      const _dAmt  = Math.round((_dItem.price || 0) * (_dItem.qty || 1) * pct / 100 * 100) / 100;
+      let _dAmt;
+      if (pct != null) {
+        _dAmt = Math.round((_dItem.price || 0) * (_dItem.qty || 1) * pct / 100 * 100) / 100;
+      } else {
+        _dAmt = Math.round((flatRate ?? 0) * (_dItem.qty || 1) * 100) / 100;
+      }
       // Per-item cache (keyed by backend item_id)
       if (_dItem.item_id) {
-        state._itemDiscounts[_dItem.item_id] = { pct, amount: _dAmt };
+        state._itemDiscounts[_dItem.item_id] = { pct: pct ?? 0, amount: _dAmt };
       }
       // Per-seat cache only for whole-seat discounts, not item-level discounts.
       // Item-level discounts should only be indicated via _itemDiscounts.
@@ -3933,7 +4257,7 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
         const _dSeat = _dRef && state.seats[_dRef.seatIdx];
         if (_dSeat && _dSeat.id) {
           if (!state._seatDiscounts[_dSeat.id]) {
-            state._seatDiscounts[_dSeat.id] = { pct, amount: 0 };
+            state._seatDiscounts[_dSeat.id] = { pct: pct ?? 0, amount: 0 };
           }
           state._seatDiscounts[_dSeat.id].amount =
             Math.round((state._seatDiscounts[_dSeat.id].amount + _dAmt) * 100) / 100;
@@ -3947,7 +4271,8 @@ function _applyDiscount(state, pct, itemRefs, seatIds, approvedBy) {
     // panels (e.g. server-landing) that the order has changed.
     SceneManager.emit('order:updated', { orderId: state.orderId });
     if (typeof refreshOrder === 'function') refreshOrder(state, {});
-    showToast(pct + '% discount applied', { bg: T.greenWarm });
+    const toastLabel = pct != null ? `${pct}% discount applied` : `${opt.label || 'Discount'} applied`;
+    showToast(toastLabel, { bg: T.greenWarm });
   }).catch((err) => {
     state._discountInProgress = false;
     showToast(`Discount failed: ${(err && err.message ? err.message : 'unknown')}`, { bg: T.verm });

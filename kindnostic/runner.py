@@ -16,7 +16,7 @@ from kindnostic.display import BootDisplay
 from kindnostic.entomology import write_boot_diagnostic
 from kindnostic.storage import BootStorage
 from kindnostic.support_codes import generate_support_code
-from kindnostic.types import Category, ProbeResult, Status
+from kindnostic.types import Category, ProbeResult, ProbeTier, Status
 
 PROBE_TIMEOUT_S = 2.0
 DEFAULT_DB_PATH = "./data/diagnostic_boot.db"
@@ -63,6 +63,45 @@ def discover_probes() -> list[tuple[str, Callable, Category]]:
 
     probes.sort(key=lambda p: p[2])
     return probes
+
+
+def discover_probes_with_tiers() -> list[tuple[str, Callable, Category, ProbeTier]]:
+    """Scan kindnostic.probes for probe_* functions with tier information.
+
+    Returns list of (name, callable, category, tier) sorted by category
+    (CRITICAL first, then HIGH, then LOW).
+    """
+    probes: list[tuple[str, Callable, Category, ProbeTier]] = []
+
+    package_path = kindnostic.probes.__path__
+    for importer, module_name, is_pkg in pkgutil.iter_modules(package_path):
+        module = importlib.import_module(f"kindnostic.probes.{module_name}")
+        category = getattr(module, "CATEGORY", Category.LOW)
+        tier = getattr(module, "PROBE_TIER", ProbeTier.PASSIVE)
+
+        for attr_name in dir(module):
+            if attr_name.startswith("probe_") and callable(getattr(module, attr_name)):
+                fn = getattr(module, attr_name)
+                probes.append((attr_name, fn, category, tier))
+
+    probes.sort(key=lambda p: p[2])
+    return probes
+
+
+# ─── Tier-aware execution ───────────────────────────────────
+
+def run_probes_for_tier(tier: ProbeTier) -> list[tuple[ProbeResult, int]]:
+    """Run all probes matching a specific tier.
+
+    Returns list of (result, duration_ms) tuples.
+    """
+    all_probes = discover_probes_with_tiers()
+    results = []
+    for name, fn, category, probe_tier in all_probes:
+        if probe_tier == tier:
+            result, duration_ms = run_probe(fn, category)
+            results.append((result, duration_ms))
+    return results
 
 
 # ─── Single probe execution ─────────────────────────────────

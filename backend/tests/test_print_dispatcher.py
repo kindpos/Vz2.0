@@ -29,7 +29,6 @@ import pytest_asyncio
 
 from app.printing import print_dispatcher as pd_mod
 from app.printing.print_dispatcher import (
-    FALLBACK_IPS,
     MAX_ATTEMPTS,
     PrintDispatcher,
     RETRY_DELAYS,
@@ -93,7 +92,7 @@ class FakeQueue:
 
 def _make_job(
     *, job_id: str = "J1", order_id: str = "O1",
-    template_id: str = "guest_receipt", printer_mac: str = "DEFAULT_RECEIPT",
+    template_id: str = "guest_receipt", printer_mac: str = "AA:BB:CC:DD:EE:FF",
     attempt_count: int = 0, context: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
     """Build a job dict in the shape `_process_job` expects."""
@@ -123,6 +122,24 @@ def dispatcher():
     return PrintDispatcher(queue=FakeQueue(), poll_interval=0.01)
 
 
+@pytest.fixture
+def hw_db_with_default(tmp_path, monkeypatch):
+    """Set up hardware_config.db with the default MAC (AA:BB:CC:DD:EE:FF)
+    so _process_job tests don't fail at resolution. Monkeypatches the
+    dispatcher module's HARDWARE_DB_PATH to point to the temp DB."""
+    db_path = tmp_path / "hardware.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE devices (mac TEXT PRIMARY KEY, ip TEXT, port INTEGER, type TEXT)")
+    conn.execute(
+        "INSERT INTO devices (mac, ip, port, type) VALUES (?, ?, ?, ?)",
+        ("AA:BB:CC:DD:EE:FF", "192.168.1.10", 9100, "receipt"),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(pd_mod, "HARDWARE_DB_PATH", str(db_path))
+    return str(db_path)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # _render
 # ═══════════════════════════════════════════════════════════════════════════
@@ -130,7 +147,7 @@ def dispatcher():
 class TestRender:
 
     def test_receipt_template_rendered_with_receipt_formatter(self, dispatcher):
-        """guest_receipt + DEFAULT_RECEIPT → bytes produced, non-empty."""
+        """guest_receipt rendered with receipt formatter → bytes produced, non-empty."""
         ctx = {
             "order_id": "O1",
             "items": [{"qty": 1, "name": "Item", "price": 10.0, "subtotal": 10.0}],
@@ -181,20 +198,6 @@ from app.printing.print_dispatcher import PRINTER_PORT
 class TestResolvePrinter:
 
     @pytest.mark.asyncio
-    async def test_legacy_default_keys(self, dispatcher):
-        """The two hardcoded legacy keys must always resolve — fallback
-        contract for early installs that haven't registered a MAC."""
-        ip, port, ptype = await dispatcher._resolve_printer("DEFAULT_RECEIPT")
-        assert ip == FALLBACK_IPS["DEFAULT_RECEIPT"]
-        assert port == PRINTER_PORT
-        assert ptype == "receipt"
-
-        ip, port, ptype = await dispatcher._resolve_printer("DEFAULT_KITCHEN")
-        assert ip == FALLBACK_IPS["DEFAULT_KITCHEN"]
-        assert port == PRINTER_PORT
-        assert ptype == "kitchen"
-
-    @pytest.mark.asyncio
     async def test_db_lookup_returns_ip_port_type(self, dispatcher, tmp_path, monkeypatch):
         """Registered MAC in hardware_config.db resolves to that row's ip/port/type."""
         db_path = tmp_path / "hardware.db"
@@ -214,8 +217,8 @@ class TestResolvePrinter:
         assert ptype == "kitchen"
 
     @pytest.mark.asyncio
-    async def test_db_row_missing_ip_uses_type_fallback(self, dispatcher, tmp_path, monkeypatch):
-        """Device row with NULL IP falls back to the type-based default IP."""
+    async def test_db_row_missing_ip_raises(self, dispatcher, tmp_path, monkeypatch):
+        """Device row with NULL IP raises ValueError — no fallback."""
         db_path = tmp_path / "hardware.db"
         conn = sqlite3.connect(db_path)
         conn.execute("CREATE TABLE devices (mac TEXT, ip TEXT, port INTEGER, type TEXT)")
@@ -227,13 +230,13 @@ class TestResolvePrinter:
         conn.close()
         monkeypatch.setattr(pd_mod, "HARDWARE_DB_PATH", str(db_path))
 
-        ip, port, ptype = await dispatcher._resolve_printer("11:22:33:44:55:66")
-        assert ip == pd_mod._TYPE_FALLBACK_IPS["kitchen"]
-        assert ptype == "kitchen"
+        with pytest.raises(ValueError) as exc:
+            await dispatcher._resolve_printer("11:22:33:44:55:66")
+        assert "no IP configured" in str(exc.value)
 
     @pytest.mark.asyncio
     async def test_unknown_mac_raises(self, dispatcher, tmp_path, monkeypatch):
-        """Unregistered MAC that doesn't match any type-name heuristic → raise."""
+        """Unregistered MAC raises ValueError."""
         db_path = tmp_path / "hardware.db"
         conn = sqlite3.connect(db_path)
         conn.execute("CREATE TABLE devices (mac TEXT, ip TEXT, port INTEGER, type TEXT)")
@@ -243,17 +246,7 @@ class TestResolvePrinter:
 
         with pytest.raises(ValueError) as exc:
             await dispatcher._resolve_printer("DE:AD:BE:EF:00:01")
-        assert "No IP found" in str(exc.value)
-
-    @pytest.mark.asyncio
-    async def test_name_based_type_fallback(self, dispatcher, monkeypatch):
-        """If the MAC string *contains* 'kitchen' or 'receipt', dispatch
-        still resolves — a name-shaped escape hatch for unregistered printers in dev."""
-        monkeypatch.setattr(pd_mod, "HARDWARE_DB_PATH", "/tmp/nonexistent_hw.db")
-
-        ip, port, ptype = await dispatcher._resolve_printer("some-kitchen-printer")
-        assert ip == pd_mod._TYPE_FALLBACK_IPS["kitchen"]
-        assert ptype == "kitchen"
+        assert "not found in hardware_config.db" in str(exc.value)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -263,20 +256,34 @@ class TestResolvePrinter:
 class TestProcessJob:
 
     @pytest.mark.asyncio
-    async def test_success_path_marks_completed(self, dispatcher, monkeypatch):
+    async def test_success_path_marks_completed(self, dispatcher, monkeypatch, tmp_path):
         """Happy path: mark_sent → render → resolve → send → mark_completed."""
         sent_payloads: List[tuple] = []
 
         async def fake_send(ip: str, port: int, data: bytes):
             sent_payloads.append((ip, port, data))
 
+        # Set up hardware_config.db with a registered printer
+        db_path = tmp_path / "hardware.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE devices (mac TEXT, ip TEXT, port INTEGER, type TEXT)")
+        conn.execute(
+            "INSERT INTO devices (mac, ip, port, type) VALUES (?, ?, ?, ?)",
+            ("AA:BB:CC:DD:EE:FF", "192.168.1.10", 9100, "receipt"),
+        )
+        conn.commit()
+        conn.close()
+        monkeypatch.setattr(pd_mod, "HARDWARE_DB_PATH", str(db_path))
         monkeypatch.setattr(dispatcher, "_send", fake_send)
 
-        job = _make_job(context={
-            "order_id": "O1",
-            "items": [{"qty": 1, "name": "X", "price": 1.0, "subtotal": 1.0}],
-            "subtotal": 1.0, "tax": 0.0, "total": 1.0, "tax_lines": [],
-        })
+        job = _make_job(
+            printer_mac="AA:BB:CC:DD:EE:FF",
+            context={
+                "order_id": "O1",
+                "items": [{"qty": 1, "name": "X", "price": 1.0, "subtotal": 1.0}],
+                "subtotal": 1.0, "tax": 0.0, "total": 1.0, "tax_lines": [],
+            }
+        )
         await dispatcher._process_job(job)
 
         names = dispatcher._queue.names()
@@ -285,11 +292,11 @@ class TestProcessJob:
         assert "mark_failed" not in names
         # Bytes were actually delivered to the resolved IP
         assert len(sent_payloads) == 1
-        assert sent_payloads[0][0] == FALLBACK_IPS["DEFAULT_RECEIPT"]
+        assert sent_payloads[0][0] == "192.168.1.10"
         assert len(sent_payloads[0][2]) > 0
 
     @pytest.mark.asyncio
-    async def test_transient_failure_resets_for_retry(self, dispatcher, monkeypatch):
+    async def test_transient_failure_resets_for_retry(self, dispatcher, monkeypatch, hw_db_with_default):
         """Send raises → reset_for_retry, no mark_failed, no broadcast
         (attempt still under the MAX_ATTEMPTS ceiling)."""
         async def fake_send(ip: str, port: int, data: bytes):
@@ -311,7 +318,7 @@ class TestProcessJob:
         assert failures.empty()
 
     @pytest.mark.asyncio
-    async def test_exceeds_max_attempts_marks_failed_and_broadcasts(self, dispatcher, monkeypatch):
+    async def test_exceeds_max_attempts_marks_failed_and_broadcasts(self, dispatcher, monkeypatch, hw_db_with_default):
         """When attempt_count reaches MAX_ATTEMPTS and the send still
         fails, the job is marked FAILED and every subscriber gets a
         broadcast so the UI can surface it."""
@@ -334,7 +341,7 @@ class TestProcessJob:
         assert "kaboom" in msg["error"]
 
     @pytest.mark.asyncio
-    async def test_already_past_max_attempts_short_circuits(self, dispatcher, monkeypatch):
+    async def test_already_past_max_attempts_short_circuits(self, dispatcher, monkeypatch, hw_db_with_default):
         """A job that arrives with attempt_count > MAX_ATTEMPTS is marked
         failed without attempting another send. Defensive against a
         persister-glitch or a DB field read from a bad value."""
@@ -354,7 +361,7 @@ class TestProcessJob:
         assert not q.empty()
 
     @pytest.mark.asyncio
-    async def test_render_failure_marks_failed_immediately(self, dispatcher, monkeypatch):
+    async def test_render_failure_marks_failed_immediately(self, dispatcher, monkeypatch, hw_db_with_default):
         """If the template doesn't exist the render raises a ValueError —
         a deterministic failure that should not consume retry slots. The job
         must be marked FAILED immediately without bumping attempt count."""

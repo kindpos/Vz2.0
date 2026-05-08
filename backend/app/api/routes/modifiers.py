@@ -7,6 +7,7 @@ Modifiers — pricing chain write endpoint.
   DELETE /{modifier_id}/micromods/{micromod_id} → MICROMOD_UNASSIGNED_FROM_MODIFIER
 """
 
+from decimal import Decimal
 from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/modifiers", tags=["modifiers"])
 
 
 class _SizePricingBody(BaseModel):
-    size_prices: Dict[str, float] = {}
+    size_prices: Dict[str, Decimal] = {}
 
 
 async def _get_modifier(modifier_id: str, ledger):
@@ -53,7 +54,7 @@ async def set_modifier_size_pricing(
         {
             "modifier_id": modifier_id,
             "group_id": group_id,
-            "size_prices": {k: float(v) for k, v in body.size_prices.items()},
+            "size_prices": {k: v for k, v in body.size_prices.items()},
         },
         terminal_id="overseer",
     )

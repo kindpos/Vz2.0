@@ -4,10 +4,11 @@
    ============================================ */
 
 import { pushChanges } from '../services/config-push.js';
+import { fetchWithTimeout } from '../services/http.js';
 
 let currentContainer = null;
 
-function showToast(msg, type = 'success') {
+const showToast = (msg, type = 'success') => {
     const toast = document.createElement('div');
     const color = type === 'error' ? 'var(--color-vermillion)' : 'var(--color-green)';
     toast.style.cssText = `position:fixed;top:24px;right:24px;z-index:10000;background:rgba(0,0,0,0.85);border:1px solid ${color};color:${color};padding:14px 24px;border-radius:8px;font-family:var(--font-body);font-size:22px;`;
@@ -16,23 +17,22 @@ function showToast(msg, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-async function loadStoreInfo() {
+const loadStoreInfo = async () => {
     try {
-        const res = await fetch('/api/v1/config/store');
+        const res = await fetchWithTimeout('/api/v1/config/store');
         if (!res.ok) return {};
-        const bundle = await res.json();
-        return bundle.info || {};
+        return await res.json();
     } catch { return {}; }
 }
 
-function section(title) {
+const section = (title) => {
     const h = document.createElement('div');
     h.style.cssText = 'font-family:var(--font-heading);font-size:22px;color:var(--color-mint);margin:24px 0 12px 0;';
     h.textContent = title;
     return h;
 }
 
-function toggle(label, checked) {
+const toggle = (label, checked) => {
     const wrap = document.createElement('label');
     wrap.style.cssText = `
         display: inline-flex; align-items: center; gap: 10px;
@@ -56,7 +56,7 @@ function toggle(label, checked) {
     return { wrap, cb };
 }
 
-function textInput(label, id, value, placeholder = '', type = 'text') {
+const textInput = (label, id, value, placeholder = '', type = 'text') => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom: 14px;';
     const lbl = document.createElement('label');
@@ -74,9 +74,10 @@ function textInput(label, id, value, placeholder = '', type = 'text') {
     return { wrap, input: inp };
 }
 
-async function mount(container) {
-    const info = await loadStoreInfo();
-    const receipt = info.receipt_settings || {};
+const mount = async (container) => {
+    const bundle = await loadStoreInfo();
+    const info = bundle.info || {};
+    const receipt = bundle.receipt_settings || {};
 
     container.innerHTML = '';
     const wrapper = document.createElement('div');
@@ -93,8 +94,8 @@ async function mount(container) {
 
     // Receipt header/footer text
     wrapper.appendChild(section('HEADER / FOOTER TEXT'));
-    const headerF = textInput('Header Text', 'rs-header', info.receipt_header || '', 'Thank you for visiting!');
-    const footerF = textInput('Footer Text', 'rs-footer', info.receipt_footer || '', 'Come back soon!');
+    const headerF = textInput('Header Text', 'rs-header', bundle.receipt_header || '', 'Thank you for visiting!');
+    const footerF = textInput('Footer Text', 'rs-footer', bundle.receipt_footer || '', 'Come back soon!');
     headerF.input.style.maxWidth = '100%';
     footerF.input.style.maxWidth = '100%';
     wrapper.appendChild(headerF.wrap);
@@ -184,10 +185,15 @@ async function mount(container) {
         };
 
         const result = await pushChanges([{ event_type: 'store.info_updated', payload }]);
+        if (!result.ok) {
+            showToast('Failed to save', 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Receipt Settings';
+            return;
+        }
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save Receipt Settings';
-        if (result.ok) showToast('Receipt settings saved');
-        else showToast('Failed to save', 'error');
+        showToast('Receipt settings saved');
     });
     wrapper.appendChild(saveBtn);
 }

@@ -19,13 +19,9 @@ const SEED_TERMINALS = [
         slot: '#1.5',
         online: true,
         devices: {
-            printers: [
-                { label: 'KITCHEN', type: 'kitchen', model: 'Epson TM-U220', ip: '10.0.0.15', port: 9100, variant: 'impact' },
-                { label: 'RECEIPT',  type: 'receipt', model: 'Epson TM-T88',  ip: '10.0.0.186', port: 9100, variant: 'thermal' },
-            ],
-            readers: [
-                { model: 'Dejavoo P8', status: 'SPIn · Paired' },
-            ],
+            // Populated at runtime from /api/v1/hardware/devices — no hardcoded IPs
+            printers: [],
+            readers: [],
         },
     },
     {
@@ -57,7 +53,7 @@ const SEED_TERMINALS = [
 
 // ── Gateway row ───────────────────────────────────────────────────────
 
-function buildGatewayRow(terminals) {
+const buildGatewayRow = (terminals, subnetLabel) => {
     const row = document.createElement('div');
     row.style.cssText = `
         display: flex; align-items: center; gap: 14px;
@@ -110,7 +106,7 @@ function buildGatewayRow(terminals) {
         color: ${T.textDim};
         margin-top: 1px;
     `;
-    subnetEl.textContent = 'LOCAL GATEWAY — 192.168.1/24';
+    subnetEl.textContent = subnetLabel || 'LOCAL GATEWAY — loading…';
 
     infoCol.appendChild(routerLabel);
     infoCol.appendChild(ipEl);
@@ -180,7 +176,7 @@ function buildGatewayRow(terminals) {
 
 // ── Ghost "Add Terminal" card ─────────────────────────────────────────
 
-function buildGhostCard() {
+const buildGhostCard = () => {
     const card = document.createElement('div');
     card.style.cssText = `
         height: 72px;
@@ -338,8 +334,9 @@ export function buildNetworkSetupScene(container) {
     `;
     scrollWrapper.appendChild(fade);
 
-    // ── Gateway row placeholder (updates once live count loads) ──────
-    const gatewayEl = buildGatewayRow(SEED_TERMINALS);
+    // ── Gateway row placeholder (updates once live data loads) ───────
+    // subnetLabel starts as null → shows "loading…" until the status fetch resolves
+    const gatewayEl = buildGatewayRow(SEED_TERMINALS, null);
     scrollGrid.appendChild(gatewayEl);
 
     // ── Terminal cards ────────────────────────────────────────────────
@@ -351,10 +348,17 @@ export function buildNetworkSetupScene(container) {
     // ── Ghost add-terminal card ───────────────────────────────────────
     scrollGrid.appendChild(buildGhostCard());
 
-    // ── Live device count from backend (updates gateway chips) ────────
+    // ── Live device + subnet from backend (updates gateway row) ──────
     // TODO: replace with GET /api/v1/hardware/terminals when endpoint is live
-    fetch('/api/v1/hardware/devices').then(r => r.ok ? r.json() : []).then(devices => {
-        if (!devices.length) return;
+    Promise.all([
+        fetch('/api/v1/hardware/devices').then(r => r.ok ? r.json() : []),
+        fetch('/api/v1/hardware/status').then(r => r.ok ? r.json() : null),
+    ]).then(([devices, status]) => {
+        const subnet = status?.default_subnet || null;
+        const subnetLabel = subnet
+            ? `LOCAL GATEWAY — ${subnet}`
+            : 'LOCAL GATEWAY — subnet unknown';
+
         const liveTerminals = SEED_TERMINALS.map(t => ({
             ...t,
             devices: {
@@ -372,7 +376,7 @@ export function buildNetworkSetupScene(container) {
                 })),
             },
         }));
-        const fresh = buildGatewayRow(liveTerminals);
+        const fresh = buildGatewayRow(liveTerminals, subnetLabel);
         gatewayEl.replaceWith(fresh);
     }).catch(() => {});
 

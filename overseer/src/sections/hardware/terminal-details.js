@@ -7,7 +7,7 @@ import { SceneManager } from '../../components/scene-manager.js';
 
 // ── Small reusable helpers ──────────────────────────────────────────
 
-function pillLabel(text, color, bgAlpha = 0.12) {
+const pillLabel = (text, color, bgAlpha = 0.12) => {
     const el = document.createElement('div');
     el.style.cssText = `
         display: inline-flex; align-items: center;
@@ -26,7 +26,7 @@ function pillLabel(text, color, bgAlpha = 0.12) {
     return el;
 }
 
-function statusDot(online) {
+const statusDot = (online) => {
     const el = document.createElement('div');
     const color = online ? T.green : T.verm;
     el.style.cssText = `
@@ -38,7 +38,7 @@ function statusDot(online) {
     return el;
 }
 
-function ghostPillBtn(label, eventName, terminalId) {
+const ghostPillBtn = (label, eventName, terminalId) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = label;
@@ -70,7 +70,7 @@ function ghostPillBtn(label, eventName, terminalId) {
 
 // ── Device nodes ────────────────────────────────────────────────────
 
-function buildPrinterNode(printer) {
+const buildPrinterNode = (printer) => {
     const node = document.createElement('div');
     node.style.cssText = `
         display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -111,7 +111,7 @@ function buildPrinterNode(printer) {
     return node;
 }
 
-function buildReaderNode(reader) {
+const buildReaderNode = (reader) => {
     const node = document.createElement('div');
     node.style.cssText = `
         display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -148,7 +148,7 @@ function buildReaderNode(reader) {
 
 // ── Swimlane (PRINT DEVICES + PAYMENT bands) ────────────────────────
 
-function buildSwimLane(terminal) {
+const buildSwimLane = (terminal) => {
     const swim = document.createElement('div');
     swim.style.cssText = `padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px;`;
 

@@ -142,10 +142,9 @@ vi.mock('../data/sample-employees.js', () => ({
 
 // --- Helpers ---
 
-function findButtonByLabel(root, label) {
-  return Array.from(root.querySelectorAll('button'))
+const findButtonByLabel = (root, label) => Array.from(root.querySelectorAll('button'))
     .find((b) => b.textContent.trim() === label);
-}
+;
 
 // --- Tests ---
 
@@ -176,8 +175,8 @@ describe('overseer/src/sections/employees — PIN-reset modal', () => {
     vi.restoreAllMocks();
   });
 
-  function mountEmployeeSection() {
-    const { registerEmployeeSections } = require('./employees.js');
+  async function mountEmployeeSection() {
+    const { registerEmployeeSections } = await import('./employees.js');
     // registerEmployeeSections is called during import side effects in this
     // project's pattern — but we invoke it explicitly to get the registration.
     // Import is already done in beforeEach; we need the registered scene.

@@ -37,7 +37,7 @@
 
 import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
-import { buildCard, buildStaticCard, buildPillButton, hexToRgba, lightenHex, darkenHex, buildDataRow } from '../theme-manager.js';
+import { buildCard, buildStaticCard, buildPillButton, buildChamferButton, hexToRgba, lightenHex, darkenHex, buildDataRow } from '../theme-manager.js';
 import { showToast } from '../components.js';
 import { OrderSummary } from '../order-summary.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
@@ -49,6 +49,8 @@ import { fetchWithTimeout } from '../net.js';
 import { entReport } from '../entomology-client.js';
 import { formatModifierLabel } from '../modifier-label.js';
 import { buildCheckOverviewParams } from './transitions.js';
+import { buildKindModPanel } from '../modifier-panel.js';
+import { getActiveAutoDiscounts, getItemAutoDiscount } from '../specials.js';
 
 const PAD      = 16;
 const GAP      = 16;
@@ -320,6 +322,7 @@ let _seatList       = [];          // seat numbers in the overview selection
 let _allSeatList    = [];          // all seat numbers in the party
 let _seatTab        = 'selected';  // 'selected' | 'unselected'
 let _seatSelectorEl = null;        // DOM ref for the inline seat card
+let _personalBtn    = null;        // DOM ref for the PERSONAL pill in _bottomBar
 let _prevSeats       = new Set();   // snapshot of _activeSeats at last item add (for RECALL)
 let _autoSwitchArmed = false;       // true after item add → next seat tap does exclusive replace
 
@@ -333,6 +336,7 @@ let snakeState = {
 let favorites    = [];   // item ids for personal tab
 let _gridEl      = null; // inner grid DOM container
 let _gridWrap    = null; // collapsible grid wrapper
+let _catColEl    = null; // QSR-style vertical category column
 let _snakeStrip  = null; // crumb-only strip shown when mod panel open
 let _expandedItems = {}; // item id → true when mod rows are expanded
 let _collapsedSeats = new Set(); // seat numbers collapsed in multi-seat s-card view (default: all expanded)
@@ -676,21 +680,17 @@ defineScene({
     params = params || {};
     const staff = params.staff || params.emp || {};
 
-    // 2. Body container — fills the entire screen
-    let body = document.createElement('div');
-    const offset = '0';
-    body.style.cssText = `position:absolute;left:${offset};right:0;top:0;bottom:0;overflow:hidden;display:flex;flex-direction:column;`;
-    container.appendChild(body);
-
     ticket         = [];
     ticketSeq      = 0;
+    createOrderIdemKey = null;
+    modHistory     = [];
+    comboFlow      = null;
+    _editingInstId = null;
     sceneParams    = params;
     state          = { currentOrderId: null };  // fresh state object per mount
     isSending      = false;
     currentCheckNumber = null;
     currentCustomerName = null;
-    createOrderIdemKey = null;
-    modHistory     = [];
     modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], activeSizes: {}, panelEl: null, hasPizza: false };
     _bottomBar     = null;
     _mainArea      = null;
@@ -700,6 +700,7 @@ defineScene({
     _modPanelOpen  = false;
     _gridEl        = null;
     _gridWrap      = null;
+    _catColEl      = null;
     _snakeStrip    = null;
     _expandedItems = {};
     _collapsedSeats = new Set();
@@ -713,11 +714,18 @@ defineScene({
       : [];
     _activeSeats = (_seatList.length > 0)
       ? new Set(_seatList)
-      : new Set(_allSeatList);
+      : new Set([1]);
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
     _seatTab        = 'selected';
     _seatSelectorEl = null;
+    _personalBtn    = null;
+
+    // 2. Body container — fills the entire screen
+    let body = document.createElement('div');
+    const offset = '0';
+    body.style.cssText = `position:absolute;left:${offset};right:0;top:0;bottom:0;overflow:hidden;display:flex;flex-direction:column;`;
+    container.appendChild(body);
 
     container.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
 
@@ -791,6 +799,7 @@ defineScene({
     _mainArea      = null;
     _gridEl        = null;
     _gridWrap      = null;
+    _catColEl      = null;
     _snakeStrip    = null;
     _expandedItems = {};
     _collapsedSeats = new Set();
@@ -801,6 +810,7 @@ defineScene({
     _allSeatList    = [];
     _seatTab        = 'selected';
     _seatSelectorEl = null;
+    _personalBtn    = null;
     _prevSeats       = new Set();
     _autoSwitchArmed = false;
     _menuFetched   = false;
@@ -1137,7 +1147,7 @@ function computeTicketTotals() {
   const summaryItems = [];  // item summary for ORDER RECAP
   ticket.forEach((inst) => {
     let modTotal = inst.mods.reduce((s, m) => s + Number(m.price || 0), 0);
-    const lineTotal = Number(inst.unitPrice || 0) + modTotal;
+    const lineTotal = Number(inst.unitPrice || 0) + modTotal - (Number(inst._discountAmt) || 0);
     counts[inst.name] = counts[inst.name] || { unitPrice: inst.unitPrice, qty: 0 };
     counts[inst.name].qty += 1;
     subtotal += lineTotal;
@@ -1297,6 +1307,149 @@ function buildItemTile(item, catColor, isFav) {
   return el;
 }
 
+// ── QSR VERTICAL NAV HELPERS ──────────────────────
+
+// Distribute items into grid-row chunks anchored at `anchorIdx`.
+// Returns an array of { rowOffset, items[] } where rowOffset 0 is the
+// anchor row, positive rows go down, negative rows go up.
+function distributeItems(items, cols, anchorIdx, totalRows) {
+  var chunks = [];
+  if (!items || items.length === 0) return chunks;
+
+  chunks.push({ rowOffset: 0, items: items.slice(0, cols) });
+  var i = cols;
+
+  var downOffset = 0;
+  var upOffset = -1;
+  var goingDown = true;
+  var safety = 0;
+
+  while (i < items.length && safety++ < 1000) {
+    var chunk = items.slice(i, i + cols);
+    if (goingDown) {
+      var nextDown = downOffset + 1;
+      if (anchorIdx + nextDown < totalRows) {
+        chunks.push({ rowOffset: nextDown, items: chunk });
+        downOffset = nextDown;
+        i += cols;
+      } else if (anchorIdx + upOffset < 0) {
+        break;
+      }
+      goingDown = false;
+    } else {
+      if (anchorIdx + upOffset >= 0) {
+        chunks.push({ rowOffset: upOffset, items: chunk });
+        upOffset--;
+        i += cols;
+      } else if (anchorIdx + downOffset + 1 >= totalRows) {
+        break;
+      }
+      goingDown = true;
+    }
+  }
+  return chunks;
+}
+
+function _repaintCatCol() {
+  if (!_catColEl) return;
+  _catColEl.innerHTML = '';
+  MENU_DATA.forEach((cat) => {
+    const isActive = cat.id === snakeState.catId;
+    const tile = document.createElement('div');
+    tile.style.cssText = [
+      'height:88px;flex-shrink:0;border-radius:8px;',
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;',
+      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+      'box-sizing:border-box;padding:4px 6px;',
+      isActive
+        ? `border:2px solid ${cat.color};background:${cat.color};`
+        : `border:2px solid transparent;background:${T.card};`,
+    ].join('');
+
+    const nameEl = document.createElement('span');
+    nameEl.style.cssText = [
+      `font-family:${T.fh};`,
+      `font-weight:${T.fwBold};`,
+      'font-size:17px;',
+      `color:${isActive ? T.well : cat.color};`,
+      'text-align:center;pointer-events:none;',
+    ].join('');
+    nameEl.textContent = cat.label;
+
+    const countEl = document.createElement('span');
+    const _items = (cat.subcats && cat.subcats[0] && cat.subcats[0].items) ? cat.subcats[0].items : [];
+    countEl.style.cssText = [
+      `font-family:${T.fb};`,
+      'font-size:12px;',
+      `color:${isActive ? T.well : cat.color};`,
+      'opacity:0.75;',
+      'text-align:center;pointer-events:none;',
+    ].join('');
+    countEl.textContent = _items.length + ' items';
+
+    tile.appendChild(nameEl);
+    tile.appendChild(countEl);
+    tile.addEventListener('pointerup', () => { _selectCat(cat); });
+    _catColEl.appendChild(tile);
+  });
+
+  // Sync PERSONAL button active state
+  if (_personalBtn) {
+    const isPersonal = snakeState.view === 'personal';
+    _personalBtn.style.background = isPersonal ? T.green   : T.card;
+    _personalBtn.style.border     = 'none';
+    _personalBtn.style.color      = isPersonal ? T.well    : T.text;
+    _personalBtn.style.boxShadow  = isPersonal ? `0 6px 0 ${T.greenDk}` : `0 6px 0 ${T.moonDk}`;
+  }
+}
+
+function _buildQsrItemTile(item, cat) {
+  const catColor = (cat && cat.color) || T.green;
+  const tile = document.createElement('div');
+  tile.style.cssText = [
+    `background:${T.well};`,
+    `border:2px solid ${catColor};`,
+    'border-radius:8px;',
+    'height:88px;',
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;',
+    'gap:2px;padding:4px 8px;box-sizing:border-box;',
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+    `transition:${T.transitionFast};`,
+    'overflow:hidden;',
+  ].join('');
+
+  const nameEl = document.createElement('span');
+  nameEl.style.cssText = [
+    `font-family:${T.fh};`,
+    `font-weight:${T.fwBold};`,
+    'font-size:14px;',
+    `color:${T.text};`,
+    'text-align:center;line-height:1.2;word-break:break-word;pointer-events:none;',
+  ].join('');
+  nameEl.textContent = item.label;
+
+  const priceEl = document.createElement('span');
+  priceEl.style.cssText = [
+    `font-family:${T.fb};`,
+    `font-weight:${T.fwBold};`,
+    'font-size:13px;',
+    `color:${Number(item.price) > 0 ? T.gold : T.moon};`,
+    'text-align:center;pointer-events:none;',
+  ].join('');
+  priceEl.textContent = Number(item.price) > 0 ? `$${Number(item.price).toFixed(2)}` : '—';
+
+  tile.appendChild(nameEl);
+  tile.appendChild(priceEl);
+
+  tile.addEventListener('pointerdown', () => { tile.style.background = hexToRgba(T.green, 0.15); });
+  const _restore = () => { setTimeout(() => { tile.style.background = T.well; }, 120); };
+  tile.addEventListener('pointerup',     _restore);
+  tile.addEventListener('pointerleave',  _restore);
+  tile.addEventListener('pointercancel', _restore);
+
+  return tile;
+}
+
 // ── SNAKE NAV GRID RENDERER ────────────────────────
 
 function renderSnakeGrid() {
@@ -1311,66 +1464,25 @@ function renderSnakeGrid() {
 
   // ── PERSONAL TAB ──
   if (view === 'personal') {
-    const pCrumb = { id: 'personal', label: 'PERSONAL', color: T.green };
-    let pTile = buildCrumbTile(pCrumb, true);
-    pTile.addEventListener('pointerup', () => {
-      snakeState.view   = 'cats';
-      snakeState.crumbs = [];
-      snakeState.catId  = null;
-      snakeState.subId  = null;
-      renderSnakeGrid();
-    });
-    _gridEl.appendChild(pTile);
     _renderPersonalGrid();
     return;
   }
 
-  // ── Crumb tiles (inline, same grid) ──
-  if (view !== 'cats') {
-    crumbs.forEach((crumb, i) => {
-      let tile = buildCrumbTile(crumb, i === crumbs.length - 1);
-      tile.addEventListener('pointerup', () => { _crumbTap(i); });
-      _gridEl.appendChild(tile);
-    });
-  }
-
   // ── Category home ──
   if (view === 'cats') {
-    // Inject PERSONAL as first tile
-    const personalCat = { id: 'personal', label: 'PERSONAL', color: T.green };
-    const pTile = buildCatTile(personalCat);
-    pTile.addEventListener('pointerup', () => {
-      snakeState.view = 'personal';
-      snakeState.crumbs = [];
-      snakeState.catId = null;
-      snakeState.subId = null;
-      renderSnakeGrid();
-    });
-    _gridEl.appendChild(pTile);
-
-    MENU_DATA.forEach((cat) => {
-      let tile = buildCatTile(cat);
-      tile.addEventListener('pointerup', () => { _selectCat(cat); });
-      _gridEl.appendChild(tile);
-    });
+    _repaintCatCol();
     return;
   }
 
-  // ── Subcategory ──
+  // ── Repaint column active state for all non-cats views ──
+  _repaintCatCol();
+
+  // ── Resolve active category ──
   let menuCat = MENU_DATA.find((c) => c.id === catId);
   if (!menuCat) return;
   const subcats = menuCat.subcats;
 
-  if (view === 'subcats' && subcats && subcats.length > 1) {
-    subcats.forEach((sub) => {
-      let tile = buildSubcatTile(sub, menuCat.color);
-      tile.addEventListener('pointerup', () => { _selectSubcat(sub, menuCat); });
-      _gridEl.appendChild(tile);
-    });
-    return;
-  }
-
-  // ── Items ──
+  // ── Items (subcats and items both render via distributeItems) ──
   let itemList = [];
   if (subId) {
     let sub = (subcats || []).find((s) => s.id === subId);
@@ -1378,12 +1490,22 @@ function renderSnakeGrid() {
   } else {
     (subcats || []).forEach((s) => { itemList = itemList.concat(s.items || []); });
   }
+  itemList = itemList.slice().sort((a, b) =>
+    (a.label || a.name || '').localeCompare(b.label || b.name || ''));
 
-  itemList.forEach((item) => {
-    const isFav = favorites.indexOf(item.id) >= 0;
-    let tile = buildItemTile(item, menuCat.color, isFav);
-    _bindItemTile(tile, item, menuCat);
-    frag.appendChild(tile);
+  const anchorIdx = MENU_DATA.findIndex((c) => c.id === snakeState.catId);
+  const totalRows = MENU_DATA.length;
+  const chunks = distributeItems(itemList, 3, anchorIdx, totalRows);
+
+  chunks.forEach((chunk) => {
+    const rowAbs = anchorIdx + chunk.rowOffset + 1; // 1-indexed for CSS grid
+    chunk.items.forEach((item, colIdx) => {
+      const tile = _buildQsrItemTile(item, menuCat);
+      tile.style.gridRowStart    = String(rowAbs);
+      tile.style.gridColumnStart = String(colIdx + 1);
+      _bindItemTile(tile, item, menuCat);
+      frag.appendChild(tile);
+    });
   });
   _gridEl.appendChild(frag);
 }
@@ -1537,19 +1659,40 @@ function _crumbTap(idx) {
 // ── MAIN AREA ─────────────────────────────────────
 function buildMain(parentEl, params) {
   const main = document.createElement('div');
-  main.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
+  main.style.cssText = 'flex:1;display:flex;flex-direction:column;';
   _mainArea = main;
 
   // ── Collapsible grid wrapper ──────────────────────
   let gridWrap = document.createElement('div');
-  gridWrap.style.cssText = 'flex:1;min-height:0;overflow-y:auto;';
+  gridWrap.style.cssText = 'position:relative;flex:1;min-height:0;overflow:visible;';
   _gridWrap = gridWrap;
 
+  // ── Vertical category column ──────────────────────
+  let catCol = document.createElement('div');
+  catCol.style.cssText = [
+    'position:absolute;left:0;top:0;',
+    'width:160px;height:100%;',
+    `background:${T.well};`,
+    `border-right:1px solid ${T.border};`,
+    'overflow-y:auto;overflow-x:hidden;',
+    '-webkit-overflow-scrolling:touch;',
+    'overscroll-behavior:contain;touch-action:pan-y;',
+    'display:flex;flex-direction:column;gap:6px;padding:6px;',
+    'box-sizing:border-box;',
+  ].join('');
+  _catColEl = catCol;
+  gridWrap.appendChild(catCol);
+
+  // ── Item grid ─────────────────────────────────────
   let grid = document.createElement('div');
   grid.style.cssText = [
-    'display:grid;',
-    'grid-template-columns:repeat(auto-fill,minmax(140px,1fr));',
-    'gap:6px;padding:10px;',
+    'position:absolute;left:161px;top:0;right:0;height:100%;',
+    'overflow-y:auto;overflow-x:hidden;',
+    '-webkit-overflow-scrolling:touch;',
+    'overscroll-behavior:contain;touch-action:pan-y;',
+    'display:grid;grid-template-columns:repeat(3,1fr);',
+    'grid-auto-rows:88px;gap:6px;padding:6px;',
+    'box-sizing:border-box;',
   ].join('');
   _gridEl = grid;
   gridWrap.appendChild(grid);
@@ -1568,15 +1711,14 @@ function buildMain(parentEl, params) {
   // Note: buildKindModPanel mounts directly onto _mainArea as an absolute overlay
   // (position:relative is set on main to contain it)
 
-  // ── Seat selector card (above bottom bar) ─────────
+  // ── Seat selector card (built here; appended into _bottomBar by rebuildBottomBar) ──
   if (_allSeatList.length > 0) {
     _seatSelectorEl = buildSeatSelectorCard();
-    main.appendChild(_seatSelectorEl);
   }
 
   // ── Bottom action bar ─────────────────────────────
   _bottomBar = document.createElement('div');
-  _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:auto;';
+  _bottomBar.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr;min-height:100px;height:auto;gap:4px;flex-shrink:0;margin-top:auto;';
   main.appendChild(_bottomBar);
 
   // Load menu data + favorites, then render grid
@@ -1586,6 +1728,7 @@ function buildMain(parentEl, params) {
     } else {
       renderSnakeGrid();
     }
+    rebuildBottomBar();
     loadFavorites();
   });
 
@@ -1610,8 +1753,9 @@ function buildSeatSelectorCard() {
     `background:${T.well};`,
     `border:1px solid ${bevelLt};`,
     'border-radius:10px;',
-    'display:flex;flex-direction:column;',
-    'overflow:hidden;',
+    'display:flex;flex-direction:column-reverse;',
+    'overflow:visible;',
+    'position:relative;z-index:20;',
   ].join('');
 
   // ── Header: SEATS label + ALL/NONE pills ──────────
@@ -1624,26 +1768,51 @@ function buildSeatSelectorCard() {
   let lbl = document.createElement('span');
   lbl.style.cssText = [
     `font-family:${T.fb};`,
-    `font-size:${T.fsB4};`,
+    'font-size:10px;',
     `font-weight:${T.fwBold};`,
     `color:${T.green};`,
     'letter-spacing:0.15em;',
-    'flex:1;',
   ].join('');
   lbl.textContent = 'SEATS';
   header.appendChild(lbl);
 
-  // Outlined-pill builder for ALL/NONE — small, transparent fill, colored border + text.
-  function _buildBulkPill(label, color) {
+  // Add-seat button, positioned inline in header (not in grid)
+  function _buildAddBtn() {
+    let tile = document.createElement('div');
+    tile.style.cssText = [
+      'display:flex;align-items:center;justify-content:center;',
+      'border-radius:8px;',
+      'background:transparent;',
+      `border:1.5px dashed ${T.moon};`,
+      `color:${T.moon};`,
+      `font-family:${T.fh};font-weight:${T.fwBold};font-size:24px;`,
+      'cursor:pointer;user-select:none;',
+      'pointer-events:auto;touch-action:manipulation;',
+      'width:28px;height:28px;',
+    ].join('');
+    tile.textContent = '+';
+    return tile;
+  }
+
+  const addBtn = _buildAddBtn();
+  header.appendChild(addBtn);
+
+  // Spacer to push ALL/NONE to the right
+  const spacer = document.createElement('div');
+  spacer.style.flex = '1';
+  header.appendChild(spacer);
+
+  // Small pill for ALL/NONE — T.border outline, T.card fill.
+  function _buildBulkPill(label) {
     const el = document.createElement('div');
     el.style.cssText = [
-      'padding:3px 12px;',
-      `border:1.5px solid ${color};`,
+      'padding:3px 10px;',
+      `border:1.5px solid ${T.border};`,
       'border-radius:6px;',
-      'background:transparent;',
-      `color:${color};`,
-      `font-family:${T.fh};font-size:${T.fsB4};font-weight:${T.fwBold};`,
-      'letter-spacing:0.15em;',
+      `background:${T.card};`,
+      `color:${T.text};`,
+      `font-family:${T.fh};font-size:10px;font-weight:${T.fwBold};`,
+      'letter-spacing:0.08em;',
       'cursor:pointer;user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'transition:opacity 0.1s;',
@@ -1657,32 +1826,54 @@ function buildSeatSelectorCard() {
     return el;
   }
 
-  const allBtn  = _buildBulkPill('ALL',  T.green);
-  const noneBtn = _buildBulkPill('NONE', T.moon);
+  const allBtn  = _buildBulkPill('ALL');
+  const noneBtn = _buildBulkPill('NONE');
   header.appendChild(allBtn);
   header.appendChild(noneBtn);
   card.appendChild(header);
 
-  // ── Body: 8-col scrollable grid ───────────────────
-  // grid-auto-rows fixes row height at 40px; max-height shows ~3 rows; scrolls beyond.
+  // Attach add-seat tap handler
+  addBtn.addEventListener('pointerup', () => {
+    const usedSeats = {};
+    _allSeatList.forEach((sn) => { usedSeats[sn] = true; });
+    let newSeat = 1;
+    while (usedSeats[newSeat]) newSeat++;
+    if (newSeat > 99) { showToast('Maximum 99 seats', { bg: T.gold }); return; }
+    _allSeatList.push(newSeat);
+    _seatList.push(newSeat);
+    _activeSeats.add(newSeat);
+    _autoSwitchArmed = false;
+    repaintSeats();
+    renderTicket();
+  });
+
+  // ── Body: 5-col grid (no scroll, wrapped in inner scroll div) ───────────────────
   let body = document.createElement('div');
   body.className = '_oe-seat-scroll';
   body.style.cssText = [
-    'display:grid;grid-template-columns:repeat(8,1fr);',
-    'grid-auto-rows:40px;gap:4px;',
+    'display:grid;grid-template-columns:repeat(5,1fr);',
+    'grid-auto-rows:32px;gap:4px;',
     'padding:6px 8px 8px;',
-    'max-height:140px;overflow-y:auto;',
+  ].join('');
+
+  // Inner scrollable wrapper for upward expansion
+  let innerScroll = document.createElement('div');
+  innerScroll.style.cssText = [
+    'max-height:calc(4*32px+3*6px);overflow-y:auto;',
     '-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;',
   ].join('');
-  card.appendChild(body);
+  innerScroll.appendChild(body);
+  card.appendChild(innerScroll);
 
   function _buildSeatPill(sn, isActive) {
     let pill = document.createElement('div');
     pill.style.cssText = [
       'display:flex;align-items:center;justify-content:center;',
-      'border-radius:8px;',
+      'height:32px;min-width:0;',
+      'padding:0 6px;',
+      'border-radius:6px;',
       `font-family:${T.fh};font-weight:${T.fwBold};`,
-      `font-size:${T.fsB2};`,
+      'font-size:11px;',
       'cursor:pointer;user-select:none;',
       'pointer-events:auto;touch-action:manipulation;',
       'transition:transform 0.07s;',
@@ -1699,22 +1890,6 @@ function buildSeatSelectorCard() {
     return pill;
   }
 
-  function _buildAddTile() {
-    let tile = document.createElement('div');
-    tile.style.cssText = [
-      'display:flex;align-items:center;justify-content:center;',
-      'border-radius:8px;',
-      'background:transparent;',
-      `border:1.5px dashed ${T.moon};`,
-      `color:${T.moon};`,
-      `font-family:${T.fh};font-weight:${T.fwBold};font-size:24px;`,
-      'cursor:pointer;user-select:none;',
-      'pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    tile.textContent = '+';
-    return tile;
-  }
-
   function repaintSeats() {
     body.innerHTML = '';
     _allSeatList.forEach((sn) => {
@@ -1722,31 +1897,24 @@ function buildSeatSelectorCard() {
       let pill = _buildSeatPill(sn, isActive);
       pill.addEventListener('pointerup', ((seatNum) => {
         return () => {
-          _autoSwitchArmed = false;
-          _activeSeats = new Set([seatNum]);
+          if (_autoSwitchArmed) {
+            // After item add: reset to single seat
+            _activeSeats = new Set([seatNum]);
+            _autoSwitchArmed = false;
+          } else {
+            // Normal multiselect toggle
+            if (_activeSeats.has(seatNum)) {
+              if (_activeSeats.size > 1) _activeSeats.delete(seatNum);
+            } else {
+              _activeSeats.add(seatNum);
+            }
+          }
           repaintSeats();
           renderTicket();
         };
       })(sn));
       body.appendChild(pill);
     });
-
-    // Add-seat tile after all populated cells
-    const addTile = _buildAddTile();
-    addTile.addEventListener('pointerup', () => {
-      const usedSeats = {};
-      _allSeatList.forEach((sn) => { usedSeats[sn] = true; });
-      let newSeat = 1;
-      while (usedSeats[newSeat]) newSeat++;
-      if (newSeat > 99) { showToast('Maximum 99 seats', { bg: T.gold }); return; }
-      _allSeatList.push(newSeat);
-      _seatList.push(newSeat);
-      _activeSeats.add(newSeat);
-      _autoSwitchArmed = false;
-      repaintSeats();
-      renderTicket();
-    });
-    body.appendChild(addTile);
   }
 
   allBtn.addEventListener('pointerup', () => {
@@ -1779,32 +1947,75 @@ function buildSeatSelectorCard() {
 function rebuildBottomBar() {
   if (!_bottomBar) return;
   _bottomBar.innerHTML = '';
-  _bottomBar.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:auto;gap:4px;flex-shrink:0;margin-top:4px;';
+  _personalBtn = null;
+  _bottomBar.style.cssText = [
+    'display:grid;grid-template-columns:1fr 1fr 1fr;',
+    'align-items:flex-end;gap:4px;flex-shrink:0;margin-top:auto;',
+    'pointer-events:auto;touch-action:manipulation;',
+    'position:relative;z-index:10;',
+    'overflow:visible;',
+  ].join('');
 
+  // ── Col 1: Seat selector (expands upward only) ─────────────────────────
+  if (_seatSelectorEl) {
+    _seatSelectorEl.style.gridColumn   = '1';
+    _seatSelectorEl.style.margin       = '2px 0';
+    _seatSelectorEl.style.background   = T.well;
+    _seatSelectorEl.style.border       = `1px solid ${T.border}`;
+    _seatSelectorEl.style.borderRadius = '10px';
+    _seatSelectorEl.style.padding      = '8px 10px';
+    _seatSelectorEl.style.maxHeight    = '200px';
+    _seatSelectorEl.style.overflow     = 'visible';
+    _seatSelectorEl.style.alignSelf    = 'flex-end';
+    _seatSelectorEl.style.flexShrink   = '0';
+    _bottomBar.appendChild(_seatSelectorEl);
+  }
+
+  // ── Col 2: PERSONAL button (fixed height) ────────────────────────
+  const isPersonal = snakeState.view === 'personal';
+  const personalBtn = buildChamferButton({
+    label:      'PERSONAL',
+    fontSize:   '20px',
+    isPrimary:  isPersonal,
+    accent:     isPersonal ? T.green : T.text,
+    accentDk:   isPersonal ? '#1a5c2e' : '#3a3d42',
+    onClick: () => {
+      snakeState.view = 'personal';
+      renderSnakeGrid();
+      _repaintCatCol();
+    },
+  });
+  personalBtn.style.gridColumn   = '2';
+  personalBtn.style.margin       = '2px 0';
+  personalBtn.style.alignSelf    = 'flex-end';
+  personalBtn.style.height       = '88px';
+  personalBtn.style.flexShrink   = '0';
+  _personalBtn = personalBtn;
+  _bottomBar.appendChild(personalBtn);
+
+  // ── Col 3: DONE button (fixed height) ──────────────────────────────
   let hasUnsent = ticket.some((i) => !i.sent);
-
   const doneLabel = isSending ? 'SENDING…' : 'DONE';
-
-  let doneBtn = buildPillButton({
-    label:    doneLabel,
-    variant:  'mint',
-    disabled: isSending,
-    fontSize: '22px',
+  const doneBtn = buildChamferButton({
+    label:     doneLabel,
+    fontSize:  '25px',
+    isPrimary: true,
+    accent:    T.greenWarm,
+    accentDk:  T.greenWarmDk,
+    onClick: () => {
+      if (isSending) return;
+      if (!hasUnsent) { handleClose(); return; }
+      (async function() {
+        try { await handleSend(); } catch (e) { return; }
+        handleClose();
+      })();
+    },
   });
-  doneBtn.style.gridColumn = '4 / span 2';
-  doneBtn.style.height = '60px';
-  doneBtn.style.width = '60%';
-  doneBtn.style.justifySelf = 'center';
-  doneBtn.style.margin = '2px 0 10px';
-  doneBtn.addEventListener('pointerup', () => {
-    if (isSending) return;
-    if (!hasUnsent) { handleClose(); return; }
-    (async function() {
-      try { await handleSend(); } catch (e) { return; }
-      handleClose();
-    })();
-  });
-
+  doneBtn.style.gridColumn  = '3';
+  doneBtn.style.margin      = '2px 0';
+  doneBtn.style.alignSelf   = 'flex-end';
+  doneBtn.style.height      = '88px';
+  doneBtn.style.flexShrink  = '0';
   _bottomBar.appendChild(doneBtn);
 }
 
@@ -2312,793 +2523,6 @@ function endModifierSession() {
 }
 
 
-// ── KIND MODIFIER PANEL — inline replacement for modifier-panel.js ────────
-// Builds our Vz2.0 modifier UI directly. Returns { destroy() }.
-
-const _PREFIX_DEFS = [
-  { id:'ADD',     label:'ADD',     color: null },  // T.greenWarm
-  { id:'EXTRA',   label:'EXTRA',   color: null },  // T.elec
-  { id:'NO',      label:'NO',      color: null },  // T.verm
-  { id:'ON SIDE', label:'ON SIDE', color: null },  // T.gold
-  { id:'LITE',    label:'LITE',    color: null },  // T.gold
-];
-
-const _PLACE_DEFS = [
-  { id:'LEFT',  label:'½ LEFT'  },
-  { id:'WHOLE', label:'WHOLE'   },
-  { id:'RIGHT', label:'RIGHT ½' },
-];
-
-function _prefixColor(id) {
-  if (id === 'ADD')     return T.modAdd;
-  if (id === 'EXTRA')   return T.modExtra;
-  if (id === 'NO')      return T.modNo;
-  if (id === 'ON SIDE') return T.modOnSide;
-  if (id === 'LITE')    return T.modLite;
-  return T.card;
-}
-
-function buildKindModPanel(container, item, modConfig, catColor, enablePlacement, callbacks, initialState) {
-  modConfig = modConfig || {};
-  let includedItems   = modConfig.includedItems   || [];
-  let mandatoryGroups = modConfig.mandatoryGroups || [];
-  let optionalGroups  = modConfig.optionalGroups  || [];
-  const isPizza = !!enablePlacement;
-
-  // ── State ──────────────────────────────────────────
-  const _is       = initialState || {};
-  const inclState = _is.inclState  ? Object.assign({}, _is.inclState)  : {};
-  const optState  = _is.optState   ? Object.assign({}, _is.optState)   : {};
-  const mandState = _is.mandState  ? Object.assign({}, _is.mandState)  : {};
-  let activePrefix = 'ADD';
-  let activePlacement = 'WHOLE';
-  let inclPrefix = 'NO';
-  let openSubKey = null;
-
-  const PREFIX_MAP = [
-    { id:'ADD',   label:'ADD',     color:T.modAdd,    textColor:T.well, dk:T.modAddDk    },
-    { id:'EXTRA', label:'EXTRA',   color:T.modExtra,  textColor:T.well, dk:T.modExtraDk  },
-    { id:'NO',    label:'NO',      color:T.modNo,     textColor:T.well, dk:T.modNoDk     },
-    { id:'SIDE',  label:'ON SIDE', color:T.modOnSide, textColor:T.well, dk:T.modOnSideDk },
-    { id:'LITE',  label:'LITE',    color:T.modLite,   textColor:T.well, dk:T.modLiteDk   },
-  ];
-
-  // ── Root overlay ────────────────────────────────────
-  const ov = document.createElement('div');
-  ov.style.cssText = [
-    'flex:1;min-height:0;',
-    `background:${T.bg};`,
-    'display:flex;flex-direction:column;',
-    'overflow:hidden;',
-  ].join('');
-
-  // strip is rendered by openModifierPanel as a separate _mainArea flex child
-  const itemPx = Number(item.price) || 0;
-
-  // ── Scrollable content ──────────────────────────────
-  const scroll = document.createElement('div');
-  scroll.style.cssText = 'flex:1;overflow-y:auto;padding:8px 14px 10px;';
-  ov.appendChild(scroll);
-
-  // ── DONE button ─────────────────────────────────────
-  const doneWrap = document.createElement('div');
-  doneWrap.style.cssText = 'flex-shrink:0;padding:8px 14px 10px;';
-  const doneBtn = buildPillButton({ label: 'DONE — ADD TO CHECK', color: T.green, textColor: T.well });
-  doneBtn.style.width = '100%';
-  doneBtn.style.fontSize = '16px';
-  doneBtn.addEventListener('pointerup', () => { callbacks.onSend(_buildActiveItem()); });
-  doneBtn.disabled = mandatoryGroups.some((g) => !mandState[g.key]);
-  doneWrap.appendChild(doneBtn);
-  ov.appendChild(doneWrap);
-
-  // ── Build active item for commit ─────────────────────
-  function _buildActiveItem() {
-    let pricingDriverKey = modConfig.pricingDriverKey;
-    const pricingDriverValue = pricingDriverKey ? (mandState[pricingDriverKey] ? mandState[pricingDriverKey].key : null) : null;
-
-    const optMods = [];
-    Object.keys(optState).forEach((optId) => {
-      let s = optState[optId];
-      if (!s) return;
-      // Find the option def
-      let found = null;
-      optionalGroups.forEach((g) => {
-        (g.options || []).forEach((o) => {
-          if ((o.id || o.key) === optId) found = o;
-        });
-      });
-      if (!found) return;
-
-      let resolvedPrice = found.price || 0;
-      if (pricingDriverValue && found.priceByOption && found.priceByOption[pricingDriverValue] !== undefined) {
-        resolvedPrice = found.priceByOption[pricingDriverValue];
-      }
-
-      const placeMap = { 'LEFT': '1st', 'RIGHT': '2nd', 'WHOLE': null };
-      optMods.push({
-        prefix:    s.prefix,
-        label:     found.label,
-        price:     resolvedPrice,
-        placement: placeMap[s.placement] || null,
-      });
-    });
-
-    const removals = Object.keys(inclState).filter((id) => inclState[id] === 'NO');
-
-    // Build mandatory selections map
-    const mandSel = {};
-    Object.keys(mandState).forEach((k) => {
-      let s = mandState[k];
-      let grp = mandatoryGroups.find((g) => g.key === k);
-      const opt = grp ? (grp.options || []).find((o) => (o.key || o.id) === s.key) : null;
-
-      let resolvedPrice = s.price;
-      if (opt && pricingDriverValue && opt.priceByOption && opt.priceByOption[pricingDriverValue] !== undefined) {
-        resolvedPrice = opt.priceByOption[pricingDriverValue];
-      }
-      mandSel[k] = { key: s.key, label: s.label, price: resolvedPrice };
-    });
-
-    // Build preview mods for ticket
-    let previewMods = [];
-
-    // 1. Mandatory selections (e.g. Size, Crust)
-    Object.keys(mandSel).forEach((k) => {
-      let s = mandSel[k];
-      previewMods.push({ name: s.label, price: s.price || 0, charged: (s.price > 0), prefix: null });
-    });
-
-    // 2. Included items (Pre-applied) — show even if not modified, unless removed
-    includedItems.forEach((inc) => {
-      if (inclState[inc.id] !== 'SIDE') return;   // NO handled by removals below
-      previewMods.push({ name: `ON SIDE ${inc.label}`, price: 0, charged: false, prefix: null });
-    });
-
-    // 3. Removals (NO X)
-    removals.forEach((rid) => {
-      const inc = includedItems.find((i) => i.id === rid);
-      if (inc) previewMods.push({ name: `NO ${inc.label}`, price: 0, charged: false, prefix: null });
-    });
-
-    // 4. Optional modifiers
-    optMods.forEach((m) => {
-      let halfSide = m.placement === '1st' ? 'Left' : m.placement === '2nd' ? 'Right' : null;
-      let charged = (m.prefix === 'ADD' || m.prefix === 'EXTRA') && m.price > 0;
-      // `activePrefix` starts as null (line 1312) and stays null until
-      // the server taps ADD/NO/EXTRA/etc. A modifier picked before any
-      // prefix is chosen previously rendered as "null Pepperoni" on
-      // both the preview and (via commitModifierPanelItem) the kitchen
-      // ticket. formatModifierLabel handles the null-prefix fallback
-      // so the commit path (below) and this preview stay in lockstep.
-      let displayName = formatModifierLabel(m.prefix, m.label);
-      previewMods.push({ name: displayName, price: charged ? m.price : 0, charged, prefix: halfSide });
-    });
-
-    callbacks.onUpdate({ itemLabel: item.label, basePrice: itemPx, mods: previewMods });
-
-    return {
-      itemLabel:           item.label,
-      basePrice:           itemPx,
-      mandatorySelections: mandSel,
-      optionalModifiers:   optMods,
-      includedRemovals:    removals,
-      allergens:           [],
-      allergenNote:        '',
-      note:                '',
-    };
-  }
-
-  // ── Render content sections ──────────────────────────
-  function renderContent() {
-    const savedTop = scroll.scrollTop;
-    scroll.innerHTML = '';
-
-    // ── SNAKE BREADCRUMB CARD — matches grid tile style ──
-    const snakeCard = document.createElement('div');
-    snakeCard.style.cssText = [
-      'display:flex;gap:6px;align-items:stretch;',
-      'margin-bottom:12px;',
-    ].join('');
-
-    // Crumb tiles — filled, same style as buildCrumbTile
-    snakeState.crumbs.forEach((crumb) => {
-      let tile = document.createElement('div');
-      tile.style.cssText = [
-        'display:flex;align-items:center;justify-content:center;',
-        'padding:10px 14px;border-radius:10px;min-height:95px;',
-        `background:${crumb.color};`,
-        `border-left:4px solid ${crumb.color};`,
-        `box-shadow:0 4px 0 ${hexToRgba(crumb.color, 0.55)};`,
-        `font-family:${T.fh};font-weight:700;font-size:22px;`,
-        `color:${T.well};letter-spacing:1px;pointer-events:none;`,
-      ].join('');
-      tile.textContent = crumb.label;
-      snakeCard.appendChild(tile);
-    });
-
-    // Item tile — same style as buildItemTile but filled, tap to cancel
-    const itemTile = document.createElement('div');
-    itemTile.style.cssText = [
-      'display:flex;flex-direction:column;justify-content:center;',
-      'padding:10px 14px;border-radius:10px;cursor:pointer;',
-      `background:${catColor};`,
-      `border-left:4px solid ${catColor};`,
-      `box-shadow:0 4px 0 ${hexToRgba(catColor, 0.55)};`,
-      'pointer-events:auto;touch-action:manipulation;',
-      'min-height:95px;min-width:120px;',
-    ].join('');
-    const icn = document.createElement('span');
-    icn.style.cssText = `font-family:${T.fh};font-weight:700;font-size:22px;color:${T.well};pointer-events:none;`;
-    icn.textContent = item.label;
-    const icp = document.createElement('span');
-    icp.style.cssText = `font-family:${T.fb};font-size:14px;color:${hexToRgba(T.well, 0.65)};margin-top:4px;pointer-events:none;;font-weight:${T.fwBold};`;
-    icp.textContent = `$${itemPx.toFixed(2)}`;
-    itemTile.appendChild(icn);
-    itemTile.appendChild(icp);
-    itemTile.addEventListener('pointerup', () => { callbacks.onCancel(); });
-    snakeCard.appendChild(itemTile);
-    scroll.appendChild(snakeCard);
-
-    // ── Accordion state ──────────────────────────
-    const defaultCard =
-      includedItems.length  > 0 ? 'included' :
-      mandatoryGroups.length > 0 ? 'mandatory' : 'optional';
-    if (!renderContent._activeCard) renderContent._activeCard = defaultCard;
-    const activeCard = renderContent._activeCard;
-
-    function setActiveCard(id) {
-      renderContent._activeCard = id;
-      renderContent();
-    }
-
-    // ── Accordion container ───────────────────────
-    const accWrap = document.createElement('div');
-    accWrap.style.cssText = [
-      'display:flex;flex-direction:column;gap:8px;',
-      'padding:8px 14px 10px;',
-    ].join('');
-
-    const CARD_DEFS = [
-      { id:'included',  title:'INCLUDED',  show: includedItems.length > 0 },
-      { id:'mandatory', title:'MANDATORY', show: mandatoryGroups.length > 0 },
-      { id:'optional',  title:'OPTIONS',   show: true },
-    ];
-
-    CARD_DEFS.forEach((def) => {
-      if (!def.show) return;
-      const isExp = activeCard === def.id;
-
-      let card = document.createElement('div');
-      card.dataset.accCard = def.id;
-      card.style.cssText = [
-        `background:${T.card};`,
-        'border-radius:10px;overflow:hidden;flex-shrink:0;',
-        `border-left:4px solid ${(isExp ? _accColor(def.id) : T.border)};`,
-        'box-shadow:0 4px 12px rgba(0,0,0,0.25);',
-        'transition:border-color 0.15s;',
-        'pointer-events:auto;',
-      ].join('');
-
-      // Header
-      const hdr = document.createElement('div');
-      hdr.style.cssText = [
-        'display:flex;align-items:center;gap:10px;',
-        'padding:0 14px;height:44px;cursor:pointer;',
-        'user-select:none;touch-action:manipulation;',
-        'pointer-events:auto;',
-      ].join('');
-      hdr.addEventListener('pointerdown', () => {
-        hdr.style.background = 'rgba(255,255,255,0.03)';
-      });
-      hdr.addEventListener('pointerleave', () => {
-        hdr.style.background = '';
-      });
-      hdr.addEventListener('pointerup', () => {
-        hdr.style.background = '';
-      });
-      hdr.addEventListener('pointerup', () => { setActiveCard(def.id); });
-
-      const titleEl = document.createElement('span');
-      titleEl.style.cssText = [
-        `font-family:${T.fb};font-size:${T.fsB3};font-weight:700;`,
-        'letter-spacing:2px;flex-shrink:0;',
-        `color:${(isExp ? _accColor(def.id) : T.moon)};`,
-      ].join('');
-      titleEl.textContent = def.title;
-      hdr.appendChild(titleEl);
-
-      // Action area (expanded only) — placeholder, filled per card below
-      const actionArea = document.createElement('div');
-      actionArea.style.cssText = 'display:flex;align-items:center;gap:5px;flex:1;';
-      actionArea.dataset.actionArea = def.id;
-      hdr.appendChild(actionArea);
-
-      // Status chip (collapsed only) — placeholder
-      const chipWrap = document.createElement('span');
-      chipWrap.dataset.chipWrap = def.id;
-      hdr.appendChild(chipWrap);
-
-      // Chevron
-      let chev = document.createElement('span');
-      chev.style.cssText = [
-        `font-size:${T.fsB4};color:${T.border};margin-left:auto;`,
-        'transition:transform 0.15s;flex-shrink:0;',
-        `transform:${(isExp ? 'rotate(180deg)' : 'none')};`,
-      ].join('');
-      chev.textContent = '▼';
-      hdr.appendChild(chev);
-
-      card.appendChild(hdr);
-
-      // Body
-      const body = document.createElement('div');
-      body.style.cssText = `padding:8px 10px 10px;${(isExp ? '' : 'display:none;')}`;
-      body.dataset.cardBody = def.id;
-      card.appendChild(body);
-
-      accWrap.appendChild(card);
-
-      if (def.id === 'included') {
-        _buildInclCard(actionArea, chipWrap, body, isExp);
-      }
-      if (def.id === 'mandatory') {
-        _buildMandCard(chipWrap, body);
-      }
-      if (def.id === 'optional') {
-        _buildOptCard(actionArea, body, isExp);
-      }
-    });
-
-    scroll.appendChild(accWrap);
-
-    // ── Helper: accent color per card ────────────
-    function _accColor(id) {
-      if (id === 'optional') return T.greenWarm;
-      return catColor || T.green;
-    }
-
-    function _buildInclCard(actionArea, chipWrap, body, isExp) {
-
-      // ── Header buttons (expanded only) ───────────
-      if (isExp) {
-        ['NO','SIDE'].forEach((pid) => {
-          let p = PREFIX_MAP.find((x) => x.id === pid);
-          let isActive = inclPrefix === pid;
-          let btn = document.createElement('button');
-          btn.style.cssText = [
-            'padding:4px 11px;border-radius:6px;',
-            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-            'letter-spacing:0.5px;cursor:pointer;white-space:nowrap;',
-            `border:1px solid ${(isActive ? p.color : T.border)};`,
-            `background:${(isActive ? p.color : T.well)};`,
-            `color:${(isActive ? p.textColor : T.text)};`,
-            `box-shadow:0 3px 0 ${(isActive ? p.dk : T.moonDk)};`,
-            'touch-action:manipulation;pointer-events:auto;',
-          ].join('');
-          btn.textContent = p.label;
-          btn.addEventListener('pointerup', (e) => {
-            e.stopPropagation();
-            inclPrefix = (inclPrefix === pid) ? null : pid;
-            renderContent();
-          });
-          actionArea.appendChild(btn);
-        });
-      }
-
-      // ── Status chip (collapsed only) ─────────────
-      if (!isExp) {
-        const nCount = Object.keys(inclState).filter((k) => inclState[k]==='NO').length;
-        const sCount = Object.keys(inclState).filter((k) => inclState[k]==='SIDE').length;
-        const parts = [];
-        if (nCount) parts.push(nCount + ' NO');
-        if (sCount) parts.push(sCount + ' SIDE');
-        if (parts.length) {
-          let chip = document.createElement('span');
-          chip.style.cssText = [
-            'display:inline-flex;align-items:center;gap:5px;',
-            'padding:2px 8px;border-radius:6px;white-space:nowrap;',
-            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-            `background:rgba(74,222,128,0.1);color:${T.greenWarm};`,
-            'border:1px solid rgba(74,222,128,0.25);',
-          ].join('');
-          chip.textContent = parts.join(' · ');
-          chipWrap.appendChild(chip);
-        }
-      }
-
-      // ── Tile grid ────────────────────────────────
-      let grid = document.createElement('div');
-      grid.style.cssText = [
-        'display:grid;',
-        'grid-template-columns:repeat(auto-fill,minmax(108px,1fr));',
-        'gap:6px;',
-      ].join('');
-
-      includedItems.forEach((inc) => {
-        let s = inclState[inc.id] || null;
-        let tile = document.createElement('div');
-
-        let bg   = s==='NO' ? T.verm : s==='SIDE' ? T.modOnSide : T.well;
-        let fg   = s==='NO' ? '#fff' : s==='SIDE' ? T.well      : T.text;
-        let shDk = s==='NO' ? T.modNoDk : s==='SIDE' ? T.modOnSideDk : T.moonDk;
-
-        tile.style.cssText = [
-          'height:44px;border-radius:8px;',
-          'display:flex;flex-direction:column;',
-          'align-items:center;justify-content:center;gap:1px;',
-          `font-family:${T.fb};font-weight:700;`,
-          `background:${bg};color:${fg};`,
-          `border:1px solid ${(s ? bg : T.border)};`,
-          `box-shadow:0 3px 0 ${shDk};`,
-          'cursor:pointer;touch-action:manipulation;pointer-events:auto;',
-          'transition:all 0.08s;user-select:none;',
-        ].join('');
-
-        if (s) {
-          let tag = document.createElement('span');
-          tag.style.cssText = `font-size:${T.fsB4};font-weight:700;opacity:0.8;pointer-events:none;`;
-          tag.textContent = s === 'SIDE' ? 'ON SIDE' : s;
-          tile.appendChild(tag);
-        }
-        let lbl = document.createElement('span');
-        lbl.style.cssText = `font-size:${T.fsB3};pointer-events:none;`;
-        lbl.textContent = inc.label;
-        tile.appendChild(lbl);
-
-        tile.addEventListener('pointerdown', () => {
-          tile.style.transform='translateY(2px)';
-          tile.style.boxShadow=`0 1px 0 ${shDk}`;
-        });
-        tile.addEventListener('pointerup', () => {
-          tile.style.transform='';
-          tile.style.boxShadow=`0 3px 0 ${shDk}`;
-          if (!inclPrefix) return;
-          if (inclState[inc.id]===inclPrefix) delete inclState[inc.id];
-          else inclState[inc.id]=inclPrefix;
-          renderContent();
-        });
-        tile.addEventListener('pointerleave', () => {
-          tile.style.transform='';
-          tile.style.boxShadow=`0 3px 0 ${shDk}`;
-        });
-        grid.appendChild(tile);
-      });
-
-      body.appendChild(grid);
-    }
-
-    function _buildMandCard(chipWrap, body) {
-
-      // ── Status chip (collapsed only) ─────────────
-      if (activeCard !== 'mandatory') {
-        const pending = mandatoryGroups.filter((g) => !mandState[g.key]);
-        if (pending.length) {
-          let chip = document.createElement('span');
-          chip.style.cssText = [
-            'display:inline-flex;align-items:center;gap:5px;',
-            'padding:2px 8px;border-radius:6px;white-space:nowrap;',
-            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-            `background:rgba(251,191,36,0.12);color:${T.modLite};`,
-            'border:1px solid rgba(251,191,36,0.3);',
-          ].join('');
-          chip.textContent = pending.length + ' REQUIRED';
-          chipWrap.appendChild(chip);
-        } else {
-          mandatoryGroups.forEach((g) => {
-            if (!mandState[g.key]) return;
-            const sc = document.createElement('span');
-            sc.style.cssText = [
-              'display:inline-flex;padding:2px 7px;border-radius:6px;',
-              `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-              `background:rgba(232,200,78,0.12);color:${T.gold};`,
-              'border:1px solid rgba(232,200,78,0.3);white-space:nowrap;',
-              'margin-right:4px;',
-            ].join('');
-            sc.textContent = mandState[g.key].label.toUpperCase();
-            chipWrap.appendChild(sc);
-          });
-        }
-      }
-
-      // ── Two-column tile grid ──────────────────────
-      const grid = document.createElement('div');
-      grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;';
-
-      mandatoryGroups.forEach((g) => {
-        const chosen  = mandState[g.key] || null;
-        let isOpen  = openSubKey === g.key;
-
-        // Group tile
-        let tile = document.createElement('div');
-        const barColor = isOpen||chosen ? T.gold : (g.required ? T.modLite : T.border);
-        tile.style.cssText = [
-          'height:52px;border-radius:8px;position:relative;overflow:hidden;',
-          'display:flex;flex-direction:column;justify-content:center;',
-          'padding:0 12px 0 14px;cursor:pointer;',
-          `background:${T.well};`,
-          `border:1px solid ${T.border};`,
-          `box-shadow:0 3px 0 ${T.moonDk};`,
-          'touch-action:manipulation;pointer-events:auto;user-select:none;',
-          'transition:all 0.08s;',
-        ].join('');
-
-        // Left bar
-        const bar = document.createElement('div');
-        bar.style.cssText = [
-          'position:absolute;left:0;top:0;bottom:0;width:3px;',
-          `background:${barColor};pointer-events:none;`,
-        ].join('');
-        tile.appendChild(bar);
-
-        const glabel = document.createElement('div');
-        glabel.style.cssText = [
-          `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-          'letter-spacing:1.5px;pointer-events:none;',
-          `color:${(g.required && !chosen ? T.modLite : T.moon)};`,
-        ].join('');
-        glabel.textContent = g.label;
-        tile.appendChild(glabel);
-
-        if (chosen) {
-          const gval = document.createElement('div');
-          gval.style.cssText = [
-            `font-family:${T.fb};font-size:${T.fsB3};font-weight:700;`,
-            `color:${T.gold};margin-top:2px;pointer-events:none;`,
-          ].join('');
-          gval.textContent = chosen.label;
-          tile.appendChild(gval);
-        } else {
-          const gpend = document.createElement('div');
-          gpend.style.cssText = [
-            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-            `font-style:italic;color:${T.modLite};`,
-            'margin-top:2px;pointer-events:none;',
-          ].join('');
-          gpend.textContent = 'tap to select →';
-          tile.appendChild(gpend);
-        }
-
-        tile.addEventListener('pointerdown', () => {
-          tile.style.transform='translateY(2px)';
-          tile.style.boxShadow=`0 1px 0 ${T.moonDk}`;
-        });
-        tile.addEventListener('pointerup', () => {
-          tile.style.transform='';
-          tile.style.boxShadow=`0 3px 0 ${T.moonDk}`;
-          openSubKey = (openSubKey===g.key) ? null : g.key;
-          renderContent();
-        });
-        tile.addEventListener('pointerleave', () => {
-          tile.style.transform='';
-          tile.style.boxShadow=`0 3px 0 ${T.moonDk}`;
-        });
-        grid.appendChild(tile);
-
-        // Sub-card (spans both columns)
-        if (isOpen) {
-          const sub = document.createElement('div');
-          sub.style.cssText = [
-            'grid-column:1/-1;display:block;',
-            'background:rgba(34,37,42,0.85);border-radius:8px;',
-            'border:1px solid rgba(232,200,78,0.22);padding:8px;',
-          ].join('');
-
-          const subLbl = document.createElement('div');
-          subLbl.style.cssText = [
-            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-            `letter-spacing:1.5px;color:${T.gold};margin-bottom:7px;`,
-          ].join('');
-          subLbl.textContent = `SELECT ${g.label}`;
-          sub.appendChild(subLbl);
-
-          const subGrid = document.createElement('div');
-          subGrid.style.cssText = [
-            'display:grid;',
-            'grid-template-columns:repeat(auto-fill,minmax(100px,1fr));',
-            'gap:5px;',
-          ].join('');
-
-          (g.options || []).forEach((opt) => {
-            const isSel = chosen && chosen.key === (opt.key||opt.id);
-            const st = document.createElement('div');
-            st.style.cssText = [
-              'height:36px;border-radius:6px;',
-              'display:flex;align-items:center;justify-content:center;',
-              `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-              'letter-spacing:0.3px;cursor:pointer;',
-              `background:${(isSel ? T.gold  : T.card)};`,
-              `color:${(isSel ? T.well  : T.text)};`,
-              `border:1px solid ${(isSel ? T.gold : T.border)};`,
-              `box-shadow:0 2px 0 ${(isSel ? T.goldDk : T.moonDk)};`,
-              'touch-action:manipulation;pointer-events:auto;user-select:none;',
-              'transition:all 0.08s;',
-            ].join('');
-            st.textContent = opt.label.toUpperCase();
-            st.addEventListener('pointerup', (e) => {
-              e.stopPropagation();
-              mandState[g.key] = {
-                key:   opt.key || opt.id,
-                label: opt.label,
-                price: opt.price || 0,
-              };
-              openSubKey = null;
-              doneBtn.disabled = mandatoryGroups.some((g) => !mandState[g.key]);
-              renderContent();
-            });
-            subGrid.appendChild(st);
-          });
-
-          sub.appendChild(subGrid);
-          grid.appendChild(sub);
-        }
-      });
-
-      body.appendChild(grid);
-    }
-
-    function _buildOptCard(actionArea, body, isExp) {
-
-      // ── Prefix toolbar (expanded only) ───────────
-      if (isExp) {
-        PREFIX_MAP.forEach((p) => {
-          let isActive = activePrefix === p.id;
-          const btn = document.createElement('button');
-          btn.style.cssText = [
-            'padding:4px 11px;border-radius:6px;',
-            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-            'letter-spacing:0.5px;cursor:pointer;white-space:nowrap;',
-            `border:1px solid ${(isActive ? p.color : T.border)};`,
-            `background:${(isActive ? p.color : T.well)};`,
-            `color:${(isActive ? p.textColor : T.text)};`,
-            `box-shadow:0 3px 0 ${(isActive ? p.dk : T.moonDk)};`,
-            'touch-action:manipulation;pointer-events:auto;',
-          ].join('');
-          btn.textContent = p.label;
-          btn.addEventListener('pointerup', (e) => {
-            e.stopPropagation();
-            activePrefix = p.id;
-            renderContent();
-          });
-          actionArea.appendChild(btn);
-        });
-      }
-
-      // ── Placement bar (pizza only) ────────────────
-      if (isPizza) {
-        const placeBar = document.createElement('div');
-        placeBar.style.cssText = [
-          'display:flex;gap:3px;margin-bottom:10px;',
-          `background:${T.well};border-radius:10px;padding:3px;`,
-        ].join('');
-        _PLACE_DEFS.forEach((pl) => {
-          const isActive = activePlacement === pl.id;
-          const seg = document.createElement('div');
-          seg.style.cssText = [
-            `flex:${(pl.id === 'WHOLE' ? 2 : 1)};text-align:center;`,
-            'padding:7px 8px;border-radius:8px;cursor:pointer;',
-            'pointer-events:auto;touch-action:manipulation;',
-            `font-family:${T.fb};font-weight:700;font-size:${T.fsB4};letter-spacing:1px;`,
-            `color:${(isActive ? T.well : T.moon)};`,
-            `background:${(isActive ? catColor : 'transparent')};`,
-            `box-shadow:${(isActive ? '0 3px 0 ' + hexToRgba(catColor, 0.55) : 'none')};`,
-            'transition:all 120ms;',
-          ].join('');
-          seg.textContent = pl.label;
-          seg.addEventListener('pointerup', () => {
-            activePlacement = pl.id;
-            renderContent();
-          });
-          placeBar.appendChild(seg);
-        });
-        body.appendChild(placeBar);
-      }
-
-      // ── Option tile grid ─────────────────────────
-      const outerGrid = document.createElement('div');
-      outerGrid.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-
-      optionalGroups.forEach((g) => {
-        if (g.label) {
-          const secLbl = document.createElement('div');
-          secLbl.style.cssText = [
-            `font-family:${T.fb};font-size:${T.fsB4};font-weight:700;`,
-            `letter-spacing:2px;color:${T.greenWarm};`,
-            'margin-top:4px;margin-bottom:2px;',
-            'display:flex;align-items:center;gap:8px;',
-          ].join('');
-          const line = document.createElement('div');
-          line.style.cssText = 'height:1px;flex:1;background:rgba(74,222,128,0.2);';
-          secLbl.textContent = g.label;
-          secLbl.appendChild(line);
-          outerGrid.appendChild(secLbl);
-        }
-
-        const tileGrid = document.createElement('div');
-        tileGrid.style.cssText = [
-          'display:grid;',
-          'grid-template-columns:repeat(auto-fill,minmax(108px,1fr));',
-          'gap:6px;',
-        ].join('');
-
-        (g.options || []).forEach((opt) => {
-          const optId = opt.id || opt.key;
-          const s     = optState[optId] || null;
-          const pDef  = s ? PREFIX_MAP.find((p) => p.id===s.prefix) : null;
-
-          const bg   = pDef ? pDef.color     : T.well;
-          const fg   = pDef ? pDef.textColor : T.text;
-          const shDk = pDef ? pDef.dk        : T.moonDk;
-
-          const tile = document.createElement('div');
-          tile.style.cssText = [
-            'height:44px;border-radius:8px;',
-            'display:flex;flex-direction:column;',
-            'align-items:center;justify-content:center;gap:1px;',
-            `font-family:${T.fb};font-weight:700;`,
-            `background:${bg};color:${fg};`,
-            `border:1px solid ${(s ? bg : T.border)};`,
-            `box-shadow:0 3px 0 ${shDk};`,
-            'cursor:pointer;touch-action:manipulation;pointer-events:auto;',
-            'user-select:none;transition:all 0.08s;',
-          ].join('');
-
-          if (s && pDef) {
-            const tag = document.createElement('span');
-            tag.style.cssText = `font-size:${T.fsB4};font-weight:700;opacity:0.8;pointer-events:none;`;
-            tag.textContent = pDef.label;
-            tile.appendChild(tag);
-          }
-          const lbl = document.createElement('span');
-          lbl.style.cssText = `font-size:${T.fsB3};pointer-events:none;`;
-          lbl.textContent = opt.label;
-          tile.appendChild(lbl);
-
-          tile.addEventListener('pointerdown', () => {
-            tile.style.transform='translateY(2px)';
-            tile.style.boxShadow=`0 1px 0 ${shDk}`;
-          });
-          tile.addEventListener('pointerup', () => {
-            tile.style.transform='';
-            tile.style.boxShadow=`0 3px 0 ${shDk}`;
-            const _cur = optState[optId];
-            if (!_cur) {
-              optState[optId] = { prefix: activePrefix, placement: activePlacement };
-            } else if (_cur.prefix === 'ADD' && activePrefix === 'ADD') {
-              optState[optId] = { prefix: 'EXTRA', placement: activePlacement };
-            } else if (_cur.prefix === 'EXTRA' && activePrefix === 'ADD') {
-              delete optState[optId];
-            } else if (_cur.prefix === activePrefix) {
-              delete optState[optId];
-            } else {
-              optState[optId] = { prefix: activePrefix, placement: activePlacement };
-            }
-            renderContent();
-          });
-          tile.addEventListener('pointerleave', () => {
-            tile.style.transform='';
-            tile.style.boxShadow=`0 3px 0 ${shDk}`;
-          });
-          tileGrid.appendChild(tile);
-        });
-
-        outerGrid.appendChild(tileGrid);
-      });
-
-      body.appendChild(outerGrid);
-    }
-
-    _buildActiveItem();
-  }
-
-  renderContent();
-  container.appendChild(ov);
-
-  return {
-    destroy: () => {
-      if (ov.parentNode) ov.parentNode.removeChild(ov);
-    },
-  };
-}
 
 
 // ── MODIFIER PANEL (overlay on _mainArea) ─────────
@@ -3449,6 +2873,34 @@ function resolveBackendModifierConfig(itemId, catId) {
 }
 
 function _pushToAllSeats(item) {
+  // Apply day-part price adjustment (if any) before special discounts.
+  const _activeDPW = window.getActiveDayPartWindow?.();
+  if (_activeDPW) {
+    const adjPct = _activeDPW.window.price_adjustment_pct ?? 0;
+    if (adjPct !== 0) {
+      item._dayPartOriginalPrice = item.unitPrice;
+      item._dayPartAdjPct = adjPct;
+      item._dayPartAdjAmt = window.roundHalfUp(item.unitPrice * adjPct / 100);
+      item._dayPartName = _activeDPW.dayPart.name;
+      item.unitPrice = window.roundHalfUp(item.unitPrice + item._dayPartAdjAmt);
+    }
+  }
+
+  // Compute and attach auto discount for this item.
+  const _activeDiscounts = getActiveAutoDiscounts();
+  const _autoDisc = getItemAutoDiscount(item, _activeDiscounts);
+  if (_autoDisc) {
+    item._discountAmt        = _autoDisc.amount;
+    item._discountName       = _autoDisc.discount.name || '';
+    item._discountId         = _autoDisc.discount.id   || '';
+    item._discountRequiresPin = !!_autoDisc.discount.requires_pin;
+  } else {
+    item._discountAmt        = 0;
+    item._discountName       = '';
+    item._discountId         = '';
+    item._discountRequiresPin = false;
+  }
+
   let seatArr = Array.from(_activeSeats);
   if (seatArr.length === 0) seatArr = [_seatList[0] || 1];
   item.seat_number = seatArr[0];
@@ -3777,8 +3229,153 @@ function _buildModTree(mods, opts) {
   return tree;
 }
 
+function _buildSentGroups(sentItems) {
+  const container = document.createElement('div');
+  const groups = [];
+  const keyToIdx = {};
+
+  sentItems.forEach((inst) => {
+    let key = '__null__';
+    let groupTs = null;
+    if (inst.sent_at) {
+      const d = new Date(inst.sent_at);
+      if (!isNaN(d.getTime())) {
+        const floored = Math.floor(d.getTime() / 60000);
+        key = '' + floored;
+        groupTs = new Date(floored * 60000);
+      }
+    }
+    if (keyToIdx[key] === undefined) {
+      keyToIdx[key] = groups.length;
+      groups.push({ key, ts: groupTs, items: [] });
+    }
+    groups[keyToIdx[key]].items.push(inst);
+  });
+
+  groups.sort((a, b) => {
+    if (a.key === '__null__') return -1;
+    if (b.key === '__null__') return 1;
+    return parseInt(a.key, 10) - parseInt(b.key, 10);
+  });
+
+  groups.forEach((group, idx) => {
+    const label = 'Sent';
+    let timeStr = null;
+    if (group.ts) {
+      let h = group.ts.getHours();
+      const m = group.ts.getMinutes();
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      timeStr = h + ':' + (m < 10 ? '0' : '') + m + ' ' + ampm;
+    }
+
+    const zone = document.createElement('div');
+    zone.style.marginBottom = '8px';
+
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;gap:7px;padding:0 2px 5px;';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.style.cssText = [
+      `font-family:${T.fb};`,
+      `font-size:${T.fsB3};`,
+      `font-weight:${T.fwBold};`,
+      'letter-spacing:0.2em;',
+      `color:${hexToRgba(T.green, 0.55)};`,
+      'text-transform:uppercase;',
+      'white-space:nowrap;',
+    ].join('');
+    labelSpan.textContent = label;
+    hdr.appendChild(labelSpan);
+
+    if (timeStr) {
+      const timeSpan = document.createElement('span');
+      timeSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        'font-size:9px;',
+        `color:${T.text};`,
+      ].join('') + `;font-weight:${T.fwBold};`;
+      timeSpan.textContent = timeStr;
+      hdr.appendChild(timeSpan);
+    }
+
+    const line = document.createElement('div');
+    line.style.cssText = `flex:1;height:1px;background:${hexToRgba(T.green, 0.15)};`;
+    hdr.appendChild(line);
+    zone.appendChild(hdr);
+
+    group.items.forEach((inst) => {
+      const modTotal = (inst.mods || []).reduce((s, m) => s + (Number(m.price) || 0), 0);
+      const totalPrice = (Number(inst.unitPrice) || 0) + modTotal;
+
+      const row = document.createElement('div');
+      row.style.cssText = [
+        `background:${T.well};`,
+        `border-left:2px solid ${hexToRgba(T.green, 0.28)};`,
+        'border-radius:0 5px 5px 0;',
+        'padding:5px 8px 5px 10px;',
+        'display:flex;align-items:center;gap:7px;',
+        'opacity:0.6;',
+        'margin-bottom:3px;',
+      ].join('');
+
+      const nameSpan = document.createElement('span');
+      nameSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        `font-size:${T.fsB2};`,
+        `color:${T.text};`,
+        'flex:1;',
+        'white-space:nowrap;',
+        'overflow:hidden;',
+        'text-overflow:ellipsis;',
+      ].join('') + `;font-weight:${T.fwBold};`;
+      nameSpan.textContent = inst.name;
+      row.appendChild(nameSpan);
+
+      const priceSpan = document.createElement('span');
+      priceSpan.style.cssText = [
+        `font-family:${T.fb};`,
+        `font-size:${T.fsB2};`,
+        `font-weight:${T.fwBold};`,
+        `color:${T.gold};`,
+      ].join('');
+      priceSpan.textContent = _fmtPrice(totalPrice);
+      row.appendChild(priceSpan);
+
+      zone.appendChild(row);
+    });
+
+    container.appendChild(zone);
+  });
+
+  return container;
+}
+
+function _buildUnsentHeader() {
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'display:flex;align-items:center;gap:7px;padding:0 2px 6px;margin-top:2px;';
+
+  const labelSpan = document.createElement('span');
+  labelSpan.style.cssText = [
+    `font-family:${T.fb};`,
+    'font-size:8px;',
+    `font-weight:${T.fwBold};`,
+    'letter-spacing:0.2em;',
+    'text-transform:uppercase;',
+    `color:${hexToRgba(T.gold, 0.65)};`,
+    'white-space:nowrap;',
+  ].join('');
+  labelSpan.textContent = '+ Unsent';
+  hdr.appendChild(labelSpan);
+
+  const line = document.createElement('div');
+  line.style.cssText = `flex:1;height:1px;background:${hexToRgba(T.gold, 0.18)};`;
+  hdr.appendChild(line);
+
+  return hdr;
+}
+
 function _buildItemSubCard(inst, isMultiSeat) {
-  const sent = !!inst.sent;
   let catColor = _catColorForItem(inst);
   const bevelLt = lightenHex(T.bg, 0.08);
   let bevelDk = darkenHex(T.bg, 0.2);
@@ -3788,8 +3385,7 @@ function _buildItemSubCard(inst, isMultiSeat) {
   const qty = inst.qty || 1;
   const displayName = qty > 1 ? qty + `× ${inst.name}` : inst.name;
 
-  // Wrapper — flex row containing item-block (card + mod tree) + optional
-  // chevron column for sent items.
+  // Wrapper — flex row containing item-block (card + mod tree)
   const wrapper = document.createElement('div');
   wrapper.style.cssText = [
     'display:flex;align-items:stretch;gap:8px;',
@@ -3802,29 +3398,17 @@ function _buildItemSubCard(inst, isMultiSeat) {
   block.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;';
 
   // ── Card body ────────────────────────────────────
+  // Bevel chrome with cat-color left border
   const card = document.createElement('div');
-  if (sent) {
-    // All-4 green border (Mode B treatment from check-overview)
-    card.style.cssText = [
-      `background:${T.well};`,
-      `border:2px solid ${T.green};`,
-      'border-left-width:3px;',
-      'border-radius:8px;',
-      'padding:6px 10px;',
-      `box-shadow:0 2px 0 ${T.greenDk};`,
-    ].join('');
-  } else {
-    // Bevel chrome with cat-color left border
-    card.style.cssText = [
-      `background:${T.well};`,
-      `border-top:2px solid ${bevelLt};`,
-      `border-right:2px solid ${bevelDk};`,
-      `border-bottom:2px solid ${bevelDk};`,
-      `border-left:3px solid ${catColor};`,
-      'border-radius:8px;',
-      'padding:6px 10px;',
-    ].join('');
-  }
+  card.style.cssText = [
+    `background:${T.well};`,
+    `border-top:2px solid ${bevelLt};`,
+    `border-right:2px solid ${bevelDk};`,
+    `border-bottom:2px solid ${bevelDk};`,
+    `border-left:3px solid ${catColor};`,
+    'border-radius:8px;',
+    'padding:6px 10px;',
+  ].join('');
 
   // Main row: name + price + (× delete for unsent)
   const mainRow = document.createElement('div');
@@ -3853,54 +3437,102 @@ function _buildItemSubCard(inst, isMultiSeat) {
   priceEl.textContent = _fmtPrice(totalPrice);
   mainRow.appendChild(priceEl);
 
-  if (!sent) {
-    const xBtn = document.createElement('div');
-    xBtn.style.cssText = [
-      'width:22px;height:22px;flex-shrink:0;',
-      'display:flex;align-items:center;justify-content:center;',
-      `border-radius:4px;background:${T.verm};`,
-      `color:#fff;font-family:${T.fb};font-size:15px;font-weight:${T.fwBold};`,
-      'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
-    ].join('');
-    xBtn.textContent = '×';
-    xBtn.dataset.deleteBtn = '1';
-    xBtn.addEventListener('pointerup', ((instance) => {
-      return (e) => {
-        e.stopPropagation();
-        let idx = ticket.indexOf(instance);
-        if (idx !== -1) ticket.splice(idx, 1);
-        delete _expandedItems[instance.id];
-        renderTicket();
-        rebuildBottomBar();
-      };
-    })(inst));
-    mainRow.appendChild(xBtn);
-  }
+  const xBtn = document.createElement('div');
+  xBtn.style.cssText = [
+    'width:22px;height:22px;flex-shrink:0;',
+    'display:flex;align-items:center;justify-content:center;',
+    `border-radius:4px;background:${T.verm};`,
+    `color:#fff;font-family:${T.fb};font-size:15px;font-weight:${T.fwBold};`,
+    'cursor:pointer;pointer-events:auto;touch-action:manipulation;',
+  ].join('');
+  xBtn.textContent = '×';
+  xBtn.dataset.deleteBtn = '1';
+  xBtn.addEventListener('pointerup', ((instance) => {
+    return (e) => {
+      e.stopPropagation();
+      let idx = ticket.indexOf(instance);
+      if (idx !== -1) ticket.splice(idx, 1);
+      delete _expandedItems[instance.id];
+      renderTicket();
+      rebuildBottomBar();
+    };
+  })(inst));
+  mainRow.appendChild(xBtn);
 
-  if (!sent) {
-    card.style.cursor = 'pointer';
-    card.style.pointerEvents = 'auto';
-    card.style.touchAction = 'manipulation';
-    card.addEventListener('pointerup', (e) => {
-      if (e.target.closest('[data-delete-btn]')) return;
-      const _itemId  = inst.menu_item_id;
-      const _catId   = inst.category;
-      const _bkCfg   = resolveBackendModifierConfig(_itemId, _catId);
-      const _ovInc   = _itemId ? INCLUDED_BY_ITEM[_itemId] : null;
-      if (!_bkCfg && !(_ovInc && _ovInc.length > 0)) return;
-      const _eCfg    = _bkCfg ? Object.assign({}, _bkCfg) : {};
-      if (_ovInc && _ovInc.length > 0) _eCfg.includedItems = _ovInc;
-      const _mCat    = _catId ? getMenuCat(_catId) : null;
-      const _enPl    = _mCat ? !!_mCat.enablePlacement : false;
-      const _cc      = _catColorForItem(inst);
-      openModifierPanel(
-        { label: inst.name, price: inst.unitPrice, id: inst.menu_item_id },
-        _eCfg, _cc, _enPl, inst
-      );
-    });
-  }
+  card.style.cursor = 'pointer';
+  card.style.pointerEvents = 'auto';
+  card.style.touchAction = 'manipulation';
+  card.addEventListener('pointerup', (e) => {
+    if (e.target.closest('[data-delete-btn]')) return;
+    const _itemId  = inst.menu_item_id;
+    const _catId   = inst.category;
+    const _bkCfg   = resolveBackendModifierConfig(_itemId, _catId);
+    const _ovInc   = _itemId ? INCLUDED_BY_ITEM[_itemId] : null;
+    if (!_bkCfg && !(_ovInc && _ovInc.length > 0)) return;
+    const _eCfg    = _bkCfg ? Object.assign({}, _bkCfg) : {};
+    if (_ovInc && _ovInc.length > 0) _eCfg.includedItems = _ovInc;
+    const _mCat    = _catId ? getMenuCat(_catId) : null;
+    const _enPl    = _mCat ? !!_mCat.enablePlacement : false;
+    const _cc      = _catColorForItem(inst);
+    openModifierPanel(
+      { label: inst.name, price: inst.unitPrice, id: inst.menu_item_id },
+      _eCfg, _cc, _enPl, inst
+    );
+  });
 
   card.appendChild(mainRow);
+
+  // Auto discount sub-row (shown when an auto discount is active for this item)
+  if (inst._discountAmt && inst._discountAmt > 0) {
+    const discRow = document.createElement('div');
+    discRow.style.cssText = [
+      'display:flex;align-items:center;justify-content:space-between;',
+      'padding-top:3px;',
+    ].join('');
+    const discLabel = document.createElement('span');
+    discLabel.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.greenWarm || T.green};font-weight:${T.fwBold};`,
+      'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+    ].join('');
+    discLabel.textContent = (inst._discountName || 'DISCOUNT') + ':';
+    const discAmt = document.createElement('span');
+    discAmt.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.greenWarm || T.green};font-weight:${T.fwBold};flex-shrink:0;`,
+    ].join('');
+    discAmt.textContent = '-' + _fmtPrice(inst._discountAmt);
+    discRow.appendChild(discLabel);
+    discRow.appendChild(discAmt);
+    card.appendChild(discRow);
+  }
+
+  // Day-part price adjustment sub-row (shown when day-part pricing is active)
+  if (inst._dayPartAdjPct && inst._dayPartAdjPct !== 0) {
+    const dpRow = document.createElement('div');
+    dpRow.style.cssText = [
+      'display:flex;align-items:center;justify-content:space-between;',
+      'padding-top:3px;',
+    ].join('');
+    const dpLabel = document.createElement('span');
+    dpLabel.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.elec};font-weight:${T.fwBold};`,
+      'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+    ].join('');
+    dpLabel.textContent = (inst._dayPartName || 'PRICING') + ' PRICING';
+    const dpAmt = document.createElement('span');
+    dpAmt.style.cssText = [
+      `font-family:${T.fb};font-size:${T.fsB4};`,
+      `color:${T.elec};font-weight:${T.fwBold};flex-shrink:0;`,
+    ].join('');
+    const sign = inst._dayPartAdjAmt >= 0 ? '+' : '−';
+    dpAmt.textContent = sign + _fmtPrice(Math.abs(inst._dayPartAdjAmt));
+    dpRow.appendChild(dpLabel);
+    dpRow.appendChild(dpAmt);
+    card.appendChild(dpRow);
+  }
+
   block.appendChild(card);
 
   // ── Mod tree below card ──────────────────────────
@@ -3910,53 +3542,16 @@ function _buildItemSubCard(inst, isMultiSeat) {
     const _rightMods = inst.mods.filter((m) => m.prefix === 'Right');
     if (_wholeMods.length > 0) {
       block.appendChild(_buildModTree(_wholeMods, {
-        variant: sent ? 'sent' : 'default',
+        variant: 'default',
         catColor: catColor,
       }));
     }
     if (_leftMods.length > 0 || _rightMods.length > 0) {
-      block.appendChild(buildHalfTable(_leftMods, _rightMods, T.fsB4, sent ? null : inst));
+      block.appendChild(buildHalfTable(_leftMods, _rightMods, T.fsB4, inst));
     }
   }
 
   wrapper.appendChild(block);
-
-  // ── Sent: chevron column to right ────────────────
-  if (sent) {
-    const chevCol = document.createElement('div');
-    chevCol.style.cssText = [
-      'flex:0 0 auto;min-width:48px;',
-      'display:flex;flex-direction:column;',
-      'align-items:center;justify-content:center;',
-      'padding-left:4px;gap:4px;',
-    ].join('');
-
-    const chev = document.createElement('span');
-    chev.style.cssText = [
-      `font-family:${T.fb};`,
-      `font-weight:${T.fwBold};`,
-      'font-size:18px;',
-      `color:${T.green};`,
-      'letter-spacing:0.08em;line-height:1;',
-    ].join('');
-    chev.textContent = '>>>';
-    chevCol.appendChild(chev);
-
-    if (inst.sent_at) {
-      const stamp = document.createElement('span');
-      stamp.style.cssText = [
-        `font-family:${T.fb};`,
-        'font-size:11px;',
-        `color:${T.text};`,
-        'font-style:italic;',
-      ].join('') + `;font-weight:${T.fwBold};`;
-      stamp.textContent = inst.sent_at;
-      chevCol.appendChild(stamp);
-    }
-
-    wrapper.appendChild(chevCol);
-  }
-
   return wrapper;
 }
 
@@ -3966,24 +3561,18 @@ function renderTicket() {
   if (!list) return;
   list.innerHTML = '';
 
-  // In check-overview mode, only show unsent items
-  let displayTicket = ticket;
-  if (sceneParams.returnScene === 'check-overview') {
-    displayTicket = ticket.filter((inst) => !inst.sent);
-  }
-
   // Filter to items whose seat_number is in _activeSeats
-  if (_activeSeats.size > 0) {
-    displayTicket = displayTicket.filter((inst) => _activeSeats.has(inst.seat_number));
-  }
+  let ticketView = _activeSeats.size > 0
+    ? ticket.filter((inst) => _activeSeats.has(inst.seat_number))
+    : ticket;
 
-  if (displayTicket.length === 0 && !_modPanelItem) {
+  if (ticketView.length === 0 && !_modPanelItem) {
     const hint = document.createElement('div');
     hint.style.cssText = `padding:20px 8px;font-family:${T.fb};font-size:${T.fsB3};color:${hexToRgba(T.text, 0.6)};text-align:center;;font-weight:${T.fwBold};`;
     hint.textContent = 'Tap items to add';
     list.appendChild(hint);
     _appendModPreview(list);
-    _updateTicketTotals(displayTicket);
+    _updateTicketTotals(ticketView);
     return;
   }
 
@@ -3994,7 +3583,7 @@ function renderTicket() {
     const bevelDk = darkenHex(T.bg, 0.2);
     let seatOrder = Array.from(_activeSeats).sort((a, b) => a - b);
     seatOrder.forEach((sn) => {
-      const seatItems = displayTicket.filter((i) => i.seat_number === sn);
+      const seatItems = ticketView.filter((i) => i.seat_number === sn);
       const seatSubtotal = seatItems.reduce((s, i) => {
         return s + (Number(i.unitPrice) || 0) + (i.mods || []).reduce((ms, m) => ms + (Number(m.price) || 0), 0);
       }, 0);
@@ -4056,7 +3645,13 @@ function renderTicket() {
       const itemsInner = document.createElement('div');
       itemsInner.style.cssText = 'padding:6px 8px 8px;display:flex;flex-direction:column;';
 
-      seatItems.forEach((inst) => {
+      const seatSent   = seatItems.filter((i) => i.sent);
+      const seatUnsent = seatItems.filter((i) => !i.sent);
+      if (seatSent.length > 0) {
+        itemsInner.appendChild(_buildSentGroups(seatSent));
+        itemsInner.appendChild(_buildUnsentHeader());
+      }
+      seatUnsent.forEach((inst) => {
         itemsInner.appendChild(_buildItemSubCard(inst, false));
       });
 
@@ -4066,13 +3661,19 @@ function renderTicket() {
     });
   } else {
     // Single seat — items render flush, no header
-    displayTicket.forEach((inst) => {
+    const sentItems   = ticketView.filter((inst) => inst.sent);
+    const unsentItems = ticketView.filter((inst) => !inst.sent);
+    if (sentItems.length > 0) {
+      list.appendChild(_buildSentGroups(sentItems));
+      list.appendChild(_buildUnsentHeader());
+    }
+    unsentItems.forEach((inst) => {
       list.appendChild(_buildItemSubCard(inst, false));
     });
   }
 
   _appendModPreview(list);
-  _updateTicketTotals(displayTicket);
+  _updateTicketTotals(ticketView);
 }
 
 function _appendModPreview(list) {
@@ -4179,7 +3780,7 @@ function _updateTicketTotals(filteredTicket) {
   const src = filteredTicket || ticket;
   src.forEach((inst) => {
     const modTotal = (inst.mods || []).reduce((s, m) => s + (Number(m.price) || 0), 0);
-    subtotal += (Number(inst.unitPrice) || 0) + modTotal;
+    subtotal += (Number(inst.unitPrice) || 0) + modTotal - (Number(inst._discountAmt) || 0);
   });
   if (_modPanelItem) {
     const previewMods = (_modPanelItem.mods || []);
@@ -4711,6 +4312,43 @@ async function handleSend() {
     // Mark remaining items as sent (order-level confirmation)
     ticket.forEach((inst) => { inst.sent = true; });
 
+    // Step 4 — auto-apply discounts that don't require a PIN.
+    // Groups by discount ID so each named discount fires one DISCOUNT_APPROVED event.
+    // Uses sceneParams.pin (the server's own PIN) as approver — valid because
+    // validate_pin_for_operation accepts any active employee's PIN, and
+    // auto discounts with requires_pin=false are system-authorised.
+    if (sceneParams.pin) {
+      const _discGroups = {};
+      ticket.forEach(function(inst) {
+        if (!inst._discountAmt || inst._discountAmt <= 0) return;
+        if (inst._discountRequiresPin) return;
+        var did = inst._discountId || '__default__';
+        if (!_discGroups[did]) {
+          _discGroups[did] = { name: inst._discountName, id: inst._discountId, totalDisc: 0 };
+        }
+        _discGroups[did].totalDisc += inst._discountAmt;
+      });
+      Object.keys(_discGroups).forEach(function(did) {
+        var grp = _discGroups[did];
+        var amt = Math.round((grp.totalDisc + 1e-10) * 100) / 100;
+        if (amt <= 0) return;
+        fetchWithTimeout(API + `/orders/${state.currentOrderId}/discount`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            discount_type: grp.name || 'Auto Discount',
+            amount:        amt,
+            reason:        'Auto discount: ' + (grp.name || 'Discount'),
+            pin:           sceneParams.pin,
+            discount_id:   grp.id || null,
+            item_ids:      null,
+          }),
+        }, 15000).catch(function(e) {
+          console.warn('[KINDpos] Auto discount POST failed:', e);
+        });
+      });
+    }
+
     // Fire kitchen print — non-blocking, dispatcher handles retry
     fetchWithTimeout(API + `/print/ticket/${state.currentOrderId}`, { method: 'POST' }, 15000)
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); })
@@ -4811,6 +4449,7 @@ function recallFromBackend(orderId) {
           }),
           selected:  false,
           sent:      !!(item.sent_at),  // true only if actually kitchen-fired
+          sent_at:   item.sent_at || null,
           category:  item.category || null,
           seat_number: item.seat_number || null,
         };
@@ -4819,41 +4458,8 @@ function recallFromBackend(orderId) {
       renderTicket();
       rebuildBottomBar();
 
-      // Populate the left panel with the existing check's sent items so the
-      // cashier can see what's already on the check while adding new ones.
-      // All recalled items are sent:true (set above). Filter to the selected
-      // seat when exactly one seat was chosen before entering add-items mode.
-      if (sceneParams.returnScene === 'check-overview') {
-        const selSeats = sceneParams.selectedSeatNumbers || [];
-        let sentItems = ticket;
-
-        if (selSeats.length === 1) {
-          sentItems = sentItems.filter((i) => i.seat_number === selSeats[0]);
-        }
-
-        let leftItems = [];
-        if (selSeats.length !== 1 && sentItems.length > 0) {
-          const seatGroups = {};
-          const seatOrder  = [];
-          sentItems.forEach((i) => {
-            const sn = i.seat_number || 1;
-            if (!seatGroups[sn]) { seatGroups[sn] = []; seatOrder.push(sn); }
-            seatGroups[sn].push(i);
-          });
-          seatOrder.sort((a, b) => a - b);
-          seatOrder.forEach((sn) => {
-            const seatTot = seatGroups[sn].reduce((s, i) => s + (i.unitPrice || 0), 0);
-            leftItems.push({ seatHeader: true, seatId: `SEAT ${sn}`, seatTotal: seatTot });
-            seatGroups[sn].forEach((i) => { leftItems.push(i); });
-          });
-        } else {
-          leftItems = sentItems;
-        }
-
-        OrderSummary.unlockItemRender();
-        OrderSummary.update({ items: leftItems });
-        OrderSummary.lockItemRender();
-      }
+      // Sent items are now shown as settled group rows in the ticket list;
+      // the left panel no longer needs a separate population pass.
     })
     .catch((err) => {
       console.warn('[KINDpos] Failed to recall order:', err);

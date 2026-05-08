@@ -59,14 +59,10 @@ export async function parseMenuTemplate(file) {
 ───────────────────────────────────────────────────────────────────────────── */
 
 /** True for anything that isn't empty / null / undefined. */
-function hasValue(v) {
-    return v !== undefined && v !== null && String(v).trim() !== '';
-}
+const hasValue = (v) => v !== undefined && v !== null && String(v).trim() !== '';
 
 /** Safe string coercion. */
-function str(v) {
-    return hasValue(v) ? String(v).trim() : '';
-}
+const str = (v) => hasValue(v) ? String(v).trim() : '';
 
 /** Strip asterisks, question marks, newlines, parentheses + collapse whitespace. */
 export function norm(v) {
@@ -74,7 +70,7 @@ export function norm(v) {
 }
 
 /** Find a value in a row object using normalised key matching. */
-function get(row, expected, fallback = undefined) {
+const get = (row, expected, fallback = undefined) => {
     if (!row) return fallback;
     const target = norm(expected);
     for (const key of Object.keys(row)) {
@@ -84,7 +80,7 @@ function get(row, expected, fallback = undefined) {
         if (norm(key).startsWith(target)) return row[key];
     }
     return fallback;
-}
+};
 
 /** Parse a price like "$1.50" or "1.50" into a float. */
 export function parsePrice(v) {
@@ -93,12 +89,12 @@ export function parsePrice(v) {
 }
 
 /** Parse a price as a 2dp decimal STRING (e.g. "0.00", "1.50"). */
-function parseDecimalString(v) {
+const parseDecimalString = (v) => {
     if (!hasValue(v)) return '0.00';
     const n = parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
     if (isNaN(n)) return '0.00';
     return n.toFixed(2);
-}
+};
 
 /** Split a comma-separated string into a trimmed array, dropping blanks. */
 export function splitList(v) {
@@ -107,21 +103,21 @@ export function splitList(v) {
 }
 
 /** Y/N → bool. */
-function parseYN(v, defaultVal = true) {
+const parseYN = (v, defaultVal = true) => {
     if (!hasValue(v)) return defaultVal;
     return String(v).trim().toUpperCase().startsWith('Y');
-}
+};
 
 /** Slugify a name into a stable id (a-z0-9 underscored). */
-function slugify(name) {
+const slugify = (name) => {
     return String(name || '').toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/_+$/, '')
         .replace(/^_+/, '');
-}
+};
 
 /** Header rows: blank, instructions, or arrow markers. */
-function _isHeaderRow(firstCell) {
+const _isHeaderRow = (firstCell) => {
     const s = str(firstCell).toLowerCase();
     return (
         !s ||
@@ -131,7 +127,7 @@ function _isHeaderRow(firstCell) {
         s.startsWith('notes:') ||
         s.startsWith('↑')
     );
-}
+};
 
 /**
  * Parse a "key|subkey:value, key|subkey:value" string into a nested map.
@@ -140,7 +136,7 @@ function _isHeaderRow(firstCell) {
  *
  * Values are returned as decimal strings so callers can preserve precision.
  */
-function parseTwoLevelMap(raw) {
+const parseTwoLevelMap = (raw) => {
     const out = {};
     if (!hasValue(raw)) return out;
     const parts = String(raw).split(',').map(s => s.trim()).filter(Boolean);
@@ -158,7 +154,7 @@ function parseTwoLevelMap(raw) {
         out[outerKey][innerKey] = parseDecimalString(value);
     }
     return out;
-}
+};
 
 /**
  * Parse a flat "key:value, key:value" string into a single-level map.
@@ -172,7 +168,7 @@ function parseTwoLevelMap(raw) {
  * The caller decides whether values are decimal strings or arbitrary
  * names — `decimalValues=true` runs each value through parseDecimalString.
  */
-function parseOneLevelMap(raw, decimalValues = false) {
+const parseOneLevelMap = (raw, decimalValues = false) => {
     const out = {};
     if (!hasValue(raw)) return out;
     const parts = String(raw).split(',').map(s => s.trim()).filter(Boolean);
@@ -185,12 +181,12 @@ function parseOneLevelMap(raw, decimalValues = false) {
         out[k] = decimalValues ? parseDecimalString(v) : v;
     }
     return out;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    STORE INFO  (no column headers — raw col-A / col-B pairs)
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseStoreInfo(workbook, errors) {
+const _parseStoreInfo = (workbook, errors) => {
     const sheetName = workbook.Sheets['STORE INFO'] ? 'STORE INFO' :
                       (workbook.Sheets['RESTAURANT INFO'] ? 'RESTAURANT INFO' : null);
     if (!sheetName) {
@@ -212,12 +208,12 @@ function _parseStoreInfo(workbook, errors) {
         info[key] = value;
     }
     return info;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    TAX RULES — own sheet in v3
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseTaxRules(workbook, warnings) {
+const _parseTaxRules = (workbook, warnings) => {
     const sheet = workbook.Sheets['TAX RULES'];
     if (!sheet) {
         warnings.push('No TAX RULES sheet — using empty list');
@@ -238,12 +234,12 @@ function _parseTaxRules(workbook, warnings) {
         });
     }
     return out;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    SIZES
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseSizes(workbook, errors) {
+const _parseSizes = (workbook, errors) => {
     const sheet = workbook.Sheets['SIZES'];
     if (!sheet) return [];   // Sizes are optional — operators may not use them
     const rows  = XLSX.utils.sheet_to_json(sheet, { range: 2, defval: '' });
@@ -259,12 +255,12 @@ function _parseSizes(workbook, errors) {
         });
     }
     return out;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    OPTIONS
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseOptions(workbook, errors) {
+const _parseOptions = (workbook, errors) => {
     const sheet = workbook.Sheets['OPTIONS'];
     if (!sheet) return [];
     const rows  = XLSX.utils.sheet_to_json(sheet, { range: 2, defval: '' });
@@ -281,12 +277,12 @@ function _parseOptions(workbook, errors) {
         });
     }
     return out;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    OPTION GROUPS
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseOptionGroups(workbook, errors, warnings) {
+const _parseOptionGroups = (workbook, errors, warnings) => {
     const sheet = workbook.Sheets['OPTION GROUPS'];
     if (!sheet) return [];
     const rows  = XLSX.utils.sheet_to_json(sheet, { range: 2, defval: '' });
@@ -302,12 +298,12 @@ function _parseOptionGroups(workbook, errors, warnings) {
         });
     }
     return out;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    MODIFIERS  (with "Price By Size" column)
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseModifiers(workbook, errors) {
+const _parseModifiers = (workbook, errors) => {
     const sheet = workbook.Sheets['MODIFIERS'];
     if (!sheet) return [];
     const rows  = XLSX.utils.sheet_to_json(sheet, { range: 2, defval: '' });
@@ -324,12 +320,12 @@ function _parseModifiers(workbook, errors) {
         });
     }
     return out;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    MICROMOD GROUPS  ("MicroMods" + "Attaches To" comma-split)
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseMicromodGroups(workbook, warnings) {
+const _parseMicromodGroups = (workbook, warnings) => {
     const sheet = workbook.Sheets['MICROMOD GROUPS'];
     if (!sheet) return [];
     const rows  = XLSX.utils.sheet_to_json(sheet, { range: 2, defval: '' });
@@ -345,12 +341,12 @@ function _parseMicromodGroups(workbook, warnings) {
         });
     }
     return out;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    MOD GROUPS  (split mandatory / optional via ▶ section markers in col-A)
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseModGroups(workbook, errors, warnings) {
+const _parseModGroups = (workbook, errors, warnings) => {
     const result = { mandatory: [], optional: [] };
     const sheet = workbook.Sheets['MOD GROUPS'];
     if (!sheet) {
@@ -364,7 +360,7 @@ function _parseModGroups(workbook, errors, warnings) {
 
     // Column headers live on row 3 (index 2). Use them for indexed lookup.
     const headers = (rawRows[2] || []).map(h => norm(h));
-    const colIdx  = (label) => {
+    const colIdx = (label) => {
         const target = norm(label);
         for (let i = 0; i < headers.length; i++) {
             if (headers[i] === target) return i;
@@ -427,12 +423,12 @@ function _parseModGroups(workbook, errors, warnings) {
         }
     }
     return result;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    CATEGORIES
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseCategories(workbook, errors) {
+const _parseCategories = (workbook, errors) => {
     const sheet = workbook.Sheets['CATEGORIES'];
     if (!sheet) {
         errors.push('Missing sheet: CATEGORIES');
@@ -457,12 +453,12 @@ function _parseCategories(workbook, errors) {
         errors.push('No categories defined — at least one category is required');
     }
     return out.sort((a, b) => a.display_order - b.display_order);
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    ITEMS
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseItems(workbook, errors, warnings) {
+const _parseItems = (workbook, errors, warnings) => {
     const sheet = workbook.Sheets['ITEMS'];
     if (!sheet) {
         errors.push('Missing sheet: ITEMS');
@@ -494,12 +490,12 @@ function _parseItems(workbook, errors, warnings) {
     }
     if (out.length === 0) warnings.push('No menu items defined');
     return out;
-}
+};
 
 /* ─────────────────────────────────────────────────────────────────────────────
    DISCOUNTS
 ───────────────────────────────────────────────────────────────────────────── */
-function _parseDiscounts(workbook, warnings) {
+const _parseDiscounts = (workbook, warnings) => {
     const sheet = workbook.Sheets['DISCOUNTS'];
     if (!sheet) return [];
     const rows = XLSX.utils.sheet_to_json(sheet, { range: 2, defval: '' });
@@ -520,7 +516,7 @@ function _parseDiscounts(workbook, warnings) {
         });
     }
     return out;
-}
+};
 
 
 /* ─────────────────────────────────────────────────────────────────────────────

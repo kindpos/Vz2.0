@@ -7,12 +7,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { pushChanges } from './config-push.js';
 
-function jsonResponse(body, status = 200) {
+const jsonResponse = (body, status = 200) => {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-}
+};
 
 describe('overseer/src/services/config-push', () => {
   let fetchMock;

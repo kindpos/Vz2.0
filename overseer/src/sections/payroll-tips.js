@@ -57,13 +57,13 @@ let sortField = 'totalComp';
 let sortDir = 'desc';
 
 const VIEW_REGISTRY = {
-    'payroll-summary': buildPayrollSummary,
+    'payroll-summary': (w, d) => buildPayrollSummary(w, d),
 };
 
 /* ------------------------------------------
    VIEW STACK
 ------------------------------------------ */
-function pushView(viewName, data) {
+const pushView = (viewName, data) => {
     if (!currentContainer) return;
     const wrapper = currentContainer.querySelector('#pt-view-wrapper');
     if (!wrapper) return;
@@ -76,7 +76,7 @@ function pushView(viewName, data) {
     }
 }
 
-function popView() {
+const popView = () => {
     if (viewHistory.length <= 1) return;
     viewHistory.pop();
     const prev = viewHistory[viewHistory.length - 1];
@@ -87,7 +87,7 @@ function popView() {
 /* ------------------------------------------
    BACK BUTTON
 ------------------------------------------ */
-function buildBackButton(wrapper, label) {
+const buildBackButton = (wrapper, label) => {
     const btn = document.createElement('button');
     btn.textContent = `← Back to ${label}`;
     btn.style.cssText = `
@@ -106,7 +106,7 @@ function buildBackButton(wrapper, label) {
 /* ------------------------------------------
    TOAST
 ------------------------------------------ */
-function showToast(message, type = 'success') {
+const showToast = (message, type = 'success') => {
     if (!currentContainer) return;
     const old = currentContainer.querySelector('.pt-toast');
     if (old) old.remove();
@@ -141,10 +141,12 @@ function showToast(message, type = 'success') {
 ------------------------------------------ */
 const _pendingEvents = [];
 
-function emitEvent(eventType, payload) {
+const emitEvent = (eventType, payload) => {
     const event = { event_type: eventType, payload };
     _pendingEvents.push(event);
-    pushChanges([event]).catch(e => console.warn("[Overseer] Event push failed:", e));
+    pushChanges([event]).then(result => {
+        if (!result.ok) console.warn("[Overseer] Event push failed:", result.error);
+    }).catch(e => console.warn("[Overseer] Event push failed:", e));
     return event;
 }
 
@@ -152,17 +154,17 @@ function emitEvent(eventType, payload) {
    FORMAT HELPERS
 ------------------------------------------ */
 function fmt$(val) { return '$' + (val ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function fmtHrs(val) { return (val ?? 0).toFixed(2) + 'h'; }
-function fmtPct(val) { return (val ?? 0).toFixed(1) + '%'; }
+const fmtHrs = (val) => (val ?? 0).toFixed(2) + 'h'; ;
+const fmtPct = (val) => (val ?? 0).toFixed(1) + '%'; ;
 
-function fmtDateRange(start, end) {
+const fmtDateRange = (start, end) => {
     const s = new Date(start + 'T12:00:00');
     const e = new Date(end + 'T12:00:00');
     const opts = { month: 'short', day: 'numeric' };
     return `${s.toLocaleDateString('en-US', opts)} – ${e.toLocaleDateString('en-US', opts)}, ${e.getFullYear()}`;
 }
 
-function laborCostColor(pct) {
+const laborCostColor = (pct) => {
     const p = pct ?? 0;
     if (p <= (LABOR_BENCHMARKS.targetLaborPct || 30)) return C.green;
     if (p <= (LABOR_BENCHMARKS.warningLaborPct || 35)) return C.yellow;
@@ -170,7 +172,7 @@ function laborCostColor(pct) {
     return C.red;
 }
 
-function laborCostLabel(pct) {
+const laborCostLabel = (pct) => {
     const p = pct ?? 0;
     if (p <= (LABOR_BENCHMARKS.targetLaborPct || 30)) return 'On Target';
     if (p <= (LABOR_BENCHMARKS.warningLaborPct || 35)) return 'Watch';
@@ -181,7 +183,7 @@ function laborCostLabel(pct) {
 /* ------------------------------------------
    SORT HELPERS
 ------------------------------------------ */
-function toggleSort(field) {
+const toggleSort = (field) => {
     if (sortField === field) {
         sortDir = sortDir === 'asc' ? 'desc' : 'asc';
     } else {
@@ -191,13 +193,12 @@ function toggleSort(field) {
     refreshEmployeeTable();
 }
 
-function sortArrow(field) {
+const sortArrow = (field) => {
     if (sortField !== field) return ' ↕';
     return sortDir === 'asc' ? ' ↑' : ' ↓';
 }
 
-function getSortedEmployees() {
-    return [...PAYROLL_SUMMARY.employees].sort((a, b) => {
+const getSortedEmployees = () => [...PAYROLL_SUMMARY.employees].sort((a, b) => {
         let av = a[sortField] ?? 0;
         let bv = b[sortField] ?? 0;
         if (typeof av === 'string') { av = av.toLowerCase(); bv = bv.toLowerCase(); }
@@ -205,9 +206,8 @@ function getSortedEmployees() {
         if (av > bv) return sortDir === 'asc' ? 1 : -1;
         return 0;
     });
-}
 
-function refreshEmployeeTable() {
+const refreshEmployeeTable = () => {
     if (!currentContainer) return;
     const tableWrap = currentContainer.querySelector('#pt-emp-table');
     if (tableWrap) {
@@ -219,7 +219,7 @@ function refreshEmployeeTable() {
 /* ==========================================
    VIEW 1: PAYROLL SUMMARY
    ========================================== */
-function buildPayrollSummary(wrapper) {
+const buildPayrollSummary = (wrapper) => {
     wrapper.style.cssText = 'padding: 0 8px; max-width: 1200px; margin: 0 auto;';
 
     // ── Header ──
@@ -351,7 +351,7 @@ function buildPayrollSummary(wrapper) {
 /* ------------------------------------------
    EMPLOYEE BREAKDOWN TABLE
 ------------------------------------------ */
-function buildEmployeeTable(wrapper) {
+const buildEmployeeTable = (wrapper) => {
     const table = document.createElement('div');
     table.style.cssText = 'overflow-x: auto;';
 
@@ -460,7 +460,7 @@ function buildEmployeeTable(wrapper) {
    EXPORT MODAL
    One-click payroll export
    ========================================== */
-function showExportModal() {
+const showExportModal = () => {
     if (!currentContainer) return;
 
     const backdrop = document.createElement('div');
@@ -594,7 +594,7 @@ function showExportModal() {
             return;
         }
 
-        emitEvent('PAYROLL_EXPORTED', {
+        emitEvent('payroll.exported', {
             format: selectedFormat.id,
             period_start: PAYROLL_SUMMARY.period.start,
             period_end: PAYROLL_SUMMARY.period.end,
@@ -622,7 +622,7 @@ function showExportModal() {
 /* ------------------------------------------
    REUSABLE UI COMPONENTS
 ------------------------------------------ */
-function buildTab(label, active, onClick) {
+const buildTab = (label, active, onClick) => {
     const tab = document.createElement('button');
     tab.textContent = label;
     tab.style.cssText = `
@@ -641,7 +641,7 @@ function buildTab(label, active, onClick) {
     return tab;
 }
 
-function buildSummaryCard(label, value, color) {
+const buildSummaryCard = (label, value, color) => {
     const card = document.createElement('div');
     card.style.cssText = `
         background: rgba(var(--color-mint-rgb), 0.04); border: 1px solid ${C.mintBorder};

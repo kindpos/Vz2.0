@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KINDpos Installer</title>
+  <style>
+    :root {
+      --bg:        #383c42;
+      --card:      #2e3236;
+      --well:      #22252a;
+      --green:     #86efac;
+      --greenWarm: #4ade80;
+      --greenDk:   #1a5c2e;
+      --elec:      #22d3ee;
+      --text:      #e8eaed;
+      --border:    #5a5f66;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      font-family: 'Courier New', Courier, monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-image:
+        linear-gradient(0deg, var(--well) 1px, transparent 1px),
+        linear-gradient(90deg, var(--well) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.45;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 3px;
+      background: linear-gradient(90deg, var(--green), var(--elec), var(--green));
+      background-size: 200% 100%;
+      animation: shimmer 3s ease-in-out infinite;
+      z-index: 1000;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 200% 0; }
+      50%       { background-position: -200% 0; }
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    .card {
+      width: 480px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 32px;
+      position: relative;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      animation: fadeUp 0.5s ease 0.1s both;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; right: 0;
+      width: 0; height: 0;
+      border-style: solid;
+      border-width: 20px 20px 0 0;
+      border-color: var(--bg) transparent transparent transparent;
+      z-index: 1;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .brand-name {
+      font-size: 22px;
+      font-weight: bold;
+      color: var(--green);
+      letter-spacing: 1px;
+    }
+
+    .brand-subtitle {
+      font-size: 10px;
+      color: var(--text);
+      letter-spacing: 0.5px;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 20px;
+    }
+
+    .headline {
+      font-size: 13px;
+      font-weight: bold;
+      color: var(--green);
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+    }
+
+    .body {
+      font-size: 11px;
+      line-height: 1.75;
+      color: var(--text);
+      margin-bottom: 24px;
+    }
+
+    .elec { color: var(--elec); }
+
+    .download-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--green);
+      color: var(--well);
+      border: none;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.15s ease;
+      margin-bottom: 20px;
+    }
+
+    .download-btn:hover  { background: var(--greenWarm); }
+    .download-btn:active { background: var(--greenDk); color: var(--green); }
+
+    .sysinfo { display: flex; flex-direction: column; gap: 8px; }
+
+    .sysinfo-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      line-height: 1.4;
+    }
+
+    .sysinfo-label {
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .sysinfo-value {
+      color: var(--green);
+      text-align: right;
+      flex-grow: 1;
+      margin-left: 16px;
+    }
+
+    .footer {
+      margin-top: 40px;
+      font-size: 9px;
+      color: var(--text);
+      letter-spacing: 0.5px;
+      animation: fadeUp 0.5s ease 0.2s both;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <div class="brand-row">
+      <div class="brand-name">KIND POS</div>
+      <div class="brand-subtitle">· Installer v2.0</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="headline">Install KINDpos Backend</div>
+
+    <div class="body">
+      Installs all Python dependencies and configures autostart.
+      Requires <span class="elec">Python 3.10+</span> on Windows or Linux.
+      Run the downloaded file to launch the setup wizard.
+    </div>
+
+    <button class="download-btn" id="downloadBtn">
+      <span>↓ DOWNLOAD INSTALLER</span>
+      <span>→</span>
+    </button>
+
+    <div class="sysinfo">
+      <div class="sysinfo-row">
+        <span class="sysinfo-label">FILE</span>
+        <span class="sysinfo-value">kindpos_installer.py</span>
+      </div>
+      <div class="sysinfo-row">
+        <span class="sysinfo-label">REQUIRES</span>
+        <span class="sysinfo-value">Python 3.10+  ·  Windows / Linux</span>
+      </div>
+      <div class="sysinfo-row">
+        <span class="sysinfo-label">VERSION</span>
+        <span class="sysinfo-value">KINDpos Vz2.0  ·  KIND Technologies LLC</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">KIND TECHNOLOGIES LLC  ·  PRIVATE BETA</div>
+</div>
+
+<script>
+const INSTALLER_CONTENT = `#!/usr/bin/env python3
+"""KINDpos Setup Wizard — v2.0"""
+
+import sys, os, tkinter as tk
+from tkinter import filedialog
+
+# ── Tokens ──────────────────────────────────────────
+T = {
+    'bg':          '#383c42',
+    'card':        '#2e3236',
+    'well':        '#22252a',
+    'green':       '#86efac',
+    'greenDk':     '#1a5c2e',
+    'greenWarm':   '#4ade80',
+    'greenWarmDk': '#166534',
+    'gold':        '#e8c84e',
+    'verm':        '#e8472a',
+    'vermDk':      '#6b1a0e',
+    'elec':        '#22d3ee',
+    'moon':        '#7e8896',
+    'moonText':    '#22252a',
+    'text':        '#e8eaed',
+    'border':      '#5a5f66',
+}
+FONT = 'Courier'
+STEPS = ['Welcome', 'Directory', 'Install', 'Shortcuts', 'Finish']
+
+
+def default_install_dir():
+    return os.path.join(
+        os.environ.get('LOCALAPPDATA', os.path.expanduser('~')),
+        'KINDpos'
+    )
+
+
+def _create_shortcut(target_py, pythonw, dest_lnk):
+    import subprocess
+    ps = (
+        f'$s=(New-Object -COM WScript.Shell).CreateShortcut("{dest_lnk}");'
+        f'$s.TargetPath="{pythonw}";'
+        f'$s.Arguments=\'"{target_py}"\';'
+        f'$s.Save()'
+    )
+    subprocess.run(['powershell', '-Command', ps], capture_output=True)
+
+
+_LAUNCHER_CONTENT = '''#!/usr/bin/env python3
+"""KINDpos Launcher — v2.0"""
+import tkinter as tk
+import webbrowser
+import threading
+import socket
+
+T = {
+    "bg":       "#383c42",
+    "card":     "#2e3236",
+    "well":     "#22252a",
+    "green":    "#86efac",
+    "greenWarm":"#4ade80",
+    "elec":     "#22d3ee",
+    "verm":     "#e8472a",
+    "text":     "#e8eaed",
+    "border":   "#5a5f66",
+}
+FONT = "Courier"
+
+
+class KINDposLauncher(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("KINDpos Launcher")
+        self.geometry("340x200")
+        self.resizable(False, False)
+        self.configure(bg=T["well"])
+        self._build()
+        self._check_status()
+
+    def _build(self):
+        # Title bar row
+        title_row = tk.Frame(self, bg=T["well"])
+        title_row.pack(fill=tk.X, padx=14, pady=(12, 0))
+        pip_f = tk.Frame(title_row, bg=T["green"], width=7, height=7)
+        pip_f.pack(side=tk.LEFT, padx=(0, 6))
+        pip_f.pack_propagate(False)
+        tk.Label(title_row, text="KINDpos Launcher", bg=T["well"],
+                 fg=T["text"], font=(FONT, 9)).pack(side=tk.LEFT)
+
+        # Brand row
+        brand_row = tk.Frame(self, bg=T["well"])
+        brand_row.pack(fill=tk.X, padx=14, pady=(6, 0))
+        tk.Label(brand_row, text="KIND POS", bg=T["well"], fg=T["green"],
+                 font=(FONT, 15, "bold")).pack(side=tk.LEFT)
+        tk.Label(brand_row, text="  v2.0", bg=T["well"], fg=T["text"],
+                 font=(FONT, 9)).pack(side=tk.LEFT, anchor=tk.S)
+
+        # Divider
+        tk.Frame(self, bg=T["border"], height=1).pack(fill=tk.X, padx=14, pady=8)
+
+        # Button row
+        btn_row = tk.Frame(self, bg=T["well"])
+        btn_row.pack(fill=tk.X, padx=14)
+
+        terminal_btn = tk.Frame(btn_row, bg=T["green"], width=140, height=50)
+        terminal_btn.pack(side=tk.LEFT, padx=(0, 6))
+        terminal_btn.pack_propagate(False)
+        tk.Label(terminal_btn, text="TERMINAL\\nkindpos.local", bg=T["green"],
+                 fg=T["well"], font=(FONT, 9, "bold"), justify=tk.CENTER).place(
+            relx=0.5, rely=0.5, anchor=tk.CENTER)
+        terminal_btn.bind("<Button-1>",
+                          lambda e: webbrowser.open("http://kindpos.local"))
+
+        overseer_btn = tk.Frame(btn_row, bg=T["elec"], width=140, height=50)
+        overseer_btn.pack(side=tk.LEFT)
+        overseer_btn.pack_propagate(False)
+        tk.Label(overseer_btn, text="OVERSEER\\nkindpos.local/overseer",
+                 bg=T["elec"], fg=T["well"], font=(FONT, 9, "bold"),
+                 justify=tk.CENTER).place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        overseer_btn.bind("<Button-1>",
+                          lambda e: webbrowser.open("http://kindpos.local/overseer"))
+
+        # Status row
+        status_row = tk.Frame(self, bg=T["well"])
+        status_row.pack(fill=tk.X, padx=14, pady=(10, 0))
+        self._status_pip_frame = tk.Frame(status_row, bg=T["border"], width=7, height=7)
+        self._status_pip_frame.pack(side=tk.LEFT, padx=(0, 6))
+        self._status_pip_frame.pack_propagate(False)
+        self._status_pip = tk.Label(self._status_pip_frame, text="", bg=T["border"])
+        self._status_pip.pack(fill=tk.BOTH, expand=True)
+        self._status_lbl = tk.Label(status_row, text="Checking…", bg=T["well"],
+                                     fg=T["text"], font=(FONT, 8))
+        self._status_lbl.pack(side=tk.LEFT)
+
+    def _check_status(self):
+        def probe():
+            try:
+                socket.create_connection(("kindpos.local", 80), timeout=2)
+                self.after(0, self._on_reachable)
+            except Exception:
+                self.after(0, self._on_unreachable)
+        threading.Thread(target=probe, daemon=True).start()
+
+    def _on_reachable(self):
+        self._status_pip_frame.config(bg=T["greenWarm"])
+        self._status_pip.config(bg=T["greenWarm"])
+        self._status_lbl.config(text="kindpos.local reachable")
+
+    def _on_unreachable(self):
+        self._status_pip_frame.config(bg=T["verm"])
+        self._status_pip.config(bg=T["verm"])
+        self._status_lbl.config(text="kindpos.local unreachable")
+
+
+if __name__ == "__main__":
+    app = KINDposLauncher()
+    app.mainloop()
+'''
+
+
+class KINDposSetup(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.geometry('660x480')
+        self.resizable(False, False)
+        self.title('KINDpos Setup — v2.0')
+        self.configure(bg=T['bg'])
+
+        self.step = 0
+        self.install_dir = tk.StringVar(value=default_install_dir())
+
+        self._pip_labels = []
+        self._step_labels = []
+
+        outer = tk.Frame(self, bg=T['bg'])
+        outer.pack(fill=tk.BOTH, expand=True)
+        self._outer = outer
+
+        self._build_left()
+        self._build_right()
+        self._goto(0)
+
+    # ── Left panel ──────────────────────────────────
+
+    def _build_left(self):
+        left = tk.Frame(self._outer, bg=T['well'], width=200)
+        left.pack(side=tk.LEFT, fill=tk.Y)
+        left.pack_propagate(False)
+
+        # Right accent bar (packed first so it anchors to the right edge)
+        accent = tk.Frame(left, bg=T['green'], width=4)
+        accent.pack(side=tk.RIGHT, fill=tk.Y)
+
+        inner = tk.Frame(left, bg=T['well'])
+        inner.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Brand block
+        brand = tk.Frame(inner, bg=T['well'])
+        brand.pack(fill=tk.X, padx=20, pady=(28, 24))
+        tk.Label(brand, text='KIND POS', bg=T['well'], fg=T['green'],
+                 font=(FONT, 18, 'bold')).pack(anchor=tk.W)
+        tk.Label(brand, text='Setup Wizard', bg=T['well'], fg=T['text'],
+                 font=(FONT, 8)).pack(anchor=tk.W, pady=(2, 8))
+        tk.Frame(brand, bg=T['border'], height=1).pack(fill=tk.X)
+
+        # Step list
+        steps_frame = tk.Frame(inner, bg=T['well'])
+        steps_frame.pack(fill=tk.X, padx=20, pady=(20, 0))
+
+        for i, name in enumerate(STEPS):
+            row = tk.Frame(steps_frame, bg=T['well'])
+            row.pack(fill=tk.X, anchor=tk.W)
+
+            pip = tk.Label(row, text=str(i + 1), bg=T['moon'], fg=T['moonText'],
+                           font=(FONT, 9, 'bold'), width=2, pady=2)
+            pip.pack(side=tk.LEFT)
+
+            lbl = tk.Label(row, text=name.upper(), bg=T['well'], fg=T['text'],
+                           font=(FONT, 9), padx=8)
+            lbl.pack(side=tk.LEFT, anchor=tk.CENTER)
+
+            self._pip_labels.append(pip)
+            self._step_labels.append(lbl)
+
+            if i < len(STEPS) - 1:
+                conn_wrap = tk.Frame(steps_frame, bg=T['well'])
+                conn_wrap.pack(fill=tk.X, anchor=tk.W)
+                tk.Frame(conn_wrap, bg=T['border'], width=1, height=16).pack(
+                    side=tk.LEFT, padx=7
+                )
+
+        # Version footer (packed BOTTOM before steps so it stays anchored)
+        footer = tk.Frame(inner, bg=T['well'])
+        footer.pack(side=tk.BOTTOM, fill=tk.X, padx=20, pady=14)
+        tk.Frame(footer, bg=T['border'], height=1).pack(fill=tk.X, pady=(0, 6))
+        tk.Label(footer, text='KIND Technologies LLC', bg=T['well'], fg=T['text'],
+                 font=(FONT, 8)).pack(anchor=tk.W)
+        tk.Label(footer, text='kindpos.com', bg=T['well'], fg=T['text'],
+                 font=(FONT, 8)).pack(anchor=tk.W)
+
+    # ── Right panel ─────────────────────────────────
+
+    def _build_right(self):
+        right = tk.Frame(self._outer, bg=T['bg'])
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.content = tk.Frame(right, bg=T['bg'])
+        self.content.pack(fill=tk.BOTH, expand=True, padx=28, pady=(28, 0))
+
+        # Footer bar — fixed 52px
+        footer_bar = tk.Frame(right, bg=T['well'], height=52)
+        footer_bar.pack(fill=tk.X, side=tk.BOTTOM)
+        footer_bar.pack_propagate(False)
+
+        tk.Frame(footer_bar, bg=T['border'], height=1).pack(fill=tk.X, side=tk.TOP)
+
+        self.step_lbl = tk.Label(footer_bar, text='Step 1 of 5',
+                                  bg=T['well'], fg=T['text'], font=(FONT, 8))
+        self.step_lbl.pack(side=tk.LEFT, padx=18)
+
+        self.next_btn = tk.Button(footer_bar, text='Next →', bg=T['green'],
+                                   fg=T['well'], font=(FONT, 9, 'bold'),
+                                   relief=tk.FLAT, padx=18, pady=7,
+                                   cursor='hand2', command=self._next)
+        self.next_btn.pack(side=tk.RIGHT, padx=(0, 18))
+
+        self.back_btn = tk.Button(footer_bar, text='Back', bg=T['card'],
+                                   fg=T['green'], font=(FONT, 9, 'bold'),
+                                   relief=tk.FLAT, padx=18, pady=7,
+                                   cursor='hand2', command=self._back)
+        self.back_btn.pack(side=tk.RIGHT, padx=(0, 8))
+
+    # ── Step indicator ───────────────────────────────
+
+    def _refresh_left(self, step):
+        for i, (pip, lbl) in enumerate(zip(self._pip_labels, self._step_labels)):
+            if i < step:
+                pip.config(bg=T['greenDk'], fg=T['green'])
+                lbl.config(fg=T['text'], font=(FONT, 9))
+            elif i == step:
+                pip.config(bg=T['green'], fg=T['well'])
+                lbl.config(fg=T['green'], font=(FONT, 9, 'bold'))
+            else:
+                pip.config(bg=T['moon'], fg=T['moonText'])
+                lbl.config(fg=T['text'], font=(FONT, 9))
+        self.step_lbl.config(text=f'Step {step + 1} of 5')
+
+    # ── Navigation ──────────────────────────────────
+
+    def _goto(self, step):
+        for w in self.content.winfo_children():
+            w.destroy()
+        self.step = step
+        self._refresh_left(step)
+        [self._p_welcome, self._p_directory, self._p_install,
+         self._p_shortcuts, self._p_finish][step]()
+        if step == 4:
+            self._apply_shortcut_prefs()
+            self.back_btn.pack_forget()
+            self.next_btn.config(text='Finish', bg=T['greenWarm'], fg=T['well'],
+                                  command=self._finish)
+        else:
+            self.back_btn.pack(side=tk.RIGHT, padx=(0, 8))
+            self.back_btn.config(state=tk.DISABLED if step == 0 else tk.NORMAL)
+            self.next_btn.config(text='Next →', bg=T['green'], fg=T['well'],
+                                  command=self._next)
+
+    def _back(self):
+        if self.step > 0:
+            self._goto(self.step - 1)
+
+    def _next(self):
+        if self.step < 4:
+            self._goto(self.step + 1)
+
+    # ── Page builders (placeholders) ────────────────
+
+    def _p_welcome(self):
+        tk.Label(self.content, text='Welcome to KINDpos Setup',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Version 2.0  ·  KIND Technologies LLC',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X, pady=(0, 16))
+        body = (
+            'This wizard will install KINDpos on your computer.\n\n'
+            'Setup will automatically:\n\n'
+            '  ●  Download and configure Python 3.11\n'
+            '  ●  Clone the KINDpos repository\n'
+            '  ●  Install all dependencies\n'
+            '  ●  Create Start Menu & desktop shortcuts\n'
+            '  ●  Configure autostart on login'
+        )
+        tk.Label(self.content, text=body, bg=T['bg'], fg=T['green'],
+                 font=(FONT, 11), justify=tk.LEFT, wraplength=380).pack(anchor=tk.W)
+        info_outer = tk.Frame(self.content, bg=T['well'], bd=0, relief=tk.FLAT)
+        info_outer.pack(fill=tk.X, pady=(16, 0))
+        tk.Frame(info_outer, bg=T['green'], width=4).pack(side=tk.LEFT, fill=tk.Y)
+        tk.Label(info_outer,
+                 text='Requires an internet connection.   ~250 MB disk space  ·  Windows 10/11',
+                 bg=T['well'], fg=T['text'], font=(FONT, 9),
+                 padx=10, pady=10, justify=tk.LEFT).pack(side=tk.LEFT)
+
+    def _p_directory(self):
+        tk.Label(self.content, text='Choose Install Location',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Where should KINDpos be installed?',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X)
+        tk.Label(self.content, text='INSTALL DIRECTORY',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 9)).pack(anchor=tk.W, pady=(16, 4))
+        field_row = tk.Frame(self.content, bg=T['bg'])
+        field_row.pack(fill=tk.X)
+        tk.Entry(field_row, textvariable=self.install_dir, bg=T['well'], fg=T['green'],
+                 insertbackground=T['green'], relief=tk.FLAT, bd=0, font=(FONT, 10),
+                 highlightbackground=T['border'], highlightthickness=1,
+                 ipady=7).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Button(field_row, text='Browse', bg=T['card'], fg=T['green'],
+                  relief=tk.FLAT, padx=12, cursor='hand2',
+                  command=self._browse).pack(side=tk.LEFT, padx=(6, 0))
+        tk.Label(self.content,
+                 text='Default location requires no administrator rights.\nAt least 250 MB of free space is required.',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9),
+                 justify=tk.LEFT).pack(anchor=tk.W, pady=(8, 0))
+
+    def _p_install(self):
+        tk.Label(self.content, text='Installing KINDpos',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Please wait while setup completes',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X)
+
+        INSTALL_STEPS = [
+            'Download Python 3.11 embeddable',
+            'Extract Python runtime',
+            'Clone KINDpos repository',
+            'Install dependencies',
+            'Create shortcuts & autostart',
+        ]
+        self._inst_pips = []
+        self._inst_labels = []
+        rows_frame = tk.Frame(self.content, bg=T['bg'])
+        rows_frame.pack(fill=tk.X, pady=(16, 0))
+        for name in INSTALL_STEPS:
+            row = tk.Frame(rows_frame, bg=T['bg'])
+            row.pack(fill=tk.X, pady=2)
+            pip_wrap = tk.Frame(row, bg=T['moon'], width=14, height=14)
+            pip_wrap.pack(side=tk.LEFT, padx=(0, 8))
+            pip_wrap.pack_propagate(False)
+            pip = tk.Label(pip_wrap, text='', bg=T['moon'], font=(FONT, 10))
+            pip.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            lbl = tk.Label(row, text=name, bg=T['bg'], fg=T['text'], font=(FONT, 10))
+            lbl.pack(side=tk.LEFT)
+            self._inst_pips.append((pip_wrap, pip))
+            self._inst_labels.append(lbl)
+
+        prog_track = tk.Frame(self.content, bg=T['well'], height=14)
+        prog_track.pack(fill=tk.X, pady=(14, 0))
+        prog_track.pack_propagate(False)
+        tk.Frame(prog_track, bg=T['green'], width=4).pack(side=tk.LEFT, fill=tk.Y)
+        prog_inner = tk.Frame(prog_track, bg=T['well'])
+        prog_inner.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.prog_fill = tk.Frame(prog_inner, bg=T['green'], width=0)
+        self.prog_fill.pack(side=tk.LEFT, fill=tk.Y)
+        self._prog_inner = prog_inner
+
+        self.prog_lbl = tk.Label(self.content, text='Starting…',
+                                  bg=T['bg'], fg=T['text'], font=(FONT, 9))
+        self.prog_lbl.pack(anchor=tk.W, pady=(4, 8))
+
+        log_wrap = tk.Frame(self.content, bg=T['well'], height=80)
+        log_wrap.pack(fill=tk.X)
+        log_wrap.pack_propagate(False)
+        tk.Frame(log_wrap, bg=T['green'], width=4).pack(side=tk.LEFT, fill=tk.Y)
+        self.log_text = tk.Text(log_wrap, bg=T['well'], fg=T['text'],
+                                 font=(FONT, 8), relief=tk.FLAT,
+                                 state=tk.DISABLED, height=5, wrap=tk.WORD)
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.log_text.tag_config('ok',   foreground=T['greenWarm'])
+        self.log_text.tag_config('info', foreground=T['elec'])
+        self.log_text.tag_config('dim',  foreground=T['text'])
+        self.log_text.tag_config('err',  foreground=T['verm'])
+
+        self.back_btn.pack_forget()
+        self.next_btn.config(state=tk.DISABLED, bg=T['moon'], fg=T['moonText'])
+
+        self._run_install()
+
+    def _set_step(self, i):
+        for j, ((wrap, pip), lbl) in enumerate(zip(self._inst_pips, self._inst_labels)):
+            if j < i:
+                wrap.config(bg=T['greenDk']); pip.config(bg=T['greenDk'])
+                lbl.config(fg=T['text'])
+            elif j == i:
+                wrap.config(bg=T['green']); pip.config(bg=T['green'])
+                lbl.config(fg=T['green'])
+            else:
+                wrap.config(bg=T['moon']); pip.config(bg=T['moon'])
+                lbl.config(fg=T['text'])
+
+    def _log(self, msg, tag='dim'):
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.insert(tk.END, msg if msg.endswith('\n') else msg + '\n', tag)
+        self.log_text.see(tk.END)
+        self.log_text.config(state=tk.DISABLED)
+
+    def _set_progress(self, pct, label):
+        total = self._prog_inner.winfo_width() or 300
+        self.prog_fill.config(width=int(total * pct / 100))
+        self.prog_lbl.config(text=label)
+
+    def _install_done(self, ok):
+        if ok:
+            self._set_progress(100, 'Installation complete.')
+            self._log('All steps completed successfully.', 'ok')
+            self.next_btn.config(state=tk.NORMAL, bg=T['green'], fg=T['well'])
+        else:
+            self._log('Installation failed. See errors above.', 'err')
+            self.back_btn.pack(side=tk.RIGHT, padx=(0, 8))
+            self.back_btn.config(state=tk.NORMAL)
+
+    def _p_shortcuts(self):
+        tk.Label(self.content, text='Shortcuts & Autostart',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Choose how KINDpos launches',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X)
+
+        self.cb_startmenu = tk.BooleanVar(value=True)
+        self.cb_desktop   = tk.BooleanVar(value=True)
+        self.cb_autostart = tk.BooleanVar(value=True)
+        cb_cfg = dict(bg=T['bg'], fg=T['green'], selectcolor=T['well'],
+                      activebackground=T['bg'], activeforeground=T['green'],
+                      font=(FONT, 10), anchor=tk.W, cursor='hand2')
+        tk.Checkbutton(self.content, text='Create Start Menu shortcut',
+                       variable=self.cb_startmenu, **cb_cfg).pack(
+            anchor=tk.W, pady=(16, 0))
+        tk.Checkbutton(self.content, text='Create Desktop shortcut',
+                       variable=self.cb_desktop, **cb_cfg).pack(
+            anchor=tk.W, pady=(10, 0))
+        tk.Checkbutton(self.content, text='Launch KINDpos automatically on login',
+                       variable=self.cb_autostart, **cb_cfg).pack(
+            anchor=tk.W, pady=(10, 0))
+
+        info_outer = tk.Frame(self.content, bg=T['well'], bd=0, relief=tk.FLAT)
+        info_outer.pack(fill=tk.X, pady=(20, 0))
+        tk.Frame(info_outer, bg=T['elec'], width=4).pack(side=tk.LEFT, fill=tk.Y)
+        tk.Label(info_outer,
+                 text=('Shortcuts open the KINDpos Launcher — a small menu\n'
+                       'to access the Terminal at kindpos.local\n'
+                       'or Overseer at kindpos.local/overseer'),
+                 bg=T['well'], fg=T['text'], font=(FONT, 9),
+                 padx=10, pady=10, justify=tk.LEFT).pack(side=tk.LEFT)
+
+    def _p_finish(self):
+        tk.Label(self.content, text='Installation Complete',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='KINDpos is ready to use',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X)
+        tk.Label(self.content,
+                 text='KINDpos v2.0 has been successfully installed.\nA shortcut has been added to your Start Menu and Desktop.',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 11),
+                 justify=tk.LEFT).pack(anchor=tk.W, pady=(16, 20))
+        self.cb_launch = tk.BooleanVar(value=True)
+        tk.Checkbutton(self.content, text='Launch KINDpos Launcher now',
+                       variable=self.cb_launch, bg=T['bg'], fg=T['green'],
+                       selectcolor=T['well'], activebackground=T['bg'],
+                       font=(FONT, 10)).pack(anchor=tk.W, pady=6)
+        self.cb_site = tk.BooleanVar(value=False)
+        tk.Checkbutton(self.content, text='Open kindpos.com in browser',
+                       variable=self.cb_site, bg=T['bg'], fg=T['green'],
+                       selectcolor=T['well'], activebackground=T['bg'],
+                       font=(FONT, 10)).pack(anchor=tk.W)
+
+    def _run_install(self):
+        import threading
+        t = threading.Thread(target=self._install_thread, daemon=True)
+        t.start()
+
+    def _install_thread(self):
+        import threading, zipfile, urllib.request, subprocess
+        idir     = self.install_dir.get()
+        rt_dir   = os.path.join(idir, 'runtime')
+        app_dir  = os.path.join(idir, 'app')
+        py_zip   = os.path.join(rt_dir, 'python-embed.zip')
+        py_exe   = os.path.join(rt_dir, 'python.exe')
+        pw_exe   = os.path.join(rt_dir, 'pythonw.exe')
+        ui = lambda fn, *a, **kw: self.after(0, lambda: fn(*a, **kw))
+
+        try:
+            # ── Step 0: Download Python embeddable ──────────────
+            ui(self._set_step, 0)
+            ui(self._log, 'Downloading Python 3.11 embeddable…', 'info')
+            url = 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip'
+            os.makedirs(rt_dir, exist_ok=True)
+            req = urllib.request.urlopen(url, timeout=120)
+            total = int(req.headers.get('Content-Length', 0)) or 1
+            done  = 0
+            last_logged = -1
+            with open(py_zip, 'wb') as fh:
+                while True:
+                    chunk = req.read(8192)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    done += len(chunk)
+                    pct = int(done / total * 25)
+                    tens = pct // 10 * 10
+                    if tens > last_logged:
+                        last_logged = tens
+                        ui(self._log, f'  {tens}% downloaded', 'dim')
+                    ui(self._set_progress, pct, f'Downloading… {pct}%')
+
+            # ── Step 1: Extract Python ───────────────────────────
+            ui(self._set_step, 1)
+            ui(self._log, 'Extracting Python runtime…', 'info')
+            ui(self._set_progress, 25, 'Extracting…')
+            with zipfile.ZipFile(py_zip) as zf:
+                zf.extractall(rt_dir)
+            pth_files = [f for f in os.listdir(rt_dir) if f.endswith('._pth')]
+            for pf in pth_files:
+                pth_path = os.path.join(rt_dir, pf)
+                lines = open(pth_path).read().splitlines()
+                patched = [l.replace('#import site', 'import site') for l in lines]
+                open(pth_path, 'w').write('\n'.join(patched))
+            ui(self._log, 'Runtime ready.', 'ok')
+            ui(self._set_progress, 35, 'Python extracted.')
+
+            # ── Step 2: Clone repository ─────────────────────────
+            ui(self._set_step, 2)
+            ui(self._log, 'Cloning KINDpos repository…', 'info')
+            ui(self._set_progress, 35, 'Cloning…')
+            try:
+                subprocess.run(
+                    ['git', 'clone', 'https://github.com/kindpos/Vz2.0', app_dir],
+                    check=True, timeout=300
+                )
+                ui(self._log, 'Repository cloned.', 'ok')
+            except FileNotFoundError:
+                ui(self._log, 'git not found — using zip fallback', 'dim')
+                zip_url = 'https://github.com/kindpos/Vz2.0/archive/refs/heads/main.zip'
+                zip_dest = os.path.join(idir, 'repo.zip')
+                urllib.request.urlretrieve(zip_url, zip_dest)
+                with zipfile.ZipFile(zip_dest) as zf:
+                    zf.extractall(idir)
+                extracted = next(
+                    (d for d in os.listdir(idir) if d.startswith('Vz2.0')), None
+                )
+                if extracted:
+                    os.rename(os.path.join(idir, extracted), app_dir)
+                ui(self._log, 'Repository downloaded via zip.', 'ok')
+            ui(self._set_progress, 60, 'Repository ready.')
+
+            # ── Step 3: Install dependencies ─────────────────────
+            ui(self._set_step, 3)
+            ui(self._log, 'Installing Python dependencies…', 'info')
+            req_file = os.path.join(app_dir, 'backend', 'requirements.txt')
+            cmd = [py_exe, '-m', 'pip', 'install', '-r', req_file, '--upgrade']
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True)
+            pip_done = 0
+            for line in iter(proc.stdout.readline, ''):
+                line = line.rstrip()
+                if not line:
+                    continue
+                if 'Successfully installed' in line:
+                    ui(self._log, line, 'ok')
+                elif 'ERROR' in line or 'error' in line:
+                    ui(self._log, line, 'err')
+                else:
+                    ui(self._log, line, 'dim')
+                pip_done = min(pip_done + 1, 29)
+                ui(self._set_progress, 60 + pip_done, f'Installing deps… {60 + pip_done}%')
+            proc.stdout.close()
+            if proc.wait() != 0:
+                raise RuntimeError('pip install failed')
+            ui(self._log, 'Dependencies installed.', 'ok')
+            ui(self._set_progress, 90, 'Dependencies ready.')
+
+            # ── Step 4: Launcher + shortcuts ─────────────────────
+            ui(self._set_step, 4)
+            ui(self._log, 'Writing launcher and shortcuts…', 'info')
+            launcher_py = os.path.join(idir, 'kindpos_launcher.py')
+            open(launcher_py, 'w').write(_LAUNCHER_CONTENT)
+            ui(self._set_progress, 93, 'Launcher written.')
+
+            desktop   = os.path.join(os.path.expanduser('~'), 'Desktop', 'KINDpos.lnk')
+            start_dir = os.path.join(os.environ.get('APPDATA', ''),
+                                      'Microsoft', 'Windows', 'Start Menu',
+                                      'Programs', 'KINDpos')
+            os.makedirs(start_dir, exist_ok=True)
+            start_lnk = os.path.join(start_dir, 'KINDpos.lnk')
+            want_startmenu  = getattr(self, 'cb_startmenu',  None)
+            want_desktop    = getattr(self, 'cb_desktop',    None)
+            want_autostart  = getattr(self, 'cb_autostart',  None)
+            do_startmenu  = want_startmenu.get()  if want_startmenu  else True
+            do_desktop    = want_desktop.get()    if want_desktop    else True
+            do_autostart  = want_autostart.get()  if want_autostart  else True
+            if os.path.exists(pw_exe):
+                if do_startmenu:
+                    _create_shortcut(launcher_py, pw_exe, start_lnk)
+                if do_desktop:
+                    _create_shortcut(launcher_py, pw_exe, desktop)
+                if do_autostart:
+                    subprocess.run([
+                        'schtasks', '/Create', '/F',
+                        '/TN', 'KINDpos\\launcher',
+                        '/TR', f'"{pw_exe}" "{launcher_py}"',
+                        '/SC', 'ONLOGON', '/RL', 'LIMITED',
+                    ], capture_output=True)
+            ui(self._log, 'Shortcuts created.', 'ok')
+            ui(self._set_progress, 100, 'Done.')
+            ui(self._install_done, True)
+
+        except Exception as exc:
+            ui(self._log, f'ERROR: {exc}', 'err')
+            ui(self._install_done, False)
+
+    # ── Helpers ─────────────────────────────────────
+
+    def _apply_shortcut_prefs(self):
+        import subprocess
+        idir      = self.install_dir.get()
+        desktop   = os.path.join(os.path.expanduser('~'), 'Desktop', 'KINDpos.lnk')
+        start_lnk = os.path.join(os.environ.get('APPDATA', ''),
+                                  'Microsoft', 'Windows', 'Start Menu',
+                                  'Programs', 'KINDpos', 'KINDpos.lnk')
+        want_startmenu = getattr(self, 'cb_startmenu', None)
+        want_desktop   = getattr(self, 'cb_desktop',   None)
+        want_autostart = getattr(self, 'cb_autostart', None)
+        if want_startmenu and not want_startmenu.get():
+            if os.path.exists(start_lnk):
+                os.remove(start_lnk)
+        if want_desktop and not want_desktop.get():
+            if os.path.exists(desktop):
+                os.remove(desktop)
+        if want_autostart and not want_autostart.get():
+            subprocess.run(
+                ['schtasks', '/Delete', '/TN', 'KINDpos\\launcher', '/F'],
+                capture_output=True
+            )
+
+    def _browse(self):
+        d = filedialog.askdirectory(title='Select Install Location')
+        if d:
+            self.install_dir.set(d)
+
+    def _finish(self):
+        import webbrowser, subprocess
+        if self.cb_site.get():
+            webbrowser.open('https://kindpos.com')
+        if self.cb_launch.get():
+            launcher = os.path.join(self.install_dir.get(), 'kindpos_launcher.py')
+            python   = os.path.join(self.install_dir.get(), 'runtime', 'pythonw.exe')
+            if os.path.exists(python) and os.path.exists(launcher):
+                subprocess.Popen([python, launcher])
+            elif os.path.exists(launcher):
+                subprocess.Popen([sys.executable, launcher])
+        self.destroy()
+
+
+if __name__ == '__main__':
+    app = KINDposSetup()
+    app.mainloop()
+`;
+
+document.getElementById('downloadBtn').addEventListener('click', function() {
+  const blob = new Blob([INSTALLER_CONTENT], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: 'kindpos_installer.py' });
+  a.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+
+</body>
+</html>

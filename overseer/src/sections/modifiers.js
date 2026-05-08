@@ -21,6 +21,8 @@
 
 import { T } from '../../../common/tokens.js';
 import { buildStaticCard, hexToRgba } from '../../../common/theme.js';
+import { pushChanges } from '../services/config-push.js';
+import { fetchWithTimeout } from '../services/http.js';
 
 /* ------------------------------------------
    STATE
@@ -36,6 +38,11 @@ const _state = {
     editingOptionId: null,
     addingModifier: false,
     addingOption: false,
+    confirmingDeleteModifierId: null,
+    confirmingDeleteOptionId: null,
+
+    modifiersList: null,
+    optionsList: null,
 
     loadError: false,
 };
@@ -43,14 +50,14 @@ const _state = {
 /* ------------------------------------------
    FORMATTERS
 ------------------------------------------ */
-function fmtPrice(n) { return '$' + Number(n || 0).toFixed(2); }
-function fmtPriceAdj(n) {
+const fmtPrice = (n) => '$' + Number(n || 0).toFixed(2); ;
+const fmtPriceAdj = (n) => {
     const v = Number(n || 0);
     if (v > 0) return '+$' + v.toFixed(2);
     if (v < 0) return '−$' + Math.abs(v).toFixed(2);
     return '±$0.00';
 }
-function priceAdjColor(n) {
+const priceAdjColor = (n) => {
     const v = Number(n || 0);
     if (v > 0) return T.gold;
     if (v < 0) return T.verm;
@@ -60,13 +67,13 @@ function priceAdjColor(n) {
 /* ------------------------------------------
    API
 ------------------------------------------ */
-async function apiGet(url) {
-    const res = await fetch(url);
+const apiGet = async (url) => {
+    const res = await fetchWithTimeout(url);
     if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
     return res.json();
 }
-async function apiPost(url, body) {
-    const res = await fetch(url, {
+const apiPost = async (url, body) => {
+    const res = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body == null ? undefined : JSON.stringify(body),
@@ -74,8 +81,8 @@ async function apiPost(url, body) {
     if (!res.ok) throw new Error(`POST ${url} → ${res.status}`);
     return res.json();
 }
-async function apiPatch(url, body) {
-    const res = await fetch(url, {
+const apiPatch = async (url, body) => {
+    const res = await fetchWithTimeout(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -87,7 +94,7 @@ async function apiPatch(url, body) {
 /* ------------------------------------------
    TOAST
 ------------------------------------------ */
-function showToast(msg, kind = 'ok') {
+const showToast = (msg, kind = 'ok') => {
     const toast = document.createElement('div');
     const bg = kind === 'error' ? T.verm : T.greenWarm;
     toast.textContent = msg;
@@ -115,7 +122,7 @@ function showToast(msg, kind = 'ok') {
 /* ------------------------------------------
    PRIMITIVES
 ------------------------------------------ */
-function buildToggle(initial, onChange) {
+const buildToggle = (initial, onChange) => {
     let state = !!initial;
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -160,7 +167,7 @@ function buildToggle(initial, onChange) {
     return btn;
 }
 
-function buildPillButton(label, fillColor, textColor, onClick) {
+const buildPillButton = (label, fillColor, textColor, onClick) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
@@ -197,7 +204,7 @@ function buildPillButton(label, fillColor, textColor, onClick) {
     return b;
 }
 
-function buildGhostButton(label, onClick) {
+const buildGhostButton = (label, onClick) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
@@ -220,7 +227,7 @@ function buildGhostButton(label, onClick) {
     return b;
 }
 
-function buildNegatesBadge() {
+const buildNegatesBadge = () => {
     const el = document.createElement('span');
     el.textContent = 'NEGATES';
     el.style.cssText = `
@@ -238,7 +245,7 @@ function buildNegatesBadge() {
     return el;
 }
 
-function buildTextInput(value, opts = {}) {
+const buildTextInput = (value, opts = {}) => {
     const input = document.createElement('input');
     input.type = 'text';
     input.value = value || '';
@@ -262,7 +269,7 @@ function buildTextInput(value, opts = {}) {
     return input;
 }
 
-function buildPriceInput(value, opts = {}) {
+const buildPriceInput = (value, opts = {}) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; align-items: center; gap: 2px;';
 
@@ -333,7 +340,7 @@ function buildPriceInput(value, opts = {}) {
     return wrap;
 }
 
-function buildErrorState(retry) {
+const buildErrorState = (retry) => {
     const el = document.createElement('div');
     el.textContent = 'Failed to load — tap to retry';
     el.style.cssText = `
@@ -348,7 +355,7 @@ function buildErrorState(retry) {
     return el;
 }
 
-function buildEmptyState(text) {
+const buildEmptyState = (text) => {
     const el = document.createElement('div');
     el.textContent = text;
     el.style.cssText = `
@@ -364,27 +371,24 @@ function buildEmptyState(text) {
 /* ============================================
    LEFT CARD — MODIFIERS
 ============================================ */
-const MODIFIER_GRID = '1.6fr 100px 50px';
+const MODIFIER_GRID = '1.6fr 100px 50px 34px';
 
-function buildModifiersCard() {
+const buildModifiersCard = () => {
     const card = buildStaticCard({ accent: T.gold });
-    card.className = 'kindpos-scrollbar-hide';
     card.style.flex = '1';
     card.style.alignSelf = 'stretch';
     card.style.minHeight = '0';
     card.style.padding = '0';
-    card.style.overflowY = 'auto';
-    card.style.scrollbarWidth = 'none';
-    card.style.msOverflowStyle = 'none';
     card.style.display = 'flex';
     card.style.flexDirection = 'column';
+    card.style.overflow = 'hidden';
 
     const content = document.createElement('div');
-    content.style.cssText = 'flex: 1; min-height: 0; padding: 14px 16px 14px 22px; box-sizing: border-box;';
+    content.style.cssText = 'flex: 1; min-height: 0; padding: 14px 16px 14px 22px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;';
     card.appendChild(content);
 
     const header = document.createElement('div');
-    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;';
+    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-shrink: 0;';
 
     const title = document.createElement('div');
     title.textContent = 'MODIFIERS';
@@ -417,18 +421,29 @@ function buildModifiersCard() {
 
     if (_state.addingModifier) content.appendChild(buildModifierAddPanel());
 
-    content.appendChild(buildModifierColHeaders());
+    const colHeaderWrap = document.createElement('div');
+    colHeaderWrap.style.flexShrink = '0';
+    colHeaderWrap.appendChild(buildModifierColHeaders());
+    content.appendChild(colHeaderWrap);
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = 'flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth;';
+    listEl.style.scrollbarWidth = 'thin';
+    listEl.style.scrollbarColor = `${T.moon} ${T.well}`;
+    listEl.className = 'kp-mod-list';
+    _state.modifiersList = listEl;
 
     if (_state.modifiers.length === 0) {
-        content.appendChild(buildEmptyState('No modifiers yet — tap + Add Modifier'));
+        listEl.appendChild(buildEmptyState('No modifiers yet — tap + Add Modifier'));
     } else {
-        _state.modifiers.forEach(m => content.appendChild(buildModifierRow(m)));
+        _state.modifiers.forEach(m => listEl.appendChild(buildModifierRow(m)));
     }
 
+    content.appendChild(listEl);
     return card;
 }
 
-function buildModifierColHeaders() {
+const buildModifierColHeaders = () => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         display: grid;
@@ -438,7 +453,7 @@ function buildModifierColHeaders() {
         padding: 0 0 6px;
         border-bottom: 1px solid ${hexToRgba(T.border, 0.5)};
     `;
-    const labels = ['NAME', 'BASE PRICE', 'ACTIVE'];
+    const labels = ['NAME', 'BASE PRICE', 'ACTIVE', ''];
     labels.forEach((label, i) => {
         const cell = document.createElement('div');
         cell.textContent = label;
@@ -456,7 +471,7 @@ function buildModifierColHeaders() {
     return wrap;
 }
 
-function buildModifierRow(modifier) {
+const buildModifierRow = (modifier) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         border-bottom: 1px solid rgba(255,255,255,0.04);
@@ -508,8 +523,10 @@ function buildModifierRow(modifier) {
     toggleCell.style.cssText = 'display: flex; justify-content: center; align-items: center;';
     const toggle = buildToggle(modifier.active !== false, async (v) => {
         try {
-            await apiPatch(`/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}`, { active: v });
+            const r = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, active: v } }]);
+            if (!r.ok) throw new Error(r.error || 'Update failed');
             modifier.active = v;
+            await refreshAll();
         } catch (e) {
             toggle.setValue(!v);
             showToast('Failed to update modifier', 'error');
@@ -518,12 +535,45 @@ function buildModifierRow(modifier) {
     toggleCell.appendChild(toggle);
     row.appendChild(toggleCell);
 
+    const deleteCell = document.createElement('div');
+    deleteCell.style.cssText = 'display: flex; justify-content: center; align-items: center;';
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = '✕';
+    deleteBtn.style.cssText = `
+        background: ${T.verm};
+        border-radius: 6px;
+        width: 28px;
+        height: 28px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 0 #6b1a0e;
+        flex-shrink: 0;
+        outline: none;
+    `;
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        _state.confirmingDeleteModifierId = modifier.modifier_id;
+        _state.editingModifierId = null;
+        _state.addingModifier = false;
+        rebuild();
+    });
+    deleteCell.appendChild(deleteBtn);
+    row.appendChild(deleteCell);
+
     row.addEventListener('click', (e) => {
         if (e.target.closest('button')) return;
         _state.editingModifierId =
             _state.editingModifierId === modifier.modifier_id ? null : modifier.modifier_id;
         _state.editingOptionId = null;
         _state.addingModifier = false;
+        _state.confirmingDeleteModifierId = null;
         rebuild();
     });
 
@@ -533,10 +583,62 @@ function buildModifierRow(modifier) {
         wrap.appendChild(buildModifierEditPanel(modifier));
     }
 
+    if (_state.confirmingDeleteModifierId === modifier.modifier_id) {
+        wrap.appendChild(buildModifierDeleteConfirm(modifier));
+    }
+
     return wrap;
 }
 
-function buildModifierAddPanel() {
+const buildModifierDeleteConfirm = (modifier) => {
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        background: ${hexToRgba(T.verm, 0.08)};
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin: 2px 0 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    `;
+
+    const label = document.createElement('div');
+    label.textContent = `Delete "${modifier.name || modifier.modifier_id}"?`;
+    label.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 11px;
+        font-weight: 700;
+        color: ${T.verm};
+        flex: 1;
+    `;
+    panel.appendChild(label);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 8px;';
+
+    btnRow.appendChild(buildGhostButton('Cancel', () => {
+        _state.confirmingDeleteModifierId = null;
+        rebuild();
+    }));
+
+    btnRow.appendChild(buildPillButton('Delete', T.verm, T.well, async () => {
+        try {
+            const r = await pushChanges([{ event_type: 'modifier.deleted', payload: { modifier_id: modifier.modifier_id } }]);
+            if (!r.ok) throw new Error(r.error || 'Delete failed');
+            _state.confirmingDeleteModifierId = null;
+            await refreshAll();
+            showToast('Modifier deleted');
+        } catch (e) {
+            showToast('Failed to delete modifier', 'error');
+        }
+    }));
+
+    panel.appendChild(btnRow);
+    return panel;
+}
+
+const buildModifierAddPanel = () => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${hexToRgba(T.gold, 0.06)};
@@ -579,7 +681,8 @@ function buildModifierAddPanel() {
         const priceVal = priceInput.getValue();
         if (!name) { showToast('Name is required', 'error'); return; }
         try {
-            await apiPost('/api/v1/modifiers', { name, price: priceVal });
+            const r = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: crypto.randomUUID(), name, price: priceVal } }]);
+            if (!r.ok) throw new Error(r.error || 'Create failed');
             _state.addingModifier = false;
             await refreshAll();
             showToast('Modifier created');
@@ -591,7 +694,7 @@ function buildModifierAddPanel() {
     return panel;
 }
 
-function buildModifierEditPanel(modifier) {
+const buildModifierEditPanel = (modifier) => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${hexToRgba(T.gold, 0.06)};
@@ -642,7 +745,8 @@ function buildModifierEditPanel(modifier) {
             return;
         }
         try {
-            await apiPatch(`/api/v1/modifiers/${encodeURIComponent(modifier.modifier_id)}`, body);
+            const r = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, ...body } }]);
+            if (!r.ok) throw new Error(r.error || 'Save failed');
             if (body.name != null) modifier.name = body.name;
             if (body.price != null) modifier.price = body.price;
             _state.editingModifierId = null;
@@ -660,27 +764,24 @@ function buildModifierEditPanel(modifier) {
 /* ============================================
    RIGHT CARD — OPTIONS
 ============================================ */
-const OPTION_GRID = '1.4fr 100px 100px 50px';
+const OPTION_GRID = '1.4fr 100px 100px 50px 34px';
 
-function buildOptionsCard() {
+const buildOptionsCard = () => {
     const card = buildStaticCard({ accent: T.lavender });
-    card.className = 'kindpos-scrollbar-hide';
     card.style.flex = '1';
     card.style.alignSelf = 'stretch';
     card.style.minHeight = '0';
     card.style.padding = '0';
-    card.style.overflowY = 'auto';
-    card.style.scrollbarWidth = 'none';
-    card.style.msOverflowStyle = 'none';
     card.style.display = 'flex';
     card.style.flexDirection = 'column';
+    card.style.overflow = 'hidden';
 
     const content = document.createElement('div');
-    content.style.cssText = 'flex: 1; min-height: 0; padding: 14px 16px 14px 22px; box-sizing: border-box;';
+    content.style.cssText = 'flex: 1; min-height: 0; padding: 14px 16px 14px 22px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;';
     card.appendChild(content);
 
     const header = document.createElement('div');
-    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;';
+    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-shrink: 0;';
 
     const title = document.createElement('div');
     title.textContent = 'OPTIONS';
@@ -713,18 +814,29 @@ function buildOptionsCard() {
 
     if (_state.addingOption) content.appendChild(buildOptionAddPanel());
 
-    content.appendChild(buildOptionColHeaders());
+    const colHeaderWrap = document.createElement('div');
+    colHeaderWrap.style.flexShrink = '0';
+    colHeaderWrap.appendChild(buildOptionColHeaders());
+    content.appendChild(colHeaderWrap);
+
+    const listEl = document.createElement('div');
+    listEl.style.cssText = 'flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth;';
+    listEl.style.scrollbarWidth = 'thin';
+    listEl.style.scrollbarColor = `${T.moon} ${T.well}`;
+    listEl.className = 'kp-opt-list';
+    _state.optionsList = listEl;
 
     if (_state.options.length === 0) {
-        content.appendChild(buildEmptyState('No options yet — tap + Add Option'));
+        listEl.appendChild(buildEmptyState('No options yet — tap + Add Option'));
     } else {
-        _state.options.forEach(o => content.appendChild(buildOptionRow(o)));
+        _state.options.forEach(o => listEl.appendChild(buildOptionRow(o)));
     }
 
+    content.appendChild(listEl);
     return card;
 }
 
-function buildOptionColHeaders() {
+const buildOptionColHeaders = () => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         display: grid;
@@ -734,7 +846,7 @@ function buildOptionColHeaders() {
         padding: 0 0 6px;
         border-bottom: 1px solid ${hexToRgba(T.border, 0.5)};
     `;
-    const labels = ['NAME', 'PRICE ADJ', 'FLAGS', 'ACTIVE'];
+    const labels = ['NAME', 'PRICE ADJ', 'FLAGS', 'ACTIVE', ''];
     labels.forEach((label, i) => {
         const cell = document.createElement('div');
         cell.textContent = label;
@@ -752,7 +864,7 @@ function buildOptionColHeaders() {
     return wrap;
 }
 
-function buildOptionRow(option) {
+const buildOptionRow = (option) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         border-bottom: 1px solid rgba(255,255,255,0.04);
@@ -819,12 +931,45 @@ function buildOptionRow(option) {
     toggleCell.appendChild(toggle);
     row.appendChild(toggleCell);
 
+    const deleteCell = document.createElement('div');
+    deleteCell.style.cssText = 'display: flex; justify-content: center; align-items: center;';
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = '✕';
+    deleteBtn.style.cssText = `
+        background: ${T.verm};
+        border-radius: 6px;
+        width: 28px;
+        height: 28px;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 2px 0 #6b1a0e;
+        flex-shrink: 0;
+        outline: none;
+    `;
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        _state.confirmingDeleteOptionId = option.option_id;
+        _state.editingOptionId = null;
+        _state.addingOption = false;
+        rebuild();
+    });
+    deleteCell.appendChild(deleteBtn);
+    row.appendChild(deleteCell);
+
     row.addEventListener('click', (e) => {
         if (e.target.closest('button')) return;
         _state.editingOptionId =
             _state.editingOptionId === option.option_id ? null : option.option_id;
         _state.editingModifierId = null;
         _state.addingOption = false;
+        _state.confirmingDeleteOptionId = null;
         rebuild();
     });
 
@@ -834,10 +979,62 @@ function buildOptionRow(option) {
         wrap.appendChild(buildOptionEditPanel(option));
     }
 
+    if (_state.confirmingDeleteOptionId === option.option_id) {
+        wrap.appendChild(buildOptionDeleteConfirm(option));
+    }
+
     return wrap;
 }
 
-function buildOptionAddPanel() {
+const buildOptionDeleteConfirm = (option) => {
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        background: ${hexToRgba(T.verm, 0.08)};
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin: 2px 0 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    `;
+
+    const label = document.createElement('div');
+    label.textContent = `Delete "${option.name || option.option_id}"?`;
+    label.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 11px;
+        font-weight: 700;
+        color: ${T.verm};
+        flex: 1;
+    `;
+    panel.appendChild(label);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display: flex; gap: 8px;';
+
+    btnRow.appendChild(buildGhostButton('Cancel', () => {
+        _state.confirmingDeleteOptionId = null;
+        rebuild();
+    }));
+
+    btnRow.appendChild(buildPillButton('Delete', T.verm, T.well, async () => {
+        try {
+            const r = await pushChanges([{ event_type: 'option.deleted', payload: { option_id: option.option_id } }]);
+            if (!r.ok) throw new Error(r.error || 'Delete failed');
+            _state.confirmingDeleteOptionId = null;
+            await refreshAll();
+            showToast('Option deleted');
+        } catch (e) {
+            showToast('Failed to delete option', 'error');
+        }
+    }));
+
+    panel.appendChild(btnRow);
+    return panel;
+}
+
+const buildOptionAddPanel = () => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${hexToRgba(T.lavender, 0.07)};
@@ -907,7 +1104,7 @@ function buildOptionAddPanel() {
     return panel;
 }
 
-function buildOptionEditPanel(option) {
+const buildOptionEditPanel = (option) => {
     const panel = document.createElement('div');
     panel.style.cssText = `
         background: ${hexToRgba(T.lavender, 0.07)};
@@ -986,8 +1183,7 @@ function buildOptionEditPanel(option) {
     return panel;
 }
 
-function editLabelCSS() {
-    return `
+const editLabelCSS = () => `
         font-family: ${T.fb};
         font-size: 9px;
         font-weight: 700;
@@ -997,19 +1193,24 @@ function editLabelCSS() {
         width: 96px;
         flex-shrink: 0;
     `;
-}
 
 /* ============================================
    RENDER + LIFECYCLE
 ============================================ */
-function rebuild() {
+const rebuild = () => {
     if (!_state.wrapper) return;
+    const modScrollTop = _state.modifiersList ? _state.modifiersList.scrollTop : 0;
+    const optScrollTop = _state.optionsList ? _state.optionsList.scrollTop : 0;
+    _state.modifiersList = null;
+    _state.optionsList = null;
     _state.wrapper.replaceChildren();
     _state.wrapper.appendChild(buildModifiersCard());
     _state.wrapper.appendChild(buildOptionsCard());
+    if (_state.modifiersList) _state.modifiersList.scrollTop = modScrollTop;
+    if (_state.optionsList) _state.optionsList.scrollTop = optScrollTop;
 }
 
-async function refreshAll() {
+const refreshAll = async () => {
     _state.loadError = false;
     try {
         const [modifiers, options] = await Promise.all([
@@ -1036,14 +1237,35 @@ async function refreshAll() {
     rebuild();
 }
 
+let _scrollStyleInjected = false;
+function _ensureScrollStyles() {
+    if (_scrollStyleInjected) return;
+    _scrollStyleInjected = true;
+    const s = document.createElement('style');
+    s.textContent = `
+        .kp-mod-list::-webkit-scrollbar,
+        .kp-opt-list::-webkit-scrollbar { width: 4px; }
+        .kp-mod-list::-webkit-scrollbar-track,
+        .kp-opt-list::-webkit-scrollbar-track { background: transparent; }
+        .kp-mod-list::-webkit-scrollbar-thumb,
+        .kp-opt-list::-webkit-scrollbar-thumb { background: #7e8896; border-radius: 2px; }
+    `;
+    document.head.appendChild(s);
+}
+
 export function buildModifiersScene(container) {
     _state.container = container;
     _state.editingModifierId = null;
     _state.editingOptionId = null;
     _state.addingModifier = false;
     _state.addingOption = false;
+    _state.confirmingDeleteModifierId = null;
+    _state.confirmingDeleteOptionId = null;
+    _state.modifiersList = null;
+    _state.optionsList = null;
     _state.loadError = false;
 
+    _ensureScrollStyles();
     container.replaceChildren();
 
     _state.wrapper = document.createElement('div');
@@ -1073,5 +1295,9 @@ export function cleanupModifiers(container) {
     _state.editingOptionId = null;
     _state.addingModifier = false;
     _state.addingOption = false;
+    _state.confirmingDeleteModifierId = null;
+    _state.confirmingDeleteOptionId = null;
+    _state.modifiersList = null;
+    _state.optionsList = null;
     _state.loadError = false;
 }

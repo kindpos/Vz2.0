@@ -17,13 +17,13 @@ import { buildDatePicker, buildDateRangePicker } from '../components/date-picker
    variables to concrete values at module load so charts render
    in the actual theme colors.
 ------------------------------------------ */
-function _cssVar(name, fallback) {
+const _cssVar = (name, fallback) => {
     try {
         const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
         return v || fallback;
     } catch (_) { return fallback; }
 }
-function _rgba(rgbVarName, alpha, fallbackRgb) {
+const _rgba = (rgbVarName, alpha, fallbackRgb) => {
     const rgb = _cssVar(rgbVarName, fallbackRgb);
     return `rgba(${rgb}, ${alpha})`;
 }
@@ -59,9 +59,9 @@ const COLORS = {
 let _categoryColorMap = null;
 let _categoryColorPromise = null;
 
-function _normalizeName(s) { return (s || '').toString().trim().toLowerCase(); }
+const _normalizeName = (s) => (s || '').toString().trim().toLowerCase(); ;
 
-function ensureCategoryColors() {
+const ensureCategoryColors = () => {
     if (_categoryColorPromise) return _categoryColorPromise;
     _categoryColorPromise = fetch('/api/v1/config/menu/categories')
         .then(r => r.ok ? r.json() : [])
@@ -81,7 +81,7 @@ function ensureCategoryColors() {
     return _categoryColorPromise;
 }
 
-function categoryColor(name, fallback) {
+const categoryColor = (name, fallback) => {
     if (!_categoryColorMap) return fallback;
     return _categoryColorMap[_normalizeName(name)] || fallback;
 }
@@ -92,7 +92,7 @@ ensureCategoryColors();
 /* ------------------------------------------
    CHART.JS GLOBAL DEFAULTS
 ------------------------------------------ */
-function applyChartDefaults() {
+const applyChartDefaults = () => {
     if (typeof Chart === 'undefined') {
         console.warn('[Reporting] Chart.js not loaded — charts will be skipped');
         return false;
@@ -131,6 +131,7 @@ const VIEW_REGISTRY = {
     'tax-breakdown':      buildTaxBreakdown,
     'tips-by-server':     buildTipsByServer,
     'adjustments':        buildAdjustmentsDetail,
+    'check-history':      buildCheckHistory,
 };
 
 /* ------------------------------------------
@@ -145,7 +146,7 @@ const VIEW_REGISTRY = {
  * Chart.js canvases are destroyed automatically
  * when innerHTML is cleared — no memory leaks.
  */
-function pushView(viewName, data) {
+const pushView = (viewName, data) => {
     if (!currentWrapper) return;
 
     // Clear current content
@@ -173,7 +174,7 @@ function pushView(viewName, data) {
  * this is a no-op — the scene manager's own
  * back button handles returning to hex nav.
  */
-function popView() {
+const popView = () => {
     if (viewHistory.length <= 1) return;
 
     // Remove current view
@@ -196,7 +197,7 @@ function popView() {
    at the top. Daily Flash does NOT get one —
    the scene manager handles that level.
 ------------------------------------------ */
-function buildBackButton(container, label) {
+const buildBackButton = (container, label) => {
     const btn = document.createElement('button');
     btn.style.cssText = `
         display: inline-flex;
@@ -232,7 +233,7 @@ function buildBackButton(container, label) {
    Includes a working back button so navigation
    still functions during incremental builds.
 ------------------------------------------ */
-function buildComingSoon(container, viewName) {
+const buildComingSoon = (container, viewName) => {
     buildBackButton(container, 'Daily Flash');
 
     const notice = document.createElement('div');
@@ -264,7 +265,7 @@ function buildComingSoon(container, viewName) {
    Lighter than the full Daily Flash header.
    Shows the report date under a view title.
 ------------------------------------------ */
-function buildDateSubheader(container, title) {
+const buildDateSubheader = (container, title) => {
     const dateStr = new Date(SAMPLE_DATA.dailyFlash.date + 'T12:00:00').toLocaleDateString('en-US', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
@@ -290,7 +291,7 @@ function buildDateSubheader(container, title) {
    Zero changes to the existing builders —
    just relocated into this function.
    ========================================== */
-function buildDailyFlash(wrapper) {
+const buildDailyFlash = (wrapper) => {
     buildDateHeader(wrapper);
     buildKPICards(wrapper);
 
@@ -332,7 +333,7 @@ function buildDailyFlash(wrapper) {
    proving the view stack works.
    ========================================== */
 
-function buildSalesByCategory(wrapper) {
+const buildSalesByCategory = (wrapper) => {
     const data = SAMPLE_DATA.salesByCategory;
 
     // Back button
@@ -489,7 +490,7 @@ function buildSalesByCategory(wrapper) {
     wrapper.appendChild(totalRow);
 }
 
-function buildTaxBreakdown(wrapper) {
+const buildTaxBreakdown = (wrapper) => {
     const taxes = SAMPLE_DATA.taxBreakdown;
     const netSales = SAMPLE_DATA.dailyFlash.today.net_sales;
     const flashTax = SAMPLE_DATA.dailyFlash.today.tax_collected;
@@ -583,7 +584,7 @@ function buildTaxBreakdown(wrapper) {
     wrapper.appendChild(verify);
 }
 
-function buildTipsByServer(wrapper) {
+const buildTipsByServer = (wrapper) => {
     const data = SAMPLE_DATA.tipsByServer;
 
     // Find highest tip % for callout
@@ -731,7 +732,7 @@ function buildTipsByServer(wrapper) {
     wrapper.appendChild(totalRow);
 }
 
-function buildAdjustmentsDetail(wrapper) {
+const buildAdjustmentsDetail = (wrapper) => {
     const flash = SAMPLE_DATA.dailyFlash.today;
     const details = SAMPLE_DATA.adjustmentDetails;
     const total = flash.discounts + flash.comps + flash.voids;
@@ -852,6 +853,310 @@ function buildAdjustmentsDetail(wrapper) {
     wrapper.appendChild(totalRow);
 }
 
+/* ------------------------------------------
+   CHECK HISTORY HELPERS
+   (module-scope so they survive hot-reload)
+------------------------------------------ */
+
+const _fmtOrderType = (t) => {
+    const map = { dine_in: 'Dine In', takeout: 'Takeout', delivery: 'Delivery' };
+    return map[t] || (t || '—');
+};
+
+const _fmtPayment = (p) => {
+    const map = { cash: 'Cash', card: 'Card', split: 'Split', comp: 'Comp' };
+    return map[p] || (p || '—');
+};
+
+const _fmtTime = (isoStr) => {
+    if (!isoStr) return '—';
+    return new Date(isoStr).toLocaleTimeString('en-US', {
+        hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+};
+
+const _TXN_GRID = '90px 1fr 76px 46px 80px 64px 64px 84px 68px 80px';
+
+const _renderTxnTable = (container, rows) => {
+    const hdrRow = document.createElement('div');
+    hdrRow.style.cssText = `
+        display: grid; grid-template-columns: ${_TXN_GRID};
+        gap: 8px; padding: 6px 8px;
+        border-bottom: 2px solid rgba(var(--color-mint-rgb), 0.2);
+        font-size: 16px; color: rgba(var(--color-mint-rgb), 0.45);
+        text-transform: uppercase; letter-spacing: 1px;
+    `;
+    hdrRow.innerHTML = `
+        <span>#</span><span>Server</span><span>Type</span>
+        <span style="text-align:right">Items</span>
+        <span style="text-align:right">Sub</span>
+        <span style="text-align:right">Tax</span>
+        <span style="text-align:right">Tip</span>
+        <span style="text-align:right">Total</span>
+        <span>Payment</span>
+        <span style="text-align:right">Time</span>
+    `;
+    container.appendChild(hdrRow);
+
+    rows.forEach(row => {
+        const hasVoids = row.voids && row.voids.length > 0;
+        let expanded = false;
+
+        const tr = document.createElement('div');
+        tr.style.cssText = `
+            display: grid; grid-template-columns: ${_TXN_GRID};
+            gap: 8px; align-items: center;
+            padding: 9px 8px;
+            border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.08);
+            font-size: 20px;
+            ${hasVoids ? 'cursor: pointer;' : ''}
+        `;
+
+        // # column: expand indicator + check number + VOID badge
+        const checkCol = document.createElement('span');
+        checkCol.style.cssText = 'display: flex; align-items: center; gap: 5px; flex-wrap: wrap;';
+
+        const indicator = document.createElement('span');
+        indicator.style.cssText = `color: rgba(var(--color-mint-rgb), 0.5); font-size: 14px; width: 12px;`;
+        indicator.textContent = hasVoids ? '▶' : '';
+
+        const checkNum = document.createElement('span');
+        checkNum.style.color = COLORS.mint;
+        checkNum.textContent = row.check_number || '—';
+        checkCol.appendChild(indicator);
+        checkCol.appendChild(checkNum);
+
+        if (row.is_voided) {
+            const badge = document.createElement('span');
+            badge.textContent = 'VOID';
+            badge.style.cssText = `
+                font-size: 12px; color: ${COLORS.red};
+                border: 1px solid ${COLORS.red};
+                padding: 0 3px; border-radius: 2px; line-height: 1.5;
+            `;
+            checkCol.appendChild(badge);
+        }
+
+        tr.appendChild(checkCol);
+
+        const itemCount = row.item_count != null ? row.item_count : '—';
+        const sub = row.subtotal != null ? `$${row.subtotal}` : '—';
+        const tax = row.tax != null ? `$${row.tax}` : '—';
+        const tip = row.tip_total != null ? `$${row.tip_total}` : '—';
+
+        tr.insertAdjacentHTML('beforeend', `
+            <span style="color:${COLORS.mint};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.server_name || '—'}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6)">${_fmtOrderType(row.order_type)}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6);text-align:right">${itemCount}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.7);text-align:right">${sub}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6);text-align:right">${tax}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6);text-align:right">${tip}</span>
+            <span style="color:${COLORS.yellow};font-family:var(--font-display);text-align:right">$${row.total}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.6)">${_fmtPayment(row.payment_method)}</span>
+            <span style="color:rgba(var(--color-mint-rgb),0.45);text-align:right">${_fmtTime(row.closed_at)}</span>
+        `);
+        container.appendChild(tr);
+
+        // Expandable void detail sub-table
+        if (hasVoids) {
+            const detailEl = document.createElement('div');
+            detailEl.style.cssText = `
+                display: none;
+                background: rgba(var(--color-vermillion-rgb), 0.05);
+                border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.08);
+                padding: 8px 16px 12px 28px;
+                font-size: 18px;
+            `;
+            detailEl.innerHTML = `
+                <div style="display:grid;grid-template-columns:1fr 80px 1fr 90px;gap:8px;
+                            padding:4px 0 6px;
+                            color:rgba(var(--color-mint-rgb),0.4);font-size:14px;
+                            text-transform:uppercase;letter-spacing:1px;
+                            border-bottom:1px solid rgba(var(--color-mint-rgb),0.1);">
+                    <span>Item</span><span style="text-align:right">Price</span>
+                    <span>Reason</span><span>Voided At</span>
+                </div>
+            `;
+            row.voids.forEach(v => {
+                const vr = document.createElement('div');
+                vr.style.cssText = 'display:grid;grid-template-columns:1fr 80px 1fr 90px;gap:8px;padding:4px 0;';
+                vr.innerHTML = `
+                    <span style="color:${COLORS.mint}">${v.item_name || '—'}</span>
+                    <span style="color:rgba(var(--color-mint-rgb),0.6);text-align:right">${v.price != null ? '$'+v.price : '—'}</span>
+                    <span style="color:rgba(var(--color-mint-rgb),0.6)">${v.void_reason || '—'}</span>
+                    <span style="color:rgba(var(--color-mint-rgb),0.5)">${v.voided_at ? _fmtTime(v.voided_at) : '—'}</span>
+                `;
+                detailEl.appendChild(vr);
+            });
+            container.appendChild(detailEl);
+
+            tr.addEventListener('click', () => {
+                expanded = !expanded;
+                detailEl.style.display = expanded ? 'block' : 'none';
+                indicator.textContent = expanded ? '▼' : '▶';
+            });
+            tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(var(--color-mint-rgb), 0.04)'; });
+            tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+        }
+    });
+};
+
+const _exportTransactionsCSV = (rows, date) => {
+    const headers = ['Check #', 'Server', 'Type', 'Items', 'Subtotal', 'Tax', 'Tip', 'Total', 'Payment', 'Time'];
+    const lines = [headers.join(',')];
+    rows.forEach(r => {
+        const serverName = (r.server_name || '').replace(/"/g, '""');
+        lines.push([
+            r.check_number || '',
+            `"${serverName}"`,
+            _fmtOrderType(r.order_type),
+            r.item_count != null ? r.item_count : '',
+            r.subtotal || '',
+            r.tax || '',
+            r.tip_total || '',
+            r.total || '',
+            _fmtPayment(r.payment_method),
+            _fmtTime(r.closed_at),
+        ].join(','));
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transactions_${date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+};
+
+const buildCheckHistory = (wrapper) => {
+    buildBackButton(wrapper, 'Daily Flash');
+    buildDateSubheader(wrapper, 'Check History');
+
+    // Per-render state
+    const today = new Date().toISOString().slice(0, 10);
+    let _date = today;
+    let _filters = { dayPart: '', orderType: '', paymentMethod: '', serverId: '' };
+    let _lastResults = [];
+
+    // ── Filter toolbar ──────────────────────────────────────────────────
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = `
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        margin-bottom: 14px; padding: 10px 0;
+        border-bottom: 1px solid rgba(var(--color-mint-rgb), 0.1);
+    `;
+
+    const selStyle = `
+        background: rgba(var(--color-mint-rgb), 0.06);
+        border: 1px solid rgba(var(--color-mint-rgb), 0.2);
+        color: var(--color-mint);
+        font-family: var(--font-body);
+        font-size: 19px;
+        padding: 5px 10px; border-radius: 4px; cursor: pointer;
+    `;
+
+    const mkSel = (options) => {
+        const sel = document.createElement('select');
+        sel.style.cssText = selStyle;
+        options.forEach(([val, label]) => {
+            const opt = document.createElement('option');
+            opt.value = val; opt.textContent = label;
+            sel.appendChild(opt);
+        });
+        return sel;
+    };
+
+    const dayPartSel = mkSel([
+        ['', 'All Day'], ['breakfast', 'Breakfast'], ['lunch', 'Lunch'],
+        ['dinner', 'Dinner'], ['late_night', 'Late Night'],
+    ]);
+    const orderTypeSel = mkSel([
+        ['', 'All Types'], ['dine_in', 'Dine In'], ['takeout', 'Takeout'], ['delivery', 'Delivery'],
+    ]);
+    const paymentSel = mkSel([
+        ['', 'All Payments'], ['cash', 'Cash'], ['card', 'Card'], ['split', 'Split'], ['comp', 'Comp'],
+    ]);
+    const serverSel = mkSel([['', 'All Servers']]);
+
+    fetch('/api/v1/config/employees')
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => [])
+        .then(emps => {
+            (emps || []).forEach(emp => {
+                const opt = document.createElement('option');
+                opt.value = emp.employee_id;
+                opt.textContent = `${emp.first_name} ${emp.last_name}`.trim() || emp.employee_id;
+                serverSel.appendChild(opt);
+            });
+        });
+
+    const exportBtn = document.createElement('button');
+    exportBtn.textContent = 'Export CSV';
+    exportBtn.style.cssText = selStyle + 'margin-left: auto; border-color: rgba(var(--color-mint-rgb), 0.3);';
+    exportBtn.addEventListener('click', () => _exportTransactionsCSV(_lastResults, _date));
+
+    toolbar.appendChild(dayPartSel);
+    toolbar.appendChild(orderTypeSel);
+    toolbar.appendChild(paymentSel);
+    toolbar.appendChild(serverSel);
+    toolbar.appendChild(exportBtn);
+    wrapper.appendChild(toolbar);
+
+    // ── Results area ────────────────────────────────────────────────────
+    const resultsArea = document.createElement('div');
+    wrapper.appendChild(resultsArea);
+
+    const fetchAndRender = () => {
+        resultsArea.innerHTML = '';
+        const loadingMsg = document.createElement('div');
+        loadingMsg.style.cssText = `
+            text-align: center; padding: 40px 20px;
+            font-size: 25px; color: rgba(var(--color-mint-rgb), 0.5);
+        `;
+        loadingMsg.textContent = 'Loading transactions…';
+        resultsArea.appendChild(loadingMsg);
+
+        let url = `/api/v1/reports/transactions?date_from=${_date}&date_to=${_date}&page=1&page_size=200`;
+        if (_filters.dayPart)       url += `&day_part=${encodeURIComponent(_filters.dayPart)}`;
+        if (_filters.orderType)     url += `&order_type=${encodeURIComponent(_filters.orderType)}`;
+        if (_filters.paymentMethod) url += `&payment_method=${encodeURIComponent(_filters.paymentMethod)}`;
+        if (_filters.serverId)      url += `&server_id=${encodeURIComponent(_filters.serverId)}`;
+
+        fetch(url)
+            .then(r => r.ok ? r.json() : null)
+            .catch(() => null)
+            .then(data => {
+                resultsArea.innerHTML = '';
+                _lastResults = (data && data.results) ? data.results : [];
+
+                if (!_lastResults.length) {
+                    const empty = document.createElement('div');
+                    empty.style.cssText = `
+                        text-align: center; padding: 40px 20px;
+                        font-size: 22px; color: rgba(var(--color-mint-rgb), 0.5);
+                    `;
+                    empty.textContent = 'No transactions found';
+                    resultsArea.appendChild(empty);
+                    return;
+                }
+
+                _renderTxnTable(resultsArea, _lastResults);
+            });
+    };
+
+    [dayPartSel, orderTypeSel, paymentSel, serverSel].forEach(sel => {
+        sel.addEventListener('change', () => {
+            _filters.dayPart       = dayPartSel.value;
+            _filters.orderType     = orderTypeSel.value;
+            _filters.paymentMethod = paymentSel.value;
+            _filters.serverId      = serverSel.value;
+            fetchAndRender();
+        });
+    });
+
+    fetchAndRender();
+}
+
 /* ==========================================
    DAILY FLASH COMPONENT BUILDERS
 
@@ -864,7 +1169,7 @@ function buildAdjustmentsDetail(wrapper) {
 /* ------------------------------------------
    KPI CARD BUILDER
 ------------------------------------------ */
-function buildKPICards(container) {
+const buildKPICards = (container) => {
     const data = SAMPLE_DATA.dailyFlash;
     const isToday = data.date === new Date().toISOString().slice(0, 10);
     const kpis = [
@@ -923,7 +1228,7 @@ function buildKPICards(container) {
 /* ------------------------------------------
    SECTION HEADING BUILDER
 ------------------------------------------ */
-function buildSectionHeading(container, text) {
+const buildSectionHeading = (container, text) => {
     const h = document.createElement('div');
     h.style.cssText = `
         font-family: var(--font-display);
@@ -940,7 +1245,7 @@ function buildSectionHeading(container, text) {
 /* ------------------------------------------
    HOURLY SALES LINE CHART
 ------------------------------------------ */
-function buildHourlySalesChart(container) {
+const buildHourlySalesChart = (container) => {
     const data = SAMPLE_DATA.hourlySales;
 
     const wrapper = document.createElement('div');
@@ -1013,7 +1318,7 @@ function buildHourlySalesChart(container) {
 /* ------------------------------------------
    TOP SELLERS HORIZONTAL BAR CHART
 ------------------------------------------ */
-function buildTopSellersChart(container) {
+const buildTopSellersChart = (container) => {
     const data = SAMPLE_DATA.topSellers.slice(0, 6);
 
     const wrapper = document.createElement('div');
@@ -1078,7 +1383,7 @@ function buildTopSellersChart(container) {
 /* ------------------------------------------
    PAYMENT BREAKDOWN DONUT CHART
 ------------------------------------------ */
-function buildPaymentDonut(container) {
+const buildPaymentDonut = (container) => {
     const data = SAMPLE_DATA.paymentBreakdown;
 
     const row = document.createElement('div');
@@ -1156,7 +1461,7 @@ function buildPaymentDonut(container) {
 /* ------------------------------------------
    DAYPART BREAKDOWN DONUT + TABLE
 ------------------------------------------ */
-function buildDaypartSection(container) {
+const buildDaypartSection = (container) => {
     const data = SAMPLE_DATA.dayparts;
 
     const row = document.createElement('div');
@@ -1232,7 +1537,7 @@ function buildDaypartSection(container) {
    Now wired up to pushView() instead of
    the previous commented-out placeholder.
 ------------------------------------------ */
-function buildDrillDownLinks(container) {
+const buildDrillDownLinks = (container) => {
     const links = [
         { label: 'Sales by Category',  target: 'sales-by-category' },
         { label: 'Tax Breakdown',       target: 'tax-breakdown' },
@@ -1272,7 +1577,7 @@ function buildDrillDownLinks(container) {
 /* ------------------------------------------
    ADJUSTMENTS SUMMARY (Discounts/Comps/Voids)
 ------------------------------------------ */
-function buildAdjustmentsSummary(container) {
+const buildAdjustmentsSummary = (container) => {
     const data = SAMPLE_DATA.dailyFlash.today;
     const total = data.discounts + data.comps + data.voids;
     const pctOfSales = ((total / data.net_sales) * 100).toFixed(1);
@@ -1329,7 +1634,7 @@ function buildAdjustmentsSummary(container) {
 /* ------------------------------------------
    CSV EXPORT
 ------------------------------------------ */
-function exportReportCSV() {
+const exportReportCSV = () => {
     const d = SAMPLE_DATA.dailyFlash;
     const rows = [
         ['KINDpos Daily Flash Report'],
@@ -1368,7 +1673,7 @@ function exportReportCSV() {
 /* ------------------------------------------
    DATE HEADER (Daily Flash full header)
 ------------------------------------------ */
-function buildDateHeader(container) {
+const buildDateHeader = (container) => {
     const header = document.createElement('div');
     header.style.cssText = `
         display: flex;

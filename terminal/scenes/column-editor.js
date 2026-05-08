@@ -2,6 +2,7 @@ import { SceneManager, defineScene } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
 import {
   buildPillButton,
+  buildChamferButton,
   hexToRgba,
   darkenHex,
   lightenHex,
@@ -164,7 +165,7 @@ function handleItemTap(colIdx, itemIdx, state) {
   renderFooterToolbar(state);
 }
 
-function handleColTap(colIdx, state) {
+function handleBodyTap(colIdx, state) {
   if (state.mode === 'split') {
     toggleSplitTarget(colIdx, state);
   } else if (state.mode === 'merge') {
@@ -175,25 +176,36 @@ function handleColTap(colIdx, state) {
   } else if (state.mode === 'move') {
     if (state.selectedItems.length > 0) doMove(colIdx, state);
     else showToast('Select items first', { bg: T.gold });
-  } else {
-    // Null mode: tap header to select all items in that seat
-    var col = state.columns[colIdx];
-    if (col && col.items.length > 0) {
-      for (var ii = 0; ii < col.items.length; ii++) {
-        var found = -1;
-        for (var si = 0; si < state.selectedItems.length; si++) {
-          if (state.selectedItems[si].colIdx === colIdx && state.selectedItems[si].itemIdx === ii) {
-            found = si; break;
-          }
-        }
-        if (found < 0) state.selectedItems.push({ colIdx: colIdx, itemIdx: ii });
+  }
+}
+
+function handleHeaderTap(colIdx, state) {
+  var col = state.columns[colIdx];
+  if (!col) return;
+  // Toggle selection of all items in this column
+  for (var ii = 0; ii < col.items.length; ii++) {
+    var found = -1;
+    for (var si = 0; si < state.selectedItems.length; si++) {
+      if (state.selectedItems[si].colIdx === colIdx && state.selectedItems[si].itemIdx === ii) {
+        found = si; break;
       }
-      // Auto-activate MOVE on first header tap
-      if (state.selectedItems.length > 0 && state.mode === null) state.mode = 'move';
-      renderColumns(state);
-      renderFooterToolbar(state);
+    }
+    if (found < 0) {
+      // Not selected, add it
+      state.selectedItems.push({ colIdx: colIdx, itemIdx: ii });
+    } else {
+      // Already selected, remove it
+      state.selectedItems.splice(found, 1);
     }
   }
+  // Auto-activate MOVE if items are selected
+  if (state.selectedItems.length > 0 && state.mode === null) {
+    state.mode = 'move';
+  } else if (state.selectedItems.length === 0) {
+    state.mode = null;
+  }
+  renderColumns(state);
+  renderFooterToolbar(state);
 }
 
 function handleConfirm(state) {
@@ -527,11 +539,15 @@ function buildColumn(colIdx, state) {
   if (isSplitTgt) card.style.boxShadow = '0 0 0 1px ' + T.elec;
   if (isMergeTgt) card.style.boxShadow = '0 0 0 1px ' + T.greenWarm;
 
-  // Column tap for MOVE / SPLIT
+  // Column tap for MOVE / SPLIT / MERGE
   (function(idx) {
     var h = function(e) {
       if (e.target.closest('[data-item-row]')) return;
-      handleColTap(idx, state);
+      if (e.target.closest('[data-col-header]')) return;
+      // Body tap: in MOVE mode, move items; in other modes, do nothing; in null mode, do nothing
+      if (state.mode === 'move') {
+        handleBodyTap(idx, state);
+      }
     };
     card.addEventListener('pointerup', h);
     state.listeners.push({ el: card, event: 'pointerup', handler: h });
@@ -589,8 +605,19 @@ function buildColumn(colIdx, state) {
   hdrTop.appendChild(itemCount);
   hdr.appendChild(hdrTop);
 
+  hdr.dataset.colHeader = '1';
+
   (function(idx) {
-    var h = function(e) { e.stopPropagation(); handleColTap(idx, state); };
+    var h = function(e) {
+      e.stopPropagation();
+      // In MOVE/null modes: toggle selection of all items in the column
+      // In SPLIT/MERGE modes: perform the mode action (toggle split target, set merge target)
+      if (state.mode === 'move' || state.mode === null) {
+        handleHeaderTap(idx, state);
+      } else {
+        handleBodyTap(idx, state);
+      }
+    };
     hdr.addEventListener('pointerup', h);
     state.listeners.push({ el: hdr, event: 'pointerup', handler: h });
   })(colIdx);
@@ -736,33 +763,41 @@ function renderFooterToolbar(state) {
 
   // ── Left grid: MOVE / SPLIT / MERGE ──────────────
   var leftGrid = document.createElement('div');
-  leftGrid.style.flex                  = '1';
+  leftGrid.style.flex                  = '0 0 auto';
+  leftGrid.style.width                 = '380px';
   leftGrid.style.display               = 'grid';
   leftGrid.style.gridTemplateColumns   = 'repeat(3, 1fr)';
   leftGrid.style.gap                   = '6px';
 
   var tools = [
-    { id: 'move',  label: 'MOVE',  bg: T.green,    dk: T.greenDk  },
-    { id: 'split', label: 'SPLIT', bg: T.elec,     dk: T.elecDk   },
-    { id: 'merge', label: 'MERGE', bg: T.gold,     dk: T.goldDk   },
+    { id: 'move',  label: 'MOVE',  accent: T.green,    accentDk: T.greenDk  },
+    { id: 'split', label: 'SPLIT', accent: T.elec,     accentDk: T.elecDk   },
+    { id: 'merge', label: 'MERGE', accent: T.gold,     accentDk: T.goldDk   },
   ];
 
   tools.forEach(function(tool) {
     var isActive = state.mode === tool.id;
-    var btn = buildActBtn({
+    var btn = buildChamferButton({
       label:    tool.label,
-      bg:       isActive ? tool.bg   : T.card,
-      dk:       isActive ? tool.dk   : T.moonDk,
-      color:    isActive ? T.well    : T.text,
-      border:   isActive ? 'none'    : '1px solid ' + T.border,
-      ghost:    !isActive,
+      accent:   isActive ? tool.accent : T.card,
+      accentDk: isActive ? tool.accentDk : T.moonDk,
+      isPrimary: false,
       fontSize: T.fsB3,
     });
-    btn.style.height = '100%';
-    if (!hasSel) { btn.style.opacity = '0.35'; btn.style.pointerEvents = 'none'; }
+
+    // Face styling: active = flooded, inactive = colored text on dark
+    var faceEl = btn.children[0];
+    if (faceEl) {
+      if (isActive) {
+        faceEl.style.background = tool.accent;
+        faceEl.style.color = T.well;
+      } else {
+        faceEl.style.background = '';
+        faceEl.style.color = tool.accent;
+      }
+    }
 
     btn.addEventListener('pointerup', function() {
-      if (!hasSel) return;
       if (state.mode === tool.id) { clearMode(state); return; }
       state.mode         = tool.id;
       state.splitTargets = [];
@@ -786,30 +821,23 @@ function renderFooterToolbar(state) {
   // ── Right grid: UNDO / CANCEL / CONFIRM ──────────
   var rightGrid = document.createElement('div');
   rightGrid.style.flex                = '1';
-  rightGrid.style.display             = 'grid';
-  rightGrid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+  rightGrid.style.display             = 'flex';
   rightGrid.style.gap                 = '6px';
+  rightGrid.style.alignItems          = 'stretch';
 
-  // UNDO with long-press fill animation
-  var undoBtn = buildActBtn({
+  // UNDO button
+  var undoBtn = buildChamferButton({
     label:  'UNDO',
-    bg:     T.card,
-    dk:     T.moonDk,
-    color:  T.text,
-    border: '1px solid ' + T.border,
-    ghost:  true,
+    accent: T.text,
+    accentDk: darkenHex(T.card, 0.4),
+    isPrimary: false,
+    fontSize: T.fsB3,
   });
-  undoBtn.style.height   = '100%';
   undoBtn.style.position = 'relative';
-
-  var undoLabel = document.createElement('span');
-  undoLabel.textContent    = 'UNDO';
-  undoLabel.style.position = 'relative';
-  undoLabel.style.zIndex   = '1';
-  undoBtn.textContent      = '';
-  undoBtn.appendChild(undoLabel);
-
-  if (state.actionLog.length > 0) {
+  undoBtn.style.width = '96px';
+  undoBtn.style.flexShrink = '0';
+  var undoFace = undoBtn.children[0];
+  if (undoFace && state.actionLog.length > 0) {
     var badge = document.createElement('span');
     badge.textContent         = state.actionLog.length;
     badge.style.position      = 'absolute';
@@ -824,19 +852,42 @@ function renderFooterToolbar(state) {
     badge.style.padding       = '1px 5px';
     badge.style.pointerEvents = 'none';
     badge.style.zIndex        = '2';
-    undoBtn.appendChild(badge);
+    undoFace.appendChild(badge);
   }
+  state.undoBtnEl = undoBtn;
+  undoBtn.setDisabled = function(val) {
+    var badge = undoFace.querySelector('span:last-child');
+    if (badge) badge.style.display = val ? 'none' : 'block';
+  };
+  undoBtn.addEventListener('pointerup', function() {
+    if (state.actionLog.length > 0) handleUndo(state);
+  });
+  state.listeners.push({ el: undoBtn, event: 'pointerup', handler: function() { if (state.actionLog.length > 0) handleUndo(state); } });
+  rightGrid.appendChild(undoBtn);
 
+  // RESET with long-press fill animation
+  var resetBtn = buildChamferButton({
+    label:  'RESET',
+    accent: T.verm,
+    accentDk: T.vermDk,
+    isPrimary: false,
+    fontSize: T.fsB3,
+  });
+  resetBtn.style.width = '96px';
+  resetBtn.style.flexShrink = '0';
+  var resetFace = resetBtn.children[0];
+  resetFace.style.position = 'relative';
   var undoFill = document.createElement('div');
   undoFill.style.position        = 'absolute';
   undoFill.style.inset           = '0';
   undoFill.style.background      = T.verm;
+  undoFill.style.opacity         = '0.85';
   undoFill.style.transformOrigin = 'left center';
   undoFill.style.transform       = 'scaleX(0)';
   undoFill.style.transition      = 'none';
-  undoFill.style.borderRadius    = '10px';
+  undoFill.style.borderRadius    = 'inherit';
   undoFill.style.pointerEvents   = 'none';
-  undoFill.style.zIndex          = '0';
+  undoFill.style.zIndex          = '2';
   var undoFillWrap = document.createElement('div');
   undoFillWrap.style.position     = 'absolute';
   undoFillWrap.style.inset        = '0';
@@ -844,16 +895,10 @@ function renderFooterToolbar(state) {
   undoFillWrap.style.borderRadius = 'inherit';
   undoFillWrap.style.pointerEvents = 'none';
   undoFillWrap.appendChild(undoFill);
-  undoBtn.appendChild(undoFillWrap);
-
-  if (state.actionLog.length === 0) { undoBtn.style.opacity = '0.4'; undoBtn.style.pointerEvents = 'none'; }
-  state.undoBtnEl = undoBtn;
-  undoBtn.setDisabled = function(val) {
-    undoBtn.style.opacity       = val ? '0.4' : '1';
-    undoBtn.style.pointerEvents = val ? 'none' : 'auto';
-  };
-
-  function _triggerUndoAll() {
+  resetFace.appendChild(undoFillWrap);
+  var labelSpan = resetFace.querySelector('span:first-child');
+  if (labelSpan) labelSpan.style.zIndex = '3';
+  function _triggerReset() {
     undoFill.style.transition = 'transform 0.2s linear';
     undoFill.style.transform  = 'scaleX(1)';
     setTimeout(function() {
@@ -867,61 +912,40 @@ function renderFooterToolbar(state) {
     undoFill.style.transform  = 'scaleX(0)';
   }
   var lpDown = function() {
-    if (state.actionLog.length === 0) return;
-    state._lpTimer = setTimeout(function() { state._lpTimer = null; _triggerUndoAll(); }, 600);
+    state._lpTimer = setTimeout(function() { state._lpTimer = null; _triggerReset(); }, 600);
   };
   var lpUp = function() {
-    if (state._lpTimer !== null) { clearTimeout(state._lpTimer); state._lpTimer = null; handleUndo(state); }
+    if (state._lpTimer !== null) { clearTimeout(state._lpTimer); state._lpTimer = null; clearMode(state); }
   };
   var lpLeave = function() {
     if (state._lpTimer !== null) { clearTimeout(state._lpTimer); state._lpTimer = null; }
     _cancelFill();
   };
-  undoBtn.addEventListener('pointerdown',   lpDown);
-  undoBtn.addEventListener('pointerup',     lpUp);
-  undoBtn.addEventListener('pointerleave',  lpLeave);
-  undoBtn.addEventListener('pointercancel', lpLeave);
-  state.listeners.push({ el: undoBtn, event: 'pointerdown',   handler: lpDown  });
-  state.listeners.push({ el: undoBtn, event: 'pointerup',     handler: lpUp    });
-  state.listeners.push({ el: undoBtn, event: 'pointerleave',  handler: lpLeave });
-  state.listeners.push({ el: undoBtn, event: 'pointercancel', handler: lpLeave });
-  rightGrid.appendChild(undoBtn);
-
-  // RESET
-  var cancelBtn = buildActBtn({ label: 'RESET', bg: T.verm, dk: T.vermDk, color: '#fff', fontSize: T.fsB3 });
-  cancelBtn.style.height = '100%';
-  cancelBtn.addEventListener('pointerup', function() { clearMode(state); });
-  state.listeners.push({ el: cancelBtn, event: 'pointerup', handler: function() { clearMode(state); } });
-  rightGrid.appendChild(cancelBtn);
+  resetBtn.addEventListener('pointerdown',   lpDown);
+  resetBtn.addEventListener('pointerup',     lpUp);
+  resetBtn.addEventListener('pointerleave',  lpLeave);
+  resetBtn.addEventListener('pointercancel', lpLeave);
+  state.listeners.push({ el: resetBtn, event: 'pointerdown',   handler: lpDown  });
+  state.listeners.push({ el: resetBtn, event: 'pointerup',     handler: lpUp    });
+  state.listeners.push({ el: resetBtn, event: 'pointerleave',  handler: lpLeave });
+  state.listeners.push({ el: resetBtn, event: 'pointercancel', handler: lpLeave });
+  rightGrid.appendChild(resetBtn);
 
   // CONFIRM
-  var confirmBtn = buildActBtn({ label: 'CONFIRM', bg: T.greenWarm, dk: T.greenWarmDk, color: T.well, fontSize: T.fsB3 });
-  confirmBtn.style.height = '100%';
+  var confirmBtn = buildChamferButton({
+    label: 'CONFIRM',
+    accent: T.greenWarm,
+    accentDk: T.greenWarmDk,
+    isPrimary: true,
+    fontSize: T.fsB3,
+  });
+  confirmBtn.style.flex = '0 0 auto';
+  confirmBtn.style.width = '140px';
   confirmBtn.addEventListener('pointerup', function() { handleConfirm(state); });
   state.listeners.push({ el: confirmBtn, event: 'pointerup', handler: function() { handleConfirm(state); } });
   rightGrid.appendChild(confirmBtn);
 
   row.appendChild(rightGrid);
-
-  // Update DISC/VOID
-  if (state.discBtnEl) {
-    if (hasSel) {
-      state.discBtnEl.restyle(T.lavender, darkenHex(T.lavender, 0.3), T.well);
-      state.discBtnEl.style.border = 'none'; state.discBtnEl.style.opacity = '1'; state.discBtnEl.style.pointerEvents = 'auto';
-    } else {
-      state.discBtnEl.restyle(T.card, T.moonDk, T.lavender);
-      state.discBtnEl.style.border = '1px solid ' + T.border; state.discBtnEl.style.opacity = '0.35'; state.discBtnEl.style.pointerEvents = 'none';
-    }
-  }
-  if (state.voidBtnEl) {
-    if (hasSel) {
-      state.voidBtnEl.restyle(T.verm, T.vermDk, '#fff');
-      state.voidBtnEl.style.border = 'none'; state.voidBtnEl.style.opacity = '1'; state.voidBtnEl.style.pointerEvents = 'auto';
-    } else {
-      state.voidBtnEl.restyle(T.card, T.moonDk, T.verm);
-      state.voidBtnEl.style.border = '1px solid ' + T.border; state.voidBtnEl.style.opacity = '0.35'; state.voidBtnEl.style.pointerEvents = 'none';
-    }
-  }
 }
 
 // ─────────────────────────────────────────────────────
@@ -941,18 +965,25 @@ function renderSeatSelector(state) {
 
   function makeSeatTile(seat) {
     var active = state.visibleColIds.indexOf(seat.id) >= 0;
-    var tile = buildActBtn({
+    var tile = buildChamferButton({
       label:    formatSeatLabel(seat.label),
-      bg:       active ? T.green : T.card,
-      dk:       active ? T.greenDk : T.moonDk,
-      color:    active ? T.well : T.green,
-      border:   active ? 'none' : '1px solid ' + T.border,
-      ghost:    !active,
+      accent:   T.green,
+      accentDk: T.greenDk,
+      isPrimary: false,
       height:   tileHeight,
       fontSize: tileFontSize,
-      minWidth: manySeats ? '0' : '48px',
-      padding:  manySeats ? '0 6px' : '0 12px',
     });
+    tile.style.width = '56px';
+    tile.style.flexShrink = '0';
+
+    // If active, flood the face
+    if (active) {
+      var face = tile.children[0];
+      if (face) {
+        face.style.background = T.green;
+        face.style.color = T.well;
+      }
+    }
 
     var h = function() {
       var idx = state.visibleColIds.indexOf(seat.id);
@@ -982,18 +1013,26 @@ function renderSeatSelector(state) {
 
   // ALL tile
   var allActive = state.visibleColIds.length === state.allColumns.length;
-  var allTile = buildActBtn({
+  var allTile = buildChamferButton({
     label:    'ALL',
-    bg:       allActive ? T.moon : T.card,
-    dk:       T.moonDk,
-    color:    allActive ? T.well : T.text,
-    border:   allActive ? 'none' : '1px solid ' + T.border,
-    ghost:    !allActive,
+    accent:   T.moon,
+    accentDk: T.moonDk,
+    isPrimary: false,
     height:   tileHeight,
     fontSize: tileFontSize,
-    minWidth: manySeats ? '0' : '48px',
-    padding:  manySeats ? '0 6px' : '0 12px',
   });
+  allTile.style.width = '56px';
+  allTile.style.flexShrink = '0';
+
+  // If active, flood the face
+  if (allActive) {
+    var allFace = allTile.children[0];
+    if (allFace) {
+      allFace.style.background = T.moon;
+      allFace.style.color = T.moonText;
+    }
+  }
+
   var allH = function() {
     if (state.visibleColIds.length < state.allColumns.length) {
       state.visibleColIds = state.allColumns.map(function(c) { return c.id; });
@@ -1013,18 +1052,16 @@ function renderSeatSelector(state) {
   state.listeners.push({ el: allTile, event: 'pointerup', handler: allH });
 
   // + add tile
-  var addTile = buildActBtn({
+  var addTile = buildChamferButton({
     label:    '+',
-    bg:       T.card,
-    dk:       T.greenDk,
-    color:    T.green,
-    border:   '1px solid ' + T.green,
-    ghost:    true,
+    accent:   T.green,
+    accentDk: T.greenDk,
+    isPrimary: false,
     height:   tileHeight,
     fontSize: manySeats ? '18px' : T.fsB2,
-    minWidth: manySeats ? '0' : '48px',
-    padding:  manySeats ? '0 6px' : '0 12px',
   });
+  addTile.style.width = '56px';
+  addTile.style.flexShrink = '0';
   var addH = function() { handleAddSeat(state); };
   addTile.addEventListener('pointerup', addH);
   state.listeners.push({ el: addTile, event: 'pointerup', handler: addH });
@@ -1078,46 +1115,13 @@ function buildSeatRow(state, params) {
     strip.style.scrollbarWidth  = 'none';
     strip.style.msOverflowStyle = 'none';
     strip.style.alignItems      = 'center';
+    strip.style.flexShrink      = '0';
+    strip.style.overflow        = 'visible';
     state.seatSelectorEl = strip;
     renderSeatSelector(state);
     row.appendChild(strip);
   }
-  // In grid mode: seatSelectorEl will be set by buildSeatGridOverlay; row 1 is just DISC/VOID
-
-  // DISC / VOID
-  var dvGroup = document.createElement('div');
-  dvGroup.style.display    = 'flex';
-  dvGroup.style.gap        = '5px';
-  dvGroup.style.flexShrink = '0';
-  if (manySeats) dvGroup.style.marginLeft = 'auto';
-
-  var discBtn = buildActBtn({
-    label:  'DISC', bg: T.card, dk: T.moonDk, color: T.lavender,
-    border: '1px solid ' + T.border, ghost: true,
-  });
-  discBtn.style.opacity       = '0.35';
-  discBtn.style.pointerEvents = 'none';
-
-  var voidBtn = buildActBtn({
-    label:  'VOID', bg: T.card, dk: T.moonDk, color: T.verm,
-    border: '1px solid ' + T.border, ghost: true,
-  });
-  voidBtn.style.opacity       = '0.35';
-  voidBtn.style.pointerEvents = 'none';
-
-  var discH = function() { openPinOverlay('discount', state); };
-  var voidH = function() { openPinOverlay('void',     state); };
-  discBtn.addEventListener('pointerup', discH);
-  voidBtn.addEventListener('pointerup', voidH);
-  state.listeners.push({ el: discBtn, event: 'pointerup', handler: discH });
-  state.listeners.push({ el: voidBtn, event: 'pointerup', handler: voidH });
-
-  state.discBtnEl = discBtn;
-  state.voidBtnEl = voidBtn;
-
-  dvGroup.appendChild(discBtn);
-  dvGroup.appendChild(voidBtn);
-  row.appendChild(dvGroup);
+  // In grid mode: seatSelectorEl will be set by buildSeatGridOverlay
 
   return row;
 }
@@ -1170,25 +1174,27 @@ function buildSeatGridOverlay(state, params) {
 
 function buildBottomBar(state, params) {
   var bar = document.createElement('div');
-  bar.style.height      = '116px';
+  bar.style.height      = '128px';
   bar.style.flexShrink  = '0';
   bar.style.background  = T.well;
   bar.style.borderTop   = '2px solid ' + T.border;
   bar.style.display     = 'flex';
   bar.style.flexDirection = 'column';
-  bar.style.padding     = '6px 8px 7px';
+  bar.style.padding     = '6px 8px 10px';
   bar.style.gap         = '6px';
+  bar.style.overflow    = 'visible';
 
   // Row 1: seat strip (or just DISC/VOID in grid mode)
   bar.appendChild(buildSeatRow(state, params));
 
   // Row 2: tool row (populated by renderFooterToolbar)
   var toolRow = document.createElement('div');
-  toolRow.style.height      = '52px';
+  toolRow.style.height      = '60px';
   toolRow.style.flexShrink  = '0';
   toolRow.style.display     = 'flex';
   toolRow.style.alignItems  = 'stretch';
   toolRow.style.gap         = '8px';
+  toolRow.style.overflow    = 'visible';
   state.toolRowEl = toolRow;
   bar.appendChild(toolRow);
 
@@ -1220,27 +1226,6 @@ function buildHeader(state, params) {
   checkLabel.style.letterSpacing = '0.06em';
   checkLabel.style.flex       = '1';
   hdr.appendChild(checkLabel);
-
-  var clearH   = function() { clearMode(state); };
-  var selAllH  = function() {
-    state.selectedItems = [];
-    for (var ci = 0; ci < state.columns.length; ci++) {
-      for (var ii = 0; ii < state.columns[ci].items.length; ii++) {
-        state.selectedItems.push({ colIdx: ci, itemIdx: ii });
-      }
-    }
-    if (state.selectedItems.length > 0) state.mode = 'move';
-    renderColumns(state);
-    renderFooterToolbar(state);
-  };
-
-  var clearBtn = buildPillButton({ label: 'CLEAR', variant: 'ghost', shape: 'chamfer', onClick: clearH });
-  clearBtn.style.fontSize = T.fsB4;
-  hdr.appendChild(clearBtn);
-
-  var selAllBtn = buildPillButton({ label: 'SELECT ALL', variant: 'ghost', shape: 'chamfer', onClick: selAllH });
-  selAllBtn.style.fontSize = T.fsB4;
-  hdr.appendChild(selAllBtn);
 
   return hdr;
 }
@@ -1391,8 +1376,6 @@ defineScene({
     columnsArea:    null,
     toolRowEl:      null,
     seatSelectorEl: null,
-    discBtnEl:      null,
-    voidBtnEl:      null,
     hintBarEl:      null,
     onSave:         null,
     actionLog:      [],

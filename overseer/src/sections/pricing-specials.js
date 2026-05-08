@@ -2,6 +2,7 @@ import { pushChanges } from '../services/config-push.js';
 import {
     C, buildScenePage, showToast, withAlpha,
 } from '../ui/forms.js';
+import { fetchWithTimeout } from '../services/http.js';
 
 /* ============================================
    KINDpos Overseer — Specials & Discounts (Nostalgia)
@@ -32,11 +33,13 @@ let currentSaveBar = null;
 let footerMount = null;
 
 let pricingData = {
+    sizes:              [],
     day_parts:          [],
     specials:           [],
     order_types:        [],
     employee_discount:  null,
     void_reasons:       [],
+    discounts:          [],
     categories:         [],
 };
 
@@ -45,6 +48,7 @@ let pendingChanges = {
     specials_new: [],        specials_edited: [],      specials_deleted: [],
     order_types_edited: [],
     employee_edited: null,
+    discounts_new: [],       discounts_edited: [],     discounts_deleted: [],
     void_reasons_new: [],    void_reasons_edited: [],  void_reasons_deleted: [],
 };
 
@@ -55,10 +59,9 @@ let displayState = {
 const modalStack = [];
 
 /* ─── HELPERS ────────────────────────────────────────────────── */
-function clone(o) { return JSON.parse(JSON.stringify(o)); }
+const clone = (o) => JSON.parse(JSON.stringify(o)); ;
 
-function getPendingCount() {
-    return pendingChanges.day_parts_new.length
+const getPendingCount = () => pendingChanges.day_parts_new.length
          + pendingChanges.day_parts_edited.length
          + pendingChanges.day_parts_deleted.length
          + pendingChanges.specials_new.length
@@ -66,27 +69,25 @@ function getPendingCount() {
          + pendingChanges.specials_deleted.length
          + pendingChanges.order_types_edited.length
          + (pendingChanges.employee_edited ? 1 : 0)
+         + pendingChanges.discounts_new.length
+         + pendingChanges.discounts_edited.length
+         + pendingChanges.discounts_deleted.length
          + pendingChanges.void_reasons_new.length
          + pendingChanges.void_reasons_edited.length
          + pendingChanges.void_reasons_deleted.length;
-}
+;
 
-function defaultWindow() {
-    return { label: '', days: [1,1,1,1,1,1,1], start: '09:00', end: '17:00' };
-}
+const defaultWindow = () => ({ label: '', days: [1,1,1,1,1,1,1], start: '09:00', end: '17:00' });
 
-function defaultDayPart() {
-    return {
-        id:          `temp_dp_${Date.now()}`,
+const defaultDayPart = () => ({
+        id:          `temp_dp_${crypto.randomUUID()}`,
         name:        '',
         description: '',
         windows:     [defaultWindow()],
-    };
-}
+    });
 
-function defaultSpecial() {
-    return {
-        id:             `temp_spec_${Date.now()}`,
+const defaultSpecial = () => ({
+        id:             `temp_spec_${crypto.randomUUID()}`,
         name:           '',
         discount_type:  'percentage',
         discount_value: 0,
@@ -104,11 +105,9 @@ function defaultSpecial() {
         stacking:      false,
         priority:      1,
         active:        true,
-    };
-}
+    });
 
-function defaultEmployee() {
-    return {
+const defaultEmployee = () => ({
         id:                 'emp_disc',
         separate_rates:     false,
         percentage:         20,
@@ -118,24 +117,21 @@ function defaultEmployee() {
         exclude_categories: [],
         requires_pin:       true,
         active:             true,
-    };
-}
+    });
 
-function defaultVoidReason() {
-    return {
-        id:           `temp_void_${Date.now()}`,
+const defaultVoidReason = () => ({
+        id:           `temp_void_${crypto.randomUUID()}`,
         name:         '',
         requires_pin: true,
         max_amount:   null,
         active:       true,
-    };
-}
+    });
 
 /* ─── DATA FETCH ─────────────────────────────────────────────── */
-function migrateDayPart(raw) {
+const migrateDayPart = (raw) => {
     if (Array.isArray(raw.windows) && raw.windows.length > 0) {
         return {
-            id:          raw.id || `dp_${Date.now()}`,
+            id:          raw.id || `dp_${crypto.randomUUID()}`,
             name:        raw.name || '',
             description: raw.description || '',
             windows:     raw.windows.map(w => ({
@@ -148,7 +144,7 @@ function migrateDayPart(raw) {
     }
     // legacy single-window shape
     return {
-        id:          raw.id || `dp_${Date.now()}`,
+        id:          raw.id || `dp_${crypto.randomUUID()}`,
         name:        raw.name || '',
         description: raw.description || '',
         windows: [{
@@ -160,7 +156,7 @@ function migrateDayPart(raw) {
     };
 }
 
-function migrateSpecial(raw) {
+const migrateSpecial = (raw) => {
     let schedule;
     if (raw.schedule && typeof raw.schedule === 'object') {
         schedule = {
@@ -217,26 +213,46 @@ function migrateSpecial(raw) {
     };
 }
 
-async function fetchPricingData() {
+const fetchPricingData = async () => {
     try {
-        const [dpRes, spRes, otRes, empRes, voidRes, catRes] = await Promise.all([
-            fetch('/api/v1/config/pricing/day-parts').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/pricing/specials').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/pricing/order-types').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/pricing/employee-discount').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/pricing/void-reasons').catch(() => ({ ok: false })),
-            fetch('/api/v1/config/menu/categories').catch(() => ({ ok: false })),
+        const [sizesRes, dpRes, spRes, otRes, empRes, voidRes, discRes, catRes] = await Promise.all([
+            fetchWithTimeout('/api/v1/sizes').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/day-parts').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/specials').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/order-types').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/employee-discount').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/void-reasons').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/pricing/discounts').catch(() => ({ ok: false })),
+            fetchWithTimeout('/api/v1/config/menu/categories').catch(() => ({ ok: false })),
         ]);
 
-        const day_parts   = dpRes.ok   ? (await dpRes.json()).map(migrateDayPart)  : [];
-        const specials    = spRes.ok   ? (await spRes.json()).map(migrateSpecial)  : [];
-        const order_types = otRes.ok   ? await otRes.json()   : [
+        const sizesData = sizesRes.ok ? await sizesRes.json() : [];
+        const sizes = Array.isArray(sizesData) ? sizesData : (sizesData.sizes || []);
+        const dpData = dpRes.ok ? await dpRes.json() : {};
+        const day_parts   = Array.isArray(dpData) ? dpData.map(migrateDayPart) : (dpData.day_parts || []).map(migrateDayPart);
+        const spData = spRes.ok ? await spRes.json() : [];
+        const specials    = Array.isArray(spData) ? spData.map(migrateSpecial) : spData;
+        const order_types = otRes.ok ? await otRes.json()   : [
             { id: 'ot_dinein',   name: 'Dine-In',  adjustment: 0, active: true },
             { id: 'ot_takeout',  name: 'Takeout',  adjustment: 0, active: true },
             { id: 'ot_delivery', name: 'Delivery', adjustment: 0, active: true },
         ];
         const employee_discount = empRes.ok ? await empRes.json() : defaultEmployee();
         const void_reasons = voidRes.ok ? await voidRes.json() : [];
+        const discData = discRes.ok ? await discRes.json() : {};
+        const discounts = (discData.discounts || []).map(d => ({
+            id: d.id || `disc_${crypto.randomUUID()}`,
+            name: d.name || '',
+            type: d.type || 'percentage',
+            value: d.value || 0,
+            timing_type: d.timing_type || 'always',
+            day_part_id: d.day_part_id || null,
+            custom_start: d.custom_start || '09:00',
+            custom_end: d.custom_end || '17:00',
+            auto: d.auto !== false,
+            requires_pin: d.requires_pin !== false,
+            active: d.active !== false,
+        }));
         const rawCats = catRes.ok ? await catRes.json() : [];
         const categories = rawCats.map(c => ({
             id:    c.category_id || c.id,
@@ -244,19 +260,19 @@ async function fetchPricingData() {
             color: c.hex_color || c.color || C.gold,
         }));
 
-        return { day_parts, specials, order_types, employee_discount, void_reasons, categories };
+        return { sizes, day_parts, specials, order_types, employee_discount, void_reasons, discounts, categories };
     } catch (e) {
         console.warn('[PricingSpecials] Failed to fetch:', e);
         return {
-            day_parts: [], specials: [], order_types: [],
+            sizes: [], day_parts: [], specials: [], order_types: [],
             employee_discount: defaultEmployee(),
-            void_reasons: [], categories: [],
+            void_reasons: [], discounts: [], categories: [],
         };
     }
 }
 
 /* ─── WORKING-STATE RESOLVERS ────────────────────────────────── */
-function getAllDayParts() {
+const getAllDayParts = () => {
     const edits = new Map(pendingChanges.day_parts_edited.map(e => [e.id, e]));
     const deleted = new Set(pendingChanges.day_parts_deleted);
     return pricingData.day_parts
@@ -265,7 +281,7 @@ function getAllDayParts() {
         .concat(pendingChanges.day_parts_new);
 }
 
-function getAllSpecials() {
+const getAllSpecials = () => {
     const edits = new Map(pendingChanges.specials_edited.map(e => [e.id, e]));
     const deleted = new Set(pendingChanges.specials_deleted);
     return pricingData.specials
@@ -274,18 +290,17 @@ function getAllSpecials() {
         .concat(pendingChanges.specials_new);
 }
 
-function getAllOrderTypes() {
+const getAllOrderTypes = () => {
     const edits = new Map(pendingChanges.order_types_edited.map(e => [e.id, e]));
     return pricingData.order_types.map(o => edits.has(o.id) ? edits.get(o.id) : clone(o));
 }
 
-function getWorkingEmployee() {
-    return pendingChanges.employee_edited
+const getWorkingEmployee = () => pendingChanges.employee_edited
         ? clone(pendingChanges.employee_edited)
         : clone(pricingData.employee_discount || defaultEmployee());
-}
+;
 
-function getAllVoidReasons() {
+const getAllVoidReasons = () => {
     const edits = new Map(pendingChanges.void_reasons_edited.map(e => [e.id, e]));
     const deleted = new Set(pendingChanges.void_reasons_deleted);
     return pricingData.void_reasons
@@ -294,9 +309,19 @@ function getAllVoidReasons() {
         .concat(pendingChanges.void_reasons_new);
 }
 
+const getAllDiscounts = () => {
+    const edits = new Map((pendingChanges.discounts_edited || []).map(e => [e.id, e]));
+    const deleted = new Set(pendingChanges.discounts_deleted || []);
+    const base = Array.isArray(pricingData.discounts) ? pricingData.discounts : [];
+    return base
+        .map(d => edits.has(d.id) ? edits.get(d.id) : clone(d))
+        .filter(d => !deleted.has(d.id))
+        .concat(pendingChanges.discounts_new || []);
+}
+
 /* ─── CHANGE TRACKERS ────────────────────────────────────────── */
-function trackDayPartCreate(dp) { pendingChanges.day_parts_new.push(dp); renderScene(); }
-function trackDayPartEdit(dp) {
+const trackDayPartCreate = (dp) => { pendingChanges.day_parts_new.push(dp); renderScene(); }
+const trackDayPartEdit = (dp) => {
     if (pendingChanges.day_parts_new.some(n => n.id === dp.id)) {
         const i = pendingChanges.day_parts_new.findIndex(n => n.id === dp.id);
         pendingChanges.day_parts_new[i] = dp; renderScene(); return;
@@ -306,7 +331,7 @@ function trackDayPartEdit(dp) {
     else pendingChanges.day_parts_edited.push(dp);
     renderScene();
 }
-function trackDayPartDelete(id) {
+const trackDayPartDelete = (id) => {
     const i = pendingChanges.day_parts_new.findIndex(n => n.id === id);
     if (i !== -1) { pendingChanges.day_parts_new.splice(i, 1); renderScene(); return; }
     pendingChanges.day_parts_edited = pendingChanges.day_parts_edited.filter(e => e.id !== id);
@@ -314,36 +339,15 @@ function trackDayPartDelete(id) {
     renderScene();
 }
 
-function trackSpecialCreate(sp) { pendingChanges.specials_new.push(sp); renderScene(); }
-function trackSpecialEdit(sp) {
-    if (pendingChanges.specials_new.some(n => n.id === sp.id)) {
-        const i = pendingChanges.specials_new.findIndex(n => n.id === sp.id);
-        pendingChanges.specials_new[i] = sp; renderScene(); return;
-    }
-    const i = pendingChanges.specials_edited.findIndex(e => e.id === sp.id);
-    if (i !== -1) pendingChanges.specials_edited[i] = sp;
-    else pendingChanges.specials_edited.push(sp);
-    renderScene();
-}
-function trackSpecialDelete(id) {
-    const i = pendingChanges.specials_new.findIndex(n => n.id === id);
-    if (i !== -1) { pendingChanges.specials_new.splice(i, 1); renderScene(); return; }
-    pendingChanges.specials_edited = pendingChanges.specials_edited.filter(e => e.id !== id);
-    if (!pendingChanges.specials_deleted.includes(id)) pendingChanges.specials_deleted.push(id);
-    renderScene();
-}
-
-function trackOrderTypeEdit(ot) {
+const trackOrderTypeEdit = (ot) => {
     const i = pendingChanges.order_types_edited.findIndex(e => e.id === ot.id);
     if (i !== -1) pendingChanges.order_types_edited[i] = ot;
     else pendingChanges.order_types_edited.push(ot);
     renderScene();
 }
 
-function trackEmployeeEdit(emp) { pendingChanges.employee_edited = emp; renderScene(); }
-
-function trackVoidReasonCreate(r) { pendingChanges.void_reasons_new.push(r); renderScene(); }
-function trackVoidReasonEdit(r) {
+const trackVoidReasonCreate = (r) => { pendingChanges.void_reasons_new.push(r); renderScene(); }
+const trackVoidReasonEdit = (r) => {
     if (pendingChanges.void_reasons_new.some(n => n.id === r.id)) {
         const i = pendingChanges.void_reasons_new.findIndex(n => n.id === r.id);
         pendingChanges.void_reasons_new[i] = r; renderScene(); return;
@@ -353,7 +357,7 @@ function trackVoidReasonEdit(r) {
     else pendingChanges.void_reasons_edited.push(r);
     renderScene();
 }
-function trackVoidReasonDelete(id) {
+const trackVoidReasonDelete = (id) => {
     const i = pendingChanges.void_reasons_new.findIndex(n => n.id === id);
     if (i !== -1) { pendingChanges.void_reasons_new.splice(i, 1); renderScene(); return; }
     pendingChanges.void_reasons_edited = pendingChanges.void_reasons_edited.filter(e => e.id !== id);
@@ -372,7 +376,7 @@ export function registerPricingSpecials(sceneManager) {
             displayState   = { openSection: 'specials' };
 
             const { body, saveBar } = buildScenePage(container, {
-                title:     'Specials & Discounts',
+                title:     'Menu Pricing',
                 subtitle:  sceneSubtitle(),
                 saveLabel: 'Save Changes',
                 onSave:    handleSaveChanges,
@@ -385,8 +389,8 @@ export function registerPricingSpecials(sceneManager) {
             modalStack.splice(0).forEach(o => o.parentNode && o.remove());
             bodyMount = footerMount = currentSaveBar = null;
             pricingData = {
-                day_parts: [], specials: [], order_types: [],
-                employee_discount: null, void_reasons: [], categories: [],
+                sizes: [], day_parts: [], specials: [], order_types: [],
+                employee_discount: null, void_reasons: [], discounts: [], categories: [],
             };
             pendingChanges = emptyChanges();
             if (container) container.innerHTML = '';
@@ -394,48 +398,60 @@ export function registerPricingSpecials(sceneManager) {
     });
 }
 
-function emptyChanges() {
-    return {
+const emptyChanges = () => ({
         day_parts_new: [], day_parts_edited: [], day_parts_deleted: [],
         specials_new: [], specials_edited: [], specials_deleted: [],
         order_types_edited: [],
         employee_edited: null,
+        discounts_new: [], discounts_edited: [], discounts_deleted: [],
         void_reasons_new: [], void_reasons_edited: [], void_reasons_deleted: [],
-    };
-}
+    });
 
-function sceneSubtitle() {
+const sceneSubtitle = () => {
+    const sz = (pricingData.sizes || []).length;
     const dp = getAllDayParts().length;
-    const sp = getAllSpecials().length;
-    const ot = getAllOrderTypes().length;
+    const sp = getAllDiscounts().filter(d => d.auto).length;
+    const dc = getAllDiscounts().filter(d => !d.auto).length;
     const cr = getAllVoidReasons().length;
-    return `${dp} day part${dp===1?'':'s'} · ${sp} special${sp===1?'':'s'} · ${ot} order types · ${cr} void reason${cr===1?'':'s'}`;
+    return `${sz} size${sz===1?'':'s'} · ${dp} day part${dp===1?'':'s'} · ${sp} special${sp===1?'':'s'} · ${dc} discount${dc===1?'':'s'} · ${cr} void reason${cr===1?'':'s'}`;
 }
 
 /* ─── MAIN SCENE RENDER ──────────────────────────────────────── */
-function renderScene() {
+const renderScene = () => {
     if (!bodyMount) return;
     bodyMount.innerHTML = '';
 
-    bodyMount.appendChild(buildSuperHeader('SPECIALS', C.gold));
+    bodyMount.appendChild(buildSectionLabel('SIZES', C.gold));
+    bodyMount.appendChild(buildSizesAccordion());
+
+    bodyMount.appendChild(buildSectionLabel('DAY PARTS', C2.lavender));
     bodyMount.appendChild(buildDayPartsAccordion());
-    bodyMount.appendChild(buildSpecialsAccordion());
 
     bodyMount.appendChild(buildOrderTypesAccordion());
-    bodyMount.appendChild(buildSuperHeader('DISCOUNTS', C.green));
-    bodyMount.appendChild(buildEmployeeAccordion());
+
+    const specialsSpacer = document.createElement('div');
+    specialsSpacer.style.marginTop = '24px';
+    bodyMount.appendChild(specialsSpacer);
+    bodyMount.appendChild(buildSectionLabel('SPECIALS', C.greenWarm));
+    bodyMount.appendChild(buildSpecialsAccordion());
+
+    const discountsSpacer = document.createElement('div');
+    discountsSpacer.style.marginTop = '24px';
+    bodyMount.appendChild(discountsSpacer);
+    bodyMount.appendChild(buildSectionLabel('DISCOUNTS', C.green));
+    bodyMount.appendChild(buildDiscountsAccordion());
 
     const voidsSpacer = document.createElement('div');
     voidsSpacer.style.marginTop = '24px';
     bodyMount.appendChild(voidsSpacer);
-    bodyMount.appendChild(buildSuperHeader('VOIDS', C.verm));
+    bodyMount.appendChild(buildSectionLabel('VOIDS', C.verm));
     bodyMount.appendChild(buildVoidReasonsAccordion());
 
     bodyMount.appendChild(buildPendingFooter());
     updateSaveBar();
 }
 
-function buildSuperHeader(label, color) {
+const buildSuperHeader = (label, color) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         display: flex; align-items: center; gap: 14px;
@@ -456,7 +472,7 @@ function buildSuperHeader(label, color) {
     return wrap;
 }
 
-function buildAccordion(key, title, meta, accentColor, bodyBuilder, countBadge = 0) {
+const buildAccordion = (key, title, meta, accentColor, bodyBuilder, countBadge = 0) => {
     const isOpen = displayState.openSection === key;
     const wrap = document.createElement('div');
     wrap.style.cssText = `
@@ -534,7 +550,7 @@ function buildAccordion(key, title, meta, accentColor, bodyBuilder, countBadge =
         body.style.cssText = `
             padding: 0 16px 16px;
             padding-top: 14px;
-            display: flex; flex-direction: column; gap: 10px;
+            display: flex; flex-direction: column; gap: 8px;
             border-top: 1px solid ${C2.hairline};
         `;
         bodyBuilder(body);
@@ -543,8 +559,276 @@ function buildAccordion(key, title, meta, accentColor, bodyBuilder, countBadge =
     return wrap;
 }
 
+/* ─── SIZES ACCORDION ────────────────────────────────────────── */
+const buildSizesAccordion = () => {
+    const sizes = pricingData.sizes || [];
+    return buildAccordion(
+        'sizes', 'Sizes',
+        `${sizes.length} size${sizes.length === 1 ? '' : 's'}`,
+        C.gold,
+        (body) => {
+            if (sizes.length === 0) {
+                const empty = document.createElement('div');
+                empty.textContent = 'NO SIZES DEFINED';
+                empty.style.cssText = `
+                    padding: 20px; text-align: center;
+                    font-family: ui-monospace, monospace;
+                    font-size: 11px; color: ${C.textDim};
+                    letter-spacing: 1.5px; text-transform: uppercase;
+                `;
+                body.appendChild(empty);
+            } else {
+                sizes.forEach(sz => body.appendChild(buildSizeCard(sz)));
+            }
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD SIZE', 'mint', () => openSizeModal(null), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
+        },
+        0
+    );
+}
+
+const buildSizeCard = (sz) => {
+    const adj = Number(sz.price_adjustment || 0);
+    const card = document.createElement('div');
+    card.style.cssText = `
+        background: ${C.well};
+        border: 1px solid ${withAlpha(C.text, 0.08)};
+        border-left: 3px solid ${C.gold};
+        border-radius: 8px;
+        padding: 12px 14px;
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 8px;
+    `;
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;';
+
+    const nameRow = document.createElement('div');
+    nameRow.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;';
+
+    const name = document.createElement('div');
+    name.textContent = sz.name || '(unnamed)';
+    name.style.cssText = `font-size: 14px; font-weight: 600; color: ${C.text};`;
+    nameRow.appendChild(name);
+
+    const adjText = adj > 0 ? `Adds +${adj.toFixed(2)} per item`
+                 : adj < 0 ? `Subtracts ${Math.abs(adj).toFixed(2)} per item`
+                 : 'No adjustment';
+    const subLabel = document.createElement('div');
+    subLabel.textContent = adjText;
+    subLabel.style.cssText = `
+        font-family: ui-monospace, monospace;
+        font-size: 11px; color: ${C.textMuted};
+    `;
+    nameRow.appendChild(subLabel);
+
+    info.appendChild(nameRow);
+    card.appendChild(info);
+
+    const toggle = buildToggle(sz.active !== false, async (next) => {
+        try {
+            await fetchWithTimeout(`/api/v1/sizes/${encodeURIComponent(sz.size_id)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: next }),
+            }, 10000);
+            pricingData.sizes = await fetchWithTimeout('/api/v1/sizes', {}, 8000).then(r => r.json());
+            const [dpRes, spRes, otRes, empRes, voidRes, discRes] = await Promise.all([
+                fetchWithTimeout('/api/v1/config/pricing/day-parts', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/specials', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/order-types', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/employee-discount', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/void-reasons', {}, 8000),
+                fetchWithTimeout('/api/v1/config/pricing/discounts', {}, 8000),
+            ]);
+            if (dpRes.ok) pricingData.day_parts = (await dpRes.json()).map(migrateDayPart);
+            if (spRes.ok) pricingData.specials = (await spRes.json()).map(migrateSpecial);
+            if (otRes.ok) pricingData.order_types = await otRes.json();
+            if (empRes.ok) pricingData.employee_discount = await empRes.json();
+            if (voidRes.ok) pricingData.void_reasons = await voidRes.json();
+            if (discRes.ok) {
+                const ddata = await discRes.json();
+                pricingData.discounts = (ddata.discounts || []).map(d => ({ id: d.id || `disc_${crypto.randomUUID()}`, name: d.name || '', type: d.type || 'percentage', value: d.value || 0, timing_type: d.timing_type || 'always', day_part_id: d.day_part_id || null, custom_start: d.custom_start || '09:00', custom_end: d.custom_end || '17:00', auto: d.auto !== false, requires_pin: d.requires_pin !== false, active: d.active !== false }));
+            }
+            renderScene();
+        } catch (e) {
+            toggle.setValue(!next);
+            showToast('Failed to update size', 'error');
+        }
+    });
+    card.appendChild(toggle);
+
+    const editBtn = buildPillButton('Edit', 'ghost', () => openSizeModal(sz), { small: true });
+    card.appendChild(editBtn);
+
+    return card;
+}
+
+const openSizeModal = (existing) => {
+    const title = existing ? `Edit ${existing.name}` : 'Add Size';
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: ${C.card}; border: 1px solid ${C2.hairline};
+        border-radius: 8px; padding: 24px; z-index: 5000;
+        max-width: 400px; width: 90%;
+    `;
+
+    const heading = document.createElement('div');
+    heading.textContent = title;
+    heading.style.cssText = `
+        font-size: 16px; font-weight: 700; color: ${C.text};
+        margin-bottom: 16px;
+    `;
+    modal.appendChild(heading);
+
+    const form = document.createElement('div');
+    form.style.cssText = 'display: flex; flex-direction: column; gap: 12px;';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Size name';
+    nameInput.value = existing?.name || '';
+    nameInput.style.cssText = `padding: 8px 12px; border: 1px solid ${C2.hairline}; border-radius: 4px; font-family: ${C.fb}; background: ${C.well}; color: ${C.text};`;
+    form.appendChild(nameInput);
+
+    const adjInput = document.createElement('input');
+    adjInput.type = 'number';
+    adjInput.placeholder = 'Price Adjustment';
+    adjInput.step = '0.01';
+    adjInput.value = (existing?.price_adjustment || 0).toString();
+    adjInput.style.cssText = `padding: 8px 12px; border: 1px solid ${C2.hairline}; border-radius: 4px; font-family: ${C.fb}; background: ${C.well}; color: ${C.text};`;
+    form.appendChild(adjInput);
+
+    modal.appendChild(form);
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end;';
+
+    const cancelBtn = buildPillButton('Cancel', 'tertiary', () => modal.remove(), { small: true });
+    actions.appendChild(cancelBtn);
+
+    const saveBtn = buildPillButton('Save', 'confirm', async () => {
+        const name = nameInput.value.trim();
+        if (!name) { showToast('Name is required', 'error'); return; }
+        const adj = parseFloat(adjInput.value) || 0;
+
+        try {
+            if (existing) {
+                await fetchWithTimeout(`/api/v1/sizes/${encodeURIComponent(existing.size_id)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, price_adjustment: adj }),
+                }, 10000);
+            } else {
+                await fetchWithTimeout('/api/v1/sizes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, price_adjustment: adj }),
+                }, 10000);
+            }
+            pricingData.sizes = await fetchWithTimeout('/api/v1/sizes', {}, 8000).then(r => r.json());
+            renderScene();
+            modal.remove();
+            showToast(existing ? 'Size updated' : 'Size added');
+        } catch (e) {
+            showToast('Failed to save size', 'error');
+        }
+    }, { small: true });
+    actions.appendChild(saveBtn);
+
+    modal.appendChild(actions);
+    document.body.appendChild(modal);
+}
+
+/* ─── SPECIALS ACCORDION ─────────────────────────────────────── */
+const buildSpecialsAccordion = () => {
+    const specials = getAllDiscounts().filter(d => d.auto);
+    return buildAccordion(
+        'specials', 'Specials',
+        `${specials.length} special${specials.length === 1 ? '' : 's'}`,
+        C.greenWarm,
+        (body) => {
+            if (specials.length === 0) {
+                const empty = document.createElement('div');
+                empty.textContent = 'NO SPECIALS DEFINED';
+                empty.style.cssText = `
+                    padding: 20px; text-align: center;
+                    font-family: ui-monospace, monospace;
+                    font-size: 11px; color: ${C.textDim};
+                    letter-spacing: 1.5px; text-transform: uppercase;
+                `;
+                body.appendChild(empty);
+            } else {
+                specials.forEach(sp => body.appendChild(buildSpecialRow(sp)));
+            }
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD SPECIAL', 'mint', () => openDiscountModal(null, { defaultAuto: true }), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
+        },
+        0
+    );
+}
+
+const buildSpecialRow = (sp) => {
+    const row = document.createElement('div');
+    row.style.cssText = `
+        padding: 12px 14px; background: ${C.well}; border-radius: 4px;
+        display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+    `;
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex: 1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;';
+
+    const name = document.createElement('div');
+    name.textContent = sp.name;
+    name.style.cssText = `font-weight: 600; color: ${C.text};`;
+    info.appendChild(name);
+
+    const amount = document.createElement('div');
+    amount.textContent = sp.type === 'percentage' ? `${sp.value}%` : `$${Number(sp.value).toFixed(2)} flat`;
+    amount.style.cssText = `font-family: ui-monospace, monospace; font-size: 11px; color: ${C.textMuted};`;
+    info.appendChild(amount);
+
+    const timing = document.createElement('div');
+    let timingLabel = 'always active';
+    if (sp.timing_type === 'day_part') {
+        const dp = pricingData.day_parts.find(d => d.id === sp.day_part_id);
+        timingLabel = dp ? dp.name : 'unknown day part';
+    } else if (sp.timing_type === 'custom') {
+        timingLabel = `${sp.custom_start} – ${sp.custom_end}`;
+    }
+    timing.textContent = timingLabel;
+    timing.style.cssText = `font-family: ui-monospace, monospace; font-size: 10px; color: ${C.textDim};`;
+    info.appendChild(timing);
+
+    row.appendChild(info);
+
+    const editBtn = buildPillButton('EDIT', 'dark', () => openDiscountModal(sp), { small: true });
+    row.appendChild(editBtn);
+
+    const deleteBtn = buildPillButton('DELETE', 'danger', () => {
+        if (!confirm(`Delete "${sp.name}"?`)) return;
+        const i = pendingChanges.discounts_new.findIndex(n => n.id === sp.id);
+        if (i !== -1) { pendingChanges.discounts_new.splice(i, 1); renderScene(); return; }
+        pendingChanges.discounts_edited = pendingChanges.discounts_edited.filter(e => e.id !== sp.id);
+        if (!pendingChanges.discounts_deleted.includes(sp.id)) pendingChanges.discounts_deleted.push(sp.id);
+        renderScene();
+    }, { small: true });
+    row.appendChild(deleteBtn);
+
+    return row;
+}
+
 /* ─── DAY PARTS ACCORDION ────────────────────────────────────── */
-function buildDayPartsAccordion() {
+const buildDayPartsAccordion = () => {
     const parts = getAllDayParts();
     const pendingCount = pendingChanges.day_parts_new.length
                        + pendingChanges.day_parts_edited.length
@@ -573,15 +857,18 @@ function buildDayPartsAccordion() {
                 parts.forEach(dp => body.appendChild(buildDayPartCard(dp)));
             }
 
-            const addBtn = buildAddBtn('+ Add day part', C2.lavender);
-            addBtn.addEventListener('click', () => openDayPartModal(null));
-            body.appendChild(addBtn);
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD DAY PART', 'mint', () => openDayPartModal(null), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
         },
         pendingCount
     );
 }
 
-function buildDayPartCard(dp) {
+const buildDayPartCard = (dp) => {
     const pending = pendingChanges.day_parts_new.some(n => n.id === dp.id)
                  || pendingChanges.day_parts_edited.some(e => e.id === dp.id);
 
@@ -592,18 +879,17 @@ function buildDayPartCard(dp) {
         border-left: 3px solid ${C2.lavender};
         border-radius: 8px;
         padding: 12px 14px;
-        display: flex; flex-direction: column; gap: 6px;
-        cursor: pointer;
-        transition: background 0.15s ease;
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 8px;
     `;
-    card.addEventListener('mouseenter', () => card.style.background = C.card);
-    card.addEventListener('mouseleave', () => card.style.background = C.well);
-    card.addEventListener('click', () => openDayPartModal(dp));
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;';
 
     const name = document.createElement('div');
     name.textContent = dp.name || '(unnamed)';
     name.style.cssText = `font-size: 14px; font-weight: 600; color: ${C.text};`;
-    card.appendChild(name);
+    info.appendChild(name);
 
     const desc = document.createElement('div');
     desc.textContent = summarizeWindows(dp.windows);
@@ -612,222 +898,30 @@ function buildDayPartCard(dp) {
         font-size: 11px; color: ${C.textMuted};
         letter-spacing: 1.2px;
     `;
-    card.appendChild(desc);
+    info.appendChild(desc);
 
     if (dp.description) {
         const extra = document.createElement('div');
         extra.textContent = dp.description;
         extra.style.cssText = `font-size: 11px; color: ${C.textDim}; font-style: italic;`;
-        card.appendChild(extra);
+        info.appendChild(extra);
     }
 
+    card.appendChild(info);
+
+    const editBtn = buildPillButton('EDIT', 'dark', () => openDayPartModal(dp), { small: true });
+    editBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    card.appendChild(editBtn);
+
+    const delBtn = buildPillButton('DELETE', 'vermillion', () => confirmDeleteDayPart(dp.id), { small: true });
+    delBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    card.appendChild(delBtn);
+
     return card;
-}
-
-function summarizeWindows(windows) {
-    if (!windows || windows.length === 0) return 'No windows defined';
-    if (windows.length === 1) return formatWindow(windows[0]);
-    const first = formatWindow(windows[0]);
-    return `${first} · ${windows.length} windows`;
-}
-
-function formatWindow(win) {
-    const days = win.days || [1,1,1,1,1,1,1];
-    const onCount = days.filter(Boolean).length;
-    let daysStr;
-    if (onCount === 7) daysStr = 'daily';
-    else if (onCount === 0) daysStr = '—';
-    else if (days.slice(0,5).every(Boolean) && !days[5] && !days[6]) daysStr = 'M–F';
-    else if (!days.slice(0,5).some(Boolean) && days[5] && days[6]) daysStr = 'Sat–Sun';
-    else daysStr = days.map((d,i) => d ? DAY_LABELS[i][0] : null).filter(Boolean).join('·');
-    return `${win.start}–${win.end} · ${daysStr}`;
-}
-
-/* ─── SPECIALS ACCORDION ─────────────────────────────────────── */
-function buildSpecialsAccordion() {
-    const specials = getAllSpecials();
-    const pendingCount = pendingChanges.specials_new.length
-                       + pendingChanges.specials_edited.length
-                       + pendingChanges.specials_deleted.length;
-    const active = specials.filter(s => s.active).length;
-    const draft  = specials.length - active;
-
-    return buildAccordion(
-        'specials', 'Specials',
-        `${active} active${draft > 0 ? ` · ${draft} draft` : ''}`,
-        C.gold,
-        (body) => {
-            if (specials.length === 0) {
-                const empty = document.createElement('div');
-                empty.textContent = 'No specials yet — tap + Add to create one';
-                empty.style.cssText = `
-                    padding: 20px; text-align: center;
-                    font-family: ui-monospace, monospace;
-                    font-size: 11px; color: ${C.textDim};
-                    letter-spacing: 1.5px; text-transform: uppercase;
-                `;
-                body.appendChild(empty);
-            } else {
-                specials
-                    .sort((a, b) => (a.priority || 999) - (b.priority || 999))
-                    .forEach(sp => body.appendChild(buildSpecialCard(sp)));
-            }
-
-            const addBtn = buildAddBtn('+ Add special', C.gold);
-            addBtn.addEventListener('click', () => openSpecialModal(null));
-            body.appendChild(addBtn);
-        },
-        pendingCount
-    );
-}
-
-function buildSpecialCard(sp) {
-    const pending = pendingChanges.specials_new.some(n => n.id === sp.id)
-                 || pendingChanges.specials_edited.some(e => e.id === sp.id);
-    const isManual = sp.schedule.mode === 'manual';
-    const accent = isManual ? C2.lavender : C.gold;
-
-    const card = document.createElement('div');
-    card.style.cssText = `
-        background: ${C.well};
-        border: 1px solid ${pending ? C.gold : withAlpha(C.text, 0.08)};
-        border-left: 3px solid ${accent};
-        border-radius: 8px;
-        padding: 12px 14px;
-        display: flex; flex-direction: column; gap: 6px;
-        cursor: pointer;
-        opacity: ${sp.active ? '1' : '0.55'};
-        transition: background 0.15s ease;
-    `;
-    card.addEventListener('mouseenter', () => card.style.background = C.card);
-    card.addEventListener('mouseleave', () => card.style.background = C.well);
-    card.addEventListener('click', () => openSpecialModal(sp));
-
-    // Headline row
-    const headline = document.createElement('div');
-    headline.style.cssText = 'display: flex; align-items: center; gap: 10px;';
-
-    const name = document.createElement('div');
-    name.textContent = sp.name || '(unnamed)';
-    name.style.cssText = `font-size: 15px; font-weight: 600; color: ${C.text};`;
-    headline.appendChild(name);
-
-    const valueEl = document.createElement('div');
-    valueEl.textContent = formatDiscountValue(sp);
-    valueEl.style.cssText = `
-        font-family: ui-monospace, monospace;
-        font-size: 14px; font-weight: 700;
-        color: ${accent};
-        letter-spacing: 0.5px;
-    `;
-    headline.appendChild(valueEl);
-
-    const spacer = document.createElement('div');
-    spacer.style.flex = '1';
-    headline.appendChild(spacer);
-
-    const statusChip = document.createElement('div');
-    statusChip.textContent = sp.active ? '● ON' : '○ OFF';
-    statusChip.style.cssText = `
-        padding: 3px 10px; border-radius: 999px;
-        font-family: ui-monospace, monospace;
-        font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
-        background: ${sp.active ? withAlpha(C.green, 0.15) : withAlpha(C.text, 0.12)};
-        color: ${sp.active ? C.green : withAlpha(C.text, 0.55)};
-    `;
-    headline.appendChild(statusChip);
-    card.appendChild(headline);
-
-    // Descriptor row
-    const desc = document.createElement('div');
-    desc.style.cssText = `
-        display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-        font-family: ui-monospace, monospace;
-        font-size: 10px; font-weight: 700;
-        letter-spacing: 1.5px;
-        color: ${withAlpha(C.text, 0.5)};
-    `;
-
-    // Schedule
-    const schedPart = document.createElement('span');
-    schedPart.style.color = C2.lavender;
-    schedPart.textContent = formatScheduleDescriptor(sp);
-    desc.appendChild(schedPart);
-
-    desc.appendChild(makeDot());
-
-    // Scope
-    const scopePart = document.createElement('span');
-    scopePart.style.color = C.green;
-    scopePart.textContent = formatScopeDescriptor(sp);
-    desc.appendChild(scopePart);
-
-    desc.appendChild(makeDot());
-
-    // Apply mode
-    const applyPart = document.createElement('span');
-    applyPart.style.color = sp.apply_mode === 'auto' ? C.green : C.gold;
-    applyPart.textContent = sp.apply_mode === 'auto' ? '⚡ AUTO' : '✋ ASK';
-    desc.appendChild(applyPart);
-
-    desc.appendChild(makeDot());
-
-    // Priority / rules
-    const rules = [`P${sp.priority}`];
-    if (sp.stacking) rules.push('STACKS');
-    if (sp.requires_pin) rules.push('PIN');
-    const rulesPart = document.createElement('span');
-    rulesPart.textContent = rules.join(' · ');
-    desc.appendChild(rulesPart);
-
-    card.appendChild(desc);
-    return card;
-}
-
-function makeDot() {
-    const d = document.createElement('span');
-    d.textContent = '·';
-    d.style.color = withAlpha(C.text, 0.25);
-    return d;
-}
-
-function formatDiscountValue(sp) {
-    const v = sp.discount_value;
-    if (sp.discount_type === 'percentage') return `${v > 0 ? '+' : ''}${v}%`;
-    if (sp.discount_type === 'flat')       return `${v >= 0 ? '+' : '−'}$${Math.abs(v).toFixed(2)} off`;
-    if (sp.discount_type === 'fixed_price') return `$${v.toFixed(2)} fixed`;
-    return String(v);
-}
-
-function formatScheduleDescriptor(sp) {
-    if (sp.schedule.mode === 'manual') return '⚑ MANUAL';
-    if (sp.schedule.mode === 'daypart') {
-        const names = (sp.schedule.daypart_ids || [])
-            .map(id => (getAllDayParts().find(dp => dp.id === id) || {}).name)
-            .filter(Boolean);
-        if (names.length === 0) return '◔ NO DAY PART';
-        if (names.length === 1) return `◔ ${names[0].toUpperCase()}`;
-        return `◔ ${names.map(n => n.toUpperCase()).join(' + ')}`;
-    }
-    // custom
-    const win = (sp.schedule.custom_windows || [])[0];
-    if (!win) return '⏰ NO WINDOW';
-    return `⏰ ${formatWindow(win).toUpperCase()}`;
-}
-
-function formatScopeDescriptor(sp) {
-    if (sp.scope.mode === 'all') return 'ALL ITEMS';
-    if (sp.scope.mode === 'items') return `${sp.scope.ids.length} ITEMS`;
-    const cats = (sp.scope.ids || [])
-        .map(id => (pricingData.categories.find(c => c.id === id) || {}).name)
-        .filter(Boolean);
-    if (cats.length === 0) return 'NO CATEGORIES';
-    if (cats.length <= 2) return cats.map(n => n.toUpperCase()).join(' + ');
-    return `${cats.length} CATEGORIES`;
 }
 
 /* ─── ORDER TYPES ACCORDION ──────────────────────────────────── */
-function buildOrderTypesAccordion() {
+const buildOrderTypesAccordion = () => {
     const types = getAllOrderTypes();
     const meta = types.map(t => `${t.name} ${fmtPct(t.adjustment)}`).join(' · ');
     return buildAccordion(
@@ -846,12 +940,12 @@ function buildOrderTypesAccordion() {
     );
 }
 
-function fmtPct(n) {
+const fmtPct = (n) => {
     if (!n) return '0%';
     return `${n > 0 ? '+' : ''}${n}%`;
 }
 
-function buildOrderTypeRow(ot) {
+const buildOrderTypeRow = (ot) => {
     const edited = pendingChanges.order_types_edited.some(e => e.id === ot.id);
     const row = document.createElement('div');
     row.style.cssText = `
@@ -861,6 +955,7 @@ function buildOrderTypeRow(ot) {
         border: 1px solid ${edited ? C.gold : withAlpha(C.text, 0.08)};
         border-radius: 8px;
         opacity: ${ot.active ? '1' : '0.55'};
+        margin-bottom: 8px;
     `;
 
     const name = document.createElement('div');
@@ -905,7 +1000,7 @@ function buildOrderTypeRow(ot) {
     return row;
 }
 
-function buildInlineToggle(initial, onChange) {
+const buildInlineToggle = (initial, onChange) => {
     const state = { on: !!initial };
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -938,108 +1033,301 @@ function buildInlineToggle(initial, onChange) {
     return btn;
 }
 
-/* ─── EMPLOYEE DISCOUNT ACCORDION ────────────────────────────── */
-function buildEmployeeAccordion() {
-    const emp = getWorkingEmployee();
-    const meta = emp.separate_rates
-        ? `On-duty ${emp.on_duty_rate}% · Off-duty ${emp.off_duty_rate}%`
-        : `${emp.percentage}% · ${friendlyAppliesTo(emp.applies_to)}`;
+/* ─── DISCOUNTS ACCORDION ────────────────────────────────────── */
+const buildDiscountsAccordion = () => {
+    const discounts = getAllDiscounts().filter(d => !d.auto);
+    const pendingCount = pendingChanges.discounts_new.length
+                       + pendingChanges.discounts_edited.length
+                       + pendingChanges.discounts_deleted.length;
     return buildAccordion(
-        'employee', 'Employee Discount',
-        meta,
+        'discounts', 'Discounts',
+        `${discounts.length} manual discount${discounts.length === 1 ? '' : 's'}`,
         C.green,
         (body) => {
-            const card = document.createElement('div');
-            card.style.cssText = `
-                background: ${C.well};
-                border: 1px solid ${pendingChanges.employee_edited ? C.gold : withAlpha(C.text, 0.08)};
-                border-radius: 8px;
-                padding: 14px;
-                display: flex; flex-direction: column; gap: 12px;
-            `;
-
-            const rateRow = document.createElement('div');
-            rateRow.style.cssText = 'display: flex; gap: 24px;';
-            if (emp.separate_rates) {
-                rateRow.appendChild(buildRateCol('ON-DUTY', `${emp.on_duty_rate}%`, C.green));
-                rateRow.appendChild(buildRateCol('OFF-DUTY', `${emp.off_duty_rate}%`, C.gold));
+            if (discounts.length === 0) {
+                const empty = document.createElement('div');
+                empty.textContent = 'NO DISCOUNTS DEFINED';
+                empty.style.cssText = `
+                    padding: 20px; text-align: center;
+                    font-family: ui-monospace, monospace;
+                    font-size: 11px; color: ${C.textDim};
+                    letter-spacing: 1.5px; text-transform: uppercase;
+                `;
+                body.appendChild(empty);
             } else {
-                rateRow.appendChild(buildRateCol('DISCOUNT', `${emp.percentage}%`, C.green));
+                discounts.forEach(d => body.appendChild(buildDiscountCard(d)));
             }
-            card.appendChild(rateRow);
 
-            const pillRow = document.createElement('div');
-            pillRow.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap;';
-            pillRow.appendChild(makePill(friendlyAppliesTo(emp.applies_to), 'mint'));
-            if (emp.exclude_categories && emp.exclude_categories.length > 0) {
-                const names = emp.exclude_categories
-                    .map(id => (pricingData.categories.find(c => c.id === id) || {}).name)
-                    .filter(Boolean);
-                if (names.length) pillRow.appendChild(makePill(`excl. ${names.join(', ')}`, 'verm'));
-            }
-            if (emp.requires_pin) pillRow.appendChild(makePill('PIN required', 'gold'));
-            if (emp.separate_rates) pillRow.appendChild(makePill('separate rates', 'muted'));
-            card.appendChild(pillRow);
-
-            const editBtn = buildAddBtn('Edit settings', C.green);
-            editBtn.style.alignSelf = 'stretch';
-            editBtn.style.textAlign = 'center';
-            editBtn.addEventListener('click', () => openEmployeeModal(emp));
-            card.appendChild(editBtn);
-
-            body.appendChild(card);
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD DISCOUNT', 'mint', () => openDiscountModal(null), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
         },
-        pendingChanges.employee_edited ? 1 : 0
+        pendingCount
     );
 }
 
-function friendlyAppliesTo(a) {
-    return { everything: 'everything', food_only: 'food only', drinks_only: 'drinks only' }[a] || a;
+const buildDiscountCard = (d) => {
+    const pending = pendingChanges.discounts_new.some(n => n.id === d.id)
+                 || pendingChanges.discounts_edited.some(e => e.id === d.id);
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+        background: ${C.well};
+        border: 1px solid ${pending ? C.gold : withAlpha(C.text, 0.08)};
+        border-left: 3px solid ${C.green};
+        border-radius: 8px;
+        padding: 12px 14px;
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 8px;
+    `;
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0;';
+
+    const nameRow = document.createElement('div');
+    nameRow.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;';
+
+    const name = document.createElement('div');
+    name.textContent = d.name || '(unnamed)';
+    name.style.cssText = `font-size: 14px; font-weight: 600; color: ${C.text};`;
+    nameRow.appendChild(name);
+
+    const amount = document.createElement('div');
+    amount.textContent = d.type === 'percentage' ? `${d.value}%` : `$${Number(d.value).toFixed(2)}`;
+    amount.style.cssText = `
+        font-family: ui-monospace, monospace;
+        font-size: 12px; color: ${C.textMuted};
+        font-weight: 600;
+    `;
+    nameRow.appendChild(amount);
+
+    const timingLabel = getTimingLabel(d);
+    const timing = document.createElement('div');
+    timing.textContent = timingLabel;
+    timing.style.cssText = `
+        font-family: ui-monospace, monospace;
+        font-size: 11px; color: ${C.textDim};
+        letter-spacing: 0.5px;
+    `;
+    nameRow.appendChild(timing);
+
+    if (d.auto) {
+        const autoBadge = document.createElement('div');
+        autoBadge.textContent = 'AUTO';
+        autoBadge.style.cssText = `
+            padding: 2px 8px; border-radius: 999px;
+            font-family: ui-monospace, monospace;
+            font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
+            background: ${withAlpha(C.green, 0.2)}; color: ${C.green};
+        `;
+        nameRow.appendChild(autoBadge);
+    }
+
+    info.appendChild(nameRow);
+    card.appendChild(info);
+
+    const btnGroup = document.createElement('div');
+    btnGroup.style.cssText = 'display: flex; gap: 6px;';
+    const editBtn = buildPillButton('EDIT', 'dark', () => openDiscountModal(d), { small: true });
+    const deleteBtn = buildPillButton('DELETE', 'danger', () => {
+        if (!confirm(`Delete "${d.name}"?`)) return;
+        trackDiscountDelete(d.id);
+        renderScene();
+    }, { small: true });
+    btnGroup.appendChild(editBtn);
+    btnGroup.appendChild(deleteBtn);
+    card.appendChild(btnGroup);
+
+    return card;
 }
 
-function buildRateCol(label, value, color) {
-    const col = document.createElement('div');
-    const lbl = document.createElement('div');
-    lbl.textContent = label;
-    lbl.style.cssText = `
-        font-family: ui-monospace, monospace;
-        font-size: 10px; color: ${C.textMuted};
-        letter-spacing: 1.5px; font-weight: 700;
-        margin-bottom: 4px;
-    `;
-    col.appendChild(lbl);
-    const val = document.createElement('div');
-    val.textContent = value;
-    val.style.cssText = `
-        font-family: ui-monospace, monospace;
-        font-size: 22px; font-weight: 700;
-        color: ${color};
-    `;
-    col.appendChild(val);
-    return col;
+const getTimingLabel = (d) => {
+    if (d.timing_type === 'always') return 'always active';
+    if (d.timing_type === 'day_part') {
+        const dp = pricingData.day_parts.find(x => x.id === d.day_part_id);
+        return dp ? `day part: ${dp.name}` : 'day part (missing)';
+    }
+    if (d.timing_type === 'custom') {
+        return `${d.custom_start || '09:00'} – ${d.custom_end || '17:00'}`;
+    }
+    return 'unknown timing';
 }
 
-function makePill(text, tone) {
-    const toneMap = {
-        mint:  { bg: withAlpha(C.green, 0.15),    fg: C.green  },
-        gold:  { bg: withAlpha(C.gold, 0.18),     fg: C.gold   },
-        verm:  { bg: withAlpha(C.verm, 0.18),     fg: C.verm   },
-        muted: { bg: withAlpha(C.text, 0.1),      fg: withAlpha(C.text, 0.6) },
+const openDiscountModal = (existing, opts) => {
+    const isEdit = !!existing;
+    const defaultAuto = opts?.defaultAuto ?? false;
+    const d = existing ? clone(existing) : {
+        id: `disc_${crypto.randomUUID()}`,
+        name: '',
+        type: 'percentage',
+        value: 0,
+        timing_type: 'always',
+        day_part_id: null,
+        custom_start: '09:00',
+        custom_end: '17:00',
+        auto: defaultAuto,
+        requires_pin: false,
+        active: true,
     };
-    const t = toneMap[tone] || toneMap.muted;
-    const p = document.createElement('div');
-    p.textContent = text;
-    p.style.cssText = `
-        padding: 3px 10px; border-radius: 999px;
-        font-family: ui-monospace, monospace;
-        font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
-        background: ${t.bg}; color: ${t.fg};
-    `;
-    return p;
+
+    openModal(isEdit ? `Edit discount: ${d.name || ''}` : 'Add discount', (body, modalEl, ov) => {
+        // NAME
+        const nameField = buildTextField(body, 'Name', d.name, { required: true, placeholder: 'Happy Hour, 20% off…' });
+
+        // AMOUNT TYPE & VALUE
+        const row1 = document.createElement('div');
+        row1.style.cssText = 'display: flex; gap: 12px; align-items: flex-end;';
+        const typeCol = document.createElement('div');
+        typeCol.style.cssText = 'flex: 1;';
+        const typeField = buildSelectField(typeCol, 'Amount type', d.type, [
+            { value: 'percentage', label: 'Percentage' },
+            { value: 'flat_dollar', label: 'Flat rate' },
+        ]);
+        row1.appendChild(typeCol);
+        const valCol = document.createElement('div');
+        valCol.style.cssText = 'flex: 0 0 120px;';
+        const valField = buildTextField(valCol, 'Amount', d.value, { type: 'number', step: '0.01' });
+        row1.appendChild(valCol);
+        const unitDiv = document.createElement('div');
+        unitDiv.textContent = d.type === 'percentage' ? '%' : '$';
+        unitDiv.style.cssText = `font-weight: 600; padding-bottom: 12px; color: ${C.textMuted};`;
+        row1.appendChild(unitDiv);
+        typeField.input.addEventListener('change', () => {
+            d.type = typeField.input.value;
+            unitDiv.textContent = d.type === 'percentage' ? '%' : '$';
+        });
+        body.appendChild(row1);
+
+        body.appendChild(buildDivider());
+
+        // TIMING
+        body.appendChild(buildSectionLabel('TIMING', C.green));
+        const timingWrap = document.createElement('div');
+        timingWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px;';
+        const timingSeg = buildSegmented([
+            { value: 'always',   label: '◎ Always' },
+            { value: 'day_part', label: '⏰ Day part' },
+            { value: 'custom',   label: '✓ Custom' },
+        ], d.timing_type, (v) => {
+            d.timing_type = v;
+            renderTiming();
+        }, C.green);
+        timingWrap.appendChild(timingSeg.wrap);
+
+        const timingDetails = document.createElement('div');
+        timingDetails.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
+        timingWrap.appendChild(timingDetails);
+
+        function renderTiming() {
+            timingDetails.innerHTML = '';
+            if (d.timing_type === 'day_part') {
+                const dpList = getAllDayParts();
+                if (dpList.length === 0) {
+                    const msg = document.createElement('div');
+                    msg.textContent = 'No day parts defined. Switch to Custom or add a day part first.';
+                    msg.style.cssText = `font-size: 12px; color: ${C.verm};`;
+                    timingDetails.appendChild(msg);
+                } else {
+                    const dpField = buildSelectField(timingDetails, 'Day part', d.day_part_id || '', [
+                        { value: '', label: '— select a day part —' },
+                        ...dpList.map(dp => ({ value: dp.id, label: dp.name })),
+                    ]);
+                    dpField.select.addEventListener('change', () => { d.day_part_id = dpField.select.value || null; });
+                }
+            } else if (d.timing_type === 'custom') {
+                const row = document.createElement('div');
+                row.style.cssText = 'display: flex; gap: 12px; align-items: flex-end;';
+                const startCol = document.createElement('div');
+                startCol.style.flex = '1';
+                const startField = buildTextField(startCol, 'Start', d.custom_start, { type: 'time' });
+                startField.input.addEventListener('input', () => { d.custom_start = startField.input.value; });
+                row.appendChild(startCol);
+                const arrow = document.createElement('div');
+                arrow.textContent = '→';
+                arrow.style.cssText = `padding: 0 4px 10px 4px; color: ${withAlpha(C.text, 0.4)};`;
+                row.appendChild(arrow);
+                const endCol = document.createElement('div');
+                endCol.style.flex = '1';
+                const endField = buildTextField(endCol, 'End', d.custom_end, { type: 'time' });
+                endField.input.addEventListener('input', () => { d.custom_end = endField.input.value; });
+                row.appendChild(endCol);
+                timingDetails.appendChild(row);
+            }
+        }
+
+        renderTiming();
+        body.appendChild(timingWrap);
+
+        body.appendChild(buildDivider());
+
+        // AUTO-APPLY
+        body.appendChild(buildSectionLabel('OPTIONS', C.green));
+        const optWrap = document.createElement('div');
+        optWrap.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
+
+        const autoRow = document.createElement('div');
+        autoRow.style.cssText = 'display: flex; align-items: center; gap: 10px;';
+        const autoLabel = document.createElement('div');
+        autoLabel.textContent = 'Auto-apply';
+        autoLabel.style.cssText = `flex: 1; font-size: 13px; color: ${C.text};`;
+        const autoToggle = buildToggle(d.auto, (v) => { d.auto = v; });
+        autoRow.appendChild(autoLabel);
+        autoRow.appendChild(autoToggle);
+        optWrap.appendChild(autoRow);
+
+        const autoHint = document.createElement('div');
+        autoHint.textContent = 'ON = applies automatically during timing window · OFF = appears as a button for manual use';
+        autoHint.style.cssText = `font-size: 10px; color: ${C.textDim}; line-height: 1.4;`;
+        optWrap.appendChild(autoHint);
+
+        body.appendChild(optWrap);
+
+        // FOOTER
+        const footer = document.createElement('div');
+        footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end; padding-top: 14px; border-top: 1px solid ${C2.hairline}; margin-top: 6px;`;
+        footer.appendChild(buildPillButton('Cancel', 'tertiary', () => closeModal(ov), { small: true }));
+        footer.appendChild(buildPillButton(isEdit ? 'Save' : 'Create', 'primary', () => {
+            const name = nameField.input.value.trim();
+            if (!name) { nameField.input.style.borderColor = C.verm; return; }
+            const gathered = {
+                ...d,
+                name,
+                type: typeField.input.value,
+                value: parseFloat(valField.input.value) || 0,
+            };
+            if (isEdit) trackDiscountEdit(gathered);
+            else trackDiscountCreate(gathered);
+            closeModal(ov);
+            renderScene();
+        }, { small: true }));
+        body.appendChild(footer);
+    }, { accent: C.green });
+}
+
+const trackDiscountCreate = (d) => {
+    pendingChanges.discounts_new.push(d);
+}
+
+const trackDiscountEdit = (d) => {
+    const idx = pendingChanges.discounts_edited.findIndex(e => e.id === d.id);
+    if (idx >= 0) pendingChanges.discounts_edited[idx] = d;
+    else pendingChanges.discounts_edited.push(d);
+}
+
+const trackDiscountDelete = (discountId) => {
+    pendingChanges.discounts_new = pendingChanges.discounts_new.filter(n => n.id !== discountId);
+    const idx = pendingChanges.discounts_edited.findIndex(e => e.id === discountId);
+    if (idx >= 0) pendingChanges.discounts_edited.splice(idx, 1);
+    if (!pendingChanges.discounts_deleted.includes(discountId)) {
+        pendingChanges.discounts_deleted.push(discountId);
+    }
 }
 
 /* ─── VOID REASONS ACCORDION ─────────────────────────────────── */
-function buildVoidReasonsAccordion() {
+const buildVoidReasonsAccordion = () => {
     const reasons = getAllVoidReasons();
     const pinCount = reasons.filter(r => r.requires_pin).length;
     const pendingCount = pendingChanges.void_reasons_new.length
@@ -1063,15 +1351,18 @@ function buildVoidReasonsAccordion() {
             } else {
                 reasons.forEach(r => body.appendChild(buildVoidReasonRow(r)));
             }
-            const addBtn = buildAddBtn('+ Add reason', C.verm);
-            addBtn.addEventListener('click', () => openVoidReasonModal(null));
-            body.appendChild(addBtn);
+            const addWrap = document.createElement('div');
+            addWrap.style.cssText = `padding: 12px 0 0; border-top: 1px solid ${C2.hairline};`;
+            const addBtn = buildPillButton('+ ADD REASON', 'mint', () => openVoidReasonModal(null), { small: true });
+            addBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+            addWrap.appendChild(addBtn);
+            body.appendChild(addWrap);
         },
         pendingCount
     );
 }
 
-function buildVoidReasonRow(r) {
+const buildVoidReasonRow = (r) => {
     const pending = pendingChanges.void_reasons_new.some(n => n.id === r.id)
                  || pendingChanges.void_reasons_edited.some(e => e.id === r.id);
     const row = document.createElement('div');
@@ -1082,12 +1373,8 @@ function buildVoidReasonRow(r) {
         border: 1px solid ${pending ? C.gold : withAlpha(C.text, 0.08)};
         border-left: 3px solid ${C.verm};
         border-radius: 8px;
-        cursor: pointer;
-        transition: background 0.15s ease;
+        margin-bottom: 8px;
     `;
-    row.addEventListener('mouseenter', () => row.style.background = C.card);
-    row.addEventListener('mouseleave', () => row.style.background = C.well);
-    row.addEventListener('click', () => openVoidReasonModal(r));
 
     const name = document.createElement('div');
     name.textContent = r.name || '(unnamed)';
@@ -1097,11 +1384,19 @@ function buildVoidReasonRow(r) {
     if (r.requires_pin) row.appendChild(makePill('PIN', 'gold'));
     if (r.max_amount != null) row.appendChild(makePill(`max $${Number(r.max_amount).toFixed(2)}`, 'verm'));
 
+    const editBtn = buildPillButton('EDIT', 'dark', () => openVoidReasonModal(r), { small: true });
+    editBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    row.appendChild(editBtn);
+
+    const delBtn = buildPillButton('DELETE', 'vermillion', () => confirmDeleteVoidReason(r.id), { small: true });
+    delBtn.style.cssText += ' pointer-events: auto; touch-action: manipulation;';
+    row.appendChild(delBtn);
+
     return row;
 }
 
 /* ─── FOOTER / SAVE BAR ──────────────────────────────────────── */
-function buildPendingFooter() {
+const buildPendingFooter = () => {
     const wrap = document.createElement('div');
     footerMount = wrap;
     wrap.style.cssText = `
@@ -1145,7 +1440,7 @@ function buildPendingFooter() {
     return wrap;
 }
 
-function updateSaveBar() {
+const updateSaveBar = () => {
     const n = getPendingCount();
     if (footerMount) {
         footerMount.style.display = n === 0 ? 'none' : 'block';
@@ -1159,17 +1454,28 @@ function updateSaveBar() {
     }
 }
 
+/* ─── CONFIRM-DELETE HELPERS ─────────────────────────────────── */
+const confirmDeleteDayPart = (id) => {
+    if (confirm('Delete this day part?')) trackDayPartDelete(id);
+}
+const confirmDeleteVoidReason = (id) => {
+    if (confirm('Delete this void reason?')) trackVoidReasonDelete(id);
+}
+
 /* ─── BUTTONS ────────────────────────────────────────────────── */
-function buildPillButton(label, variant, onClick, opts = {}) {
+const buildPillButton = (label, variant, onClick, opts = {}) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = label;
     const variants = {
-        primary:   `background: ${C.gold};   color: #1a1000;    border: none;`,
-        confirm:   `background: ${C.greenUp || C.green}; color: ${C.well};  border: none;`,
-        danger:    `background: transparent; color: ${C.verm};  border: 1px solid ${C.verm};`,
-        ghost:     `background: transparent; color: ${C.text};  border: 1px solid ${withAlpha(C.text, 0.2)};`,
-        tertiary:  `background: transparent; color: ${C.textMuted}; border: 1px solid ${C.border};`,
+        primary:    `background: ${C.gold};   color: #1a1000;    border: none;`,
+        confirm:    `background: ${C.greenUp || C.green}; color: ${C.well};  border: none;`,
+        danger:     `background: transparent; color: ${C.verm};  border: 1px solid ${C.verm};`,
+        ghost:      `background: transparent; color: ${C.text};  border: 1px solid ${withAlpha(C.text, 0.2)};`,
+        tertiary:   `background: transparent; color: ${C.textMuted}; border: 1px solid ${C.border};`,
+        dark:       `background: ${C.card};   color: ${C.text};  border: 1px solid ${withAlpha(C.text, 0.2)};`,
+        vermillion: `background: transparent; color: ${C.verm};  border: 1px solid ${C.verm};`,
+        mint:       `background: ${withAlpha(C.green, 0.15)}; color: ${C.green}; border: 1px solid ${C.green};`,
     };
     btn.style.cssText = `
         ${variants[variant] || variants.primary}
@@ -1190,7 +1496,7 @@ function buildPillButton(label, variant, onClick, opts = {}) {
     return btn;
 }
 
-function buildAddBtn(label, color) {
+const buildAddBtn = (label, color) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
@@ -1213,7 +1519,7 @@ function buildAddBtn(label, color) {
 }
 
 /* ─── MODAL SYSTEM ───────────────────────────────────────────── */
-function openModal(titleText, contentBuilder, opts = {}) {
+const openModal = (titleText, contentBuilder, opts = {}) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = `
         position: fixed; inset: 0;
@@ -1261,7 +1567,7 @@ function openModal(titleText, contentBuilder, opts = {}) {
     modal.appendChild(header);
 
     const body = document.createElement('div');
-    body.style.cssText = `padding: 18px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px;`;
+    body.style.cssText = `padding: 18px 22px; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px;`;
     modal.appendChild(body);
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
@@ -1271,7 +1577,7 @@ function openModal(titleText, contentBuilder, opts = {}) {
     return overlay;
 }
 
-function closeModal(target) {
+const closeModal = (target) => {
     if (modalStack.length === 0) return;
     const t = target || modalStack[modalStack.length - 1];
     const idx = modalStack.indexOf(t);
@@ -1281,7 +1587,7 @@ function closeModal(target) {
 }
 
 /* ─── FORM FIELDS ────────────────────────────────────────────── */
-function buildTextField(parent, labelText, value, opts = {}) {
+const buildTextField = (parent, labelText, value, opts = {}) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
     const lbl = document.createElement('label');
@@ -1309,7 +1615,7 @@ function buildTextField(parent, labelText, value, opts = {}) {
     return { wrap, input };
 }
 
-function buildSelectField(parent, labelText, value, choices) {
+const buildSelectField = (parent, labelText, value, choices) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
     const lbl = document.createElement('label');
@@ -1338,7 +1644,7 @@ function buildSelectField(parent, labelText, value, choices) {
     return { wrap, input: sel };
 }
 
-function buildSectionLabel(text, color) {
+const buildSectionLabel = (text, color) => {
     const lbl = document.createElement('div');
     lbl.textContent = text;
     lbl.style.cssText = `
@@ -1350,13 +1656,13 @@ function buildSectionLabel(text, color) {
     return lbl;
 }
 
-function buildDivider() {
+const buildDivider = () => {
     const d = document.createElement('div');
     d.style.cssText = `height: 1px; background: ${C2.hairline}; margin: 4px 0;`;
     return d;
 }
 
-function buildSegmented(options, currentValue, onSelect, activeColor) {
+const buildSegmented = (options, currentValue, onSelect, activeColor) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = `
         display: flex; gap: 4px;
@@ -1409,7 +1715,7 @@ function buildSegmented(options, currentValue, onSelect, activeColor) {
     };
 }
 
-function buildDayChips(initialDays, onChange, activeColor) {
+const buildDayChips = (initialDays, onChange, activeColor) => {
     const days = (initialDays && initialDays.length === 7) ? initialDays.slice() : [1,1,1,1,1,1,1];
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; gap: 4px; flex-wrap: wrap;';
@@ -1443,7 +1749,40 @@ function buildDayChips(initialDays, onChange, activeColor) {
     return { wrap, getDays: () => days.slice(), setDays: (d) => { d.forEach((v, i) => days[i] = v ? 1 : 0); }};
 }
 
-function buildToggleRow(parent, label, initial, onChange, color) {
+const buildToggle = (initial, onChange) => {
+    const state = { on: !!initial };
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.style.cssText = `
+        position: relative;
+        width: 46px; height: 24px;
+        border-radius: 999px;
+        border: none; padding: 0;
+        background: ${state.on ? withAlpha(C.green, 0.2) : withAlpha(C.text, 0.12)};
+        cursor: pointer;
+        transition: background 0.15s ease;
+        flex-shrink: 0;
+    `;
+    const knob = document.createElement('div');
+    knob.style.cssText = `
+        position: absolute; top: 3px;
+        left: ${state.on ? 'calc(100% - 21px)' : '3px'};
+        width: 18px; height: 18px; border-radius: 50%;
+        background: ${state.on ? C.green : withAlpha(C.text, 0.4)};
+        transition: all 0.15s ease;
+    `;
+    btn.appendChild(knob);
+    btn.addEventListener('click', () => {
+        state.on = !state.on;
+        btn.style.background = state.on ? withAlpha(C.green, 0.2) : withAlpha(C.text, 0.12);
+        knob.style.left = state.on ? 'calc(100% - 21px)' : '3px';
+        knob.style.background = state.on ? C.green : withAlpha(C.text, 0.4);
+        if (onChange) onChange(state.on);
+    });
+    return btn;
+}
+
+const buildToggleRow = (parent, label, initial, onChange, color) => {
     const row = document.createElement('div');
     row.style.cssText = 'display: flex; align-items: center; gap: 12px;';
     const state = { on: !!initial };
@@ -1486,7 +1825,7 @@ function buildToggleRow(parent, label, initial, onChange, color) {
 }
 
 /* ─── WINDOW EDITOR (shared) ─────────────────────────────────── */
-function buildWindowEditor(parent, windows, accent) {
+const buildWindowEditor = (parent, windows, accent) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
     const windowsWrap = document.createElement('div');
@@ -1573,6 +1912,34 @@ function buildWindowEditor(parent, windows, accent) {
         timesRow.appendChild(endCol);
         block.appendChild(timesRow);
 
+        const priceAdjRow = document.createElement('div');
+        priceAdjRow.style.cssText = 'display: flex; gap: 12px; align-items: flex-end;';
+        const priceAdjCol = document.createElement('div');
+        priceAdjCol.style.flex = '1';
+        const priceAdjField = buildTextField(priceAdjCol, 'Price adjustment', win.price_adjustment_pct || 0, {
+            type: 'number',
+            step: '0.1',
+            min: '-100',
+            max: '100'
+        });
+        priceAdjField.input.addEventListener('input', () => {
+            win.price_adjustment_pct = parseFloat(priceAdjField.input.value) || 0;
+        });
+        priceAdjRow.appendChild(priceAdjCol);
+        const priceAdjUnit = document.createElement('div');
+        priceAdjUnit.textContent = '%';
+        priceAdjUnit.style.cssText = `padding: 0 4px 10px 4px; color: ${withAlpha(C.text, 0.4)}; font-weight: 600;`;
+        priceAdjRow.appendChild(priceAdjUnit);
+        block.appendChild(priceAdjRow);
+
+        const priceAdjHint = document.createElement('div');
+        priceAdjHint.textContent = 'Negative = discount, positive = surcharge';
+        priceAdjHint.style.cssText = `
+            font-size: 10px; color: ${withAlpha(C.text, 0.5)};
+            margin-top: -4px; margin-bottom: 4px;
+        `;
+        block.appendChild(priceAdjHint);
+
         return block;
     }
 
@@ -1589,7 +1956,7 @@ function buildWindowEditor(parent, windows, accent) {
 }
 
 /* ─── DAY PART MODAL ─────────────────────────────────────────── */
-function openDayPartModal(existing) {
+const openDayPartModal = (existing) => {
     const isEdit = !!existing;
     const dp = existing ? clone(existing) : defaultDayPart();
 
@@ -1642,13 +2009,12 @@ function openDayPartModal(existing) {
     }, { accent: C2.lavender });
 }
 
-function findSpecialsUsingDayPart(dpId) {
-    return getAllSpecials().filter(sp =>
+const findSpecialsUsingDayPart = (dpId) => getAllSpecials().filter(sp =>
         sp.schedule.mode === 'daypart' && (sp.schedule.daypart_ids || []).includes(dpId)
     );
-}
+;
 
-function openDayPartDependentsModal(dp, dependents) {
+const openDayPartDependentsModal = (dp, dependents) => {
     openModal('Day part in use', (body, modalEl, ov) => {
         const hint = document.createElement('div');
         hint.innerHTML = `<strong style="color:${C.text};">${dp.name}</strong> is used by <strong style="color:${C2.warning};">${dependents.length}</strong> active special${dependents.length === 1 ? '' : 's'}. Remove it from them (or swap their day part) before deleting.`;
@@ -1678,371 +2044,8 @@ function openDayPartDependentsModal(dp, dependents) {
     }, { accent: C2.warning });
 }
 
-/* ─── SPECIAL MODAL ──────────────────────────────────────────── */
-function openSpecialModal(existing) {
-    const isEdit = !!existing;
-    const sp = existing ? clone(existing) : defaultSpecial();
-
-    openModal(isEdit ? `Edit special: ${sp.name || ''}` : 'Add special', (body, modalEl, ov) => {
-        // Name
-        const nameField = buildTextField(body, 'Name', sp.name, { required: true, placeholder: 'Happy Hour, Taco Tuesday…' });
-
-        // Discount
-        const row1 = document.createElement('div');
-        row1.style.cssText = 'display: flex; gap: 12px;';
-        const typeCol = document.createElement('div');
-        typeCol.style.cssText = 'flex: 1;';
-        const typeField = buildSelectField(typeCol, 'Discount type', sp.discount_type, [
-            { value: 'percentage', label: 'Percentage off (e.g. −25%)' },
-            { value: 'flat',       label: 'Flat amount off (e.g. −$2)' },
-            { value: 'fixed_price', label: 'Fixed price (e.g. $5 wells)' },
-        ]);
-        row1.appendChild(typeCol);
-        const valCol = document.createElement('div');
-        valCol.style.cssText = 'flex: 0 0 140px;';
-        const valField = buildTextField(valCol, 'Value', sp.discount_value, { type: 'number', step: '0.01' });
-        row1.appendChild(valCol);
-        body.appendChild(row1);
-
-        body.appendChild(buildDivider());
-
-        // SCHEDULE
-        body.appendChild(buildSectionLabel('SCHEDULE', C2.lavender));
-        const schedWrap = document.createElement('div');
-        schedWrap.style.cssText = 'display: flex; flex-direction: column; gap: 12px;';
-        body.appendChild(schedWrap);
-
-        const schedSeg = buildSegmented([
-            { value: 'daypart', label: '◔ Day part' },
-            { value: 'custom',  label: '⏰ Custom' },
-            { value: 'manual',  label: '⚑ Manual' },
-        ], sp.schedule.mode, (v) => {
-            sp.schedule.mode = v;
-            if (v === 'custom' && sp.schedule.custom_windows.length === 0) {
-                sp.schedule.custom_windows.push(defaultWindow());
-            }
-            renderSchedDetails();
-        }, C2.lavender);
-        schedWrap.appendChild(schedSeg.wrap);
-
-        const schedDetails = document.createElement('div');
-        schedDetails.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
-        schedWrap.appendChild(schedDetails);
-
-        function renderSchedDetails() {
-            schedDetails.innerHTML = '';
-            if (sp.schedule.mode === 'daypart') {
-                const lbl = document.createElement('div');
-                lbl.textContent = 'Active day parts';
-                lbl.style.cssText = `font-size: 12px; font-weight: 600; color: ${C.textMuted};`;
-                schedDetails.appendChild(lbl);
-                const dpList = getAllDayParts();
-                if (dpList.length === 0) {
-                    const empty = document.createElement('div');
-                    empty.textContent = 'No day parts defined — switch to Custom or add a day part first.';
-                    empty.style.cssText = `font-size: 11px; color: ${C.textDim}; font-style: italic;`;
-                    schedDetails.appendChild(empty);
-                } else {
-                    const chipRow = document.createElement('div');
-                    chipRow.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap;';
-                    dpList.forEach(dp => {
-                        const on = sp.schedule.daypart_ids.includes(dp.id);
-                        const chip = document.createElement('button');
-                        chip.type = 'button';
-                        chip.textContent = dp.name;
-                        const render = () => {
-                            const active = sp.schedule.daypart_ids.includes(dp.id);
-                            chip.style.cssText = `
-                                padding: 7px 12px;
-                                background: ${active ? withAlpha(C2.lavender, 0.15) : C.well};
-                                border: 1px solid ${active ? C2.lavender : withAlpha(C.text, 0.12)};
-                                border-radius: 999px;
-                                color: ${active ? C2.lavender : C.text};
-                                font-family: var(--font-body);
-                                font-size: 13px; font-weight: 500;
-                                cursor: pointer;
-                                transition: all 0.15s ease;
-                            `;
-                        };
-                        render();
-                        chip.addEventListener('click', () => {
-                            const set = new Set(sp.schedule.daypart_ids);
-                            if (set.has(dp.id)) set.delete(dp.id);
-                            else set.add(dp.id);
-                            sp.schedule.daypart_ids = Array.from(set);
-                            render();
-                        });
-                        chipRow.appendChild(chip);
-                    });
-                    schedDetails.appendChild(chipRow);
-                }
-                const hint = document.createElement('div');
-                hint.textContent = 'Special runs whenever any selected day part is active. Change day part hours to affect every special using it.';
-                hint.style.cssText = `font-size: 11px; color: ${C.textDim}; line-height: 1.4;`;
-                schedDetails.appendChild(hint);
-            } else if (sp.schedule.mode === 'custom') {
-                const hint = document.createElement('div');
-                hint.textContent = 'Inline schedule for this special only. For reusable hours across multiple specials, create a day part instead.';
-                hint.style.cssText = `font-size: 11px; color: ${C.textDim}; line-height: 1.4;`;
-                schedDetails.appendChild(hint);
-                buildWindowEditor(schedDetails, sp.schedule.custom_windows, C2.lavender);
-            } else {
-                const hint = document.createElement('div');
-                hint.textContent = 'Manager-controlled. Flip the master toggle at the terminal to enable. No automatic schedule — good for ad-hoc promotions and slow-day discounts.';
-                hint.style.cssText = `font-size: 11px; color: ${C.textDim}; line-height: 1.4; padding: 12px 14px; background: ${withAlpha(C2.lavender, 0.08)}; border-left: 3px solid ${C2.lavender}; border-radius: 6px;`;
-                schedDetails.appendChild(hint);
-            }
-        }
-        renderSchedDetails();
-
-        body.appendChild(buildDivider());
-
-        // SCOPE
-        body.appendChild(buildSectionLabel('SCOPE', C.green));
-        const scopeWrap = document.createElement('div');
-        scopeWrap.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
-        body.appendChild(scopeWrap);
-
-        const scopeSeg = buildSegmented([
-            { value: 'all',        label: 'All items' },
-            { value: 'categories', label: 'Categories' },
-            { value: 'items',      label: 'Specific items' },
-        ], sp.scope.mode, (v) => {
-            sp.scope.mode = v;
-            renderScopeDetails();
-        }, C.green);
-        scopeWrap.appendChild(scopeSeg.wrap);
-
-        const scopeDetails = document.createElement('div');
-        scopeWrap.appendChild(scopeDetails);
-
-        function renderScopeDetails() {
-            scopeDetails.innerHTML = '';
-            if (sp.scope.mode === 'categories') {
-                const cats = pricingData.categories;
-                if (cats.length === 0) {
-                    const empty = document.createElement('div');
-                    empty.textContent = 'No categories loaded';
-                    empty.style.cssText = `font-size: 11px; color: ${C.textDim}; font-style: italic; padding: 8px 0;`;
-                    scopeDetails.appendChild(empty);
-                    return;
-                }
-                const chipRow = document.createElement('div');
-                chipRow.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap;';
-                cats.forEach(cat => {
-                    const chip = document.createElement('button');
-                    chip.type = 'button';
-                    chip.textContent = cat.name;
-                    const render = () => {
-                        const active = sp.scope.ids.includes(cat.id);
-                        chip.style.cssText = `
-                            padding: 7px 12px;
-                            background: ${active ? withAlpha(C.green, 0.15) : C.well};
-                            border: 1px solid ${active ? C.green : withAlpha(C.text, 0.12)};
-                            border-radius: 999px;
-                            color: ${active ? C.green : C.text};
-                            font-family: var(--font-body);
-                            font-size: 13px; font-weight: 500;
-                            cursor: pointer;
-                        `;
-                    };
-                    render();
-                    chip.addEventListener('click', () => {
-                        const set = new Set(sp.scope.ids);
-                        if (set.has(cat.id)) set.delete(cat.id);
-                        else set.add(cat.id);
-                        sp.scope.ids = Array.from(set);
-                        render();
-                    });
-                    chipRow.appendChild(chip);
-                });
-                scopeDetails.appendChild(chipRow);
-            } else if (sp.scope.mode === 'items') {
-                const note = document.createElement('div');
-                note.textContent = 'Per-item scope coming soon. Use Categories for now.';
-                note.style.cssText = `
-                    font-size: 11px; color: ${C2.warning}; line-height: 1.4;
-                    padding: 12px 14px;
-                    background: ${C2.warningBg};
-                    border-left: 3px solid ${C2.warning};
-                    border-radius: 6px;
-                `;
-                scopeDetails.appendChild(note);
-            }
-        }
-        renderScopeDetails();
-
-        body.appendChild(buildDivider());
-
-        // APPLY MODE
-        body.appendChild(buildSectionLabel('APPLY MODE', C2.lavender));
-        const applySeg = buildSegmented([
-            { value: 'auto', label: '⚡ Auto — applies at checkout' },
-            { value: 'ask',  label: '✋ Ask — staff taps to apply' },
-        ], sp.apply_mode, (v) => { sp.apply_mode = v; }, C.green);
-        body.appendChild(applySeg.wrap);
-        const applyHint = document.createElement('div');
-        applyHint.textContent = 'Auto-discounts land on the check the moment schedule + scope match — no server action needed. Switch to Ask for specials staff opts into per check.';
-        applyHint.style.cssText = `font-size: 11px; color: ${C.textDim}; line-height: 1.4;`;
-        body.appendChild(applyHint);
-
-        body.appendChild(buildDivider());
-
-        // RULES
-        body.appendChild(buildSectionLabel('RULES', C2.lavender));
-        const rulesRow = document.createElement('div');
-        rulesRow.style.cssText = 'display: flex; gap: 12px; align-items: flex-end;';
-        const prioCol = document.createElement('div');
-        prioCol.style.flex = '0 0 100px';
-        const prioField = buildTextField(prioCol, 'Priority', sp.priority, { type: 'number' });
-        rulesRow.appendChild(prioCol);
-        const togglesCol = document.createElement('div');
-        togglesCol.style.cssText = 'flex: 1; display: flex; flex-direction: column; gap: 8px; padding-bottom: 4px;';
-        rulesRow.appendChild(togglesCol);
-        body.appendChild(rulesRow);
-
-        const stackToggle    = buildToggleRow(togglesCol, 'Stacks with other specials', sp.stacking, (on) => { sp.stacking = on; });
-        const pinToggle      = buildToggleRow(togglesCol, 'Requires manager PIN', sp.requires_pin, (on) => { sp.requires_pin = on; }, C.gold);
-
-        body.appendChild(buildDivider());
-        const activeToggle = buildToggleRow(body, 'Active', sp.active, (on) => { sp.active = on; });
-
-        // Delete
-        if (isEdit) {
-            body.appendChild(buildDivider());
-            const delBtn = buildPillButton('Delete special', 'danger', () => {
-                if (!confirm(`Delete "${sp.name}"?`)) return;
-                trackSpecialDelete(sp.id);
-                closeModal(ov);
-            });
-            delBtn.style.width = '100%';
-            body.appendChild(delBtn);
-        }
-
-        // Footer
-        const footer = document.createElement('div');
-        footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end; padding-top: 14px; border-top: 1px solid ${C2.hairline}; margin-top: 6px;`;
-        footer.appendChild(buildPillButton('Cancel', 'tertiary', () => closeModal(ov), { small: true }));
-        footer.appendChild(buildPillButton(isEdit ? 'Save' : 'Create', 'primary', () => {
-            const name = nameField.input.value.trim();
-            if (!name) { nameField.input.style.borderColor = C.verm; return; }
-            const gathered = {
-                ...sp,
-                name,
-                discount_type:  typeField.input.value,
-                discount_value: parseFloat(valField.input.value) || 0,
-                priority:       parseInt(prioField.input.value) || 1,
-                stacking:       stackToggle.isOn(),
-                requires_pin:   pinToggle.isOn(),
-                active:         activeToggle.isOn(),
-            };
-            if (isEdit) trackSpecialEdit(gathered);
-            else trackSpecialCreate(gathered);
-            closeModal(ov);
-        }, { small: true }));
-        body.appendChild(footer);
-    }, { accent: sp.schedule.mode === 'manual' ? C2.lavender : C.gold, wide: true });
-}
-
-/* ─── EMPLOYEE DISCOUNT MODAL ────────────────────────────────── */
-function openEmployeeModal(existing) {
-    const emp = clone(existing);
-
-    openModal('Employee Discount Settings', (body, modalEl, ov) => {
-        // Separate rates toggle
-        const sepToggle = buildToggleRow(body, 'Separate on-duty / off-duty rates', emp.separate_rates, (on) => {
-            emp.separate_rates = on;
-            singleGroup.style.display = on ? 'none' : 'block';
-            dualGroup.style.display   = on ? 'flex' : 'none';
-        }, C.green);
-
-        const singleGroup = document.createElement('div');
-        singleGroup.style.display = emp.separate_rates ? 'none' : 'block';
-        const pctField = buildTextField(singleGroup, 'Discount percentage', emp.percentage, { type: 'number', step: '1' });
-        body.appendChild(singleGroup);
-
-        const dualGroup = document.createElement('div');
-        dualGroup.style.cssText = `display: ${emp.separate_rates ? 'flex' : 'none'}; gap: 12px;`;
-        const onCol = document.createElement('div');
-        onCol.style.cssText = 'flex: 1;';
-        const onField = buildTextField(onCol, 'On-duty %', emp.on_duty_rate, { type: 'number', step: '1' });
-        dualGroup.appendChild(onCol);
-        const offCol = document.createElement('div');
-        offCol.style.cssText = 'flex: 1;';
-        const offField = buildTextField(offCol, 'Off-duty %', emp.off_duty_rate, { type: 'number', step: '1' });
-        dualGroup.appendChild(offCol);
-        body.appendChild(dualGroup);
-
-        const appliesField = buildSelectField(body, 'Applies to', emp.applies_to, [
-            { value: 'everything',  label: 'Everything' },
-            { value: 'food_only',   label: 'Food only' },
-            { value: 'drinks_only', label: 'Drinks only' },
-        ]);
-
-        // Exclude categories
-        const excludeWrap = document.createElement('div');
-        excludeWrap.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
-        const excludeLbl = document.createElement('div');
-        excludeLbl.textContent = 'Exclude categories';
-        excludeLbl.style.cssText = `font-size: 12px; font-weight: 600; color: ${C.textMuted};`;
-        excludeWrap.appendChild(excludeLbl);
-        const excludeChips = document.createElement('div');
-        excludeChips.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap;';
-        const excludeSet = new Set(emp.exclude_categories || []);
-        pricingData.categories.forEach(cat => {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.textContent = cat.name;
-            const render = () => {
-                const on = excludeSet.has(cat.id);
-                chip.style.cssText = `
-                    padding: 6px 12px;
-                    background: ${on ? withAlpha(C.verm, 0.15) : C.well};
-                    border: 1px solid ${on ? C.verm : withAlpha(C.text, 0.12)};
-                    border-radius: 999px;
-                    color: ${on ? C.verm : C.text};
-                    font-size: 12px; font-weight: 500;
-                    cursor: pointer;
-                `;
-            };
-            render();
-            chip.addEventListener('click', () => {
-                if (excludeSet.has(cat.id)) excludeSet.delete(cat.id);
-                else excludeSet.add(cat.id);
-                render();
-            });
-            excludeChips.appendChild(chip);
-        });
-        excludeWrap.appendChild(excludeChips);
-        body.appendChild(excludeWrap);
-
-        body.appendChild(buildDivider());
-        const pinToggle = buildToggleRow(body, 'Requires manager PIN', emp.requires_pin, (on) => { emp.requires_pin = on; }, C.gold);
-
-        const footer = document.createElement('div');
-        footer.style.cssText = `display: flex; gap: 10px; justify-content: flex-end; padding-top: 14px; border-top: 1px solid ${C2.hairline}; margin-top: 6px;`;
-        footer.appendChild(buildPillButton('Cancel', 'tertiary', () => closeModal(ov), { small: true }));
-        footer.appendChild(buildPillButton('Save', 'primary', () => {
-            const gathered = {
-                ...emp,
-                separate_rates:     sepToggle.isOn(),
-                percentage:         parseInt(pctField.input.value) || 20,
-                on_duty_rate:       parseInt(onField.input.value) || 50,
-                off_duty_rate:      parseInt(offField.input.value) || 20,
-                applies_to:         appliesField.input.value,
-                exclude_categories: Array.from(excludeSet),
-                requires_pin:       pinToggle.isOn(),
-                active:             true,
-            };
-            trackEmployeeEdit(gathered);
-            closeModal(ov);
-        }, { small: true }));
-        body.appendChild(footer);
-    }, { accent: C.green });
-}
-
 /* ─── VOID REASON MODAL ──────────────────────────────────────── */
-function openVoidReasonModal(existing) {
+const openVoidReasonModal = (existing) => {
     const isEdit = !!existing;
     const r = existing ? clone(existing) : defaultVoidReason();
 
@@ -2084,7 +2087,7 @@ function openVoidReasonModal(existing) {
 }
 
 /* ─── EVENT GENERATION ───────────────────────────────────────── */
-function generatePricingEvents() {
+const generatePricingEvents = () => {
     const events = [];
     const batch_id = `pricing_batch_${Date.now()}`;
     const ts = () => new Date().toISOString();
@@ -2101,16 +2104,34 @@ function generatePricingEvents() {
         events.push({ event_type: 'pricing.daypart_deleted', batch_id, timestamp: ts(), payload: { id } });
     });
 
-    pendingChanges.specials_new.forEach(sp => {
+    pendingChanges.discounts_new.filter(d => d.auto).forEach(sp => {
         const id = sp.id.replace(/^temp_/, '');
         events.push({ event_type: 'pricing.special_created', batch_id, timestamp: ts(),
             payload: { ...sp, id } });
     });
-    pendingChanges.specials_edited.forEach(sp => {
+    pendingChanges.discounts_edited.filter(d => d.auto).forEach(sp => {
         events.push({ event_type: 'pricing.special_updated', batch_id, timestamp: ts(), payload: sp });
     });
-    pendingChanges.specials_deleted.forEach(id => {
-        events.push({ event_type: 'pricing.special_deleted', batch_id, timestamp: ts(), payload: { id } });
+    pendingChanges.discounts_deleted.forEach(id => {
+        const isSpecial = getAllDiscounts().some(d => d.id === id && d.auto);
+        if (isSpecial) {
+            events.push({ event_type: 'pricing.special_deleted', batch_id, timestamp: ts(), payload: { id } });
+        }
+    });
+
+    pendingChanges.discounts_new.filter(d => !d.auto).forEach(d => {
+        const id = d.id.replace(/^temp_/, '');
+        events.push({ event_type: 'pricing.discount_created', batch_id, timestamp: ts(),
+            payload: { ...d, id } });
+    });
+    pendingChanges.discounts_edited.filter(d => !d.auto).forEach(d => {
+        events.push({ event_type: 'pricing.discount_updated', batch_id, timestamp: ts(), payload: d });
+    });
+    pendingChanges.discounts_deleted.forEach(id => {
+        const isDiscount = getAllDiscounts().some(d => d.id === id && !d.auto);
+        if (isDiscount) {
+            events.push({ event_type: 'pricing.discount_deleted', batch_id, timestamp: ts(), payload: { id } });
+        }
     });
 
     pendingChanges.order_types_edited.forEach(ot => {
@@ -2137,7 +2158,7 @@ function generatePricingEvents() {
     return events;
 }
 
-async function handleSaveChanges() {
+const handleSaveChanges = async () => {
     const events = generatePricingEvents();
     if (events.length === 0) return;
 
@@ -2175,6 +2196,15 @@ async function handleSaveChanges() {
         pricingData.employee_discount = clone(pendingChanges.employee_edited);
     }
 
+    pendingChanges.discounts_new.forEach(d => pricingData.discounts.push(clone(d)));
+    pendingChanges.discounts_edited.forEach(d => {
+        const idx = pricingData.discounts.findIndex(x => x.id === d.id);
+        if (idx !== -1) pricingData.discounts[idx] = clone(d);
+    });
+    pendingChanges.discounts_deleted.forEach(id => {
+        pricingData.discounts = pricingData.discounts.filter(x => x.id !== id);
+    });
+
     pendingChanges.void_reasons_new.forEach(r => pricingData.void_reasons.push(clone(r)));
     pendingChanges.void_reasons_edited.forEach(r => {
         const idx = pricingData.void_reasons.findIndex(x => x.id === r.id);
@@ -2191,7 +2221,7 @@ async function handleSaveChanges() {
 }
 
 /* ─── ANIMATION ──────────────────────────────────────────────── */
-function injectAnimations() {
+const injectAnimations = () => {
     if (document.getElementById('psp-keyframes')) return;
     const s = document.createElement('style');
     s.id = 'psp-keyframes';

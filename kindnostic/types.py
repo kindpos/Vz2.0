@@ -20,6 +20,13 @@ class Status(str, Enum):
     FAIL = "FAIL"
 
 
+class ProbeTier(str, Enum):
+    """Probe execution tier: lightweight → moderate → exhaustive."""
+    PASSIVE = "passive"
+    POLITE = "polite"
+    DEEP = "deep"
+
+
 class Category(str, Enum):
     """Probe severity category. CRITICAL < HIGH < LOW for sort ordering."""
     CRITICAL = "CRITICAL"

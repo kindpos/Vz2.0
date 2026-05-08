@@ -5,9 +5,10 @@ import socket
 import sqlite3
 from typing import Optional
 
-from kindnostic.types import Category, ProbeResult, Status
+from kindnostic.types import Category, ProbeResult, ProbeTier, Status
 
 CATEGORY = Category.HIGH
+PROBE_TIER = ProbeTier.POLITE
 
 _DEFAULT_HW_DB_PATH = "./hardware_config.db"
 _CONNECT_TIMEOUT = 2.0

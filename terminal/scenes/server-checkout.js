@@ -434,41 +434,149 @@ function buildLeftCol(state, handlers) {
   ].join('');
 
   const tipoutRules = state.tipoutRules || [];
+  const isOverrideMode = state.overrideMode === true;
+
+  // Helper to get effective percentage and amount
+  const getEffectivePct = (rule) => {
+    if (state.overrides && state.overrides[rule.rule_id]) {
+      return state.overrides[rule.rule_id];
+    }
+    return rule.percentage || 0;
+  };
+  const getCalculatedAmt = (rule) => ((rule.percentage || 0) / 100) * (state.netSales || 0);
+  const getEffectiveAmt = (rule) => (getEffectivePct(rule) / 100) * (state.netSales || 0);
+
+  // Calculate actual total
+  let actualTipOutTotal = 0;
   tipoutRules.forEach((r) => {
-    const ruleRow = document.createElement('div');
-    ruleRow.style.cssText = 'display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:baseline;';
-    const roleName = document.createElement('div');
-    roleName.style.cssText = `font-family:${T.fb};font-size:12px;font-weight:700;color:${T.text};`;
-    roleName.textContent = r.role || r.name || 'Role';
-    const basis = document.createElement('div');
-    basis.style.cssText = `font-family:${T.fb};font-size:10px;color:${T.moon};;font-weight:${T.fwBold};`;
-    basis.textContent = (r.percentage || 0) + `% · ${(r.category || r.basis || 'Net Sales')}`;
-    const ruleAmt = document.createElement('div');
-    ruleAmt.style.cssText = `font-family:${T.fb};font-size:13px;font-weight:700;color:${T.verm};`;
-    ruleAmt.textContent = `−${fmt(((r.percentage || 0) / 100) * (state.netSales || 0))}`;
-    ruleRow.appendChild(roleName);
-    ruleRow.appendChild(basis);
-    ruleRow.appendChild(ruleAmt);
-    toBlock.appendChild(ruleRow);
+    actualTipOutTotal += getEffectiveAmt(r);
   });
+
+  if (!isOverrideMode) {
+    // Normal 3-column mode: ROLE | BASIS | AMOUNT
+    tipoutRules.forEach((r) => {
+      const ruleRow = document.createElement('div');
+      ruleRow.style.cssText = 'display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:baseline;';
+      const roleName = document.createElement('div');
+      roleName.style.cssText = `font-family:${T.fb};font-size:12px;font-weight:700;color:${T.text};`;
+      roleName.textContent = r.role || r.name || 'Role';
+      const basis = document.createElement('div');
+      basis.style.cssText = `font-family:${T.fb};font-size:10px;color:${T.moon};;font-weight:${T.fwBold};`;
+      basis.textContent = (r.percentage || 0) + `% · ${(r.category || r.basis || 'Net Sales')}`;
+      const ruleAmt = document.createElement('div');
+      ruleAmt.style.cssText = `font-family:${T.fb};font-size:13px;font-weight:700;color:${T.verm};`;
+      ruleAmt.textContent = `−${fmt(getEffectiveAmt(r))}`;
+      ruleRow.appendChild(roleName);
+      ruleRow.appendChild(basis);
+      ruleRow.appendChild(ruleAmt);
+      toBlock.appendChild(ruleRow);
+    });
+  } else {
+    // Override mode: ROLE | CALC% | ACTUAL% | CALC$ | ACTUAL$
+    toBlock.style.display = 'block';
+    const headerRow = document.createElement('div');
+    headerRow.style.cssText = 'display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr;gap:4px;align-items:baseline;margin-bottom:6px;font-size:9px;color:' + T.moon + ';font-weight:700;';
+    ['ROLE', 'CALC%', 'ACTUAL%', 'CALC$', 'ACTUAL$'].forEach((h) => {
+      const hdr = document.createElement('div');
+      hdr.textContent = h;
+      hdr.style.cssText = 'text-align:right;';
+      headerRow.appendChild(hdr);
+    });
+    toBlock.appendChild(headerRow);
+
+    tipoutRules.forEach((r) => {
+      const ruleRow = document.createElement('div');
+      const isOverridden = state.overrides && state.overrides[r.rule_id] !== undefined;
+      ruleRow.style.cssText = 'display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr;gap:4px;align-items:center;margin-bottom:4px;padding-left:' + (isOverridden ? '4px;border-left:3px solid ' + T.gold : '4px;border-left:3px solid transparent') + ';';
+
+      // ROLE
+      const roleEl = document.createElement('div');
+      roleEl.style.cssText = `font-family:${T.fb};font-size:11px;font-weight:700;color:${T.text};`;
+      roleEl.textContent = r.role || r.name || 'Role';
+
+      // CALC%
+      const calcPctEl = document.createElement('div');
+      calcPctEl.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.moon};text-align:right;${isOverridden ? 'text-decoration:line-through;' : ''}`;
+      calcPctEl.textContent = ((r.percentage || 0).toFixed(1)) + '%';
+
+      // ACTUAL%
+      const actualPctEl = document.createElement('input');
+      actualPctEl.type = 'number';
+      actualPctEl.min = '0';
+      actualPctEl.max = '100';
+      actualPctEl.step = '0.1';
+      actualPctEl.value = getEffectivePct(r).toFixed(1);
+      actualPctEl.style.cssText = `font-family:${T.fb};font-size:11px;width:50px;padding:4px;border:1px solid ${isOverridden ? T.gold : T.border};border-radius:3px;background:${T.well};color:${isOverridden ? T.gold : T.text};text-align:right;pointer-events:auto;touch-action:manipulation;`;
+      actualPctEl.addEventListener('change', () => {
+        const newPct = parseFloat(actualPctEl.value) || 0;
+        if (newPct === (r.percentage || 0)) {
+          delete state.overrides[r.rule_id];
+        } else {
+          state.overrides[r.rule_id] = Math.max(0, Math.min(100, newPct));
+        }
+        if (handlers && handlers.onOverrideChanged) handlers.onOverrideChanged();
+      });
+
+      // CALC$
+      const calcAmtEl = document.createElement('div');
+      const calcAmt = getCalculatedAmt(r);
+      calcAmtEl.style.cssText = `font-family:${T.fb};font-size:11px;color:${T.moon};text-align:right;${isOverridden ? 'text-decoration:line-through;' : ''}`;
+      calcAmtEl.textContent = `${fmt(calcAmt)}`;
+
+      // ACTUAL$
+      const actualAmtEl = document.createElement('div');
+      const actualAmt = getEffectiveAmt(r);
+      actualAmtEl.style.cssText = `font-family:${T.fb};font-size:11px;font-weight:700;text-align:right;color:${isOverridden ? T.gold : T.verm};`;
+      actualAmtEl.textContent = `${fmt(actualAmt)}`;
+
+      ruleRow.appendChild(roleEl);
+      ruleRow.appendChild(calcPctEl);
+      ruleRow.appendChild(actualPctEl);
+      ruleRow.appendChild(calcAmtEl);
+      ruleRow.appendChild(actualAmtEl);
+      toBlock.appendChild(ruleRow);
+    });
+  }
 
   const toCrule = document.createElement('div');
   toCrule.style.cssText = `height:1px;background:${T.border};opacity:0.5;`;
   toBlock.appendChild(toCrule);
 
   const toTotRow = document.createElement('div');
-  toTotRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
+  if (isOverrideMode) {
+    toTotRow.style.cssText = 'display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr;gap:4px;align-items:baseline;margin-top:6px;';
+  } else {
+    toTotRow.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;';
+  }
   const toTotLabel = document.createElement('div');
   toTotLabel.style.cssText = [
     `font-family:${T.fh};font-size:10px;font-weight:700;`,
     `letter-spacing:1.5px;color:${T.moon};text-transform:uppercase;`,
   ].join('');
   toTotLabel.textContent = 'TOTAL';
-  const toTotValue = document.createElement('div');
-  toTotValue.style.cssText = `font-family:${T.fb};font-size:17px;font-weight:700;color:${T.verm};`;
-  toTotValue.textContent = `−${fmt(state.tipOutTotal)}`;
-  toTotRow.appendChild(toTotLabel);
-  toTotRow.appendChild(toTotValue);
+
+  if (isOverrideMode) {
+    // In override mode, show calc total and actual total
+    const emptyA = document.createElement('div');
+    const emptyB = document.createElement('div');
+    const calcTotEl = document.createElement('div');
+    calcTotEl.style.cssText = `font-family:${T.fb};font-size:13px;font-weight:700;color:${T.moon};text-align:right;`;
+    calcTotEl.textContent = `${fmt(state.tipOutTotal)}`;
+    const actualTotEl = document.createElement('div');
+    actualTotEl.style.cssText = `font-family:${T.fb};font-size:13px;font-weight:700;color:${T.verm};text-align:right;`;
+    actualTotEl.textContent = `${fmt(actualTipOutTotal)}`;
+    toTotRow.appendChild(toTotLabel);
+    toTotRow.appendChild(emptyA);
+    toTotRow.appendChild(emptyB);
+    toTotRow.appendChild(calcTotEl);
+    toTotRow.appendChild(actualTotEl);
+  } else {
+    const toTotValue = document.createElement('div');
+    toTotValue.style.cssText = `font-family:${T.fb};font-size:17px;font-weight:700;color:${T.verm};`;
+    toTotValue.textContent = `−${fmt(actualTipOutTotal)}`;
+    toTotRow.appendChild(toTotLabel);
+    toTotRow.appendChild(toTotValue);
+  }
   toBlock.appendChild(toTotRow);
   colBody.appendChild(toBlock);
 
@@ -511,19 +619,44 @@ function buildLeftCol(state, handlers) {
   })();
 
   const adjText = document.createElement('span');
-  adjText.textContent = 'Adjust Rates';
+  adjText.textContent = state.overrideMode ? 'ADJUSTING RATES' : 'Adjust Rates';
   adjBtn.appendChild(adjText);
 
+  if (state.overrideMode) {
+    adjBtn.style.borderColor = T.gold;
+    adjBtn.style.color = T.gold;
+  }
+
   adjBtn.addEventListener('pointerenter', () => {
-    adjBtn.style.borderColor = T.warning;
-    adjBtn.style.color = T.warning;
+    if (!state.overrideMode) {
+      adjBtn.style.borderColor = T.warning;
+      adjBtn.style.color = T.warning;
+    }
   });
   adjBtn.addEventListener('pointerleave', () => {
-    adjBtn.style.borderColor = T.border;
-    adjBtn.style.color = T.moon;
+    if (!state.overrideMode) {
+      adjBtn.style.borderColor = T.border;
+      adjBtn.style.color = T.moon;
+    }
   });
-  adjBtn.addEventListener('pointerup', () => {
-    if (handlers && handlers.onAdjustRates) handlers.onAdjustRates();
+  adjBtn.addEventListener('pointerup', function() {
+    if (state.overrideMode) return;  // Already in override mode
+    SceneManager.interrupt('co-manager-pin', {
+      onConfirm: (authData) => {
+        state.managerPin = authData.pin || authData.manager_pin || authData.raw_pin;
+        state.overrideMode = true;
+        state.overrides = {};
+        SceneManager.closeInterrupt('co-manager-pin');
+        // Rebuild will be triggered by the interrupt close
+        // and handlers.onRebuild if we have access
+        if (handlers && handlers.onRebuild) {
+          handlers.onRebuild();
+        }
+      },
+      onCancel: () => {
+        SceneManager.closeInterrupt('co-manager-pin');
+      },
+    });
   });
   colBody.appendChild(adjBtn);
 
@@ -1204,6 +1337,9 @@ defineScene({
                        || '';
     state.fromManager = !!params.fromManager;
     state.startTime   = state.startTime || Date.now();
+    state.overrideMode = state.overrideMode ?? false;
+    state.overrides = state.overrides ?? {};
+    state.managerPin = state.managerPin ?? null;
 
     params = Object.assign({}, params, {
       employeeId:   employeeId,
@@ -1335,23 +1471,31 @@ defineScene({
                   takeHome:     state.data.takeHome,
                   cashExpected: state.data.cashExpected,
                   employeeName: state.data.employeeName,
-                  onConfirm: () => {
+                  onConfirm: async () => {
                     if (state._finalizing) return;
                     state._finalizing = true;
                     SceneManager.closeInterrupt('co-finalize-confirm');
                     // POST the finalize. Endpoint is stubbed — swap URL when
                     // backend lands. `/server/shift/finalize-checkout` matches
                     // the existing shift endpoint naming convention.
-                    fetchWithTimeout('/api/v1/server/shift/finalize-checkout', {
-                      method:  'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        employee_id:          state.data.employeeId,
-                        take_home:            state.data.takeHome,
-                        cash_expected:        state.data.cashExpected,
-                        manager_pin_verified: true,
-                      }),
-                    }).then((r) => {
+                    const payload = {
+                      employee_id:          state.data.employeeId,
+                      take_home:            state.data.takeHome,
+                      cash_expected:        state.data.cashExpected,
+                      manager_pin_verified: true,
+                    };
+                    if (state.overrideMode && Object.keys(state.overrides).length > 0) {
+                      payload.overrides = Object.entries(state.overrides).map(
+                        ([rule_id, pct]) => ({ rule_id, override_percentage: pct })
+                      );
+                      payload.manager_pin = state.managerPin;
+                    }
+                    try {
+                      const r = await fetchWithTimeout('/api/v1/server/shift/finalize-checkout', {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                      });
                       if (r.ok) {
                         showToast('Checkout finalized', { bg: T.green });
                         OrderSummary.hide();
@@ -1369,10 +1513,10 @@ defineScene({
                         state._finalizing = false;
                         showToast(`Finalize failed (${r.status}) — try again`, { bg: T.verm });
                       }
-                    }).catch(() => {
+                    } catch {
                       state._finalizing = false;
                       showToast('Finalize unavailable — ask your manager', { bg: T.verm });
-                    });
+                    }
                   },
                   onCancel: () => {
                     SceneManager.closeInterrupt('co-finalize-confirm');
@@ -1619,16 +1763,11 @@ defineScene({
         onPrintSlip: () => {
           if (handlers.onPrint) handlers.onPrint();
         },
-        onAdjustRates: () => {
-          SceneManager.interrupt('co-manager-pin', {
-            onConfirm: () => {
-              SceneManager.closeInterrupt('co-manager-pin');
-              showToast('Tipout rate adjustment — pending backend', { bg: T.warning });
-            },
-            onCancel: () => {
-              SceneManager.closeInterrupt('co-manager-pin');
-            },
-          });
+        onRebuild: () => {
+          rebuild();
+        },
+        onOverrideChanged: () => {
+          rebuild();
         },
         onTabChange: (tab) => {
           state.activeTab = tab;

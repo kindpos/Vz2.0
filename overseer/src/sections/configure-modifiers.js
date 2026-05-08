@@ -70,14 +70,13 @@ const _state = {
 /* ------------------------------------------
    SMALL UTILS
 ------------------------------------------ */
-function clone(obj) { return JSON.parse(JSON.stringify(obj)); }
-function formatPrice(p) { return '$' + Number(p || 0).toFixed(2); }
+const clone = (obj) => JSON.parse(JSON.stringify(obj)); ;
+const formatPrice = (p) => '$' + Number(p || 0).toFixed(2); ;
 
-function getPendingCount() {
-    return (_state.pendingChanges.modifiers || []).length + (_state.pendingChanges.groups || []).length;
-}
+const getPendingCount = () => (_state.pendingChanges.modifiers || []).length + (_state.pendingChanges.groups || []).length;
+;
 
-function getAllWorking(collection) {
+const getAllWorking = (collection) => {
     const base = _state.modData[collection] || [];
     const pending = _state.pendingChanges[collection] || [];
     const pendingMap = new Map(pending.map(p => [p.id, p]));
@@ -97,7 +96,7 @@ function getAllWorking(collection) {
     return result;
 }
 
-function trackChange(collection, item) {
+const trackChange = (collection, item) => {
     if (!_state.pendingChanges[collection]) _state.pendingChanges[collection] = [];
     const idx = _state.pendingChanges[collection].findIndex(x => x.id === item.id);
     if (idx >= 0) _state.pendingChanges[collection][idx] = item;
@@ -109,7 +108,7 @@ function trackChange(collection, item) {
  * Guard: a group with min_selections >= 1 must have at least one modifier.
  * Highlights highlightEl with T.verm, shows a toast, returns false if invalid.
  */
-function _guardMandatoryHasModifiers(minSelections, modifierIds, groupName, highlightEl) {
+const _guardMandatoryHasModifiers = (minSelections, modifierIds, groupName, highlightEl) => {
     if (minSelections >= 1 && modifierIds.length === 0) {
         if (highlightEl) {
             highlightEl.style.outline = `2px solid ${T.verm}`;
@@ -121,7 +120,7 @@ function _guardMandatoryHasModifiers(minSelections, modifierIds, groupName, high
     return true;
 }
 
-function handleDeleteItem(collection, id) {
+const handleDeleteItem = (collection, id) => {
     if (!_state.pendingChanges[collection]) _state.pendingChanges[collection] = [];
     const idx = _state.pendingChanges[collection].findIndex(x => x.id === id);
     if (idx >= 0) {
@@ -136,7 +135,7 @@ function handleDeleteItem(collection, id) {
    PRIMITIVE HELPERS — Nostalgia vocabulary.
 ------------------------------------------ */
 
-function buildCard(accent, opts = {}) {
+const buildCard = (accent, opts = {}) => {
     const card = document.createElement('div');
     card.style.cssText = `
         background: ${C.card};
@@ -150,7 +149,7 @@ function buildCard(accent, opts = {}) {
     return card;
 }
 
-function buildLabel(text, opts = {}) {
+const buildLabel = (text, opts = {}) => {
     const el = document.createElement('div');
     el.textContent = text;
     el.style.cssText = `
@@ -165,7 +164,7 @@ function buildLabel(text, opts = {}) {
     return el;
 }
 
-function buildPillButton(label, variant, onClick, opts = {}) {
+const buildPillButton = (label, variant, onClick, opts = {}) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
@@ -218,7 +217,7 @@ function buildPillButton(label, variant, onClick, opts = {}) {
     return b;
 }
 
-function buildTextInput(value, opts = {}) {
+const buildTextInput = (value, opts = {}) => {
     const input = document.createElement('input');
     input.type = opts.type || 'text';
     input.value = value ?? '';
@@ -244,7 +243,7 @@ function buildTextInput(value, opts = {}) {
     return input;
 }
 
-function buildToggle(initial, onChange, opts = {}) {
+const buildToggle = (initial, onChange, opts = {}) => {
     let state = !!initial;
     let isDisabled = !!opts.disabled;
     const wrap = document.createElement('button');
@@ -299,7 +298,7 @@ function buildToggle(initial, onChange, opts = {}) {
     return wrap;
 }
 
-function showToast(message, kind = 'confirm') {
+const showToast = (message, kind = 'confirm') => {
     const toast = document.createElement('div');
     const bg = kind === 'error' ? C.verm
              : kind === 'warning' ? C.warning
@@ -418,7 +417,7 @@ const { openModal, closeModal, closeAllModals } = (() => {
     return { openModal, closeModal, closeAllModals };
 })();
 
-function buildModalField(container, labelText, type, value, opts = {}) {
+const buildModalField = (container, labelText, type, value, opts = {}) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom: 16px;';
     const lbl = buildLabel(labelText, { color: C.green });
@@ -441,7 +440,7 @@ function buildModalField(container, labelText, type, value, opts = {}) {
     return input;
 }
 
-function buildModalFooter(container, onSave, opts = {}) {
+const buildModalFooter = (container, onSave, opts = {}) => {
     const footer = document.createElement('div');
     footer.style.cssText = `
         display: flex; gap: 10px;
@@ -469,7 +468,7 @@ initConfirmDialog(C, { openModal, closeModal, buildPillButton });
    MAIN VIEW
 ============================================ */
 
-function buildMainView(wrapper) {
+const buildMainView = (wrapper) => {
     wrapper.replaceChildren();
 
     // Page header
@@ -511,7 +510,7 @@ function buildMainView(wrapper) {
     buildFooter(wrapper);
 }
 
-function buildTabBar(wrapper) {
+const buildTabBar = (wrapper) => {
     const bar = document.createElement('div');
     bar.style.cssText = `
         display: flex; gap: 6px;
@@ -570,7 +569,7 @@ function buildTabBar(wrapper) {
     wrapper.appendChild(bar);
 }
 
-function buildSearchBar(container, collection, onChange) {
+const buildSearchBar = (container, collection, onChange) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom: 14px;';
     const input = buildTextInput(_state.searchState[collection] || '', {
@@ -588,7 +587,7 @@ function buildSearchBar(container, collection, onChange) {
    MODIFIERS TAB (modifier master list)
 ============================================ */
 
-function buildModifiersTab(container) {
+const buildModifiersTab = (container) => {
     container.replaceChildren();
 
     // Search bar first, then Add button row underneath so it reads as a
@@ -622,7 +621,7 @@ function buildModifiersTab(container) {
  *   • Bundled  — only modifiers with included_modifier_ids (microMODs)
  *   • Orphan   — only modifiers not referenced by any group
  */
-function buildModifierFilterRow(container, onChange) {
+const buildModifierFilterRow = (container, onChange) => {
     const modifiers = getAllWorking('modifiers');
     const groups = getAllWorking('groups');
     const bundledCount = modifiers.filter(a => (a.included_modifier_ids || []).length > 0).length;
@@ -733,7 +732,7 @@ function buildModifierFilterRow(container, onChange) {
     return row;
 }
 
-function renderModifierList(list) {
+const renderModifierList = (list) => {
     list.replaceChildren();
     const modifiers = getAllWorking('modifiers');
     const groups = getAllWorking('groups');
@@ -870,7 +869,7 @@ function renderModifierList(list) {
    MODIFIER EDIT MODAL (with microMOD picker)
 ============================================ */
 
-function openModifierModal(existing) {
+const openModifierModal = (existing) => {
     const isEdit = !!existing;
     openModal(isEdit ? 'Edit Modifier' : 'Add Modifier', (body) => {
         const nameInput = buildModalField(body, 'Name', 'text', existing?.name || '', {
@@ -971,11 +970,10 @@ function openModifierModal(existing) {
     }, { accent: C.green, wide: false });
 }
 
-function countGroupRefs(atomId) {
-    return getAllWorking('groups').filter(g => (g.modifier_ids || []).includes(atomId)).length;
-}
+const countGroupRefs = (atomId) => getAllWorking('groups').filter(g => (g.modifier_ids || []).includes(atomId)).length;
+;
 
-function openOverrideModal(modifier, driverAtoms, existingOverrides, onSave) {
+const openOverrideModal = (modifier, driverAtoms, existingOverrides, onSave) => {
     openModal(`Price Overrides: ${modifier.name}`, (body) => {
         const hint = document.createElement('div');
         hint.style.cssText = `font-size: 12px; color: ${C.textDim}; margin-bottom: 20px;`;
@@ -1017,7 +1015,7 @@ function openOverrideModal(modifier, driverAtoms, existingOverrides, onSave) {
    GROUPS TAB
 ============================================ */
 
-function buildGroupsTab(container) {
+const buildGroupsTab = (container) => {
     container.replaceChildren();
 
     const headerRow = document.createElement('div');
@@ -1051,7 +1049,7 @@ function buildGroupsTab(container) {
     renderGroupList(list);
 }
 
-function renderGroupList(list) {
+const renderGroupList = (list) => {
     list.replaceChildren();
     const groups = getAllWorking('groups');
     const modifiers = getAllWorking('modifiers');
@@ -1187,7 +1185,7 @@ function renderGroupList(list) {
    enforces: drives_pricing requires max=1.
 ============================================ */
 
-function openGroupModal(existing) {
+const openGroupModal = (existing) => {
     const isEdit = !!existing;
 
     openModal(isEdit ? 'Edit Group' : 'Add Group', (body) => {
@@ -1530,7 +1528,7 @@ function openGroupModal(existing) {
    FOOTER + SAVE
 ============================================ */
 
-function buildFooter(wrapper) {
+const buildFooter = (wrapper) => {
     const existing = wrapper.querySelector('#configure-modifiers-footer');
     if (existing) existing.remove();
 
@@ -1584,7 +1582,7 @@ function buildFooter(wrapper) {
     updateFooter();
 }
 
-function updateFooter() {
+const updateFooter = () => {
     const count = document.getElementById('configure-modifiers-pending-count');
     const btn = document.getElementById('configure-modifiers-save-btn');
     const n = getPendingCount();
@@ -1603,7 +1601,7 @@ function updateFooter() {
    Assembles the ctx object that handleSaveChanges (in
    modifier-data.js) needs to read/write scene state.
 ------------------------------------------ */
-function _getSaveCtx() {
+const _getSaveCtx = () => {
     return {
         pendingChanges: _state.pendingChanges,
         modData: _state.modData,

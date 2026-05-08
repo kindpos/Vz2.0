@@ -15,6 +15,7 @@ Sections (top to bottom):
   8. Cash Expected Block
 """
 
+from decimal import Decimal
 from typing import List, Dict, Any
 from .base_template import BaseTemplate
 
@@ -311,7 +312,7 @@ class ServerCheckoutTemplate(BaseTemplate):
             # Calculate from rules
             for rule in tipout_rules:
                 role = rule.get('role', '')
-                rate = rule.get('rate', 0.0)
+                rate = Decimal(str(rule.get('rate', '0')))
                 base_key = rule.get('base', 'net_sales')
                 base_amount = ctx.get(base_key, 0.0)
                 amount = base_amount * rate

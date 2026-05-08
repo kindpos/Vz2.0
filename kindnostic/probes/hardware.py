@@ -4,9 +4,10 @@ import os
 import shutil
 from datetime import datetime, timezone
 
-from kindnostic.types import Category, ProbeResult, Status
+from kindnostic.types import Category, ProbeResult, ProbeTier, Status
 
 CATEGORY = Category.HIGH
+PROBE_TIER = ProbeTier.POLITE
 
 _SSD_FREE_WARN_MB = 500
 

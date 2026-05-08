@@ -5,11 +5,13 @@
    propagate to terminals.
    ============================================ */
 
+import { fetchWithTimeout } from './http.js';
+
 export async function pushChanges(events) {
     if (!events || events.length === 0) return { ok: true, events_written: 0 };
 
     try {
-        const res = await fetch('/api/v1/config/push', {
+        const res = await fetchWithTimeout('/api/v1/config/push', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(events.map(e => ({

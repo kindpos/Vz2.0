@@ -5,9 +5,10 @@ import sqlite3
 import subprocess
 from datetime import datetime, timezone
 
-from kindnostic.types import Category, ProbeResult, Status
+from kindnostic.types import Category, ProbeResult, ProbeTier, Status
 
 CATEGORY = Category.LOW
+PROBE_TIER = ProbeTier.PASSIVE
 
 _DEFAULT_DIAG_DB_PATH = "./data/diagnostic_boot.db"
 _DEFAULT_LEDGER_PATH = "./data/event_ledger.db"

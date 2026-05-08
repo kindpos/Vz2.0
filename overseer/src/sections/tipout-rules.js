@@ -42,11 +42,10 @@ let roles = [];          // loaded Role records
 let categories = [];     // loaded MenuCategory records
 let editingRuleId = null;
 
-function _uid() {
-    return 'rule_' + Math.random().toString(36).slice(2, 10);
-}
+const _uid = () => 'rule_' + Math.random().toString(36).slice(2, 10);
+;
 
-async function _load() {
+const _load = async () => {
     const [rulesRes, rolesRes, catsRes] = await Promise.all([
         fetch('/api/v1/config/tipout').catch(() => null),
         fetch('/api/v1/config/roles').catch(() => null),
@@ -69,7 +68,7 @@ async function _load() {
     categories = catsRes && catsRes.ok ? await catsRes.json() : [];
 }
 
-function _showToast(msg, type = 'success') {
+const _showToast = (msg, type = 'success') => {
     if (!currentContainer) return;
     const old = currentContainer.querySelector('.tr-toast');
     if (old) old.remove();
@@ -92,20 +91,19 @@ function _showToast(msg, type = 'success') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-function _rolesByName() {
+const _rolesByName = () => {
     const map = {};
     roles.forEach(r => { map[r.role_id] = r.name || r.role_id; });
     return map;
 }
 
-function _roleLabel(id) {
-    return _rolesByName()[id] || id || '—';
-}
+const _roleLabel = (id) => _rolesByName()[id] || id || '—';
+;
 
 /* ==========================================
    LIST VIEW — existing rules + "Add Rule"
    ========================================== */
-function _buildHeader(container) {
+const _buildHeader = (container) => {
     const header = document.createElement('div');
     header.style.cssText = 'margin-bottom: 20px;';
     header.innerHTML = `
@@ -121,7 +119,7 @@ function _buildHeader(container) {
     container.appendChild(header);
 }
 
-function _buildAddButton(container) {
+const _buildAddButton = (container) => {
     const row = document.createElement('div');
     row.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 12px;';
 
@@ -137,7 +135,7 @@ function _buildAddButton(container) {
     container.appendChild(row);
 }
 
-function _buildRulesTable(container) {
+const _buildRulesTable = (container) => {
     const table = document.createElement('div');
     table.style.cssText = `
         border: 1px solid ${C.mintBorder}; border-radius: 10px;
@@ -231,13 +229,14 @@ function _buildRulesTable(container) {
     container.appendChild(table);
 }
 
-async function _confirmDelete(rule) {
+const _confirmDelete = async (rule) => {
     if (!confirm(`Delete tipout rule: ${_roleLabel(rule.role_from)} → ${_roleLabel(rule.role_to)} (${rule.percentage}%)?`)) return;
     try {
-        await pushChanges([{
+        const result = await pushChanges([{
             event_type: 'tipout.rule_deleted',
             payload: { rule_id: rule.rule_id },
         }]);
+        if (!result.ok) { _showToast('Delete failed', 'error'); return; }
         _showToast('Rule deleted', 'success');
         await _rerender();
     } catch (e) {
@@ -249,7 +248,7 @@ async function _confirmDelete(rule) {
 /* ==========================================
    FORM — create / edit a rule
    ========================================== */
-function _openForm(rule) {
+const _openForm = (rule) => {
     editingRuleId = rule ? rule.rule_id : null;
     const isEdit = !!rule;
 
@@ -339,10 +338,11 @@ function _openForm(rule) {
             categories: form.calculation_base === 'Net Sales' ? form.categories.slice() : [],
         };
         try {
-            await pushChanges([{
+            const result = await pushChanges([{
                 event_type: isEdit ? 'tipout.rule_updated' : 'tipout.rule_created',
                 payload,
             }]);
+            if (!result.ok) { _showToast('Save failed', 'error'); return; }
             _showToast(isEdit ? 'Rule updated' : 'Rule created', 'success');
             overlay.remove();
             await _rerender();
@@ -360,7 +360,7 @@ function _openForm(rule) {
     currentContainer.appendChild(overlay);
 }
 
-function _fieldWrap(label) {
+const _fieldWrap = (label) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom: 16px;';
     const l = document.createElement('div');
@@ -373,7 +373,7 @@ function _fieldWrap(label) {
     return wrap;
 }
 
-function _selectField(label, key, form, options) {
+const _selectField = (label, key, form, options) => {
     const wrap = _fieldWrap(label);
     const sel = document.createElement('select');
     sel.dataset.field = key;
@@ -398,7 +398,7 @@ function _selectField(label, key, form, options) {
     return wrap;
 }
 
-function _numberField(label, key, form) {
+const _numberField = (label, key, form) => {
     const wrap = _fieldWrap(label);
     const input = document.createElement('input');
     input.type = 'number';
@@ -415,7 +415,7 @@ function _numberField(label, key, form) {
     return wrap;
 }
 
-function _categoryField(form) {
+const _categoryField = (form) => {
     const wrap = _fieldWrap('Categories (leave empty for ALL net sales)');
     const hint = document.createElement('div');
     hint.textContent = 'When at least one category is selected the basis narrows to the server\u2019s net sales in those categories only.';
@@ -468,7 +468,7 @@ function _categoryField(form) {
 /* ==========================================
    RENDER / SCENE WIRING
    ========================================== */
-async function _rerender() {
+const _rerender = async () => {
     if (!currentContainer) return;
     const wrapper = currentContainer.querySelector('#tr-view-wrapper');
     if (!wrapper) return;

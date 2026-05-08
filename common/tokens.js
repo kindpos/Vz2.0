@@ -44,9 +44,11 @@ export const T = {
   moon:     '#7e8896',
   moonDk:   '#4a5059',
   moonText: '#22252a',  // label color on moon fill
+  btnFace:  '#3d4147',  // Chamfer button face — between T.card and T.moonDk
 
    // ── Chart semantic colors ─────────────────────────
   lavender:   '#b48efa',   // Last week / comparison period — never use for current data
+  lavenderDk: '#5e4090',  // Shadow / press state for lavender
   positive:   '#4ade80',   // Positive delta indicator (up arrows, gains)
   warning:    '#fbbf24',   // Warning threshold (COB 28%, unadj tips, etc.)
 

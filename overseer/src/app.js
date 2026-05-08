@@ -27,6 +27,7 @@ import { registerPrinterConfig }      from './sections/printer-config.js';
 import { registerPrinterSetup }       from './sections/printer-setup.js';
 import { buildNetworkSetupScene, cleanupNetworkSetup } from './sections/hardware/network-setup.js';
 import { buildTerminalDetailsScene, cleanupTerminalDetailsScene } from './sections/hardware/terminal-details.js';
+import { buildHardwareScene, cleanupHardware } from './sections/hardware.js';
 
 // Build-pattern sections (no register wrapper — wrap manually below)
 import { buildStoreInfoScene,     cleanupStoreInfo     } from './sections/store-info.js';
@@ -49,6 +50,10 @@ import { buildPricingSetupScene, cleanupPricingSetup } from './sections/pricing-
 import { buildModifierGroupsScene, cleanupModifierGroups } from './sections/modifier-groups.js';
 import { buildModifiersScene, cleanupModifiers } from './sections/modifiers.js';
 import mountTransactionLog, { unmount as unmountTransactionLog } from './sections/transaction-log.js';
+import { buildKINDnosticStoreScene, cleanupKINDnosticStore } from './sections/kindnostic-store.js';
+import { buildKINDnosticSettingsScene, cleanupKINDnosticSettings } from './sections/kindnostic-settings.js';
+import { buildKINDnosticSurveyScene, cleanupKINDnosticSurvey } from './sections/kindnostic-survey.js';
+import { buildKINDnosticInterpreterScene, cleanupKINDnosticInterpreter } from './sections/kindnostic-interpreter.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -96,8 +101,8 @@ const NAV = [
             { id: 'menu-categories',     label: 'Items'             },
             { id: 'modifiers',           label: 'Modifiers & Options' },
             { id: 'modifier-groups',     label: 'Groups'            },
-            { id: 'pricing-setup',       label: 'Pricing Setup'     },
-            { id: 'pricing-specials',    label: 'Discounts & Specials' },
+            { id: 'pricing-setup',       label: 'Sizes'             },
+            { id: 'pricing-specials',    label: 'Menu Pricing'       },
             { id: 'import-excel',        label: 'Import Menu'       },
         ]
     },
@@ -105,12 +110,23 @@ const NAV = [
         id: 'hardware',
         label: 'HARDWARE & TERMINAL CONFIGURATION',
         subs: [
+            { id: 'hardware-management', label: 'Hardware Management' },
             { id: 'network-setup',     label: 'Network Setup'     },
             // { id: 'printer-setup',     label: 'Printer Setup'     },
             // { id: 'printer-config',    label: 'Printer Config'    },
             // { id: 'card-readers',      label: 'Card Readers'      },
             { id: 'receipt-settings',  label: 'Receipt Settings'  },
             { id: 'terminal-settings', label: 'Terminal Settings' },
+        ]
+    },
+    {
+        id: 'kindnostic',
+        label: 'KINDNOSTIC',
+        subs: [
+            { id: 'kindnostic-store',    label: 'Archive & Export'  },
+            { id: 'kindnostic-settings', label: 'Configuration'     },
+            { id: 'kindnostic-survey',   label: 'Survey'            },
+            { id: 'kindnostic-interpreter', label: 'Interpreter'    },
         ]
     },
 ];
@@ -124,7 +140,7 @@ let _activeScene   = null;
 /* ------------------------------------------
    SIDEBAR NAV BUILDER
 ------------------------------------------ */
-function buildNav() {
+const buildNav = () => {
     const container = document.getElementById('nav-sections');
     if (!container) return;
     container.innerHTML = '';
@@ -169,7 +185,7 @@ function buildNav() {
     });
 }
 
-function toggleSection(sectionId) {
+const toggleSection = (sectionId) => {
     document.querySelectorAll('.nav-section-subs').forEach(el => {
         const isTarget = el.dataset.sectionId === sectionId;
         el.classList.toggle('open', isTarget && !el.classList.contains('open'));
@@ -181,7 +197,7 @@ function toggleSection(sectionId) {
     _activeSection = sectionId;
 }
 
-function setActiveNavItem(sceneId) {
+const setActiveNavItem = (sceneId) => {
     document.querySelectorAll('.nav-sub-item').forEach(el => {
         el.classList.toggle('active', el.dataset.id === sceneId);
     });
@@ -193,7 +209,7 @@ function setActiveNavItem(sceneId) {
 /* ------------------------------------------
    NAVIGATION
 ------------------------------------------ */
-function navigateTo(sceneId) {
+const navigateTo = (sceneId) => {
     if (sceneId === _activeScene) return;
     const prev = _activeScene;
     _activeScene = sceneId;
@@ -212,7 +228,7 @@ function navigateTo(sceneId) {
    Polls employees + menu item counts, updates footer counters,
    online dot, sync time. Runs every 60s from boot().
 ------------------------------------------ */
-async function refreshBadges() {
+const refreshBadges = async () => {
     let allOk = true;
     try {
         const [menuRes, staffRes] = await Promise.all([
@@ -251,7 +267,7 @@ async function refreshBadges() {
     }
 }
 
-async function setVersionStamp() {
+const setVersionStamp = async () => {
     // Version is no longer rendered in the shell (header removed).
     // Kept as a no-op so boot() stays simple; reintroduce if needed
     // as a tooltip on the brand wordmark.
@@ -268,7 +284,7 @@ async function setVersionStamp() {
    SceneManager v3 expects register({ name, mount, unmount }).
    This adapter bridges the two without modifying section files.
 ------------------------------------------ */
-function createLegacyAdapter(nameOverrides) {
+const createLegacyAdapter = (nameOverrides) => {
     return {
         register(name, config) {
             const resolvedName = (nameOverrides && nameOverrides[name]) || name;
@@ -291,7 +307,7 @@ function createLegacyAdapter(nameOverrides) {
 /* ------------------------------------------
    SECTION REGISTRATION
 ------------------------------------------ */
-function registerAllSections() {
+const registerAllSections = () => {
     const adapter = createLegacyAdapter();
 
     // Register-pattern sections (use adapter to bridge old format)
@@ -368,6 +384,11 @@ function registerAllSections() {
         unmount: (container) => cleanupTerminalDetailsScene(container),
     });
     SceneManager.register({
+        name: 'hardware-management',
+        mount: (container) => buildHardwareScene(container),
+        unmount: (container) => cleanupHardware(),
+    });
+    SceneManager.register({
         name: 'card-readers',
         mount: (container) => buildCardReadersScene(container),
         unmount: (container) => cleanupCardReaders(container),
@@ -419,12 +440,32 @@ function registerAllSections() {
         mount: (container) => mountTransactionLog(container),
         unmount: () => unmountTransactionLog(),
     });
+    SceneManager.register({
+        name: 'kindnostic-store',
+        mount: (container) => buildKINDnosticStoreScene(container),
+        unmount: (container) => cleanupKINDnosticStore(container),
+    });
+    SceneManager.register({
+        name: 'kindnostic-settings',
+        mount: (container) => buildKINDnosticSettingsScene(container),
+        unmount: (container) => cleanupKINDnosticSettings(container),
+    });
+    SceneManager.register({
+        name: 'kindnostic-survey',
+        mount: (container) => buildKINDnosticSurveyScene(container),
+        unmount: (container) => cleanupKINDnosticSurvey(container),
+    });
+    SceneManager.register({
+        name: 'kindnostic-interpreter',
+        mount: (container) => buildKINDnosticInterpreterScene(container),
+        unmount: (container) => cleanupKINDnosticInterpreter(container),
+    });
 }
 
 /* ------------------------------------------
    BOOT
 ------------------------------------------ */
-async function boot() {
+const boot = async () => {
     console.log('[Overseer] Booting...');
 
     SceneManager.init({
