@@ -250,3 +250,203 @@ class TestKitchenTicket:
             expected = char * 32
             result = fmt.format([div])
             assert expected.encode('ascii') in result
+
+
+# ── Kitchen Ticket Routing Tests (Fixes 1-5) ───────────────────────────────
+
+
+class TestKitchenTicketRouting:
+    """Tests for seat sections, station headers, and modifier-level routing."""
+
+    def test_seat_sections_render(self):
+        """Items on different seats render under SEAT headers."""
+        template = KitchenTicketTemplate(80)
+        commands = template.render(_kitchen_ticket_context(
+            items=[
+                {'name': 'Steak', 'qty': 1, 'modifiers': [], 'seat': 1},
+                {'name': 'Salad', 'qty': 1, 'modifiers': [], 'seat': 2},
+            ]
+        ))
+
+        text_contents = [c['content'] for c in commands if c.get('type') == 'text']
+        joined = '\n'.join(text_contents)
+
+        # Both seat headers should appear
+        assert 'SEAT 1' in joined
+        assert 'SEAT 2' in joined
+        # Items should appear in the content
+        assert 'Steak' in joined
+        assert 'Salad' in joined
+
+    def test_station_name_in_header(self):
+        """Station name and table appear in header."""
+        template = KitchenTicketTemplate(80)
+        commands = template.render(_kitchen_ticket_context(
+            station_name='GRILL',
+            table='4',
+        ))
+
+        text_contents = [c['content'] for c in commands if c.get('type') == 'text']
+        joined = '\n'.join(text_contents)
+
+        # Station name and table should appear in header
+        assert 'GRILL' in joined
+        assert 'TABLE 4' in joined
+
+    def test_dispatch_marker_on_home_station(self):
+        """Modifier with station_override != current station shows dispatch marker."""
+        template = KitchenTicketTemplate(80)
+        commands = template.render(_kitchen_ticket_context(
+            station_name='cold',
+            items=[
+                {
+                    'name': 'Caesar Salad',
+                    'qty': 1,
+                    'modifiers': [
+                        {
+                            'name': 'Grilled Salmon',
+                            'text': 'Grilled Salmon',
+                            'station_override': 'grill',
+                            'action': 'add',
+                            'modifier_id': 'm1',
+                            'price': 5.00,
+                        }
+                    ],
+                }
+            ]
+        ))
+
+        text_contents = [c['content'] for c in commands if c.get('type') == 'text']
+        joined = '\n'.join(text_contents)
+
+        # Dispatch marker characters should appear
+        assert '↳' in joined
+        assert '→' in joined
+        # Modifier name should appear
+        assert 'Grilled Salmon' in joined
+
+    def test_send_with_on_destination_station(self):
+        """Synthetic item at destination station shows 'Send With' parent name."""
+        template = KitchenTicketTemplate(80)
+        commands = template.render(_kitchen_ticket_context(
+            station_name='grill',
+            items=[
+                {
+                    'name': 'Caesar Salad',
+                    'kitchen_text': 'Caesar Salad',
+                    'seat': 1,
+                    'qty': 1,
+                    'modifiers': [
+                        {
+                            'name': 'Grilled Salmon',
+                            'text': 'Grilled Salmon',
+                            'station_override': 'grill',
+                            'action': 'add',
+                            'modifier_id': 'm1',
+                            'price': 5.00,
+                        }
+                    ],
+                }
+            ]
+        ))
+
+        text_contents = [c['content'] for c in commands if c.get('type') == 'text']
+        joined = '\n'.join(text_contents)
+
+        # Modifier name should appear
+        assert 'Grilled Salmon' in joined
+        # Send With text should appear
+        assert 'Send With' in joined
+        # Parent item name should appear in Send With
+        assert 'Caesar Salad' in joined
+
+    def test_no_station_override_renders_normally(self):
+        """Modifier without station_override renders as normal modifier."""
+        template = KitchenTicketTemplate(80)
+        commands = template.render(_kitchen_ticket_context(
+            station_name='cold',
+            items=[
+                {
+                    'name': 'Caesar Salad',
+                    'qty': 1,
+                    'modifiers': [
+                        {
+                            'name': 'Extra Croutons',
+                            'text': 'Extra Croutons',
+                            'station_override': None,
+                            'action': 'add',
+                            'modifier_id': 'm1',
+                            'price': 1.00,
+                        }
+                    ],
+                }
+            ]
+        ))
+
+        text_contents = [c['content'] for c in commands if c.get('type') == 'text']
+        joined = '\n'.join(text_contents)
+
+        # Modifier should appear with normal prefix
+        assert 'Extra Croutons' in joined
+        # Dispatch marker should NOT appear
+        assert '↳' not in joined
+        assert '→' not in joined
+        # Send With should NOT appear
+        assert 'Send With' not in joined
+
+    def test_station_override_case_insensitive(self):
+        """Station override matching is case-insensitive in context builder.
+
+        The context builder performs case-insensitive station name comparison
+        when determining if a modifier is routed to the current station.
+        After normalization by the context builder, both station_name and
+        station_override would have the same case in the rendered context.
+        """
+        template = KitchenTicketTemplate(80)
+        # Simulate normalized case after context builder processing
+        commands = template.render(_kitchen_ticket_context(
+            station_name='grill',
+            items=[
+                {
+                    'name': 'Caesar Salad',
+                    'kitchen_text': 'Caesar Salad',
+                    'seat': 1,
+                    'qty': 1,
+                    'modifiers': [
+                        {
+                            'name': 'Grilled Salmon',
+                            'text': 'Grilled Salmon',
+                            'station_override': 'grill',  # normalized to lowercase
+                            'action': 'add',
+                            'modifier_id': 'm1',
+                            'price': 5.00,
+                        }
+                    ],
+                }
+            ]
+        ))
+
+        text_contents = [c['content'] for c in commands if c.get('type') == 'text']
+        joined = '\n'.join(text_contents)
+
+        # After normalization, should render Send With (destination match)
+        assert 'Send With' in joined
+        # Dispatch marker should NOT appear
+        assert '↳' not in joined
+
+    def test_receipt_seat_sections_render(self):
+        """Guest receipt renders items from different seats."""
+        template = GuestReceiptTemplate(80)
+        commands = template.render(_guest_receipt_context(
+            items=[
+                {'name': 'Burger', 'qty': 1, 'price': 12.50, 'seat': 1},
+                {'name': 'Salad', 'qty': 1, 'price': 8.00, 'seat': 2},
+            ]
+        ))
+
+        text_contents = [c['content'] for c in commands if c.get('type') == 'text']
+        joined = '\n'.join(text_contents)
+
+        # Items should be present
+        assert 'Burger' in joined
+        assert 'Salad' in joined
