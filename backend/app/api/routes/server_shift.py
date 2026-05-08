@@ -24,6 +24,7 @@ from app.core.pin_hash import verify_pin_hash
 from app.core.projections import project_orders
 from app.core.money import money_round
 from app.config import settings
+from app.services.print_context_builder import PrintContextBuilder
 
 router = APIRouter(prefix="/server/shift", tags=["server-shift"])
 shifts_router = APIRouter(prefix="/shifts", tags=["shifts"])
@@ -449,6 +450,12 @@ async def finalize_checkout(
     appended_evts = await ledger.append_batch(all_events)
     final_evt = appended_evts[-1]  # The CHECKOUT_FINALIZED event
 
+    # Build full shift summary from the context builder (v2 path: omit server_name)
+    shift_ctx = await PrintContextBuilder(ledger).build_server_checkout_context(server_id)
+    check_count = shift_ctx.get("checks_closed", 0)
+    net_sales = shift_ctx.get("net_sales", Decimal("0.00"))
+    avg_check = money_round(net_sales / check_count) if check_count > 0 else Decimal("0.00")
+
     return {
         "success": True,
         "event_seq": final_evt.sequence_number,
@@ -457,6 +464,12 @@ async def finalize_checkout(
             "cash_tips": str(cash_tips),
             "card_tips": str(card_tips),
             "tipout_amount": str(actual_tipout_total),
+            "gross_sales": str(shift_ctx.get("gross_sales", Decimal("0.00"))),
+            "net_sales": str(net_sales),
+            "check_count": check_count,
+            "avg_check": str(avg_check),
+            "cash_total": str(shift_ctx.get("cash_sales", Decimal("0.00"))),
+            "card_total": str(shift_ctx.get("card_sales", Decimal("0.00"))),
         },
     }
 

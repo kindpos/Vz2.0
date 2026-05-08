@@ -40,6 +40,12 @@ async def test_finalize_checkout_route(ledger):
     assert "cash_tips" in resp["checkout"]
     assert "card_tips" in resp["checkout"]
     assert "tipout_amount" in resp["checkout"]
+    assert "gross_sales" in resp["checkout"]
+    assert "net_sales" in resp["checkout"]
+    assert "check_count" in resp["checkout"]
+    assert "avg_check" in resp["checkout"]
+    assert "cash_total" in resp["checkout"]
+    assert "card_total" in resp["checkout"]
 
     # Verify CHECKOUT_FINALIZED event was emitted
     events = await ledger.get_events_since(0)
