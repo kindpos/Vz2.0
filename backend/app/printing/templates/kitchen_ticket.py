@@ -86,6 +86,22 @@ class KitchenTicketTemplate(BaseTemplate):
     def _render_zone1(self, ctx: Dict, ticket_type: str, supports_red: bool) -> List[Dict]:
         cmds: List[Dict] = []
 
+        # Table/Station header line — left: table or check, right: station name
+        table = ctx.get('table')
+        station = ctx.get('station_name', '')
+        check = ctx.get('check_number') or ctx.get('ticket_number', 'N/A')
+        left_text = f"TABLE {table}" if table else f"CHECK {check}"
+
+        if station:
+            available_width = self.chars_per_line - len(station)
+            left_padded = left_text.ljust(available_width)
+            header_line = (left_padded + station)[:self.chars_per_line]
+        else:
+            header_line = left_text[:self.chars_per_line]
+
+        cmds.append({'type': 'text', 'content': header_line})
+        cmds.append({'type': 'divider'})
+
         # Line 1 — Check number (LARGE_BOLD = 2x2 + bold)
         check = ctx.get('check_number') or ctx.get('ticket_number', 'N/A')
         cmds.append({
