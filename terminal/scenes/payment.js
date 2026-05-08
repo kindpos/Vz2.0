@@ -267,7 +267,7 @@ defineScene({
         // buildActionCard with green accent bar, "1/N" stacked over the
         // dollar amount, mint flash on tap.
         [2, 3, 4].forEach((divisor) => {
-          const amt = _roundCents(remaining / divisor);
+          const amt = _ceilCents(remaining / divisor);
           // Last-cent remainder stays in balance_due;
           // cleared when final seat pays exact.
           if (typeof console !== 'undefined') {

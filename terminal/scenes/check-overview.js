@@ -1124,11 +1124,31 @@ function _wireLongPress(el, onFire, holdMs) {
   });
 }
 
+
+// Determine which action buttons should be enabled based on order state.
+function getButtonStates(state) {
+  const order   = state.order;
+  const status  = order?.status ?? 'open';
+  const paid    = status === 'paid' || status === 'closed';
+  const voided  = status === 'voided';
+  const hasPmt  = (order?.amount_paid ?? 0) > 0;
+  const multiSeat = activeSeatCount(state.seats, state.paidSeats) > 1;
+  const inPayment = state._paymentInProgress ?? false;
+
+  return {
+    PAY:    !paid && !voided && !inPayment,
+    VOID:   !paid && !voided && !inPayment,
+    DISC:   !paid && !voided && !inPayment,
+    MANAGE: !paid && !voided && !inPayment && multiSeat,
+  };
+}
+
 function renderActionBar(state) {
   const barZone = state.bottomBarEl;
   if (!barZone) return;
   barZone.innerHTML = '';
 
+  const buttonStates    = getButtonStates(state);
   const order           = state.order || {};
   let discount        = getCashDiscount();
   const managerDiscount = order.manager_discount_total || 0;
@@ -1362,6 +1382,11 @@ function renderActionBar(state) {
     onClick: () => handlePay(state, state._params || {}),
   });
   payBtn.style.cssText += 'grid-column:1;grid-row:1/3;';
+  if (!buttonStates.PAY) {
+    payBtn.style.opacity = '0.35';
+    payBtn.style.pointerEvents = 'none';
+    payBtn.onclick = null;
+  }
 
   const discBtn = buildChamferButton({
     label: 'Disc', fontSize: '20px', isPrimary: false,
@@ -1369,6 +1394,11 @@ function renderActionBar(state) {
     onClick: () => handleDiscount(state),
   });
   discBtn.style.cssText += 'grid-column:2;grid-row:1;';
+  if (!buttonStates.DISC) {
+    discBtn.style.opacity = '0.35';
+    discBtn.style.pointerEvents = 'none';
+    discBtn.onclick = null;
+  }
 
   const voidBtn = buildChamferButton({
     label: 'Void', fontSize: '20px', isPrimary: false,
@@ -1376,6 +1406,11 @@ function renderActionBar(state) {
     onClick: () => handleVoid(state),
   });
   voidBtn.style.cssText += 'grid-column:2;grid-row:2;';
+  if (!buttonStates.VOID) {
+    voidBtn.style.opacity = '0.35';
+    voidBtn.style.pointerEvents = 'none';
+    voidBtn.onclick = null;
+  }
 
   leftQuad.appendChild(payBtn);
   leftQuad.appendChild(discBtn);
@@ -1393,6 +1428,11 @@ function renderActionBar(state) {
     onClick: () => openEditSeats(state),
   });
   manageBtn.style.cssText += 'grid-column:1;grid-row:1;';
+  if (!buttonStates.MANAGE) {
+    manageBtn.style.opacity = '0.35';
+    manageBtn.style.pointerEvents = 'none';
+    manageBtn.onclick = null;
+  }
 
   const printBtn = buildChamferButton({
     label: 'Print', fontSize: '20px', isPrimary: false,
@@ -4035,7 +4075,8 @@ function handleVoid(state) {
 
   // Filter out already-voided items before showing the PIN challenge.
   const nonVoidedRefs = itemRefs.filter((r) => {
-    const item = state.seats[r.seatIdx] && state.seats[r.seatIdx].items[r.itemIdx];
+    const seat = state.seats.find(s => s.id === r.seatId);
+    const item = seat && seat.items.find(it => it.item_id === r.itemId);
     return item && !item.voided;
   });
   if (nonVoidedRefs.length === 0) {
@@ -4049,8 +4090,7 @@ function handleVoid(state) {
     onConfirm: (approvedBy) => {
       const paidSeats = state.paidSeats || {};
       const hasPaid = nonVoidedRefs.some((r) => {
-        const seat = state.seats[r.seatIdx];
-        return seat && paidSeats[seat.id];
+        return paidSeats[r.seatId];
       });
       if (hasPaid) {
         state._voidInProgress = false;
@@ -4067,9 +4107,11 @@ function _voidItems(state, refs, approvedBy) {
   const snapshot = [];
   for (let i = 0; i < refs.length; i++) {
     let r = refs[i];
-    const item = state.seats[r.seatIdx].items[r.itemIdx];
+    const seat = state.seats.find(s => s.id === r.seatId);
+    const item = seat && seat.items.find(it => it.item_id === r.itemId);
+    if (!item) continue;
     const alreadyVoided = !!item.voided;
-    snapshot.push({ seatIdx: r.seatIdx, itemIdx: r.itemIdx, item, alreadyVoided });
+    snapshot.push({ seatId: r.seatId, itemId: r.itemId, item, alreadyVoided });
     item.voided = true;
   }
 
@@ -4253,7 +4295,12 @@ function _applyDiscount(state, optOrPct, itemRefs, seatIds, approvedBy) {
   const lines = [];
   for (let i = 0; i < itemRefs.length; i++) {
     let r = itemRefs[i];
-    lines.push(state.seats[r.seatIdx].items[r.itemIdx]);
+    // Find seat by stable ID, then find item by item_id
+    const seat = state.seats.find(s => s.id === r.seatId);
+    if (seat) {
+      const item = seat.items.find(it => it.item_id === r.itemId);
+      if (item) lines.push(item);
+    }
   }
   const hasUnsent = lines.some((it) => !it.item_id);
   if (hasUnsent) {
