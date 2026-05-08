@@ -50,7 +50,7 @@ import { OrderSummary } from '../order-summary.js';
 import { buildNumpad } from '../numpad.js';
 import { showToast } from '../components.js';
 import { showKeyboard, hideKeyboard } from '../keyboard.js';
-import { getTaxRate, getCashDiscount } from '../pricing.js';
+import { getTaxRate, getCashDiscount, getCashDiscountAmt } from '../pricing.js';
 import { buildItemRecap, buildItemRecapTotals } from '../components/item-recap.js';
 import { fetchWithTimeout } from '../net.js';
 import { entReport } from '../entomology-client.js';
@@ -1351,9 +1351,11 @@ function renderActionBar(state) {
   totalBox.appendChild(_totRow('Total:', fmt(total), T.gold));
   rightCol.appendChild(totalBox);
 
-  const cashBox = _totBox({ flex: '1', minWidth: '110px', accent: T.greenWarm });
-  cashBox.appendChild(_totRow('Cash:', fmt(cashTotal), T.greenWarm));
-  rightCol.appendChild(cashBox);
+  if (getCashDiscountAmt(total) > 0) {
+    const cashBox = _totBox({ flex: '1', minWidth: '110px', accent: T.elec });
+    cashBox.appendChild(_totRow('Cash:', fmt(cashTotal), T.elec));
+    rightCol.appendChild(cashBox);
+  }
 
   totalsWrap.appendChild(rightCol);
   bar.appendChild(totalsWrap);

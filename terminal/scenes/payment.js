@@ -14,7 +14,7 @@ import {
 } from '../theme-manager.js';
 import { buildNumpad } from '../numpad.js';
 import { OrderSummary } from '../order-summary.js';
-import { getCashDiscount } from '../pricing.js';
+import { getCashDiscount, getCashTotal, getCashDiscountAmt } from '../pricing.js';
 
 function _roundCents(n) { const c = (n || 0) * 100; return Math.round(c) / 100; }
 function _ceilCents(n)  { const c = (n || 0) * 100; return Math.ceil(c)  / 100; }
@@ -1207,6 +1207,19 @@ function setPaymentMode(mode) {
     }
   });
 
+  // When cash mode is selected, pre-fill numpad with the cash-discounted amount.
+  if (mode === 'cash' && _state.numpadRef && _state.baseTotal) {
+    const _cashDisc = typeof getCashDiscountAmt === 'function'
+      ? getCashDiscountAmt(_state.baseTotal) : 0;
+    const _cashTotal = _roundCents(_state.baseTotal - _cashDisc);
+    const _cashCents = Math.round(_cashTotal * 100);
+    _state.numpadRef.setPin(_cashCents.toString());
+    _state.enteredAmount = _cashTotal;
+    _state.denomAccum = 0;
+    _state.numpadStr = _cashCents.toString();
+    updateSplitDisplay();
+  }
+
   // Denom tiles stay live in every mode — they're quick-tender presets for
   // card/gift/split flows as much as for cash, so we don't gate them.
 }
@@ -1314,10 +1327,10 @@ async function handleConfirm() {
       if (seatNumbers.length === 0) seatNumbers = null;
     }
 
-    const _scAmt = Number(
-      (_state.sceneData && _state.sceneData.order_type_modifier_amt)
-      || 0
-    );
+    const _baseTotal = _state.baseTotal;
+    const _cashDisc  = typeof getCashDiscountAmt === 'function'
+      ? getCashDiscountAmt(_baseTotal) : 0;
+    const _cashTotal = _roundCents(_baseTotal - _cashDisc);
 
     if (isCash) {
       const txId = `cash-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
@@ -1325,12 +1338,13 @@ async function handleConfirm() {
       _state._cashTxId = txId;
       const cashBody = {
           order_id:              _state.sceneData.orderId,
-          amount:                paymentAmount,
+          amount:                _cashTotal,
           tip:                   0.0,
           payment_method:        'cash',
           transaction_id:        _state._pendingTxId,
           idempotency_key:       txId,
-          service_charge_amount: _scAmt,
+          cash_discount_amount:  _cashDisc,
+          service_charge_amount: 0,
       };
       if (seatNumbers) cashBody.seat_numbers = seatNumbers;
       let res = await fetchWithTimeout(API + '/payments/cash', {
@@ -1357,7 +1371,8 @@ async function handleConfirm() {
           order_id:              _state.sceneData.orderId,
           amount:                paymentAmount,
           terminal_id:           'terminal_01',
-          service_charge_amount: _scAmt,
+          cash_discount_amount:  0,
+          service_charge_amount: 0,
       };
       if (seatNumbers) saleBody.seat_numbers = seatNumbers;
       // Intentional bare fetch() — card payments need a 95 s timeout and
