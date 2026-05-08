@@ -245,6 +245,7 @@ class OrderItemResponse(BaseModel):
     modifiers: list[dict]
     subtotal: Decimal
     effective_price: Decimal
+    discount_amount: Decimal = Decimal("0.00")
     added_at: Optional[datetime] = None
     sent_at: Optional[datetime] = None
 
@@ -322,6 +323,7 @@ class OrderResponse(BaseModel):
                 modifiers=item.modifiers,
                 subtotal=money_round(item.subtotal),
                 effective_price=effective_price,
+                discount_amount=money_round(item_discount),
                 added_at=item.added_at,
                 sent_at=item.sent_at,
             ))
