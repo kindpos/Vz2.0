@@ -1716,6 +1716,22 @@ function renderSeatsGrid(state, container, mode) {
           row.appendChild(priceSpan);
 
           itemsInner.appendChild(row);
+
+          // ── Modifier detail ──
+          const adaptedItem = _adaptItem(rit);
+          if (adaptedItem.mods.length > 0 || adaptedItem.halves) {
+            const tmpOrder = {
+              seats: [{ seatNumber: 1, subtotal: 0, items: [adaptedItem] }],
+            };
+            const recap = buildItemRecap(tmpOrder, { hideHeader: true, hideTotals: true });
+            const modsEl = recap.querySelector('.ir-mods');
+            if (modsEl) {
+              modsEl.style.marginLeft  = '10px';
+              modsEl.style.marginBottom = '3px';
+              modsEl.style.borderRadius = '0 0 5px 5px';
+              itemsInner.appendChild(modsEl);
+            }
+          }
         });
       }
       itemsWrap.appendChild(itemsInner);
