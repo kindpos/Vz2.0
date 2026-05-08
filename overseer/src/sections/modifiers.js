@@ -685,21 +685,9 @@ const buildModifierAddPanel = () => {
             const result = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: modifierId, name, price: priceVal } }]);
             if (!result.ok) { showToast('Failed to create modifier', 'error'); return; }
             _state.addingModifier = false;
-            try {
-                await refreshAll();
-                const createdModifier = _state.modifiers.find(m => m.modifier_id === modifierId);
-                if (!createdModifier) {
-                    console.warn('[Modifiers] Created modifier not found in list after refresh. Expected ID:', modifierId);
-                    console.warn('[Modifiers] Current list:', _state.modifiers.map(m => m.modifier_id));
-                }
-            } catch (refreshErr) {
-                console.error('[Modifiers] Refresh failed after create:', refreshErr);
-                showToast('Failed to refresh modifiers list', 'error');
-                return;
-            }
+            await refreshAll();
             showToast('Modifier created');
         } catch (e) {
-            console.error('[Modifiers] Create failed:', e);
             showToast('Failed to create modifier', 'error');
         }
     }));
