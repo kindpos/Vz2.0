@@ -603,6 +603,7 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                 for payment in order.payments:
                     if payment.payment_id == pid:
                         payment.status = "cancelled"
+                        payment.tip_amount = Decimal("0.00")
                         break
 
                 # Revert order to "open" if no longer fully paid

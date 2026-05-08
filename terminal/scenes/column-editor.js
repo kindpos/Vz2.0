@@ -269,8 +269,9 @@ function doSplit(state) {
     var modSum   = Array.isArray(item.mods)
       ? item.mods.reduce(function(a, m) { return a + (m.price || 0); }, 0) : 0;
     var eff      = (item.price || 0) + modSum;
-    var sp       = Math.round(eff / n * 100) / 100;
-    var rem      = Math.round((eff - sp * n) * 100) / 100;
+    // ROUND_HALF_UP: matches backend money_round, applied per item
+    var sp       = Math.round(eff / n * 100 + Number.EPSILON) / 100;
+    var rem      = Math.round((eff - sp * n) * 100 + Number.EPSILON) / 100;
     var splitRef = item.item_id || ('sr-' + Date.now() + '-' + ei);
     for (var t = 0; t < n; t++) {
       var splitItem = {
