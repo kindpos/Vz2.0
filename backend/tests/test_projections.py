@@ -87,7 +87,10 @@ class TestProjectOrder:
             item_removed(terminal_id=TERMINAL, order_id=ORDER_ID, item_id="item-1"),
         ]
         order = project_order(events, tax_rate=TAX_RATE)
-        assert len(order.items) == 0
+        # Item stays in list but is marked voided (audit trail)
+        assert len(order.items) == 1
+        assert order.items[0].voided is True
+        assert len([i for i in order.items if not i.voided]) == 0
 
     def test_item_modified_quantity(self):
         events = [

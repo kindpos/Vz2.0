@@ -173,7 +173,7 @@ async def test_event_ledger():
         # Ribeye ($42) + Mushrooms ($4) + Caesar ($14) + Wine ($12) = $72
         expected_subtotal = 42 + 4 + 14 + 12
         assert order.subtotal == expected_subtotal, f"Expected ${expected_subtotal}, got ${order.subtotal}"
-        assert len(order.items) == 3, f"Expected 3 items, got {len(order.items)}"
+        assert len([i for i in order.items if not i.voided]) == 3, f"Expected 3 active items, got {len([i for i in order.items if not i.voided])}"
         print(f"\n   ✓ Calculations verified!")
 
         # ---------------------------------------------------------------------
@@ -240,7 +240,7 @@ async def test_event_ledger():
         assert recovered_order.order_id == order_id
         assert recovered_order.status == "closed"
         assert recovered_order.amount_paid == recovered_order.total
-        assert len(recovered_order.items) == 3
+        assert len([i for i in recovered_order.items if not i.voided]) == 3
 
         print(f"   ✓ Order recovered successfully!")
         print(f"   ✓ All {len(events)} events replayed")

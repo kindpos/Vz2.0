@@ -553,7 +553,7 @@ async def test_remove_item(client):
 
     resp = await client.delete(f"/api/v1/orders/{oid}/items/{item_id}")
     assert resp.status_code == 200
-    assert len(resp.json()["items"]) == 0
+    assert all(i["voided"] for i in resp.json()["items"])
 
 
 @pytest.mark.asyncio

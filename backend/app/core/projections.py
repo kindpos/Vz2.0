@@ -61,6 +61,7 @@ class Payment:
     confirmed_at: Optional[datetime] = None
     tip_amount: Decimal = Decimal("0.00")
     tip_adjusted: bool = False  # True once a TIP_ADJUSTED event has been applied
+    tip_adjustments: list[dict] = field(default_factory=list)  # Ordered history of adjustments
     tax_amount: Decimal = Decimal("0.00")  # Tax captured at payment time
     seat_numbers: list[int] = field(default_factory=list)  # Seats covered by this payment
     card_last_four: Optional[str] = None  # Last four digits of card; null for cash
@@ -84,7 +85,7 @@ class SeatBalance:
 
     @property
     def item_subtotal(self) -> Decimal:
-        return sum((i.subtotal for i in self.items), Decimal("0.00"))
+        return sum((i.subtotal for i in self.items if not i.voided), Decimal("0.00"))
 
     @property
     def discount_total(self) -> Decimal:
@@ -148,8 +149,8 @@ class Order:
 
     @property
     def gross_subtotal(self) -> Decimal:
-        """Sum of all items before discounts."""
-        return sum((item.subtotal for item in self.items), Decimal("0.00"))
+        """Sum of all active (non-voided) items before discounts."""
+        return sum((item.subtotal for item in self.items if not item.voided), Decimal("0.00"))
 
     @property
     def subtotal(self) -> Decimal:
@@ -574,6 +575,11 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                 pid = payload.get("payment_id")
                 for payment in order.payments:
                     if payment.payment_id == pid:
+                        payment.tip_adjustments.append({
+                            "amount": Decimal(str(payload.get("tip_amount", "0.00"))),
+                            "adjusted_at": event.timestamp,
+                            "adjusted_by": payload.get("adjusted_by"),
+                        })
                         payment.tip_amount = Decimal(str(payload.get("tip_amount", Decimal("0.00"))))
                         payment.tip_adjusted = True
                         break

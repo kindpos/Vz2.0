@@ -458,7 +458,7 @@ class TestTransactionFlow:
         await ledger.append(evt)
         order = await _get_order(ledger, oid)
         assert order.subtotal == Decimal("5.00")
-        assert len(order.items) == 1
+        assert len([i for i in order.items if not i.voided]) == 1
 
     @pytest.mark.asyncio
     async def test_comp_as_discount(self, ledger):

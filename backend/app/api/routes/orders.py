@@ -251,6 +251,13 @@ class OrderItemResponse(BaseModel):
     voided_at: Optional[datetime] = None
 
 
+class TipAdjustmentResponse(BaseModel):
+    """Single entry in a payment's tip adjustment history."""
+    amount: str
+    adjusted_at: str
+    adjusted_by: Optional[str] = None
+
+
 class PaymentResponse(BaseModel):
     """Response model for a payment."""
     payment_id: str
@@ -259,6 +266,7 @@ class PaymentResponse(BaseModel):
     status: str
     tip_amount: Decimal = Decimal("0.00")
     tip_adjusted: bool = False
+    tip_adjustments: list[TipAdjustmentResponse] = []
     transaction_id: Optional[str] = None
     seat_numbers: list[int] = []
 
@@ -349,6 +357,14 @@ class OrderResponse(BaseModel):
                     status=p.status,
                     tip_amount=money_round(p.tip_amount),
                     tip_adjusted=p.tip_adjusted,
+                    tip_adjustments=[
+                        TipAdjustmentResponse(
+                            amount=str(adj["amount"]),
+                            adjusted_at=adj["adjusted_at"].isoformat() if adj["adjusted_at"] else "",
+                            adjusted_by=adj.get("adjusted_by"),
+                        )
+                        for adj in (p.tip_adjustments or [])
+                    ],
                     transaction_id=p.transaction_id,
                     seat_numbers=p.seat_numbers or [],
                 )

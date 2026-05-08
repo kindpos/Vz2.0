@@ -289,8 +289,9 @@ async def test_item_removed_reduces_subtotal(ledger):
 
     order = await _get_order(ledger, "ord_rm")
     assert order.subtotal == Decimal("30.00")
-    assert len(order.items) == 1
-    assert order.items[0].item_id == "item_keep"
+    active = [i for i in order.items if not i.voided]
+    assert len(active) == 1
+    assert active[0].item_id == "item_keep"
 
 
 @pytest.mark.asyncio

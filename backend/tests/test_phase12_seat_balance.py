@@ -142,7 +142,7 @@ async def test_item_removed_updates_seat_balance(ledger):
     events = await ledger.get_events_by_correlation(order_id)
     order = project_order(events)
 
-    assert order.seat_balances[1].items == []
+    assert all(i.voided for i in order.seat_balances[1].items)
     assert order.seat_balances[1].item_subtotal == Decimal("0.00")
     # Seat 2 unchanged
     assert order.seat_balances[2].item_subtotal == Decimal("15.00")
