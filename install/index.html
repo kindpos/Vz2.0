@@ -412,11 +412,15 @@ class KINDposSetup(tk.Tk):
         self._refresh_left(step)
         [self._p_welcome, self._p_directory, self._p_install,
          self._p_shortcuts, self._p_finish][step]()
-        self.back_btn.config(state=tk.DISABLED if step == 0 else tk.NORMAL)
         if step == 4:
-            self.next_btn.config(text='Finish', bg=T['greenWarm'])
+            self.back_btn.pack_forget()
+            self.next_btn.config(text='Finish', bg=T['greenWarm'], fg=T['well'],
+                                  command=self._finish)
         else:
-            self.next_btn.config(text='Next →', bg=T['green'])
+            self.back_btn.pack(side=tk.RIGHT, padx=(0, 8))
+            self.back_btn.config(state=tk.DISABLED if step == 0 else tk.NORMAL)
+            self.next_btn.config(text='Next →', bg=T['green'], fg=T['well'],
+                                  command=self._next)
 
     def _back(self):
         if self.step > 0:
@@ -429,12 +433,51 @@ class KINDposSetup(tk.Tk):
     # ── Page builders (placeholders) ────────────────
 
     def _p_welcome(self):
-        tk.Label(self.content, text=f'STEP 1: {STEPS[0]}',
-                 bg=T['bg'], fg=T['green'], font=(FONT, 14, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Welcome to KINDpos Setup',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Version 2.0  ·  KIND Technologies LLC',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X, pady=(0, 16))
+        body = (
+            'This wizard will install KINDpos on your computer.\n\n'
+            'Setup will automatically:\n\n'
+            '  ●  Download and configure Python 3.11\n'
+            '  ●  Clone the KINDpos repository\n'
+            '  ●  Install all dependencies\n'
+            '  ●  Create Start Menu & desktop shortcuts\n'
+            '  ●  Configure autostart on login'
+        )
+        tk.Label(self.content, text=body, bg=T['bg'], fg=T['green'],
+                 font=(FONT, 11), justify=tk.LEFT, wraplength=380).pack(anchor=tk.W)
+        info_outer = tk.Frame(self.content, bg=T['well'], bd=0, relief=tk.FLAT)
+        info_outer.pack(fill=tk.X, pady=(16, 0))
+        tk.Frame(info_outer, bg=T['green'], width=4).pack(side=tk.LEFT, fill=tk.Y)
+        tk.Label(info_outer,
+                 text='Requires an internet connection.   ~250 MB disk space  ·  Windows 10/11',
+                 bg=T['well'], fg=T['text'], font=(FONT, 9),
+                 padx=10, pady=10, justify=tk.LEFT).pack(side=tk.LEFT)
 
     def _p_directory(self):
-        tk.Label(self.content, text=f'STEP 2: {STEPS[1]}',
-                 bg=T['bg'], fg=T['green'], font=(FONT, 14, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Choose Install Location',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Where should KINDpos be installed?',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X)
+        tk.Label(self.content, text='INSTALL DIRECTORY',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 9)).pack(anchor=tk.W, pady=(16, 4))
+        field_row = tk.Frame(self.content, bg=T['bg'])
+        field_row.pack(fill=tk.X)
+        tk.Entry(field_row, textvariable=self.install_dir, bg=T['well'], fg=T['green'],
+                 insertbackground=T['green'], relief=tk.FLAT, bd=0, font=(FONT, 10),
+                 highlightbackground=T['border'], highlightthickness=1,
+                 ipady=7).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Button(field_row, text='Browse', bg=T['card'], fg=T['green'],
+                  relief=tk.FLAT, padx=12, cursor='hand2',
+                  command=self._browse).pack(side=tk.LEFT, padx=(6, 0))
+        tk.Label(self.content,
+                 text='Default location requires no administrator rights.\nAt least 250 MB of free space is required.',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9),
+                 justify=tk.LEFT).pack(anchor=tk.W, pady=(8, 0))
 
     def _p_install(self):
         tk.Label(self.content, text=f'STEP 3: {STEPS[2]}',
@@ -445,8 +488,45 @@ class KINDposSetup(tk.Tk):
                  bg=T['bg'], fg=T['green'], font=(FONT, 14, 'bold')).pack(anchor=tk.W)
 
     def _p_finish(self):
-        tk.Label(self.content, text=f'STEP 5: {STEPS[4]}',
-                 bg=T['bg'], fg=T['green'], font=(FONT, 14, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Installation Complete',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='KINDpos is ready to use',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X)
+        tk.Label(self.content,
+                 text='KINDpos v2.0 has been successfully installed.\nA shortcut has been added to your Start Menu and Desktop.',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 11),
+                 justify=tk.LEFT).pack(anchor=tk.W, pady=(16, 20))
+        self.cb_launch = tk.BooleanVar(value=True)
+        tk.Checkbutton(self.content, text='Launch KINDpos Launcher now',
+                       variable=self.cb_launch, bg=T['bg'], fg=T['green'],
+                       selectcolor=T['well'], activebackground=T['bg'],
+                       font=(FONT, 10)).pack(anchor=tk.W, pady=6)
+        self.cb_site = tk.BooleanVar(value=False)
+        tk.Checkbutton(self.content, text='Open kindpos.com in browser',
+                       variable=self.cb_site, bg=T['bg'], fg=T['green'],
+                       selectcolor=T['well'], activebackground=T['bg'],
+                       font=(FONT, 10)).pack(anchor=tk.W)
+
+    # ── Helpers ─────────────────────────────────────
+
+    def _browse(self):
+        d = filedialog.askdirectory(title='Select Install Location')
+        if d:
+            self.install_dir.set(d)
+
+    def _finish(self):
+        import webbrowser, subprocess
+        if self.cb_site.get():
+            webbrowser.open('https://kindpos.com')
+        if self.cb_launch.get():
+            launcher = os.path.join(self.install_dir.get(), 'kindpos_launcher.py')
+            python   = os.path.join(self.install_dir.get(), 'runtime', 'pythonw.exe')
+            if os.path.exists(python) and os.path.exists(launcher):
+                subprocess.Popen([python, launcher])
+            elif os.path.exists(launcher):
+                subprocess.Popen([sys.executable, launcher])
+        self.destroy()
 
 
 if __name__ == '__main__':
