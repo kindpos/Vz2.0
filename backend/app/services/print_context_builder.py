@@ -413,6 +413,48 @@ class PrintContextBuilder:
             items = all_items
             companion_items = []
 
+        # ── Station-override modifier routing ──────────────────────────────────
+        # Handle modifier-level routing: modifiers with station_override can be
+        # dispatched to different stations than their parent item.
+        current_station_lower = station_name.lower() if station_name else ""
+
+        if current_station_lower:
+            # Mark modifiers that are dispatched away from this station
+            for item in items:
+                for mod in item.get("modifiers", []):
+                    if isinstance(mod, dict):
+                        mod_station_override = mod.get("station_override")
+                        if mod_station_override:
+                            mod_station_lower = mod_station_override.lower()
+                            if mod_station_lower != current_station_lower:
+                                mod["dispatched"] = True
+
+            # Create synthetic items for modifiers arriving at this station
+            dispatched_to_here = []
+            for item in all_items:
+                for mod in item.get("modifiers", []):
+                    if isinstance(mod, dict):
+                        mod_station_override = mod.get("station_override")
+                        if mod_station_override:
+                            mod_station_lower = mod_station_override.lower()
+                            if mod_station_lower == current_station_lower:
+                                # Create synthetic item for this dispatched modifier
+                                synthetic = {
+                                    "name": mod.get("name") or mod.get("text", ""),
+                                    "kitchen_text": mod.get("name") or mod.get("text", ""),
+                                    "parent_item_name": item.get("name") or item.get("kitchen_text", ""),
+                                    "seat": item.get("seat"),
+                                    "qty": 1,
+                                    "modifiers": [],
+                                    "station_override": mod_station_override,
+                                    "special_instructions": None,
+                                    "allergy": None,
+                                }
+                                dispatched_to_here.append(synthetic)
+
+            # Prepend dispatched items to the front of this station's items
+            items = dispatched_to_here + items
+
         return {
             "order_id":           order_id,
             "ticket_number":      ticket_number,
