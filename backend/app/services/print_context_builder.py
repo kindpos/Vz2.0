@@ -314,6 +314,7 @@ class PrintContextBuilder:
                 "subtotal":  money_round(item.subtotal),
                 "modifiers": mods,
                 "notes":     getattr(item, "notes", None),
+                "seat":      getattr(item, "seat_number", None),
             })
 
         # ── Tax lines — template iterates a list ──────────────────────────────
@@ -398,7 +399,7 @@ class PrintContextBuilder:
                 "special_instructions": notes or "",
                 "allergy":              "",
                 "category":             getattr(item, "category", None),
-                "seat_number":          seat,
+                "seat":                 seat,
             })
 
         # ── Station filtering ─────────────────────────────────────────────────
