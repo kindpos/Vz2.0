@@ -1471,7 +1471,7 @@ defineScene({
                   takeHome:     state.data.takeHome,
                   cashExpected: state.data.cashExpected,
                   employeeName: state.data.employeeName,
-                  onConfirm: () => {
+                  onConfirm: async () => {
                     if (state._finalizing) return;
                     state._finalizing = true;
                     SceneManager.closeInterrupt('co-finalize-confirm');
@@ -1490,11 +1490,12 @@ defineScene({
                       );
                       payload.manager_pin = state.managerPin;
                     }
-                    fetchWithTimeout('/api/v1/server/shift/finalize-checkout', {
-                      method:  'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(payload),
-                    }).then((r) => {
+                    try {
+                      const r = await fetchWithTimeout('/api/v1/server/shift/finalize-checkout', {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                      });
                       if (r.ok) {
                         showToast('Checkout finalized', { bg: T.green });
                         OrderSummary.hide();
@@ -1512,10 +1513,10 @@ defineScene({
                         state._finalizing = false;
                         showToast(`Finalize failed (${r.status}) — try again`, { bg: T.verm });
                       }
-                    }).catch(() => {
+                    } catch {
                       state._finalizing = false;
                       showToast('Finalize unavailable — ask your manager', { bg: T.verm });
-                    });
+                    }
                   },
                   onCancel: () => {
                     SceneManager.closeInterrupt('co-finalize-confirm');
