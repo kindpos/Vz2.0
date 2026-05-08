@@ -1,7 +1,11 @@
 """
-KINDpos Print Dispatcher
+KINDpos Print Dispatcher (DEPRECATED)
 Polls the print queue, resolves printer IPs, sends ESC/POS bytes over network.
 Retry loop: immediate → 5s → 15s → 30s → FAILED
+
+DEPRECATION WARNING:
+This module is deprecated. Use PrinterManager with EscPosNetworkAdapter instead.
+PrintDispatcher will be removed in a future release.
 """
 import asyncio
 import json
@@ -9,7 +13,15 @@ import logging
 import socket
 import aiosqlite
 import os
+import warnings
 from typing import Dict, Optional
+
+# Emit deprecation warning when this module is imported
+warnings.warn(
+    "PrintDispatcher is deprecated. Use PrinterManager with EscPosNetworkAdapter instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 from .print_queue import PrintJobQueue
 from .escpos_formatter import ESCPOSFormatter

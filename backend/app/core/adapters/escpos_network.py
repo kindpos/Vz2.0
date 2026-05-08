@@ -26,7 +26,7 @@ from .base_printer import (
     PrintResult,
     CutType,
 )
-from ..printing.escpos_formatter import ESCPOSFormatter
+from ...printing.escpos_formatter import ESCPOSFormatter
 
 logger = logging.getLogger("kindpos.printer.escpos_network")
 
