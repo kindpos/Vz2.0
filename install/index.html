@@ -536,6 +536,7 @@ class KINDposSetup(tk.Tk):
         [self._p_welcome, self._p_directory, self._p_install,
          self._p_shortcuts, self._p_finish][step]()
         if step == 4:
+            self._apply_shortcut_prefs()
             self.back_btn.pack_forget()
             self.next_btn.config(text='Finish', bg=T['greenWarm'], fg=T['well'],
                                   command=self._finish)
@@ -699,8 +700,37 @@ class KINDposSetup(tk.Tk):
             self.back_btn.config(state=tk.NORMAL)
 
     def _p_shortcuts(self):
-        tk.Label(self.content, text=f'STEP 4: {STEPS[3]}',
-                 bg=T['bg'], fg=T['green'], font=(FONT, 14, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Shortcuts & Autostart',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Choose how KINDpos launches',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X)
+
+        self.cb_startmenu = tk.BooleanVar(value=True)
+        self.cb_desktop   = tk.BooleanVar(value=True)
+        self.cb_autostart = tk.BooleanVar(value=True)
+        cb_cfg = dict(bg=T['bg'], fg=T['green'], selectcolor=T['well'],
+                      activebackground=T['bg'], activeforeground=T['green'],
+                      font=(FONT, 10), anchor=tk.W, cursor='hand2')
+        tk.Checkbutton(self.content, text='Create Start Menu shortcut',
+                       variable=self.cb_startmenu, **cb_cfg).pack(
+            anchor=tk.W, pady=(16, 0))
+        tk.Checkbutton(self.content, text='Create Desktop shortcut',
+                       variable=self.cb_desktop, **cb_cfg).pack(
+            anchor=tk.W, pady=(10, 0))
+        tk.Checkbutton(self.content, text='Launch KINDpos automatically on login',
+                       variable=self.cb_autostart, **cb_cfg).pack(
+            anchor=tk.W, pady=(10, 0))
+
+        info_outer = tk.Frame(self.content, bg=T['well'], bd=0, relief=tk.FLAT)
+        info_outer.pack(fill=tk.X, pady=(20, 0))
+        tk.Frame(info_outer, bg=T['elec'], width=4).pack(side=tk.LEFT, fill=tk.Y)
+        tk.Label(info_outer,
+                 text=('Shortcuts open the KINDpos Launcher — a small menu\n'
+                       'to access the Terminal at kindpos.local\n'
+                       'or Overseer at kindpos.local/overseer'),
+                 bg=T['well'], fg=T['text'], font=(FONT, 9),
+                 padx=10, pady=10, justify=tk.LEFT).pack(side=tk.LEFT)
 
     def _p_finish(self):
         tk.Label(self.content, text='Installation Complete',
@@ -841,15 +871,24 @@ class KINDposSetup(tk.Tk):
                                       'Programs', 'KINDpos')
             os.makedirs(start_dir, exist_ok=True)
             start_lnk = os.path.join(start_dir, 'KINDpos.lnk')
+            want_startmenu  = getattr(self, 'cb_startmenu',  None)
+            want_desktop    = getattr(self, 'cb_desktop',    None)
+            want_autostart  = getattr(self, 'cb_autostart',  None)
+            do_startmenu  = want_startmenu.get()  if want_startmenu  else True
+            do_desktop    = want_desktop.get()    if want_desktop    else True
+            do_autostart  = want_autostart.get()  if want_autostart  else True
             if os.path.exists(pw_exe):
-                _create_shortcut(launcher_py, pw_exe, desktop)
-                _create_shortcut(launcher_py, pw_exe, start_lnk)
-                subprocess.run([
-                    'schtasks', '/Create', '/F',
-                    '/TN', 'KINDpos\\launcher',
-                    '/TR', f'"{pw_exe}" "{launcher_py}"',
-                    '/SC', 'ONLOGON', '/RL', 'LIMITED',
-                ], capture_output=True)
+                if do_startmenu:
+                    _create_shortcut(launcher_py, pw_exe, start_lnk)
+                if do_desktop:
+                    _create_shortcut(launcher_py, pw_exe, desktop)
+                if do_autostart:
+                    subprocess.run([
+                        'schtasks', '/Create', '/F',
+                        '/TN', 'KINDpos\\launcher',
+                        '/TR', f'"{pw_exe}" "{launcher_py}"',
+                        '/SC', 'ONLOGON', '/RL', 'LIMITED',
+                    ], capture_output=True)
             ui(self._log, 'Shortcuts created.', 'ok')
             ui(self._set_progress, 100, 'Done.')
             ui(self._install_done, True)
@@ -859,6 +898,28 @@ class KINDposSetup(tk.Tk):
             ui(self._install_done, False)
 
     # ── Helpers ─────────────────────────────────────
+
+    def _apply_shortcut_prefs(self):
+        import subprocess
+        idir      = self.install_dir.get()
+        desktop   = os.path.join(os.path.expanduser('~'), 'Desktop', 'KINDpos.lnk')
+        start_lnk = os.path.join(os.environ.get('APPDATA', ''),
+                                  'Microsoft', 'Windows', 'Start Menu',
+                                  'Programs', 'KINDpos', 'KINDpos.lnk')
+        want_startmenu = getattr(self, 'cb_startmenu', None)
+        want_desktop   = getattr(self, 'cb_desktop',   None)
+        want_autostart = getattr(self, 'cb_autostart', None)
+        if want_startmenu and not want_startmenu.get():
+            if os.path.exists(start_lnk):
+                os.remove(start_lnk)
+        if want_desktop and not want_desktop.get():
+            if os.path.exists(desktop):
+                os.remove(desktop)
+        if want_autostart and not want_autostart.get():
+            subprocess.run(
+                ['schtasks', '/Delete', '/TN', 'KINDpos\\launcher', '/F'],
+                capture_output=True
+            )
 
     def _browse(self):
         d = filedialog.askdirectory(title='Select Install Location')
