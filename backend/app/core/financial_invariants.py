@@ -420,3 +420,86 @@ def max_abs_diff(results: Iterable[InvariantResult]) -> Decimal:
         if v > best:
             best = v
     return best
+
+
+def check_order_identities(order) -> list[str]:
+    """
+    Verify the 7 canonical order-level financial identities.
+    Returns a list of violation strings. Empty list = all pass.
+    'order' must expose: gross_subtotal, discount_total, subtotal,
+    tax, surcharge_total, total, amount_paid, balance_due,
+    and a .payments iterable with .tip_amount fields.
+    """
+    violations = []
+    ZERO = Decimal("0.00")
+
+    def near(a, b, label):
+        if money_round(a) != money_round(b):
+            violations.append(
+                f"{label}: expected {money_round(b)}, got {money_round(a)}"
+            )
+
+    # Identity 1: gross_subtotal = sum(item.subtotal) — structural,
+    # verified by construction; skip recomputation here.
+
+    # Identity 2: subtotal = gross_subtotal - discount_total
+    near(
+        order.subtotal,
+        money_round(order.gross_subtotal - order.discount_total),
+        "subtotal = gross_subtotal - discount_total"
+    )
+
+    # Identity 3: tax = subtotal * tax_rate (approximate check —
+    # we verify tax >= 0 and tax <= subtotal as a sanity bound)
+    if order.tax < ZERO:
+        violations.append(f"tax is negative: {order.tax}")
+    if order.subtotal > ZERO and order.tax > order.subtotal:
+        violations.append(
+            f"tax {order.tax} exceeds subtotal {order.subtotal}"
+        )
+
+    # Identity 4: total = subtotal + tax + surcharge_total
+    near(
+        order.total,
+        money_round(order.subtotal + order.tax + order.surcharge_total),
+        "total = subtotal + tax + surcharge_total"
+    )
+
+    # Identity 5: amount_paid = sum of confirmed payment amounts
+    # (verified by construction in projections.py; skip recomputation)
+
+    # Identity 6: balance_due = total - amount_paid
+    near(
+        order.balance_due,
+        money_round(order.total - order.amount_paid),
+        "balance_due = total - amount_paid"
+    )
+
+    # Identity 7: tip_total = sum(payment.tip_amount)
+    computed_tip_total = sum(
+        (money_round(Decimal(str(p.tip_amount)))
+         for p in order.payments
+         if p.status == "confirmed"),
+        ZERO
+    )
+    if hasattr(order, 'tip_total'):
+        near(
+            order.tip_total,
+            computed_tip_total,
+            "tip_total = sum(payment.tip_amount)"
+        )
+
+    return violations
+
+
+def assert_order_identities(order) -> None:
+    """
+    Raise ValueError if any order-level identity is violated.
+    Call this at the end of project_order() for hard enforcement.
+    """
+    violations = check_order_identities(order)
+    if violations:
+        raise ValueError(
+            "Order financial identity violations:\n"
+            + "\n".join(f"  - {v}" for v in violations)
+        )

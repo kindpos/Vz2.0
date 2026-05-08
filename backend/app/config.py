@@ -4,6 +4,7 @@ KINDpos Configuration
 Central configuration management using environment variables.
 """
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import os
@@ -28,7 +29,7 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Tax rate (0 until configured via Overseer)
-    tax_rate: float = 0.0
+    tax_rate: float = Field(default=0.0, ge=0.0, le=1.0)
 
     # Cash dual-pricing discount (0 until configured via Overseer)
     cash_discount_rate: float = 0.0
