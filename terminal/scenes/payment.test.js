@@ -146,8 +146,8 @@ describe('terminal/scenes/payment — split-select interrupt', () => {
     expect(onConfirm).toHaveBeenCalledWith(22.50);
   });
 
-  it('1/3 option rounds the onConfirm payload up to the nearest cent', () => {
-    // 10.00 / 3 = 3.33… → ceil to $3.34
+  it('1/3 option ceils the onConfirm payload to nearest cent', () => {
+    // 10.00 / 3 = 3.33… → ceil to $3.34; sub-cent remainder stays in balance_due
     const onConfirm = vi.fn();
     const container = mount(10.00, onConfirm);
     findOption(container, '1/3').dispatchEvent(new Event('pointerup'));

@@ -65,6 +65,7 @@ class TransactionRequest(BaseModel):
     amount: Decimal
     tip_amount: Decimal = Decimal("0.00")
     service_charge_amount: Decimal = Decimal("0.00")
+    cash_discount_amount: Decimal = Decimal("0.00")
     payment_type: PaymentType = PaymentType.SALE
     terminal_id: str
     server_id: Optional[str] = None
@@ -72,7 +73,7 @@ class TransactionRequest(BaseModel):
     split_info: Optional[SplitInfo] = None
     seat_numbers: Optional[List[int]] = None
 
-    @field_validator("amount", "tip_amount", "service_charge_amount", mode="before")
+    @field_validator("amount", "tip_amount", "service_charge_amount", "cash_discount_amount", mode="before")
     @classmethod
     def _coerce_via_str(cls, v):
         """Avoid IEEE 754 artifacts: Decimal(str(10.10)) not Decimal(10.10)."""

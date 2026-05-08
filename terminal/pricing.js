@@ -83,6 +83,16 @@ export function getRates() {
 // are in hand (e.g. a first-paint spinner).
 export function ratesReady() { return _loadRates(); }
 
+// Compute cash-discounted total from card total.
+export function getCashTotal(cardTotal) {
+  return _roundCents(cardTotal * (1 - _cashDiscount));
+}
+
+// Compute cash discount amount from card total.
+export function getCashDiscountAmt(cardTotal) {
+  return _roundCents(cardTotal - getCashTotal(cardTotal));
+}
+
 // ── Computation helpers ─────────────────────────────
 
 // Compute all per-tender totals from a raw subtotal (items only, no
