@@ -469,10 +469,15 @@ def check_order_identities(order) -> list[str]:
     # (verified by construction in projections.py; skip recomputation)
 
     # Identity 6: balance_due = total - amount_paid
+    #             - cash_discount_total
     near(
         order.balance_due,
-        money_round(order.total - order.amount_paid),
-        "balance_due = total - amount_paid"
+        money_round(
+            order.total
+            - order.amount_paid
+            - order.cash_discount_total
+        ),
+        "balance_due = total - amount_paid - cash_discount_total"
     )
 
     # Identity 7: tip_total = sum(payment.tip_amount)
