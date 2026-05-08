@@ -684,8 +684,13 @@ const buildModifierAddPanel = () => {
         const modifierId = crypto.randomUUID();
         try {
             const result = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: modifierId, name, price: priceVal } }]);
-            if (!result.ok) { showToast('Failed to create modifier', 'error'); return; }
-            console.log('[DEBUG] pushChanges ok, about to refresh');
+            console.log('[DEBUG] pushChanges result:', JSON.stringify(result));
+            if (!result.ok) {
+                console.log('[DEBUG] FAILED - error:', result.error);
+                showToast(result.error || 'Save failed', 'error');
+                return;
+            }
+            console.log('[DEBUG] pushChanges ok, refreshing');
             _state.addingModifier = false;
             await refreshAll();
             showToast('Modifier created');
