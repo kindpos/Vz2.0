@@ -198,6 +198,11 @@ def project_menu(events: List[Event]) -> MenuState:
             mid = payload.get('modifier_id')
             if mid and mid in modifiers_map:
                 modifiers_map[mid].update(payload)
+                # Also update nested modifier objects in all groups
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod.update(payload)
             _bump_menu_version(state)
 
         elif event.event_type == EventType.MODIFIER_DELETED:
