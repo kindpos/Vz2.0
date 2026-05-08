@@ -41,6 +41,10 @@ class MenuState(BaseModel):
     # with fast O(1) access needed by the pricing chain.
     modifier_groups_by_id: Dict[str, Any] = {}
     modifiers: Dict[str, Any] = {}
+    menu_version: int = 0
+
+def _bump_menu_version(state) -> None:
+    state.menu_version = state.menu_version + 1
 
 def _apply_group_defaults(group: Dict[str, Any]) -> None:
     """Fill in new-model fields on a modifier group projection.
@@ -165,17 +169,20 @@ def project_menu(events: List[Event]) -> MenuState:
             group_id = payload.get('group_id')
             modifier_groups_map[group_id] = payload
             _apply_group_defaults(modifier_groups_map[group_id])
+            _bump_menu_version(state)
 
         elif event.event_type == EventType.MODIFIER_GROUP_UPDATED:
             group_id = payload.get('group_id')
             if group_id in modifier_groups_map:
                 modifier_groups_map[group_id].update(payload)
                 _apply_group_defaults(modifier_groups_map[group_id])
+            _bump_menu_version(state)
 
         elif event.event_type == EventType.MODIFIER_GROUP_DELETED:
             group_id = payload.get('group_id')
             if group_id in modifier_groups_map:
                 del modifier_groups_map[group_id]
+            _bump_menu_version(state)
 
         elif event.event_type == EventType.MODIFIER_CREATED:
             mid = payload.get('modifier_id') or str(uuid.uuid4())
@@ -185,11 +192,18 @@ def project_menu(events: List[Event]) -> MenuState:
                 'price': payload.get('price', '0.00'),
                 'active': payload.get('active', True),
             }
+            _bump_menu_version(state)
 
         elif event.event_type == EventType.MODIFIER_UPDATED:
             mid = payload.get('modifier_id')
             if mid and mid in modifiers_map:
                 modifiers_map[mid].update(payload)
+                # Also update nested modifier objects in all groups
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod.update(payload)
+            _bump_menu_version(state)
 
         elif event.event_type == EventType.MODIFIER_DELETED:
             mid = payload.get('modifier_id')
@@ -201,6 +215,58 @@ def project_menu(events: List[Event]) -> MenuState:
                         if not (isinstance(m, dict) and
                                 m.get('modifier_id') == mid)
                     ]
+            _bump_menu_version(state)
+
+        elif event.event_type == EventType.MODIFIER_PRICE_CHANGED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                new_price = payload.get('new_price', modifiers_map[mid].get('price'))
+                modifiers_map[mid]['price'] = new_price
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['price'] = new_price
+            _bump_menu_version(state)
+
+        elif event.event_type == EventType.MODIFIER_DEACTIVATED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid]['active'] = False
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['active'] = False
+            _bump_menu_version(state)
+
+        elif event.event_type == EventType.MODIFIER_REACTIVATED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid]['active'] = True
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['active'] = True
+            _bump_menu_version(state)
+
+        elif event.event_type == EventType.MODIFIER_86ED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid]['is_86d'] = True
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['is_86d'] = True
+            _bump_menu_version(state)
+
+        elif event.event_type == EventType.MODIFIER_86_CLEARED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid]['is_86d'] = False
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['is_86d'] = False
+            _bump_menu_version(state)
 
         elif event.event_type == EventType.MODIFIER_GROUP_MODIFIER_ADDED:
             gid = payload.get('group_id')
@@ -210,6 +276,7 @@ def project_menu(events: List[Event]) -> MenuState:
                 existing = {m.get('modifier_id') for m in mods if isinstance(m, dict)}
                 if mid not in existing:
                     mods.append({'modifier_id': mid, 'included_modifier_ids': [], 'price_by_size': {}})
+            _bump_menu_version(state)
 
         elif event.event_type == EventType.MODIFIER_GROUP_MODIFIER_REMOVED:
             gid = payload.get('group_id')
@@ -220,6 +287,7 @@ def project_menu(events: List[Event]) -> MenuState:
                     m for m in mods
                     if not (isinstance(m, dict) and m.get('modifier_id') == mid)
                 ]
+            _bump_menu_version(state)
 
         elif event.event_type == EventType.MICROMOD_ASSIGNED_TO_MODIFIER:
             mid = payload.get('modifier_id')

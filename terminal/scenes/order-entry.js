@@ -153,6 +153,8 @@ let ITEM_TO_CATEGORY = {};         // item_id → category_id
 // /config/*-assignments endpoints were removed from the backend; the
 // frontend was still calling them and logging 404s on every menu load.
 let _menuFetched = false;
+let _lastMenuVersion = null;
+let _menuVersionPollTimer = null;
 
 function fetchMenuFromAPI() {
   return fetchWithTimeout(API + '/menu', {}, 15000)
@@ -296,6 +298,35 @@ function fetchMenuFromAPI() {
   }).catch((err) => {
     console.warn('[KINDpos] Menu fetch failed, using fallback:', err);
   });
+}
+
+async function startMenuVersionPoller() {
+  try {
+    const r = await fetch('/api/v1/menu/version');
+    const data = await r.json();
+    _lastMenuVersion = data.version;
+  } catch (e) {
+    _lastMenuVersion = 0;
+  }
+  _menuVersionPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/v1/menu/version');
+      const { version } = await r.json();
+      if (version !== _lastMenuVersion) {
+        _lastMenuVersion = version;
+        await fetchMenuFromAPI();
+      }
+    } catch (e) {
+      // silent — stale cache preferred over crash mid-order
+    }
+  }, 30_000);
+}
+
+function stopMenuVersionPoller() {
+  if (_menuVersionPollTimer) {
+    clearInterval(_menuVersionPollTimer);
+    _menuVersionPollTimer = null;
+  }
 }
 
 function _textColorForHex(hex) {
@@ -753,6 +784,7 @@ defineScene({
     body.appendChild(mainArea);
 
     if (!_menuFetched) fetchMenuFromAPI().catch(() => { console.error('[KINDpos] Menu fetch failed on mount'); });
+    startMenuVersionPoller();
 
     if (params.recallOrderId) {
       state.currentOrderId = params.recallOrderId;
@@ -781,6 +813,7 @@ defineScene({
     }
     OrderSummary.unlockItemRender();
     OrderSummary.hide();
+    stopMenuVersionPoller();
     if (_modPanel) { _modPanel.destroy(); _modPanel = null; }
     _modPanelItem  = null;
     _modPanelCatColor = null;
