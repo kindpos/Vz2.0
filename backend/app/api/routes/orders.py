@@ -1974,6 +1974,7 @@ async def apply_discount(
     await ledger.append(event)
 
     order = await get_order_or_404(ledger, order_id)
+    _gate_order(order)  # Validate post-mutation P&L and 2dp
     return OrderResponse.from_order(order)
 
 
@@ -2031,6 +2032,7 @@ async def void_discount(
     await ledger.append(evt)
 
     order = await get_order_or_404(ledger, order_id)
+    _gate_order(order)  # Validate post-mutation P&L and 2dp
     return OrderResponse.from_order(order)
 
 
