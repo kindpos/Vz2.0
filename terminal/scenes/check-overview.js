@@ -1151,8 +1151,14 @@ function renderActionBar(state) {
       const selPrice = selItem.effectivePrice != null ? selItem.effectivePrice : (selItem.price || 0);
       subtotal += (selItem.qty || 0) * selPrice;
     }
-    tax       = subtotal * getTaxRate();
-    total     = subtotal + tax;
+    // Prefer backend tax if order is saved
+    if (order && order.tax != null) {
+      tax = Number(order.tax) || 0;
+      total = _roundCents(subtotal + tax);
+    } else {
+      tax = _roundCents(subtotal * getTaxRate());
+      total = _roundCents(subtotal + tax);
+    }
     cashTotal = _roundCents(total * (1 - discount));
   } else if (focusActive) {
     subtotal = 0;
@@ -1168,8 +1174,14 @@ function renderActionBar(state) {
       }
     }
     subtotal  = _roundCents(subtotal);
-    tax       = subtotal * getTaxRate();
-    total     = subtotal + tax;
+    // Prefer backend tax if order is saved
+    if (order && order.tax != null) {
+      tax = Number(order.tax) || 0;
+      total = _roundCents(subtotal + tax);
+    } else {
+      tax = _roundCents(subtotal * getTaxRate());
+      total = _roundCents(subtotal + tax);
+    }
     cashTotal = _roundCents(total * (1 - discount));
   } else {
     const _hasLocalVoid = state.seats.some((s) => {
@@ -1186,8 +1198,14 @@ function renderActionBar(state) {
         }
       }
       subtotal  = _roundCents(subtotal);
-      tax       = subtotal * getTaxRate();
-      total     = subtotal + tax;
+      // Prefer backend tax if order is saved
+      if (order && order.tax != null) {
+        tax = Number(order.tax) || 0;
+        total = _roundCents(subtotal + tax);
+      } else {
+        tax = _roundCents(subtotal * getTaxRate());
+        total = _roundCents(subtotal + tax);
+      }
       cashTotal = _roundCents(total * (1 - discount));
     } else {
       subtotal  = order.gross_subtotal != null ? order.gross_subtotal : (order.subtotal || 0);
