@@ -927,6 +927,7 @@ def payment_cancelled(
         "order_id": order_id,
         "payment_id": payment_id,
         "reason": reason,
+        "tip_amount": 0,
     }
     if amount is not None:
         payload["amount"] = amount

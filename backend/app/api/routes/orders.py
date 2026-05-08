@@ -1496,6 +1496,7 @@ async def void_payment(
     await ledger.append_batch(batch)
 
     order = await get_order_or_404(ledger, order_id)
+    _gate_order(order)  # Validate post-mutation state
     return OrderResponse.from_order(order)
 
 
