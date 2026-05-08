@@ -1970,7 +1970,8 @@ function buildItemBlock(state, seatIdx, itemIdx, modeB) {
     _discPctRaw = Math.round((_priceDelta / _rawPrice) * 100);
   }
   const isSent   = !!(item.sent_at || item.sent) && !isVoided;
-  const isSel    = !isVoided && !!(state.selectedItems && state.selectedItems[seatIdx + `:${itemIdx}`]);
+  const selKey   = _seatId && item.item_id ? (_seatId + ':' + item.item_id) : null;
+  const isSel    = !isVoided && !!(state.selectedItems && selKey && state.selectedItems[selKey]);
 
   let bevelLt = lightenHex(T.bg, 0.08);
   let bevelDk = darkenHex(T.bg, 0.2);
@@ -2446,8 +2447,9 @@ function _coBuildSentGroups(items, state, seatIdx) {
         voidBadge.textContent = 'VOID';
         row.appendChild(voidBadge);
       } else {
-        const selKey = seatIdx + ':' + ii;
-        const isSelected = !!(state && state.selectedItems && state.selectedItems[selKey]);
+        const seatId = state && state.seats && state.seats[seatIdx] ? state.seats[seatIdx].id : null;
+        const selKey = seatId && it.item_id ? (seatId + ':' + it.item_id) : null;
+        const isSelected = !!(state && state.selectedItems && selKey && state.selectedItems[selKey]);
 
         row.style.cssText = [
           `background:${isSelected ? T.green : T.well};`,
@@ -2481,9 +2483,9 @@ function _coBuildSentGroups(items, state, seatIdx) {
         priceSpan.textContent = fmt(total);
         row.appendChild(priceSpan);
 
-        if (state && seatIdx != null) {
+        if (state && seatIdx != null && seatId && it.item_id) {
           row.addEventListener('pointerup', () => {
-            state.selectedItems = toggleItemSelection(state.selectedItems, seatIdx, ii);
+            state.selectedItems = toggleItemSelection(state.selectedItems, seatId, it.item_id);
             _syncSelectedFromItems(state);
             const nowSelected = !!(state.selectedItems && state.selectedItems[selKey]);
             _applySentRowStyle(row, nameSpan, priceSpan, nowSelected);
@@ -3357,7 +3359,6 @@ function _wireHeaderTaps(state, seatId, el) {
 function _wireItemTaps(state, seatIdx, itemIdx, el) {
   let lpTimer = null;
   let didLongPress = false;
-  let key = seatIdx + `:${itemIdx}`;
 
   el.addEventListener('pointerdown', () => {
     didLongPress = false;
@@ -3392,7 +3393,7 @@ function _wireItemTaps(state, seatIdx, itemIdx, el) {
 // ═══════════════════════════════════════════════════
 
 // ── Selection model ──
-// state.selectedItems (keyed "seatIdx:itemIdx") is the source of truth.
+// state.selectedItems (keyed "S-NNN:itemId") is the source of truth.
 // state.selected (keyed seat.id) is a derived mirror — true iff every
 // item in that seat is currently in selectedItems. Downstream consumers
 // (handlePay, handleVoid, etc.) still read state.selected for whole-seat
@@ -3422,7 +3423,8 @@ function _syncSelectedFromItems(state) {
     for (let j = 0; j < s2.items.length; j++) {
       if (s2.items[j].voided) continue;
       hasSelectable = true;
-      if (!state.selectedItems[i2 + `:${j}`]) { all = false; break; }
+      const key = s2.id + ':' + s2.items[j].item_id;
+      if (!state.selectedItems[key]) { all = false; break; }
     }
     if (all && hasSelectable) next[s2.id] = true;
   }
@@ -3455,11 +3457,12 @@ function toggleSeat(state, seatId) {
   let allSelected = true;
   for (let j = 0; j < seat.items.length; j++) {
     if (seat.items[j].voided) continue;
-    if (!state.selectedItems[seatIdx + `:${j}`]) { allSelected = false; break; }
+    const key = seatId + ':' + seat.items[j].item_id;
+    if (!state.selectedItems[key]) { allSelected = false; break; }
   }
   for (let k = 0; k < seat.items.length; k++) {
     if (seat.items[k].voided) continue;
-    const key = seatIdx + `:${k}`;
+    const key = seatId + ':' + seat.items[k].item_id;
     if (allSelected) delete state.selectedItems[key];
     else             state.selectedItems[key] = true;
   }
@@ -3468,9 +3471,13 @@ function toggleSeat(state, seatId) {
 }
 
 function toggleItem(state, seatIdx, itemIdx) {
-  state.selectedItems = toggleItemSelection(state.selectedItems, seatIdx, itemIdx);
-  _syncSelectedFromItems(state);
-  rerenderTopArea(state);
+  const seat = state && state.seats && state.seats[seatIdx];
+  const item = seat && seat.items && seat.items[itemIdx];
+  if (seat && item && seat.id && item.item_id) {
+    state.selectedItems = toggleItemSelection(state.selectedItems, seat.id, item.item_id);
+    _syncSelectedFromItems(state);
+    rerenderTopArea(state);
+  }
 }
 
 // Populate state.selectedItems with every unpaid seat's items (plus
@@ -3487,7 +3494,8 @@ function forceSelectAll(state) {
     } else {
       for (let j = 0; j < seat.items.length; j++) {
         if (seat.items[j].voided) continue;
-        state.selectedItems[i + `:${j}`] = true;
+        const key = seat.id + ':' + seat.items[j].item_id;
+        state.selectedItems[key] = true;
       }
     }
   }
@@ -4343,8 +4351,12 @@ function _applyDiscount(state, optOrPct, itemRefs, seatIds, approvedBy) {
 function openItemMenu(state, seatIdx, itemIdx) {
   // When long-pressed on an unselected item, select it first so the
   // menu acts on a clear single target.
+  const seat = state && state.seats && state.seats[seatIdx];
+  const item = seat && seat.items && seat.items[itemIdx];
   state.selectedItems = {};
-  state.selectedItems[seatIdx + `:${itemIdx}`] = true;
+  if (seat && item && seat.id && item.item_id) {
+    state.selectedItems[seat.id + ':' + item.item_id] = true;
+  }
   rerenderTopArea(state);
 
   SceneManager.interrupt('co-item-menu', {
@@ -4894,6 +4906,10 @@ function refreshOrder(state, params) {
       state.order = order;
       state.checkNumber  = order.check_number || '';
       state.customerName = order.customer_name || '';
+
+      // Clear stale selections after server roundtrip to prevent indices from
+      // pointing to wrong items if items were removed/reordered
+      state.selectedItems = {};
 
       if (!order || !Array.isArray(order.items)) {
         entReport({

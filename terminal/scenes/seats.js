@@ -10,7 +10,7 @@
 //    - seat:  { id: 'S-001', number: 1, items: [...] }
 //    - item:  { qty, price, effectivePrice?, ... }
 //    - selected:       { [seatId]: true }   — seat-level selection
-//    - selectedItems:  { 'seatIdx:itemIdx': true }  — item-level selection
+//    - selectedItems:  { 'S-NNN:itemId': true }  — item-level selection (stable IDs)
 //    - paidSeats:      { [seatId]: true }   — seats with a payment attached
 //
 //  All helpers are pure — no DOM, no fetch, no global state. Selection
@@ -148,10 +148,10 @@ export function toggleSeatSelection(selected, paidSeats, seatId) {
 
 /**
  * Toggle a single item's membership in the `selectedItems` map.
- * Key format: 'seatIdx:itemIdx'. Returns a NEW map.
+ * Key format: 'S-NNN:itemId' (stable seat and item IDs). Returns a NEW map.
  */
-export function toggleItemSelection(selectedItems, seatIdx, itemIdx) {
-  var key = seatIdx + ':' + itemIdx;
+export function toggleItemSelection(selectedItems, seatId, itemId) {
+  var key = seatId + ':' + itemId;
   var next = Object.assign({}, selectedItems || {});
   if (next[key]) delete next[key];
   else           next[key] = true;
@@ -170,7 +170,7 @@ export function selectAllUnpaid(seats, paidSeats) {
 }
 
 /**
- * Decode the 'seatIdx:itemIdx' keys back into { seatIdx, itemIdx } refs
+ * Decode the 'S-NNN:itemId' keys back into { seatId, itemId } refs
  * for callers that need to look up the actual items.
  */
 export function collectSelectedItemRefs(selectedItems) {
@@ -178,7 +178,7 @@ export function collectSelectedItemRefs(selectedItems) {
   var keys = Object.keys(selectedItems || {});
   for (var i = 0; i < keys.length; i++) {
     var p = keys[i].split(':');
-    out.push({ seatIdx: +p[0], itemIdx: +p[1] });
+    out.push({ seatId: p[0], itemId: p[1] });
   }
   return out;
 }

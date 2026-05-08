@@ -349,6 +349,46 @@ class TestMergeOrders:
             )
         assert exc.value.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_merge_preserves_source_discounts_on_target(self, ledger):
+        """Source discounts carry over to the target; merged.discount_total == sum(source.discount_totals)."""
+        await _open_order_with_items(ledger, order_id="oTmd",
+                                      items=[("Pizza", Decimal("20.00"), 1)])
+        await _open_order_with_items(ledger, order_id="oSmd1",
+                                      items=[("Salad", Decimal("10.00"), 1)])
+        await _open_order_with_items(ledger, order_id="oSmd2",
+                                      items=[("Soup", Decimal("8.00"), 1)])
+
+        # Apply $5 discount to source1 and $3 discount to source2
+        for oid, disc_id, amount in [
+            ("oSmd1", "disc-m1", Decimal("5.00")),
+            ("oSmd2", "disc-m2", Decimal("3.00")),
+        ]:
+            await ledger.append(create_event(
+                event_type=EventType.DISCOUNT_APPROVED,
+                terminal_id=TERMINAL,
+                correlation_id=oid,
+                payload={
+                    "order_id": oid,
+                    "discount_id": disc_id,
+                    "discount_type": "flat",
+                    "amount": amount,
+                    "reason": "test",
+                },
+            ))
+
+        res = await orders_mod.merge_orders(
+            "oTmd",
+            orders_mod.MergeOrderRequest(source_ids=["oSmd1", "oSmd2"], approved_by="mgr"),
+            ledger=ledger,
+        )
+
+        # Target now has $5 + $3 = $8 in discounts from sources
+        assert res.discount_total == Decimal("8.00")
+        # And its items: $20 + $10 + $8 = $38 gross, minus $8 discount = $30
+        assert res.gross_subtotal == Decimal("38.00")
+        assert res.subtotal == Decimal("30.00")
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # APPLY DISCOUNT
@@ -600,6 +640,47 @@ class TestSplitBySeat:
                 ledger=ledger,
             )
         assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_split_distributes_parent_discount_to_children(self, ledger):
+        """Parent discount is distributed proportionally; sum(child.total) == parent.total before split."""
+        await _open_order_with_items(
+            ledger, order_id="oPdisc",
+            items=[("A", Decimal("30.00"), 1), ("B", Decimal("10.00"), 1)],
+            seats=[1, 2],
+        )
+        # Apply $8 discount directly via event (parent total before split = $40 - $8 = $32)
+        await ledger.append(create_event(
+            event_type=EventType.DISCOUNT_APPROVED,
+            terminal_id=TERMINAL,
+            correlation_id="oPdisc",
+            payload={
+                "order_id": "oPdisc",
+                "discount_id": "disc-split-01",
+                "discount_type": "flat",
+                "amount": Decimal("8.00"),
+                "reason": "test",
+            },
+        ))
+
+        pre_split = project_order(await ledger.get_events_by_correlation("oPdisc"))
+        assert pre_split.total == Decimal("32.00")
+
+        res = await orders_mod.split_by_seat(
+            "oPdisc", orders_mod.SplitBySeatRequest(seats=None), ledger=ledger,
+        )
+        per_seat = {c["seat"]: c["order_id"] for c in res["child_orders"]}
+        child1 = project_order(await ledger.get_events_by_correlation(per_seat[1]))
+        child2 = project_order(await ledger.get_events_by_correlation(per_seat[2]))
+
+        # Proportional: seat1=$30/$40*$8=$6, seat2 gets remainder $2
+        assert child1.discount_total == Decimal("6.00")
+        assert child2.discount_total == Decimal("2.00")
+        # Sum of children equals pre-split total
+        assert child1.total + child2.total == pre_split.total
+        # Parent discount is voided
+        parent = project_order(await ledger.get_events_by_correlation("oPdisc"))
+        assert parent.discount_total == Decimal("0.00")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

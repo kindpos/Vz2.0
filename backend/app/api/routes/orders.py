@@ -80,6 +80,7 @@ from app.core.events import (
     payment_initiated,
     payment_confirmed,
     payment_failed,
+    payment_cancelled,
     order_closed,
     order_reopened,
     order_voided,
@@ -1413,6 +1414,7 @@ async def confirm_payment(
     await ledger.append(event)
 
     order = await get_order_or_404(ledger, order_id)
+    _gate_order(order)  # Validate post-mutation state
     return OrderResponse.from_order(order)
 
 
@@ -1572,6 +1574,39 @@ async def reopen_order(
     return OrderResponse.from_order(order)
 
 
+# =============================================================================
+# MUTATION INVARIANT GATE
+# =============================================================================
+
+def _gate_order(order: Order, strict: bool = False) -> None:
+    """Run per-order invariant checks after mutation.
+
+    Validates P&L identity and 2dp precision for all monetary fields.
+    strict=False in production (logs drift), True in tests (raises).
+    """
+    from app.core.financial_invariants import check_pnl_identity, check_all_2dp, gate
+
+    results = [
+        check_pnl_identity(
+            gross=order.gross_subtotal,
+            voids=Decimal("0.00"),
+            discounts=order.discount_total,
+            refunds=order.refund_total,
+            net=money_round(order.subtotal - order.refund_total),
+        ),
+        check_all_2dp({
+            "subtotal": order.subtotal,
+            "discount_total": order.discount_total,
+            "refund_total": order.refund_total,
+            "tax": order.tax,
+            "total": order.total,
+            "amount_paid": order.amount_paid,
+            "balance_due": order.balance_due,
+        }),
+    ]
+    gate(results, strict=strict)
+
+
 @router.post("/{order_id}/void", response_model=OrderResponse)
 async def void_order(
         order_id: str,
@@ -1609,6 +1644,7 @@ async def void_order(
 
     # Reverse confirmed card payments on the payment device
     device_void_errors = []
+    reversed_card_payments = []  # Track successfully reversed card payments
     manager = get_payment_manager(ledger)
     await _ensure_devices(manager)
     for p in order.payments:
@@ -1627,6 +1663,9 @@ async def void_order(
                         device_void_errors.append(
                             f"Device void failed for payment {p.payment_id}: {result.status.value}"
                         )
+                    else:
+                        # Device void succeeded — track this payment for ledger cancellation
+                        reversed_card_payments.append(p)
                 except Exception as e:
                     device_void_errors.append(
                         f"Device void error for payment {p.payment_id}: {str(e)}"
@@ -1639,8 +1678,8 @@ async def void_order(
         )
 
     # After device voids succeeded, batch the refund-due events +
-    # order.voided so a crash cannot leave cash refunds appended
-    # without the void event (or vice versa).
+    # payment-cancelled events + order.voided so a crash cannot leave
+    # incomplete state in the ledger. All events land atomically.
     batch_events: list = []
     for p in order.payments:
         if p.status == "confirmed" and p.method == "cash":
@@ -1651,6 +1690,15 @@ async def void_order(
                 amount=p.amount,
                 reason=request.reason or "Order voided after cash payment",
             ))
+    # Emit PAYMENT_CANCELLED for each card payment successfully reversed on device
+    for p in reversed_card_payments:
+        batch_events.append(payment_cancelled(
+            terminal_id=settings.terminal_id,
+            order_id=order_id,
+            payment_id=p.payment_id,
+            reason="void",
+            amount=p.amount,
+        ))
     batch_events.append(order_voided(
         terminal_id=settings.terminal_id,
         order_id=order_id,
@@ -1660,6 +1708,7 @@ async def void_order(
     await ledger.append_batch(batch_events)
 
     order = await get_order_or_404(ledger, order_id)
+    _gate_order(order)  # Validate post-mutation state
     return OrderResponse.from_order(order)
 
 
@@ -1768,6 +1817,22 @@ async def merge_orders(
                     half_price=mod.get("half_price"),
                 ))
 
+        # Copy source discounts to the target so they survive the source void.
+        if src.discount_total > Decimal("0.00"):
+            src_disc_type = (src.discounts[0].get("type") or "order") if src.discounts else "order"
+            batch_events.append(create_event(
+                event_type=EventType.DISCOUNT_APPROVED,
+                terminal_id=settings.terminal_id,
+                correlation_id=order_id,
+                payload={
+                    "order_id": order_id,
+                    "discount_id": str(uuid.uuid4()),
+                    "discount_type": src_disc_type,
+                    "amount": src.discount_total,
+                    "reason": f"merged_from:{src.order_id}",
+                },
+            ))
+
         # Source timeline: emit CHECK_MERGED BEFORE the ORDER_VOIDED so
         # the source history reads alive → merged → voided, not
         # alive → voided → (audit arrives after death).
@@ -1801,6 +1866,7 @@ async def merge_orders(
     await ledger.append_batch(batch_events)
 
     target = await get_order_or_404(ledger, order_id)
+    _gate_order(target)  # Validate post-mutation state
     return OrderResponse.from_order(target)
 
 
@@ -2439,6 +2505,7 @@ async def split_by_seat(
     # audit event.
     operation_id = f"op_{uuid.uuid4().hex[:8]}"
     child_orders = []
+    _child_subtotals: list[Decimal] = []  # parallel to child_orders for discount distribution
     batch_events: list = []
     for seat_num, items in sorted(seat_items.items()):
         child_id = f"order_{uuid.uuid4().hex[:8]}"
@@ -2508,11 +2575,52 @@ async def split_by_seat(
                 reason=f"Split to seat {seat_num} check",
             ))
 
+        _child_subtotals.append(sum((item.subtotal for item in items), Decimal("0.00")))
         child_orders.append({
             "order_id": child_id,
             "seat": seat_num,
             "item_count": len(items),
         })
+
+    # Distribute any parent discount proportionally to child orders.
+    # Last child receives the remainder to prevent penny loss.
+    if order.discount_total > Decimal("0.00") and order.gross_subtotal > Decimal("0.00"):
+        total_split_sub = sum(_child_subtotals)
+        if total_split_sub > Decimal("0.00"):
+            parent_disc = order.discount_total
+            disc_type = (order.discounts[0].get("type") or "order") if order.discounts else "order"
+            shares: list[Decimal] = []
+            for idx, (c, child_sub) in enumerate(zip(child_orders, _child_subtotals)):
+                if idx < len(child_orders) - 1:
+                    share = money_round(parent_disc * child_sub / total_split_sub)
+                else:
+                    share = money_round(parent_disc - sum(shares))
+                shares.append(share)
+            for c, share in zip(child_orders, shares):
+                if share > Decimal("0.00"):
+                    batch_events.append(create_event(
+                        event_type=EventType.DISCOUNT_APPROVED,
+                        terminal_id=settings.terminal_id,
+                        correlation_id=c["order_id"],
+                        payload={
+                            "order_id": c["order_id"],
+                            "discount_id": str(uuid.uuid4()),
+                            "discount_type": disc_type,
+                            "amount": share,
+                            "reason": f"split_from:{order_id}",
+                        },
+                    ))
+            # Void all parent discounts — they now live on the children.
+            for disc in order.discounts:
+                batch_events.append(discount_voided(
+                    terminal_id=settings.terminal_id,
+                    order_id=order_id,
+                    amount=Decimal(str(disc.get("amount", 0))),
+                    voided_by="system",
+                    discount_type=disc.get("type"),
+                    discount_id=disc.get("discount_id"),
+                    reason=f"split_to_children:{order_id}",
+                ))
 
     # First-class audit event for the split operation. One emission per
     # affected order (parent + each child) with a shared operation_id so
@@ -2539,6 +2647,16 @@ async def split_by_seat(
         ))
 
     await ledger.append_batch(batch_events)
+
+    # Validate parent order after discount removal
+    parent = await get_order_or_404(ledger, order_id)
+    _gate_order(parent)
+
+    # Validate each child order
+    for c in child_orders:
+        child_events = await ledger.get_events_by_correlation(c["order_id"])
+        child_proj = project_order(child_events)
+        _gate_order(child_proj)
 
     return {
         "success": True,

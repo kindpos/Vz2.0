@@ -332,7 +332,7 @@ async def test_seat_discount_and_payment(ledger):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 8. PAYMENT_TIMED_OUT and PAYMENT_CANCELLED both produce status='failed'
+# 8. PAYMENT_TIMED_OUT produces status='failed'; PAYMENT_CANCELLED produces status='cancelled'
 # ═══════════════════════════════════════════════════════════════════════
 
 async def test_timed_out_and_cancelled_both_fail(ledger):
@@ -357,7 +357,7 @@ async def test_timed_out_and_cancelled_both_fail(ledger):
     await ledger.append(create_event(
         event_type=EventType.PAYMENT_CANCELLED,
         terminal_id=TERMINAL,
-        payload={"order_id": oid, "payment_id": "pid_cancel", "error": "Customer cancelled"},
+        payload={"order_id": oid, "payment_id": "pid_cancel", "reason": "void", "amount": Decimal("25.00")},
         correlation_id=oid,
     ))
 
@@ -366,8 +366,9 @@ async def test_timed_out_and_cancelled_both_fail(ledger):
     assert order.status == "open"
     assert order.is_fully_paid is False
     assert order.amount_paid == Decimal("0.00")
-    for p in order.payments:
-        assert p.status == "failed"
+    # PAYMENT_TIMED_OUT produces status='failed', PAYMENT_CANCELLED produces status='cancelled'
+    assert order.payments[0].status == "failed"  # timeout
+    assert order.payments[1].status == "cancelled"  # cancelled
 
 
 # ═══════════════════════════════════════════════════════════════════════

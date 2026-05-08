@@ -914,6 +914,31 @@ def payment_failed(
     )
 
 
+def payment_cancelled(
+        terminal_id: str,
+        order_id: str,
+        payment_id: str,
+        reason: str = "void",
+        amount: Optional[Decimal] = None,
+        **kwargs
+) -> Event:
+    """Create a payment cancellation event (e.g. from void_order card reversal)."""
+    payload = {
+        "order_id": order_id,
+        "payment_id": payment_id,
+        "reason": reason,
+    }
+    if amount is not None:
+        payload["amount"] = amount
+    return create_event(
+        event_type=EventType.PAYMENT_CANCELLED,
+        terminal_id=terminal_id,
+        payload=payload,
+        correlation_id=order_id,
+        **kwargs
+    )
+
+
 # -----------------------------------------------------------------------------
 # Order Completion Events
 # -----------------------------------------------------------------------------
