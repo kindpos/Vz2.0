@@ -39,3 +39,9 @@ async def get_items(ledger: EventLedger = Depends(get_ledger)):
     """Get all menu items."""
     menu = await get_menu(ledger)
     return menu.items
+
+@router.get("/version")
+async def get_menu_version(ledger: EventLedger = Depends(get_ledger)):
+    """Get the current menu version."""
+    menu = await get_menu(ledger)
+    return {"version": menu.menu_version}
