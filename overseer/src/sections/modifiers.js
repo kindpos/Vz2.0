@@ -1020,7 +1020,8 @@ const buildOptionDeleteConfirm = (option) => {
 
     btnRow.appendChild(buildPillButton('Delete', T.verm, T.well, async () => {
         try {
-            await pushChanges([{ event_type: 'option.deleted', payload: { option_id: option.option_id } }]);
+            const result = await pushChanges([{ event_type: 'option.deleted', payload: { option_id: option.option_id } }]);
+            if (!result.ok) { showToast('Failed to delete option', 'error'); return; }
             _state.confirmingDeleteOptionId = null;
             await refreshAll();
             showToast('Option deleted');

@@ -434,10 +434,11 @@ const buildTerminalCard = (term) => {
         const reassignBtn = buildGhostButton('REASSIGN HUB', T.verm, async () => {
             const confirmed = confirm(`Remove hub status from ${term.name}? You must designate another hub.`);
             if (confirmed) {
-                await pushChanges([{
+                const result = await pushChanges([{
                     event_type: 'terminal.updated',
                     payload: { terminal_id: term.terminal_id, is_hub: false }
                 }]);
+                if (!result.ok) { showToast('Failed to reassign hub', 'error'); return; }
                 await loadData();
                 rebuild();
                 showToast('Hub reassigned');
@@ -448,10 +449,11 @@ const buildTerminalCard = (term) => {
         const promoteBtn = buildGhostButton('MAKE HUB', T.greenUp, async () => {
             const confirmed = confirm(`Designate ${term.name} as the hub terminal?`);
             if (confirmed) {
-                await pushChanges([{
+                const result = await pushChanges([{
                     event_type: 'terminal.updated',
                     payload: { terminal_id: term.terminal_id, is_hub: true }
                 }]);
+                if (!result.ok) { showToast('Failed to designate hub', 'error'); return; }
                 await loadData();
                 rebuild();
                 showToast('Hub designated');
@@ -536,7 +538,7 @@ const buildTerminalEditPanel = (term) => {
         }
 
         try {
-            await pushChanges([{
+            const result = await pushChanges([{
                 event_type: 'terminal.updated',
                 payload: {
                     terminal_id: term.terminal_id,
@@ -545,6 +547,7 @@ const buildTerminalEditPanel = (term) => {
                     training_mode: trainingChk.checked,
                 }
             }]);
+            if (!result.ok) { showToast('Failed to update terminal', 'error'); return; }
             _state.editingTerminalId = null;
             await loadData();
             rebuild();
@@ -722,10 +725,11 @@ const buildPrinterCard = (printer) => {
     const removeBtn = buildGhostButton('REMOVE', T.verm, async () => {
         if (confirm(`Remove ${printer.name}?`)) {
             try {
-                await pushChanges([{
+                const result = await pushChanges([{
                     event_type: 'printer.removed',
                     payload: { mac: printer.mac }
                 }]);
+                if (!result.ok) { showToast('Failed to remove printer', 'error'); return; }
                 await loadData();
                 rebuild();
                 showToast('Printer removed');
@@ -842,10 +846,11 @@ const buildCardReaderCard = (reader) => {
     const unpairBtn = buildGhostButton('UNPAIR', T.verm, async () => {
         if (confirm(`Unpair ${reader.name}?`)) {
             try {
-                await pushChanges([{
+                const result = await pushChanges([{
                     event_type: 'payment.processor_removed',
                     payload: { mac: reader.mac }
                 }]);
+                if (!result.ok) { showToast('Failed to unpair card reader', 'error'); return; }
                 await loadData();
                 rebuild();
                 showToast('Card reader unpaired');

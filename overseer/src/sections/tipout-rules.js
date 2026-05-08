@@ -232,10 +232,11 @@ const _buildRulesTable = (container) => {
 const _confirmDelete = async (rule) => {
     if (!confirm(`Delete tipout rule: ${_roleLabel(rule.role_from)} → ${_roleLabel(rule.role_to)} (${rule.percentage}%)?`)) return;
     try {
-        await pushChanges([{
+        const result = await pushChanges([{
             event_type: 'tipout.rule_deleted',
             payload: { rule_id: rule.rule_id },
         }]);
+        if (!result.ok) { _showToast('Delete failed', 'error'); return; }
         _showToast('Rule deleted', 'success');
         await _rerender();
     } catch (e) {
@@ -337,10 +338,11 @@ const _openForm = (rule) => {
             categories: form.calculation_base === 'Net Sales' ? form.categories.slice() : [],
         };
         try {
-            await pushChanges([{
+            const result = await pushChanges([{
                 event_type: isEdit ? 'tipout.rule_updated' : 'tipout.rule_created',
                 payload,
             }]);
+            if (!result.ok) { _showToast('Save failed', 'error'); return; }
             _showToast(isEdit ? 'Rule updated' : 'Rule created', 'success');
             overlay.remove();
             await _rerender();

@@ -588,7 +588,7 @@ const openRoleModal = (role) => {
             draft.name = name;
 
             try {
-                await pushChanges([{
+                const result = await pushChanges([{
                     event_type: isEdit ? 'employee.role_updated' : 'employee.role_created',
                     payload: {
                         role_id: draft.role_id,
@@ -604,6 +604,7 @@ const openRoleModal = (role) => {
                         service_types: draft.service_types,
                     },
                 }]);
+                if (!result.ok) { showToast('Save failed', 'error'); return; }
                 showToast(isEdit ? 'Role updated' : 'Role created', 'success');
                 modalRef.close();
                 // Refresh the roles cache used by employees.js (staff list) too.
@@ -648,10 +649,11 @@ const confirmDeleteRole = (role) => {
         variant: 'danger',
         onClick: async () => {
             try {
-                await pushChanges([{
+                const result = await pushChanges([{
                     event_type: 'employee.role_deleted',
                     payload: { role_id: role.role_id },
                 }]);
+                if (!result.ok) { showToast('Delete failed', 'error'); return; }
                 showToast('Role deleted', 'success');
                 modalRef.close();
                 // Also close any edit modal that was open for this role.
