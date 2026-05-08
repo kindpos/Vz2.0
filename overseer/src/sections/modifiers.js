@@ -436,7 +436,6 @@ const buildModifiersCard = () => {
     if (_state.modifiers.length === 0) {
         listEl.appendChild(buildEmptyState('No modifiers yet — tap + Add Modifier'));
     } else {
-        console.log('[DEBUG] building rows from:', _state.modifiers.length, 'modifiers');
         _state.modifiers.forEach(m => listEl.appendChild(buildModifierRow(m)));
     }
 
@@ -524,8 +523,8 @@ const buildModifierRow = (modifier) => {
     toggleCell.style.cssText = 'display: flex; justify-content: center; align-items: center;';
     const toggle = buildToggle(modifier.active !== false, async (v) => {
         try {
-            const result = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, active: v } }]);
-            if (!result.ok) { toggle.setValue(!v); showToast('Failed to update modifier', 'error'); return; }
+            const r = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, active: v } }]);
+            if (!r.ok) throw new Error(r.error || 'Update failed');
             modifier.active = v;
             await refreshAll();
         } catch (e) {
@@ -625,8 +624,8 @@ const buildModifierDeleteConfirm = (modifier) => {
 
     btnRow.appendChild(buildPillButton('Delete', T.verm, T.well, async () => {
         try {
-            const result = await pushChanges([{ event_type: 'modifier.deleted', payload: { modifier_id: modifier.modifier_id } }]);
-            if (!result.ok) { showToast('Failed to delete modifier', 'error'); return; }
+            const r = await pushChanges([{ event_type: 'modifier.deleted', payload: { modifier_id: modifier.modifier_id } }]);
+            if (!r.ok) throw new Error(r.error || 'Delete failed');
             _state.confirmingDeleteModifierId = null;
             await refreshAll();
             showToast('Modifier deleted');
@@ -681,11 +680,9 @@ const buildModifierAddPanel = () => {
         const name = nameInput.value.trim();
         const priceVal = priceInput.getValue();
         if (!name) { showToast('Name is required', 'error'); return; }
-        const modifierId = crypto.randomUUID();
         try {
-            const result = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: modifierId, name, price: priceVal } }]);
-            if (!result.ok) { showToast('Failed to create modifier', 'error'); return; }
-            console.log('[DEBUG] pushChanges ok, about to refresh');
+            const r = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: crypto.randomUUID(), name, price: priceVal } }]);
+            if (!r.ok) throw new Error(r.error || 'Create failed');
             _state.addingModifier = false;
             await refreshAll();
             showToast('Modifier created');
@@ -748,8 +745,8 @@ const buildModifierEditPanel = (modifier) => {
             return;
         }
         try {
-            const result = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, ...body } }]);
-            if (!result.ok) { showToast('Failed to save modifier', 'error'); return; }
+            const r = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, ...body } }]);
+            if (!r.ok) throw new Error(r.error || 'Save failed');
             if (body.name != null) modifier.name = body.name;
             if (body.price != null) modifier.price = body.price;
             _state.editingModifierId = null;
@@ -1023,8 +1020,8 @@ const buildOptionDeleteConfirm = (option) => {
 
     btnRow.appendChild(buildPillButton('Delete', T.verm, T.well, async () => {
         try {
-            const result = await pushChanges([{ event_type: 'option.deleted', payload: { option_id: option.option_id } }]);
-            if (!result.ok) { showToast('Failed to delete option', 'error'); return; }
+            const r = await pushChanges([{ event_type: 'option.deleted', payload: { option_id: option.option_id } }]);
+            if (!r.ok) throw new Error(r.error || 'Delete failed');
             _state.confirmingDeleteOptionId = null;
             await refreshAll();
             showToast('Option deleted');
@@ -1220,9 +1217,8 @@ const refreshAll = async () => {
             apiGet('/api/v1/modifiers'),
             apiGet('/api/v1/options'),
         ]);
-        _state.modifiers = Array.isArray(modifiers) ? modifiers.slice() : [];
-        _state.options = Array.isArray(options) ? options.slice() : [];
-        console.log('[DEBUG] _state.modifiers after refresh:', _state.modifiers.length, _state.modifiers);
+        _state.modifiers = (modifiers || []).slice();
+        _state.options = (options || []).slice();
     } catch (e) {
         console.error('[Modifiers] Refresh failed:', e);
         _state.loadError = true;

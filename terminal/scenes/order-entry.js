@@ -680,21 +680,17 @@ defineScene({
     params = params || {};
     const staff = params.staff || params.emp || {};
 
-    // 2. Body container — fills the entire screen
-    let body = document.createElement('div');
-    const offset = '0';
-    body.style.cssText = `position:absolute;left:${offset};right:0;top:0;bottom:0;overflow:hidden;display:flex;flex-direction:column;`;
-    container.appendChild(body);
-
     ticket         = [];
     ticketSeq      = 0;
+    createOrderIdemKey = null;
+    modHistory     = [];
+    comboFlow      = null;
+    _editingInstId = null;
     sceneParams    = params;
     state          = { currentOrderId: null };  // fresh state object per mount
     isSending      = false;
     currentCheckNumber = null;
     currentCustomerName = null;
-    createOrderIdemKey = null;
-    modHistory     = [];
     modifierSession = { active: false, selectedItems: [], activePrefix: null, activePlacement: null, appliedMods: [], activeSizes: {}, panelEl: null, hasPizza: false };
     _bottomBar     = null;
     _mainArea      = null;
@@ -724,6 +720,12 @@ defineScene({
     _seatTab        = 'selected';
     _seatSelectorEl = null;
     _personalBtn    = null;
+
+    // 2. Body container — fills the entire screen
+    let body = document.createElement('div');
+    const offset = '0';
+    body.style.cssText = `position:absolute;left:${offset};right:0;top:0;bottom:0;overflow:hidden;display:flex;flex-direction:column;`;
+    container.appendChild(body);
 
     container.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
 
