@@ -5,7 +5,6 @@ MAC-as-identity: IPs change, MACs don't.
 """
 
 import asyncio
-import threading
 import json
 import logging
 import os
@@ -157,10 +156,38 @@ class TestPrintRequest(BaseModel):
 # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
 def _get_subnet_prefix() -> str:
-    """Extract the /24 prefix from settings.default_subnet (e.g. '10.0.0')."""
+    """Extract /24 prefix from settings.default_subnet, e.g. '10.0.0'.
+
+    Validates the extracted prefix looks like 'X.X.X' (three numeric octets).
+    Falls back to the machine's active outbound interface address if the
+    configured subnet yields a malformed prefix (e.g. missing the last octet).
+    """
     raw = settings.default_subnet
     base = raw.split('/')[0]
-    return base.rsplit('.', 1)[0]
+    candidate = base.rsplit('.', 1)[0]
+
+    if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}$', candidate):
+        return candidate
+
+    logger.warning(
+        f"[SCANNER] Configured subnet '{raw}' yielded malformed prefix "
+        f"'{candidate}'; detecting active network interface"
+    )
+    try:
+        # UDP trick: bind to a non-routable address just to resolve the
+        # outbound interface — no packets are actually sent.
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('192.0.2.0', 1))  # TEST-NET, never actually routed
+            my_ip = s.getsockname()[0]
+        finally:
+            s.close()
+        derived = my_ip.rsplit('.', 1)[0]
+        logger.info(f"[SCANNER] Derived subnet prefix from active interface: {derived!r}")
+        return derived
+    except Exception as e:
+        logger.error(f"[SCANNER] Interface detection failed ({e}); using '10.0.0'")
+        return '10.0.0'
 
 
 def _ports_for_type(device_type: Optional[str]) -> list:
@@ -195,33 +222,42 @@ def _ping_broadcast(prefix: str) -> None:
                 ['ping', '-c', '1', '-W', str(PING_TIMEOUT), '-b', broadcast],
                 timeout=PING_TIMEOUT + 1, capture_output=True,
             )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[SCANNER] Broadcast ping to {broadcast} failed (non-fatal): {e}")
 
 
 def _get_arp_hosts(prefix: str) -> List[dict]:
     """
     Read the OS ARP cache and return all live hosts on our subnet.
     Returns list of {'ip': str, 'mac': str}.
+
+    Uses a compiled regex anchored to the full /24 IP pattern (^prefix\.\d{1,3}$)
+    so a shortened or mismatched prefix cannot silently match hosts on a
+    different subnet (the old startswith + dot-count check allowed this).
     """
     hosts = []
+    # Anchored pattern: matches "prefix.N" exactly (N = 1–3 digit final octet)
+    ip_re = re.compile(r'^' + re.escape(prefix) + r'\.\d{1,3}$')
     try:
         out = subprocess.check_output(
             ['arp', '-a'], timeout=3, stderr=subprocess.DEVNULL
         ).decode()
+        logger.debug(
+            f"[SCANNER] Raw ARP table (prefix={prefix!r}, "
+            f"{len(out.splitlines())} lines):\n{out}"
+        )
         for line in out.splitlines():
-            # Find IPs on our subnet
-            if prefix + '.' not in line:
+            # Fast pre-filter: skip lines that clearly don't mention our prefix
+            if prefix not in line:
                 continue
             parts = line.split()
             ip = None
             mac = None
             for part in parts:
-                # Match IP address
                 stripped = part.strip('()')
-                if stripped.startswith(prefix + '.') and stripped.count('.') == 3:
+                # Anchored regex replaces the old startswith + dot-count heuristic
+                if ip_re.match(stripped):
                     ip = stripped
-                # Match MAC address — regex handles shortened octets (e.g. 1:2:3:4:5:6)
                 if _MAC_RE.match(part):
                     octets = part.replace('-', ':').upper().split(':')
                     mac = ':'.join(o.zfill(2) for o in octets)
@@ -231,7 +267,9 @@ def _get_arp_hosts(prefix: str) -> List[dict]:
                     continue
                 hosts.append({'ip': ip, 'mac': mac})
     except Exception as e:
-        logger.warning(f"ARP cache read failed: {e}")
+        logger.warning(f"[SCANNER] ARP cache read failed: {e}")
+
+    logger.info(f"[SCANNER] ARP parse: {len(hosts)} host(s) matched prefix {prefix!r}")
     return hosts
 
 
@@ -288,8 +326,8 @@ async def _probe_spin(ip: str, port: int) -> dict:
                     "model":       root.findtext("Model") or "",
                     "status":      root.findtext("RespMSG") or root.findtext("Message") or "",
                 }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[SCANNER] SPIn probe failed for {ip}:{port}: {e}")
     return {}
 
 
@@ -447,6 +485,56 @@ async def scan_network_stream(
 
                 # Step 2: Read ARP table for live hosts
                 arp_hosts = await loop.run_in_executor(None, _get_arp_hosts, prefix)
+                logger.info(
+                    f"[SCANNER] ARP discovery returned {len(arp_hosts)} host(s) "
+                    f"for prefix {prefix!r}"
+                )
+
+                # Step 2b: If ARP returned nothing, fall back to a parallel TCP
+                # sweep of the full /24 on the primary printer port.  This is
+                # slower (~254 × 0.5 s but parallelised) and yields hosts without
+                # MACs, but prevents a silent empty scan when the ARP cache is
+                # cold or the subnet prefix was corrected from a bad config value.
+                if not arp_hosts:
+                    yield _sse({
+                        'type': 'diagnostic',
+                        'message': (
+                            f"ARP table empty for prefix {prefix} — "
+                            "falling back to full /24 TCP sweep (this is slower)"
+                        ),
+                        'style': 'warning',
+                    })
+                    sweep_ips = [
+                        str(h)
+                        for h in ipaddress.ip_network(
+                            f"{prefix}.0/24", strict=False
+                        ).hosts()
+                    ]
+                    logger.info(
+                        f"[SCANNER] TCP fallback: probing {len(sweep_ips)} hosts "
+                        f"on port {PRINTER_PORTS[0]}"
+                    )
+                    alive_results = await asyncio.gather(
+                        *[
+                            asyncio.wait_for(
+                                loop.run_in_executor(
+                                    None, _tcp_probe, ip, PRINTER_PORTS[0], 0.5
+                                ),
+                                timeout=1.0,
+                            )
+                            for ip in sweep_ips
+                        ],
+                        return_exceptions=True,
+                    )
+                    arp_hosts = [
+                        {'ip': ip, 'mac': None}
+                        for ip, r in zip(sweep_ips, alive_results)
+                        if r is True
+                    ]
+                    logger.info(
+                        f"[SCANNER] TCP fallback found {len(arp_hosts)} "
+                        "responsive host(s)"
+                    )
 
                 yield _sse({
                     'type': 'start',
@@ -454,6 +542,20 @@ async def scan_network_stream(
                     'mode': 'sweep',
                     'subnet': f"{prefix}.0/24",
                 })
+
+                # Still nothing after ARP + TCP fallback — emit an actionable error
+                # so the GUI shows a reason rather than "0 devices found".
+                if not arp_hosts:
+                    yield _sse({
+                        'type': 'error',
+                        'message': (
+                            f"No hosts found on {prefix}.0/24 — ARP table was "
+                            "empty and the TCP sweep found no responsive devices. "
+                            "Verify the server is on the same subnet as the printers."
+                        ),
+                    })
+                    yield _sse({'type': 'complete'})
+                    return
 
                 # Step 3: TCP probe hosts in batches of 5, stream as found
                 found_ips = set()
@@ -825,56 +927,4 @@ async def test_connection(req: TestConnectionRequest):
         status = "unreachable"
     return {"ip": req.ip, "port": req.port, "status": status}
 
-# ── Overseer: Printer Discovery (SSE) ────────────────────────────────────────
-
-from app.scanner.printer_detector import PrinterDiscovery
-
-class ScanRequest(BaseModel):
-    network: Optional[str] = None
-    timeout: Optional[float] = None
-
-
-def _run_scan_in_thread(queue: asyncio.Queue, loop, network: str):
-    scanner = PrinterDiscovery()
-
-    def on_progress(event_type: str, data: dict):
-        event = {"type": event_type, **data}
-        asyncio.run_coroutine_threadsafe(queue.put(event), loop)
-
-    scanner.on_progress = on_progress
-
-    try:
-        printers = scanner.scan_network(network, methods=["port_scan"])
-        for printer in printers:
-            config = printer.to_printer_config_dict()
-            asyncio.run_coroutine_threadsafe(
-                queue.put({"type": "printer_config", **config}), loop)
-    except Exception as e:
-        asyncio.run_coroutine_threadsafe(
-            queue.put({"type": "error", "message": f"Scan failed: {str(e)}"}), loop)
-
-    asyncio.run_coroutine_threadsafe(queue.put({"type": "__DONE__"}), loop)
-
-
-@router.post("/discover-printers", dependencies=[Depends(require_manager)])
-async def discover_printers(request: ScanRequest = ScanRequest()):
-    network = request.network or settings.default_subnet
-
-    async def discovery_stream():
-        queue = asyncio.Queue()
-        loop = asyncio.get_event_loop()
-        thread = threading.Thread(
-            target=_run_scan_in_thread, args=(queue, loop, network), daemon=True)
-        thread.start()
-        while True:
-            event = await queue.get()
-            if event.get("type") == "__DONE__":
-                break
-            yield f"data: {json.dumps(event)}\n\n"
-
-    return StreamingResponse(
-        discovery_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
-    )
 

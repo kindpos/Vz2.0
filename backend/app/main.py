@@ -307,12 +307,23 @@ if os.path.exists(entomology_path):
 else:
     print(f'WARNING: Entomology not found at: {entomology_path}')
 
+@app.get("/install")
+async def install_redirect():
+    return RedirectResponse(url="/install/")
+
 common_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'common')
 if os.path.exists(common_path):
     print(f'Serving Common from: {common_path}')
     app.mount('/common', StaticFiles(directory=common_path), name='common')
 else:
     print(f'WARNING: Common not found at: {common_path}')
+
+install_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'install')
+if os.path.exists(install_path):
+    print(f'Serving Install from: {install_path}')
+    app.mount('/install', StaticFiles(directory=install_path, html=True), name='install')
+else:
+    print(f'WARNING: Install not found at: {install_path}')
 
 if os.path.exists(frontend_path):
     print(f'Serving frontend from: {frontend_path}')
