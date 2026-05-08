@@ -60,6 +60,7 @@ class Payment:
     tip_amount: Decimal = Decimal("0.00")
     tip_adjusted: bool = False  # True once a TIP_ADJUSTED event has been applied
     tax_amount: Decimal = Decimal("0.00")  # Tax captured at payment time
+    service_charge_amount: Decimal = Decimal("0.00")  # Service charge amount captured at payment time
     seat_numbers: list[int] = field(default_factory=list)  # Seats covered by this payment
     card_last_four: Optional[str] = None  # Last four digits of card; null for cash
 
@@ -168,7 +169,13 @@ class Order:
     def tax_rate(self) -> Decimal:
         if self._tax_rate is not None:
             return self._tax_rate
-        return Decimal(str(settings.tax_rate))
+        rate = Decimal(str(settings.tax_rate))
+        if rate < Decimal("0") or rate > Decimal("1"):
+            raise ValueError(
+                f"tax_rate {rate} out of valid range [0, 1]. "
+                f"Use decimal form e.g. 0.085 for 8.5%."
+            )
+        return rate
 
     @property
     def tax(self) -> Decimal:
@@ -181,15 +188,29 @@ class Order:
         return money_round(taxable * self.tax_rate)
 
     @property
+    def surcharge_total(self) -> Decimal:
+        """Sum of service_charge_amount across all confirmed payments."""
+        return sum(
+            (money_round(Decimal(str(p.service_charge_amount)))
+             for p in self.payments
+             if p.status == "confirmed"),
+            Decimal("0.00")
+        )
+
+    @property
     def total(self) -> Decimal:
         """Final total (clamped to zero — discount cannot make total negative)."""
-        raw = self.subtotal + self.tax
+        raw = self.subtotal + self.tax + self.surcharge_total
         return money_round(max(Decimal("0.00"), raw))
 
     @property
     def amount_paid(self) -> Decimal:
         """Sum of confirmed payments."""
-        return sum((p.amount for p in self.payments if p.status == "confirmed"), Decimal("0.00"))
+        return sum(
+            (p.amount + money_round(Decimal(str(p.service_charge_amount)))
+             for p in self.payments if p.status == "confirmed"),
+            Decimal("0.00")
+        )
 
     @property
     def balance_due(self) -> Decimal:
@@ -604,6 +625,16 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
             # already handled above. A future revision may project
             # lineage fields (split_to, merged_from) from these payloads.
             pass
+
+    from .financial_invariants import check_order_identities
+    violations = check_order_identities(order)
+    if violations:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Order %s identity violations: %s",
+            getattr(order, 'order_id', '?'),
+            violations
+        )
 
     return order
 

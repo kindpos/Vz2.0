@@ -31,9 +31,8 @@ let _cashDiscount = 0.04;
 let _loaded = false;
 let _loadPromise = null;
 
-function _roundCents(n) {
-  return Math.round((n || 0) * 100) / 100;
-}
+function _roundCents(n) { return Math.round((n || 0) * 100) / 100; }
+function _ceilCents(n)  { return Math.ceil((n  || 0) * 100) / 100; }
 
 function _loadRates() {
   if (_loadPromise) return _loadPromise;
@@ -55,7 +54,13 @@ function _loadRates() {
       });
       _loaded = true; /* keep defaults */
     }
-  })();
+  })().catch(err => {
+    console.warn(
+      '[KINDpos] Failed to load tax rate from server.',
+      'Using fallback rate:', _taxRate,
+      '— displayed totals may be incorrect.', err
+    );
+  });
   return _loadPromise;
 }
 

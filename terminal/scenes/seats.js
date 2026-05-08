@@ -28,6 +28,7 @@ export function seatSubtotal(seat) {
   var items = (seat && seat.items) || [];
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
+    if (it.voided) continue;
     t += (it.qty || 0) * (it.effectivePrice || it.price || 0);
   }
   return t;
@@ -110,6 +111,7 @@ export function orderToSeats(order, minSeats) {
         notes:          it.notes || '',
         category:       it.category,
         sent_at:        it.sent_at || null,
+        voided:         it.voided || false,
       });
     }
   }

@@ -16,6 +16,9 @@ import { buildNumpad } from '../numpad.js';
 import { OrderSummary } from '../order-summary.js';
 import { getCashDiscount } from '../pricing.js';
 
+function _roundCents(n) { const c = (n || 0) * 100; return Math.round(c) / 100; }
+function _ceilCents(n)  { const c = (n || 0) * 100; return Math.ceil(c)  / 100; }
+
 const PAD     = T.scenePad;
 const GAP     = T.colGapSm;
 const API     = '/api/v1';
@@ -264,7 +267,19 @@ defineScene({
         // buildActionCard with green accent bar, "1/N" stacked over the
         // dollar amount, mint flash on tap.
         [2, 3, 4].forEach((divisor) => {
-          const amt = Math.ceil(remaining / divisor * 100) / 100;
+          const amt = _roundCents(remaining / divisor);
+          // Last-cent remainder stays in balance_due;
+          // cleared when final seat pays exact.
+          if (typeof console !== 'undefined') {
+            const _splitTotal = amt * divisor;
+            if (Math.abs(_splitTotal - remaining) > 0.01) {
+              console.warn(
+                '[KINDpos] Split amounts diverge from balance:',
+                { slices: divisor, each: amt,
+                  sum: _splitTotal, remaining }
+              );
+            }
+          }
           let tile = buildActionCard({
             accent:  T.groups.paymentPreset.tileAccent,
             onClick: () => { params.onConfirm(amt); },
@@ -911,7 +926,7 @@ function populateLeftCard(order) {
   }
   const tax         = (typeof order.tax === 'number') ? order.tax : 0;
   const cardTotal   = (typeof order.balance_due === 'number') ? order.balance_due : (subtotal + tax);
-  const cashPrice   = Math.round(cardTotal * (1 - getCashDiscount()) * 100) / 100;
+  const cashPrice   = _roundCents(cardTotal * (1 - getCashDiscount()));
   const managerDisc = typeof order.manager_discount_total === 'number' ? order.manager_discount_total : 0;
 
   if (!_state.baseTotal) _state.baseTotal = cardTotal;
@@ -1299,17 +1314,23 @@ async function handleConfirm() {
       if (seatNumbers.length === 0) seatNumbers = null;
     }
 
+    const _scAmt = Number(
+      (_state.sceneData && _state.sceneData.order_type_modifier_amt)
+      || 0
+    );
+
     if (isCash) {
       const txId = `cash-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
       if (_state._cashTxId) return;
       _state._cashTxId = txId;
       const cashBody = {
-          order_id:        _state.sceneData.orderId,
-          amount:          paymentAmount,
-          tip:             0.0,
-          payment_method:  'cash',
-          transaction_id:  _state._pendingTxId,
-          idempotency_key: txId,
+          order_id:              _state.sceneData.orderId,
+          amount:                paymentAmount,
+          tip:                   0.0,
+          payment_method:        'cash',
+          transaction_id:        _state._pendingTxId,
+          idempotency_key:       txId,
+          service_charge_amount: _scAmt,
       };
       if (seatNumbers) cashBody.seat_numbers = seatNumbers;
       let res = await fetchWithTimeout(API + '/payments/cash', {
@@ -1332,10 +1353,11 @@ async function handleConfirm() {
       const cardTimeout = setTimeout(() => { controller.abort(); }, 95000);
 
       const saleBody = {
-          transaction_id: _state._pendingTxId,
-          order_id:       _state.sceneData.orderId,
-          amount:         paymentAmount,
-          terminal_id:    'terminal_01',
+          transaction_id:        _state._pendingTxId,
+          order_id:              _state.sceneData.orderId,
+          amount:                paymentAmount,
+          terminal_id:           'terminal_01',
+          service_charge_amount: _scAmt,
       };
       if (seatNumbers) saleBody.seat_numbers = seatNumbers;
       // Intentional bare fetch() — card payments need a 95 s timeout and
@@ -1371,6 +1393,25 @@ async function handleConfirm() {
 
     _state.payments.push({ method: _state.paymentMode, amount: paymentAmount });
     _state.totalPaid += paymentAmount;
+
+    // Re-sync balance from server after confirmed payment
+    if (_state.orderId || (_state.sceneData && _state.sceneData.orderId)) {
+      const _oid = _state.orderId
+        || _state.sceneData.orderId;
+      fetch(`/api/v1/orders/${_oid}`)
+        .then(r => r.json())
+        .then(order => {
+          if (typeof order.balance_due === 'number') {
+            _state.baseTotal = order.balance_due;
+            _state.totalPaid = 0;
+          }
+        })
+        .catch(() => {
+          // Non-fatal: local totalPaid tracking remains
+          // as fallback if re-fetch fails
+        });
+    }
+
     _state._pendingTxId = null;
     _state._cashTxId = null;
 

@@ -69,8 +69,7 @@ import {
 } from './seats.js';
 import './column-editor.js';
 
-// ROUND_HALF_UP: matches backend money_round (Decimal ROUND_HALF_UP)
-function _roundCents(n) { const c = (n || 0) * 100; return Math.round(c + Number.EPSILON) / 100; }
+function _roundCents(n) { const c = (n || 0) * 100; return Math.round(c) / 100; }
 function _ceilCents(n)  { const c = (n || 0) * 100; return Math.ceil(c)  / 100; }
 
 // ── Inject invisible scrollbar style ──
@@ -112,7 +111,9 @@ function seatTotal(seat, state) {
   // Item-level discounts (no seat-level entry means this is a targeted discount)
   if (state._itemDiscounts && seat.items) {
     for (let _i = 0; _i < seat.items.length; _i++) {
-      let _id = state._itemDiscounts[seat.items[_i].item_id];
+      const item = seat.items[_i];
+      if (item.voided) continue;
+      let _id = state._itemDiscounts[item.item_id];
       if (_id && _id.amount) {
         base = _roundCents(base - _id.amount);
       }
@@ -300,9 +301,9 @@ function _adaptOrderForRecap(state) {
     totals: {
       subtotal:  totals.subtotal,
       discount:  totals.discount,
-      upcharges: Math.round(totalUpcharges * 100) / 100,
+      upcharges: _roundCents(totalUpcharges),
       tax:       totals.tax,
-      paid:      Math.round(paid * 100) / 100,
+      paid:      _roundCents(paid),
       total:     totals.cardTotal,
       taxRate:   totals.taxRate,
     },
@@ -361,9 +362,9 @@ function collectSummary(seats, selected, paidSeats, state) {
   let cardTotal = subtotal + tax;
   return {
     items:     items,
-    subtotal:  Math.round(subtotal * 100) / 100,
-    tax:       Math.round(tax * 100) / 100,
-    cardTotal: Math.round(cardTotal * 100) / 100,
+    subtotal:  _roundCents(subtotal),
+    tax:       _roundCents(tax),
+    cardTotal: _roundCents(cardTotal),
   };
 }
 
@@ -1172,9 +1173,15 @@ function renderActionBar(state) {
       const selPrice = selItem.effectivePrice != null ? selItem.effectivePrice : (selItem.price || 0);
       subtotal += (selItem.qty || 0) * selPrice;
     }
-    tax       = subtotal * getTaxRate();
-    total     = subtotal + tax;
-    cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+    // Prefer backend tax if order is saved
+    if (order && order.tax != null) {
+      tax = Number(order.tax) || 0;
+      total = _roundCents(subtotal + tax);
+    } else {
+      tax = _roundCents(subtotal * getTaxRate());
+      total = _roundCents(subtotal + tax);
+    }
+    cashTotal = _roundCents(total * (1 - discount));
   } else if (focusActive) {
     subtotal = 0;
     for (let _fi = 0; _fi < state.seats.length; _fi++) {
@@ -1188,10 +1195,16 @@ function renderActionBar(state) {
         subtotal += (_fItem.qty || 0) * _fPrice;
       }
     }
-    subtotal  = Math.round(subtotal * 100) / 100;
-    tax       = subtotal * getTaxRate();
-    total     = subtotal + tax;
-    cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+    subtotal  = _roundCents(subtotal);
+    // Prefer backend tax if order is saved
+    if (order && order.tax != null) {
+      tax = Number(order.tax) || 0;
+      total = _roundCents(subtotal + tax);
+    } else {
+      tax = _roundCents(subtotal * getTaxRate());
+      total = _roundCents(subtotal + tax);
+    }
+    cashTotal = _roundCents(total * (1 - discount));
   } else {
     const _hasLocalVoid = state.seats.some((s) => {
       return s.items.some((it) => it.voided);
@@ -1206,15 +1219,21 @@ function renderActionBar(state) {
           subtotal += (_vit.qty || 0) * _vp;
         }
       }
-      subtotal  = Math.round(subtotal * 100) / 100;
-      tax       = subtotal * getTaxRate();
-      total     = subtotal + tax;
-      cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+      subtotal  = _roundCents(subtotal);
+      // Prefer backend tax if order is saved
+      if (order && order.tax != null) {
+        tax = Number(order.tax) || 0;
+        total = _roundCents(subtotal + tax);
+      } else {
+        tax = _roundCents(subtotal * getTaxRate());
+        total = _roundCents(subtotal + tax);
+      }
+      cashTotal = _roundCents(total * (1 - discount));
     } else {
       subtotal  = order.gross_subtotal != null ? order.gross_subtotal : (order.subtotal || 0);
       tax       = order.tax != null ? order.tax : (subtotal * getTaxRate());
       total     = order.total || 0;
-      cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+      cashTotal = _roundCents(total * (1 - discount));
     }
   }
 
@@ -1226,11 +1245,11 @@ function renderActionBar(state) {
   const _modifierPct = (_ot && typeof _ot.adjustment === 'number') ? _ot.adjustment : 0;
   let _modifierAmt = 0;
   if (_modifierPct !== 0) {
-    _modifierAmt = (window.roundHalfUp || function(v) { return Math.round(v * 100) / 100; })(subtotal * _modifierPct / 100);
+    _modifierAmt = (window.roundHalfUp || function(v) { return _roundCents(v); })(subtotal * _modifierPct / 100);
     const _adjSub = subtotal + _modifierAmt;
-    tax      = Math.round(_adjSub * getTaxRate() * 100) / 100;
-    total    = Math.round((_adjSub + tax) * 100) / 100;
-    cashTotal = Math.round(total * (1 - discount) * 100) / 100;
+    tax      = _roundCents(_adjSub * getTaxRate());
+    total    = _roundCents(_adjSub + tax);
+    cashTotal = _roundCents(total * (1 - discount));
   }
   // Preserve on state so handlePay can include in payment-launch params.
   state._otModPct = _modifierPct;
@@ -1961,7 +1980,7 @@ function buildItemBlock(state, seatIdx, itemIdx, modeB) {
   // and not stamp a `discount` object on individual items after refresh.
   const _rawPrice   = item.price || 0;
   const _effPrice   = item.effectivePrice != null ? item.effectivePrice : _rawPrice;
-  const _priceDelta = Math.round((_rawPrice - _effPrice) * 100) / 100;
+  const _priceDelta = _roundCents(_rawPrice - _effPrice);
   // Third/fourth detection paths: per-item and per-seat caches stamped by _applyDiscount.
   // The seat-level cache is the more reliable fallback since it doesn't depend on item_id.
   const _seatId     = state.seats[seatIdx] ? state.seats[seatIdx].id : null;
@@ -1980,8 +1999,8 @@ function buildItemBlock(state, seatIdx, itemIdx, modeB) {
     : _stateDisc
     ? _stateDisc.amount
     : _seatDisc
-    ? Math.round(_seatDisc.amount / _itemCount * 100) / 100
-    : Math.round(_priceDelta * (item.qty || 1) * 100) / 100;
+    ? _roundCents(_seatDisc.amount / _itemCount)
+    : _roundCents(_priceDelta * (item.qty || 1));
   let _discPctRaw = _discObj && _discObj.pct != null
     ? _discObj.pct
     : (_discObj && _discObj.label ? parseInt(_discObj.label, 10) : null);
@@ -3927,10 +3946,10 @@ function handlePay(state, params) {
       subtotal += (it.qty || 0) * p;
     }
   }
-  subtotal      = Math.round(subtotal * 100) / 100;
-  const tax       = Math.round(subtotal * taxRate * 100) / 100;
-  const cardTotal = Math.round((subtotal + tax) * 100) / 100;
-  const cashPrice = Math.round(cardTotal * (1 - discount) * 100) / 100;
+  subtotal      = _roundCents(subtotal);
+  const tax       = _roundCents(subtotal * taxRate);
+  const cardTotal = _roundCents(subtotal + tax);
+  const cashPrice = _roundCents(cardTotal * (1 - discount));
 
   // Pre-flight: verify balance_due > 0 and order still open before mounting
   // the payment scene. Uses the freshest server state to avoid launching
@@ -4149,6 +4168,24 @@ function _voidItems(state, refs, approvedBy) {
           const _dup = state._voidedItems.some((e) => e.item.item_id && e.item.item_id === _ve.item.item_id);
           if (!_dup) state._voidedItems.push({ seatNumber: _vs.number, item: _ve.item });
         }
+
+        // Re-sync order from server after confirmed void
+        if (state.orderId) {
+          fetch(`/api/v1/orders/${state.orderId}`)
+            .then(r => r.json())
+            .then(freshOrder => {
+              if (!state._alive) return;
+              state.order = freshOrder;
+              state._voidedItems = [];  // clear local void list —
+                                        // server state is now authoritative
+              rerenderTopArea(state);
+            })
+            .catch(() => {
+              // Non-fatal: local void list remains as fallback
+              if (!state._alive) return;
+              rerenderTopArea(state);
+            });
+        }
       }
     });
 }
@@ -4311,9 +4348,9 @@ function _applyDiscount(state, optOrPct, itemRefs, seatIds, approvedBy) {
       const _dRef  = itemRefs[_di];
       let _dAmt;
       if (pct != null) {
-        _dAmt = Math.round((_dItem.price || 0) * (_dItem.qty || 1) * pct / 100 * 100) / 100;
+        _dAmt = _roundCents((_dItem.price || 0) * (_dItem.qty || 1) * pct / 100);
       } else {
-        _dAmt = Math.round((flatRate ?? 0) * (_dItem.qty || 1) * 100) / 100;
+        _dAmt = _roundCents((flatRate ?? 0) * (_dItem.qty || 1));
       }
       // Per-item cache (keyed by backend item_id)
       if (_dItem.item_id) {
@@ -4328,7 +4365,7 @@ function _applyDiscount(state, optOrPct, itemRefs, seatIds, approvedBy) {
             state._seatDiscounts[_dSeat.id] = { pct: pct ?? 0, amount: 0 };
           }
           state._seatDiscounts[_dSeat.id].amount =
-            Math.round((state._seatDiscounts[_dSeat.id].amount + _dAmt) * 100) / 100;
+            _roundCents(state._seatDiscounts[_dSeat.id].amount + _dAmt);
         }
       }
     }
