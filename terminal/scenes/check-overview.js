@@ -103,14 +103,15 @@ function seatTotal(seat, state) {
   // accumulates all per-item amounts, so don't also sum _itemDiscounts.
   const sd = seat.id && state._seatDiscounts ? state._seatDiscounts[seat.id] : null;
   if (sd && sd.amount) {
-    return Math.round((base - sd.amount) * 100) / 100;
+    // ROUND_HALF_UP: matches backend money_round (Decimal ROUND_HALF_UP)
+    return Math.round((base - sd.amount) * 100 + Number.EPSILON) / 100;
   }
   // Item-level discounts (no seat-level entry means this is a targeted discount)
   if (state._itemDiscounts && seat.items) {
     for (let _i = 0; _i < seat.items.length; _i++) {
       let _id = state._itemDiscounts[seat.items[_i].item_id];
       if (_id && _id.amount) {
-        base = Math.round((base - _id.amount) * 100) / 100;
+        base = Math.round((base - _id.amount) * 100 + Number.EPSILON) / 100;
       }
     }
   }
