@@ -185,10 +185,15 @@ const mount = async (container) => {
         };
 
         const result = await pushChanges([{ event_type: 'store.info_updated', payload }]);
+        if (!result.ok) {
+            showToast('Failed to save', 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Receipt Settings';
+            return;
+        }
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save Receipt Settings';
-        if (result.ok) showToast('Receipt settings saved');
-        else showToast('Failed to save', 'error');
+        showToast('Receipt settings saved');
     });
     wrapper.appendChild(saveBtn);
 }
