@@ -137,3 +137,21 @@ class StoreConfigService:
         config["themes"] = list(config["themes"].values())
 
         return StoreConfigBundle(**config)
+
+    async def get_tax_rate(self) -> Decimal:
+        """Return the current tax rate from ledger-sourced STORE_TAX_RULE events. Falls back to settings.tax_rate if no rule is configured."""
+        from app.config import settings
+        tax_rate = Decimal(str(settings.tax_rate))
+
+        # Check for user-configured tax rules
+        tax_events = await self.ledger.get_events_by_type(EventType.STORE_TAX_RULE_CREATED, limit=100)
+        tax_events += await self.ledger.get_events_by_type(EventType.STORE_TAX_RULE_UPDATED, limit=100)
+        tax_events.sort(key=lambda x: x.sequence_number or 0)
+
+        for e in tax_events:
+            if e.payload.get("applies_to") == "all":
+                rate_percent = e.payload.get("rate_percent", settings.tax_rate)
+                # rate_percent is stored as whole number (e.g., 700 for 7%), convert to decimal
+                tax_rate = Decimal(str(rate_percent)) / Decimal("100")
+
+        return tax_rate
