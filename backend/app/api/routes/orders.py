@@ -1414,6 +1414,7 @@ async def confirm_payment(
     await ledger.append(event)
 
     order = await get_order_or_404(ledger, order_id)
+    _gate_order(order)  # Validate post-mutation state
     return OrderResponse.from_order(order)
 
 
@@ -1573,6 +1574,39 @@ async def reopen_order(
     return OrderResponse.from_order(order)
 
 
+# =============================================================================
+# MUTATION INVARIANT GATE
+# =============================================================================
+
+def _gate_order(order: Order, strict: bool = False) -> None:
+    """Run per-order invariant checks after mutation.
+
+    Validates P&L identity and 2dp precision for all monetary fields.
+    strict=False in production (logs drift), True in tests (raises).
+    """
+    from app.core.financial_invariants import check_pnl_identity, check_all_2dp, gate
+
+    results = [
+        check_pnl_identity(
+            gross=order.gross_subtotal,
+            voids=Decimal("0.00"),
+            discounts=order.discount_total,
+            refunds=order.refund_total,
+            net=money_round(order.subtotal - order.refund_total),
+        ),
+        check_all_2dp({
+            "subtotal": order.subtotal,
+            "discount_total": order.discount_total,
+            "refund_total": order.refund_total,
+            "tax": order.tax,
+            "total": order.total,
+            "amount_paid": order.amount_paid,
+            "balance_due": order.balance_due,
+        }),
+    ]
+    gate(results, strict=strict)
+
+
 @router.post("/{order_id}/void", response_model=OrderResponse)
 async def void_order(
         order_id: str,
@@ -1674,6 +1708,7 @@ async def void_order(
     await ledger.append_batch(batch_events)
 
     order = await get_order_or_404(ledger, order_id)
+    _gate_order(order)  # Validate post-mutation state
     return OrderResponse.from_order(order)
 
 
@@ -1831,6 +1866,7 @@ async def merge_orders(
     await ledger.append_batch(batch_events)
 
     target = await get_order_or_404(ledger, order_id)
+    _gate_order(target)  # Validate post-mutation state
     return OrderResponse.from_order(target)
 
 
@@ -2611,6 +2647,16 @@ async def split_by_seat(
         ))
 
     await ledger.append_batch(batch_events)
+
+    # Validate parent order after discount removal
+    parent = await get_order_or_404(ledger, order_id)
+    _gate_order(parent)
+
+    # Validate each child order
+    for c in child_orders:
+        child_events = await ledger.get_events_by_correlation(c["order_id"])
+        child_proj = project_order(child_events)
+        _gate_order(child_proj)
 
     return {
         "success": True,
