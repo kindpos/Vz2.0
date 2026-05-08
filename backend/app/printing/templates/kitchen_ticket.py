@@ -62,16 +62,6 @@ class KitchenTicketTemplate(BaseTemplate):
         # Zone 4 — Alert Block
         commands.extend(self._render_zone4(context, allergies, supports_red))
 
-        # Companion items — "Send with" block for multi-station orders
-        companion = context.get('companion_items', [])
-        if companion:
-            commands.append({'type': 'divider', 'char': '='})
-            names = ', '.join(c.get('name') or c.get('kitchen_text', '') for c in companion)
-            commands.append({
-                'type': 'text', 'content': f"Send with: {names}",
-                'bold': True,
-            })
-
         # Zone 5 — Footer
         commands.extend(self._render_zone5(context, ticket_type))
 
@@ -238,8 +228,10 @@ class KitchenTicketTemplate(BaseTemplate):
                 if has_halves:
                     cmds.extend(self._render_half_placement_block(modifiers, supports_red))
                 else:
+                    parent_item_name = item.get('kitchen_text') or item.get('name', '')
+                    station_name = ctx.get('station_name', '')
                     for mod in modifiers:
-                        mod_cmds = self._render_modifier(mod, supports_red)
+                        mod_cmds = self._render_modifier(mod, supports_red, parent_item_name, station_name)
                         cmds.extend(mod_cmds)
 
                 # Special instructions (below modifiers)
@@ -286,8 +278,13 @@ class KitchenTicketTemplate(BaseTemplate):
             groups.setdefault(seat, []).append(item)
         return groups
 
-    def _render_modifier(self, mod: Any, supports_red: bool) -> List[Dict]:
-        """Render a single modifier line — 6-space indent, NORMAL weight, BLACK."""
+    def _render_modifier(self, mod: Any, supports_red: bool, parent_item_name: str = '', station_name: str = '') -> List[Dict]:
+        """Render a single modifier line, handling station_override dispatch.
+
+        When station_override is set:
+        - If it matches current station: show "Send With: parent" below
+        - If it doesn't match: show dispatch marker "↳ name →" instead
+        """
         if isinstance(mod, dict):
             prefix = mod.get('prefix', '')
             text = mod.get('text') or mod.get('kitchen_text') or mod.get('name', '')
@@ -296,18 +293,45 @@ class KitchenTicketTemplate(BaseTemplate):
                 prefix = self._default_prefix(mod_type)
             # Sub-modifiers (modified modifiers) — 9-space indent
             sub_mods = mod.get('sub_modifiers', mod.get('modifiers', []))
+            station_override = mod.get('station_override')
         else:
             prefix, text = self._parse_modifier_string(str(mod))
             sub_mods = []
+            station_override = None
 
         cmds: List[Dict] = []
-        if prefix:
+
+        # If station_name is empty/None, always render normally
+        if not station_name:
+            if prefix:
+                cmds.append({
+                    'type': 'text',
+                    'content': f"      [{prefix}] {text}",
+                })
+            else:
+                cmds.append({'type': 'text', 'content': f"      {text}"})
+        elif station_override and station_override != station_name:
+            # Dispatch marker — modifier is being sent to another station
             cmds.append({
                 'type': 'text',
-                'content': f"      [{prefix}] {text}",
+                'content': f"  ↳ {text}  →",
             })
         else:
-            cmds.append({'type': 'text', 'content': f"      {text}"})
+            # Normal rendering (station_override is None or matches current station)
+            if prefix:
+                cmds.append({
+                    'type': 'text',
+                    'content': f"      [{prefix}] {text}",
+                })
+            else:
+                cmds.append({'type': 'text', 'content': f"      {text}"})
+
+            # If station_override matches current station, add "Send With"
+            if station_override and station_override == station_name and parent_item_name:
+                cmds.append({
+                    'type': 'text',
+                    'content': f"  Send With: {parent_item_name}",
+                })
 
         # Sub-modifiers at 9-space indent
         for sub in sub_mods:
