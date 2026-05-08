@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KINDpos Installer</title>
+  <style>
+    :root {
+      --bg:        #383c42;
+      --card:      #2e3236;
+      --well:      #22252a;
+      --green:     #86efac;
+      --greenWarm: #4ade80;
+      --greenDk:   #1a5c2e;
+      --elec:      #22d3ee;
+      --text:      #e8eaed;
+      --border:    #5a5f66;
+      --muted:     #6b7280;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      font-family: 'Courier New', Courier, monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* Grid background overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image:
+        linear-gradient(0deg, var(--well) 1px, transparent 1px),
+        linear-gradient(90deg, var(--well) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.45;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Top accent bar with shimmer */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: linear-gradient(90deg, var(--green), var(--elec), var(--green));
+      background-size: 200% 100%;
+      animation: shimmer 3s ease-in-out infinite;
+      z-index: 1000;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 200% 0; }
+      50% { background-position: -200% 0; }
+    }
+
+    /* Container */
+    .container {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    /* Card */
+    .card {
+      width: 480px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 32px;
+      position: relative;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      animation: fadeUp 0.5s ease 0.1s both;
+    }
+
+    /* Chamfered top-right corner */
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 0;
+      height: 0;
+      border-style: solid;
+      border-width: 20px 20px 0 0;
+      border-color: var(--bg) transparent transparent transparent;
+      z-index: 1;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Brand row */
+    .brand-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .brand-name {
+      font-size: 22px;
+      font-weight: bold;
+      color: var(--green);
+      letter-spacing: 1px;
+    }
+
+    .brand-subtitle {
+      font-size: 10px;
+      color: var(--text);
+      letter-spacing: 0.5px;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 20px;
+    }
+
+    /* Headline */
+    .headline {
+      font-size: 13px;
+      font-weight: bold;
+      color: var(--green);
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+    }
+
+    /* Body copy */
+    .body {
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--text);
+      margin-bottom: 24px;
+    }
+
+    .elec {
+      color: var(--elec);
+    }
+
+    /* Download button */
+    .download-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--green);
+      color: var(--well);
+      border: none;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.15s ease;
+      margin-bottom: 20px;
+    }
+
+    .download-btn:hover {
+      background: var(--greenWarm);
+    }
+
+    .download-btn:active {
+      background: var(--greenDk);
+      color: var(--green);
+    }
+
+    /* Sysinfo rows */
+    .sysinfo {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sysinfo-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .sysinfo-label {
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .sysinfo-value {
+      color: var(--green);
+      text-align: right;
+      flex-grow: 1;
+      margin-left: 16px;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 40px;
+      font-size: 9px;
+      color: var(--text);
+      letter-spacing: 0.5px;
+      animation: fadeUp 0.5s ease 0.2s both;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <div class="brand-row">
+      <div class="brand-name">KIND POS</div>
+      <div class="brand-subtitle">· Installer v2.0</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="headline">Install KINDpos Backend</div>
+
+    <div class="body">
+      Installs all Python dependencies and configures autostart.
+      Requires <span class="elec">Python 3.10+</span> on Windows or Linux.
+      Run the downloaded file to launch the setup wizard.
+    </div>
+
+    <button class="download-btn" id="downloadBtn">
+      <span>↓ DOWNLOAD INSTALLER</span>
+      <span>→</span>
+    </button>
+
+    <div class="sysinfo">
+      <div class="sysinfo-row">
+        <span class="sysinfo-label">FILE</span>
+        <span class="sysinfo-value">kindpos_installer.py</span>
+      </div>
+      <div class="sysinfo-row">
+        <span class="sysinfo-label">REQUIRES</span>
+        <span class="sysinfo-value">Python 3.10+  ·  Windows / Linux</span>
+      </div>
+      <div class="sysinfo-row">
+        <span class="sysinfo-label">VERSION</span>
+        <span class="sysinfo-value">KINDpos Vz2.0  ·  KIND Technologies LLC</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    KIND TECHNOLOGIES LLC  ·  PRIVATE BETA
+  </div>
+</div>
+
+<script>
+const INSTALLER_CONTENT = `#!/usr/bin/env python3
+"""
+KINDpos Installer v2.0
+Cross-platform setup wizard for KINDpos backend.
+Configures Python dependencies and autostart on Windows/Linux.
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import subprocess
+import sys
+import os
+import platform
+from pathlib import Path
+
+# Color tokens
+COLORS = {
+    'bg':        '#383c42',
+    'card':      '#2e3236',
+    'well':      '#22252a',
+    'green':     '#86efac',
+    'greenWarm': '#4ade80',
+    'greenDk':   '#1a5c2e',
+    'elec':      '#22d3ee',
+    'text':      '#e8eaed',
+    'border':    '#5a5f66',
+    'muted':     '#6b7280',
+}
+
+class InstallerWizard:
+    def __init__(self, root):
+        self.root = root
+        self.root.title('KINDpos Installer v2.0')
+        self.root.geometry('600x500')
+        self.root.resizable(False, False)
+        self.root.configure(bg=COLORS['bg'])
+
+        # Style
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.configure_styles()
+
+        self.kindpos_path = None
+        self.step = 0
+        self.steps = ['WELCOME', 'LOCATE', 'INSTALL', 'AUTOSTART', 'COMPLETE']
+
+        self.main_frame = tk.Frame(self.root, bg=COLORS['bg'])
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        self.show_step()
+
+    def configure_styles(self):
+        """Configure ttk styles to match KINDpos theme."""
+        self.style.configure('TFrame', background=COLORS['bg'])
+        self.style.configure('TLabel', background=COLORS['bg'], foreground=COLORS['text'])
+        self.style.configure('Title.TLabel', background=COLORS['bg'], foreground=COLORS['green'],
+                            font=('Courier New', 14, 'bold'))
+        self.style.configure('Body.TLabel', background=COLORS['bg'], foreground=COLORS['text'],
+                            font=('Courier New', 10))
+        self.style.configure('TButton', background=COLORS['green'], foreground=COLORS['well'],
+                            font=('Courier New', 10, 'bold'))
+        self.style.map('TButton',
+                      background=[('active', COLORS['greenWarm']),
+                                 ('pressed', COLORS['greenDk'])])
+
+    def show_step(self):
+        """Display current step."""
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+
+        # Header
+        header = tk.Frame(self.main_frame, bg=COLORS['bg'])
+        header.pack(fill=tk.X, pady=(0, 20))
+
+        step_label = tk.Label(header, text=f'STEP {self.step + 1}/{len(self.steps)} · {self.steps[self.step]}',
+                             bg=COLORS['bg'], fg=COLORS['green'], font=('Courier New', 10, 'bold'))
+        step_label.pack(side=tk.LEFT)
+
+        # Progress bar
+        progress = tk.Canvas(self.main_frame, bg=COLORS['bg'], highlightthickness=0, height=3)
+        progress.pack(fill=tk.X, pady=(0, 20))
+        progress_width = (self.step + 1) / len(self.steps) * 560
+        progress.create_rectangle(0, 0, progress_width, 3, fill=COLORS['green'], outline=COLORS['green'])
+
+        if self.step == 0:
+            self.show_welcome()
+        elif self.step == 1:
+            self.show_locate()
+        elif self.step == 2:
+            self.show_install()
+        elif self.step == 3:
+            self.show_autostart()
+        else:
+            self.show_complete()
+
+    def show_welcome(self):
+        """WELCOME step."""
+        title = tk.Label(self.main_frame, text='WELCOME TO KINDPOS',
+                        bg=COLORS['bg'], fg=COLORS['green'],
+                        font=('Courier New', 14, 'bold'))
+        title.pack(pady=20)
+
+        body = tk.Label(self.main_frame,
+                       text='This wizard will install KINDpos backend on your system.\\n\\n'
+                            'It will:\\n'
+                            '• Install Python dependencies\\n'
+                            '• Configure autostart on boot\\n'
+                            '• Set up system services\\n\\n'
+                            'Requires Python 3.10+ already installed.',
+                       bg=COLORS['bg'], fg=COLORS['text'],
+                       font=('Courier New', 10), justify=tk.LEFT)
+        body.pack(pady=20, fill=tk.BOTH, expand=True)
+
+        self.button_frame(next_cmd=self.next_step, show_back=False)
+
+    def show_locate(self):
+        """LOCATE step."""
+        title = tk.Label(self.main_frame, text='LOCATE REPOSITORY',
+                        bg=COLORS['bg'], fg=COLORS['green'],
+                        font=('Courier New', 14, 'bold'))
+        title.pack(pady=20)
+
+        body = tk.Label(self.main_frame,
+                       text='Select the KINDpos repository directory.\\n\\n'
+                            'It should contain:\\n'
+                            '• backend/\\n'
+                            '• terminal/\\n'
+                            '• requirements.txt',
+                       bg=COLORS['bg'], fg=COLORS['text'],
+                       font=('Courier New', 10), justify=tk.LEFT)
+        body.pack(pady=20)
+
+        path_var = tk.StringVar(value=self.kindpos_path or '(none selected)')
+        path_display = tk.Label(self.main_frame, textvariable=path_var,
+                               bg=COLORS['well'], fg=COLORS['elec'],
+                               font=('Courier New', 9), padx=10, pady=10)
+        path_display.pack(fill=tk.X, pady=10)
+
+        def browse():
+            chosen = filedialog.askdirectory(title='Select KINDpos Repository')
+            if chosen:
+                self.kindpos_path = chosen
+                path_var.set(chosen)
+
+        browse_btn = tk.Button(self.main_frame, text='BROWSE', command=browse,
+                              bg=COLORS['green'], fg=COLORS['well'],
+                              font=('Courier New', 10, 'bold'), padx=20, pady=8)
+        browse_btn.pack(pady=10)
+
+        def proceed():
+            if not self.kindpos_path or not Path(self.kindpos_path).is_dir():
+                messagebox.showerror('Error', 'Please select a valid directory.')
+                return
+            self.next_step()
+
+        self.button_frame(next_cmd=proceed)
+
+    def show_install(self):
+        """INSTALL step."""
+        title = tk.Label(self.main_frame, text='INSTALLING DEPENDENCIES',
+                        bg=COLORS['bg'], fg=COLORS['green'],
+                        font=('Courier New', 14, 'bold'))
+        title.pack(pady=20)
+
+        log_text = tk.Text(self.main_frame, bg=COLORS['well'], fg=COLORS['text'],
+                          font=('Courier New', 9), height=12, width=70)
+        log_text.pack(pady=10, fill=tk.BOTH, expand=True)
+
+        log_text.insert(tk.END, 'Installing Python dependencies...\\n\\n')
+        self.root.update()
+
+        try:
+            req_file = Path(self.kindpos_path) / 'backend' / 'requirements.txt'
+            if not req_file.exists():
+                log_text.insert(tk.END, f'ERROR: {req_file} not found!\\n')
+                self.root.update()
+            else:
+                result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', '-r', str(req_file)],
+                    capture_output=True, text=True, timeout=300
+                )
+                log_text.insert(tk.END, result.stdout)
+                if result.returncode != 0:
+                    log_text.insert(tk.END, f'\\nERROR:\\n{result.stderr}')
+                else:
+                    log_text.insert(tk.END, '\\n✓ Dependencies installed successfully!\\n')
+        except Exception as e:
+            log_text.insert(tk.END, f'ERROR: {e}\\n')
+
+        self.root.update()
+        self.button_frame(next_cmd=self.next_step)
+
+    def show_autostart(self):
+        """AUTOSTART step."""
+        title = tk.Label(self.main_frame, text='CONFIGURE AUTOSTART',
+                        bg=COLORS['bg'], fg=COLORS['green'],
+                        font=('Courier New', 14, 'bold'))
+        title.pack(pady=20)
+
+        system = platform.system()
+        if system == 'Windows':
+            body = tk.Label(self.main_frame,
+                           text='KINDpos will be configured to autostart\\n'
+                                'when you log in (Windows Task Scheduler).\\n\\n'
+                                'This requires administrator privileges.',
+                           bg=COLORS['bg'], fg=COLORS['text'],
+                           font=('Courier New', 10), justify=tk.LEFT)
+        else:
+            body = tk.Label(self.main_frame,
+                           text='KINDpos will be configured to autostart\\n'
+                                'on boot (systemd service).\\n\\n'
+                                'This requires root/sudo privileges.',
+                           bg=COLORS['bg'], fg=COLORS['text'],
+                           font=('Courier New', 10), justify=tk.LEFT)
+        body.pack(pady=20, fill=tk.BOTH, expand=True)
+
+        def do_autostart():
+            try:
+                if system == 'Windows':
+                    cmd = f'schtasks /create /tn KINDpos /tr "\\"python {self.kindpos_path}\\backend\\app\\main.py\\"" /sc ONLOGON /f'
+                    subprocess.run(cmd, shell=True, check=True)
+                else:
+                    service = '''[Unit]
+Description=KINDpos Backend
+After=network.target
+
+[Service]
+Type=simple
+User=kindpos
+WorkingDirectory=/opt/kindpos
+ExecStart=/usr/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target'''
+                    service_path = Path('/etc/systemd/system/kindpos.service')
+                    service_path.write_text(service)
+                    subprocess.run(['systemctl', 'daemon-reload'], check=True)
+                    subprocess.run(['systemctl', 'enable', 'kindpos'], check=True)
+
+                messagebox.showinfo('Success', 'Autostart configured successfully!')
+                self.next_step()
+            except Exception as e:
+                messagebox.showerror('Error', f'Failed to configure autostart: {e}')
+
+        self.button_frame(next_cmd=do_autostart)
+
+    def show_complete(self):
+        """COMPLETE step."""
+        title = tk.Label(self.main_frame, text='INSTALLATION COMPLETE',
+                        bg=COLORS['bg'], fg=COLORS['green'],
+                        font=('Courier New', 14, 'bold'))
+        title.pack(pady=20)
+
+        body = tk.Label(self.main_frame,
+                       text='KINDpos backend is ready!\\n\\n'
+                            'Start the server with:\\n'
+                            '  cd backend && uvicorn app.main:app --reload\\n\\n'
+                            'Then navigate to http://localhost:8000\\n\\n'
+                            'For production, use systemd (Linux) or\\n'
+                            'Task Scheduler (Windows) for autostart.',
+                       bg=COLORS['bg'], fg=COLORS['text'],
+                       font=('Courier New', 10), justify=tk.LEFT)
+        body.pack(pady=20, fill=tk.BOTH, expand=True)
+
+        exit_btn = tk.Button(self.main_frame, text='EXIT',
+                            command=self.root.quit,
+                            bg=COLORS['green'], fg=COLORS['well'],
+                            font=('Courier New', 10, 'bold'), padx=40, pady=10)
+        exit_btn.pack(pady=20)
+
+    def button_frame(self, next_cmd=None, show_back=True):
+        """Create navigation buttons."""
+        btn_frame = tk.Frame(self.main_frame, bg=COLORS['bg'])
+        btn_frame.pack(fill=tk.X, pady=(20, 0), side=tk.BOTTOM)
+
+        if show_back and self.step > 0:
+            back_btn = tk.Button(btn_frame, text='← BACK', command=self.prev_step,
+                                bg=COLORS['border'], fg=COLORS['text'],
+                                font=('Courier New', 10, 'bold'), padx=20, pady=8)
+            back_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        if next_cmd and self.step < len(self.steps) - 1:
+            next_btn = tk.Button(btn_frame, text='NEXT →', command=next_cmd,
+                                bg=COLORS['green'], fg=COLORS['well'],
+                                font=('Courier New', 10, 'bold'), padx=20, pady=8)
+            next_btn.pack(side=tk.RIGHT)
+
+    def next_step(self):
+        if self.step < len(self.steps) - 1:
+            self.step += 1
+            self.show_step()
+
+    def prev_step(self):
+        if self.step > 0:
+            self.step -= 1
+            self.show_step()
+
+if __name__ == '__main__':
+    root = tk.Tk()
+    wizard = InstallerWizard(root)
+    root.mainloop()
+`;
+
+document.getElementById('downloadBtn').addEventListener('click', function() {
+  const blob = new Blob([INSTALLER_CONTENT], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), {
+    href: url,
+    download: 'kindpos_installer.py'
+  });
+  a.click();
+  URL.revokeObjectURL(url);
+});
+</script>
+
+</body>
+</html>
