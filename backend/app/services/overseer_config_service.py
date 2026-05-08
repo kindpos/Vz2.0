@@ -367,7 +367,7 @@ class OverseerConfigService:
                 existing.update(payload)
                 groups[gid] = existing
 
-        # Apply individual modifier lifecycle events (86, deactivate, price change)
+        # Apply individual modifier lifecycle events (86, deactivate, price change, deletion)
         # on top of the group projection so the API reflects real-time atom state.
         lifecycle_types = [
             EventType.MODIFIER_86ED,
@@ -375,6 +375,7 @@ class OverseerConfigService:
             EventType.MODIFIER_DEACTIVATED,
             EventType.MODIFIER_REACTIVATED,
             EventType.MODIFIER_PRICE_CHANGED,
+            EventType.MODIFIER_DELETED,
         ]
         lifecycle: list = []
         for et in lifecycle_types:
@@ -385,20 +386,28 @@ class OverseerConfigService:
                 mid = e.payload.get("modifier_id")
                 if not mid:
                     continue
-                for g in groups.values():
-                    for mod in g.get("modifiers", []):
-                        if not isinstance(mod, dict) or mod.get("modifier_id") != mid:
-                            continue
-                        if e.event_type == EventType.MODIFIER_86ED:
-                            mod["is_86d"] = True
-                        elif e.event_type == EventType.MODIFIER_86_CLEARED:
-                            mod["is_86d"] = False
-                        elif e.event_type == EventType.MODIFIER_DEACTIVATED:
-                            mod["active"] = False
-                        elif e.event_type == EventType.MODIFIER_REACTIVATED:
-                            mod["active"] = True
-                        elif e.event_type == EventType.MODIFIER_PRICE_CHANGED:
-                            mod["price"] = e.payload.get("new_price", mod.get("price"))
+                if e.event_type == EventType.MODIFIER_DELETED:
+                    for g in groups.values():
+                        g['modifiers'] = [
+                            m for m in g.get('modifiers', [])
+                            if not (isinstance(m, dict) and
+                                    m.get('modifier_id') == mid)
+                        ]
+                else:
+                    for g in groups.values():
+                        for mod in g.get("modifiers", []):
+                            if not isinstance(mod, dict) or mod.get("modifier_id") != mid:
+                                continue
+                            if e.event_type == EventType.MODIFIER_86ED:
+                                mod["is_86d"] = True
+                            elif e.event_type == EventType.MODIFIER_86_CLEARED:
+                                mod["is_86d"] = False
+                            elif e.event_type == EventType.MODIFIER_DEACTIVATED:
+                                mod["active"] = False
+                            elif e.event_type == EventType.MODIFIER_REACTIVATED:
+                                mod["active"] = True
+                            elif e.event_type == EventType.MODIFIER_PRICE_CHANGED:
+                                mod["price"] = e.payload.get("new_price", mod.get("price"))
 
         result = [ModifierGroup(**g) for g in groups.values()]
         cache.set(seq, result)
