@@ -1647,7 +1647,7 @@ const openPoolModal = (pool, tabBody) => {
     footerBtns.push(button({
         label: isEdit ? 'Save Changes' : 'Create Pool',
         variant: 'primary',
-        onClick: () => {
+        onClick: async () => {
             const trimmedName = (nameF.input.value || '').trim();
             if (!trimmedName) {
                 showToast('Pool name is required.', 'error');
