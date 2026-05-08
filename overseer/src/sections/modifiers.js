@@ -680,13 +680,26 @@ const buildModifierAddPanel = () => {
         const name = nameInput.value.trim();
         const priceVal = priceInput.getValue();
         if (!name) { showToast('Name is required', 'error'); return; }
+        const modifierId = crypto.randomUUID();
         try {
-            const result = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: crypto.randomUUID(), name, price: priceVal } }]);
+            const result = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: modifierId, name, price: priceVal } }]);
             if (!result.ok) { showToast('Failed to create modifier', 'error'); return; }
             _state.addingModifier = false;
-            await refreshAll();
+            try {
+                await refreshAll();
+                const createdModifier = _state.modifiers.find(m => m.modifier_id === modifierId);
+                if (!createdModifier) {
+                    console.warn('[Modifiers] Created modifier not found in list after refresh. Expected ID:', modifierId);
+                    console.warn('[Modifiers] Current list:', _state.modifiers.map(m => m.modifier_id));
+                }
+            } catch (refreshErr) {
+                console.error('[Modifiers] Refresh failed after create:', refreshErr);
+                showToast('Failed to refresh modifiers list', 'error');
+                return;
+            }
             showToast('Modifier created');
         } catch (e) {
+            console.error('[Modifiers] Create failed:', e);
             showToast('Failed to create modifier', 'error');
         }
     }));
@@ -1217,8 +1230,14 @@ const refreshAll = async () => {
             apiGet('/api/v1/modifiers'),
             apiGet('/api/v1/options'),
         ]);
-        _state.modifiers = (modifiers || []).slice();
-        _state.options = (options || []).slice();
+        _state.modifiers = Array.isArray(modifiers) ? modifiers.slice() : [];
+        _state.options = Array.isArray(options) ? options.slice() : [];
+        if (!Array.isArray(modifiers)) {
+            console.warn('[Modifiers] API response was not an array:', modifiers);
+        }
+        if (!Array.isArray(options)) {
+            console.warn('[Modifiers] Options response was not an array:', options);
+        }
     } catch (e) {
         console.error('[Modifiers] Refresh failed:', e);
         _state.loadError = true;
