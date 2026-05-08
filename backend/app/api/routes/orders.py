@@ -258,6 +258,14 @@ class TipAdjustmentResponse(BaseModel):
     adjusted_by: Optional[str] = None
 
 
+class RefundResponse(BaseModel):
+    """Single refund applied against a payment."""
+    payment_id: str
+    amount: str
+    reason: Optional[str] = None
+    refunded_at: str
+
+
 class PaymentResponse(BaseModel):
     """Response model for a payment."""
     payment_id: str
@@ -284,6 +292,7 @@ class OrderResponse(BaseModel):
     status: str
     items: list[OrderItemResponse]
     payments: list[PaymentResponse] = []
+    refunds: list[RefundResponse] = []
     gross_subtotal: Decimal
     subtotal: Decimal
     discount_total: Decimal
@@ -382,6 +391,15 @@ class OrderResponse(BaseModel):
             total=order.total,
             amount_paid=money_round(order.amount_paid),
             balance_due=order.balance_due,
+            refunds=[
+                RefundResponse(
+                    payment_id=r["payment_id"],
+                    amount=str(r["amount"]),
+                    reason=r.get("reason"),
+                    refunded_at=r["refunded_at"].isoformat() if r["refunded_at"] else "",
+                )
+                for r in getattr(order, "refunds", [])
+            ],
             paid_seats=order.paid_seats,
             created_at=order.created_at,
         )
