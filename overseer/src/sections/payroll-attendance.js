@@ -408,11 +408,12 @@ const openTemplateModal = (template, tabBody) => {
             label: 'Delete',
             variant: 'danger',
             onClick: async () => {
-                _shiftTemplates = _shiftTemplates.filter(t => t.id !== template.id);
-                pushChanges([{
+                const result = await pushChanges([{
                     event_type: 'shift.template_deleted',
                     payload: { template_id: template.id },
-                }]).catch(() => {});
+                }]);
+                if (!result.ok) { showToast('Failed to delete template', 'error'); return; }
+                _shiftTemplates = _shiftTemplates.filter(t => t.id !== template.id);
                 modalRef.close();
                 showToast('Template deleted', 'success');
                 if (tabBody) renderTemplatesTab(tabBody);
@@ -449,14 +450,7 @@ const openTemplateModal = (template, tabBody) => {
                 end:   draft.end,
             };
 
-            if (isEdit) {
-                const idx = _shiftTemplates.findIndex(t => t.id === template.id);
-                if (idx >= 0) _shiftTemplates[idx] = next;
-            } else {
-                _shiftTemplates.push(next);
-            }
-
-            pushChanges([{
+            const result = await pushChanges([{
                 event_type: isEdit ? 'shift.template_updated' : 'shift.template_created',
                 payload: {
                     template_id: next.id,
@@ -466,7 +460,15 @@ const openTemplateModal = (template, tabBody) => {
                     end:   next.end,
                     hours: _computeTemplateHours(next.start, next.end),
                 },
-            }]).catch(() => {});
+            }]);
+            if (!result.ok) { showToast('Failed to save template', 'error'); return; }
+
+            if (isEdit) {
+                const idx = _shiftTemplates.findIndex(t => t.id === template.id);
+                if (idx >= 0) _shiftTemplates[idx] = next;
+            } else {
+                _shiftTemplates.push(next);
+            }
 
             modalRef.close();
             showToast(isEdit ? 'Template updated' : 'Template created', 'success');
@@ -807,7 +809,7 @@ const exportPayroll = async (formatId) => {
     const summary = PAYROLL_SUMMARY.laborSummary || {};
     const employees = PAYROLL_SUMMARY.employees || [];
     try {
-        await pushChanges([{
+        const result = await pushChanges([{
             event_type: 'payroll.exported',
             payload: {
                 format: formatId,
@@ -818,6 +820,7 @@ const exportPayroll = async (formatId) => {
                 total_labor: summary.totalLabor,
             },
         }]);
+        if (!result.ok) { showToast('Export failed', 'error'); return; }
         const label = formatId === 'adp' ? 'ADP' : formatId.toUpperCase();
         showToast(`Payroll exported (${label})`, 'success');
     } catch (e) {
@@ -1175,10 +1178,11 @@ const openTipoutRuleModal = (rule, tabBody) => {
                 categories: draft.calculation_base === 'Net Sales' ? draft.categories.slice() : [],
             };
             try {
-                await pushChanges([{
+                const result = await pushChanges([{
                     event_type: isEdit ? 'tipout.rule_updated' : 'tipout.rule_created',
                     payload,
                 }]);
+                if (!result.ok) { showToast('Save failed', 'error'); return; }
                 showToast(isEdit ? 'Rule updated' : 'Rule created', 'success');
                 modalRef.close();
                 renderTipoutTab(tabBody);
@@ -1218,10 +1222,11 @@ const confirmDeleteTipoutRule = (rule, tabBody) => {
         variant: 'danger',
         onClick: async () => {
             try {
-                await pushChanges([{
+                const result = await pushChanges([{
                     event_type: 'tipout.rule_deleted',
                     payload: { rule_id: rule.rule_id },
                 }]);
+                if (!result.ok) { showToast('Delete failed', 'error'); return; }
                 showToast('Rule deleted', 'success');
                 modalRef.close();
                 renderTipoutTab(tabBody);
@@ -1665,17 +1670,18 @@ const openPoolModal = (pool, tabBody) => {
                 } : null,
             };
 
+            const result = await pushChanges([{
+                event_type: isEdit ? 'tipout.pool_updated' : 'tipout.pool_created',
+                payload,
+            }]);
+            if (!result.ok) { showToast('Failed to save pool', 'error'); return; }
+
             if (isEdit) {
                 const idx = _tipPools.findIndex(p => p.pool_id === pool.pool_id);
                 if (idx >= 0) _tipPools[idx] = { ...payload };
             } else {
                 _tipPools.push({ ...payload });
             }
-
-            pushChanges([{
-                event_type: isEdit ? 'tipout.pool_updated' : 'tipout.pool_created',
-                payload,
-            }]).catch(() => {});
 
             showToast(isEdit ? 'Pool updated' : 'Pool created', 'success');
             modalRef.close();
@@ -1710,12 +1716,13 @@ const confirmDeletePool = (pool, tabBody) => {
             button({
                 label: 'Delete Pool',
                 variant: 'danger',
-                onClick: () => {
-                    _tipPools = _tipPools.filter(p => p.pool_id !== pool.pool_id);
-                    pushChanges([{
+                onClick: async () => {
+                    const result = await pushChanges([{
                         event_type: 'tipout.pool_deleted',
                         payload: { pool_id: pool.pool_id },
-                    }]).catch(() => {});
+                    }]);
+                    if (!result.ok) { showToast('Failed to delete pool', 'error'); return; }
+                    _tipPools = _tipPools.filter(p => p.pool_id !== pool.pool_id);
                     showToast('Pool deleted', 'success');
                     modalRef.close();
                     renderPoolsTab(tabBody);
@@ -2440,7 +2447,7 @@ const openEditShiftModal = (shift) => {
             }
 
             try {
-                await pushChanges([{
+                const result = await pushChanges([{
                     event_type: 'shift.time_adjusted',
                     payload: {
                         shift_id: shift.shift_id,
@@ -2454,6 +2461,7 @@ const openEditShiftModal = (shift) => {
                         manager_pin_verified: true,
                     },
                 }]);
+                if (!result.ok) { showToast('Failed to adjust shift times', 'error'); return; }
                 modalRef.close();
                 const label = (shift.name || '').split(' ')[0] || 'shift';
                 showToast(`Shift times adjusted for ${label}.`, 'success');

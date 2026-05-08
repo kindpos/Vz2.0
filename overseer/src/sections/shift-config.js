@@ -142,7 +142,9 @@ const _pendingEvents = [];
 const emitEvent = (eventType, payload) => {
     const event = { event_type: eventType, payload };
     _pendingEvents.push(event);
-    pushChanges([event]).catch(e => console.warn("[Overseer] Event push failed:", e));
+    pushChanges([event]).then(result => {
+        if (!result.ok) console.warn("[Overseer] Event push failed:", result.error);
+    }).catch(e => console.warn("[Overseer] Event push failed:", e));
     return event;
 }
 
