@@ -379,7 +379,9 @@ async def get_order_or_404(ledger: EventLedger, order_id: str) -> Order:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Order {order_id} not found"
         )
-    order = project_order(events)
+    store_config_service = StoreConfigService(ledger)
+    tax_rate = await store_config_service.get_tax_rate()
+    order = project_order(events, tax_rate=tax_rate)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -579,7 +581,9 @@ async def create_order(
 
     # Return the projected order
     events = await ledger.get_events_by_correlation(order_id)
-    order = project_order(events)
+    store_config_service = StoreConfigService(ledger)
+    tax_rate = await store_config_service.get_tax_rate()
+    order = project_order(events, tax_rate=tax_rate)
     return OrderResponse.from_order(order)
 
 
@@ -1825,15 +1829,17 @@ async def apply_discount(
 
     # Idempotency: if caller supplies a transaction_id that already landed, return
     # the current order without appending a second DISCOUNT_APPROVED event.
+    store_config_service = StoreConfigService(ledger)
+    tax_rate = await store_config_service.get_tax_rate()
+
     if request.transaction_id:
         for e in events:
             if (e.event_type == EventType.DISCOUNT_APPROVED
                     and e.payload.get("transaction_id") == request.transaction_id):
-                order = project_order(events)
+                order = project_order(events, tax_rate=tax_rate)
                 return OrderResponse.from_order(order)
 
-    from app.core.projections import project_order as _po
-    order = _po(events)
+    order = project_order(events, tax_rate=tax_rate)
     if not order:
         raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
 
@@ -2012,10 +2018,13 @@ async def close_batch(ledger: EventLedger = Depends(get_ledger)):
     closed_count = 0
     closed_order_ids = []
 
+    store_config_service = StoreConfigService(ledger)
+    tax_rate = await store_config_service.get_tax_rate()
+
     voided_at_close = 0
     for oid in open_ids:
         events = await ledger.get_events_by_correlation(oid)
-        order = project_order(events)
+        order = project_order(events, tax_rate=tax_rate)
         if not order or order.status in ("closed", "voided"):
             # Already closed/voided between get_open_orders and now — skip
             continue
@@ -2172,9 +2181,13 @@ async def _do_close_day(body, ledger):
     # Close any remaining open orders
     open_ids = await get_open_orders(ledger)
     closed_count = 0
+
+    store_config_service = StoreConfigService(ledger)
+    tax_rate = await store_config_service.get_tax_rate()
+
     for oid in open_ids:
         events = await ledger.get_events_by_correlation(oid)
-        order = project_order(events)
+        order = project_order(events, tax_rate=tax_rate)
         if not order or order.status in ("closed", "voided"):
             # Already closed/voided between get_open_orders and now — skip
             continue
