@@ -161,7 +161,7 @@ function buildTestState(sceneDef, overrides = {}) {
   base.seats = [{
     id:     'S-001',
     number: 1,
-    items:  [{ id: 'it-1', name: 'Pizza', price: 12.00, qty: 1 }],
+    items:  [{ id: 'it-1', item_id: 'it-1', name: 'Pizza', price: 12.00, qty: 1 }],
   }];
   return Object.assign(base, overrides);
 }
@@ -229,8 +229,8 @@ describe('terminal/scenes/check-overview — discount flow', () => {
     // Both must be set AFTER render: render() resets selectedItems (line 325)
     // and overwrites state.seats via orderToSeats(null,1) (line 335) which
     // the mock returns as [].
-    state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
-    state.selectedItems = { '0:0': true };
+    state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', item_id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
+    state.selectedItems = { 'S-001:it-1': true };
 
     sceneDef.__handlers.handleDiscount(state);
 
@@ -245,8 +245,8 @@ describe('terminal/scenes/check-overview — discount flow', () => {
 
   it('manager-pin onConfirm triggers disc-select interrupt', () => {
     const { state } = renderScene();
-    state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
-    state.selectedItems = { '0:0': true };
+    state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', item_id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
+    state.selectedItems = { 'S-001:it-1': true };
 
     sceneDef.__handlers.handleDiscount(state);
 
@@ -289,8 +289,8 @@ describe('terminal/scenes/check-overview — discount flow', () => {
 
   it('manager-pin cancel does not open disc-select', () => {
     const { state } = renderScene();
-    state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
-    state.selectedItems = { '0:0': true };
+    state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', item_id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
+    state.selectedItems = { 'S-001:it-1': true };
 
     sceneDef.__handlers.handleDiscount(state);
 
@@ -384,7 +384,7 @@ describe('terminal/scenes/check-overview — Bug 1: void-item timer cancelled on
   it('DELETE does not fire after scene unmounts before 4.2 s elapses', async () => {
     const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'order-b1' };
     state.seats         = [{ id: 'S-001', number: 1, items: [{ item_id: 'item-1', name: 'Burger', price: 10 }] }];
-    state.selectedItems = { '0:0': true };
+    state.selectedItems = { 'S-001:item-1': true };
     state.topAreaEl     = document.createElement('div');
 
     sceneDef.__handlers.handleVoid(state);
@@ -1471,11 +1471,11 @@ describe('terminal/scenes/check-overview — selection helpers', () => {
   });
 
   it('getSelectedItemRefs delegates to collectSelectedItemRefs with state.selectedItems', () => {
-    const state = makeState({ selectedItems: { '0:0': true, '1:0': true } });
+    const state = makeState({ selectedItems: { 'S-001:i1': true, 'S-002:i2': true } });
     const refs = sceneDef.__handlers.getSelectedItemRefs(state);
     expect(refs).toEqual(expect.arrayContaining([
-      { seatId: '0', itemId: '0' },
-      { seatId: '1', itemId: '0' },
+      { seatId: 'S-001', itemId: 'i1' },
+      { seatId: 'S-002', itemId: 'i2' },
     ]));
   });
 

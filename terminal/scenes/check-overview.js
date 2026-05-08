@@ -4055,11 +4055,11 @@ function handleVoid(state) {
   // Expand seat selections into item refs (skip already-voided items)
   if (itemRefs.length === 0 && seatIds.length > 0) {
     for (let s = 0; s < seatIds.length; s++) {
-      let sIdx = _seatIdxById(state, seatIds[s]);
-      if (sIdx < 0) continue;
-      for (let j = 0; j < state.seats[sIdx].items.length; j++) {
-        if (state.seats[sIdx].items[j].voided) continue;
-        itemRefs.push({ seatIdx: sIdx, itemIdx: j });
+      const seat = state.seats.find((seat) => seat.id === seatIds[s]);
+      if (!seat) continue;
+      for (let j = 0; j < seat.items.length; j++) {
+        if (seat.items[j].voided) continue;
+        itemRefs.push({ seatId: seat.id, itemId: seat.items[j].item_id });
       }
     }
   }
