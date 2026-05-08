@@ -80,6 +80,7 @@ from app.core.events import (
     payment_initiated,
     payment_confirmed,
     payment_failed,
+    payment_cancelled,
     order_closed,
     order_reopened,
     order_voided,
@@ -1609,6 +1610,7 @@ async def void_order(
 
     # Reverse confirmed card payments on the payment device
     device_void_errors = []
+    reversed_card_payments = []  # Track successfully reversed card payments
     manager = get_payment_manager(ledger)
     await _ensure_devices(manager)
     for p in order.payments:
@@ -1627,6 +1629,9 @@ async def void_order(
                         device_void_errors.append(
                             f"Device void failed for payment {p.payment_id}: {result.status.value}"
                         )
+                    else:
+                        # Device void succeeded — track this payment for ledger cancellation
+                        reversed_card_payments.append(p)
                 except Exception as e:
                     device_void_errors.append(
                         f"Device void error for payment {p.payment_id}: {str(e)}"
@@ -1639,8 +1644,8 @@ async def void_order(
         )
 
     # After device voids succeeded, batch the refund-due events +
-    # order.voided so a crash cannot leave cash refunds appended
-    # without the void event (or vice versa).
+    # payment-cancelled events + order.voided so a crash cannot leave
+    # incomplete state in the ledger. All events land atomically.
     batch_events: list = []
     for p in order.payments:
         if p.status == "confirmed" and p.method == "cash":
@@ -1651,6 +1656,15 @@ async def void_order(
                 amount=p.amount,
                 reason=request.reason or "Order voided after cash payment",
             ))
+    # Emit PAYMENT_CANCELLED for each card payment successfully reversed on device
+    for p in reversed_card_payments:
+        batch_events.append(payment_cancelled(
+            terminal_id=settings.terminal_id,
+            order_id=order_id,
+            payment_id=p.payment_id,
+            reason="void",
+            amount=p.amount,
+        ))
     batch_events.append(order_voided(
         terminal_id=settings.terminal_id,
         order_id=order_id,
