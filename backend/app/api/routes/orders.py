@@ -1782,6 +1782,22 @@ async def merge_orders(
                     half_price=mod.get("half_price"),
                 ))
 
+        # Copy source discounts to the target so they survive the source void.
+        if src.discount_total > Decimal("0.00"):
+            src_disc_type = (src.discounts[0].get("type") or "order") if src.discounts else "order"
+            batch_events.append(create_event(
+                event_type=EventType.DISCOUNT_APPROVED,
+                terminal_id=settings.terminal_id,
+                correlation_id=order_id,
+                payload={
+                    "order_id": order_id,
+                    "discount_id": str(uuid.uuid4()),
+                    "discount_type": src_disc_type,
+                    "amount": src.discount_total,
+                    "reason": f"merged_from:{src.order_id}",
+                },
+            ))
+
         # Source timeline: emit CHECK_MERGED BEFORE the ORDER_VOIDED so
         # the source history reads alive → merged → voided, not
         # alive → voided → (audit arrives after death).
@@ -2453,6 +2469,7 @@ async def split_by_seat(
     # audit event.
     operation_id = f"op_{uuid.uuid4().hex[:8]}"
     child_orders = []
+    _child_subtotals: list[Decimal] = []  # parallel to child_orders for discount distribution
     batch_events: list = []
     for seat_num, items in sorted(seat_items.items()):
         child_id = f"order_{uuid.uuid4().hex[:8]}"
@@ -2522,11 +2539,52 @@ async def split_by_seat(
                 reason=f"Split to seat {seat_num} check",
             ))
 
+        _child_subtotals.append(sum((item.subtotal for item in items), Decimal("0.00")))
         child_orders.append({
             "order_id": child_id,
             "seat": seat_num,
             "item_count": len(items),
         })
+
+    # Distribute any parent discount proportionally to child orders.
+    # Last child receives the remainder to prevent penny loss.
+    if order.discount_total > Decimal("0.00") and order.gross_subtotal > Decimal("0.00"):
+        total_split_sub = sum(_child_subtotals)
+        if total_split_sub > Decimal("0.00"):
+            parent_disc = order.discount_total
+            disc_type = (order.discounts[0].get("type") or "order") if order.discounts else "order"
+            shares: list[Decimal] = []
+            for idx, (c, child_sub) in enumerate(zip(child_orders, _child_subtotals)):
+                if idx < len(child_orders) - 1:
+                    share = money_round(parent_disc * child_sub / total_split_sub)
+                else:
+                    share = money_round(parent_disc - sum(shares))
+                shares.append(share)
+            for c, share in zip(child_orders, shares):
+                if share > Decimal("0.00"):
+                    batch_events.append(create_event(
+                        event_type=EventType.DISCOUNT_APPROVED,
+                        terminal_id=settings.terminal_id,
+                        correlation_id=c["order_id"],
+                        payload={
+                            "order_id": c["order_id"],
+                            "discount_id": str(uuid.uuid4()),
+                            "discount_type": disc_type,
+                            "amount": share,
+                            "reason": f"split_from:{order_id}",
+                        },
+                    ))
+            # Void all parent discounts — they now live on the children.
+            for disc in order.discounts:
+                batch_events.append(discount_voided(
+                    terminal_id=settings.terminal_id,
+                    order_id=order_id,
+                    amount=Decimal(str(disc.get("amount", 0))),
+                    voided_by="system",
+                    discount_type=disc.get("type"),
+                    discount_id=disc.get("discount_id"),
+                    reason=f"split_to_children:{order_id}",
+                ))
 
     # First-class audit event for the split operation. One emission per
     # affected order (parent + each child) with a shared operation_id so
