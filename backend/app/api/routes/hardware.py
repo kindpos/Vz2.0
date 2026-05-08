@@ -74,6 +74,7 @@ async def _ensure_db():
                 register_id TEXT NOT NULL DEFAULT '',
                 tpn         TEXT NOT NULL DEFAULT '',
                 auth_key    TEXT NOT NULL DEFAULT '',
+                is_active   INTEGER NOT NULL DEFAULT 1,
                 saved_at    TEXT NOT NULL
             )
         """)
@@ -86,6 +87,8 @@ async def _ensure_db():
             await db.execute("ALTER TABLE devices ADD COLUMN tpn TEXT NOT NULL DEFAULT ''")
         if 'auth_key' not in cols:
             await db.execute("ALTER TABLE devices ADD COLUMN auth_key TEXT NOT NULL DEFAULT ''")
+        if 'is_active' not in cols:
+            await db.execute("ALTER TABLE devices ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
         if 'categories' not in cols:
             await db.execute("ALTER TABLE devices ADD COLUMN categories TEXT NOT NULL DEFAULT ''")
         if 'terminal_id' not in cols:
