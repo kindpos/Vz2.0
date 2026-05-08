@@ -217,6 +217,57 @@ def project_menu(events: List[Event]) -> MenuState:
                     ]
             _bump_menu_version(state)
 
+        elif event.event_type == EventType.MODIFIER_PRICE_CHANGED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                new_price = payload.get('new_price', modifiers_map[mid].get('price'))
+                modifiers_map[mid]['price'] = new_price
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['price'] = new_price
+            _bump_menu_version(state)
+
+        elif event.event_type == EventType.MODIFIER_DEACTIVATED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid]['active'] = False
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['active'] = False
+            _bump_menu_version(state)
+
+        elif event.event_type == EventType.MODIFIER_REACTIVATED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid]['active'] = True
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['active'] = True
+            _bump_menu_version(state)
+
+        elif event.event_type == EventType.MODIFIER_86ED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid]['is_86d'] = True
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['is_86d'] = True
+            _bump_menu_version(state)
+
+        elif event.event_type == EventType.MODIFIER_86_CLEARED:
+            mid = payload.get('modifier_id')
+            if mid and mid in modifiers_map:
+                modifiers_map[mid]['is_86d'] = False
+                for grp in modifier_groups_map.values():
+                    for mod in grp.get('modifiers', []):
+                        if isinstance(mod, dict) and mod.get('modifier_id') == mid:
+                            mod['is_86d'] = False
+            _bump_menu_version(state)
+
         elif event.event_type == EventType.MODIFIER_GROUP_MODIFIER_ADDED:
             gid = payload.get('group_id')
             mid = payload.get('modifier_id')
