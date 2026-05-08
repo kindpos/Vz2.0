@@ -69,6 +69,10 @@ import {
 } from './seats.js';
 import './column-editor.js';
 
+// ROUND_HALF_UP: matches backend money_round (Decimal ROUND_HALF_UP)
+function _roundCents(n) { const c = (n || 0) * 100; return Math.round(c + Number.EPSILON) / 100; }
+function _ceilCents(n)  { const c = (n || 0) * 100; return Math.ceil(c)  / 100; }
+
 // ── Inject invisible scrollbar style ──
 (() => {
   if (document.getElementById('co-scroll-style')) return;
@@ -103,15 +107,14 @@ function seatTotal(seat, state) {
   // accumulates all per-item amounts, so don't also sum _itemDiscounts.
   const sd = seat.id && state._seatDiscounts ? state._seatDiscounts[seat.id] : null;
   if (sd && sd.amount) {
-    // ROUND_HALF_UP: matches backend money_round (Decimal ROUND_HALF_UP)
-    return Math.round((base - sd.amount) * 100 + Number.EPSILON) / 100;
+    return _roundCents(base - sd.amount);
   }
   // Item-level discounts (no seat-level entry means this is a targeted discount)
   if (state._itemDiscounts && seat.items) {
     for (let _i = 0; _i < seat.items.length; _i++) {
       let _id = state._itemDiscounts[seat.items[_i].item_id];
       if (_id && _id.amount) {
-        base = Math.round((base - _id.amount) * 100 + Number.EPSILON) / 100;
+        base = _roundCents(base - _id.amount);
       }
     }
   }
