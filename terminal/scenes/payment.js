@@ -1314,17 +1314,23 @@ async function handleConfirm() {
       if (seatNumbers.length === 0) seatNumbers = null;
     }
 
+    const _scAmt = Number(
+      (_state.sceneData && _state.sceneData.order_type_modifier_amt)
+      || 0
+    );
+
     if (isCash) {
       const txId = `cash-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
       if (_state._cashTxId) return;
       _state._cashTxId = txId;
       const cashBody = {
-          order_id:        _state.sceneData.orderId,
-          amount:          paymentAmount,
-          tip:             0.0,
-          payment_method:  'cash',
-          transaction_id:  _state._pendingTxId,
-          idempotency_key: txId,
+          order_id:              _state.sceneData.orderId,
+          amount:                paymentAmount,
+          tip:                   0.0,
+          payment_method:        'cash',
+          transaction_id:        _state._pendingTxId,
+          idempotency_key:       txId,
+          service_charge_amount: _scAmt,
       };
       if (seatNumbers) cashBody.seat_numbers = seatNumbers;
       let res = await fetchWithTimeout(API + '/payments/cash', {
@@ -1347,10 +1353,11 @@ async function handleConfirm() {
       const cardTimeout = setTimeout(() => { controller.abort(); }, 95000);
 
       const saleBody = {
-          transaction_id: _state._pendingTxId,
-          order_id:       _state.sceneData.orderId,
-          amount:         paymentAmount,
-          terminal_id:    'terminal_01',
+          transaction_id:        _state._pendingTxId,
+          order_id:              _state.sceneData.orderId,
+          amount:                paymentAmount,
+          terminal_id:           'terminal_01',
+          service_charge_amount: _scAmt,
       };
       if (seatNumbers) saleBody.seat_numbers = seatNumbers;
       // Intentional bare fetch() — card payments need a 95 s timeout and
