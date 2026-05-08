@@ -28,17 +28,6 @@ HARDWARE_DB_PATH = os.path.join(
     'hardware_config.db'
 )
 
-# ── Fallback IPs (used if hardware_config.db has no entry) ────────────────────
-FALLBACK_IPS: Dict[str, str] = {
-    "DEFAULT_RECEIPT": "10.0.0.186",
-    "DEFAULT_KITCHEN": "10.0.0.19",
-}
-
-# Type-based fallback when a MAC-registered printer's IP can't be resolved
-_TYPE_FALLBACK_IPS: Dict[str, str] = {
-    "kitchen": "10.0.0.19",
-    "receipt": "10.0.0.186",
-}
 
 PRINTER_PORT = 9100
 RETRY_DELAYS = [0, 5, 15, 30]
@@ -290,15 +279,9 @@ class PrintDispatcher:
 
     async def _resolve_printer(self, printer_mac: str) -> tuple[str, int, str]:
         """
-        Resolve a printer MAC to (ip, port, type).
-        Falls back to legacy DEFAULT_* sentinel keys, then type-based defaults.
+        Resolve a printer MAC to (ip, port, type) from hardware_config.db.
+        hardware_config.db is the only source of printer IPs.
         """
-        # Legacy sentinel keys (used before MAC-as-identity was wired)
-        if printer_mac in FALLBACK_IPS:
-            ip = FALLBACK_IPS[printer_mac]
-            ptype = "kitchen" if "KITCHEN" in printer_mac else "receipt"
-            return ip, PRINTER_PORT, ptype
-
         try:
             async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
                 async with db.execute(
@@ -310,20 +293,12 @@ class PrintDispatcher:
                         ip, port, ptype = row
                         if ip:
                             return ip, (port or PRINTER_PORT), (ptype or "receipt")
-                        # IP missing but record exists — type-based IP fallback
-                        if ptype and ptype in _TYPE_FALLBACK_IPS:
-                            logger.warning(f"No IP for {printer_mac}, using {ptype} type fallback")
-                            return _TYPE_FALLBACK_IPS[ptype], (port or PRINTER_PORT), ptype
+                        raise ValueError(f"Printer {printer_mac} found but has no IP configured")
+                    raise ValueError(f"Printer {printer_mac} not found in hardware_config.db")
+        except ValueError:
+            raise
         except Exception as e:
-            logger.warning(f"hardware_config.db lookup failed for {printer_mac}: {e}")
-
-        # Last resort: infer type from MAC string (unlikely but safe)
-        for ttype, ip in _TYPE_FALLBACK_IPS.items():
-            if ttype in printer_mac.lower():
-                logger.warning(f"Using type-name fallback for {printer_mac} → {ip}")
-                return ip, PRINTER_PORT, ttype
-
-        raise ValueError(f"No IP found for printer MAC: {printer_mac}")
+            raise ValueError(f"hardware_config.db lookup failed for {printer_mac}: {e}")
 
     # ── Network send ──────────────────────────────────────────────────────────
 
