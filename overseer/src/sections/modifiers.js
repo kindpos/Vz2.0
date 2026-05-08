@@ -1220,12 +1220,6 @@ const refreshAll = async () => {
         ]);
         _state.modifiers = Array.isArray(modifiers) ? modifiers.slice() : [];
         _state.options = Array.isArray(options) ? options.slice() : [];
-        if (!Array.isArray(modifiers)) {
-            console.warn('[Modifiers] API response was not an array:', modifiers);
-        }
-        if (!Array.isArray(options)) {
-            console.warn('[Modifiers] Options response was not an array:', options);
-        }
     } catch (e) {
         console.error('[Modifiers] Refresh failed:', e);
         _state.loadError = true;
