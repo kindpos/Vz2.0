@@ -1119,11 +1119,31 @@ function _wireLongPress(el, onFire, holdMs) {
   });
 }
 
+
+// Determine which action buttons should be enabled based on order state.
+function getButtonStates(state) {
+  const order   = state.order;
+  const status  = order?.status ?? 'open';
+  const paid    = status === 'paid' || status === 'closed';
+  const voided  = status === 'voided';
+  const hasPmt  = (order?.amount_paid ?? 0) > 0;
+  const multiSeat = activeSeatCount(state.seats, state.paidSeats) > 1;
+  const inPayment = state._paymentInProgress ?? false;
+
+  return {
+    PAY:    !paid && !voided && !inPayment,
+    VOID:   !paid && !voided && !inPayment,
+    DISC:   !paid && !voided && !inPayment,
+    MANAGE: !paid && !voided && !inPayment && multiSeat,
+  };
+}
+
 function renderActionBar(state) {
   const barZone = state.bottomBarEl;
   if (!barZone) return;
   barZone.innerHTML = '';
 
+  const buttonStates    = getButtonStates(state);
   const order           = state.order || {};
   let discount        = getCashDiscount();
   const managerDiscount = order.manager_discount_total || 0;
@@ -1339,6 +1359,11 @@ function renderActionBar(state) {
     onClick: () => handlePay(state, state._params || {}),
   });
   payBtn.style.cssText += 'grid-column:1;grid-row:1/3;';
+  if (!buttonStates.PAY) {
+    payBtn.style.opacity = '0.35';
+    payBtn.style.pointerEvents = 'none';
+    payBtn.onclick = null;
+  }
 
   const discBtn = buildChamferButton({
     label: 'Disc', fontSize: '20px', isPrimary: false,
@@ -1346,6 +1371,11 @@ function renderActionBar(state) {
     onClick: () => handleDiscount(state),
   });
   discBtn.style.cssText += 'grid-column:2;grid-row:1;';
+  if (!buttonStates.DISC) {
+    discBtn.style.opacity = '0.35';
+    discBtn.style.pointerEvents = 'none';
+    discBtn.onclick = null;
+  }
 
   const voidBtn = buildChamferButton({
     label: 'Void', fontSize: '20px', isPrimary: false,
@@ -1353,6 +1383,11 @@ function renderActionBar(state) {
     onClick: () => handleVoid(state),
   });
   voidBtn.style.cssText += 'grid-column:2;grid-row:2;';
+  if (!buttonStates.VOID) {
+    voidBtn.style.opacity = '0.35';
+    voidBtn.style.pointerEvents = 'none';
+    voidBtn.onclick = null;
+  }
 
   leftQuad.appendChild(payBtn);
   leftQuad.appendChild(discBtn);
@@ -1370,6 +1405,11 @@ function renderActionBar(state) {
     onClick: () => openEditSeats(state),
   });
   manageBtn.style.cssText += 'grid-column:1;grid-row:1;';
+  if (!buttonStates.MANAGE) {
+    manageBtn.style.opacity = '0.35';
+    manageBtn.style.pointerEvents = 'none';
+    manageBtn.onclick = null;
+  }
 
   const printBtn = buildChamferButton({
     label: 'Print', fontSize: '20px', isPrimary: false,
