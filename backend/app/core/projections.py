@@ -61,6 +61,7 @@ class Payment:
     tip_adjusted: bool = False  # True once a TIP_ADJUSTED event has been applied
     tax_amount: Decimal = Decimal("0.00")  # Tax captured at payment time
     service_charge_amount: Decimal = Decimal("0.00")  # Service charge amount captured at payment time
+    cash_discount_amount: Decimal = Decimal("0.00")  # Cash discount amount captured at payment time
     seat_numbers: list[int] = field(default_factory=list)  # Seats covered by this payment
     card_last_four: Optional[str] = None  # Last four digits of card; null for cash
 
@@ -198,6 +199,22 @@ class Order:
         )
 
     @property
+    def cash_discount_total(self) -> Decimal:
+        """
+        Sum of cash_discount_amount across confirmed payments.
+        Tracked separately from discount_total (manager/promo).
+        Tax is discounted proportionally — cashTotal =
+        cardTotal x (1 - cashDiscountPct) — so this field
+        captures both the subtotal and tax discount in one value.
+        """
+        return sum(
+            (money_round(Decimal(str(p.cash_discount_amount)))
+             for p in self.payments
+             if p.status == "confirmed"),
+            Decimal("0.00")
+        )
+
+    @property
     def total(self) -> Decimal:
         """Final total (clamped to zero — discount cannot make total negative)."""
         raw = self.subtotal + self.tax + self.surcharge_total
@@ -215,7 +232,9 @@ class Order:
     @property
     def balance_due(self) -> Decimal:
         """Remaining balance."""
-        return money_round(self.total - self.amount_paid)
+        return money_round(
+            self.total - self.amount_paid - self.cash_discount_total
+        )
 
     @property
     def paid_seats(self) -> list[int]:
