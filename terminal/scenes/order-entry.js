@@ -3811,9 +3811,18 @@ function _updateTicketTotals(filteredTicket) {
   // When a filtered view is active, compute totals from visible items only.
   let subtotal = 0;
   const src = filteredTicket || ticket;
+  const summaryItems = [];
   src.forEach((inst) => {
     const modTotal = (inst.mods || []).reduce((s, m) => s + (Number(m.price) || 0), 0);
-    subtotal += (Number(inst.unitPrice) || 0) + modTotal - (Number(inst._discountAmt) || 0);
+    const lineTotal = (Number(inst.unitPrice) || 0) + modTotal - (Number(inst._discountAmt) || 0);
+    subtotal += lineTotal;
+    summaryItems.push({
+      name: inst.name,
+      unitPrice: lineTotal,
+      qty: 1,
+      sent: inst.sent,
+      mods: inst.mods.filter((m) => m.charged || m.name),
+    });
   });
   if (_modPanelItem) {
     const previewMods = (_modPanelItem.mods || []);
@@ -3823,7 +3832,7 @@ function _updateTicketTotals(filteredTicket) {
   const t = computeTotals(subtotal);
   OrderSummary.update({
     checkId: currentCheckNumber || '',
-    skipItems: true,
+    items: summaryItems,
     subtotal: t.subtotal,
     tax: t.tax,
     cardTotal: t.cardTotal,

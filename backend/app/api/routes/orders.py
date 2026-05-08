@@ -245,6 +245,7 @@ class OrderItemResponse(BaseModel):
     modifiers: list[dict]
     subtotal: Decimal
     effective_price: Decimal
+    discount_amount: Decimal = Decimal("0.00")
     added_at: Optional[datetime] = None
     sent_at: Optional[datetime] = None
 
@@ -322,6 +323,7 @@ class OrderResponse(BaseModel):
                 modifiers=item.modifiers,
                 subtotal=money_round(item.subtotal),
                 effective_price=effective_price,
+                discount_amount=money_round(item_discount),
                 added_at=item.added_at,
                 sent_at=item.sent_at,
             ))
@@ -1511,6 +1513,23 @@ async def close_order(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Order has balance due: ${order.balance_due:.2f}"
         )
+
+    # Soft validation: warn if unsent items exist, but don't block the close.
+    unsent = [i for i in order.items if not i.sent_at and not i.split_ref]
+    if unsent:
+        try:
+            import asyncio as _asyncio
+            _loop = _asyncio.get_running_loop()
+            _loop.create_task(_record_diag(
+                category=DiagnosticCategory.FIN,
+                severity=DiagnosticSeverity.WARNING,
+                source="orders.close_order",
+                event_code="FIN-009",
+                message=f"close_order called with {len(unsent)} unsent item(s)",
+                context={"order_id": order_id, "unsent_item_ids": [i.item_id for i in unsent]},
+            ))
+        except RuntimeError:
+            pass
 
     event = order_closed(
         terminal_id=settings.terminal_id,
