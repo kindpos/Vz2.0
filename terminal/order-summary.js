@@ -214,6 +214,26 @@ function _injectScrollStyle() {
 //  HELPERS
 // ═══════════════════════════════════════════════════
 
+const _PREFIX_RX = /^(NO|ADD|SUB|EXTRA|ON SIDE|LITE)\s+/;
+
+function _parsePrefix(name) {
+  if (!name) return { prefix: null, clean: '' };
+  let m = name.match(_PREFIX_RX);
+  if (!m) return { prefix: null, clean: name };
+  return { prefix: m[1], clean: name.slice(m[0].length) };
+}
+
+function _adaptMod(raw) {
+  let pp = _parsePrefix(raw.name || '');
+  return {
+    prefix:    pp.prefix,
+    name:      pp.clean,
+    mandatory: pp.prefix === null,
+    upcharge:  raw.charged ? (Number(raw.price) || 0) : 0,
+    microMods: (raw.children || []).map(_adaptMod),
+  };
+}
+
 function _modRow(mod) {
   const modRow = document.createElement('div');
   modRow.style.cssText = [
@@ -232,6 +252,87 @@ function _modRow(mod) {
   modRow.appendChild(modName);
   modRow.appendChild(modPrice);
   return modRow;
+}
+
+function _renderModLine(mod, categoryColor, indentLevel) {
+  indentLevel = indentLevel || 0;
+  const baseIndent = 16;
+  const nestIndent = 12;
+  const leftPad = baseIndent + (indentLevel * nestIndent);
+
+  const line = document.createElement('div');
+  line.style.cssText = [
+    'display:flex;align-items:center;gap:6px;',
+    `padding:2px 0 2px ${leftPad}px;`,
+    `font-family:${T.fb};`,
+    `font-size:${T.fsB4};`,
+    `font-weight:${T.fwBold};`,
+  ].join('');
+
+  // Determine if mandatory (no prefix) or optional (has prefix)
+  const isMandatory = mod.mandatory === true || mod.prefix === null;
+
+  if (!isMandatory && mod.prefix) {
+    // Optional mod: render mint ↳ arrow in green, text in moon
+    const arrow = document.createElement('span');
+    arrow.textContent = '↳ ';
+    arrow.style.color = T.green;
+    arrow.style.flexShrink = '0';
+    line.appendChild(arrow);
+
+    const modName = document.createElement('span');
+    modName.textContent = mod.name;
+    modName.style.color = T.moon;
+    modName.style.overflow = 'hidden';
+    modName.style.textOverflow = 'ellipsis';
+    modName.style.whiteSpace = 'nowrap';
+    modName.style.flex = '1';
+    modName.style.minWidth = '0';
+    line.appendChild(modName);
+  } else {
+    // Mandatory mod: render with category color, no arrow
+    const modName = document.createElement('span');
+    modName.textContent = mod.name;
+    modName.style.color = categoryColor || T.green;
+    modName.style.overflow = 'hidden';
+    modName.style.textOverflow = 'ellipsis';
+    modName.style.whiteSpace = 'nowrap';
+    modName.style.flex = '1';
+    modName.style.minWidth = '0';
+    line.appendChild(modName);
+  }
+
+  // Add upcharge if present and > 0
+  if (mod.upcharge && Number(mod.upcharge) > 0) {
+    const upchargeSpan = document.createElement('span');
+    upchargeSpan.textContent = `+$${(Number(mod.upcharge)).toFixed(2)}`;
+    upchargeSpan.style.color = T.gold;
+    upchargeSpan.style.flexShrink = '0';
+    line.appendChild(upchargeSpan);
+  }
+
+  return line;
+}
+
+function _renderModLines(mods, categoryColor, indentLevel) {
+  const container = document.createElement('div');
+  if (!mods || mods.length === 0) return container;
+
+  mods.forEach((raw) => {
+    // Adapt the mod if it's in raw format (has a name field but no mandatory field)
+    const mod = (raw.mandatory !== undefined)
+      ? raw
+      : _adaptMod(raw);
+
+    container.appendChild(_renderModLine(mod, categoryColor, indentLevel));
+
+    // Recursively render microMods if they exist
+    if (mod.microMods && mod.microMods.length > 0) {
+      container.appendChild(_renderModLines(mod.microMods, categoryColor, (indentLevel || 0) + 1));
+    }
+  });
+
+  return container;
 }
 
 function _halfCell(mod) {
@@ -402,7 +503,12 @@ function _renderItems(items) {
       })(itemIndex);
     }
 
-    // ── Modifier detail container — always hidden in order-summary, use overlay ──
+    // ── Modifier lines ──
+    if (hasMods) {
+      const categoryColor = item.categoryColor || T.green;
+      const modContainer = _renderModLines(mods, categoryColor, 0);
+      _state._itemScroll.appendChild(modContainer);
+    }
   });
   _state._itemScroll.scrollTop = savedScroll;
 }
