@@ -1514,6 +1514,23 @@ async def close_order(
             detail=f"Order has balance due: ${order.balance_due:.2f}"
         )
 
+    # Soft validation: warn if unsent items exist, but don't block the close.
+    unsent = [i for i in order.items if not i.sent_at and not i.split_ref]
+    if unsent:
+        try:
+            import asyncio as _asyncio
+            _loop = _asyncio.get_running_loop()
+            _loop.create_task(_record_diag(
+                category=DiagnosticCategory.FIN,
+                severity=DiagnosticSeverity.WARNING,
+                source="orders.close_order",
+                event_code="FIN-009",
+                message=f"close_order called with {len(unsent)} unsent item(s)",
+                context={"order_id": order_id, "unsent_item_ids": [i.item_id for i in unsent]},
+            ))
+        except RuntimeError:
+            pass
+
     event = order_closed(
         terminal_id=settings.terminal_id,
         order_id=order_id,
