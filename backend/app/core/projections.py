@@ -37,6 +37,8 @@ class OrderItem:
     sent: bool = False
     sent_at: Optional[datetime] = None
     split_ref: Optional[str] = None
+    voided: bool = False
+    voided_at: Optional[datetime] = None
 
     @property
     def subtotal(self) -> Decimal:
@@ -345,10 +347,19 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
         elif event.event_type == EventType.ITEM_REMOVED:
             if order:
                 item_id = payload["item_id"]
-                # Remove from per-seat balance as well
+                # Mark item as voided instead of removing it — preserves audit trail
+                for item in order.items:
+                    if item.item_id == item_id:
+                        item.voided = True
+                        item.voided_at = event.timestamp
+                        break
+                # Mark in per-seat balance as well
                 for sb in order.seat_balances.values():
-                    sb.items = [i for i in sb.items if i.item_id != item_id]
-                order.items = [i for i in order.items if i.item_id != item_id]
+                    for item in sb.items:
+                        if item.item_id == item_id:
+                            item.voided = True
+                            item.voided_at = event.timestamp
+                            break
 
         elif event.event_type == EventType.ITEM_MODIFIED:
             if order:

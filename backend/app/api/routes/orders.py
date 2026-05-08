@@ -247,6 +247,8 @@ class OrderItemResponse(BaseModel):
     effective_price: Decimal
     added_at: Optional[datetime] = None
     sent_at: Optional[datetime] = None
+    voided: bool = False
+    voided_at: Optional[datetime] = None
 
 
 class PaymentResponse(BaseModel):
@@ -324,6 +326,8 @@ class OrderResponse(BaseModel):
                 effective_price=effective_price,
                 added_at=item.added_at,
                 sent_at=item.sent_at,
+                voided=item.voided,
+                voided_at=item.voided_at,
             ))
 
         return cls(
