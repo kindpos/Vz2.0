@@ -1373,6 +1373,11 @@ async def confirm_payment(
 ):
     """Confirm a payment."""
     _validate_2dp(request.amount, "amount")
+    if request.amount <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Payment amount must be greater than zero"
+        )
     order = await get_order_or_404(ledger, order_id)
 
     if order.status != "open":
