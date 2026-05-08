@@ -522,15 +522,14 @@ const buildModifierRow = (modifier) => {
     const toggleCell = document.createElement('div');
     toggleCell.style.cssText = 'display: flex; justify-content: center; align-items: center;';
     const toggle = buildToggle(modifier.active !== false, async (v) => {
-        try {
-            const r = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, active: v } }]);
-            if (!r.ok) throw new Error(r.error || 'Update failed');
-            modifier.active = v;
-            await refreshAll();
-        } catch (e) {
+        const result = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, active: v } }]);
+        if (!result.ok) {
             toggle.setValue(!v);
             showToast('Failed to update modifier', 'error');
+            return;
         }
+        modifier.active = v;
+        rebuild();
     });
     toggleCell.appendChild(toggle);
     row.appendChild(toggleCell);
@@ -623,15 +622,15 @@ const buildModifierDeleteConfirm = (modifier) => {
     }));
 
     btnRow.appendChild(buildPillButton('Delete', T.verm, T.well, async () => {
-        try {
-            const r = await pushChanges([{ event_type: 'modifier.deleted', payload: { modifier_id: modifier.modifier_id } }]);
-            if (!r.ok) throw new Error(r.error || 'Delete failed');
-            _state.confirmingDeleteModifierId = null;
-            await refreshAll();
-            showToast('Modifier deleted');
-        } catch (e) {
+        const result = await pushChanges([{ event_type: 'modifier.deleted', payload: { modifier_id: modifier.modifier_id } }]);
+        if (!result.ok) {
             showToast('Failed to delete modifier', 'error');
+            return;
         }
+        _state.modifiers = _state.modifiers.filter(m => m.modifier_id !== modifier.modifier_id);
+        _state.confirmingDeleteModifierId = null;
+        rebuild();
+        showToast('Modifier deleted');
     }));
 
     panel.appendChild(btnRow);
@@ -680,21 +679,16 @@ const buildModifierAddPanel = () => {
         const name = nameInput.value.trim();
         const priceVal = priceInput.getValue();
         if (!name) { showToast('Name is required', 'error'); return; }
-        try {
-            const result = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: modifierId, name, price: priceVal } }]);
-            console.log('[DEBUG] pushChanges result:', JSON.stringify(result));
-            if (!result.ok) {
-                console.log('[DEBUG] FAILED - error:', result.error);
-                showToast(result.error || 'Save failed', 'error');
-                return;
-            }
-            console.log('[DEBUG] pushChanges ok, refreshing');
-            _state.addingModifier = false;
-            await refreshAll();
-            showToast('Modifier created');
-        } catch (e) {
+        const modifierId = crypto.randomUUID();
+        const result = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: modifierId, name, price: priceVal } }]);
+        if (!result.ok) {
             showToast('Failed to create modifier', 'error');
+            return;
         }
+        _state.modifiers.push({ modifier_id: modifierId, name, price: parseFloat(priceVal) || 0, active: true });
+        _state.addingModifier = false;
+        rebuild();
+        showToast('Modifier created');
     }));
     panel.appendChild(btnRow);
     return panel;
@@ -750,17 +744,16 @@ const buildModifierEditPanel = (modifier) => {
             rebuild();
             return;
         }
-        try {
-            const r = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, ...body } }]);
-            if (!r.ok) throw new Error(r.error || 'Save failed');
-            if (body.name != null) modifier.name = body.name;
-            if (body.price != null) modifier.price = body.price;
-            _state.editingModifierId = null;
-            await refreshAll();
-            showToast('Modifier saved');
-        } catch (e) {
+        const result = await pushChanges([{ event_type: 'modifier.updated', payload: { modifier_id: modifier.modifier_id, ...body } }]);
+        if (!result.ok) {
             showToast('Failed to save modifier', 'error');
+            return;
         }
+        if (body.name != null) modifier.name = body.name;
+        if (body.price != null) modifier.price = body.price;
+        _state.editingModifierId = null;
+        rebuild();
+        showToast('Modifier saved');
     }));
     panel.appendChild(btnRow);
 
