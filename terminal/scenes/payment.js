@@ -16,6 +16,9 @@ import { buildNumpad } from '../numpad.js';
 import { OrderSummary } from '../order-summary.js';
 import { getCashDiscount } from '../pricing.js';
 
+function _roundCents(n) { const c = (n || 0) * 100; return Math.round(c) / 100; }
+function _ceilCents(n)  { const c = (n || 0) * 100; return Math.ceil(c)  / 100; }
+
 const PAD     = T.scenePad;
 const GAP     = T.colGapSm;
 const API     = '/api/v1';
@@ -264,7 +267,7 @@ defineScene({
         // buildActionCard with green accent bar, "1/N" stacked over the
         // dollar amount, mint flash on tap.
         [2, 3, 4].forEach((divisor) => {
-          const amt = Math.ceil(remaining / divisor * 100) / 100;
+          const amt = _ceilCents(remaining / divisor);
           let tile = buildActionCard({
             accent:  T.groups.paymentPreset.tileAccent,
             onClick: () => { params.onConfirm(amt); },
@@ -911,7 +914,7 @@ function populateLeftCard(order) {
   }
   const tax         = (typeof order.tax === 'number') ? order.tax : 0;
   const cardTotal   = (typeof order.balance_due === 'number') ? order.balance_due : (subtotal + tax);
-  const cashPrice   = Math.round(cardTotal * (1 - getCashDiscount()) * 100) / 100;
+  const cashPrice   = _roundCents(cardTotal * (1 - getCashDiscount()));
   const managerDisc = typeof order.manager_discount_total === 'number' ? order.manager_discount_total : 0;
 
   if (!_state.baseTotal) _state.baseTotal = cardTotal;
