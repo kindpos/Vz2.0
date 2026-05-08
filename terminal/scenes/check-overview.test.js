@@ -112,6 +112,7 @@ vi.mock('../keyboard.js', () => ({
 vi.mock('../pricing.js', () => ({
   getTaxRate:       vi.fn(() => 0.08),
   getCashDiscount:  vi.fn(() => 0.04),
+  getCashDiscountAmt: vi.fn((cardTotal) => Math.round(cardTotal * 0.04 * 100) / 100),
 }));
 
 vi.mock('../components/item-recap.js', () => ({
