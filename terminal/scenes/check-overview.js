@@ -4075,7 +4075,8 @@ function handleVoid(state) {
 
   // Filter out already-voided items before showing the PIN challenge.
   const nonVoidedRefs = itemRefs.filter((r) => {
-    const item = state.seats[r.seatIdx] && state.seats[r.seatIdx].items[r.itemIdx];
+    const seat = state.seats.find(s => s.id === r.seatId);
+    const item = seat && seat.items.find(it => it.item_id === r.itemId);
     return item && !item.voided;
   });
   if (nonVoidedRefs.length === 0) {
@@ -4089,8 +4090,7 @@ function handleVoid(state) {
     onConfirm: (approvedBy) => {
       const paidSeats = state.paidSeats || {};
       const hasPaid = nonVoidedRefs.some((r) => {
-        const seat = state.seats[r.seatIdx];
-        return seat && paidSeats[seat.id];
+        return paidSeats[r.seatId];
       });
       if (hasPaid) {
         state._voidInProgress = false;
@@ -4107,9 +4107,11 @@ function _voidItems(state, refs, approvedBy) {
   const snapshot = [];
   for (let i = 0; i < refs.length; i++) {
     let r = refs[i];
-    const item = state.seats[r.seatIdx].items[r.itemIdx];
+    const seat = state.seats.find(s => s.id === r.seatId);
+    const item = seat && seat.items.find(it => it.item_id === r.itemId);
+    if (!item) continue;
     const alreadyVoided = !!item.voided;
-    snapshot.push({ seatIdx: r.seatIdx, itemIdx: r.itemIdx, item, alreadyVoided });
+    snapshot.push({ seatId: r.seatId, itemId: r.itemId, item, alreadyVoided });
     item.voided = true;
   }
 
@@ -4293,7 +4295,12 @@ function _applyDiscount(state, optOrPct, itemRefs, seatIds, approvedBy) {
   const lines = [];
   for (let i = 0; i < itemRefs.length; i++) {
     let r = itemRefs[i];
-    lines.push(state.seats[r.seatIdx].items[r.itemIdx]);
+    // Find seat by stable ID, then find item by item_id
+    const seat = state.seats.find(s => s.id === r.seatId);
+    if (seat) {
+      const item = seat.items.find(it => it.item_id === r.itemId);
+      if (item) lines.push(item);
+    }
   }
   const hasUnsent = lines.some((it) => !it.item_id);
   if (hasUnsent) {

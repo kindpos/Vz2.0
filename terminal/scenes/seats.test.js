@@ -193,11 +193,11 @@ describe('selection toggles', () => {
     expect(selectAllUnpaid([], null)).toEqual({});
   });
 
-  it('collectSelectedItemRefs decodes the string keys back into {seatIdx, itemIdx}', () => {
+  it('collectSelectedItemRefs decodes the string keys back into {seatId, itemId}', () => {
     const refs = collectSelectedItemRefs({ '0:3': true, '2:1': true });
     expect(refs).toEqual(expect.arrayContaining([
-      { seatIdx: 0, itemIdx: 3 },
-      { seatIdx: 2, itemIdx: 1 },
+      { seatId: '0', itemId: '3' },
+      { seatId: '2', itemId: '1' },
     ]));
     expect(refs).toHaveLength(2);
   });

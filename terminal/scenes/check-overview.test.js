@@ -144,8 +144,8 @@ vi.mock('./seats.js', () => ({
   selectAllUnpaid:        vi.fn(() => ({})),
   collectSelectedItemRefs: vi.fn((selectedItems) => {
     return Object.keys(selectedItems || {}).map((key) => {
-      const [seatIdx, itemIdx] = key.split(':').map(Number);
-      return { seatIdx, itemIdx };
+      const [seatId, itemId] = key.split(':');
+      return { seatId, itemId };
     });
   }),
 }));
@@ -264,10 +264,8 @@ describe('terminal/scenes/check-overview — discount flow', () => {
 
   it('disc-select onConfirm calls fetchWithTimeout on the discount endpoint', async () => {
     const { state } = renderScene();
-    state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
-    state.selectedItems = { '0:0': true };
-
-    state.seats = [{ id: 'S-001', number: 1, items: [{ id: 'it-1', item_id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
+    state.seats = [{ id: 'S-001', number: 1, items: [{ item_id: 'it-1', name: 'Pizza', price: 12, qty: 1 }] }];
+    state.selectedItems = { 'S-001:it-1': true };
 
     sceneDef.__handlers.handleDiscount(state);
 
@@ -410,8 +408,9 @@ describe('terminal/scenes/check-overview — Bug 1: void-item timer cancelled on
     // from handleVoid. The test still asserts that a void on a mounted scene
     // produces the DELETE; just without the timer dance.
     const state = { ...JSON.parse(JSON.stringify(sceneDef.state)), orderId: 'order-b1' };
+    state.order         = { status: 'open' };
     state.seats         = [{ id: 'S-001', number: 1, items: [{ item_id: 'item-1', name: 'Burger', price: 10 }] }];
-    state.selectedItems = { '0:0': true };
+    state.selectedItems = { 'S-001:item-1': true };
     state.topAreaEl     = document.createElement('div');
 
     sceneDef.__handlers.handleVoid(state);
@@ -713,15 +712,15 @@ describe('terminal/scenes/check-overview — selection and refresh regression lo
     const state = { ...JSON.parse(JSON.stringify(sceneDef.state)) };
     state.topAreaEl = document.createElement('div');
     state.seats = [
-      { id: 'S-001', number: 1, items: [{ name: 'Burger', price: 12 }] },
-      { id: 'S-002', number: 2, items: [{ name: 'Fries',  price: 5  }] },
+      { id: 'S-001', number: 1, items: [{ item_id: 'i1', name: 'Burger', price: 12 }] },
+      { id: 'S-002', number: 2, items: [{ item_id: 'i2', name: 'Fries',  price: 5  }] },
     ];
     state.paidSeats = { 'S-002': true };
 
     sceneDef.__handlers.forceSelectAll(state);
 
-    expect(state.selectedItems['0:0']).toBe(true);  // S-001 item selected
-    expect(state.selectedItems['1:0']).toBeUndefined(); // S-002 item skipped (paid)
+    expect(state.selectedItems['S-001:i1']).toBe(true);  // S-001 item selected
+    expect(state.selectedItems['S-002:i2']).toBeUndefined(); // S-002 item skipped (paid)
   });
 });
 
@@ -1446,16 +1445,16 @@ describe('terminal/scenes/check-overview — selection helpers', () => {
     };
   }
 
-  it('toggleItem delegates to toggleItemSelection with correct seat/item indices', () => {
+  it('toggleItem delegates to toggleItemSelection with correct seat/item IDs', () => {
     const state = makeState();
     // toggleItemSelection receives the CURRENT selectedItems (empty {}), not the result.
     // The return value is assigned back to state.selectedItems.
-    toggleItemSelection.mockReturnValue({ '0:0': true });
+    toggleItemSelection.mockReturnValue({ 'S-001:i1': true });
 
     sceneDef.__handlers.toggleItem(state, 0, 0);
 
-    expect(toggleItemSelection).toHaveBeenCalledWith({}, 0, 0);
-    expect(state.selectedItems).toEqual({ '0:0': true });
+    expect(toggleItemSelection).toHaveBeenCalledWith({}, 'S-001', 'i1');
+    expect(state.selectedItems).toEqual({ 'S-001:i1': true });
   });
 
   it('getSelectedSeatIds returns keys of state.selected', () => {
@@ -1474,8 +1473,8 @@ describe('terminal/scenes/check-overview — selection helpers', () => {
     const state = makeState({ selectedItems: { '0:0': true, '1:0': true } });
     const refs = sceneDef.__handlers.getSelectedItemRefs(state);
     expect(refs).toEqual(expect.arrayContaining([
-      { seatIdx: 0, itemIdx: 0 },
-      { seatIdx: 1, itemIdx: 0 },
+      { seatId: '0', itemId: '0' },
+      { seatId: '1', itemId: '0' },
     ]));
   });
 
