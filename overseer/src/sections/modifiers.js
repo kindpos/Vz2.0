@@ -436,6 +436,7 @@ const buildModifiersCard = () => {
     if (_state.modifiers.length === 0) {
         listEl.appendChild(buildEmptyState('No modifiers yet — tap + Add Modifier'));
     } else {
+        console.log('[DEBUG] building rows from:', _state.modifiers.length, 'modifiers');
         _state.modifiers.forEach(m => listEl.appendChild(buildModifierRow(m)));
     }
 
@@ -684,6 +685,7 @@ const buildModifierAddPanel = () => {
         try {
             const result = await pushChanges([{ event_type: 'modifier.created', payload: { modifier_id: modifierId, name, price: priceVal } }]);
             if (!result.ok) { showToast('Failed to create modifier', 'error'); return; }
+            console.log('[DEBUG] pushChanges ok, about to refresh');
             _state.addingModifier = false;
             await refreshAll();
             showToast('Modifier created');
@@ -1220,6 +1222,7 @@ const refreshAll = async () => {
         ]);
         _state.modifiers = Array.isArray(modifiers) ? modifiers.slice() : [];
         _state.options = Array.isArray(options) ? options.slice() : [];
+        console.log('[DEBUG] _state.modifiers after refresh:', _state.modifiers.length, _state.modifiers);
     } catch (e) {
         console.error('[Modifiers] Refresh failed:', e);
         _state.loadError = true;
