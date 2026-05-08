@@ -1386,6 +1386,25 @@ async function handleConfirm() {
 
     _state.payments.push({ method: _state.paymentMode, amount: paymentAmount });
     _state.totalPaid += paymentAmount;
+
+    // Re-sync balance from server after confirmed payment
+    if (_state.orderId || (_state.sceneData && _state.sceneData.orderId)) {
+      const _oid = _state.orderId
+        || _state.sceneData.orderId;
+      fetch(`/api/v1/orders/${_oid}`)
+        .then(r => r.json())
+        .then(order => {
+          if (typeof order.balance_due === 'number') {
+            _state.baseTotal = order.balance_due;
+            _state.totalPaid = 0;
+          }
+        })
+        .catch(() => {
+          // Non-fatal: local totalPaid tracking remains
+          // as fallback if re-fetch fails
+        });
+    }
+
     _state._pendingTxId = null;
     _state._cashTxId = null;
 

@@ -54,7 +54,13 @@ function _loadRates() {
       });
       _loaded = true; /* keep defaults */
     }
-  })();
+  })().catch(err => {
+    console.warn(
+      '[KINDpos] Failed to load tax rate from server.',
+      'Using fallback rate:', _taxRate,
+      '— displayed totals may be incorrect.', err
+    );
+  });
   return _loadPromise;
 }
 
