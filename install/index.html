@@ -276,6 +276,129 @@ def default_install_dir():
     )
 
 
+def _create_shortcut(target_py, pythonw, dest_lnk):
+    import subprocess
+    ps = (
+        f'$s=(New-Object -COM WScript.Shell).CreateShortcut("{dest_lnk}");'
+        f'$s.TargetPath="{pythonw}";'
+        f'$s.Arguments=\'"{target_py}"\';'
+        f'$s.Save()'
+    )
+    subprocess.run(['powershell', '-Command', ps], capture_output=True)
+
+
+_LAUNCHER_CONTENT = '''#!/usr/bin/env python3
+"""KINDpos Launcher — v2.0"""
+import tkinter as tk
+import webbrowser
+import threading
+import socket
+
+T = {
+    "bg":       "#383c42",
+    "card":     "#2e3236",
+    "well":     "#22252a",
+    "green":    "#86efac",
+    "greenWarm":"#4ade80",
+    "elec":     "#22d3ee",
+    "verm":     "#e8472a",
+    "text":     "#e8eaed",
+    "border":   "#5a5f66",
+}
+FONT = "Courier"
+
+
+class KINDposLauncher(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("KINDpos Launcher")
+        self.geometry("340x200")
+        self.resizable(False, False)
+        self.configure(bg=T["well"])
+        self._build()
+        self._check_status()
+
+    def _build(self):
+        # Title bar row
+        title_row = tk.Frame(self, bg=T["well"])
+        title_row.pack(fill=tk.X, padx=14, pady=(12, 0))
+        pip_f = tk.Frame(title_row, bg=T["green"], width=7, height=7)
+        pip_f.pack(side=tk.LEFT, padx=(0, 6))
+        pip_f.pack_propagate(False)
+        tk.Label(title_row, text="KINDpos Launcher", bg=T["well"],
+                 fg=T["text"], font=(FONT, 9)).pack(side=tk.LEFT)
+
+        # Brand row
+        brand_row = tk.Frame(self, bg=T["well"])
+        brand_row.pack(fill=tk.X, padx=14, pady=(6, 0))
+        tk.Label(brand_row, text="KIND POS", bg=T["well"], fg=T["green"],
+                 font=(FONT, 15, "bold")).pack(side=tk.LEFT)
+        tk.Label(brand_row, text="  v2.0", bg=T["well"], fg=T["text"],
+                 font=(FONT, 9)).pack(side=tk.LEFT, anchor=tk.S)
+
+        # Divider
+        tk.Frame(self, bg=T["border"], height=1).pack(fill=tk.X, padx=14, pady=8)
+
+        # Button row
+        btn_row = tk.Frame(self, bg=T["well"])
+        btn_row.pack(fill=tk.X, padx=14)
+
+        terminal_btn = tk.Frame(btn_row, bg=T["green"], width=140, height=50)
+        terminal_btn.pack(side=tk.LEFT, padx=(0, 6))
+        terminal_btn.pack_propagate(False)
+        tk.Label(terminal_btn, text="TERMINAL\\nkindpos.local", bg=T["green"],
+                 fg=T["well"], font=(FONT, 9, "bold"), justify=tk.CENTER).place(
+            relx=0.5, rely=0.5, anchor=tk.CENTER)
+        terminal_btn.bind("<Button-1>",
+                          lambda e: webbrowser.open("http://kindpos.local"))
+
+        overseer_btn = tk.Frame(btn_row, bg=T["elec"], width=140, height=50)
+        overseer_btn.pack(side=tk.LEFT)
+        overseer_btn.pack_propagate(False)
+        tk.Label(overseer_btn, text="OVERSEER\\nkindpos.local/overseer",
+                 bg=T["elec"], fg=T["well"], font=(FONT, 9, "bold"),
+                 justify=tk.CENTER).place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        overseer_btn.bind("<Button-1>",
+                          lambda e: webbrowser.open("http://kindpos.local/overseer"))
+
+        # Status row
+        status_row = tk.Frame(self, bg=T["well"])
+        status_row.pack(fill=tk.X, padx=14, pady=(10, 0))
+        self._status_pip_frame = tk.Frame(status_row, bg=T["border"], width=7, height=7)
+        self._status_pip_frame.pack(side=tk.LEFT, padx=(0, 6))
+        self._status_pip_frame.pack_propagate(False)
+        self._status_pip = tk.Label(self._status_pip_frame, text="", bg=T["border"])
+        self._status_pip.pack(fill=tk.BOTH, expand=True)
+        self._status_lbl = tk.Label(status_row, text="Checking…", bg=T["well"],
+                                     fg=T["text"], font=(FONT, 8))
+        self._status_lbl.pack(side=tk.LEFT)
+
+    def _check_status(self):
+        def probe():
+            try:
+                socket.create_connection(("kindpos.local", 80), timeout=2)
+                self.after(0, self._on_reachable)
+            except Exception:
+                self.after(0, self._on_unreachable)
+        threading.Thread(target=probe, daemon=True).start()
+
+    def _on_reachable(self):
+        self._status_pip_frame.config(bg=T["greenWarm"])
+        self._status_pip.config(bg=T["greenWarm"])
+        self._status_lbl.config(text="kindpos.local reachable")
+
+    def _on_unreachable(self):
+        self._status_pip_frame.config(bg=T["verm"])
+        self._status_pip.config(bg=T["verm"])
+        self._status_lbl.config(text="kindpos.local unreachable")
+
+
+if __name__ == "__main__":
+    app = KINDposLauncher()
+    app.mainloop()
+'''
+
+
 class KINDposSetup(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -480,8 +603,100 @@ class KINDposSetup(tk.Tk):
                  justify=tk.LEFT).pack(anchor=tk.W, pady=(8, 0))
 
     def _p_install(self):
-        tk.Label(self.content, text=f'STEP 3: {STEPS[2]}',
-                 bg=T['bg'], fg=T['green'], font=(FONT, 14, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Installing KINDpos',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 15, 'bold')).pack(anchor=tk.W)
+        tk.Label(self.content, text='Please wait while setup completes',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9)).pack(anchor=tk.W, pady=(2, 16))
+        tk.Frame(self.content, bg=T['border'], height=1).pack(fill=tk.X)
+
+        INSTALL_STEPS = [
+            'Download Python 3.11 embeddable',
+            'Extract Python runtime',
+            'Clone KINDpos repository',
+            'Install dependencies',
+            'Create shortcuts & autostart',
+        ]
+        self._inst_pips = []
+        self._inst_labels = []
+        rows_frame = tk.Frame(self.content, bg=T['bg'])
+        rows_frame.pack(fill=tk.X, pady=(16, 0))
+        for name in INSTALL_STEPS:
+            row = tk.Frame(rows_frame, bg=T['bg'])
+            row.pack(fill=tk.X, pady=2)
+            pip_wrap = tk.Frame(row, bg=T['moon'], width=14, height=14)
+            pip_wrap.pack(side=tk.LEFT, padx=(0, 8))
+            pip_wrap.pack_propagate(False)
+            pip = tk.Label(pip_wrap, text='', bg=T['moon'], font=(FONT, 10))
+            pip.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            lbl = tk.Label(row, text=name, bg=T['bg'], fg=T['text'], font=(FONT, 10))
+            lbl.pack(side=tk.LEFT)
+            self._inst_pips.append((pip_wrap, pip))
+            self._inst_labels.append(lbl)
+
+        prog_track = tk.Frame(self.content, bg=T['well'], height=14)
+        prog_track.pack(fill=tk.X, pady=(14, 0))
+        prog_track.pack_propagate(False)
+        tk.Frame(prog_track, bg=T['green'], width=4).pack(side=tk.LEFT, fill=tk.Y)
+        prog_inner = tk.Frame(prog_track, bg=T['well'])
+        prog_inner.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.prog_fill = tk.Frame(prog_inner, bg=T['green'], width=0)
+        self.prog_fill.pack(side=tk.LEFT, fill=tk.Y)
+        self._prog_inner = prog_inner
+
+        self.prog_lbl = tk.Label(self.content, text='Starting…',
+                                  bg=T['bg'], fg=T['text'], font=(FONT, 9))
+        self.prog_lbl.pack(anchor=tk.W, pady=(4, 8))
+
+        log_wrap = tk.Frame(self.content, bg=T['well'], height=80)
+        log_wrap.pack(fill=tk.X)
+        log_wrap.pack_propagate(False)
+        tk.Frame(log_wrap, bg=T['green'], width=4).pack(side=tk.LEFT, fill=tk.Y)
+        self.log_text = tk.Text(log_wrap, bg=T['well'], fg=T['text'],
+                                 font=(FONT, 8), relief=tk.FLAT,
+                                 state=tk.DISABLED, height=5, wrap=tk.WORD)
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.log_text.tag_config('ok',   foreground=T['greenWarm'])
+        self.log_text.tag_config('info', foreground=T['elec'])
+        self.log_text.tag_config('dim',  foreground=T['text'])
+        self.log_text.tag_config('err',  foreground=T['verm'])
+
+        self.back_btn.pack_forget()
+        self.next_btn.config(state=tk.DISABLED, bg=T['moon'], fg=T['moonText'])
+
+        self._run_install()
+
+    def _set_step(self, i):
+        for j, ((wrap, pip), lbl) in enumerate(zip(self._inst_pips, self._inst_labels)):
+            if j < i:
+                wrap.config(bg=T['greenDk']); pip.config(bg=T['greenDk'])
+                lbl.config(fg=T['text'])
+            elif j == i:
+                wrap.config(bg=T['green']); pip.config(bg=T['green'])
+                lbl.config(fg=T['green'])
+            else:
+                wrap.config(bg=T['moon']); pip.config(bg=T['moon'])
+                lbl.config(fg=T['text'])
+
+    def _log(self, msg, tag='dim'):
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.insert(tk.END, msg if msg.endswith('\n') else msg + '\n', tag)
+        self.log_text.see(tk.END)
+        self.log_text.config(state=tk.DISABLED)
+
+    def _set_progress(self, pct, label):
+        total = self._prog_inner.winfo_width() or 300
+        self.prog_fill.config(width=int(total * pct / 100))
+        self.prog_lbl.config(text=label)
+
+    def _install_done(self, ok):
+        if ok:
+            self._set_progress(100, 'Installation complete.')
+            self._log('All steps completed successfully.', 'ok')
+            self.next_btn.config(state=tk.NORMAL, bg=T['green'], fg=T['well'])
+        else:
+            self._log('Installation failed. See errors above.', 'err')
+            self.back_btn.pack(side=tk.RIGHT, padx=(0, 8))
+            self.back_btn.config(state=tk.NORMAL)
 
     def _p_shortcuts(self):
         tk.Label(self.content, text=f'STEP 4: {STEPS[3]}',
@@ -507,6 +722,141 @@ class KINDposSetup(tk.Tk):
                        variable=self.cb_site, bg=T['bg'], fg=T['green'],
                        selectcolor=T['well'], activebackground=T['bg'],
                        font=(FONT, 10)).pack(anchor=tk.W)
+
+    def _run_install(self):
+        import threading
+        t = threading.Thread(target=self._install_thread, daemon=True)
+        t.start()
+
+    def _install_thread(self):
+        import threading, zipfile, urllib.request, subprocess
+        idir     = self.install_dir.get()
+        rt_dir   = os.path.join(idir, 'runtime')
+        app_dir  = os.path.join(idir, 'app')
+        py_zip   = os.path.join(rt_dir, 'python-embed.zip')
+        py_exe   = os.path.join(rt_dir, 'python.exe')
+        pw_exe   = os.path.join(rt_dir, 'pythonw.exe')
+        ui = lambda fn, *a, **kw: self.after(0, lambda: fn(*a, **kw))
+
+        try:
+            # ── Step 0: Download Python embeddable ──────────────
+            ui(self._set_step, 0)
+            ui(self._log, 'Downloading Python 3.11 embeddable…', 'info')
+            url = 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip'
+            os.makedirs(rt_dir, exist_ok=True)
+            req = urllib.request.urlopen(url, timeout=120)
+            total = int(req.headers.get('Content-Length', 0)) or 1
+            done  = 0
+            last_logged = -1
+            with open(py_zip, 'wb') as fh:
+                while True:
+                    chunk = req.read(8192)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    done += len(chunk)
+                    pct = int(done / total * 25)
+                    tens = pct // 10 * 10
+                    if tens > last_logged:
+                        last_logged = tens
+                        ui(self._log, f'  {tens}% downloaded', 'dim')
+                    ui(self._set_progress, pct, f'Downloading… {pct}%')
+
+            # ── Step 1: Extract Python ───────────────────────────
+            ui(self._set_step, 1)
+            ui(self._log, 'Extracting Python runtime…', 'info')
+            ui(self._set_progress, 25, 'Extracting…')
+            with zipfile.ZipFile(py_zip) as zf:
+                zf.extractall(rt_dir)
+            pth_files = [f for f in os.listdir(rt_dir) if f.endswith('._pth')]
+            for pf in pth_files:
+                pth_path = os.path.join(rt_dir, pf)
+                lines = open(pth_path).read().splitlines()
+                patched = [l.replace('#import site', 'import site') for l in lines]
+                open(pth_path, 'w').write('\n'.join(patched))
+            ui(self._log, 'Runtime ready.', 'ok')
+            ui(self._set_progress, 35, 'Python extracted.')
+
+            # ── Step 2: Clone repository ─────────────────────────
+            ui(self._set_step, 2)
+            ui(self._log, 'Cloning KINDpos repository…', 'info')
+            ui(self._set_progress, 35, 'Cloning…')
+            try:
+                subprocess.run(
+                    ['git', 'clone', 'https://github.com/kindpos/Vz2.0', app_dir],
+                    check=True, timeout=300
+                )
+                ui(self._log, 'Repository cloned.', 'ok')
+            except FileNotFoundError:
+                ui(self._log, 'git not found — using zip fallback', 'dim')
+                zip_url = 'https://github.com/kindpos/Vz2.0/archive/refs/heads/main.zip'
+                zip_dest = os.path.join(idir, 'repo.zip')
+                urllib.request.urlretrieve(zip_url, zip_dest)
+                with zipfile.ZipFile(zip_dest) as zf:
+                    zf.extractall(idir)
+                extracted = next(
+                    (d for d in os.listdir(idir) if d.startswith('Vz2.0')), None
+                )
+                if extracted:
+                    os.rename(os.path.join(idir, extracted), app_dir)
+                ui(self._log, 'Repository downloaded via zip.', 'ok')
+            ui(self._set_progress, 60, 'Repository ready.')
+
+            # ── Step 3: Install dependencies ─────────────────────
+            ui(self._set_step, 3)
+            ui(self._log, 'Installing Python dependencies…', 'info')
+            req_file = os.path.join(app_dir, 'backend', 'requirements.txt')
+            cmd = [py_exe, '-m', 'pip', 'install', '-r', req_file, '--upgrade']
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True)
+            pip_done = 0
+            for line in iter(proc.stdout.readline, ''):
+                line = line.rstrip()
+                if not line:
+                    continue
+                if 'Successfully installed' in line:
+                    ui(self._log, line, 'ok')
+                elif 'ERROR' in line or 'error' in line:
+                    ui(self._log, line, 'err')
+                else:
+                    ui(self._log, line, 'dim')
+                pip_done = min(pip_done + 1, 29)
+                ui(self._set_progress, 60 + pip_done, f'Installing deps… {60 + pip_done}%')
+            proc.stdout.close()
+            if proc.wait() != 0:
+                raise RuntimeError('pip install failed')
+            ui(self._log, 'Dependencies installed.', 'ok')
+            ui(self._set_progress, 90, 'Dependencies ready.')
+
+            # ── Step 4: Launcher + shortcuts ─────────────────────
+            ui(self._set_step, 4)
+            ui(self._log, 'Writing launcher and shortcuts…', 'info')
+            launcher_py = os.path.join(idir, 'kindpos_launcher.py')
+            open(launcher_py, 'w').write(_LAUNCHER_CONTENT)
+            ui(self._set_progress, 93, 'Launcher written.')
+
+            desktop   = os.path.join(os.path.expanduser('~'), 'Desktop', 'KINDpos.lnk')
+            start_dir = os.path.join(os.environ.get('APPDATA', ''),
+                                      'Microsoft', 'Windows', 'Start Menu',
+                                      'Programs', 'KINDpos')
+            os.makedirs(start_dir, exist_ok=True)
+            start_lnk = os.path.join(start_dir, 'KINDpos.lnk')
+            if os.path.exists(pw_exe):
+                _create_shortcut(launcher_py, pw_exe, desktop)
+                _create_shortcut(launcher_py, pw_exe, start_lnk)
+                subprocess.run([
+                    'schtasks', '/Create', '/F',
+                    '/TN', 'KINDpos\\launcher',
+                    '/TR', f'"{pw_exe}" "{launcher_py}"',
+                    '/SC', 'ONLOGON', '/RL', 'LIMITED',
+                ], capture_output=True)
+            ui(self._log, 'Shortcuts created.', 'ok')
+            ui(self._set_progress, 100, 'Done.')
+            ui(self._install_done, True)
+
+        except Exception as exc:
+            ui(self._log, f'ERROR: {exc}', 'err')
+            ui(self._install_done, False)
 
     # ── Helpers ─────────────────────────────────────
 
