@@ -267,7 +267,19 @@ defineScene({
         // buildActionCard with green accent bar, "1/N" stacked over the
         // dollar amount, mint flash on tap.
         [2, 3, 4].forEach((divisor) => {
-          const amt = _ceilCents(remaining / divisor);
+          const amt = _roundCents(remaining / divisor);
+          // Last-cent remainder stays in balance_due;
+          // cleared when final seat pays exact.
+          if (typeof console !== 'undefined') {
+            const _splitTotal = amt * divisor;
+            if (Math.abs(_splitTotal - remaining) > 0.01) {
+              console.warn(
+                '[KINDpos] Split amounts diverge from balance:',
+                { slices: divisor, each: amt,
+                  sum: _splitTotal, remaining }
+              );
+            }
+          }
           let tile = buildActionCard({
             accent:  T.groups.paymentPreset.tileAccent,
             onClick: () => { params.onConfirm(amt); },
