@@ -168,7 +168,13 @@ class Order:
     def tax_rate(self) -> Decimal:
         if self._tax_rate is not None:
             return self._tax_rate
-        return Decimal(str(settings.tax_rate))
+        rate = Decimal(str(settings.tax_rate))
+        if rate < Decimal("0") or rate > Decimal("1"):
+            raise ValueError(
+                f"tax_rate {rate} out of valid range [0, 1]. "
+                f"Use decimal form e.g. 0.085 for 8.5%."
+            )
+        return rate
 
     @property
     def tax(self) -> Decimal:
