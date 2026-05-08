@@ -108,7 +108,9 @@ function seatTotal(seat, state) {
   // Item-level discounts (no seat-level entry means this is a targeted discount)
   if (state._itemDiscounts && seat.items) {
     for (let _i = 0; _i < seat.items.length; _i++) {
-      let _id = state._itemDiscounts[seat.items[_i].item_id];
+      const item = seat.items[_i];
+      if (item.voided) continue;
+      let _id = state._itemDiscounts[item.item_id];
       if (_id && _id.amount) {
         base = Math.round((base - _id.amount) * 100) / 100;
       }
