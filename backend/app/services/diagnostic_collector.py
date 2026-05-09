@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -769,7 +770,13 @@ class DiagnosticCollector:
         Boot probe: check if license.json exists and is valid.
         Returns { passed: bool, message: str }
         """
-        license_file = "/home/kindpos/data/license.json"
+        if sys.platform == "win32":
+            license_file = os.path.join(
+                os.environ.get("APPDATA", "C:/ProgramData"),
+                "KINDpos", "data", "license.json"
+            )
+        else:
+            license_file = "/home/kindpos/data/license.json"
         required_fields = {"store_name", "terminal_name", "prefix", "node_number"}
 
         if not os.path.exists(license_file):

@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import socket
+import sys
 import httpx
 from typing import Optional
 from fastapi import APIRouter, HTTPException
@@ -21,7 +22,14 @@ router = APIRouter(prefix="/licenses", tags=["licenses"])
 
 DEMO_MODE = os.environ.get("KINDPOS_STORE_MODE") == "demo"
 
-LICENSE_FILE = "/home/kindpos/data/license.json"
+if sys.platform == "win32":
+    LICENSE_FILE = os.path.join(
+        os.environ.get("APPDATA", "C:/ProgramData"),
+        "KINDpos", "data", "license.json"
+    )
+else:
+    LICENSE_FILE = "/home/kindpos/data/license.json"
+
 WORKER_URL = "https://kindpos.com/api/activate"
 CHECKIN_URL = "https://kindpos.com/api/checkin"
 CHECKIN_INTERVAL_S = 3600  # 60 minutes
