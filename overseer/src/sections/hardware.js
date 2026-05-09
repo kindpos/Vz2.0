@@ -1217,6 +1217,212 @@ const buildCardReaderCard = (reader) => {
     return card;
 };
 
+const buildCardReaderEditPanel = (reader) => {
+    const inputCss = `
+        background: ${T.card}; border: 1px solid ${T.border};
+        color: ${T.text}; padding: 8px; border-radius: 4px;
+        font-family: ${T.fb}; font-size: 12px; width: 100%; box-sizing: border-box;
+    `;
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        background: ${T.well}; border: 1px solid ${T.border};
+        border-radius: 8px; margin-bottom: 16px;
+        display: flex; flex-direction: column; gap: 0;
+        overflow: hidden; grid-column: 1 / -1;
+    `;
+
+    // ── 1. header ─────────────────────────────────────────────────────
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px 16px; border-bottom: 1px solid ${T.border};
+    `;
+    const headerTitle = document.createElement('div');
+    headerTitle.style.cssText = `
+        font-family: ${T.fh}; font-size: 13px; font-weight: 700;
+        color: ${T.green}; flex: 1; letter-spacing: 0.04em;
+    `;
+    headerTitle.textContent = 'EDIT CARD READER';
+    const badge = document.createElement('span');
+    badge.style.cssText = `
+        background: ${T.green}; color: ${T.bg}; padding: 2px 8px;
+        border-radius: 3px; font-size: 8px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.08em;
+    `;
+    badge.textContent = 'CARD READER';
+    header.appendChild(headerTitle);
+    header.appendChild(badge);
+    panel.appendChild(header);
+
+    // ── 2. MAC strip (read-only) ───────────────────────────────────────
+    const macStrip = document.createElement('div');
+    macStrip.style.cssText = `
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 16px; background: ${T.well};
+        border-bottom: 1px solid ${T.border};
+        font-family: 'Share Tech Mono', monospace; font-size: 11px;
+    `;
+    const macLabel = document.createElement('span');
+    macLabel.style.cssText = `color: ${T.textMuted};`;
+    macLabel.textContent = 'MAC';
+    const macValue = document.createElement('span');
+    macValue.style.cssText = `color: ${T.text}; letter-spacing: 0.06em; flex: 1;`;
+    macValue.textContent = reader.mac || '—';
+    const lockIcon = document.createElement('span');
+    lockIcon.textContent = '🔒';
+    lockIcon.style.cssText = `font-size: 10px;`;
+    const idChip = document.createElement('span');
+    idChip.style.cssText = `
+        background: ${withAlpha(T.textMuted, 0.15)}; color: ${T.textMuted};
+        padding: 1px 6px; border-radius: 3px; font-size: 9px; letter-spacing: 0.06em;
+    `;
+    idChip.textContent = 'Identity Key';
+    macStrip.appendChild(macLabel);
+    macStrip.appendChild(macValue);
+    macStrip.appendChild(lockIcon);
+    macStrip.appendChild(idChip);
+    panel.appendChild(macStrip);
+
+    // ── 3. form body ──────────────────────────────────────────────────
+    const body = document.createElement('div');
+    body.style.cssText = `padding: 16px; display: flex; flex-direction: column; gap: 12px;`;
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Card Reader Name';
+    nameInput.value = reader.name || '';
+    nameInput.style.cssText = inputCss;
+
+    const ipPortGrid = document.createElement('div');
+    ipPortGrid.style.cssText = `display: grid; grid-template-columns: 1fr 1fr; gap: 8px;`;
+
+    const ipInput = document.createElement('input');
+    ipInput.type = 'text';
+    ipInput.placeholder = 'IP Address';
+    ipInput.value = reader.ip || '';
+    ipInput.style.cssText = inputCss;
+
+    const portInput = document.createElement('input');
+    portInput.type = 'text';
+    portInput.placeholder = 'Port';
+    portInput.value = String(reader.port || 9000);
+    portInput.style.cssText = inputCss;
+
+    ipPortGrid.appendChild(ipInput);
+    ipPortGrid.appendChild(portInput);
+
+    const registerInput = document.createElement('input');
+    registerInput.type = 'text';
+    registerInput.placeholder = 'e.g. REG-001';
+    registerInput.value = reader.register_id || '';
+    registerInput.style.cssText = inputCss;
+
+    const registerLabel = document.createElement('div');
+    registerLabel.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
+    const registerLabelText = document.createElement('div');
+    registerLabelText.style.cssText = `
+        font-size: 10px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.08em; color: ${T.textMuted}; font-family: ${T.fb};
+    `;
+    registerLabelText.textContent = 'SPIn Register ID';
+    registerLabel.appendChild(registerLabelText);
+    registerLabel.appendChild(registerInput);
+
+    body.appendChild(nameInput);
+    body.appendChild(ipPortGrid);
+    body.appendChild(registerLabel);
+    panel.appendChild(body);
+
+    // ── 4. action bar ─────────────────────────────────────────────────
+    const actionBar = document.createElement('div');
+    actionBar.style.cssText = `
+        display: flex; align-items: center; gap: 8px;
+        padding: 12px 16px; background: ${T.well};
+        border-top: 1px solid ${T.border};
+    `;
+
+    const saveBtn = buildPillButton('SAVE', T.greenUp, T.bg, async () => {
+        const newName = nameInput.value.trim();
+        if (!newName) { showToast('Name is required', 'error'); return; }
+        try {
+            const result = await pushChanges([{
+                event_type: 'card_reader.updated',
+                payload: {
+                    mac:         reader.mac,
+                    name:        newName,
+                    ip_address:  ipInput.value.trim(),
+                    port:        parseInt(portInput.value.trim(), 10) || 9000,
+                    register_id: registerInput.value.trim(),
+                },
+            }]);
+            if (!result.ok) { showToast('Failed to update card reader', 'error'); return; }
+            _state.editingReaderId = null;
+            await loadData();
+            rebuild();
+            showToast('Card reader updated');
+        } catch (e) {
+            showToast(`Failed to update card reader: ${e.message}`, 'error');
+        }
+    });
+
+    const pingBtn = buildPillButton('PING', T.elec, T.bg, async () => {
+        try {
+            const resp = await fetchWithTimeout('/api/v1/hardware/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ip: ipInput.value.trim(),
+                    port: parseInt(portInput.value.trim(), 10) || 9000,
+                }),
+            }, 5000);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const r = await resp.json();
+            if (r.status === 'online') {
+                showToast(`${ipInput.value.trim()} is reachable`, 'success');
+            } else {
+                showToast(`${ipInput.value.trim()} is unreachable`, 'warn');
+            }
+        } catch (e) {
+            showToast(`Ping failed: ${e.message}`, 'error');
+        }
+    });
+
+    const removeBtn = buildPillButton('REMOVE', T.verm, T.bg, async () => {
+        if (!confirm(`Remove card reader ${reader.name}?`)) return;
+        try {
+            const result = await pushChanges([{
+                event_type: 'card_reader.removed',
+                payload: { mac: reader.mac },
+            }]);
+            if (!result.ok) { showToast('Failed to remove card reader', 'error'); return; }
+            _state.editingReaderId = null;
+            await loadData();
+            rebuild();
+            showToast('Card reader removed');
+        } catch (e) {
+            showToast(`Remove failed: ${e.message}`, 'error');
+        }
+    });
+
+    const spacer = document.createElement('div');
+    spacer.style.cssText = `flex: 1;`;
+
+    const cancelBtn = buildGhostButton('CANCEL', T.textMuted, () => {
+        _state.editingReaderId = null;
+        rebuild();
+    });
+
+    actionBar.appendChild(saveBtn);
+    actionBar.appendChild(pingBtn);
+    actionBar.appendChild(removeBtn);
+    actionBar.appendChild(spacer);
+    actionBar.appendChild(cancelBtn);
+    panel.appendChild(actionBar);
+
+    return panel;
+};
+
 const buildCardReadersTab = () => {
     const container = document.createElement('div');
     container.style.cssText = `
@@ -1224,6 +1430,13 @@ const buildCardReadersTab = () => {
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 16px;
     `;
+
+    if (_state.editingReaderId) {
+        const reader = _state.cardReaders.find(r => r.mac === _state.editingReaderId);
+        if (reader) {
+            container.appendChild(buildCardReaderEditPanel(reader));
+        }
+    }
 
     _state.cardReaders.forEach(reader => {
         container.appendChild(buildCardReaderCard(reader));
