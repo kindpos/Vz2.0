@@ -225,25 +225,6 @@ async def activate_license(request: ActivateLicenseRequest):
 
 
 @router.get("/status")
-async def get_license_status():
-    """Check license activation status."""
-    if DEMO_MODE:
-        return {"activated": True, "demo": True, "store_name": "KINDpos Demo",
-                "terminal_name": "Demo Terminal", "prefix": "DM", "node_number": 1}
-    license_data = _read_license_file()
-
-    if license_data:
-        return {
-            "activated": True,
-            **license_data
-        }
-    else:
-        return {
-            "activated": False
-        }
-
-
-@router.get("/status")
 async def license_status(request: Request):
     activated = getattr(request.app.state, 'activated', False)
     return {"activated": activated}
