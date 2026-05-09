@@ -177,9 +177,7 @@ export function defineActivationScene() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              activation_code: code,
-              server_mac: serverMac,
-              platform: 'pi',
+              license_key: code,
             }),
           }, 10000);
 
@@ -194,13 +192,9 @@ export function defineActivationScene() {
             return;
           }
 
-          let detail = `Activation failed (HTTP ${resp.status})`;
-          try {
-            const errBody = await resp.json();
-            if (errBody && errBody.detail) detail = String(errBody.detail);
-            else if (errBody && errBody.error) detail = String(errBody.error);
-          } catch (_) { /* keep default */ }
-          showError(detail);
+          let errBody = {};
+          try { errBody = await resp.json(); } catch (_) { /* ignore */ }
+          showError(errBody.detail || errBody.error || 'Activation failed.');
         } catch (err) {
           if (!state._alive) return;
           showError(err && err.message ? err.message : 'Network error');
