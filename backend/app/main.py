@@ -15,7 +15,7 @@ import sys
 from app.api.routes.printing import print_queue
 from app.printing.print_dispatcher import PrintDispatcher
 from app.config import settings
-from app.api.dependencies import init_ledger, close_ledger, set_printer_manager, get_ephemeral_log, set_print_dispatcher, get_ledger, set_diagnostic_collector, get_diagnostic_collector
+from app.api.dependencies import init_ledger, close_ledger, set_printer_manager, get_ephemeral_log, set_print_dispatcher, get_ledger, set_diagnostic_collector, get_diagnostic_collector, check_license_activation
 from app.services.diagnostic_collector import DiagnosticCollector
 from app.services.demo_seeder import seed_demo_data_if_empty
 from app.core.adapters.printer_manager import PrinterManager
@@ -168,6 +168,7 @@ async def lifespan(app: FastAPI):
     )
     await diagnostic_collector.connect()
     set_diagnostic_collector(diagnostic_collector)
+    await check_license_activation(app)
     print(f"DiagnosticCollector initialized at {diagnostic_db_path}")
 
     # Start daily retention background task
