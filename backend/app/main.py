@@ -231,12 +231,15 @@ app = FastAPI(
     version=settings.app_version,
     description="Nice. Dependable. Yours.",
     lifespan=lifespan,
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
+    openapi_url="/openapi.json" if settings.debug else None,
 )
 
 # CORS middleware (allows frontend to connect)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:8080", "http://localhost:8000", "http://127.0.0.1:8080", "http://localhost:63342"],
+    allow_origins=["http://localhost:5173", "http://localhost:8080", "http://localhost:8000", "http://127.0.0.1:8080", "http://localhost:63342", "https://kindpos-vz2.fly.dev"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
