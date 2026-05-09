@@ -296,16 +296,9 @@ async function boot() {
   //    show the activation gate. A network failure here is treated as
   //    "not activated" so a brand-new server can never silently bypass.
   try {
-    const licRes = await fetchWithTimeout('/api/v1/hardware/license/list', {}, 8000);
-    if (licRes.ok) {
-      const records = await licRes.json();
-      const activated = Array.isArray(records)
-        && records.some(r => r && r.status === 'active');
-      if (!activated) {
-        SceneManager.openGate('activation');
-        return;
-      }
-    } else {
+    const licRes = await fetchWithTimeout('/api/v1/licenses/status', {}, 8000);
+    const licData = await licRes.json();
+    if (!licData.activated) {
       SceneManager.openGate('activation');
       return;
     }

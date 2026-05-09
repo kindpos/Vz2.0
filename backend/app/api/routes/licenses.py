@@ -13,7 +13,7 @@ import socket
 import sys
 import httpx
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 _log = logging.getLogger(__name__)
@@ -241,3 +241,9 @@ async def get_license_status():
         return {
             "activated": False
         }
+
+
+@router.get("/status")
+async def license_status(request: Request):
+    activated = getattr(request.app.state, 'activated', False)
+    return {"activated": activated}
