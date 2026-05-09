@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "KINDpos"
     app_version: str = "0.1.0"
-    debug: bool = True
+    debug: bool = False
 
     # Terminal identification
     terminal_id: str = "terminal_01"
