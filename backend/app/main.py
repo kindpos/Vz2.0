@@ -5,6 +5,7 @@ The main entry point for the backend API.
 """
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,8 @@ import os
 import sys
 import socket
 from zeroconf import Zeroconf, ServiceInfo
+
+logger = logging.getLogger(__name__)
 
 from app.api.routes.printing import print_queue
 from app.printing.print_dispatcher import PrintDispatcher
@@ -206,7 +209,7 @@ async def lifespan(app: FastAPI):
         _zeroconf.register_service(service_info)
         print(f"mDNS service registered: kindpos.local ({lan_ip}:8000)")
     except Exception as e:
-        print(f"WARNING: mDNS registration failed: {e}")
+        logger.warning(f"mDNS registration failed: {e}")
 
     # Start license checkin background task
     _checkin_task = await start_license_checkin_loop()
