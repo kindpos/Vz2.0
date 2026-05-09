@@ -262,7 +262,7 @@ const buildDiscoveredDevicesList = () => {
 
         const isPrinter = dev.type === 'printer' || dev.type === 'thermal_printer';
 
-        const doAdd = async (chosenType) => {
+        const doAdd = async (chosenType, extraFields = {}) => {
             try {
                 const resp = await fetchWithTimeout('/api/v1/hardware/devices', {
                     method: 'POST',
@@ -273,6 +273,7 @@ const buildDiscoveredDevicesList = () => {
                         type: chosenType,
                         name: dev.name || chosenType,
                         port: dev.port || 9100,
+                        ...extraFields,
                     }),
                 });
                 if (resp.status === 409) {
@@ -297,6 +298,70 @@ const buildDiscoveredDevicesList = () => {
         };
 
         const addBtn = buildGhostButton('ADD', T.green, () => {
+            if (dev.type === 'card_reader') {
+                const existing = item.querySelector('[data-register-picker]');
+                if (existing) { existing.remove(); return; }
+
+                const picker = document.createElement('div');
+                picker.setAttribute('data-register-picker', '');
+                picker.style.cssText = `
+                    position: absolute; right: 0; top: 100%; z-index: 200;
+                    background: ${T.bg}; border: 1px solid ${T.border};
+                    border-radius: 6px; padding: 10px;
+                    display: flex; flex-direction: column; gap: 8px;
+                    min-width: 280px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+                `;
+
+                const label = document.createElement('div');
+                label.style.cssText = `
+                    font-size: 9px; font-weight: 700; text-transform: uppercase;
+                    letter-spacing: 0.08em; color: ${T.textMuted};
+                    font-family: ${T.fb};
+                `;
+                label.textContent = 'SPIn Register ID';
+                picker.appendChild(label);
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.id = `register-id-input-${dev.mac}`;
+                input.placeholder = 'SPIn Register ID';
+                input.style.cssText = `
+                    background: ${T.card}; border: 1px solid ${T.border};
+                    color: ${T.text}; padding: 8px; border-radius: 4px;
+                    font-family: ${T.fb}; font-size: 12px; width: 100%; box-sizing: border-box;
+                    outline: none;
+                `;
+                picker.appendChild(input);
+
+                const confirmBtn = buildPillButton('CONFIRM', T.cyan, T.bg, async () => {
+                    const registerIdValue = input.value.trim();
+                    if (!registerIdValue) return;
+                    picker.remove();
+                    await doAdd('card_reader', { register_id: registerIdValue });
+                });
+
+                const updateConfirmState = () => {
+                    confirmBtn.disabled = !input.value.trim();
+                };
+
+                input.addEventListener('input', updateConfirmState);
+                updateConfirmState();
+
+                const cancelBtn = buildPillButton('Cancel', '#7e8896', T.bg, () => {
+                    picker.remove();
+                });
+
+                const btnRow = document.createElement('div');
+                btnRow.style.cssText = 'display: flex; gap: 6px;';
+                btnRow.appendChild(confirmBtn);
+                btnRow.appendChild(cancelBtn);
+                picker.appendChild(btnRow);
+
+                item.appendChild(picker);
+                input.focus();
+                return;
+            }
+
             if (!isPrinter) {
                 doAdd(dev.type);
                 return;
