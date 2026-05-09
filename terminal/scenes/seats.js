@@ -29,7 +29,7 @@ export function seatSubtotal(seat) {
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (it.voided) continue;
-    t += (it.qty || 0) * (it.effectivePrice || it.price || 0);
+    t += (it.qty || 0) * (it.effectivePrice != null ? it.effectivePrice : (it.price || 0));
   }
   return t;
 }
