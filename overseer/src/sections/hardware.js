@@ -253,7 +253,7 @@ const buildDiscoveredDevicesList = () => {
 
         const info = document.createElement('div');
         info.style.cssText = `flex: 1;`;
-        info.innerHTML = `<div style="color: ${T.mint}; font-weight: bold;">${dev.name || 'Unknown Device'}</div><div style="color: ${T.textMuted}; margin-top: 2px;">${dev.ip || 'unknown'}</div><div style="color: ${T.textMuted}; margin-top: 2px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;">${dev.type || 'unknown'}</div>`;
+        info.innerHTML = `<div style="color: ${T.mint}; font-weight: bold;">${dev.name || 'Unknown Device'}</div><div style="color: ${T.textMuted}; margin-top: 2px;">${dev.ip}</div><div style="color: ${T.textMuted}; margin-top: 2px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;">${dev.type || 'unknown'}</div>`;
 
         item.style.position = 'relative';
 
