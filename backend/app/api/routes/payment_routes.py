@@ -56,49 +56,53 @@ def _collect_seats(order) -> list[int]:
 
 
 async def _ensure_devices(manager: PaymentManager):
-    """Load saved card readers as SPIn adapters, fall back to mock."""
+    """Load all active card readers from hardware_config.db as SPIn adapters, fall back to mock."""
     global _devices_initialized
     if _devices_initialized:
         return
     _devices_initialized = True
 
-    # Try to load a real card reader from hardware_config.db
     reader_found = False
     if os.path.exists(HARDWARE_DB_PATH):
         try:
             async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
                 db.row_factory = aiosqlite.Row
-                async with db.execute("SELECT * FROM devices WHERE type = 'card_reader' LIMIT 1") as cur:
-                    row = await cur.fetchone()
-                    if row:
+                async with db.execute("SELECT * FROM devices WHERE type = 'card_reader' AND is_active = 1") as cur:
+                    rows = await cur.fetchall()
+                    for row in rows:
                         device = dict(row)
-                        adapter = DejavooSPInAdapter()
-                        config = PaymentDeviceConfig(
-                            device_id=device['mac'],
-                            name=device.get('name', 'Dejavoo'),
-                            device_type=PaymentDeviceType.SMART_TERMINAL,
-                            ip_address=device['ip'],
-                            mac_address=device['mac'],
-                            port=device.get('port', 9000),
-                            protocol="spin",
-                            processor_id="dejavoo",
-                            register_id=device.get('register_id', ''),
-                            tpn=device.get('tpn', ''),
-                            auth_key=device.get('auth_key', ''),
-                        )
-                        connected = await adapter.connect(config)
-                        if connected:
-                            manager.register_device(adapter)
-                            manager.map_terminal_to_device(settings.terminal_id, device['mac'])
-                            manager.map_terminal_to_device("T-001", device['mac'])
-                            reader_found = True
-                            print(f"  Card reader loaded: {device.get('name', device['mac'])} @ {device['ip']}:{device.get('port', 9000)}")
-                        else:
-                            print(f"  Card reader saved but unreachable: {device['ip']}:{device.get('port', 9000)}")
+                        try:
+                            adapter = DejavooSPInAdapter()
+                            config = PaymentDeviceConfig(
+                                device_id=device['mac'],
+                                name=device.get('name', 'Dejavoo'),
+                                device_type=PaymentDeviceType.SMART_TERMINAL,
+                                ip_address=device['ip'],
+                                mac_address=device['mac'],
+                                port=device.get('port', 9000),
+                                protocol="spin",
+                                processor_id="dejavoo",
+                                register_id=device.get('register_id', ''),
+                                tpn=device.get('tpn', ''),
+                                auth_key=device.get('auth_key', ''),
+                            )
+                            connected = await adapter.connect(config)
+                            if connected:
+                                manager.register_device(adapter)
+                                # Map this terminal and any explicitly configured terminals to the device
+                                manager.map_terminal_to_device(settings.terminal_id, device['mac'])
+                                if device.get('terminal_id'):
+                                    manager.map_terminal_to_device(device['terminal_id'], device['mac'])
+                                reader_found = True
+                                print(f"  Card reader loaded: {device.get('name', device['mac'])} @ {device['ip']}:{device.get('port', 9000)}")
+                            else:
+                                print(f"  Card reader saved but unreachable: {device['ip']}:{device.get('port', 9000)}")
+                        except Exception as device_err:
+                            print(f"  Error loading card reader {device.get('name', device['mac'])}: {device_err}")
         except Exception as e:
-            print(f"  Warning: could not load card reader: {e}")
+            print(f"  Warning: could not load card readers from hardware_config.db: {e}")
 
-    # Fall back to mock if no real device found
+    # Fall back to mock if no real devices found
     if not reader_found:
         mock = MockPaymentDevice()
         config = PaymentDeviceConfig(
@@ -114,8 +118,7 @@ async def _ensure_devices(manager: PaymentManager):
         await mock.connect(config)
         manager.register_device(mock)
         manager.map_terminal_to_device(settings.terminal_id, "mock_001")
-        manager.map_terminal_to_device("T-001", "mock_001")
-        print("  Mock payment device registered (no card reader found)")
+        print("  Mock payment device registered (no card readers found)")
 
 
 @router.post("/reload-devices", dependencies=[Depends(require_manager)])

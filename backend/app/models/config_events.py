@@ -264,6 +264,7 @@ class ModifierOption(BaseModel):
     # size selector. Inner key = modifier name from that group (the "size name").
     # Value = price adjustment for that size combination.
     price_by_size: Dict[str, Dict[str, Decimal]] = {}
+    station_override: Optional[str] = None
 
 class ModifierGroup(BaseModel):
     group_id: str

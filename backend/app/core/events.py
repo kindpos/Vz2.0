@@ -804,6 +804,7 @@ def modifier_applied(
         action: str = "add",  # add, remove, replace
         prefix: str = None,
         half_price: Decimal = None,
+        station_override: str = None,
         **kwargs
 ) -> Event:
     """Create a MODIFIER_APPLIED event."""
@@ -819,6 +820,8 @@ def modifier_applied(
         payload["prefix"] = prefix
     if half_price is not None:
         payload["half_price"] = money_round(half_price)
+    if station_override is not None:
+        payload["station_override"] = station_override
     return create_event(
         event_type=EventType.MODIFIER_APPLIED,
         terminal_id=terminal_id,

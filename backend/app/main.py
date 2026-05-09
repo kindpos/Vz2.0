@@ -19,7 +19,7 @@ from app.api.dependencies import init_ledger, close_ledger, set_printer_manager,
 from app.services.diagnostic_collector import DiagnosticCollector
 from app.services.demo_seeder import seed_demo_data_if_empty
 from app.core.adapters.printer_manager import PrinterManager
-from app.core.adapters.mock_thermal import MockThermalPrinter
+from app.core.adapters.escpos_network import make_thermal_printer, make_kitchen_printer
 from app.core.adapters.base_printer import PrinterConfig, PrinterType, CutType
 from app.api.routes import orders
 from app.api.routes import system
@@ -62,23 +62,70 @@ async def _init_printer_manager(ledger, ephemeral_log=None):
         try:
             async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
                 db.row_factory = aiosqlite.Row
-                async with db.execute("SELECT * FROM devices WHERE type = 'printer'") as cur:
+                async with db.execute(
+                    "SELECT * FROM devices WHERE type IN ('thermal', 'impact') AND is_active = 1"
+                ) as cur:
                     rows = await cur.fetchall()
                     for row in rows:
                         device = dict(row)
-                        role = "kitchen" if "kitchen" in device.get("name", "").lower() else "receipt"
-                        config = PrinterConfig(
-                            printer_id=device["mac"],
-                            name=device.get("name", "Printer"),
-                            printer_type=PrinterType.THERMAL,
-                            role=role,
-                            connection_string=f"{device['ip']}:{device.get('port', 9100)}",
-                            cut_type=CutType.PARTIAL,
-                        )
-                        printer = MockThermalPrinter(config)
-                        await manager.register_printer(printer)
-                        printer_found = True
-                        print(f"  Printer loaded: {device.get('name', device['mac'])} @ {device['ip']}")
+                        printer_type = device.get("type", "thermal").lower()
+                        device_role = device.get("role", "")
+                        device_name = device.get("name", device.get("ip_address", "Printer"))
+                        device_ip = device.get("ip_address")
+                        device_port = int(device.get("port", 9100))
+                        device_chars_per_line = int(device.get("chars_per_line", 48 if printer_type == "thermal" else 33))
+                        device_has_drawer = bool(device.get("has_drawer", False))
+                        device_station = device.get("station") or device.get("location_tag")
+
+                        if not device_ip:
+                            print(f"  Skipping printer (no IP): {device_name}")
+                            continue
+
+                        try:
+                            if printer_type == "thermal":
+                                adapter = make_thermal_printer(
+                                    printer_id=device.get("id") or device.get("mac", device_ip),
+                                    name=device_name,
+                                    ip=device_ip,
+                                    port=device_port,
+                                    chars_per_line=device_chars_per_line,
+                                    has_drawer=device_has_drawer,
+                                )
+                                if device_role:
+                                    adapter._config.role = device_role
+                                if device_station:
+                                    adapter._config.location_tag = device_station
+                            elif printer_type == "impact":
+                                adapter = make_kitchen_printer(
+                                    printer_id=device.get("id") or device.get("mac", device_ip),
+                                    name=device_name,
+                                    ip=device_ip,
+                                    port=device_port,
+                                    chars_per_line=device_chars_per_line,
+                                    is_impact=True,
+                                )
+                                if device_role:
+                                    adapter._config.role = device_role
+                                if device_station:
+                                    adapter._config.location_tag = device_station
+                            else:
+                                print(f"  Skipping unknown printer type: {printer_type}")
+                                continue
+
+                            await manager.register_printer(adapter)
+
+                            # Attempt connection (log result but don't block startup)
+                            connected = await adapter.connect()
+                            if connected:
+                                print(f"  Printer loaded: {device_name} @ {device_ip} (connected)")
+                            else:
+                                print(f"  Printer loaded: {device_name} @ {device_ip} (offline)")
+
+                            printer_found = True
+
+                        except Exception as e:
+                            print(f"  Error loading printer {device_name}: {e}")
+
         except Exception as e:
             print(f"  Warning: could not load printers from hardware_config.db: {e}")
 
@@ -139,10 +186,16 @@ async def lifespan(app: FastAPI):
     await print_queue.connect()
     print("Print Queue initialized")
 
-    _dispatcher = PrintDispatcher(print_queue)
-    await _dispatcher.start()
-    set_print_dispatcher(_dispatcher)
-    print("Print Dispatcher started")
+    # Only start PrintDispatcher if PrinterManager has no printers (backward compat)
+    # If PrinterManager has printers, print routes will use it directly
+    if len(printer_manager._printers) == 0:
+        _dispatcher = PrintDispatcher(print_queue)
+        await _dispatcher.start()
+        set_print_dispatcher(_dispatcher)
+        print("Print Dispatcher started (PrinterManager has no printers)")
+    else:
+        _dispatcher = None
+        print("Print Dispatcher NOT started (using PrinterManager for printing)")
 
     # Crash-recovery sweep: resolve any PAYMENT_INITIATED that landed
     # before a crash and never got a result event. Must run after the
@@ -161,7 +214,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    await _dispatcher.stop()
+    if _dispatcher is not None:
+        await _dispatcher.stop()
     await print_queue.close()
     collector = get_diagnostic_collector()
     if collector is not None:
