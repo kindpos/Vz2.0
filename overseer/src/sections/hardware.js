@@ -333,8 +333,9 @@ const startNetworkScan = async () => {
 
         _state.scanEventSource.onmessage = (e) => {
             try {
-                const device = JSON.parse(e.data);
-                _state.discoveredDevices.push(device);
+                const msg = JSON.parse(e.data);
+                if (msg.type !== 'device') return;
+                _state.discoveredDevices.push(msg);
                 rebuild();
             } catch (err) {
                 console.error('[Scan] Parse error:', err);
