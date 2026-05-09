@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import socket
 import httpx
 from typing import Optional
 from fastapi import APIRouter, HTTPException
@@ -21,6 +22,38 @@ DEMO_MODE = os.environ.get("KINDPOS_STORE_MODE") == "demo"
 
 LICENSE_FILE = "/home/kindpos/data/license.json"
 WORKER_URL = "https://kindpos.com/api/activate"
+
+
+def get_lan_ip() -> str:
+    """Detect local network IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return '127.0.0.1'
+
+
+def write_node_hostname(node_number: int) -> None:
+    """Register node hostname in Windows hosts file."""
+    try:
+        ip = get_lan_ip()
+        hostname = f"kindpos.t{str(node_number).zfill(2)}.local"
+        hosts_path = r"C:\Windows\System32\drivers\etc\hosts"
+
+        with open(hosts_path, 'r') as f:
+            existing = f.read()
+
+        if hostname not in existing:
+            with open(hosts_path, 'a') as f:
+                f.write(f"\n{ip}    {hostname}")
+            _log.info(f"Registered {hostname} → {ip}")
+        else:
+            _log.info(f"{hostname} already registered")
+    except Exception as e:
+        _log.warning(f"Could not write hosts file: {e}")
 
 
 def _get_hardware_fingerprint() -> str:
@@ -115,6 +148,8 @@ async def activate_license(request: ActivateLicenseRequest):
         license_data["hardware_fingerprint"] = hardware_fingerprint
         _write_license_file(license_data)
         _log.info(f"License activated: {request.license_key}")
+
+        write_node_hostname(license_data.get("node_number", 1))
 
         return ActivateLicenseResponse(
             success=True,

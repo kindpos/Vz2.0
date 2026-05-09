@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """KINDpos Setup Wizard — v2.0"""
 
-import sys, os, tkinter as tk
+import sys, os, tkinter as tk, socket
 from tkinter import filedialog
 
 # ── Tokens ──────────────────────────────────────────
@@ -24,6 +24,17 @@ T = {
 }
 FONT = 'Courier'
 STEPS = ['Welcome', 'Directory', 'Install', 'Shortcuts', 'Finish']
+
+
+def get_lan_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return '127.0.0.1'
 
 
 def default_install_dir():
@@ -133,7 +144,7 @@ class KINDposLauncher(tk.Tk):
     def _check_status(self):
         def probe():
             try:
-                socket.create_connection(("kindpos.local", 80), timeout=2)
+                socket.create_connection(("kindpos.local", 8000), timeout=2)
                 self.after(0, self._on_reachable)
             except Exception:
                 self.after(0, self._on_unreachable)
@@ -142,12 +153,12 @@ class KINDposLauncher(tk.Tk):
     def _on_reachable(self):
         self._status_pip_frame.config(bg=T["greenWarm"])
         self._status_pip.config(bg=T["greenWarm"])
-        self._status_lbl.config(text="kindpos.local reachable")
+        self._status_lbl.config(text="KINDpos server reachable")
 
     def _on_unreachable(self):
         self._status_pip_frame.config(bg=T["verm"])
         self._status_pip.config(bg=T["verm"])
-        self._status_lbl.config(text="kindpos.local unreachable")
+        self._status_lbl.config(text="KINDpos server unreachable")
 
 
 if __name__ == "__main__":
@@ -499,6 +510,14 @@ class KINDposSetup(tk.Tk):
                  text='KINDpos v2.0 has been successfully installed.\nA shortcut has been added to your Start Menu and Desktop.',
                  bg=T['bg'], fg=T['green'], font=(FONT, 11),
                  justify=tk.LEFT).pack(anchor=tk.W, pady=(16, 20))
+        tk.Label(self.content,
+                 text='Your KINDpos terminal is at http://kindpos.local',
+                 bg=T['bg'], fg=T['green'], font=(FONT, 10),
+                 justify=tk.LEFT).pack(anchor=tk.W, pady=(8, 0))
+        tk.Label(self.content,
+                 text='Other devices on this network can reach it at http://kindpos.local',
+                 bg=T['bg'], fg=T['text'], font=(FONT, 9),
+                 justify=tk.LEFT).pack(anchor=tk.W, pady=(4, 20))
         self.cb_launch = tk.BooleanVar(value=True)
         tk.Checkbutton(self.content, text='Launch KINDpos Launcher now',
                        variable=self.cb_launch, bg=T['bg'], fg=T['green'],
@@ -524,6 +543,7 @@ class KINDposSetup(tk.Tk):
         py_exe   = os.path.join(rt_dir, 'python.exe')
         pw_exe   = os.path.join(rt_dir, 'pythonw.exe')
         ui = lambda fn, *a, **kw: self.after(0, lambda: fn(*a, **kw))
+        lan_ip = get_lan_ip()
 
         try:
             # ── Step 0: Download Python embeddable ──────────────
@@ -614,6 +634,28 @@ class KINDposSetup(tk.Tk):
                 raise RuntimeError('pip install failed')
             ui(self._log, 'Dependencies installed.', 'ok')
             ui(self._set_progress, 90, 'Dependencies ready.')
+
+            # ── Step 3.5: Install Bonjour (mDNS) ────────────────────
+            ui(self._log, 'Installing Bonjour (mDNS support)…', 'info')
+            try:
+                bonjour_zip = os.path.join(idir, 'bonjour.exe')
+                bonjour_url = 'https://download.info.apple.com/Mac_OS_X/061-8098.20100903.gthyu/BonjourSetup.exe'
+                urllib.request.urlretrieve(bonjour_url, bonjour_zip)
+                subprocess.run([bonjour_zip, '/quiet'], capture_output=True, timeout=60)
+                ui(self._log, 'Bonjour installed.', 'ok')
+            except Exception as exc:
+                ui(self._log, f'Bonjour install skipped ({exc}).', 'dim')
+
+            # ── Step 3.6: Register kindpos.local in hosts ────────────
+            ui(self._log, 'Registering kindpos.local in hosts file…', 'info')
+            try:
+                hosts_path = r'C:\Windows\System32\drivers\etc\hosts'
+                hosts_entry = f"{lan_ip}    kindpos.local\n"
+                with open(hosts_path, 'a') as f:
+                    f.write(hosts_entry)
+                ui(self._log, 'Hosts file updated.', 'ok')
+            except Exception as exc:
+                ui(self._log, f'Hosts file update failed ({exc}).', 'dim')
 
             # ── Step 4: Launcher + shortcuts ─────────────────────
             ui(self._set_step, 4)
