@@ -546,6 +546,7 @@ const buildTerminalEditPanel = (term) => {
                     name: newName,
                     role: newRole,
                     training_mode: trainingChk.checked,
+                    ip_address: ipInput.value.trim(),
                 }
             }]);
             if (!result.ok) { showToast('Failed to update terminal', 'error'); return; }
