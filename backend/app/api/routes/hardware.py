@@ -519,7 +519,7 @@ async def scan_network_stream(
                 )
                 for r in results:
                     if r is not None:
-                        yield _sse({**_annotate(r), 'type': 'device'})
+                        yield _sse({**_annotate(r), 'event': 'device'})
 
             else:
                 # ΓöÇΓöÇ ARP-first subnet sweep ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -616,7 +616,7 @@ async def scan_network_stream(
                     for r in results:
                         if r is not None:
                             found_ips.add(r['ip'])
-                            yield _sse({**_annotate(r), 'type': 'device'})
+                            yield _sse({**_annotate(r), 'event': 'device'})
 
                 # Step 4: Probe saved device IPs not found in ARP sweep
                 missed = [
@@ -630,7 +630,7 @@ async def scan_network_stream(
                     )
                     for r in missed_results:
                         if r is not None:
-                            yield _sse({**_annotate(r), 'type': 'device'})
+                            yield _sse({**_annotate(r), 'event': 'device'})
 
             yield _sse({'type': 'complete'})
 
