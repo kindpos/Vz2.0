@@ -817,11 +817,10 @@ const buildPrinterCard = (printer) => {
     const removeBtn = buildGhostButton('REMOVE', T.verm, async () => {
         if (confirm(`Remove ${printer.name}?`)) {
             try {
-                const result = await pushChanges([{
-                    event_type: 'printer.removed',
-                    payload: { mac: printer.mac }
-                }]);
-                if (!result.ok) { showToast('Failed to remove printer', 'error'); return; }
+                const resp = await fetchWithTimeout(`/api/v1/hardware/devices/${printer.mac}`, {
+                    method: 'DELETE',
+                }, 5000);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 await loadData();
                 rebuild();
                 showToast('Printer removed');
@@ -1090,7 +1089,7 @@ const buildPrinterEditPanel = (printer) => {
                     mac:          printer.mac,
                     name:         newName,
                     type:         currentRole,
-                    ip_address:   newIp,
+                    ip:           newIp,
                     port:         parseInt(newPort, 10) || 9100,
                     terminal_ids: currentRole === 'receipt' ? [...selectedIds] : [],
                 }),
@@ -1407,7 +1406,7 @@ const buildCardReaderEditPanel = (reader) => {
                     mac:         reader.mac,
                     name:        newName,
                     type:        'card_reader',
-                    ip_address:  ipInput.value.trim(),
+                    ip:          ipInput.value.trim(),
                     port:        parseInt(portInput.value.trim(), 10) || 9000,
                     register_id: registerInput.value.trim() || null,
                 }),
