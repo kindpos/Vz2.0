@@ -173,7 +173,7 @@ export function defineActivationScene() {
           const macData = await macRes.json();
           const serverMac = (macData && macData.mac) ? macData.mac : '';
 
-          const resp = await fetchWithTimeout('/api/v1/hardware/activate', {
+          const resp = await fetchWithTimeout('/api/v1/licenses/activate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
