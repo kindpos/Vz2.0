@@ -9,10 +9,12 @@ import json
 import logging
 import os
 import re
+import secrets
 import socket
 import subprocess
 import urllib.parse
 import platform
+import uuid
 import xml.etree.ElementTree as ET
 import ipaddress
 from datetime import datetime
@@ -33,6 +35,7 @@ from ...core.events import (
     printer_assignment_changed,
     printer_configured,
     printer_removed,
+    server_activated,
 )
 
 logger = logging.getLogger("kindpos.hardware")
@@ -97,6 +100,20 @@ async def _ensure_db():
             await db.execute("ALTER TABLE devices ADD COLUMN terminal_id TEXT NOT NULL DEFAULT ''")
         if 'terminal_ids' not in cols:
             await db.execute("ALTER TABLE devices ADD COLUMN terminal_ids TEXT NOT NULL DEFAULT '[]'")
+
+        # Server-license table — bound on activation, audited via ledger
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS server_license (
+                activation_code TEXT PRIMARY KEY,
+                server_mac      TEXT NOT NULL DEFAULT '',
+                platform        TEXT NOT NULL DEFAULT '',
+                status          TEXT NOT NULL DEFAULT 'pending',
+                store_id        TEXT NOT NULL DEFAULT '',
+                label           TEXT NOT NULL DEFAULT '',
+                created_at      TEXT NOT NULL,
+                activated_at    TEXT NOT NULL DEFAULT ''
+            )
+        """)
         await db.commit()
 
 # ΓöÇΓöÇ Models ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -663,11 +680,17 @@ def _decode_terminal_ids(raw) -> list:
 
 @router.get("/devices", dependencies=[Depends(require_manager)])
 async def list_devices():
-    """Return all saved devices from hardware_config.db."""
+    """Return all active saved devices from hardware_config.db.
+
+    Soft-deleted rows (is_active = 0) are filtered out so listings
+    reflect operational reality, not history.
+    """
     await _ensure_db()
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM devices ORDER BY saved_at") as cur:
+        async with db.execute(
+            "SELECT * FROM devices WHERE is_active = 1 ORDER BY saved_at"
+        ) as cur:
             rows = []
             async for row in cur:
                 d = dict(row)
@@ -1019,3 +1042,210 @@ async def test_connection(req: TestConnectionRequest):
     return {"ip": req.ip, "port": req.port, "status": status}
 
 
+# ╔═══════════════════════════════════════════════════════════════════════╗
+#  SERVER LICENSE — generate / activate / list / revoke
+#
+#  KIND-XXXX-XXXX activation codes bind to a single server's MAC. The
+#  ledger gets a server.activated audit anchor so we can prove which
+#  physical box was licensed at what time, without trusting the local DB.
+# ╚═══════════════════════════════════════════════════════════════════════╝
+
+_LICENSE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no I, O, 0, 1
+_PLATFORMS = {"windows", "pi"}
+
+
+class GenerateLicenseRequest(BaseModel):
+    label: str
+    platform: str
+    store_id: str = ""
+
+    @field_validator('platform')
+    @classmethod
+    def validate_platform(cls, v):
+        if v not in _PLATFORMS:
+            raise ValueError(f"platform must be one of {sorted(_PLATFORMS)}")
+        return v
+
+
+class ActivateServerRequest(BaseModel):
+    activation_code: str
+    server_mac: str
+    platform: str
+
+    @field_validator('platform')
+    @classmethod
+    def validate_platform(cls, v):
+        if v not in _PLATFORMS:
+            raise ValueError(f"platform must be one of {sorted(_PLATFORMS)}")
+        return v
+
+
+def _generate_code() -> str:
+    """KIND-XXXX-XXXX (4+4 chars from a confusables-free uppercase alphabet)."""
+    block_a = ''.join(secrets.choice(_LICENSE_ALPHABET) for _ in range(4))
+    block_b = ''.join(secrets.choice(_LICENSE_ALPHABET) for _ in range(4))
+    return f"KIND-{block_a}-{block_b}"
+
+
+@router.post("/license/generate", dependencies=[Depends(require_manager)])
+async def generate_license(req: GenerateLicenseRequest):
+    """Issue a fresh activation code in pending status."""
+    await _ensure_db()
+    now = datetime.utcnow().isoformat()
+
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        # Retry on the astronomically-unlikely collision rather than 500.
+        for _ in range(5):
+            code = _generate_code()
+            try:
+                await db.execute(
+                    """
+                    INSERT INTO server_license
+                        (activation_code, server_mac, platform, status,
+                         store_id, label, created_at, activated_at)
+                    VALUES (?, '', '', 'pending', ?, ?, ?, '')
+                    """,
+                    (code, req.store_id, req.label, now),
+                )
+                await db.commit()
+                return {
+                    "activation_code": code,
+                    "label": req.label,
+                    "platform": req.platform,
+                    "status": "pending",
+                    "created_at": now,
+                    "store_id": req.store_id,
+                }
+            except aiosqlite.IntegrityError:
+                continue
+        raise HTTPException(
+            status_code=500,
+            detail="Could not generate a unique activation code; please retry.",
+        )
+
+
+@router.post("/activate")
+async def activate_server(
+    req: ActivateServerRequest,
+    ledger: EventLedger = Depends(get_ledger),
+):
+    """Bind a pending activation code to this server's MAC.
+
+    Intentionally unauthenticated: this is the gate that runs *before*
+    the operator has any way to log in. Each code is single-use; once
+    flipped to active it cannot be re-bound to a different MAC.
+    """
+    await _ensure_db()
+    code = req.activation_code.strip().upper()
+    server_mac = req.server_mac.strip().upper()
+    now = datetime.utcnow().isoformat()
+
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM server_license WHERE activation_code = ?",
+            (code,),
+        ) as cur:
+            row = await cur.fetchone()
+
+        if row is None:
+            raise HTTPException(status_code=400, detail="Activation code not found")
+        if row["status"] == "active":
+            raise HTTPException(
+                status_code=400,
+                detail="Activation code already used",
+            )
+        if row["status"] == "revoked":
+            raise HTTPException(
+                status_code=400,
+                detail="Activation code has been revoked",
+            )
+
+        label = row["label"] or ""
+
+        await db.execute(
+            """
+            UPDATE server_license
+               SET server_mac = ?,
+                   platform = ?,
+                   status = 'active',
+                   activated_at = ?
+             WHERE activation_code = ?
+            """,
+            (server_mac, req.platform, now, code),
+        )
+        await db.commit()
+
+    await ledger.append(server_activated(
+        terminal_id=settings.terminal_id,
+        activation_code=code,
+        server_mac=server_mac,
+        platform=req.platform,
+        label=label,
+    ))
+
+    return {
+        "success": True,
+        "label": label,
+        "activation_code": code,
+        "server_mac": server_mac,
+        "activated_at": now,
+    }
+
+
+@router.get("/license/list")
+async def list_licenses():
+    """All license records, newest first.
+
+    Unauthenticated so the terminal boot probe can decide whether the
+    server has ever been activated before any login flow exists.
+    """
+    await _ensure_db()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM server_license ORDER BY created_at DESC"
+        ) as cur:
+            return [dict(row) async for row in cur]
+
+
+@router.delete("/license/{activation_code}", dependencies=[Depends(require_manager)])
+async def revoke_license(activation_code: str):
+    """Soft-revoke a license. Active rows stay visible but unusable."""
+    await _ensure_db()
+    code = activation_code.strip().upper()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM server_license WHERE activation_code = ?", (code,)
+        ) as cur:
+            if await cur.fetchone() is None:
+                raise HTTPException(status_code=404, detail="License not found")
+        await db.execute(
+            "UPDATE server_license SET status = 'revoked' WHERE activation_code = ?",
+            (code,),
+        )
+        await db.commit()
+    return {"revoked": code}
+
+
+@router.get("/server-mac")
+async def get_server_mac():
+    """Return this server's primary MAC address.
+
+    Pi: prefer /sys/class/net/eth0/address, fall back to wlan0, then to
+    Python's uuid.getnode(). Windows/dev hosts: just uuid.getnode().
+    """
+    for iface in ("eth0", "wlan0"):
+        path = f"/sys/class/net/{iface}/address"
+        try:
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    raw = f.read().strip()
+                if raw:
+                    return {"mac": raw.upper()}
+        except Exception as e:  # pragma: no cover — sysfs read failure
+            logger.debug(f"Could not read {path}: {e}")
+
+    node = uuid.getnode()
+    mac = ":".join(f"{(node >> i) & 0xFF:02X}" for i in range(40, -8, -8))
+    return {"mac": mac}

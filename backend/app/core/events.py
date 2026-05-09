@@ -97,6 +97,7 @@ class EventType(str, Enum):
     PRINTER_ASSIGNMENT_CHANGED = "printer.assignment_changed"  # LEDGER_OPERATIONAL
     PAYMENT_PROCESSOR_CONFIGURED = "payment.processor_configured"  # LEDGER_OPERATIONAL
     PAYMENT_PROCESSOR_REMOVED    = "payment.processor_removed"      # LEDGER_OPERATIONAL
+    SERVER_ACTIVATED             = "server.activated"               # LEDGER_OPERATIONAL
     PRINTER_STATUS_CHANGED = "printer.status_changed"      # EPHEMERAL
     PRINTER_ERROR = "printer.error"                        # EPHEMERAL
     PRINTER_ROLE_CREATED = "printer.role_created"          # EPHEMERAL
@@ -1383,6 +1384,31 @@ def payment_processor_configured(
         payload["configured_by"] = configured_by
     return create_event(
         event_type=EventType.PAYMENT_PROCESSOR_CONFIGURED,
+        terminal_id=terminal_id,
+        payload=payload,
+        **kwargs,
+    )
+
+
+def server_activated(
+        terminal_id: str,
+        activation_code: str,
+        server_mac: str,
+        platform: str,
+        label: str = "",
+        **kwargs
+) -> Event:
+    """SERVER_ACTIVATED: emitted when a license activation code is bound
+    to this server's MAC. Audit anchor for which physical box was
+    licensed at what time."""
+    payload = {
+        "activation_code": activation_code,
+        "server_mac": server_mac.upper(),
+        "platform": platform,
+        "label": label,
+    }
+    return create_event(
+        event_type=EventType.SERVER_ACTIVATED,
         terminal_id=terminal_id,
         payload=payload,
         **kwargs,

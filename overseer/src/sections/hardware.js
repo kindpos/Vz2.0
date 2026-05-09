@@ -60,6 +60,7 @@ let _state = {
     printers: [],
     cardReaders: [],
     kindTerminals: [],
+    licenses: [],
     activeTab: 'terminals',
     editingTerminalId: null,
     editingPrinterId: null,
@@ -69,6 +70,8 @@ let _state = {
     isScanning: false,
     discoveredDevices: [],
     scanEventSource: null,
+    licenseDraft: { label: '', platform: 'pi', store_id: '' },
+    lastGeneratedCode: null,
 };
 
 const resetState = () => {
@@ -77,6 +80,7 @@ const resetState = () => {
         printers: [],
         cardReaders: [],
         kindTerminals: [],
+        licenses: [],
         activeTab: 'terminals',
         editingTerminalId: null,
         editingPrinterId: null,
@@ -86,6 +90,8 @@ const resetState = () => {
         isScanning: false,
         discoveredDevices: [],
         scanEventSource: null,
+        licenseDraft: { label: '', platform: 'pi', store_id: '' },
+        lastGeneratedCode: null,
     };
 };
 
@@ -104,6 +110,17 @@ const loadData = async () => {
         _state.printers = devices.filter(d => d.type === 'printer' || d.type === 'kitchen' || d.type === 'receipt') || [];
         _state.cardReaders = devices.filter(d => d.type === 'card_reader') || [];
         _state.kindTerminals = devices.filter(d => d.type === 'terminal') || [];
+
+        try {
+            const licResp = await fetchWithTimeout('/api/v1/hardware/license/list');
+            if (licResp.ok) {
+                const lic = await licResp.json();
+                _state.licenses = Array.isArray(lic) ? lic : [];
+            }
+        } catch (licErr) {
+            console.warn('[Hardware] License list unavailable:', licErr);
+        }
+
         _state.lastSyncTime = new Date().toLocaleTimeString();
     } catch (e) {
         showToast(`Failed to load hardware data: ${e.message}`, 'error');
@@ -1595,6 +1612,303 @@ const buildCardReadersTab = () => {
     return container;
 };
 
+/* ─── LICENSES TAB ────────────────────────────────────────────── */
+const LICENSE_STATUS_COLOR = {
+    pending:  T.gold,
+    active:   T.mint,
+    revoked:  T.textMuted,
+};
+
+const buildStatusBadge = (status) => {
+    const fill = LICENSE_STATUS_COLOR[status] || T.textMuted;
+    const badge = document.createElement('span');
+    badge.style.cssText = `
+        background: ${fill}; color: ${T.bg};
+        padding: 2px 8px; border-radius: 3px; font-size: 9px;
+        font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+        font-family: ${T.fb};
+    `;
+    badge.textContent = status || 'unknown';
+    return badge;
+};
+
+const buildPlatformBadge = (platform) => {
+    const label = platform === 'windows' ? 'WIN' : (platform === 'pi' ? 'PI' : '—');
+    const fill = platform === 'windows' ? T.cyan : (platform === 'pi' ? T.green : T.textMuted);
+    const badge = document.createElement('span');
+    badge.style.cssText = `
+        background: ${withAlpha(fill, 0.18)}; color: ${fill};
+        padding: 2px 8px; border-radius: 3px; font-size: 9px;
+        font-weight: 700; letter-spacing: 0.08em; font-family: ${T.fb};
+        border: 1px solid ${withAlpha(fill, 0.4)};
+    `;
+    badge.textContent = label;
+    return badge;
+};
+
+const buildGenerateLicensePanel = () => {
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        background: ${T.well}; border: 1px solid ${T.border};
+        border-radius: 8px; padding: 16px; margin-bottom: 16px;
+        display: flex; flex-direction: column; gap: 12px;
+    `;
+
+    const titleRow = document.createElement('div');
+    titleRow.style.cssText = `
+        font-family: ${T.fh}; font-size: 13px; font-weight: 700;
+        color: ${T.green}; letter-spacing: 0.04em;
+    `;
+    titleRow.textContent = 'GENERATE LICENSE';
+    panel.appendChild(titleRow);
+
+    const inputCss = `
+        background: ${T.card}; border: 1px solid ${T.border};
+        color: ${T.text}; padding: 8px; border-radius: 4px;
+        font-family: ${T.fb}; font-size: 12px; box-sizing: border-box;
+    `;
+
+    const grid = document.createElement('div');
+    grid.style.cssText = `display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px; align-items: center;`;
+
+    const labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.placeholder = 'Label (e.g. Front Counter Pi)';
+    labelInput.value = _state.licenseDraft.label;
+    labelInput.style.cssText = inputCss;
+    labelInput.addEventListener('input', () => { _state.licenseDraft.label = labelInput.value; });
+
+    const platformSelect = document.createElement('select');
+    platformSelect.style.cssText = inputCss + ' cursor: pointer;';
+    [
+        { value: 'pi',      text: 'Raspberry Pi' },
+        { value: 'windows', text: 'Windows' },
+    ].forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.text;
+        if (opt.value === _state.licenseDraft.platform) o.selected = true;
+        platformSelect.appendChild(o);
+    });
+    platformSelect.addEventListener('change', () => {
+        _state.licenseDraft.platform = platformSelect.value;
+    });
+
+    const storeIdInput = document.createElement('input');
+    storeIdInput.type = 'text';
+    storeIdInput.placeholder = 'Store ID (optional)';
+    storeIdInput.value = _state.licenseDraft.store_id;
+    storeIdInput.style.cssText = inputCss;
+    storeIdInput.addEventListener('input', () => { _state.licenseDraft.store_id = storeIdInput.value; });
+
+    const generateBtn = buildPillButton('GENERATE', T.greenUp, T.bg, async () => {
+        const label = labelInput.value.trim();
+        if (!label) { showToast('Label is required', 'error'); return; }
+        try {
+            const resp = await fetchWithTimeout('/api/v1/hardware/license/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    label,
+                    platform: platformSelect.value,
+                    store_id: storeIdInput.value.trim(),
+                }),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                showToast(err.detail || `Failed to generate (HTTP ${resp.status})`, 'error');
+                return;
+            }
+            const data = await resp.json();
+            _state.lastGeneratedCode = data.activation_code;
+            _state.licenseDraft = { label: '', platform: platformSelect.value, store_id: '' };
+            await loadData();
+            rebuild();
+            showToast('License generated');
+        } catch (e) {
+            showToast(`Generate failed: ${e.message}`, 'error');
+        }
+    });
+
+    grid.appendChild(labelInput);
+    grid.appendChild(platformSelect);
+    grid.appendChild(storeIdInput);
+    grid.appendChild(generateBtn);
+    panel.appendChild(grid);
+
+    if (_state.lastGeneratedCode) {
+        const codeBlock = document.createElement('div');
+        codeBlock.style.cssText = `
+            margin-top: 4px; padding: 16px;
+            background: ${T.card}; border: 1px solid ${withAlpha(T.gold, 0.5)};
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        `;
+
+        const codeText = document.createElement('div');
+        codeText.style.cssText = `
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 22px; font-weight: 700;
+            color: ${T.gold}; letter-spacing: 0.18em;
+            user-select: all;
+        `;
+        codeText.textContent = _state.lastGeneratedCode;
+
+        const copyBtn = buildPillButton('COPY', T.gold, T.bg, async () => {
+            try {
+                await navigator.clipboard.writeText(_state.lastGeneratedCode);
+                showToast('Copied to clipboard');
+            } catch (_) {
+                showToast('Copy failed — select manually', 'warn');
+            }
+        });
+
+        const dismissBtn = buildGhostButton('DISMISS', T.textMuted, () => {
+            _state.lastGeneratedCode = null;
+            rebuild();
+        });
+
+        const btnGroup = document.createElement('div');
+        btnGroup.style.cssText = `display: flex; gap: 8px;`;
+        btnGroup.appendChild(copyBtn);
+        btnGroup.appendChild(dismissBtn);
+
+        codeBlock.appendChild(codeText);
+        codeBlock.appendChild(btnGroup);
+        panel.appendChild(codeBlock);
+    }
+
+    return panel;
+};
+
+const buildLicenseRow = (lic) => {
+    const isRevoked = lic.status === 'revoked';
+
+    const row = document.createElement('div');
+    row.style.cssText = `
+        display: grid;
+        grid-template-columns: 2fr 70px 90px 1.4fr 1.2fr auto;
+        gap: 12px; align-items: center;
+        padding: 12px 14px; background: ${T.card};
+        border: 1px solid ${T.border}; border-radius: 6px;
+        opacity: ${isRevoked ? '0.55' : '1'};
+    `;
+
+    const labelEl = document.createElement('div');
+    labelEl.style.cssText = `
+        color: ${T.text}; font-family: ${T.fb}; font-size: 13px; font-weight: 600;
+    `;
+    labelEl.textContent = lic.label || '(unlabeled)';
+
+    const platformCell = document.createElement('div');
+    platformCell.appendChild(buildPlatformBadge(lic.platform));
+
+    const statusCell = document.createElement('div');
+    statusCell.appendChild(buildStatusBadge(lic.status));
+
+    const codeEl = document.createElement('div');
+    codeEl.style.cssText = `
+        font-family: 'Share Tech Mono', monospace; font-size: 12px;
+        color: ${isRevoked ? T.textMuted : T.gold};
+        letter-spacing: 0.08em;
+        ${isRevoked ? 'text-decoration: line-through;' : ''}
+        user-select: all;
+    `;
+    codeEl.textContent = lic.activation_code;
+
+    const activatedEl = document.createElement('div');
+    activatedEl.style.cssText = `
+        font-family: 'Share Tech Mono', monospace; font-size: 11px;
+        color: ${T.textMuted};
+    `;
+    if (lic.activated_at) {
+        const d = new Date(lic.activated_at);
+        activatedEl.textContent = isNaN(d.getTime())
+            ? lic.activated_at
+            : d.toLocaleString();
+    } else {
+        activatedEl.textContent = 'Pending';
+    }
+
+    const actions = document.createElement('div');
+    actions.style.cssText = `display: flex; gap: 6px; justify-content: flex-end;`;
+
+    if (!isRevoked) {
+        const revokeBtn = buildGhostButton('REVOKE', T.verm, async () => {
+            if (!confirm(`Revoke license ${lic.activation_code}?\n\nThis cannot be undone.`)) return;
+            try {
+                const resp = await fetchWithTimeout(
+                    `/api/v1/hardware/license/${encodeURIComponent(lic.activation_code)}`,
+                    { method: 'DELETE' }
+                );
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    showToast(err.detail || `Revoke failed (HTTP ${resp.status})`, 'error');
+                    return;
+                }
+                await loadData();
+                rebuild();
+                showToast('License revoked');
+            } catch (e) {
+                showToast(`Revoke failed: ${e.message}`, 'error');
+            }
+        });
+        actions.appendChild(revokeBtn);
+    }
+
+    row.appendChild(labelEl);
+    row.appendChild(platformCell);
+    row.appendChild(statusCell);
+    row.appendChild(codeEl);
+    row.appendChild(activatedEl);
+    row.appendChild(actions);
+
+    return row;
+};
+
+const buildLicensesTab = () => {
+    const container = document.createElement('div');
+    container.style.cssText = `display: flex; flex-direction: column; gap: 16px;`;
+
+    container.appendChild(buildGenerateLicensePanel());
+
+    if (_state.licenses.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = `
+            padding: 24px; text-align: center;
+            color: ${T.textMuted}; font-family: 'Share Tech Mono', monospace;
+            font-size: 12px;
+            border: 1px dashed ${T.border}; border-radius: 8px;
+        `;
+        empty.textContent = 'No licenses yet — generate one above.';
+        container.appendChild(empty);
+        return container;
+    }
+
+    // Header row
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: grid;
+        grid-template-columns: 2fr 70px 90px 1.4fr 1.2fr auto;
+        gap: 12px; padding: 0 14px;
+        font-family: ${T.fh}; font-size: 10px; font-weight: 700;
+        color: ${T.textMuted}; letter-spacing: 0.1em; text-transform: uppercase;
+    `;
+    ['Label', 'Platform', 'Status', 'Activation Code', 'Activated', ''].forEach(h => {
+        const cell = document.createElement('div');
+        cell.textContent = h;
+        header.appendChild(cell);
+    });
+    container.appendChild(header);
+
+    const list = document.createElement('div');
+    list.style.cssText = `display: flex; flex-direction: column; gap: 8px;`;
+    _state.licenses.forEach(lic => list.appendChild(buildLicenseRow(lic)));
+    container.appendChild(list);
+
+    return container;
+};
+
 /* ─── TAB SWITCHER ───────────────────────────────────────────── */
 const buildTabBar = () => {
     const bar = document.createElement('div');
@@ -1609,6 +1923,7 @@ const buildTabBar = () => {
         { id: 'terminals', label: `TERMINALS (${_state.terminals.length})` },
         { id: 'printers', label: `PRINTERS (${_state.printers.length})` },
         { id: 'cardReaders', label: `CARD READERS (${_state.cardReaders.length})` },
+        { id: 'licenses', label: `LICENSES (${_state.licenses.length})` },
     ];
 
     tabs.forEach(tab => {
@@ -1659,6 +1974,8 @@ const rebuild = () => {
         tabContent = buildTerminalsTab();
     } else if (_state.activeTab === 'printers') {
         tabContent = buildPrintersTab();
+    } else if (_state.activeTab === 'licenses') {
+        tabContent = buildLicensesTab();
     } else {
         tabContent = buildCardReadersTab();
     }

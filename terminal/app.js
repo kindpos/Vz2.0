@@ -291,18 +291,28 @@ async function boot() {
   // 2. Register activation scene
   SceneManager.register(defineActivationScene());
 
-  // 3. Check license activation status (must come before login)
+  // 3. Check server-license activation (must come before login).
+  //    Any record with status='active' counts as activated; otherwise we
+  //    show the activation gate. A network failure here is treated as
+  //    "not activated" so a brand-new server can never silently bypass.
   try {
-    const licRes = await fetchWithTimeout('/api/v1/licenses/status', {}, 8000);
+    const licRes = await fetchWithTimeout('/api/v1/hardware/license/list', {}, 8000);
     if (licRes.ok) {
-      const licData = await licRes.json();
-      if (licData.activated === false) {
+      const records = await licRes.json();
+      const activated = Array.isArray(records)
+        && records.some(r => r && r.status === 'active');
+      if (!activated) {
         SceneManager.openGate('activation');
         return;
       }
+    } else {
+      SceneManager.openGate('activation');
+      return;
     }
   } catch (e) {
-    console.info('[app] License check failed, continuing with boot');
+    console.info('[app] License check failed, opening activation gate');
+    SceneManager.openGate('activation');
+    return;
   }
 
   // 4. Load store config from backend
