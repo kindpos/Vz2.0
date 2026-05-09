@@ -255,10 +255,51 @@ const buildDiscoveredDevicesList = () => {
         info.style.cssText = `flex: 1;`;
         info.innerHTML = `<div style="color: ${T.mint}; font-weight: bold;">${dev.name || 'Unknown Device'}</div><div style="color: ${T.textMuted}; margin-top: 2px;">${dev.ip || 'unknown'}</div><div style="color: ${T.textMuted}; margin-top: 2px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;">${dev.type || 'unknown'}</div>`;
 
-        const addBtn = buildGhostButton('ADD', T.green, () => {
+        item.style.position = 'relative';
+
+        const isPrinter = dev.type === 'printer' || dev.type === 'thermal_printer';
+
+        const doAdd = (chosenType) => {
             showToast(`Added ${dev.ip} to pending devices`, 'success');
             _state.discoveredDevices = _state.discoveredDevices.filter(d => d !== dev);
             rebuild();
+        };
+
+        const addBtn = buildGhostButton('ADD', T.green, () => {
+            if (!isPrinter) {
+                doAdd(dev.type);
+                return;
+            }
+
+            const existing = item.querySelector('[data-printer-picker]');
+            if (existing) { existing.remove(); return; }
+
+            const picker = document.createElement('div');
+            picker.setAttribute('data-printer-picker', '');
+            picker.style.cssText = `
+                position: absolute; right: 0; top: 100%; z-index: 200;
+                background: ${T.bg}; border: 1px solid ${T.border};
+                border-radius: 6px; padding: 10px;
+                display: flex; flex-direction: column; gap: 6px;
+                min-width: 160px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            `;
+
+            const kitchenBtn = buildPillButton('Kitchen Printer', T.gold, T.bg, () => {
+                picker.remove();
+                doAdd('kitchen');
+            });
+            const receiptBtn = buildPillButton('Receipt Printer', T.mint, T.bg, () => {
+                picker.remove();
+                doAdd('receipt');
+            });
+            const cancelBtn = buildPillButton('Cancel', '#7e8896', T.bg, () => {
+                picker.remove();
+            });
+
+            picker.appendChild(kitchenBtn);
+            picker.appendChild(receiptBtn);
+            picker.appendChild(cancelBtn);
+            item.appendChild(picker);
         });
 
         item.appendChild(info);
