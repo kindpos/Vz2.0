@@ -3756,7 +3756,7 @@ function handlePrint(state) {
   }
   state._printing = true;
   showToast('Printing receipt…', { bg: T.green });
-  fetchWithTimeout(`/api/v1/orders/${state.orderId}/print/receipt`, { method: 'POST' }, 8000)
+  fetchWithTimeout(`/api/v1/print/receipt/${state.orderId}`, { method: 'POST' }, 8000)
     .then((r) => {
       state._printing = false;
       if (r.ok) showToast('Receipt printed', { bg: T.greenWarm });
