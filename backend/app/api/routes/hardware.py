@@ -20,7 +20,7 @@ from typing import List, Optional
 
 import aiosqlite
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
@@ -95,20 +95,23 @@ async def _ensure_db():
             await db.execute("ALTER TABLE devices ADD COLUMN categories TEXT NOT NULL DEFAULT ''")
         if 'terminal_id' not in cols:
             await db.execute("ALTER TABLE devices ADD COLUMN terminal_id TEXT NOT NULL DEFAULT ''")
+        if 'terminal_ids' not in cols:
+            await db.execute("ALTER TABLE devices ADD COLUMN terminal_ids TEXT NOT NULL DEFAULT '[]'")
         await db.commit()
 
 # ΓöÇΓöÇ Models ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 class DeviceRecord(BaseModel):
-    mac:  str
+    mac:  Optional[str] = None
     ip:   str
-    type: str        # 'kitchen' | 'receipt' | 'card_reader'
+    type: str        # 'kitchen' | 'receipt' | 'card_reader' | 'terminal'
     name: str
     port: int = 9100
     register_id: str = ''  # SPIn Register ID for card readers
     tpn: str = ''          # SPIn Terminal Processing Number
     auth_key: str = ''     # SPIn Auth Key for card readers
     categories: str = ''   # Comma-separated category IDs for kitchen printers
+    terminal_ids: list[str] = []  # Receipt printer → linked terminal IDs
 
     @field_validator('ip')
     @classmethod
@@ -650,6 +653,14 @@ async def scan_network_stream(
 #  DEVICE CRUD
 # ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
+def _decode_terminal_ids(raw) -> list:
+    try:
+        parsed = json.loads(raw or '[]')
+        return parsed if isinstance(parsed, list) else []
+    except Exception:
+        return []
+
+
 @router.get("/devices", dependencies=[Depends(require_manager)])
 async def list_devices():
     """Return all saved devices from hardware_config.db."""
@@ -657,7 +668,12 @@ async def list_devices():
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM devices ORDER BY saved_at") as cur:
-            return [dict(row) async for row in cur]
+            rows = []
+            async for row in cur:
+                d = dict(row)
+                d['terminal_ids'] = _decode_terminal_ids(d.get('terminal_ids', '[]'))
+                rows.append(d)
+            return rows
 
 
 def _parse_categories(raw: str) -> list[str]:
@@ -671,14 +687,39 @@ async def save_device(
 ):
     """Insert or update a device by MAC address.
 
+    If mac is absent, attempts ARP resolution before saving.
+    Rejects with 409 if MAC cannot be resolved — never persists a null MAC.
+
     Emits a ledger event after the DB write: printer.configured on a
     brand-new MAC, or printer.assignment_changed when an existing
     kitchen printer's category list changes. Card readers only ever
     emit printer.configured (they don't carry categories).
     """
     await _ensure_db()
-    mac = device.mac.upper()
+
+    # Resolve MAC if not supplied
+    resolved_mac = device.mac.upper() if device.mac else None
+    if not resolved_mac:
+        loop = asyncio.get_running_loop()
+        resolved_mac = await loop.run_in_executor(None, _get_mac, device.ip)
+        if resolved_mac:
+            resolved_mac = resolved_mac.upper()
+
+    if not resolved_mac:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "mac_unresolvable",
+                "message": f"Could not resolve MAC for {device.ip}. Is the device still online?",
+            },
+        )
+
+    mac = resolved_mac
     now = datetime.utcnow().isoformat()
+    terminal_ids_json = json.dumps(
+        device.terminal_ids if device.type == 'receipt' else []
+    )
+
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -688,21 +729,22 @@ async def save_device(
         previous_categories = _parse_categories(existing["categories"]) if existing else []
 
         await db.execute("""
-            INSERT INTO devices (mac, ip, type, name, port, register_id, tpn, auth_key, categories, saved_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO devices (mac, ip, type, name, port, register_id, tpn, auth_key, categories, terminal_ids, saved_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(mac) DO UPDATE SET
-                ip          = excluded.ip,
-                type        = excluded.type,
-                name        = excluded.name,
-                port        = excluded.port,
-                register_id = excluded.register_id,
-                tpn         = excluded.tpn,
-                auth_key    = excluded.auth_key,
-                categories  = excluded.categories,
-                saved_at    = excluded.saved_at
+                ip           = excluded.ip,
+                type         = excluded.type,
+                name         = excluded.name,
+                port         = excluded.port,
+                register_id  = excluded.register_id,
+                tpn          = excluded.tpn,
+                auth_key     = excluded.auth_key,
+                categories   = excluded.categories,
+                terminal_ids = excluded.terminal_ids,
+                saved_at     = excluded.saved_at
         """, (mac, device.ip, device.type,
               device.name, device.port, device.register_id, device.tpn, device.auth_key,
-              device.categories, now))
+              device.categories, terminal_ids_json, now))
         await db.commit()
 
     new_categories = _parse_categories(device.categories)
@@ -737,7 +779,12 @@ async def save_device(
     if events:
         await ledger.append_batch(events) if len(events) > 1 else await ledger.append(events[0])
 
-    return {**device.model_dump(), 'mac': mac, 'saved_at': now}
+    return {
+        **device.model_dump(),
+        'mac': mac,
+        'terminal_ids': device.terminal_ids if device.type == 'receipt' else [],
+        'saved_at': now,
+    }
 
 
 @router.delete("/devices/{mac}", dependencies=[Depends(require_manager)])
