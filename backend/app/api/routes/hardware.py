@@ -52,8 +52,10 @@ HARDWARE_DB_PATH = os.path.join(
 PRINTER_PORTS = [9100, 9101, 9102]
 # Dejavoo SPIn ΓÇö default port first, then dedicated fallbacks only
 CARD_READER_PORTS = [9000, 8443, 9443]
+TERMINAL_PORTS = [8000]
+WEB_UI_PORTS = [80]
 
-ALL_SCAN_PORTS = PRINTER_PORTS + CARD_READER_PORTS
+ALL_SCAN_PORTS = WEB_UI_PORTS + PRINTER_PORTS + CARD_READER_PORTS + TERMINAL_PORTS
 
 # ΓöÇΓöÇ Scan tuning ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 PROBE_TIMEOUT  = 2.5  # TCP connect timeout per port
@@ -359,9 +361,9 @@ async def _probe_host(ip: str, mac: Optional[str], ports: list, timeout: float) 
     if not open_ports:
         return None
 
-    # Classify from complete picture ΓÇö printer ports take priority
+    # Classify from complete picture — printer ports take priority
     printer_hits = [p for p in open_ports if p in PRINTER_PORTS]
-    reader_hits = [p for p in open_ports if p in CARD_READER_PORTS]
+    reader_hits  = [p for p in open_ports if p in CARD_READER_PORTS]
 
     if printer_hits:
         dtype = 'printer'
@@ -371,6 +373,10 @@ async def _probe_host(ip: str, mac: Optional[str], ports: list, timeout: float) 
         dtype = 'card_reader'
         best_port = reader_hits[0]  # 9000 is first in CARD_READER_PORTS
         name = 'Card Reader'
+    elif 8000 in open_ports:
+        dtype = 'terminal'
+        best_port = 8000
+        name = 'KINDpos Terminal'
     else:
         return None
 
@@ -382,7 +388,7 @@ async def _probe_host(ip: str, mac: Optional[str], ports: list, timeout: float) 
     result = {
         'ip':   ip,
         'port': best_port,
-        'mac':  mac or f"UNKNOWN-{ip.replace('.', '-')}",
+        'mac':  mac or None,
         'type': dtype,
         'name': name,
     }
@@ -396,6 +402,41 @@ async def _probe_host(ip: str, mac: Optional[str], ports: list, timeout: float) 
             result['name'] = spin['model']
         elif spin.get('status'):
             result['name'] = 'Dejavoo'
+
+    # Enrich KINDpos terminal name via health endpoint
+    if dtype == 'terminal':
+        try:
+            async with httpx.AsyncClient(timeout=1.0) as client:
+                health = None
+                for path in ('/api/v1/health', '/health'):
+                    try:
+                        r = await client.get(f'http://{ip}:8000{path}')
+                        if r.status_code == 200:
+                            health = r.json()
+                            break
+                    except Exception:
+                        continue
+                if health:
+                    label = health.get('version') or health.get('hostname')
+                    if label:
+                        result['name'] = f'KINDpos Terminal — {label}'
+        except Exception:
+            pass
+
+    # Enrich printer name via web UI <title> tag (port 80)
+    if dtype == 'printer' and 80 in open_ports:
+        _GENERIC_TITLES = {'printer', 'embedded web server', ''}
+        try:
+            async with httpx.AsyncClient(timeout=1.0) as client:
+                r = await client.get(f'http://{ip}/')
+                if r.status_code == 200:
+                    m = re.search(r'<title[^>]*>([^<]*)</title>', r.text, re.IGNORECASE)
+                    if m:
+                        title = m.group(1).strip()[:64]
+                        if title.lower() not in _GENERIC_TITLES:
+                            result['name'] = title
+        except Exception:
+            pass
 
     return result
 
