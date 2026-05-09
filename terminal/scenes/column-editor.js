@@ -94,7 +94,7 @@ function _collapseSplitGroups(items) {
     var ref = it._splitRef;
     if (ref && byRef[ref] !== undefined) {
       var tgt = out[byRef[ref]];
-      tgt.price = Math.round((tgt.price + (it.price || 0)) * 100) / 100;
+      tgt.price = Math.round((tgt.price + (Number(it.price) || 0)) * 100) / 100;
       if (!tgt.item_id && it.item_id) tgt.item_id = it.item_id;
     } else {
       if (ref) byRef[ref] = out.length;
