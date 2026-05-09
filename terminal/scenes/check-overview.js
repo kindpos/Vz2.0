@@ -344,7 +344,7 @@ function collectSummary(seats, selected, paidSeats, state) {
     for (let j = 0; j < seats[i].items.length; j++) {
       let it = seats[i].items[j];
       if (it.voided) continue;
-      let ep = it.effectivePrice || it.price;
+      let ep = it.effectivePrice != null ? it.effectivePrice : it.price;
       items.push({
         name:      it.name,
         qty:       it.qty,
@@ -2261,7 +2261,7 @@ function buildItemBlock(state, seatIdx, itemIdx, modeB) {
       modName.textContent      = mod.name || '';
       pill.appendChild(modName);
 
-      if (mod.charged && mod.price > 0) {
+      if (mod.charged && Number(mod.price) > 0) {
         const modPrice = document.createElement('span');
         modPrice.style.fontFamily = T.fb;
         modPrice.style.fontSize   = modeB ? '11px' : T.fsB4;
