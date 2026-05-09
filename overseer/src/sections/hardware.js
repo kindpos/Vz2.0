@@ -421,7 +421,7 @@ const startNetworkScan = async (targetIp = null) => {
         _state.scanEventSource.onmessage = (e) => {
             try {
                 const msg = JSON.parse(e.data);
-                if (msg.type !== 'device') return;
+                if (msg.event !== 'device') return;
                 _state.discoveredDevices.push(msg);
                 rebuild();
             } catch (err) {
