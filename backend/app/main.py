@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 import sys
+import socket
+from zeroconf import Zeroconf, ServiceInfo
 
 from app.api.routes.printing import print_queue
 from app.printing.print_dispatcher import PrintDispatcher
@@ -49,8 +51,21 @@ from app.api.routes.printing import print_queue
 
 _dispatcher: PrintDispatcher = None
 _checkin_task: asyncio.Task = None
+_zeroconf: Zeroconf = None
 
 HARDWARE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'hardware_config.db')
+
+
+def _get_lan_ip():
+  """Get the local LAN IP by connecting to an external host."""
+  try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(('8.8.8.8', 80))
+    ip = s.getsockname()[0]
+    s.close()
+    return ip
+  except Exception:
+    return '127.0.0.1'
 
 
 async def _init_printer_manager(ledger, ephemeral_log=None):
@@ -173,6 +188,26 @@ async def lifespan(app: FastAPI):
     await check_license_activation(app)
     print(f"DiagnosticCollector initialized at {diagnostic_db_path}")
 
+    # Register mDNS service (kindpos.local) for network discovery
+    global _zeroconf
+    try:
+        lan_ip = _get_lan_ip()
+        _zeroconf = Zeroconf()
+        service_info = ServiceInfo(
+            "_http._tcp.local.",
+            "KINDpos._http._tcp.local.",
+            addresses=[socket.inet_aton(lan_ip)],
+            port=8000,
+            properties={
+                "path": "/",
+                "version": settings.app_version,
+            },
+        )
+        _zeroconf.register_service(service_info)
+        print(f"mDNS service registered: kindpos.local ({lan_ip}:8000)")
+    except Exception as e:
+        print(f"WARNING: mDNS registration failed: {e}")
+
     # Start license checkin background task
     _checkin_task = await start_license_checkin_loop()
     print("License checkin scheduler started (60-minute interval)")
@@ -234,6 +269,12 @@ async def lifespan(app: FastAPI):
     if collector is not None:
         await collector.close()
         set_diagnostic_collector(None)
+    if _zeroconf is not None:
+        try:
+            _zeroconf.close()
+            print("mDNS service unregistered")
+        except Exception as e:
+            print(f"WARNING: mDNS unregistration failed: {e}")
     await close_ledger()
     print("Shutdown complete")
 
