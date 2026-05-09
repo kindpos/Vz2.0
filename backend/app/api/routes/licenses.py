@@ -157,8 +157,8 @@ async def start_license_checkin_loop() -> asyncio.Task:
 
 class ActivateLicenseRequest(BaseModel):
     license_key: str
-    store_name: str
-    terminal_name: str
+    store_name: str = ""
+    terminal_name: str = ""
 
 
 class ActivateLicenseResponse(BaseModel):
