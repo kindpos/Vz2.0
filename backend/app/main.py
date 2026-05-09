@@ -206,7 +206,7 @@ async def lifespan(app: FastAPI):
         _zeroconf.register_service(service_info)
         print(f"mDNS service registered: kindpos.local ({lan_ip}:8000)")
     except Exception as e:
-        print(f"WARNING: mDNS registration failed: {e}")
+        logger.warning(f"mDNS registration failed: {e}")
 
     # Start license checkin background task
     _checkin_task = await start_license_checkin_loop()
