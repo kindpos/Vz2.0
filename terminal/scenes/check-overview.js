@@ -3674,7 +3674,7 @@ function persistItemSeats(state, items) {
     return fetchWithTimeout(`/api/v1/orders/${state.orderId}/items/${it.item_id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ seat_number: it.seat_number }),
+      body:    JSON.stringify({ seat_number: it.seat_number, price: it.price }),
     }, 15000);
   });
 
@@ -4109,11 +4109,12 @@ function _voidItems(state, refs, approvedBy) {
   const snapshot = [];
   for (let i = 0; i < refs.length; i++) {
     let r = refs[i];
-    const seat = state.seats.find(s => s.id === r.seatId);
+    const seatIdx = state.seats.findIndex(s => s.id === r.seatId);
+    const seat = seatIdx >= 0 ? state.seats[seatIdx] : null;
     const item = seat && seat.items.find(it => it.item_id === r.itemId);
     if (!item) continue;
     const alreadyVoided = !!item.voided;
-    snapshot.push({ seatId: r.seatId, itemId: r.itemId, item, alreadyVoided });
+    snapshot.push({ seatId: r.seatId, itemId: r.itemId, item, alreadyVoided, seatIdx });
     item.voided = true;
   }
 
@@ -4175,7 +4176,7 @@ function _voidItems(state, refs, approvedBy) {
 
         // Re-sync order from server after confirmed void
         if (state.orderId) {
-          fetch(`/api/v1/orders/${state.orderId}`)
+          fetchWithTimeout(`/api/v1/orders/${state.orderId}`, {}, 15000)
             .then(r => r.json())
             .then(freshOrder => {
               if (!state._alive) return;
@@ -4646,6 +4647,8 @@ function _openTransfer(state) {
   if (!state.orderId) { showToast('Save items first', { bg: T.gold }); return; }
   SceneManager.interrupt('server-picker', {
     onConfirm: (server) => {
+      if (state._submitting) return;
+      state._submitting = true;
       fetchWithTimeout(`/api/v1/orders/${state.orderId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -4654,9 +4657,11 @@ function _openTransfer(state) {
           server_name: server.employee_name,
         }),
       }, 10000).then((r) => {
+        state._submitting = false;
         if (r.ok) showToast(`Transferred to ${server.employee_name}`, { bg: T.greenWarm });
         else      showToast('Transfer failed',                         { bg: T.verm });
       }).catch(() => {
+        state._submitting = false;
         // Network/offline — without this the promise hangs forever and
         // the server sees no toast, no retry, no signal that the transfer
         // did NOT happen. Explicit catch so the op is recoverable.

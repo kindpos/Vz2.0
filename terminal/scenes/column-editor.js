@@ -33,15 +33,18 @@ function deepCopyColumns(columns) {
     for (var ii = 0; ii < sc.items.length; ii++) {
       var it = sc.items[ii];
       items.push({
-        name:         it.name,
-        qty:          it.qty,
-        price:        it.price,
-        item_id:      it.item_id,
-        menu_item_id: it.menu_item_id,
-        category:     it.category,
-        mods:         Array.isArray(it.mods) ? it.mods.slice() : [],
-        notes:        it.notes,
-        _splitRef:    it._splitRef,
+        name:          it.name,
+        qty:           it.qty,
+        price:         Number(it.price) || 0,
+        effectivePrice: Number(it.effectivePrice) || 0,
+        item_id:       it.item_id,
+        menu_item_id:  it.menu_item_id,
+        category:      it.category,
+        mods:          Array.isArray(it.mods) ? it.mods.map(function(m) {
+          return Object.assign({}, m, { price: Number(m.price) || 0 });
+        }) : [],
+        notes:         it.notes,
+        _splitRef:     it._splitRef,
       });
     }
     copy.push({ id: sc.id, label: sc.label, items: items });
@@ -78,7 +81,7 @@ function projectedColTotal(colIdx, state) {
     var myIdx = tgts.indexOf(colIdx);
     if (myIdx < 0) continue;
     var modSum = Array.isArray(src.mods)
-      ? src.mods.reduce(function(a, m) { return a + (m.price || 0); }, 0) : 0;
+      ? src.mods.reduce(function(a, m) { return a + (Number(m.price) || 0); }, 0) : 0;
     var eff  = (src.price || 0) + modSum;
     var sp   = Math.round(eff / tgts.length * 100) / 100;
     var rem  = Math.round((eff - sp * tgts.length) * 100) / 100;
@@ -94,7 +97,7 @@ function _collapseSplitGroups(items) {
     var ref = it._splitRef;
     if (ref && byRef[ref] !== undefined) {
       var tgt = out[byRef[ref]];
-      tgt.price = Math.round((tgt.price + (it.price || 0)) * 100) / 100;
+      tgt.price = Math.round((tgt.price + (Number(it.price) || 0)) * 100) / 100;
       if (!tgt.item_id && it.item_id) tgt.item_id = it.item_id;
     } else {
       if (ref) byRef[ref] = out.length;
@@ -267,8 +270,8 @@ function doSplit(state) {
     var targets  = Object.keys(dSet).map(Number);
     var n        = targets.length;
     var modSum   = Array.isArray(item.mods)
-      ? item.mods.reduce(function(a, m) { return a + (m.price || 0); }, 0) : 0;
-    var eff      = (item.price || 0) + modSum;
+      ? item.mods.reduce(function(a, m) { return a + (Number(m.price) || 0); }, 0) : 0;
+    var eff      = (Number(item.price) || 0) + modSum;
     // ROUND_HALF_UP: matches backend money_round, applied per item
     var sp       = Math.round(eff / n * 100 + Number.EPSILON) / 100;
     var rem      = Math.round((eff - sp * n) * 100 + Number.EPSILON) / 100;
@@ -284,7 +287,7 @@ function doSplit(state) {
         notes:        item.notes,
         _splitRef:    splitRef,
       };
-      if (t === n - 1 && item.item_id) splitItem.item_id = item.item_id;
+      if (item.item_id) splitItem.item_id = item.item_id;
       state.columns[targets[t]].items.push(splitItem);
     }
     entReport({

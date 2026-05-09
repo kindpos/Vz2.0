@@ -104,10 +104,12 @@ export function orderToSeats(order, minSeats) {
         item_id:        it.item_id,
         menu_item_id:   it.menu_item_id,
         name:           it.name,
-        qty:            it.quantity || it.qty || 1,
-        price:          it.price || 0,
-        effectivePrice: it.effective_price != null ? it.effective_price : null,
-        mods:           it.modifiers || it.mods || [],
+        qty:            Number(it.quantity || it.qty) || 1,
+        price:          Number(it.price) || 0,
+        effectivePrice: it.effective_price != null ? Number(it.effective_price) : null,
+        mods:           (it.modifiers || it.mods || []).map(function(m) {
+          return Object.assign({}, m, { price: Number(m.price) || 0 });
+        }),
         notes:          it.notes || '',
         category:       it.category,
         sent_at:        it.sent_at || null,
