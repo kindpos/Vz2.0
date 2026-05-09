@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Body, Request
@@ -10,11 +11,15 @@ from pathlib import Path
 
 import aiosqlite
 
-from ..dependencies import get_ledger, get_print_dispatcher
+from ..dependencies import get_ledger, get_print_dispatcher, get_printer_manager
 from ...core.event_ledger import EventLedger
 from ...models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
 from ...printing.print_queue import PrintJobQueue
+from ...printing.escpos_formatter import ESCPOSFormatter
+from ...printing.templates.guest_receipt import GuestReceiptTemplate
+from ...printing.templates.kitchen_ticket import KitchenTicketTemplate
 from ...services.print_context_builder import PrintContextBuilder
+from ...core.adapters.base_printer import PrintJob, PrintJobType, PrintJobPriority, OrderContext
 from .auth import _record_diag, require_manager
 from .hardware import HARDWARE_DB_PATH, _ensure_db
 
@@ -68,20 +73,69 @@ async def print_receipt(
     ledger: EventLedger = Depends(get_ledger),
 ):
     """Trigger receipt print for completed order. copy_type defaults to customer."""
-    terminal_id = request.headers.get("X-Terminal-Id", "")
-    printer_mac = await _resolve_receipt_printer(terminal_id)
+    manager = get_printer_manager()
+
+    # Fallback to print_queue (PrintDispatcher) if PrinterManager not available
+    if not manager:
+        builder = PrintContextBuilder(ledger)
+        context = await builder.build_receipt_context(order_id, copy_type=copy_type)
+        job_id = await print_queue.enqueue(
+            order_id=order_id,
+            template_id="guest_receipt",
+            printer_mac=await _resolve_receipt_printer(request.headers.get("X-Terminal-Id", "")),
+            ticket_number=context.get("ticket_number", "N/A"),
+            context=context,
+            copy_type=copy_type,
+        )
+        return {"status": "queued", "job_id": job_id, "copy_type": copy_type}
+
+    # Use PrinterManager path
+    printers = manager.get_ready_printers_by_role("receipt")
+    if not printers:
+        return {"status": "error", "detail": "No receipt printer available"}
 
     builder = PrintContextBuilder(ledger)
     context = await builder.build_receipt_context(order_id, copy_type=copy_type)
-    job_id  = await print_queue.enqueue(
-        order_id=order_id,
-        template_id="guest_receipt",
-        printer_mac=printer_mac,
-        ticket_number=context.get("ticket_number", "N/A"),
-        context=context,
-        copy_type=copy_type,
-    )
-    return {"status": "queued", "job_id": job_id, "copy_type": copy_type}
+
+    sent_count = 0
+    for printer in printers:
+        try:
+            chars_per_line = getattr(printer, 'chars_per_line', 48)
+            formatter = ESCPOSFormatter(
+                chars_per_line=chars_per_line,
+                supports_red=False
+            )
+            template = GuestReceiptTemplate(chars_per_line=chars_per_line)
+            commands = template.render(context)
+            raw_bytes = formatter.format(commands)
+
+            job = PrintJob(
+                job_id=str(uuid.uuid4()),
+                order_id=order_id,
+                template_id="guest_receipt",
+                job_type=PrintJobType.RECEIPT,
+                order_context=OrderContext.DINE_IN,
+                target_role="receipt",
+                printer_id=printer.printer_id,
+                raw_bytes=raw_bytes,
+                server_name="",
+                terminal_id=request.headers.get("X-Terminal-Id", ""),
+                priority=PrintJobPriority.NORMAL,
+            )
+
+            result = await printer.print_job(job)
+            if result.success:
+                sent_count += 1
+                _logger.info(f"Receipt printed on {printer.name}")
+            else:
+                _logger.warning(f"Receipt print failed on {printer.name}: {result.message}")
+        except Exception as e:
+            _logger.error(f"Error printing receipt on {printer.name}: {e}")
+
+    if sent_count == 0:
+        return {"status": "error", "detail": "Failed to print on any receipt printer"}
+
+    return {"status": "sent", "printers": sent_count, "copy_type": copy_type}
 
 @router.post("/ticket/{order_id}", dependencies=[Depends(require_manager)])
 async def print_ticket(
@@ -92,63 +146,140 @@ async def print_ticket(
     """Trigger kitchen ticket for order. Pass ?void=true for void tickets.
 
     Routing logic:
-    - Load kitchen printers from hardware_config.db
+    - Load kitchen printers from hardware_config.db (or use PrinterManager)
     - Printers with assigned categories only receive items in those categories
     - Printers with NO categories receive all items (catch-all)
     - Each printer gets a separate ticket with companion_items showing
       what the other printers are making
     """
-    await _ensure_db()
+    manager = get_printer_manager()
     builder = PrintContextBuilder(ledger)
-    template = "kitchen_ticket_void" if void else "kitchen_ticket"
 
-    # Load kitchen printers and their category assignments
-    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM devices WHERE type = 'kitchen' ORDER BY saved_at"
-        ) as cur:
-            printers = [dict(row) async for row in cur]
+    # Fallback to print_queue (PrintDispatcher) if PrinterManager not available
+    if not manager:
+        await _ensure_db()
+        template_id = "kitchen_ticket_void" if void else "kitchen_ticket"
 
-    # Parse category lists
-    for p in printers:
-        cats = p.get('categories', '')
-        p['categories_list'] = [c.strip() for c in cats.split(',') if c.strip()] if cats else []
+        # Load kitchen printers and their category assignments
+        async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM devices WHERE type = 'kitchen' ORDER BY saved_at"
+            ) as cur:
+                printers = [dict(row) async for row in cur]
 
-    # If no kitchen printers saved, fall back to DEFAULT_KITCHEN with all items
+        # Parse category lists
+        for p in printers:
+            cats = p.get('categories', '')
+            p['categories_list'] = [c.strip() for c in cats.split(',') if c.strip()] if cats else []
+
+        # If no kitchen printers saved, fall back to DEFAULT_KITCHEN with all items
+        if not printers:
+            printers = [{'mac': 'DEFAULT_KITCHEN', 'name': 'Kitchen', 'categories_list': []}]
+
+        # Build one ticket per printer, filtering by category
+        job_ids = []
+        ticket_total = len(printers)
+        for idx, printer in enumerate(printers):
+            cats = printer['categories_list']
+            context = await builder.build_kitchen_context(
+                order_id,
+                station_name=printer.get('name', 'Kitchen'),
+                station_categories=cats if cats else None,
+            )
+            context['ticket_index'] = idx + 1
+            context['ticket_total'] = ticket_total
+            if void:
+                context["is_void"] = True
+                context["void_banner"] = "** VOID **"
+
+            # Skip printers that would get zero items for this order
+            if not context.get('items'):
+                continue
+
+            job_id = await print_queue.enqueue(
+                order_id=order_id,
+                template_id=template_id,
+                printer_mac=printer['mac'],
+                ticket_number=context.get('ticket_number', 'N/A'),
+                context=context,
+            )
+            job_ids.append(job_id)
+
+        return {"status": "queued", "job_ids": job_ids, "printers": len(job_ids), "is_void": void}
+
+    # Use PrinterManager path
+    printers = manager.get_ready_printers_by_role("kitchen")
     if not printers:
-        printers = [{'mac': 'DEFAULT_KITCHEN', 'name': 'Kitchen', 'categories_list': []}]
+        return {"status": "error", "detail": "No kitchen printer available"}
 
-    # Build one ticket per printer, filtering by category
     job_ids = []
-    ticket_total = len(printers)
-    for idx, printer in enumerate(printers):
-        cats = printer['categories_list']
-        context = await builder.build_kitchen_context(
-            order_id,
-            station_name=printer.get('name', 'Kitchen'),
-            station_categories=cats if cats else None,
-        )
-        context['ticket_index'] = idx + 1
-        context['ticket_total'] = ticket_total
-        if void:
-            context["is_void"] = True
-            context["void_banner"] = "** VOID **"
+    ticket_index = 1
 
-        # Skip printers that would get zero items for this order
-        if not context.get('items'):
-            continue
+    for printer in printers:
+        try:
+            # Determine station name from printer config
+            station_name = getattr(printer, 'location_tag', None) or printer.name or "Kitchen"
 
-        job_id = await print_queue.enqueue(
-            order_id=order_id,
-            template_id=template,
-            printer_mac=printer['mac'],
-            ticket_number=context.get('ticket_number', 'N/A'),
-            context=context,
-        )
-        job_ids.append(job_id)
+            # Get chars_per_line from printer adapter
+            chars_per_line = getattr(printer, 'chars_per_line', 33)
 
-    return {"status": "queued", "job_ids": job_ids, "printers": len(job_ids), "is_void": void}
+            # Build context for this station
+            context = await builder.build_kitchen_context(
+                order_id,
+                station_name=station_name,
+                station_categories=None,  # PrinterManager printers don't have category filtering
+            )
+
+            # Skip printers that would get zero items for this order
+            if not context.get('items'):
+                continue
+
+            context['ticket_index'] = ticket_index
+            context['ticket_total'] = len(printers)
+            if void:
+                context["is_void"] = True
+                context["void_banner"] = "** VOID **"
+
+            ticket_index += 1
+
+            # Create template and formatter with actual printer specs
+            template = KitchenTicketTemplate(chars_per_line=chars_per_line)
+            formatter = ESCPOSFormatter(
+                chars_per_line=chars_per_line,
+                supports_red=getattr(printer, 'supports_red', False)
+            )
+
+            commands = template.render(context)
+            raw_bytes = formatter.format(commands)
+
+            job = PrintJob(
+                job_id=str(uuid.uuid4()),
+                order_id=order_id,
+                template_id="kitchen_ticket_void" if void else "kitchen_ticket",
+                job_type=PrintJobType.KITCHEN_TICKET,
+                order_context=OrderContext.DINE_IN,
+                target_role="kitchen",
+                printer_id=printer.printer_id,
+                raw_bytes=raw_bytes,
+                server_name="",
+                terminal_id="",
+                priority=PrintJobPriority.NORMAL,
+            )
+
+            result = await printer.print_job(job)
+            if result.success:
+                job_ids.append(job.job_id)
+                _logger.info(f"Kitchen ticket printed on {printer.name}")
+            else:
+                _logger.warning(f"Kitchen ticket print failed on {printer.name}: {result.message}")
+        except Exception as e:
+            _logger.error(f"Error printing kitchen ticket on {printer.name}: {e}")
+
+    if not job_ids:
+        return {"status": "error", "detail": "Failed to print on any kitchen printer"}
+
+    return {"status": "sent", "job_ids": job_ids, "printers": len(job_ids), "is_void": void}
 
 @router.get("/queue")
 async def get_queue():

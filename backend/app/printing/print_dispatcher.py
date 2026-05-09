@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import socket
+import sqlite3
 import aiosqlite
 import os
 import warnings
@@ -183,7 +184,7 @@ class PrintDispatcher:
         try:
             context = json.loads(job["context_json"])
             ip, port, ptype = await self._resolve_printer(printer_mac)
-            raw = self._render(template_id, context, ptype)
+            raw = self._render(template_id, context, ptype, printer_mac)
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"Job {job_id} render/config error (will not retry): {e}")
             await self._queue.mark_failed(job_id)
@@ -272,12 +273,62 @@ class PrintDispatcher:
 
     # ── Render ────────────────────────────────────────────────────────────────
 
-    def _render(self, template_id: str, context: dict, printer_type: str = "receipt") -> bytes:
-        is_kitchen = (printer_type == "kitchen")
-        templates = self._templates_kitchen if is_kitchen else self._templates_receipt
-        formatter = self._formatter_kitchen if is_kitchen else self._formatter_receipt
+    def _get_printer_chars_per_line_sync(self, printer_mac: str, printer_type: str) -> int:
+        """Synchronously query printer's chars_per_line from hardware_config.db with sensible defaults."""
+        if not os.path.exists(HARDWARE_DB_PATH):
+            return 48 if printer_type == "receipt" else 33
 
-        template = templates.get(template_id)
+        try:
+            conn = sqlite3.connect(HARDWARE_DB_PATH)
+            cursor = conn.execute(
+                "SELECT chars_per_line FROM devices WHERE mac = ? LIMIT 1",
+                (printer_mac,)
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0]:
+                return int(row[0])
+        except Exception as e:
+            logger.warning(f"Could not lookup chars_per_line for {printer_mac}: {e}")
+
+        # Default: 48 for thermal receipt, 33 for impact kitchen
+        return 48 if printer_type == "receipt" else 33
+
+    def _render(self, template_id: str, context: dict, printer_type: str, printer_mac: str = "DEFAULT_RECEIPT") -> bytes:
+        is_kitchen = (printer_type == "kitchen")
+
+        # Get printer's actual chars_per_line (sync lookup)
+        chars = self._get_printer_chars_per_line_sync(printer_mac, printer_type)
+
+        # Create formatter with actual printer specs
+        formatter = ESCPOSFormatter(
+            paper_width=PAPER_WIDTH_80MM,
+            chars_per_line=chars
+        )
+
+        # Create template with actual printer specs
+        if is_kitchen:
+            template = KitchenTicketTemplate(
+                paper_width=PAPER_WIDTH_80MM,
+                chars_per_line=chars
+            )
+        else:
+            # For receipt templates, use the pre-instantiated ones if chars matches
+            if chars == RECEIPT_CHARS_PER_LINE:
+                template = self._templates_receipt.get(template_id)
+            else:
+                # Create a new instance with different chars_per_line
+                if template_id == "guest_receipt":
+                    template = GuestReceiptTemplate(paper_width=PAPER_WIDTH_80MM, chars_per_line=chars)
+                elif template_id == "clock_hours":
+                    template = ClockHoursTemplate(paper_width=PAPER_WIDTH_80MM, chars_per_line=chars)
+                elif template_id == "sales_recap":
+                    template = SalesRecapTemplate(paper_width=PAPER_WIDTH_80MM, chars_per_line=chars)
+                elif template_id == "server_checkout":
+                    template = ServerCheckoutTemplate(paper_width=PAPER_WIDTH_80MM, chars_per_line=chars)
+                else:
+                    template = self._templates_receipt.get(template_id)
+
         if not template:
             # Fall back to the other set in case caller mis-classified
             other = self._templates_receipt if is_kitchen else self._templates_kitchen

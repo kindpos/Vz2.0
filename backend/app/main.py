@@ -186,10 +186,16 @@ async def lifespan(app: FastAPI):
     await print_queue.connect()
     print("Print Queue initialized")
 
-    _dispatcher = PrintDispatcher(print_queue)
-    await _dispatcher.start()
-    set_print_dispatcher(_dispatcher)
-    print("Print Dispatcher started")
+    # Only start PrintDispatcher if PrinterManager has no printers (backward compat)
+    # If PrinterManager has printers, print routes will use it directly
+    if len(printer_manager._printers) == 0:
+        _dispatcher = PrintDispatcher(print_queue)
+        await _dispatcher.start()
+        set_print_dispatcher(_dispatcher)
+        print("Print Dispatcher started (PrinterManager has no printers)")
+    else:
+        _dispatcher = None
+        print("Print Dispatcher NOT started (using PrinterManager for printing)")
 
     # Crash-recovery sweep: resolve any PAYMENT_INITIATED that landed
     # before a crash and never got a result event. Must run after the
@@ -208,7 +214,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    await _dispatcher.stop()
+    if _dispatcher is not None:
+        await _dispatcher.stop()
     await print_queue.close()
     collector = get_diagnostic_collector()
     if collector is not None:
