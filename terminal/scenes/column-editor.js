@@ -35,7 +35,7 @@ function deepCopyColumns(columns) {
       items.push({
         name:         it.name,
         qty:          it.qty,
-        price:        it.price,
+        price:        Number(it.price) || 0,
         item_id:      it.item_id,
         menu_item_id: it.menu_item_id,
         category:     it.category,
@@ -268,7 +268,7 @@ function doSplit(state) {
     var n        = targets.length;
     var modSum   = Array.isArray(item.mods)
       ? item.mods.reduce(function(a, m) { return a + (m.price || 0); }, 0) : 0;
-    var eff      = (item.price || 0) + modSum;
+    var eff      = (Number(item.price) || 0) + modSum;
     // ROUND_HALF_UP: matches backend money_round, applied per item
     var sp       = Math.round(eff / n * 100 + Number.EPSILON) / 100;
     var rem      = Math.round((eff - sp * n) * 100 + Number.EPSILON) / 100;
@@ -284,7 +284,7 @@ function doSplit(state) {
         notes:        item.notes,
         _splitRef:    splitRef,
       };
-      if (t === n - 1 && item.item_id) splitItem.item_id = item.item_id;
+      if (item.item_id) splitItem.item_id = item.item_id;
       state.columns[targets[t]].items.push(splitItem);
     }
     entReport({

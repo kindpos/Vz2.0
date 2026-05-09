@@ -3674,7 +3674,7 @@ function persistItemSeats(state, items) {
     return fetchWithTimeout(`/api/v1/orders/${state.orderId}/items/${it.item_id}`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ seat_number: it.seat_number }),
+      body:    JSON.stringify({ seat_number: it.seat_number, price: it.price }),
     }, 15000);
   });
 
