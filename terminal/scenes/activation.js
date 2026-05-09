@@ -10,21 +10,13 @@ import { defineScene } from '../scene-manager.js';
 import { buildStaticCard, buildPillButton } from '../theme-manager.js';
 import { fetchWithTimeout } from '../net.js';
 
-const CODE_ALPHABET = /^[A-Z0-9]$/;
-
-// Format raw input as KIND-XXXX-XXXX. Strips KIND- prefix on the way in
-// so paste-of-full-code and typing-from-scratch both behave the same.
+// Normalize input: uppercase and strip anything that isn't alphanumeric or dash.
 function formatCode(raw) {
-  let cleaned = (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (cleaned.startsWith('KIND')) cleaned = cleaned.slice(4);
-  cleaned = cleaned.slice(0, 8); // 4 + 4 body chars
-  if (cleaned.length === 0) return '';
-  if (cleaned.length <= 4) return `KIND-${cleaned}`;
-  return `KIND-${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+  return (raw || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
 }
 
 function isComplete(formatted) {
-  return /^KIND-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(formatted);
+  return /^[A-Z0-9]+(-[A-Z0-9]+){2,}$/.test(formatted) && formatted.length >= 8;
 }
 
 export function defineActivationScene() {
@@ -91,10 +83,10 @@ export function defineActivationScene() {
 
       const codeInput = document.createElement('input');
       codeInput.type = 'text';
-      codeInput.placeholder = 'KIND-XXXX-XXXX';
+      codeInput.placeholder = 'PREFIX-NNN-XXXX-XXXX-XXXX';
       codeInput.autocomplete = 'off';
       codeInput.spellcheck = false;
-      codeInput.maxLength = 14; // KIND-XXXX-XXXX
+      codeInput.maxLength = 64;
       codeInput.style.cssText = `
         width: 100%;
         padding: 16px;
@@ -165,7 +157,7 @@ export function defineActivationScene() {
         if (!state._alive || state._submitting) return;
         const code = codeInput.value.trim().toUpperCase();
         if (!isComplete(code)) {
-          showError('Code must be KIND-XXXX-XXXX');
+          showError('Code must be in the format PREFIX-NNN-XXXX-XXXX-XXXX');
           return;
         }
 
