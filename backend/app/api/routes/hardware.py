@@ -382,7 +382,7 @@ async def _probe_host(ip: str, mac: Optional[str], ports: list, timeout: float) 
     result = {
         'ip':   ip,
         'port': best_port,
-        'mac':  mac or f"UNKNOWN-{ip.replace('.', '-')}",
+        'mac':  mac or None,
         'type': dtype,
         'name': name,
     }
