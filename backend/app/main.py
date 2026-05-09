@@ -43,10 +43,12 @@ from app.api.routes import modifier_groups as modifier_groups_routes
 from app.api.routes import modifiers as modifiers_routes
 from app.api.routes import menu_items as menu_items_routes
 from app.api.routes import licenses
+from app.api.routes.licenses import start_license_checkin_loop
 from app.api.routes.printing import print_queue
 
 
 _dispatcher: PrintDispatcher = None
+_checkin_task: asyncio.Task = None
 
 HARDWARE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'hardware_config.db')
 
@@ -150,7 +152,7 @@ async def _run_daily_retention(collector: DiagnosticCollector) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _dispatcher
+    global _dispatcher, _checkin_task
 
     print("Starting " + settings.app_name + " v" + settings.app_version)
     print("Terminal ID: " + settings.terminal_id)
@@ -170,6 +172,10 @@ async def lifespan(app: FastAPI):
     set_diagnostic_collector(diagnostic_collector)
     await check_license_activation(app)
     print(f"DiagnosticCollector initialized at {diagnostic_db_path}")
+
+    # Start license checkin background task
+    _checkin_task = await start_license_checkin_loop()
+    print("License checkin scheduler started (60-minute interval)")
 
     # Start daily retention background task
     asyncio.create_task(_run_daily_retention(diagnostic_collector))
@@ -215,6 +221,12 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    if _checkin_task is not None and not _checkin_task.done():
+        _checkin_task.cancel()
+        try:
+            await _checkin_task
+        except asyncio.CancelledError:
+            pass
     if _dispatcher is not None:
         await _dispatcher.stop()
     await print_queue.close()
