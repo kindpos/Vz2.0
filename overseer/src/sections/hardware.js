@@ -59,6 +59,7 @@ let _state = {
     terminals: [],
     printers: [],
     cardReaders: [],
+    kindTerminals: [],
     activeTab: 'terminals',
     editingTerminalId: null,
     editingPrinterId: null,
@@ -75,6 +76,7 @@ const resetState = () => {
         terminals: [],
         printers: [],
         cardReaders: [],
+        kindTerminals: [],
         activeTab: 'terminals',
         editingTerminalId: null,
         editingPrinterId: null,
@@ -101,6 +103,7 @@ const loadData = async () => {
         _state.terminals = Array.isArray(terminals) ? terminals : [];
         _state.printers = devices.filter(d => d.type === 'printer' || d.type === 'kitchen' || d.type === 'receipt') || [];
         _state.cardReaders = devices.filter(d => d.type === 'card_reader') || [];
+        _state.kindTerminals = devices.filter(d => d.type === 'terminal') || [];
         _state.lastSyncTime = new Date().toLocaleTimeString();
     } catch (e) {
         showToast(`Failed to load hardware data: ${e.message}`, 'error');
@@ -259,10 +262,38 @@ const buildDiscoveredDevicesList = () => {
 
         const isPrinter = dev.type === 'printer' || dev.type === 'thermal_printer';
 
-        const doAdd = (chosenType) => {
-            showToast(`Added ${dev.ip} to pending devices`, 'success');
-            _state.discoveredDevices = _state.discoveredDevices.filter(d => d !== dev);
-            rebuild();
+        const doAdd = async (chosenType) => {
+            try {
+                const resp = await fetchWithTimeout('/api/v1/hardware/devices', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mac:  dev.mac || null,
+                        ip:   dev.ip,
+                        type: chosenType,
+                        name: dev.name || chosenType,
+                        port: dev.port || 9100,
+                    }),
+                });
+                if (resp.status === 409) {
+                    const err = await resp.json();
+                    showToast(`Could not save ${dev.ip} — ${err.detail?.message || 'MAC could not be resolved'}`, 'error');
+                    rebuild();
+                    return;
+                }
+                if (!resp.ok) {
+                    showToast(`Failed to save ${dev.ip} (HTTP ${resp.status})`, 'error');
+                    rebuild();
+                    return;
+                }
+                showToast(`${dev.ip} saved as ${chosenType}`, 'success');
+                _state.discoveredDevices = _state.discoveredDevices.filter(d => d !== dev);
+                await loadData();
+                rebuild();
+            } catch (e) {
+                showToast(`Could not save ${dev.ip} — ${e.message}`, 'error');
+                rebuild();
+            }
         };
 
         const addBtn = buildGhostButton('ADD', T.green, () => {
@@ -343,24 +374,36 @@ const buildSyncStatusBar = () => {
         <div>Sync: ${_state.lastSyncTime || 'never'}</div>
     `;
 
+    const targetIpInput = document.createElement('input');
+    targetIpInput.type = 'text';
+    targetIpInput.placeholder = 'Target IP (optional)';
+    targetIpInput.style.cssText = `
+        background: ${T.well}; border: 1px solid ${T.border};
+        color: ${T.text}; padding: 5px 10px; border-radius: 4px;
+        font-family: 'Share Tech Mono', monospace; font-size: 11px;
+        width: 160px; outline: none;
+    `;
+    targetIpInput.disabled = _state.isScanning;
+
     const scanBtn = buildPillButton(
         _state.isScanning ? 'SCANNING...' : 'SCAN NETWORK',
         _state.isScanning ? T.textMuted : T.gold,
         _state.isScanning ? T.card : T.bg,
         async () => {
             if (_state.isScanning) return;
-            await startNetworkScan();
+            await startNetworkScan(targetIpInput.value.trim() || null);
         }
     );
     scanBtn.disabled = _state.isScanning;
 
     bar.appendChild(left);
+    bar.appendChild(targetIpInput);
     bar.appendChild(scanBtn);
 
     return bar;
 };
 
-const startNetworkScan = async () => {
+const startNetworkScan = async (targetIp = null) => {
     _state.isScanning = true;
     _state.discoveredDevices = [];
     rebuild();
@@ -370,7 +413,10 @@ const startNetworkScan = async () => {
     }
 
     try {
-        _state.scanEventSource = new EventSource('/api/v1/hardware/scan/stream');
+        const url = targetIp
+            ? `/api/v1/hardware/scan/stream?ip=${encodeURIComponent(targetIp)}`
+            : '/api/v1/hardware/scan/stream';
+        _state.scanEventSource = new EventSource(url);
 
         _state.scanEventSource.onmessage = (e) => {
             try {
@@ -547,10 +593,13 @@ const buildTerminalEditPanel = (term) => {
     ipInput.value = term.ip_address || '';
     ipInput.style.cssText = nameInput.style.cssText;
 
+    const termPortInput = document.createElement('input');
+    termPortInput.value = '8000';
+
     const ipRow = document.createElement('div');
     ipRow.style.cssText = `display: flex; gap: 8px; align-items: center;`;
     ipRow.appendChild(ipInput);
-    const testBtn = buildTestConnectionButton(ipInput, { value: '22' });
+    const testBtn = buildTestConnectionButton(ipInput, termPortInput);
     testBtn.style.whiteSpace = 'nowrap';
     ipRow.appendChild(testBtn);
 
@@ -791,6 +840,306 @@ const buildPrinterCard = (printer) => {
     return card;
 };
 
+const buildPrinterEditPanel = (printer) => {
+    const inputCss = `
+        background: ${T.card}; border: 1px solid ${T.border};
+        color: ${T.text}; padding: 8px; border-radius: 4px;
+        font-family: ${T.fb}; font-size: 12px; width: 100%; box-sizing: border-box;
+    `;
+
+    // ── panel shell ───────────────────────────────────────────────────
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        background: ${T.well}; border: 1px solid ${T.border};
+        border-radius: 8px; margin-bottom: 16px;
+        display: flex; flex-direction: column; gap: 0;
+        overflow: hidden; grid-column: 1 / -1;
+    `;
+
+    // ── 1. header row ─────────────────────────────────────────────────
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px 16px; border-bottom: 1px solid ${T.border};
+    `;
+    const headerTitle = document.createElement('div');
+    headerTitle.style.cssText = `
+        font-family: ${T.fh}; font-size: 13px; font-weight: 700;
+        color: ${T.green}; flex: 1; letter-spacing: 0.04em;
+    `;
+    headerTitle.textContent = 'EDIT PRINTER';
+
+    const roleBadge = document.createElement('span');
+    const isReceiptInit = printer.type === 'receipt';
+    roleBadge.style.cssText = `
+        background: ${isReceiptInit ? T.elec : T.gold};
+        color: ${T.bg}; padding: 2px 8px; border-radius: 3px;
+        font-size: 8px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.08em;
+    `;
+    roleBadge.textContent = isReceiptInit ? 'RECEIPT' : 'KITCHEN';
+
+    header.appendChild(headerTitle);
+    header.appendChild(roleBadge);
+    panel.appendChild(header);
+
+    // ── 2. MAC strip (read-only) ───────────────────────────────────────
+    const macStrip = document.createElement('div');
+    macStrip.style.cssText = `
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 16px; background: ${T.well};
+        border-bottom: 1px solid ${T.border};
+        font-family: 'Share Tech Mono', monospace; font-size: 11px;
+    `;
+    const macLabel = document.createElement('span');
+    macLabel.style.cssText = `color: ${T.textMuted};`;
+    macLabel.textContent = 'MAC';
+    const macValue = document.createElement('span');
+    macValue.style.cssText = `color: ${T.text}; letter-spacing: 0.06em; flex: 1;`;
+    macValue.textContent = printer.mac || '—';
+    const lockIcon = document.createElement('span');
+    lockIcon.textContent = '🔒';
+    lockIcon.style.cssText = `font-size: 10px;`;
+    const idChip = document.createElement('span');
+    idChip.style.cssText = `
+        background: ${withAlpha(T.textMuted, 0.15)}; color: ${T.textMuted};
+        padding: 1px 6px; border-radius: 3px; font-size: 9px;
+        letter-spacing: 0.06em;
+    `;
+    idChip.textContent = 'Identity Key';
+
+    macStrip.appendChild(macLabel);
+    macStrip.appendChild(macValue);
+    macStrip.appendChild(lockIcon);
+    macStrip.appendChild(idChip);
+    panel.appendChild(macStrip);
+
+    // ── 3. form body ──────────────────────────────────────────────────
+    const body = document.createElement('div');
+    body.style.cssText = `padding: 16px; display: flex; flex-direction: column; gap: 12px;`;
+
+    // name
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Printer Name';
+    nameInput.value = printer.name || '';
+    nameInput.style.cssText = inputCss;
+
+    // role toggle
+    let currentRole = printer.type === 'receipt' ? 'receipt' : 'kitchen';
+
+    const roleRow = document.createElement('div');
+    roleRow.style.cssText = `display: flex; gap: 6px;`;
+
+    const kitchenToggle = buildPillButton('Kitchen', T.gold, T.bg, null);
+    const receiptToggle = buildPillButton('Receipt', T.elec, T.bg, null);
+
+    const applyToggleState = () => {
+        kitchenToggle.style.opacity = currentRole === 'kitchen' ? '1' : '0.35';
+        receiptToggle.style.opacity = currentRole === 'receipt' ? '1' : '0.35';
+        roleBadge.textContent = currentRole === 'receipt' ? 'RECEIPT' : 'KITCHEN';
+        roleBadge.style.background = currentRole === 'receipt' ? T.elec : T.gold;
+        terminalSection.style.display = currentRole === 'receipt' ? 'flex' : 'none';
+    };
+
+    kitchenToggle.addEventListener('click', () => { currentRole = 'kitchen'; applyToggleState(); });
+    receiptToggle.addEventListener('click', () => { currentRole = 'receipt'; applyToggleState(); });
+
+    roleRow.appendChild(kitchenToggle);
+    roleRow.appendChild(receiptToggle);
+
+    // ip + port grid
+    const ipPortGrid = document.createElement('div');
+    ipPortGrid.style.cssText = `display: grid; grid-template-columns: 1fr 1fr; gap: 8px;`;
+
+    const ipInput = document.createElement('input');
+    ipInput.type = 'text';
+    ipInput.placeholder = 'IP Address';
+    ipInput.value = printer.ip || '';
+    ipInput.style.cssText = inputCss;
+
+    const portInput = document.createElement('input');
+    portInput.type = 'text';
+    portInput.placeholder = 'Port';
+    portInput.value = String(printer.port || 9100);
+    portInput.style.cssText = inputCss;
+
+    ipPortGrid.appendChild(ipInput);
+    ipPortGrid.appendChild(portInput);
+
+    // ── 4. terminal assignment section ────────────────────────────────
+    const terminalSection = document.createElement('div');
+    terminalSection.style.cssText = `
+        flex-direction: column; gap: 8px;
+        display: ${currentRole === 'receipt' ? 'flex' : 'none'};
+    `;
+
+    const termSectionLabel = document.createElement('div');
+    termSectionLabel.style.cssText = `
+        font-family: ${T.fh}; font-size: 10px; font-weight: 700;
+        color: ${T.textMuted}; letter-spacing: 0.1em; text-transform: uppercase;
+    `;
+    termSectionLabel.textContent = 'ASSIGNED TERMINALS';
+    terminalSection.appendChild(termSectionLabel);
+
+    const selectedIds = new Set(Array.isArray(printer.terminal_ids) ? printer.terminal_ids : []);
+
+    if (_state.terminals.length === 0) {
+        const emptyNote = document.createElement('div');
+        emptyNote.style.cssText = `
+            color: ${T.textMuted}; font-size: 11px;
+            font-family: 'Share Tech Mono', monospace; padding: 4px 0;
+        `;
+        emptyNote.textContent = 'No terminals configured. Add terminals first.';
+        terminalSection.appendChild(emptyNote);
+    } else {
+        _state.terminals.forEach(term => {
+            const chip = document.createElement('div');
+            chip.style.cssText = `
+                display: flex; align-items: center; gap: 10px;
+                padding: 8px 10px; background: ${T.card};
+                border: 1px solid ${T.border}; border-radius: 5px;
+                cursor: pointer; transition: border-color 0.12s;
+            `;
+
+            const isSelected = selectedIds.has(term.terminal_id);
+
+            const chkIndicator = document.createElement('span');
+            chkIndicator.style.cssText = `
+                width: 14px; height: 14px; border-radius: 3px;
+                border: 1.5px solid ${isSelected ? T.elec : T.border};
+                background: ${isSelected ? T.elec : 'transparent'};
+                display: flex; align-items: center; justify-content: center;
+                font-size: 9px; color: ${T.bg}; flex-shrink: 0;
+                transition: all 0.1s;
+            `;
+            chkIndicator.textContent = isSelected ? '✓' : '';
+
+            const chipInfo = document.createElement('div');
+            chipInfo.style.cssText = `flex: 1;`;
+            chipInfo.innerHTML = `
+                <div style="font-size: 12px; color: ${T.text}; font-family: ${T.fb};">${term.name || 'Terminal'}</div>
+                <div style="font-size: 10px; color: ${T.textMuted}; font-family: 'Share Tech Mono', monospace; margin-top: 1px;">${term.ip_address || ''}</div>
+            `;
+
+            const assignBadge = document.createElement('span');
+            const isHub = term.is_hub === true;
+            assignBadge.style.cssText = `
+                padding: 1px 6px; border-radius: 3px; font-size: 8px;
+                font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+                background: ${isHub ? T.elec : (isSelected ? T.green : '#7e8896')};
+                color: ${T.bg};
+            `;
+            assignBadge.textContent = isHub ? 'Hub' : (isSelected ? 'Assigned' : 'Unassigned');
+
+            chip.appendChild(chkIndicator);
+            chip.appendChild(chipInfo);
+            chip.appendChild(assignBadge);
+
+            chip.addEventListener('click', () => {
+                if (selectedIds.has(term.terminal_id)) {
+                    selectedIds.delete(term.terminal_id);
+                    chkIndicator.style.border = `1.5px solid ${T.border}`;
+                    chkIndicator.style.background = 'transparent';
+                    chkIndicator.textContent = '';
+                    if (!isHub) {
+                        assignBadge.style.background = '#7e8896';
+                        assignBadge.textContent = 'Unassigned';
+                    }
+                } else {
+                    selectedIds.add(term.terminal_id);
+                    chkIndicator.style.border = `1.5px solid ${T.elec}`;
+                    chkIndicator.style.background = T.elec;
+                    chkIndicator.textContent = '✓';
+                    if (!isHub) {
+                        assignBadge.style.background = T.green;
+                        assignBadge.textContent = 'Assigned';
+                    }
+                }
+            });
+
+            terminalSection.appendChild(chip);
+        });
+    }
+
+    body.appendChild(nameInput);
+    body.appendChild(roleRow);
+    body.appendChild(ipPortGrid);
+    body.appendChild(terminalSection);
+    panel.appendChild(body);
+
+    // ── 5. action bar ─────────────────────────────────────────────────
+    const actionBar = document.createElement('div');
+    actionBar.style.cssText = `
+        display: flex; align-items: center; gap: 8px;
+        padding: 12px 16px; background: ${T.well};
+        border-top: 1px solid ${T.border};
+    `;
+
+    const saveBtn = buildPillButton('SAVE', T.greenUp, T.bg, async () => {
+        const newName = nameInput.value.trim();
+        const newIp   = ipInput.value.trim();
+        const newPort = portInput.value.trim();
+        if (!newName) { showToast('Name is required', 'error'); return; }
+
+        try {
+            const result = await pushChanges([{
+                event_type: 'printer.updated',
+                payload: {
+                    mac:          printer.mac,
+                    name:         newName,
+                    type:         currentRole,
+                    ip_address:   newIp,
+                    port:         parseInt(newPort, 10) || 9100,
+                    terminal_ids: currentRole === 'receipt' ? [...selectedIds] : [],
+                },
+            }]);
+            if (!result.ok) { showToast('Failed to update printer', 'error'); return; }
+            _state.editingPrinterId = null;
+            await loadData();
+            rebuild();
+            showToast('Printer updated');
+        } catch (e) {
+            showToast(`Failed to update printer: ${e.message}`, 'error');
+        }
+    });
+
+    const testPrintBtn = buildPillButton('TEST PRINT', T.elec, T.bg, async () => {
+        try {
+            const resp = await fetchWithTimeout('/api/v1/hardware/test-print', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: ipInput.value.trim(), port: parseInt(portInput.value.trim(), 10) || 9100 }),
+            });
+            if (resp.ok) {
+                showToast('Test print sent');
+            } else {
+                showToast('Test print failed', 'error');
+            }
+        } catch (e) {
+            showToast(`Test error: ${e.message}`, 'error');
+        }
+    });
+
+    const spacer = document.createElement('div');
+    spacer.style.cssText = `flex: 1;`;
+
+    const cancelBtn = buildGhostButton('CANCEL', T.textMuted, () => {
+        _state.editingPrinterId = null;
+        rebuild();
+    });
+
+    actionBar.appendChild(saveBtn);
+    actionBar.appendChild(testPrintBtn);
+    actionBar.appendChild(spacer);
+    actionBar.appendChild(cancelBtn);
+    panel.appendChild(actionBar);
+
+    applyToggleState();
+
+    return panel;
+};
+
 const buildPrintersTab = () => {
     const container = document.createElement('div');
     container.style.cssText = `
@@ -798,6 +1147,13 @@ const buildPrintersTab = () => {
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 16px;
     `;
+
+    if (_state.editingPrinterId) {
+        const printer = _state.printers.find(p => p.mac === _state.editingPrinterId);
+        if (printer) {
+            container.appendChild(buildPrinterEditPanel(printer));
+        }
+    }
 
     _state.printers.forEach(printer => {
         container.appendChild(buildPrinterCard(printer));
@@ -910,6 +1266,212 @@ const buildCardReaderCard = (reader) => {
     return card;
 };
 
+const buildCardReaderEditPanel = (reader) => {
+    const inputCss = `
+        background: ${T.card}; border: 1px solid ${T.border};
+        color: ${T.text}; padding: 8px; border-radius: 4px;
+        font-family: ${T.fb}; font-size: 12px; width: 100%; box-sizing: border-box;
+    `;
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `
+        background: ${T.well}; border: 1px solid ${T.border};
+        border-radius: 8px; margin-bottom: 16px;
+        display: flex; flex-direction: column; gap: 0;
+        overflow: hidden; grid-column: 1 / -1;
+    `;
+
+    // ── 1. header ─────────────────────────────────────────────────────
+    const header = document.createElement('div');
+    header.style.cssText = `
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px 16px; border-bottom: 1px solid ${T.border};
+    `;
+    const headerTitle = document.createElement('div');
+    headerTitle.style.cssText = `
+        font-family: ${T.fh}; font-size: 13px; font-weight: 700;
+        color: ${T.green}; flex: 1; letter-spacing: 0.04em;
+    `;
+    headerTitle.textContent = 'EDIT CARD READER';
+    const badge = document.createElement('span');
+    badge.style.cssText = `
+        background: ${T.green}; color: ${T.bg}; padding: 2px 8px;
+        border-radius: 3px; font-size: 8px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.08em;
+    `;
+    badge.textContent = 'CARD READER';
+    header.appendChild(headerTitle);
+    header.appendChild(badge);
+    panel.appendChild(header);
+
+    // ── 2. MAC strip (read-only) ───────────────────────────────────────
+    const macStrip = document.createElement('div');
+    macStrip.style.cssText = `
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 16px; background: ${T.well};
+        border-bottom: 1px solid ${T.border};
+        font-family: 'Share Tech Mono', monospace; font-size: 11px;
+    `;
+    const macLabel = document.createElement('span');
+    macLabel.style.cssText = `color: ${T.textMuted};`;
+    macLabel.textContent = 'MAC';
+    const macValue = document.createElement('span');
+    macValue.style.cssText = `color: ${T.text}; letter-spacing: 0.06em; flex: 1;`;
+    macValue.textContent = reader.mac || '—';
+    const lockIcon = document.createElement('span');
+    lockIcon.textContent = '🔒';
+    lockIcon.style.cssText = `font-size: 10px;`;
+    const idChip = document.createElement('span');
+    idChip.style.cssText = `
+        background: ${withAlpha(T.textMuted, 0.15)}; color: ${T.textMuted};
+        padding: 1px 6px; border-radius: 3px; font-size: 9px; letter-spacing: 0.06em;
+    `;
+    idChip.textContent = 'Identity Key';
+    macStrip.appendChild(macLabel);
+    macStrip.appendChild(macValue);
+    macStrip.appendChild(lockIcon);
+    macStrip.appendChild(idChip);
+    panel.appendChild(macStrip);
+
+    // ── 3. form body ──────────────────────────────────────────────────
+    const body = document.createElement('div');
+    body.style.cssText = `padding: 16px; display: flex; flex-direction: column; gap: 12px;`;
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Card Reader Name';
+    nameInput.value = reader.name || '';
+    nameInput.style.cssText = inputCss;
+
+    const ipPortGrid = document.createElement('div');
+    ipPortGrid.style.cssText = `display: grid; grid-template-columns: 1fr 1fr; gap: 8px;`;
+
+    const ipInput = document.createElement('input');
+    ipInput.type = 'text';
+    ipInput.placeholder = 'IP Address';
+    ipInput.value = reader.ip || '';
+    ipInput.style.cssText = inputCss;
+
+    const portInput = document.createElement('input');
+    portInput.type = 'text';
+    portInput.placeholder = 'Port';
+    portInput.value = String(reader.port || 9000);
+    portInput.style.cssText = inputCss;
+
+    ipPortGrid.appendChild(ipInput);
+    ipPortGrid.appendChild(portInput);
+
+    const registerInput = document.createElement('input');
+    registerInput.type = 'text';
+    registerInput.placeholder = 'e.g. REG-001';
+    registerInput.value = reader.register_id || '';
+    registerInput.style.cssText = inputCss;
+
+    const registerLabel = document.createElement('div');
+    registerLabel.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
+    const registerLabelText = document.createElement('div');
+    registerLabelText.style.cssText = `
+        font-size: 10px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.08em; color: ${T.textMuted}; font-family: ${T.fb};
+    `;
+    registerLabelText.textContent = 'SPIn Register ID';
+    registerLabel.appendChild(registerLabelText);
+    registerLabel.appendChild(registerInput);
+
+    body.appendChild(nameInput);
+    body.appendChild(ipPortGrid);
+    body.appendChild(registerLabel);
+    panel.appendChild(body);
+
+    // ── 4. action bar ─────────────────────────────────────────────────
+    const actionBar = document.createElement('div');
+    actionBar.style.cssText = `
+        display: flex; align-items: center; gap: 8px;
+        padding: 12px 16px; background: ${T.well};
+        border-top: 1px solid ${T.border};
+    `;
+
+    const saveBtn = buildPillButton('SAVE', T.greenUp, T.bg, async () => {
+        const newName = nameInput.value.trim();
+        if (!newName) { showToast('Name is required', 'error'); return; }
+        try {
+            const result = await pushChanges([{
+                event_type: 'card_reader.updated',
+                payload: {
+                    mac:         reader.mac,
+                    name:        newName,
+                    ip_address:  ipInput.value.trim(),
+                    port:        parseInt(portInput.value.trim(), 10) || 9000,
+                    register_id: registerInput.value.trim(),
+                },
+            }]);
+            if (!result.ok) { showToast('Failed to update card reader', 'error'); return; }
+            _state.editingReaderId = null;
+            await loadData();
+            rebuild();
+            showToast('Card reader updated');
+        } catch (e) {
+            showToast(`Failed to update card reader: ${e.message}`, 'error');
+        }
+    });
+
+    const pingBtn = buildPillButton('PING', T.elec, T.bg, async () => {
+        try {
+            const resp = await fetchWithTimeout('/api/v1/hardware/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ip: ipInput.value.trim(),
+                    port: parseInt(portInput.value.trim(), 10) || 9000,
+                }),
+            }, 5000);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const r = await resp.json();
+            if (r.status === 'online') {
+                showToast(`${ipInput.value.trim()} is reachable`, 'success');
+            } else {
+                showToast(`${ipInput.value.trim()} is unreachable`, 'warn');
+            }
+        } catch (e) {
+            showToast(`Ping failed: ${e.message}`, 'error');
+        }
+    });
+
+    const removeBtn = buildPillButton('REMOVE', T.verm, T.bg, async () => {
+        if (!confirm(`Remove card reader ${reader.name}?`)) return;
+        try {
+            const result = await pushChanges([{
+                event_type: 'card_reader.removed',
+                payload: { mac: reader.mac },
+            }]);
+            if (!result.ok) { showToast('Failed to remove card reader', 'error'); return; }
+            _state.editingReaderId = null;
+            await loadData();
+            rebuild();
+            showToast('Card reader removed');
+        } catch (e) {
+            showToast(`Remove failed: ${e.message}`, 'error');
+        }
+    });
+
+    const spacer = document.createElement('div');
+    spacer.style.cssText = `flex: 1;`;
+
+    const cancelBtn = buildGhostButton('CANCEL', T.textMuted, () => {
+        _state.editingReaderId = null;
+        rebuild();
+    });
+
+    actionBar.appendChild(saveBtn);
+    actionBar.appendChild(pingBtn);
+    actionBar.appendChild(removeBtn);
+    actionBar.appendChild(spacer);
+    actionBar.appendChild(cancelBtn);
+    panel.appendChild(actionBar);
+
+    return panel;
+};
+
 const buildCardReadersTab = () => {
     const container = document.createElement('div');
     container.style.cssText = `
@@ -917,6 +1479,13 @@ const buildCardReadersTab = () => {
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 16px;
     `;
+
+    if (_state.editingReaderId) {
+        const reader = _state.cardReaders.find(r => r.mac === _state.editingReaderId);
+        if (reader) {
+            container.appendChild(buildCardReaderEditPanel(reader));
+        }
+    }
 
     _state.cardReaders.forEach(reader => {
         container.appendChild(buildCardReaderCard(reader));
