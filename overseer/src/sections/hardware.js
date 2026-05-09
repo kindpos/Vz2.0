@@ -1083,18 +1083,23 @@ const buildPrinterEditPanel = (printer) => {
         if (!newName) { showToast('Name is required', 'error'); return; }
 
         try {
-            const result = await pushChanges([{
-                event_type: 'printer.updated',
-                payload: {
+            const res = await fetch('/api/v1/hardware/devices', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                     mac:          printer.mac,
                     name:         newName,
                     type:         currentRole,
                     ip_address:   newIp,
                     port:         parseInt(newPort, 10) || 9100,
                     terminal_ids: currentRole === 'receipt' ? [...selectedIds] : [],
-                },
-            }]);
-            if (!result.ok) { showToast('Failed to update printer', 'error'); return; }
+                }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                showToast(err.message || 'Failed to save printer', 'error');
+                return;
+            }
             _state.editingPrinterId = null;
             await loadData();
             rebuild();
@@ -1395,17 +1400,23 @@ const buildCardReaderEditPanel = (reader) => {
         const newName = nameInput.value.trim();
         if (!newName) { showToast('Name is required', 'error'); return; }
         try {
-            const result = await pushChanges([{
-                event_type: 'card_reader.updated',
-                payload: {
+            const res = await fetch('/api/v1/hardware/devices', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                     mac:         reader.mac,
                     name:        newName,
+                    type:        'card_reader',
                     ip_address:  ipInput.value.trim(),
                     port:        parseInt(portInput.value.trim(), 10) || 9000,
-                    register_id: registerInput.value.trim(),
-                },
-            }]);
-            if (!result.ok) { showToast('Failed to update card reader', 'error'); return; }
+                    register_id: registerInput.value.trim() || null,
+                }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                showToast(err.message || 'Failed to save card reader', 'error');
+                return;
+            }
             _state.editingReaderId = null;
             await loadData();
             rebuild();
@@ -1440,11 +1451,8 @@ const buildCardReaderEditPanel = (reader) => {
     const removeBtn = buildPillButton('REMOVE', T.verm, T.bg, async () => {
         if (!confirm(`Remove card reader ${reader.name}?`)) return;
         try {
-            const result = await pushChanges([{
-                event_type: 'card_reader.removed',
-                payload: { mac: reader.mac },
-            }]);
-            if (!result.ok) { showToast('Failed to remove card reader', 'error'); return; }
+            const res = await fetch(`/api/v1/hardware/devices/${reader.mac}`, { method: 'DELETE' });
+            if (!res.ok) { showToast('Failed to remove card reader', 'error'); return; }
             _state.editingReaderId = null;
             await loadData();
             rebuild();
