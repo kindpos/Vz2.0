@@ -59,6 +59,7 @@ let _state = {
     terminals: [],
     printers: [],
     cardReaders: [],
+    kindTerminals: [],
     activeTab: 'terminals',
     editingTerminalId: null,
     editingPrinterId: null,
@@ -75,6 +76,7 @@ const resetState = () => {
         terminals: [],
         printers: [],
         cardReaders: [],
+        kindTerminals: [],
         activeTab: 'terminals',
         editingTerminalId: null,
         editingPrinterId: null,
@@ -101,6 +103,7 @@ const loadData = async () => {
         _state.terminals = Array.isArray(terminals) ? terminals : [];
         _state.printers = devices.filter(d => d.type === 'printer' || d.type === 'kitchen' || d.type === 'receipt') || [];
         _state.cardReaders = devices.filter(d => d.type === 'card_reader') || [];
+        _state.kindTerminals = devices.filter(d => d.type === 'terminal') || [];
         _state.lastSyncTime = new Date().toLocaleTimeString();
     } catch (e) {
         showToast(`Failed to load hardware data: ${e.message}`, 'error');
@@ -259,10 +262,38 @@ const buildDiscoveredDevicesList = () => {
 
         const isPrinter = dev.type === 'printer' || dev.type === 'thermal_printer';
 
-        const doAdd = (chosenType) => {
-            showToast(`Added ${dev.ip} to pending devices`, 'success');
-            _state.discoveredDevices = _state.discoveredDevices.filter(d => d !== dev);
-            rebuild();
+        const doAdd = async (chosenType) => {
+            try {
+                const resp = await fetchWithTimeout('/api/v1/hardware/devices', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mac:  dev.mac || null,
+                        ip:   dev.ip,
+                        type: chosenType,
+                        name: dev.name || chosenType,
+                        port: dev.port || 9100,
+                    }),
+                });
+                if (resp.status === 409) {
+                    const err = await resp.json();
+                    showToast(`Could not save ${dev.ip} — ${err.detail?.message || 'MAC could not be resolved'}`, 'error');
+                    rebuild();
+                    return;
+                }
+                if (!resp.ok) {
+                    showToast(`Failed to save ${dev.ip} (HTTP ${resp.status})`, 'error');
+                    rebuild();
+                    return;
+                }
+                showToast(`${dev.ip} saved as ${chosenType}`, 'success');
+                _state.discoveredDevices = _state.discoveredDevices.filter(d => d !== dev);
+                await loadData();
+                rebuild();
+            } catch (e) {
+                showToast(`Could not save ${dev.ip} — ${e.message}`, 'error');
+                rebuild();
+            }
         };
 
         const addBtn = buildGhostButton('ADD', T.green, () => {
@@ -343,24 +374,36 @@ const buildSyncStatusBar = () => {
         <div>Sync: ${_state.lastSyncTime || 'never'}</div>
     `;
 
+    const targetIpInput = document.createElement('input');
+    targetIpInput.type = 'text';
+    targetIpInput.placeholder = 'Target IP (optional)';
+    targetIpInput.style.cssText = `
+        background: ${T.well}; border: 1px solid ${T.border};
+        color: ${T.text}; padding: 5px 10px; border-radius: 4px;
+        font-family: 'Share Tech Mono', monospace; font-size: 11px;
+        width: 160px; outline: none;
+    `;
+    targetIpInput.disabled = _state.isScanning;
+
     const scanBtn = buildPillButton(
         _state.isScanning ? 'SCANNING...' : 'SCAN NETWORK',
         _state.isScanning ? T.textMuted : T.gold,
         _state.isScanning ? T.card : T.bg,
         async () => {
             if (_state.isScanning) return;
-            await startNetworkScan();
+            await startNetworkScan(targetIpInput.value.trim() || null);
         }
     );
     scanBtn.disabled = _state.isScanning;
 
     bar.appendChild(left);
+    bar.appendChild(targetIpInput);
     bar.appendChild(scanBtn);
 
     return bar;
 };
 
-const startNetworkScan = async () => {
+const startNetworkScan = async (targetIp = null) => {
     _state.isScanning = true;
     _state.discoveredDevices = [];
     rebuild();
@@ -370,7 +413,10 @@ const startNetworkScan = async () => {
     }
 
     try {
-        _state.scanEventSource = new EventSource('/api/v1/hardware/scan/stream');
+        const url = targetIp
+            ? `/api/v1/hardware/scan/stream?ip=${encodeURIComponent(targetIp)}`
+            : '/api/v1/hardware/scan/stream';
+        _state.scanEventSource = new EventSource(url);
 
         _state.scanEventSource.onmessage = (e) => {
             try {
@@ -547,10 +593,13 @@ const buildTerminalEditPanel = (term) => {
     ipInput.value = term.ip_address || '';
     ipInput.style.cssText = nameInput.style.cssText;
 
+    const termPortInput = document.createElement('input');
+    termPortInput.value = '8000';
+
     const ipRow = document.createElement('div');
     ipRow.style.cssText = `display: flex; gap: 8px; align-items: center;`;
     ipRow.appendChild(ipInput);
-    const testBtn = buildTestConnectionButton(ipInput, { value: '22' });
+    const testBtn = buildTestConnectionButton(ipInput, termPortInput);
     testBtn.style.whiteSpace = 'nowrap';
     ipRow.appendChild(testBtn);
 
