@@ -647,15 +647,16 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
             # lineage fields (split_to, merged_from) from these payloads.
             pass
 
-    from .financial_invariants import check_order_identities
-    violations = check_order_identities(order)
-    if violations:
-        import logging
-        logging.getLogger(__name__).warning(
-            "Order %s identity violations: %s",
-            getattr(order, 'order_id', '?'),
-            violations
-        )
+    if order is not None:
+        from .financial_invariants import check_order_identities
+        violations = check_order_identities(order)
+        if violations:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Order %s identity violations: %s",
+                getattr(order, 'order_id', '?'),
+                violations
+            )
 
     return order
 
@@ -680,8 +681,9 @@ def project_orders(events: list[Event]) -> dict[str, Order]:
     orders = {}
     for order_id, order_events in events_by_order.items():
         order = project_order(order_events)
-        if order:
-            orders[order_id] = order
+        if order is None:
+            continue  # skip incomplete orders silently
+        orders[order_id] = order
 
     return orders
 
