@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     default_subnet: str = "10.0.0.0/24"
     scan_timeout: float = 2.0
 
+    # Activation Server (KINDpos-site)
+    activation_server_url: str = "https://kindpos.com"
+
     # Financial invariants. When True, aggregation paths raise
     # InvariantViolation if any P&L / tender / tips identity drifts
     # outside tolerance. When False (production default), the mismatch
