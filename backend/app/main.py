@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 import sys
 import socket
+import subprocess
 from zeroconf import Zeroconf, ServiceInfo
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,22 @@ _zeroconf: Zeroconf = None
 HARDWARE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'hardware_config.db')
 
 
+def resolve_ip_from_mac(mac, fallback_ip):
+    try:
+        result = subprocess.run(
+            ['arp', '-a'], capture_output=True, text=True, timeout=3
+        )
+        for line in result.stdout.splitlines():
+            if mac.lower() in line.lower():
+                parts = line.split()
+                for part in parts:
+                    if part.count('.') == 3:
+                        return part.strip('()')
+    except Exception:
+        pass
+    return fallback_ip
+
+
 def _get_lan_ip():
   """Get the local LAN IP by connecting to an external host."""
   try:
@@ -90,8 +107,11 @@ async def _init_printer_manager(ledger, ephemeral_log=None):
                         device = dict(row)
                         printer_type = device.get("type", "thermal").lower()
                         device_role = device.get("role", "")
-                        device_name = device.get("name", device.get("ip_address", "Printer"))
-                        device_ip = device.get("ip_address")
+                        device_name = device.get("name", device.get("ip", "Printer"))
+                        device_mac = device.get("mac")
+                        device_ip = device.get("ip")
+                        if device_mac and device_ip:
+                            device_ip = resolve_ip_from_mac(device_mac, device_ip)
                         device_port = int(device.get("port", 9100))
                         device_chars_per_line = int(device.get("chars_per_line", 48 if printer_type == "thermal" else 33))
                         device_has_drawer = bool(device.get("has_drawer", False))
