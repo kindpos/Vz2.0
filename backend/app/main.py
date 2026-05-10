@@ -60,17 +60,21 @@ _zeroconf: Zeroconf = None
 HARDWARE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'hardware_config.db')
 
 
-def resolve_ip_from_mac(mac, fallback_ip):
+def _resolve_printer_ip(mac: str, fallback_ip: str) -> str:
+    """Resolve current IP from MAC via ARP. Falls back to stored IP."""
+    if not mac:
+        return fallback_ip
     try:
         result = subprocess.run(
-            ['arp', '-a'], capture_output=True, text=True, timeout=3
+            ['arp', '-a'], capture_output=True,
+            text=True, timeout=3
         )
         for line in result.stdout.splitlines():
             if mac.lower() in line.lower():
-                parts = line.split()
-                for part in parts:
+                for part in line.split():
+                    part = part.strip('()')
                     if part.count('.') == 3:
-                        return part.strip('()')
+                        return part
     except Exception:
         pass
     return fallback_ip
@@ -103,68 +107,74 @@ async def _init_printer_manager(ledger, ephemeral_log=None):
                     "SELECT * FROM devices WHERE type IN ('thermal', 'impact') AND is_active = 1"
                 ) as cur:
                     rows = await cur.fetchall()
-                    for row in rows:
-                        device = dict(row)
-                        printer_type = device.get("type", "thermal").lower()
-                        device_role = device.get("role", "")
-                        device_name = device.get("name", device.get("ip", "Printer"))
-                        device_mac = device.get("mac")
-                        device_ip = device.get("ip")
-                        if device_mac and device_ip:
-                            device_ip = resolve_ip_from_mac(device_mac, device_ip)
-                        device_port = int(device.get("port", 9100))
-                        device_chars_per_line = int(device.get("chars_per_line", 48 if printer_type == "thermal" else 33))
-                        device_has_drawer = bool(device.get("has_drawer", False))
-                        device_station = device.get("station") or device.get("location_tag")
+                for row in rows:
+                    device = dict(row)
+                    printer_type = device.get("type", "thermal").lower()
+                    device_role = device.get("role", "")
+                    device_mac = device.get("mac", "")
+                    stored_ip = device.get("ip", "")
+                    device_ip = _resolve_printer_ip(device_mac, stored_ip)
+                    if device_ip != stored_ip:
+                        print(f"  MAC resolved to {device_ip} (stored: {stored_ip})")
+                        if device_ip:
+                            await db.execute(
+                                "UPDATE devices SET ip=? WHERE mac=?", (device_ip, device_mac)
+                            )
+                            await db.commit()
+                    device_name = device.get("name", stored_ip or "Printer")
+                    device_port = int(device.get("port", 9100))
+                    device_chars_per_line = int(device.get("chars_per_line", 48 if printer_type == "thermal" else 33))
+                    device_has_drawer = bool(device.get("has_drawer", False))
+                    device_station = device.get("station") or device.get("location_tag")
 
-                        if not device_ip:
-                            print(f"  Skipping printer (no IP): {device_name}")
+                    if not device_ip:
+                        print(f"  Skipping printer (no IP): {device_name}")
+                        continue
+
+                    try:
+                        if printer_type == "thermal":
+                            adapter = make_thermal_printer(
+                                printer_id=device.get("id") or device.get("mac", device_ip),
+                                name=device_name,
+                                ip=device_ip,
+                                port=device_port,
+                                chars_per_line=device_chars_per_line,
+                                has_drawer=device_has_drawer,
+                            )
+                            if device_role:
+                                adapter._config.role = device_role
+                            if device_station:
+                                adapter._config.location_tag = device_station
+                        elif printer_type == "impact":
+                            adapter = make_kitchen_printer(
+                                printer_id=device.get("id") or device.get("mac", device_ip),
+                                name=device_name,
+                                ip=device_ip,
+                                port=device_port,
+                                chars_per_line=device_chars_per_line,
+                                is_impact=True,
+                            )
+                            if device_role:
+                                adapter._config.role = device_role
+                            if device_station:
+                                adapter._config.location_tag = device_station
+                        else:
+                            print(f"  Skipping unknown printer type: {printer_type}")
                             continue
 
-                        try:
-                            if printer_type == "thermal":
-                                adapter = make_thermal_printer(
-                                    printer_id=device.get("id") or device.get("mac", device_ip),
-                                    name=device_name,
-                                    ip=device_ip,
-                                    port=device_port,
-                                    chars_per_line=device_chars_per_line,
-                                    has_drawer=device_has_drawer,
-                                )
-                                if device_role:
-                                    adapter._config.role = device_role
-                                if device_station:
-                                    adapter._config.location_tag = device_station
-                            elif printer_type == "impact":
-                                adapter = make_kitchen_printer(
-                                    printer_id=device.get("id") or device.get("mac", device_ip),
-                                    name=device_name,
-                                    ip=device_ip,
-                                    port=device_port,
-                                    chars_per_line=device_chars_per_line,
-                                    is_impact=True,
-                                )
-                                if device_role:
-                                    adapter._config.role = device_role
-                                if device_station:
-                                    adapter._config.location_tag = device_station
-                            else:
-                                print(f"  Skipping unknown printer type: {printer_type}")
-                                continue
+                        await manager.register_printer(adapter)
 
-                            await manager.register_printer(adapter)
+                        # Attempt connection (log result but don't block startup)
+                        connected = await adapter.connect()
+                        if connected:
+                            print(f"  Printer loaded: {device_name} @ {device_ip} (connected)")
+                        else:
+                            print(f"  Printer loaded: {device_name} @ {device_ip} (offline)")
 
-                            # Attempt connection (log result but don't block startup)
-                            connected = await adapter.connect()
-                            if connected:
-                                print(f"  Printer loaded: {device_name} @ {device_ip} (connected)")
-                            else:
-                                print(f"  Printer loaded: {device_name} @ {device_ip} (offline)")
+                        printer_found = True
 
-                            printer_found = True
-
-                        except Exception as e:
-                            print(f"  Error loading printer {device_name}: {e}")
+                    except Exception as e:
+                        print(f"  Error loading printer {device_name}: {e}")
 
         except Exception as e:
             print(f"  Warning: could not load printers from hardware_config.db: {e}")
