@@ -61,6 +61,7 @@ let _state = {
     cardReaders: [],
     kindTerminals: [],
     licenses: [],
+    routingRules: {},
     activeTab: 'terminals',
     editingTerminalId: null,
     editingPrinterId: null,
@@ -81,6 +82,7 @@ const resetState = () => {
         cardReaders: [],
         kindTerminals: [],
         licenses: [],
+        routingRules: {},
         activeTab: 'terminals',
         editingTerminalId: null,
         editingPrinterId: null,
@@ -107,9 +109,28 @@ const loadData = async () => {
         const terminals = await configResp.json();
 
         _state.terminals = Array.isArray(terminals) ? terminals : [];
-        _state.printers = devices.filter(d => d.type === 'printer' || d.type === 'kitchen' || d.type === 'receipt') || [];
+        _state.printers = devices.filter(d =>
+            d.type === 'printer' || d.type === 'kitchen' || d.type === 'receipt' ||
+            d.type === 'thermal' || d.type === 'impact'
+        ) || [];
         _state.cardReaders = devices.filter(d => d.type === 'card_reader') || [];
         _state.kindTerminals = devices.filter(d => d.type === 'terminal') || [];
+
+        try {
+            const routingResp = await fetchWithTimeout('/api/v1/hardware/routing');
+            if (routingResp.ok) {
+                const rules = await routingResp.json();
+                _state.routingRules = {};
+                for (const rule of rules) {
+                    if (!_state.routingRules[rule.printer_mac]) {
+                        _state.routingRules[rule.printer_mac] = [];
+                    }
+                    _state.routingRules[rule.printer_mac].push(rule);
+                }
+            }
+        } catch (e) {
+            console.warn('[Hardware] Routing rules unavailable:', e);
+        }
 
         try {
             const licResp = await fetchWithTimeout('/api/v1/hardware/license/list');
@@ -387,6 +408,9 @@ const buildDiscoveredDevicesList = () => {
             const existing = item.querySelector('[data-printer-picker]');
             if (existing) { existing.remove(); return; }
 
+            let selectedRole = null;
+            let selectedHardwareType = 'thermal';
+
             const picker = document.createElement('div');
             picker.setAttribute('data-printer-picker', '');
             picker.style.cssText = `
@@ -394,23 +418,93 @@ const buildDiscoveredDevicesList = () => {
                 background: ${T.bg}; border: 1px solid ${T.border};
                 border-radius: 6px; padding: 10px;
                 display: flex; flex-direction: column; gap: 6px;
-                min-width: 160px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+                min-width: 220px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
             `;
 
-            const kitchenBtn = buildPillButton('Kitchen Printer', T.gold, T.bg, () => {
-                picker.remove();
-                doAdd('kitchen');
+            // ── STEP 1: Role ──────────────────────────────────────────
+            const step1Label = document.createElement('div');
+            step1Label.style.cssText = `
+                font-size: 9px; color: ${T.textMuted}; font-family: ${T.fb};
+                text-transform: uppercase; letter-spacing: 0.08em;
+            `;
+            step1Label.textContent = 'STEP 1 — ROLE';
+
+            const step1Row = document.createElement('div');
+            step1Row.style.cssText = `display: flex; gap: 6px;`;
+
+            const kitchenBtn = buildPillButton('KITCHEN', T.gold, T.bg, () => {
+                selectedRole = 'kitchen';
+                step1Label.style.display = 'none';
+                step1Row.style.display = 'none';
+                step2.style.display = 'flex';
             });
-            const receiptBtn = buildPillButton('Receipt Printer', T.mint, T.bg, () => {
-                picker.remove();
-                doAdd('receipt');
+            const receiptBtn = buildPillButton('RECEIPT', T.mint, T.bg, () => {
+                selectedRole = 'receipt';
+                step1Label.style.display = 'none';
+                step1Row.style.display = 'none';
+                step2.style.display = 'flex';
             });
-            const cancelBtn = buildPillButton('Cancel', '#7e8896', T.bg, () => {
+
+            step1Row.appendChild(kitchenBtn);
+            step1Row.appendChild(receiptBtn);
+
+            // ── STEP 2: Hardware type ─────────────────────────────────
+            const step2 = document.createElement('div');
+            step2.style.cssText = `display: none; flex-direction: column; gap: 6px;`;
+
+            const step2Label = document.createElement('div');
+            step2Label.style.cssText = `
+                font-size: 9px; color: ${T.textMuted}; font-family: ${T.fb};
+                text-transform: uppercase; letter-spacing: 0.08em;
+            `;
+            step2Label.textContent = 'STEP 2 — HARDWARE TYPE';
+
+            const hwRow = document.createElement('div');
+            hwRow.style.cssText = `display: flex; gap: 6px;`;
+
+            const thermalBtn = buildPillButton('THERMAL', T.mint, T.bg, null);
+            const impactBtn = buildPillButton('IMPACT', T.gold, T.bg, null);
+
+            const helperText = document.createElement('div');
+            helperText.style.cssText = `
+                font-size: 9px; color: ${T.textMuted}; font-family: ${T.fb};
+                line-height: 1.4; padding: 2px 0;
+            `;
+
+            const applyHwSelection = () => {
+                thermalBtn.style.opacity = selectedHardwareType === 'thermal' ? '1' : '0.4';
+                impactBtn.style.opacity = selectedHardwareType === 'impact' ? '1' : '0.4';
+                helperText.textContent = selectedHardwareType === 'thermal'
+                    ? 'Thermal: inkless roll paper (most receipt/kitchen printers)'
+                    : 'Impact: dot matrix with ink ribbon (Epson TM-U220, TM-U950)';
+            };
+
+            thermalBtn.addEventListener('click', () => { selectedHardwareType = 'thermal'; applyHwSelection(); });
+            impactBtn.addEventListener('click', () => { selectedHardwareType = 'impact'; applyHwSelection(); });
+            applyHwSelection();
+
+            hwRow.appendChild(thermalBtn);
+            hwRow.appendChild(impactBtn);
+
+            const confirmBtn = buildPillButton('CONFIRM', T.green, T.bg, async () => {
+                picker.remove();
+                const extra = { role: selectedRole };
+                if (selectedRole === 'receipt') extra.terminal_ids = [];
+                await doAdd(selectedHardwareType, extra);
+            });
+
+            step2.appendChild(step2Label);
+            step2.appendChild(hwRow);
+            step2.appendChild(helperText);
+            step2.appendChild(confirmBtn);
+
+            const cancelBtn = buildPillButton('CANCEL', '#7e8896', T.bg, () => {
                 picker.remove();
             });
 
-            picker.appendChild(kitchenBtn);
-            picker.appendChild(receiptBtn);
+            picker.appendChild(step1Label);
+            picker.appendChild(step1Row);
+            picker.appendChild(step2);
             picker.appendChild(cancelBtn);
             item.appendChild(picker);
         });
@@ -804,30 +898,47 @@ const buildPrinterCard = (printer) => {
     name.textContent = printer.name || 'Printer';
     header.appendChild(name);
 
-    if (printer.type === 'kitchen') {
-        const badge = document.createElement('span');
-        badge.style.cssText = `
-            background: ${T.verm};
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 8px;
-            font-weight: bold;
+    // Hardware type badge: THERMAL or IMPACT
+    const isImpact = printer.type === 'impact';
+    const hwBadge = document.createElement('span');
+    hwBadge.style.cssText = `
+        background: ${isImpact ? T.gold : T.lavender};
+        color: ${T.bg}; padding: 2px 6px; border-radius: 3px;
+        font-size: 8px; font-weight: bold;
+    `;
+    hwBadge.textContent = isImpact ? 'IMPACT' : 'THERMAL';
+    header.appendChild(hwBadge);
+
+    // Role badge: KITCHEN or RECEIPT
+    const isKitchenRole = printer.role === 'kitchen' || printer.type === 'kitchen';
+    const isReceiptRole = printer.role === 'receipt' || printer.type === 'receipt';
+    if (isKitchenRole || isReceiptRole) {
+        const roleBadge = document.createElement('span');
+        roleBadge.style.cssText = `
+            background: ${isKitchenRole ? T.green : T.elec};
+            color: ${T.bg}; padding: 2px 6px; border-radius: 3px;
+            font-size: 8px; font-weight: bold;
         `;
-        badge.textContent = 'KITCHEN';
-        header.appendChild(badge);
-    } else if (printer.type === 'receipt') {
-        const badge = document.createElement('span');
-        badge.style.cssText = `
-            background: ${T.cyan};
-            color: ${T.bg};
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 8px;
-            font-weight: bold;
+        roleBadge.textContent = isKitchenRole ? 'KITCHEN' : 'RECEIPT';
+        header.appendChild(roleBadge);
+    }
+
+    // Routing badge (kitchen printers only)
+    if (isKitchenRole && printer.mac) {
+        const printerRules = _state.routingRules[printer.mac] || [];
+        const hasAllRule = printerRules.some(r => r.rule_type === 'all');
+        const routingBadge = document.createElement('span');
+        routingBadge.style.cssText = `
+            background: ${hasAllRule ? T.green : T.gold};
+            color: ${T.bg}; padding: 2px 6px; border-radius: 3px;
+            font-size: 8px; font-weight: bold; cursor: pointer;
         `;
-        badge.textContent = 'RECEIPT';
-        header.appendChild(badge);
+        routingBadge.textContent = hasAllRule ? 'ALL ITEMS' : `${printerRules.length} RULES`;
+        routingBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showToast('Category routing — coming soon');
+        });
+        header.appendChild(routingBadge);
     }
 
     card.appendChild(header);
