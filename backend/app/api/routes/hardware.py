@@ -845,6 +845,15 @@ async def save_device(
 
         await db.commit()
 
+    # Reload PrinterManager if this is a printer device
+    if device.role in ('kitchen', 'receipt') or device.type in ('thermal', 'impact'):
+        try:
+            from app.main import _init_printer_manager
+            manager = await _init_printer_manager(ledger)
+            logger.info(f"PrinterManager reloaded ({len(manager._printers)} printers)")
+        except Exception as e:
+            logger.error(f"Failed to reload PrinterManager: {e}")
+
     new_categories = _parse_categories(effective_categories)
     events = []
     if existing is None:
