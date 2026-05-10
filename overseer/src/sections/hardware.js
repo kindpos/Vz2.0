@@ -104,7 +104,7 @@ const loadData = async () => {
         if (!devicesResp.ok) throw new Error(`Devices fetch failed: ${devicesResp.status}`);
         const devices = await devicesResp.json();
 
-        const configResp = await fetchWithTimeout('/api/v1/config/terminals');
+        const configResp = await fetchWithTimeout('/api/v1/hardware/terminals');
         if (!configResp.ok) throw new Error(`Terminals config fetch failed: ${configResp.status}`);
         const terminals = await configResp.json();
 

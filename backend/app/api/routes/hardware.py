@@ -924,6 +924,92 @@ async def delete_device(
         ))
     return {"deleted": mac}
 
+
+class TerminalCreate(BaseModel):
+    name: str
+    ip_address: str
+    mac_address: str = ''
+    role: str = 'server'
+    is_hub: bool = False
+
+    @field_validator('ip_address')
+    @classmethod
+    def validate_ip(cls, v):
+        try:
+            ipaddress.ip_address(v)
+        except ValueError:
+            raise ValueError(f'Invalid IP address: {v}')
+        return v
+
+
+@router.get("/terminals", dependencies=[Depends(require_manager)])
+async def list_terminals():
+    """Return all active terminals from hardware_config.db."""
+    await _ensure_db()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT terminal_id, name, ip_address, mac_address, role, "
+            "is_hub, is_active, activated_at FROM terminals "
+            "WHERE is_active = 1 ORDER BY activated_at"
+        ) as cur:
+            rows = []
+            async for row in cur:
+                d = dict(row)
+                d['is_hub'] = bool(d['is_hub'])
+                d['is_active'] = bool(d['is_active'])
+                rows.append(d)
+            return rows
+
+
+@router.post("/terminals", status_code=201, dependencies=[Depends(require_manager)])
+async def create_terminal(terminal: TerminalCreate):
+    """Register a new terminal. Returns 409 if name already exists."""
+    await _ensure_db()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT 1 FROM terminals WHERE name = ? AND is_active = 1",
+            (terminal.name,),
+        ) as cur:
+            if await cur.fetchone() is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Terminal name already registered",
+                )
+
+        terminal_id = f"term-{uuid.uuid4().hex[:8]}"
+        activated_at = datetime.utcnow().isoformat()
+        await db.execute(
+            "INSERT INTO terminals "
+            "(terminal_id, auth_key_hash, activated_at, is_active, "
+            " name, ip_address, mac_address, role, is_hub) "
+            "VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)",
+            (
+                terminal_id,
+                '',
+                activated_at,
+                terminal.name,
+                terminal.ip_address,
+                terminal.mac_address,
+                terminal.role,
+                1 if terminal.is_hub else 0,
+            ),
+        )
+        await db.commit()
+
+    return {
+        "terminal_id": terminal_id,
+        "name": terminal.name,
+        "ip_address": terminal.ip_address,
+        "mac_address": terminal.mac_address,
+        "role": terminal.role,
+        "is_hub": terminal.is_hub,
+        "is_active": True,
+        "activated_at": activated_at,
+    }
+
+
 @router.get("/routing", dependencies=[Depends(require_manager)])
 async def list_routing_rules():
     """Return all active printer routing rules, grouped by printer_mac."""

@@ -33,7 +33,24 @@
       "Bash(node --check terminal/scenes/server-checkout.js)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(python -c \"import sqlite3; conn = sqlite3.connect\\('data/hardware_config.db'\\); print\\('SCHEMA terminals:'\\); [print\\(r[0]\\) for r in conn.execute\\('SELECT sql FROM sqlite_master WHERE type=\\\\\"table\\\\\" AND name=\\\\\"terminals\\\\\"'\\)]; print\\('--- terminals rows ---'\\); [print\\(r\\) for r in conn.execute\\('SELECT * FROM terminals'\\)]; print\\('--- devices ---'\\); [print\\(r\\) for r in conn.execute\\('SELECT mac, name, type, ip FROM devices'\\)]\")",
+      "Bash(python -m pytest tests/test_printer_api.py -q)",
+      "Bash(where python *)",
+      "Bash(where python3 *)",
+      "Bash(python -m pip show pytest)",
+      "Bash(C:/Users/bgkd2/PycharmProjects/Vz2.0/.venv/Scripts/python.exe -m pytest tests/test_printer_api.py -q)",
+      "Bash(python -c ' *)",
+      "Bash(C:/Users/bgkd2/PycharmProjects/Vz2.0/.venv/Scripts/python.exe -c ' *)",
+      "Bash(C:/Users/bgkd2/PycharmProjects/Vz2.0/.venv/Scripts/python.exe -m pytest tests/test_printer_api.py tests/test_hardware_ledger_emissions.py tests/test_hardware_routes_extended.py -q)",
+      "Bash(KINDPOS_AUTH_ENFORCED=false C:/Users/bgkd2/PycharmProjects/Vz2.0/.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8765)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8765/api/v1/hardware/devices)",
+      "Bash(curl -s http://127.0.0.1:8765/api/v1/hardware/terminals)",
+      "Bash(C:/Users/bgkd2/PycharmProjects/Vz2.0/.venv/Scripts/python.exe -m json.tool)",
+      "Bash(curl -s http://127.0.0.1:8765/api/v1/hardware/devices)",
+      "Bash(curl -s -i -X POST http://127.0.0.1:8765/api/v1/hardware/terminals -H \"Content-Type: application/json\" -d '{\"name\":\"Terminal 2\",\"ip_address\":\"10.0.0.101\",\"role\":\"client\",\"is_hub\":false}')",
+      "Bash(curl -s -i -X POST http://127.0.0.1:8765/api/v1/hardware/terminals -H \"Content-Type: application/json\" -d '{\"name\":\"Terminal 2\",\"ip_address\":\"10.0.0.102\"}')",
+      "Bash(C:/Users/bgkd2/PycharmProjects/Vz2.0/.venv/Scripts/python.exe scripts/test_kitchen_print.py)"
     ]
   }
 }
