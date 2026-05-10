@@ -101,6 +101,25 @@ async def _ensure_db():
             await db.execute("ALTER TABLE devices ADD COLUMN terminal_id TEXT NOT NULL DEFAULT ''")
         if 'terminal_ids' not in cols:
             await db.execute("ALTER TABLE devices ADD COLUMN terminal_ids TEXT NOT NULL DEFAULT '[]'")
+        if 'role' not in cols:
+            try:
+                await db.execute("ALTER TABLE devices ADD COLUMN role TEXT NOT NULL DEFAULT ''")
+            except Exception:
+                pass
+
+        # Routing rules — one row per printer per rule type
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS printer_routing (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                printer_mac TEXT NOT NULL,
+                rule_type   TEXT NOT NULL DEFAULT 'all',
+                category_id TEXT DEFAULT '',
+                item_tag    TEXT DEFAULT '',
+                priority    INTEGER DEFAULT 0,
+                is_active   INTEGER DEFAULT 1,
+                created_at  TEXT NOT NULL
+            )
+        """)
 
         # Server-license table — bound on activation, audited via ledger
         await db.execute("""
@@ -156,7 +175,8 @@ async def _ensure_db():
 class DeviceRecord(BaseModel):
     mac:  Optional[str] = None
     ip:   str
-    type: str        # 'kitchen' | 'receipt' | 'card_reader' | 'terminal'
+    type: str        # hardware: 'thermal' | 'impact' | 'card_reader' | 'terminal' (legacy: 'kitchen' | 'receipt')
+    role: str = ''   # logical role: 'kitchen' | 'receipt' (empty = legacy type-only devices)
     name: str
     port: int = 9100
     register_id: str = ''  # SPIn Register ID for card readers
@@ -774,9 +794,15 @@ async def save_device(
 
     mac = resolved_mac
     now = datetime.utcnow().isoformat()
-    terminal_ids_json = json.dumps(
-        device.terminal_ids if device.type == 'receipt' else []
-    )
+
+    # role='kitchen' with no categories → default to routing all items
+    effective_categories = device.categories
+    if device.role == 'kitchen' and not device.categories.strip():
+        effective_categories = 'ALL'
+
+    # terminal_ids apply to receipt role (new) or legacy receipt type
+    is_receipt = device.role == 'receipt' or (not device.role and device.type == 'receipt')
+    terminal_ids_json = json.dumps(device.terminal_ids if is_receipt else [])
 
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -787,8 +813,8 @@ async def save_device(
         previous_categories = _parse_categories(existing["categories"]) if existing else []
 
         await db.execute("""
-            INSERT INTO devices (mac, ip, type, name, port, register_id, tpn, auth_key, categories, terminal_ids, saved_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO devices (mac, ip, type, name, port, register_id, tpn, auth_key, categories, terminal_ids, role, saved_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(mac) DO UPDATE SET
                 ip           = excluded.ip,
                 type         = excluded.type,
@@ -799,13 +825,28 @@ async def save_device(
                 auth_key     = excluded.auth_key,
                 categories   = excluded.categories,
                 terminal_ids = excluded.terminal_ids,
+                role         = excluded.role,
                 saved_at     = excluded.saved_at
         """, (mac, device.ip, device.type,
               device.name, device.port, device.register_id, device.tpn, device.auth_key,
-              device.categories, terminal_ids_json, now))
+              effective_categories, terminal_ids_json, device.role, now))
+
+        # Kitchen printers get a catch-all routing rule so the dispatcher
+        # knows to send every order item to this printer.
+        if device.role == 'kitchen':
+            await db.execute(
+                "DELETE FROM printer_routing WHERE printer_mac = ? AND rule_type = 'all'",
+                (mac,)
+            )
+            await db.execute("""
+                INSERT INTO printer_routing
+                    (printer_mac, rule_type, category_id, item_tag, priority, is_active, created_at)
+                VALUES (?, 'all', '', '', 0, 1, ?)
+            """, (mac, now))
+
         await db.commit()
 
-    new_categories = _parse_categories(device.categories)
+    new_categories = _parse_categories(effective_categories)
     events = []
     if existing is None:
         # Card readers land under the payment.processor_configured audit
@@ -840,7 +881,9 @@ async def save_device(
     return {
         **device.model_dump(),
         'mac': mac,
-        'terminal_ids': device.terminal_ids if device.type == 'receipt' else [],
+        'categories': effective_categories,
+        'role': device.role,
+        'terminal_ids': device.terminal_ids if is_receipt else [],
         'saved_at': now,
     }
 
@@ -872,6 +915,18 @@ async def delete_device(
             printer_type=existing["type"],
         ))
     return {"deleted": mac}
+
+@router.get("/routing", dependencies=[Depends(require_manager)])
+async def list_routing_rules():
+    """Return all active printer routing rules, grouped by printer_mac."""
+    await _ensure_db()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM printer_routing WHERE is_active = 1 ORDER BY priority"
+        ) as cur:
+            return [dict(row) async for row in cur]
+
 
 @router.get("/kitchen-printers", dependencies=[Depends(require_manager)])
 async def list_kitchen_printers():

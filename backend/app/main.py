@@ -104,7 +104,8 @@ async def _init_printer_manager(ledger, ephemeral_log=None):
             async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
                 db.row_factory = aiosqlite.Row
                 async with db.execute(
-                    "SELECT * FROM devices WHERE type IN ('thermal', 'impact') AND is_active = 1"
+                    "SELECT * FROM devices WHERE (role IN ('kitchen', 'receipt')"
+                    " OR type IN ('thermal', 'impact')) AND is_active = 1"
                 ) as cur:
                     rows = await cur.fetchall()
                 for row in rows:
@@ -123,16 +124,26 @@ async def _init_printer_manager(ledger, ephemeral_log=None):
                             await db.commit()
                     device_name = device.get("name", stored_ip or "Printer")
                     device_port = int(device.get("port", 9100))
-                    device_chars_per_line = int(device.get("chars_per_line", 48 if printer_type == "thermal" else 33))
-                    device_has_drawer = bool(device.get("has_drawer", False))
                     device_station = device.get("station") or device.get("location_tag")
+
+                    # role takes precedence; fall back to type for legacy rows
+                    use_kitchen = (
+                        device_role == 'kitchen'
+                        or (not device_role and printer_type == 'impact')
+                    )
+                    use_receipt = (
+                        device_role == 'receipt'
+                        or (not device_role and printer_type == 'thermal')
+                    )
 
                     if not device_ip:
                         print(f"  Skipping printer (no IP): {device_name}")
                         continue
 
                     try:
-                        if printer_type == "thermal":
+                        if use_receipt:
+                            device_chars_per_line = int(device.get("chars_per_line", 48))
+                            device_has_drawer = bool(device.get("has_drawer", False))
                             adapter = make_thermal_printer(
                                 printer_id=device.get("id") or device.get("mac", device_ip),
                                 name=device_name,
@@ -145,24 +156,41 @@ async def _init_printer_manager(ledger, ephemeral_log=None):
                                 adapter._config.role = device_role
                             if device_station:
                                 adapter._config.location_tag = device_station
-                        elif printer_type == "impact":
+                        elif use_kitchen:
+                            device_chars_per_line = int(device.get("chars_per_line", 33))
                             adapter = make_kitchen_printer(
                                 printer_id=device.get("id") or device.get("mac", device_ip),
                                 name=device_name,
                                 ip=device_ip,
                                 port=device_port,
                                 chars_per_line=device_chars_per_line,
-                                is_impact=True,
+                                is_impact=(printer_type == 'impact'),
                             )
                             if device_role:
                                 adapter._config.role = device_role
                             if device_station:
                                 adapter._config.location_tag = device_station
                         else:
-                            print(f"  Skipping unknown printer type: {printer_type}")
+                            print(f"  Skipping unknown printer — role={device_role!r} type={printer_type!r}")
                             continue
 
                         await manager.register_printer(adapter)
+
+                        # Load routing rules for this printer
+                        try:
+                            async with db.execute(
+                                "SELECT * FROM printer_routing"
+                                " WHERE printer_mac = ? AND is_active = 1 ORDER BY priority",
+                                (device_mac,)
+                            ) as rcur:
+                                routing_rows = [dict(r) for r in await rcur.fetchall()]
+                            adapter.routing_rules = routing_rows
+                            if any(r.get('rule_type') == 'all' for r in routing_rows):
+                                print(f"  Routing: ALL items → {device_name}")
+                            elif routing_rows:
+                                print(f"  Routing: {len(routing_rows)} rules → {device_name}")
+                        except Exception:
+                            adapter.routing_rules = []
 
                         # Attempt connection (log result but don't block startup)
                         connected = await adapter.connect()
