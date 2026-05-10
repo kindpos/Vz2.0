@@ -18,7 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.api.routes.hardware import HARDWARE_DB_PATH
+from app.api.routes.hardware import HARDWARE_DB_PATH, _ensure_db
 
 _log = logging.getLogger(__name__)
 
@@ -245,6 +245,7 @@ async def activate_license(request: ActivateLicenseRequest, http_request: Reques
                 'sku':           matched_terminal.get('sku', ''),
                 'mac':           mac_address,
                 'ip':            ip_address,
+                'status':        'ACTIVATED',
             },
             timeout=10.0
         )
@@ -257,6 +258,7 @@ async def activate_license(request: ActivateLicenseRequest, http_request: Reques
                   f"term-{request.license_key[-8:].lower()}"
     terminal_name = matched_terminal.get('terminal_name') or terminal_id
 
+    await _ensure_db()
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         await db.execute('''
             INSERT OR REPLACE INTO terminals
