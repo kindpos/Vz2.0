@@ -264,16 +264,16 @@ const openTerminalModal = (terminal, sections, existingTerminals, onSaved) => {
   // Terminal ID (read-only, copyable)
   const idRowEl = document.createElement('div');
   idRowEl.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
-  const idLbl = document.createElement('label');
-  idLbl.style.cssText = `
+  const idActLbl = document.createElement('label');
+  idActLbl.style.cssText = `
     font-family: ${T.font.body};
     font-size: ${T.fs.base}px;
     color: ${T.textMuted};
     font-weight: 600;
     letter-spacing: 0.3px;
   `;
-  idLbl.textContent = 'Terminal ID (for Activation)';
-  idRowEl.appendChild(idLbl);
+  idActLbl.textContent = 'Terminal ID (for Activation)';
+  idRowEl.appendChild(idActLbl);
 
   const idBox = document.createElement('div');
   idBox.style.cssText = `
