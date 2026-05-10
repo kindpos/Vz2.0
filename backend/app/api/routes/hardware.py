@@ -127,8 +127,15 @@ class DeviceRecord(BaseModel):
     register_id: str = ''  # SPIn Register ID for card readers
     tpn: str = ''          # SPIn Terminal Processing Number
     auth_key: str = ''     # SPIn Auth Key for card readers
-    categories: str = ''   # Comma-separated category IDs for kitchen printers
+    categories: list[str] = []  # Category names for kitchen printer filtering
     terminal_ids: list[str] = []  # Receipt printer → linked terminal IDs
+
+    @field_validator('categories', mode='before')
+    @classmethod
+    def coerce_categories(cls, v):
+        if isinstance(v, str):
+            return [c.strip() for c in v.split(',') if c.strip()]
+        return v if isinstance(v, list) else []
 
     @field_validator('ip')
     @classmethod
@@ -695,6 +702,7 @@ async def list_devices():
             async for row in cur:
                 d = dict(row)
                 d['terminal_ids'] = _decode_terminal_ids(d.get('terminal_ids', '[]'))
+                d['categories'] = _parse_categories(d.get('categories', ''))
                 rows.append(d)
             return rows
 
@@ -742,6 +750,7 @@ async def save_device(
     terminal_ids_json = json.dumps(
         device.terminal_ids if device.type == 'receipt' else []
     )
+    categories_csv = ','.join(device.categories) if device.type == 'kitchen' else ''
 
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -767,10 +776,10 @@ async def save_device(
                 saved_at     = excluded.saved_at
         """, (mac, device.ip, device.type,
               device.name, device.port, device.register_id, device.tpn, device.auth_key,
-              device.categories, terminal_ids_json, now))
+              categories_csv, terminal_ids_json, now))
         await db.commit()
 
-    new_categories = _parse_categories(device.categories)
+    new_categories = device.categories if device.type == 'kitchen' else []
     events = []
     if existing is None:
         # Card readers land under the payment.processor_configured audit
@@ -806,6 +815,7 @@ async def save_device(
         **device.model_dump(),
         'mac': mac,
         'terminal_ids': device.terminal_ids if device.type == 'receipt' else [],
+        'categories': device.categories if device.type == 'kitchen' else [],
         'saved_at': now,
     }
 
@@ -837,6 +847,54 @@ async def delete_device(
             printer_type=existing["type"],
         ))
     return {"deleted": mac}
+
+@router.post("/devices/{mac}/test", dependencies=[Depends(require_manager)])
+async def test_device_connection(mac: str):
+    """Send ESC/POS real-time status request to a saved printer and return result.
+
+    Opens a raw TCP socket, sends DLE EOT (0x10 0x04 0x01), waits up to
+    2 s for any response, then closes the socket.  Returns success=True if
+    the TCP connection succeeds (response bytes are optional — many printers
+    drop the connection after accepting the command).
+    """
+    await _ensure_db()
+    mac_upper = mac.upper()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT ip, port FROM devices WHERE mac = ?", (mac_upper,)
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        return {"success": False, "message": f"Device {mac_upper} not found in database"}
+
+    ip = row["ip"]
+    port = row["port"] or 9100
+    STATUS_CMD = bytes([0x10, 0x04, 0x01])  # DLE EOT — real-time status request
+
+    def _probe():
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(2.0)
+                s.connect((ip, port))
+                s.sendall(STATUS_CMD)
+                try:
+                    s.recv(16)
+                except Exception:
+                    pass
+            return True
+        except Exception:
+            return False
+
+    loop = asyncio.get_running_loop()
+    success = await loop.run_in_executor(None, _probe)
+    return {
+        "success": success,
+        "message": f"Printer reachable at {ip}:{port}" if success
+                   else f"Cannot reach {ip}:{port} — check power and network",
+    }
+
 
 @router.get("/kitchen-printers", dependencies=[Depends(require_manager)])
 async def list_kitchen_printers():

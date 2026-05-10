@@ -61,6 +61,7 @@ let _state = {
     cardReaders: [],
     kindTerminals: [],
     licenses: [],
+    categories: [],
     activeTab: 'terminals',
     editingTerminalId: null,
     editingPrinterId: null,
@@ -81,6 +82,7 @@ const resetState = () => {
         cardReaders: [],
         kindTerminals: [],
         licenses: [],
+        categories: [],
         activeTab: 'terminals',
         editingTerminalId: null,
         editingPrinterId: null,
@@ -119,6 +121,16 @@ const loadData = async () => {
             }
         } catch (licErr) {
             console.warn('[Hardware] License list unavailable:', licErr);
+        }
+
+        try {
+            const catResp = await fetchWithTimeout('/api/v1/menu/categories');
+            if (catResp.ok) {
+                const cats = await catResp.json();
+                _state.categories = Array.isArray(cats) ? cats : [];
+            }
+        } catch (catErr) {
+            console.warn('[Hardware] Categories unavailable:', catErr);
         }
 
         _state.lastSyncTime = new Date().toLocaleTimeString();
@@ -1021,6 +1033,7 @@ const buildPrinterEditPanel = (printer) => {
         roleBadge.textContent = currentRole === 'receipt' ? 'RECEIPT' : 'KITCHEN';
         roleBadge.style.background = currentRole === 'receipt' ? T.elec : T.gold;
         terminalSection.style.display = currentRole === 'receipt' ? 'flex' : 'none';
+        categorySection.style.display = currentRole === 'kitchen' ? 'flex' : 'none';
     };
 
     kitchenToggle.addEventListener('click', () => { currentRole = 'kitchen'; applyToggleState(); });
@@ -1143,10 +1156,98 @@ const buildPrinterEditPanel = (printer) => {
         });
     }
 
+    // ── 5. category assignment section (kitchen only) ─────────────────
+    const categorySection = document.createElement('div');
+    categorySection.style.cssText = `
+        flex-direction: column; gap: 8px;
+        display: ${currentRole === 'kitchen' ? 'flex' : 'none'};
+    `;
+
+    const catSectionLabel = document.createElement('div');
+    catSectionLabel.style.cssText = `
+        font-family: ${T.fh}; font-size: 10px; font-weight: 700;
+        color: ${T.textMuted}; letter-spacing: 0.1em; text-transform: uppercase;
+    `;
+    catSectionLabel.textContent = 'CATEGORY FILTERS';
+    categorySection.appendChild(catSectionLabel);
+
+    const selectedCatNames = new Set(Array.isArray(printer.categories) ? printer.categories : []);
+
+    if (_state.categories.length === 0) {
+        const catEmptyNote = document.createElement('div');
+        catEmptyNote.style.cssText = `
+            color: ${T.textMuted}; font-size: 11px;
+            font-family: 'Share Tech Mono', monospace; padding: 4px 0;
+        `;
+        catEmptyNote.textContent = 'No categories configured — printer will receive all items.';
+        categorySection.appendChild(catEmptyNote);
+    } else {
+        _state.categories.filter(c => c.active !== false).forEach(cat => {
+            const catName = cat.name || cat.category_id || '';
+            const isSelected = selectedCatNames.has(catName);
+
+            const chip = document.createElement('div');
+            chip.style.cssText = `
+                display: flex; align-items: center; gap: 10px;
+                padding: 8px 10px; background: ${T.card};
+                border: 1px solid ${T.border}; border-radius: 5px;
+                cursor: pointer; transition: border-color 0.12s;
+            `;
+
+            const chkIndicator = document.createElement('span');
+            chkIndicator.style.cssText = `
+                width: 14px; height: 14px; border-radius: 3px;
+                border: 1.5px solid ${isSelected ? T.gold : T.border};
+                background: ${isSelected ? T.gold : 'transparent'};
+                display: flex; align-items: center; justify-content: center;
+                font-size: 9px; color: ${T.bg}; flex-shrink: 0;
+                transition: all 0.1s;
+            `;
+            chkIndicator.textContent = isSelected ? '✓' : '';
+
+            const chipInfo = document.createElement('div');
+            chipInfo.style.cssText = `flex: 1;`;
+            chipInfo.innerHTML = `<div style="font-size: 12px; color: ${T.text}; font-family: ${T.fb};">${catName}</div>`;
+
+            const assignBadge = document.createElement('span');
+            assignBadge.style.cssText = `
+                padding: 1px 6px; border-radius: 3px; font-size: 8px;
+                font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+                background: ${isSelected ? T.gold : '#7e8896'}; color: ${T.bg};
+            `;
+            assignBadge.textContent = isSelected ? 'Filtered' : 'All';
+
+            chip.appendChild(chkIndicator);
+            chip.appendChild(chipInfo);
+            chip.appendChild(assignBadge);
+
+            chip.addEventListener('click', () => {
+                if (selectedCatNames.has(catName)) {
+                    selectedCatNames.delete(catName);
+                    chkIndicator.style.border = `1.5px solid ${T.border}`;
+                    chkIndicator.style.background = 'transparent';
+                    chkIndicator.textContent = '';
+                    assignBadge.style.background = '#7e8896';
+                    assignBadge.textContent = 'All';
+                } else {
+                    selectedCatNames.add(catName);
+                    chkIndicator.style.border = `1.5px solid ${T.gold}`;
+                    chkIndicator.style.background = T.gold;
+                    chkIndicator.textContent = '✓';
+                    assignBadge.style.background = T.gold;
+                    assignBadge.textContent = 'Filtered';
+                }
+            });
+
+            categorySection.appendChild(chip);
+        });
+    }
+
     body.appendChild(nameInput);
     body.appendChild(roleRow);
     body.appendChild(ipPortGrid);
     body.appendChild(terminalSection);
+    body.appendChild(categorySection);
     panel.appendChild(body);
 
     // ── 5. action bar ─────────────────────────────────────────────────
@@ -1174,6 +1275,7 @@ const buildPrinterEditPanel = (printer) => {
                     ip:           newIp,
                     port:         parseInt(newPort, 10) || 9100,
                     terminal_ids: currentRole === 'receipt' ? [...selectedIds] : [],
+                    categories:   currentRole === 'kitchen' ? [...selectedCatNames] : [],
                 }),
             });
             if (!res.ok) {
@@ -1207,6 +1309,39 @@ const buildPrinterEditPanel = (printer) => {
         }
     });
 
+    // TEST CONNECTION — sends ESC/POS status byte, shows result inline
+    const testConnResult = document.createElement('div');
+    testConnResult.style.cssText = `
+        padding: 6px 16px; font-size: 11px; font-family: 'Share Tech Mono', monospace;
+        border-top: 1px solid ${T.border}; display: none;
+    `;
+
+    const testConnBtn = buildPillButton('TEST CONNECTION', T.cyan, T.bg, async () => {
+        testConnBtn.disabled = true;
+        const origText = testConnBtn.textContent;
+        testConnBtn.textContent = 'TESTING…';
+        testConnResult.style.display = 'none';
+        try {
+            const resp = await fetchWithTimeout(
+                `/api/v1/hardware/devices/${encodeURIComponent(printer.mac)}/test`,
+                { method: 'POST' },
+                5000
+            );
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            testConnResult.style.display = 'block';
+            testConnResult.style.color = data.success ? T.greenUp : T.verm;
+            testConnResult.textContent = data.message;
+        } catch (e) {
+            testConnResult.style.display = 'block';
+            testConnResult.style.color = T.verm;
+            testConnResult.textContent = `Connection test failed: ${e.message}`;
+        } finally {
+            testConnBtn.textContent = origText;
+            testConnBtn.disabled = false;
+        }
+    });
+
     const spacer = document.createElement('div');
     spacer.style.cssText = `flex: 1;`;
 
@@ -1217,9 +1352,11 @@ const buildPrinterEditPanel = (printer) => {
 
     actionBar.appendChild(saveBtn);
     actionBar.appendChild(testPrintBtn);
+    actionBar.appendChild(testConnBtn);
     actionBar.appendChild(spacer);
     actionBar.appendChild(cancelBtn);
     panel.appendChild(actionBar);
+    panel.appendChild(testConnResult);
 
     applyToggleState();
 
