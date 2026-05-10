@@ -418,6 +418,7 @@ class ServerCheckoutTemplate(BaseTemplate):
 
     def _money_line(self, label: str, amount: float, width: int) -> str:
         """Format label + right-aligned dollar amount: {sign}${value:>8.2f}"""
+        amount = Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
         if amount < 0:
             money = f"-${abs(amount):>8.2f}"
         else:

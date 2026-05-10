@@ -746,7 +746,7 @@ defineScene({
           );
         }
         ids.forEach((orderId) => {
-          fetchWithTimeout(`/api/v1/orders/${orderId}/print/receipt`, { method: 'POST' }, 8000)
+          fetchWithTimeout(`/api/v1/print/receipt/${orderId}`, { method: 'POST' }, 8000)
             .then((r) => {
               if (r.ok) printed++;
               else      failed++;

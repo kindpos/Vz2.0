@@ -581,6 +581,7 @@ function postKitchenTicket() {
   })
   .catch(function() {
     setKitchenTicketStatus(false);
+    showToast('Kitchen ticket failed to print — retry or reprint manually.', 'error');
   });
 }
 

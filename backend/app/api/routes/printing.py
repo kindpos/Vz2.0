@@ -19,6 +19,7 @@ from ...printing.escpos_formatter import ESCPOSFormatter
 from ...printing.templates.guest_receipt import GuestReceiptTemplate
 from ...printing.templates.kitchen_ticket import KitchenTicketTemplate
 from ...services.print_context_builder import PrintContextBuilder
+from ...services.store_config_service import StoreConfigService
 from ...core.adapters.base_printer import PrintJob, PrintJobType, PrintJobPriority, OrderContext
 from .auth import _record_diag, require_manager
 from .hardware import HARDWARE_DB_PATH, _ensure_db
@@ -65,6 +66,18 @@ async def _resolve_receipt_printer(terminal_id: str) -> str:
     return "DEFAULT_RECEIPT"
 
 
+async def _get_print_itemized(terminal_id: str, ledger: EventLedger) -> bool:
+    """Return print_itemized_copy setting from store config receipt_settings.
+    Returns False if terminal_id is absent or on any error."""
+    if not terminal_id:
+        return False
+    try:
+        store_cfg = await StoreConfigService(ledger).get_projected_config()
+        return bool(store_cfg.receipt_settings.get("print_itemized_copy", False))
+    except Exception:
+        return False
+
+
 @router.post("/receipt/{order_id}", dependencies=[Depends(require_manager)])
 async def print_receipt(
     request: Request,
@@ -73,20 +86,33 @@ async def print_receipt(
     ledger: EventLedger = Depends(get_ledger),
 ):
     """Trigger receipt print for completed order. copy_type defaults to customer."""
+    terminal_id = request.headers.get("X-Terminal-Id", "")
     manager = get_printer_manager()
 
     # Fallback to print_queue (PrintDispatcher) if PrinterManager not available
     if not manager:
         builder = PrintContextBuilder(ledger)
         context = await builder.build_receipt_context(order_id, copy_type=copy_type)
+        printer_mac = await _resolve_receipt_printer(terminal_id)
         job_id = await print_queue.enqueue(
             order_id=order_id,
             template_id="guest_receipt",
-            printer_mac=await _resolve_receipt_printer(request.headers.get("X-Terminal-Id", "")),
+            printer_mac=printer_mac,
             ticket_number=context.get("ticket_number", "N/A"),
             context=context,
             copy_type=copy_type,
         )
+        if terminal_id and await _get_print_itemized(terminal_id, ledger):
+            itemized_ctx = dict(context)
+            itemized_ctx["copy_type"] = "itemized"
+            await print_queue.enqueue(
+                order_id=order_id,
+                template_id="guest_receipt",
+                printer_mac=printer_mac,
+                ticket_number=itemized_ctx.get("ticket_number", "N/A"),
+                context=itemized_ctx,
+                copy_type="itemized",
+            )
         return {"status": "queued", "job_id": job_id, "copy_type": copy_type}
 
     # Use PrinterManager path
@@ -119,7 +145,7 @@ async def print_receipt(
                 printer_id=printer.printer_id,
                 raw_bytes=raw_bytes,
                 server_name="",
-                terminal_id=request.headers.get("X-Terminal-Id", ""),
+                terminal_id=terminal_id,
                 priority=PrintJobPriority.NORMAL,
             )
 
@@ -134,6 +160,37 @@ async def print_receipt(
 
     if sent_count == 0:
         return {"status": "error", "detail": "Failed to print on any receipt printer"}
+
+    if sent_count > 0 and terminal_id and await _get_print_itemized(terminal_id, ledger):
+        itemized_ctx = dict(context)
+        itemized_ctx["copy_type"] = "itemized"
+        for printer in printers:
+            try:
+                chars_per_line = getattr(printer, 'chars_per_line', 48)
+                formatter = ESCPOSFormatter(chars_per_line=chars_per_line, supports_red=False)
+                template = GuestReceiptTemplate(chars_per_line=chars_per_line)
+                commands = template.render(itemized_ctx)
+                raw_bytes = formatter.format(commands)
+                job = PrintJob(
+                    job_id=str(uuid.uuid4()),
+                    order_id=order_id,
+                    template_id="guest_receipt",
+                    job_type=PrintJobType.RECEIPT,
+                    order_context=OrderContext.DINE_IN,
+                    target_role="receipt",
+                    printer_id=printer.printer_id,
+                    raw_bytes=raw_bytes,
+                    server_name="",
+                    terminal_id=terminal_id,
+                    priority=PrintJobPriority.NORMAL,
+                )
+                result = await printer.print_job(job)
+                if result.success:
+                    _logger.info(f"Itemized receipt printed on {printer.name}")
+                else:
+                    _logger.warning(f"Itemized receipt print failed on {printer.name}: {result.message}")
+            except Exception as e:
+                _logger.error(f"Error printing itemized receipt on {printer.name}: {e}")
 
     return {"status": "sent", "printers": sent_count, "copy_type": copy_type}
 

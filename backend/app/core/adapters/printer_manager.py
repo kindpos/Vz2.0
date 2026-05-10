@@ -22,6 +22,7 @@ File location: backend/app/core/adapters/printer_manager.py
 """
 
 import asyncio
+import inspect
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -62,6 +63,18 @@ from ..event_ledger import EventLedger
 from ..ephemeral_log import EphemeralLog
 
 logger = logging.getLogger("kindpos.printer.manager")
+
+
+async def _call(value):
+    """Await value if it is a coroutine; return it directly otherwise.
+
+    Lets PrinterManager work with both async (EscPosNetworkAdapter) and
+    synchronous (MockThermalPrinter / MockImpactPrinter) adapter implementations
+    without requiring changes to the adapter method signatures.
+    """
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 # How many times to retry before escalating
@@ -132,7 +145,7 @@ class PrinterManager:
             return False
 
         # Try to connect
-        connected = printer.connect()
+        connected = await _call(printer.connect())
         if not connected:
             logger.warning(
                 f"[MANAGER] Printer '{printer.name}' registered but failed to connect"
@@ -467,7 +480,7 @@ class PrinterManager:
         last_result = None
 
         for attempt in range(1, MAX_RETRIES + 1):
-            result = printer.print_job(job)
+            result = await _call(printer.print_job(job))
 
             if result.success:
                 # Record success in the Event Ledger
@@ -631,7 +644,7 @@ class PrinterManager:
         Single attempt — no retries on fallbacks (keep it moving).
         Logs a PRINT_REROUTED event.
         """
-        result = fallback_printer.print_job(job)
+        result = await _call(fallback_printer.print_job(job))
 
         if result.success:
             # Log the reroute
@@ -718,7 +731,7 @@ class PrinterManager:
             return False
 
         # Try to open
-        success = printer.open_drawer()
+        success = await _call(printer.open_drawer())
 
         if success:
             event = drawer_opened(
@@ -761,7 +774,7 @@ class PrinterManager:
 
         for printer_id, printer in self._printers.items():
             previous_status = printer.status
-            current_status = printer.check_status()
+            current_status = await _call(printer.check_status())
             results[printer_id] = current_status
 
             # Log status change
@@ -819,7 +832,7 @@ class PrinterManager:
         start_time = datetime.now(timezone.utc)
 
         # Execute reboot
-        success = printer.reboot()
+        success = await _call(printer.reboot())
 
         # Log completion
         duration = (datetime.now(timezone.utc) - start_time).total_seconds()

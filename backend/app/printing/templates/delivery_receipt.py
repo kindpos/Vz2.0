@@ -15,6 +15,7 @@ Section order:
   8. Footer
 """
 
+from decimal import Decimal
 from typing import List, Dict, Any
 from .base_template import BaseTemplate
 
@@ -189,6 +190,7 @@ class DeliveryReceiptTemplate(BaseTemplate):
     # ------------------------------------------------------------------
 
     def _money_line(self, label: str, amount: float, width: int) -> str:
+        amount = Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
         if amount < 0:
             money = f"-${abs(amount):>8.2f}"
         else:
