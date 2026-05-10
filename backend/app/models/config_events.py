@@ -377,6 +377,18 @@ class Section(BaseModel):
     active: bool = True
 
 # Hardware Models
+class Device(BaseModel):
+    mac_address: str
+    name: str
+    type: str  # 'printer' | 'card_reader'
+    ip_address: str
+    port: int
+    is_active: bool = True
+
+class TerminalDevices(BaseModel):
+    printers: List[Device] = []
+    readers: List[Device] = []
+
 class Terminal(BaseModel):
     terminal_id: str
     name: str
@@ -384,6 +396,9 @@ class Terminal(BaseModel):
     default_section_id: Optional[str] = None
     training_mode: bool = False
     is_hub: bool = False
+    activated_at: Optional[str] = None
+    is_active: bool = False
+    devices: Optional[TerminalDevices] = None
 
 class Printer(BaseModel):
     printer_id: str
