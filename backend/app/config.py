@@ -25,8 +25,12 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = False
 
-    # Terminal identification
-    terminal_id: str = "terminal_01"
+    # Terminal identification.
+    # No hardcoded default — main.py looks the active terminal up in
+    # hardware_config.db.terminals on startup and overrides this. Tests
+    # set KINDPOS_TERMINAL_ID via conftest. An empty value here means
+    # "unactivated" and forces the licensure path to fail closed.
+    terminal_id: str = ""
 
     # Database
     database_path: str = str(DATA_DIR / 'event_ledger.db')

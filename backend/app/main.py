@@ -230,13 +230,34 @@ async def _run_daily_retention(collector: DiagnosticCollector) -> None:
             print(f"Diagnostic retention failed: {e}")
 
 
+async def _load_terminal_id_from_db() -> str:
+    """Resolve this server's terminal_id from hardware_config.db.terminals.
+
+    Returns the terminal_id of the single active row, or "" if there is none.
+    This replaces the previous hardcoded "terminal_01" default — an unactivated
+    box now boots with an empty terminal_id and the boot probe logs a warning.
+    """
+    if not os.path.exists(HARDWARE_DB_PATH):
+        return ""
+    try:
+        import aiosqlite
+        async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+            async with db.execute(
+                "SELECT terminal_id FROM terminals "
+                "WHERE is_active = 1 ORDER BY activated_at DESC LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+                return row[0] if row and row[0] else ""
+    except Exception as e:
+        logger.warning(f"Could not read terminal_id from hardware DB: {e}")
+        return ""
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _dispatcher, _checkin_task
 
     print("Starting " + settings.app_name + " v" + settings.app_version)
-    print("Terminal ID: " + settings.terminal_id)
-    print("Database: " + settings.database_path)
 
     # Migrate hardware_config.db from backend/ to backend/data/ (idempotent)
     _old_hardware_db = BACKEND_ROOT / 'hardware_config.db'
@@ -245,6 +266,15 @@ async def lifespan(app: FastAPI):
         import shutil
         shutil.move(str(_old_hardware_db), str(_new_hardware_db))
         print(f"  Migrated hardware_config.db to data/")
+
+    # Resolve terminal_id from the activated-terminals registry rather than
+    # trusting a config default. Empty string means "unactivated" — the
+    # license boot probe below will log a clear warning in that case.
+    if not settings.terminal_id:
+        resolved = await _load_terminal_id_from_db()
+        settings.terminal_id = resolved
+    print("Terminal ID: " + (settings.terminal_id or "<unactivated>"))
+    print("Database: " + settings.database_path)
 
     ledger = await init_ledger()
     print("Event Ledger initialized")

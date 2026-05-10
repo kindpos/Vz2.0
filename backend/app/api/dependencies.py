@@ -93,27 +93,41 @@ def set_print_dispatcher(dispatcher: PrintDispatcher) -> None:
 
 async def check_license_activation(app) -> None:
     """
-    Boot probe: check license activation status and set app.state.activated.
+    Boot probe: check the server_license table and set app.state.activated.
 
-    Called during FastAPI startup to determine if the node is activated.
-    Sets app.state.activated = True if license exists and is valid, False otherwise.
-    This flag is read by the frontend to route to the activation scene if needed.
+    Authoritative source is hardware_config.db.server_license — any row with
+    status='active' counts as licensed. We deliberately ignore the legacy
+    license.json file because it can't see revocations or table truncation.
+    /api/v1/licenses/status re-queries on every call, so this flag is just
+    a startup hint plus the "log a clear warning" gate the audit requires.
     """
-    if _diagnostic_collector is None:
-        app.state.activated = False
-        return
+    # Local import keeps dependencies.py free of route-layer imports at module load.
+    from app.api.routes.licenses import _has_active_server_license
+
+    import logging
+    log = logging.getLogger(__name__)
 
     try:
-        result = await _diagnostic_collector.check_license()
-        app.state.activated = result.get("passed", False)
+        activated = await _has_active_server_license()
     except Exception as e:
-        app.state.activated = False
+        activated = False
+        log.warning(f"License probe failed (treating as unlicensed): {e}")
         if _diagnostic_collector:
-            await _diagnostic_collector.record(
-                category="system",
-                severity="warning",
-                source="check_license_activation",
-                event_code="SEC-006",
-                message=f"License check failed: {str(e)}",
-                context={"error": str(e)},
-            )
+            try:
+                await _diagnostic_collector.record(
+                    category="system",
+                    severity="warning",
+                    source="check_license_activation",
+                    event_code="SEC-006",
+                    message=f"License check failed: {str(e)}",
+                    context={"error": str(e)},
+                )
+            except Exception:
+                pass
+
+    app.state.activated = activated
+    if not activated:
+        log.warning(
+            "*** STARTUP WARNING: no active license in server_license table — "
+            "terminal is running UNLICENSED. Activate at /activation. ***"
+        )

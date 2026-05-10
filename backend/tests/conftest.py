@@ -13,6 +13,11 @@ Fixtures:
 """
 
 import os
+# Tests pin a synthetic terminal_id because the production default in
+# app.config now resolves from hardware_config.db.terminals (empty when
+# unactivated). The test suite emits events that require a non-empty
+# terminal_id; this preserves the historical fixture value.
+os.environ.setdefault('KINDPOS_TERMINAL_ID', 'terminal_01')
 os.environ.setdefault('KINDPOS_TAX_RATE', '0.07')
 os.environ.setdefault('KINDPOS_CASH_DISCOUNT_RATE', '0.04')
 # Every test runs under strict financial-invariants mode so any P&L /
