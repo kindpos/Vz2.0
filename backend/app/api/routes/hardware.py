@@ -5,6 +5,7 @@ MAC-as-identity: IPs change, MACs don't.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -114,6 +115,31 @@ async def _ensure_db():
                 activated_at    TEXT NOT NULL DEFAULT ''
             )
         """)
+
+        # Terminals table — registry of activated terminals on this server
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS terminals (
+                terminal_id     TEXT PRIMARY KEY,
+                auth_key_hash   TEXT NOT NULL,
+                activated_at    TEXT NOT NULL,
+                is_active       INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+
+        # Migrate: add columns if missing (existing DBs)
+        async with db.execute("PRAGMA table_info(terminals)") as cur:
+            term_cols = [row[1] async for row in cur]
+        if 'terminal_id' not in term_cols:
+            # Table doesn't exist yet; create it
+            await db.execute("""
+                CREATE TABLE terminals (
+                    terminal_id     TEXT PRIMARY KEY,
+                    auth_key_hash   TEXT NOT NULL,
+                    activated_at    TEXT NOT NULL,
+                    is_active       INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+
         await db.commit()
 
 # ΓöÇΓöÇ Models ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -1176,8 +1202,33 @@ async def activate_server(
         )
         await db.commit()
 
+    # Register terminal with auth_key_hash
+    terminal_id = settings.terminal_id
+    auth_key_hash = hashlib.sha256(code.encode()).hexdigest()
+
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        # Upsert terminal record
+        await db.execute("""
+            INSERT INTO terminals (terminal_id, auth_key_hash, activated_at, is_active)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT(terminal_id) DO UPDATE SET
+                auth_key_hash = excluded.auth_key_hash,
+                activated_at = excluded.activated_at,
+                is_active = 1
+        """, (terminal_id, auth_key_hash, now))
+
+        # Auto-assign unassigned devices to this terminal
+        await db.execute("""
+            UPDATE devices
+            SET terminal_ids = ?
+            WHERE (terminal_ids IS NULL OR terminal_ids = '' OR terminal_ids = '[]')
+            AND is_active = 1
+        """, (f'["{terminal_id}"]',))
+
+        await db.commit()
+
     await ledger.append(server_activated(
-        terminal_id=settings.terminal_id,
+        terminal_id=terminal_id,
         activation_code=code,
         server_mac=server_mac,
         platform=req.platform,
@@ -1189,6 +1240,7 @@ async def activate_server(
         "label": label,
         "activation_code": code,
         "server_mac": server_mac,
+        "terminal_id": terminal_id,
         "activated_at": now,
     }
 
