@@ -28,6 +28,7 @@ import { registerPrinterSetup }       from './sections/printer-setup.js';
 import { buildNetworkSetupScene, cleanupNetworkSetup } from './sections/hardware/network-setup.js';
 import { buildTerminalDetailsScene, cleanupTerminalDetailsScene } from './sections/hardware/terminal-details.js';
 import { buildHardwareScene, cleanupHardware } from './sections/hardware.js';
+import { mount as buildHardwareNetworkScene, cleanupHardwareNetwork } from './sections/hardware-network.js';
 
 // Build-pattern sections (no register wrapper — wrap manually below)
 import { buildStoreInfoScene,     cleanupStoreInfo     } from './sections/store-info.js';
@@ -108,15 +109,9 @@ const NAV = [
     },
     {
         id: 'hardware',
-        label: 'HARDWARE & TERMINAL CONFIGURATION',
+        label: 'HARDWARE & NETWORK',
         subs: [
-            { id: 'hardware-management', label: 'Hardware Management' },
-            { id: 'network-setup',     label: 'Network Setup'     },
-            // { id: 'printer-setup',     label: 'Printer Setup'     },
-            // { id: 'printer-config',    label: 'Printer Config'    },
-            // { id: 'card-readers',      label: 'Card Readers'      },
-            { id: 'receipt-settings',  label: 'Receipt Settings'  },
-            { id: 'terminal-settings', label: 'Terminal Settings' },
+            { id: 'hardware-network', label: 'Hardware & Network' },
         ]
     },
     {
@@ -382,6 +377,11 @@ const registerAllSections = () => {
         name: 'terminal-details',
         mount: (container, params) => buildTerminalDetailsScene(container, params),
         unmount: (container) => cleanupTerminalDetailsScene(container),
+    });
+    SceneManager.register({
+        name: 'hardware-network',
+        mount: (container) => buildHardwareNetworkScene(container),
+        unmount: (container) => cleanupHardwareNetwork(container),
     });
     SceneManager.register({
         name: 'hardware-management',
