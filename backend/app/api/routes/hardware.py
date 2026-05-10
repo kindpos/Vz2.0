@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import re
-import secrets
 import socket
 import subprocess
 import urllib.parse
@@ -143,29 +142,36 @@ async def _ensure_db():
         except aiosqlite.OperationalError:
             pass
 
-        # Terminals table — registry of activated terminals on this server
+        # Terminals table — registry of activated terminals on this server.
+        # Self-registered on POST /api/v1/licenses/activate; never seeded.
         await db.execute("""
             CREATE TABLE IF NOT EXISTS terminals (
                 terminal_id     TEXT PRIMARY KEY,
                 auth_key_hash   TEXT NOT NULL,
                 activated_at    TEXT NOT NULL,
-                is_active       INTEGER NOT NULL DEFAULT 1
+                is_active       INTEGER NOT NULL DEFAULT 1,
+                name            TEXT NOT NULL DEFAULT '',
+                ip_address      TEXT NOT NULL DEFAULT '',
+                mac_address     TEXT NOT NULL DEFAULT '',
+                role            TEXT NOT NULL DEFAULT 'server',
+                is_hub          INTEGER NOT NULL DEFAULT 0
             )
         """)
 
-        # Migrate: add columns if missing (existing DBs)
+        # Migrate: add columns if missing (existing DBs predate the
+        # self-registration columns: name/ip_address/mac_address/role/is_hub).
         async with db.execute("PRAGMA table_info(terminals)") as cur:
             term_cols = [row[1] async for row in cur]
-        if 'terminal_id' not in term_cols:
-            # Table doesn't exist yet; create it
-            await db.execute("""
-                CREATE TABLE terminals (
-                    terminal_id     TEXT PRIMARY KEY,
-                    auth_key_hash   TEXT NOT NULL,
-                    activated_at    TEXT NOT NULL,
-                    is_active       INTEGER NOT NULL DEFAULT 1
-                )
-            """)
+        if 'name' not in term_cols:
+            await db.execute("ALTER TABLE terminals ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+        if 'ip_address' not in term_cols:
+            await db.execute("ALTER TABLE terminals ADD COLUMN ip_address TEXT NOT NULL DEFAULT ''")
+        if 'mac_address' not in term_cols:
+            await db.execute("ALTER TABLE terminals ADD COLUMN mac_address TEXT NOT NULL DEFAULT ''")
+        if 'role' not in term_cols:
+            await db.execute("ALTER TABLE terminals ADD COLUMN role TEXT NOT NULL DEFAULT 'server'")
+        if 'is_hub' not in term_cols:
+            await db.execute("ALTER TABLE terminals ADD COLUMN is_hub INTEGER NOT NULL DEFAULT 0")
 
         await db.commit()
 
@@ -925,26 +931,14 @@ async def delete_device(
     return {"deleted": mac}
 
 
-class TerminalCreate(BaseModel):
-    name: str
-    ip_address: str
-    mac_address: str = ''
-    role: str = 'server'
-    is_hub: bool = False
-
-    @field_validator('ip_address')
-    @classmethod
-    def validate_ip(cls, v):
-        try:
-            ipaddress.ip_address(v)
-        except ValueError:
-            raise ValueError(f'Invalid IP address: {v}')
-        return v
-
-
 @router.get("/terminals", dependencies=[Depends(require_manager)])
 async def list_terminals():
-    """Return all active terminals from hardware_config.db."""
+    """Return all active terminals from hardware_config.db.
+
+    Read-only registry. Rows are written only by the activation flow
+    (POST /api/v1/licenses/activate); there is no manual registration
+    endpoint by design — terminals self-register on license activation.
+    """
     await _ensure_db()
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -960,54 +954,6 @@ async def list_terminals():
                 d['is_active'] = bool(d['is_active'])
                 rows.append(d)
             return rows
-
-
-@router.post("/terminals", status_code=201, dependencies=[Depends(require_manager)])
-async def create_terminal(terminal: TerminalCreate):
-    """Register a new terminal. Returns 409 if name already exists."""
-    await _ensure_db()
-    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT 1 FROM terminals WHERE name = ? AND is_active = 1",
-            (terminal.name,),
-        ) as cur:
-            if await cur.fetchone() is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Terminal name already registered",
-                )
-
-        terminal_id = f"term-{uuid.uuid4().hex[:8]}"
-        activated_at = datetime.utcnow().isoformat()
-        await db.execute(
-            "INSERT INTO terminals "
-            "(terminal_id, auth_key_hash, activated_at, is_active, "
-            " name, ip_address, mac_address, role, is_hub) "
-            "VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)",
-            (
-                terminal_id,
-                '',
-                activated_at,
-                terminal.name,
-                terminal.ip_address,
-                terminal.mac_address,
-                terminal.role,
-                1 if terminal.is_hub else 0,
-            ),
-        )
-        await db.commit()
-
-    return {
-        "terminal_id": terminal_id,
-        "name": terminal.name,
-        "ip_address": terminal.ip_address,
-        "mac_address": terminal.mac_address,
-        "role": terminal.role,
-        "is_hub": terminal.is_hub,
-        "is_active": True,
-        "activated_at": activated_at,
-    }
 
 
 @router.get("/routing", dependencies=[Depends(require_manager)])
@@ -1234,21 +1180,7 @@ async def test_connection(req: TestConnectionRequest):
 #  physical box was licensed at what time, without trusting the local DB.
 # ╚═══════════════════════════════════════════════════════════════════════╝
 
-_LICENSE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no I, O, 0, 1
 _PLATFORMS = {"windows", "pi"}
-
-
-class GenerateLicenseRequest(BaseModel):
-    label: str
-    platform: str
-    store_id: str = ""
-
-    @field_validator('platform')
-    @classmethod
-    def validate_platform(cls, v):
-        if v not in _PLATFORMS:
-            raise ValueError(f"platform must be one of {sorted(_PLATFORMS)}")
-        return v
 
 
 class ActivateServerRequest(BaseModel):
@@ -1264,48 +1196,9 @@ class ActivateServerRequest(BaseModel):
         return v
 
 
-def _generate_code() -> str:
-    """KIND-XXXX-XXXX (4+4 chars from a confusables-free uppercase alphabet)."""
-    block_a = ''.join(secrets.choice(_LICENSE_ALPHABET) for _ in range(4))
-    block_b = ''.join(secrets.choice(_LICENSE_ALPHABET) for _ in range(4))
-    return f"KIND-{block_a}-{block_b}"
-
-
-@router.post("/license/generate", dependencies=[Depends(require_manager)])
-async def generate_license(req: GenerateLicenseRequest):
-    """Issue a fresh activation code in pending status."""
-    await _ensure_db()
-    now = datetime.utcnow().isoformat()
-
-    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
-        # Retry on the astronomically-unlikely collision rather than 500.
-        for _ in range(5):
-            code = _generate_code()
-            try:
-                await db.execute(
-                    """
-                    INSERT INTO server_license
-                        (activation_code, server_mac, platform, status,
-                         store_id, label, created_at, activated_at)
-                    VALUES (?, '', '', 'pending', ?, ?, ?, '')
-                    """,
-                    (code, req.store_id, req.label, now),
-                )
-                await db.commit()
-                return {
-                    "activation_code": code,
-                    "label": req.label,
-                    "platform": req.platform,
-                    "status": "pending",
-                    "created_at": now,
-                    "store_id": req.store_id,
-                }
-            except aiosqlite.IntegrityError:
-                continue
-        raise HTTPException(
-            status_code=500,
-            detail="Could not generate a unique activation code; please retry.",
-        )
+# License generation has been removed from the customer-facing application.
+# Activation codes are issued exclusively from kindpos.com/admin (vendor side).
+# This server only consumes a code via POST /api/v1/hardware/activate.
 
 
 @router.post("/activate")

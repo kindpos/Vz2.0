@@ -17,6 +17,20 @@ import {
 } from '../ui/forms.js';
 import { hexToRgba, buildStaticCard } from '../../../common/theme.js';
 
+/* ─── DIAGRAM: terminal identity palette ─────────────────────── */
+// Per-terminal color used by the Hardware Hub diagram. Cycles through
+// four hues so up to 4 terminals are visually distinguishable; index 4
+// wraps back to the first hue.
+const TERMINAL_COLORS = [
+    { color: T.green,    dim: withAlpha(T.green,    0.15) },
+    { color: T.elec,     dim: withAlpha(T.elec,     0.15) },
+    { color: T.lavender, dim: withAlpha(T.lavender, 0.15) },
+    { color: T.warning,  dim: withAlpha(T.warning,  0.15) },
+];
+
+const getTerminalColor = (index) =>
+    TERMINAL_COLORS[index % TERMINAL_COLORS.length];
+
 /* ─── LOCAL UI HELPERS ────────────────────────────────────────── */
 const buildPillButton = (label, fillColor, textColor, onClick) => {
     const b = document.createElement('button');
@@ -71,8 +85,6 @@ let _state = {
     isScanning: false,
     discoveredDevices: [],
     scanEventSource: null,
-    licenseDraft: { label: '', platform: 'pi', store_id: '' },
-    lastGeneratedCode: null,
 };
 
 const resetState = () => {
@@ -92,8 +104,6 @@ const resetState = () => {
         isScanning: false,
         discoveredDevices: [],
         scanEventSource: null,
-        licenseDraft: { label: '', platform: 'pi', store_id: '' },
-        lastGeneratedCode: null,
     };
 };
 
@@ -1757,141 +1767,6 @@ const buildPlatformBadge = (platform) => {
     return badge;
 };
 
-const buildGenerateLicensePanel = () => {
-    const panel = document.createElement('div');
-    panel.style.cssText = `
-        background: ${T.well}; border: 1px solid ${T.border};
-        border-radius: 8px; padding: 16px; margin-bottom: 16px;
-        display: flex; flex-direction: column; gap: 12px;
-    `;
-
-    const titleRow = document.createElement('div');
-    titleRow.style.cssText = `
-        font-family: ${T.fh}; font-size: 13px; font-weight: 700;
-        color: ${T.green}; letter-spacing: 0.04em;
-    `;
-    titleRow.textContent = 'GENERATE LICENSE';
-    panel.appendChild(titleRow);
-
-    const inputCss = `
-        background: ${T.card}; border: 1px solid ${T.border};
-        color: ${T.text}; padding: 8px; border-radius: 4px;
-        font-family: ${T.fb}; font-size: 12px; box-sizing: border-box;
-    `;
-
-    const grid = document.createElement('div');
-    grid.style.cssText = `display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px; align-items: center;`;
-
-    const labelInput = document.createElement('input');
-    labelInput.type = 'text';
-    labelInput.placeholder = 'Label (e.g. Front Counter Pi)';
-    labelInput.value = _state.licenseDraft.label;
-    labelInput.style.cssText = inputCss;
-    labelInput.addEventListener('input', () => { _state.licenseDraft.label = labelInput.value; });
-
-    const platformSelect = document.createElement('select');
-    platformSelect.style.cssText = inputCss + ' cursor: pointer;';
-    [
-        { value: 'pi',      text: 'Raspberry Pi' },
-        { value: 'windows', text: 'Windows' },
-    ].forEach(opt => {
-        const o = document.createElement('option');
-        o.value = opt.value;
-        o.textContent = opt.text;
-        if (opt.value === _state.licenseDraft.platform) o.selected = true;
-        platformSelect.appendChild(o);
-    });
-    platformSelect.addEventListener('change', () => {
-        _state.licenseDraft.platform = platformSelect.value;
-    });
-
-    const storeIdInput = document.createElement('input');
-    storeIdInput.type = 'text';
-    storeIdInput.placeholder = 'Store ID (optional)';
-    storeIdInput.value = _state.licenseDraft.store_id;
-    storeIdInput.style.cssText = inputCss;
-    storeIdInput.addEventListener('input', () => { _state.licenseDraft.store_id = storeIdInput.value; });
-
-    const generateBtn = buildPillButton('GENERATE', T.greenUp, T.bg, async () => {
-        const label = labelInput.value.trim();
-        if (!label) { showToast('Label is required', 'error'); return; }
-        try {
-            const resp = await fetchWithTimeout('/api/v1/hardware/license/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    label,
-                    platform: platformSelect.value,
-                    store_id: storeIdInput.value.trim(),
-                }),
-            });
-            if (!resp.ok) {
-                const err = await resp.json().catch(() => ({}));
-                showToast(err.detail || `Failed to generate (HTTP ${resp.status})`, 'error');
-                return;
-            }
-            const data = await resp.json();
-            _state.lastGeneratedCode = data.activation_code;
-            _state.licenseDraft = { label: '', platform: platformSelect.value, store_id: '' };
-            await loadData();
-            rebuild();
-            showToast('License generated');
-        } catch (e) {
-            showToast(`Generate failed: ${e.message}`, 'error');
-        }
-    });
-
-    grid.appendChild(labelInput);
-    grid.appendChild(platformSelect);
-    grid.appendChild(storeIdInput);
-    grid.appendChild(generateBtn);
-    panel.appendChild(grid);
-
-    if (_state.lastGeneratedCode) {
-        const codeBlock = document.createElement('div');
-        codeBlock.style.cssText = `
-            margin-top: 4px; padding: 16px;
-            background: ${T.card}; border: 1px solid ${withAlpha(T.gold, 0.5)};
-            border-radius: 8px;
-            display: flex; align-items: center; justify-content: space-between; gap: 16px;
-        `;
-
-        const codeText = document.createElement('div');
-        codeText.style.cssText = `
-            font-family: 'Share Tech Mono', monospace;
-            font-size: 22px; font-weight: 700;
-            color: ${T.gold}; letter-spacing: 0.18em;
-            user-select: all;
-        `;
-        codeText.textContent = _state.lastGeneratedCode;
-
-        const copyBtn = buildPillButton('COPY', T.gold, T.bg, async () => {
-            try {
-                await navigator.clipboard.writeText(_state.lastGeneratedCode);
-                showToast('Copied to clipboard');
-            } catch (_) {
-                showToast('Copy failed — select manually', 'warn');
-            }
-        });
-
-        const dismissBtn = buildGhostButton('DISMISS', T.textMuted, () => {
-            _state.lastGeneratedCode = null;
-            rebuild();
-        });
-
-        const btnGroup = document.createElement('div');
-        btnGroup.style.cssText = `display: flex; gap: 8px;`;
-        btnGroup.appendChild(copyBtn);
-        btnGroup.appendChild(dismissBtn);
-
-        codeBlock.appendChild(codeText);
-        codeBlock.appendChild(btnGroup);
-        panel.appendChild(codeBlock);
-    }
-
-    return panel;
-};
-
 const buildLicenseRow = (lic) => {
     const isRevoked = lic.status === 'revoked';
 
@@ -1981,8 +1856,6 @@ const buildLicensesTab = () => {
     const container = document.createElement('div');
     container.style.cssText = `display: flex; flex-direction: column; gap: 16px;`;
 
-    container.appendChild(buildGenerateLicensePanel());
-
     if (_state.licenses.length === 0) {
         const empty = document.createElement('div');
         empty.style.cssText = `
@@ -1991,7 +1864,7 @@ const buildLicensesTab = () => {
             font-size: 12px;
             border: 1px dashed ${T.border}; border-radius: 8px;
         `;
-        empty.textContent = 'No licenses yet — generate one above.';
+        empty.textContent = 'Contact kind.pos to purchase a license — kindpos.com';
         container.appendChild(empty);
         return container;
     }
@@ -2062,6 +1935,334 @@ const buildTabBar = () => {
     return bar;
 };
 
+/* ─── DIAGRAM: hub builders ─────────────────────────────────────
+   Scaffold for the Hardware & Network hub visual. Read-only static
+   layout sourced from _state; no SVG routing lines and no tap
+   interactions yet (added in later chunks).
+   ─────────────────────────────────────────────────────────────── */
+
+const buildTerminalDiagramCard = (term, index) => {
+    const online = term.is_active === 1 || term.is_active === true;
+    const palette = getTerminalColor(index);
+    const accent = online ? palette.color : T.verm;
+    const nameColor = online ? palette.color : T.border;
+
+    const card = document.createElement('div');
+    card.setAttribute('data-terminal-id', term.terminal_id || '');
+    card.setAttribute('data-terminal-index', String(index));
+    card.style.cssText = `
+        position: relative;
+        background: ${T.card};
+        border: 2px solid ${online ? T.border : withAlpha(T.text, 0.04)};
+        border-radius: 8px;
+        padding: 12px 8px 10px;
+        display: flex; flex-direction: column; align-items: center;
+        cursor: pointer;
+        overflow: hidden;
+        min-height: 92px;
+    `;
+
+    const accentBar = document.createElement('div');
+    accentBar.style.cssText = `
+        position: absolute; top: 0; left: 0; right: 0;
+        height: 3px; background: ${accent};
+    `;
+    card.appendChild(accentBar);
+
+    const dot = document.createElement('div');
+    dot.style.cssText = `
+        width: 8px; height: 8px; border-radius: 50%;
+        background: ${online ? palette.color : T.border};
+        margin-bottom: 6px;
+    `;
+    card.appendChild(dot);
+
+    const name = document.createElement('div');
+    name.textContent = term.name || term.terminal_id || 'Terminal';
+    name.style.cssText = `
+        font-family: ${T.fh};
+        font-size: 18px;
+        font-weight: 700;
+        color: ${nameColor};
+        text-align: center;
+        line-height: 1.1;
+        max-width: 100%;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    `;
+    card.appendChild(name);
+
+    const subtitle = document.createElement('div');
+    subtitle.textContent = term.mac_address || term.ip_address || '';
+    subtitle.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 9px;
+        color: ${T.border};
+        text-align: center;
+        margin-top: 2px;
+        max-width: 100%;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    `;
+    card.appendChild(subtitle);
+
+    const badge = document.createElement('div');
+    badge.textContent = (term.role || 'terminal').toUpperCase();
+    badge.style.cssText = `
+        margin-top: 6px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-family: ${T.fb};
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        background: ${online ? palette.color : T.border};
+        color: ${T.well};
+    `;
+    card.appendChild(badge);
+
+    return card;
+};
+
+// Type → accent color. `card` is the diagram's logical group name for
+// card readers; devices themselves live under type='card_reader'.
+const _miniAccentForType = (type) => {
+    if (type === 'kitchen') return T.verm;
+    if (type === 'receipt') return T.elec;
+    if (type === 'card')    return T.greenUp;
+    return T.border;
+};
+
+const buildDeviceMiniCard = (device, type) => {
+    const card = document.createElement('div');
+
+    if (!device) {
+        card.setAttribute('data-device-id', 'unassigned');
+        card.setAttribute('data-device-type', type);
+        card.style.cssText = `
+            min-width: 78px;
+            padding: 8px 6px;
+            background: ${T.well};
+            border: 1.5px dashed ${T.border};
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0.4;
+            color: ${T.border};
+            font-family: ${T.fb};
+            font-size: 14px;
+        `;
+        card.textContent = '—';
+        return card;
+    }
+
+    const accent = _miniAccentForType(type);
+    card.setAttribute('data-device-id', device.mac || '');
+    card.setAttribute('data-device-type', type);
+    card.style.cssText = `
+        position: relative;
+        min-width: 78px;
+        padding: 8px 6px;
+        background: ${T.well};
+        border: 1.5px solid ${T.border};
+        border-radius: 6px;
+        display: flex; flex-direction: column; align-items: center;
+        overflow: hidden;
+    `;
+
+    const accentBar = document.createElement('div');
+    accentBar.style.cssText = `
+        position: absolute; top: 0; left: 0; right: 0;
+        height: 2px; background: ${accent};
+    `;
+    card.appendChild(accentBar);
+
+    const typeLabel = document.createElement('div');
+    typeLabel.textContent = type.toUpperCase();
+    typeLabel.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 7px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        color: ${accent};
+        margin-top: 4px;
+    `;
+    card.appendChild(typeLabel);
+
+    const name = document.createElement('div');
+    name.textContent = device.name || 'Unnamed';
+    name.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 10px;
+        font-weight: 700;
+        color: ${T.text};
+        text-align: center;
+        margin-top: 2px;
+        max-width: 100%;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    `;
+    card.appendChild(name);
+
+    const sub = document.createElement('div');
+    sub.textContent = device.ip || '';
+    sub.style.cssText = `
+        font-family: ${T.fb};
+        font-size: 8px;
+        color: ${T.border};
+        text-align: center;
+        margin-top: 1px;
+    `;
+    card.appendChild(sub);
+
+    return card;
+};
+
+const buildDeviceGroupCard = (title, devices, type) => {
+    const group = document.createElement('div');
+    group.setAttribute('data-group-type', type);
+    group.style.cssText = `
+        background: ${T.card};
+        border: 2px solid ${T.border};
+        border-radius: 10px;
+        padding: 14px;
+        min-height: 120px;
+        display: flex; flex-direction: column;
+    `;
+
+    const titleEl = document.createElement('div');
+    titleEl.textContent = title;
+    titleEl.style.cssText = `
+        font-family: ${T.fh};
+        font-size: 15px;
+        font-weight: 700;
+        color: ${T.text};
+        margin-bottom: 10px;
+    `;
+    group.appendChild(titleEl);
+
+    if (!devices || devices.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = `No ${title.toLowerCase()} configured`;
+        empty.style.cssText = `
+            flex: 1;
+            display: flex; align-items: center; justify-content: center;
+            font-family: ${T.fb};
+            font-size: 10px;
+            color: ${T.border};
+            text-align: center;
+        `;
+        group.appendChild(empty);
+        return group;
+    }
+
+    const row = document.createElement('div');
+    row.style.cssText = `display: flex; gap: 6px; flex-wrap: wrap;`;
+    for (const d of devices) {
+        row.appendChild(buildDeviceMiniCard(d, type));
+    }
+    group.appendChild(row);
+    return group;
+};
+
+// Dashed "+ Pair New" terminal-row slot.
+const _buildPairTerminalSlot = () => {
+    const slot = document.createElement('div');
+    slot.style.cssText = `
+        background: ${T.card};
+        border: 2px dashed ${T.border};
+        border-radius: 8px;
+        padding: 12px 8px 10px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        font-family: ${T.fb};
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: ${T.textMuted};
+        opacity: 0.7;
+        min-height: 92px;
+    `;
+    slot.textContent = '+ Pair New';
+    return slot;
+};
+
+// Dashed "+ Add Device" device-grid slot.
+const _buildAddDeviceSlot = () => {
+    const slot = document.createElement('div');
+    slot.style.cssText = `
+        background: ${T.card};
+        border: 2px dashed ${T.border};
+        border-radius: 10px;
+        min-height: 120px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+        font-family: ${T.fb};
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: ${T.textMuted};
+        opacity: 0.7;
+    `;
+    slot.textContent = '+ Add Device';
+    return slot;
+};
+
+const buildHardwareHub = () => {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-hardware-hub', '');
+    wrapper.style.cssText = `position: relative; margin-bottom: 16px;`;
+
+    // Terminal row
+    const termRow = document.createElement('div');
+    termRow.style.cssText = `
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 8px;
+    `;
+    (_state.terminals || []).forEach((t, i) => {
+        termRow.appendChild(buildTerminalDiagramCard(t, i));
+    });
+    termRow.appendChild(_buildPairTerminalSlot());
+    wrapper.appendChild(termRow);
+
+    // Routing gap (SVG routing lines will mount inside in a later chunk)
+    const gap = document.createElement('div');
+    gap.setAttribute('data-hub-gap', '');
+    gap.style.cssText = `height: 48px; position: relative;`;
+    wrapper.appendChild(gap);
+
+    // Device-group 2×2 grid
+    const kitchenPrinters = (_state.printers || []).filter(p =>
+        p.role === 'kitchen' || p.type === 'kitchen' || p.type === 'impact'
+    );
+    const receiptPrinters = (_state.printers || []).filter(p =>
+        p.role === 'receipt' || p.type === 'receipt' || p.type === 'thermal'
+    );
+
+    const deviceGrid = document.createElement('div');
+    deviceGrid.style.cssText = `
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    `;
+    deviceGrid.appendChild(buildDeviceGroupCard('Kitchen Printers', kitchenPrinters, 'kitchen'));
+    deviceGrid.appendChild(buildDeviceGroupCard('Receipt Printers', receiptPrinters, 'receipt'));
+    deviceGrid.appendChild(buildDeviceGroupCard('Card Readers', _state.cardReaders || [], 'card'));
+    deviceGrid.appendChild(_buildAddDeviceSlot());
+    wrapper.appendChild(deviceGrid);
+
+    return wrapper;
+};
+
+const _buildHubDivider = () => {
+    const hr = document.createElement('hr');
+    hr.style.cssText = `
+        border: none;
+        border-top: 1px solid ${T.border};
+        margin: 16px 0;
+    `;
+    return hr;
+};
+
 /* ─── MAIN SCENE BUILDER ───────────────────────────────────────── */
 const rebuild = () => {
     if (!_state.container) return;
@@ -2077,6 +2278,9 @@ const rebuild = () => {
     if (!main) return;
 
     main.innerHTML = '';
+
+    main.appendChild(buildHardwareHub());
+    main.appendChild(_buildHubDivider());
 
     main.appendChild(buildTabBar());
 

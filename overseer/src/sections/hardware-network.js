@@ -55,7 +55,7 @@ const loadData = async () => {
     try {
         const [devicesResp, terminalsResp, routingResp] = await Promise.all([
             fetchWithTimeout('/api/v1/hardware/devices'),
-            fetchWithTimeout('/api/v1/config/terminals'),
+            fetchWithTimeout('/api/v1/hardware/terminals'),
             fetchWithTimeout('/api/v1/hardware/routing'),
         ]);
 

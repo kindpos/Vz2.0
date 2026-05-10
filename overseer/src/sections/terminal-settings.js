@@ -29,7 +29,7 @@ let _container = null;
 ------------------------------------------ */
 const fetchTerminals = async () => {
   try {
-    const res = await fetch('/api/v1/config/terminals');
+    const res = await fetch('/api/v1/hardware/terminals');
     if (!res.ok) return [];
     return await res.json();
   } catch { return []; }
