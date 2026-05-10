@@ -1188,6 +1188,7 @@ async def activate_server(
             )
 
         label = row["label"] or ""
+        store_id = row["store_id"] or ""
 
         await db.execute(
             """
@@ -1202,8 +1203,11 @@ async def activate_server(
         )
         await db.commit()
 
-    # Register terminal with auth_key_hash
-    terminal_id = settings.terminal_id
+    # Register terminal with T-NN derived from store_id
+    if store_id and store_id.isdigit():
+        terminal_id = f"T-{str(int(store_id)).zfill(2)}"
+    else:
+        terminal_id = settings.terminal_id
     auth_key_hash = hashlib.sha256(code.encode()).hexdigest()
 
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
