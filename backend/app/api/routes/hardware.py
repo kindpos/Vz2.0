@@ -19,6 +19,7 @@ import uuid
 import xml.etree.ElementTree as ET
 import ipaddress
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 import aiosqlite
@@ -45,11 +46,9 @@ router = APIRouter(prefix="/hardware", tags=["hardware"])
 
 _MAC_RE = re.compile(r'^([0-9a-fA-F]{1,2}[:\-]){5}[0-9a-fA-F]{1,2}$')
 
-# ΓöÇΓöÇ DB path ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-HARDWARE_DB_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))))),
-    'hardware_config.db'
+# Canonical data directory — hardware_config.db lives in backend/data/
+HARDWARE_DB_PATH = str(
+    Path(__file__).resolve().parents[3] / 'data' / 'hardware_config.db'
 )
 
 # ΓöÇΓöÇ Port fingerprinting ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

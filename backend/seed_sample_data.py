@@ -20,6 +20,7 @@ import random
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -29,7 +30,7 @@ from app.core.money import money_round
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-DB_PATH = "data/event_ledger.db"
+DB_PATH = str(Path(__file__).resolve().parent / 'data' / 'event_ledger.db')
 TERMINAL_ID = "terminal_01"
 TAX_RATE = 0.07
 CASH_DISCOUNT_RATE = 0.04  # 4% dual-pricing cash discount

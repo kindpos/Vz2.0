@@ -8,6 +8,13 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import os
+from pathlib import Path
+
+# Canonical data directory — always backend/data/ regardless
+# of working directory or launch method
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = BACKEND_ROOT / 'data'
+DATA_DIR.mkdir(exist_ok=True)
 
 
 class Settings(BaseSettings):
@@ -22,7 +29,7 @@ class Settings(BaseSettings):
     terminal_id: str = "terminal_01"
 
     # Database
-    database_path: str = "./data/event_ledger.db"
+    database_path: str = str(DATA_DIR / 'event_ledger.db')
 
     # Server
     host: str = "127.0.0.1"

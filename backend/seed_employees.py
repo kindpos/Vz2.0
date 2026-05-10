@@ -8,6 +8,7 @@ Usage (from backend/ directory):
 import asyncio
 import sys
 import os
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -24,7 +25,8 @@ STAFF = [
 
 async def main():
     import os
-    ledger = EventLedger(os.environ.get("KINDPOS_DATABASE_PATH", "data/event_ledger.db"))
+    default_path = str(Path(__file__).resolve().parent / 'data' / 'event_ledger.db')
+    ledger = EventLedger(os.environ.get("KINDPOS_DATABASE_PATH", default_path))
     await ledger.connect()
 
     # Check for existing employees so re-running is safe
