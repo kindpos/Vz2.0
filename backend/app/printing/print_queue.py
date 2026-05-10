@@ -8,6 +8,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+from app.config import DATA_DIR
+
 logger = logging.getLogger("kindpos.printing.queue")
 
 
@@ -24,7 +26,9 @@ class PrintJobQueue:
     Guarantees no order is lost regardless of printer status.
     """
 
-    def __init__(self, db_path: str = "./data/print_queue.db"):
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            db_path = str(DATA_DIR / 'print_queue.db')
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db: Optional[aiosqlite.Connection] = None

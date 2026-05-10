@@ -1,4 +1,5 @@
 from typing import List, Dict, Any, Optional, Callable, TypeVar
+from pathlib import Path
 from app.core.event_ledger import EventLedger
 from app.core.events import EventType, Event
 from app.models.config_events import (
@@ -540,7 +541,9 @@ class OverseerConfigService:
             import aiosqlite
             import json
 
-            HARDWARE_DB_PATH = "data/hardware_config.db"
+            HARDWARE_DB_PATH = str(
+                Path(__file__).resolve().parents[2] / 'data' / 'hardware_config.db'
+            )
             async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
                 db.row_factory = aiosqlite.Row
 

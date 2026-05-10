@@ -29,6 +29,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from .events import Event, EventType, parse_event_type
+from ..config import DATA_DIR
 
 logger = logging.getLogger("kindpos.ledger")
 
@@ -63,7 +64,9 @@ class EventLedger:
             events = await ledger.get_events_for_order(order_id)
     """
 
-    def __init__(self, db_path: str = "./data/event_ledger.db"):
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            db_path = str(DATA_DIR / 'event_ledger.db')
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db: Optional[aiosqlite.Connection] = None

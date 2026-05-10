@@ -14,6 +14,7 @@ import os
 import sys
 import socket
 import subprocess
+from pathlib import Path
 from zeroconf import Zeroconf, ServiceInfo
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,10 @@ _dispatcher: PrintDispatcher = None
 _checkin_task: asyncio.Task = None
 _zeroconf: Zeroconf = None
 
-HARDWARE_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'hardware_config.db')
+# Canonical data directory — hardware_config.db lives in backend/data/
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = BACKEND_ROOT / 'data'
+HARDWARE_DB_PATH = str(DATA_DIR / 'hardware_config.db')
 
 
 def _resolve_printer_ip(mac: str, fallback_ip: str) -> str:
@@ -234,8 +238,20 @@ async def lifespan(app: FastAPI):
     print("Terminal ID: " + settings.terminal_id)
     print("Database: " + settings.database_path)
 
+    # Migrate hardware_config.db from backend/ to backend/data/ (idempotent)
+    _old_hardware_db = BACKEND_ROOT / 'hardware_config.db'
+    _new_hardware_db = DATA_DIR / 'hardware_config.db'
+    if _old_hardware_db.exists() and not _new_hardware_db.exists():
+        import shutil
+        shutil.move(str(_old_hardware_db), str(_new_hardware_db))
+        print(f"  Migrated hardware_config.db to data/")
+
     ledger = await init_ledger()
     print("Event Ledger initialized")
+
+    # Log resolved database paths
+    print(f"Data directory:  {DATA_DIR}")
+    print(f"Hardware DB:     {HARDWARE_DB_PATH}")
 
     # Entomology diagnostic collector (shares diagnostic_boot.db with KINDnostic)
     diagnostic_db_path = settings.database_path.replace(

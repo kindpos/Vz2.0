@@ -4,14 +4,14 @@ Run from backend/ directory:
     ..\\.venv\\Scripts\\python.exe check_employees.py
 """
 import asyncio, sys, os
+from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
 from app.core.event_ledger import EventLedger
 from app.core.events import EventType
 
 DB_CANDIDATES = [
-    "./data/event_ledger.db",                                    # backend/ relative
-    "../data/event_ledger.db",                                   # project root relative
+    str(Path(__file__).resolve().parent / 'data' / 'event_ledger.db'),  # backend/data/
 ]
 
 async def check(path):

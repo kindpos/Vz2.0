@@ -29,7 +29,7 @@ async def main():
     with open(SEED_PATH, 'r') as f:
         seed_data = json.load(f)
 
-    ledger = EventLedger("data/event_ledger.db")
+    ledger = EventLedger(str(Path(__file__).resolve().parent / 'data' / 'event_ledger.db'))
     await ledger.connect()
 
     # ── Check existing data for idempotency ───────────────────────────────
