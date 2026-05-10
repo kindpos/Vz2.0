@@ -5,7 +5,7 @@ from app.models.config_events import (
     Role, Employee, TipoutRule, TipPool,
     MenuItem, MenuCategory, ModifierGroup, MicroMod,
     Section, FloorPlanLayout,
-    Terminal, Printer, RoutingMatrix,
+    Terminal, Printer, RoutingMatrix, Device, TerminalDevices,
     DashboardConfig, CustomReport, AccountsMapping,
     Option, OptionGroup, Size,
 )
@@ -534,6 +534,60 @@ class OverseerConfigService:
                 terms[tid] = Terminal(**updated_payload)
             else:
                 terms[tid] = Terminal(**payload)
+
+        # Enrich with activation status and devices from hardware database
+        try:
+            import aiosqlite
+            import json
+
+            HARDWARE_DB_PATH = "data/hardware_config.db"
+            async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+                db.row_factory = aiosqlite.Row
+
+                # Get activation status for each terminal
+                for tid in terms:
+                    async with db.execute("SELECT activated_at, is_active FROM terminals WHERE terminal_id = ?", (tid,)) as cur:
+                        term_row = await cur.fetchone()
+                        if term_row:
+                            terms[tid].activated_at = term_row["activated_at"] if term_row["activated_at"] else None
+                            terms[tid].is_active = bool(term_row["is_active"])
+
+                    # Get assigned devices (printers and readers)
+                    printers = []
+                    readers = []
+                    async with db.execute("SELECT * FROM devices WHERE is_active = 1", ()) as cur:
+                        rows = await cur.fetchall()
+                        for row in rows:
+                            terminal_ids_str = row["terminal_ids"] or "[]"
+                            try:
+                                terminal_ids = json.loads(terminal_ids_str)
+                            except:
+                                terminal_ids = []
+
+                            if tid in terminal_ids:
+                                device = Device(
+                                    mac_address=row["mac"],
+                                    name=row["name"],
+                                    type=row["type"],
+                                    ip_address=row["ip"],
+                                    port=row["port"],
+                                    is_active=True
+                                )
+                                if row["type"] == "printer":
+                                    printers.append(device)
+                                elif row["type"] == "card_reader":
+                                    readers.append(device)
+
+                    terms[tid].devices = TerminalDevices(printers=printers, readers=readers)
+        except Exception as e:
+            # If hardware database query fails, continue without device/activation data
+            import logging
+            _log = logging.getLogger(__name__)
+            _log.warning(f"Failed to enrich terminals with hardware data: {e}")
+            for tid in terms:
+                if terms[tid].devices is None:
+                    terms[tid].devices = TerminalDevices()
+
         result = list(terms.values())
         cache.set(seq, result)
         return result

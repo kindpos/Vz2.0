@@ -201,6 +201,192 @@ const openTerminalModal = (terminal, sections, existingTerminals, onSaved) => {
   });
   content.appendChild(trainingChip.wrap);
 
+  // SECTION 1 — ACTIVATION STATUS (read-only)
+  const activationCard = sectionCard({
+    label: 'Activation Status',
+    accent: T.gold,
+  });
+  const statusRow = document.createElement('div');
+  statusRow.style.cssText = 'display: flex; flex-direction: column; gap: 12px;';
+
+  // Status badge
+  const statusChip = document.createElement('div');
+  const isActivated = terminal && terminal.is_active;
+  const statusColor = isActivated ? T.green : T.textDim;
+  const statusBg = isActivated ? `${statusColor}20` : `${T.textMuted}08`;
+  statusChip.style.cssText = `
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-radius: 999px;
+    background: ${statusBg};
+    color: ${statusColor};
+    font-family: ${T.font.mono};
+    font-size: ${T.fs.xs}px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    width: fit-content;
+  `;
+  const statusDot = document.createElement('span');
+  statusDot.style.cssText = `
+    width: 6px; height: 6px; border-radius: 50%;
+    background: ${statusColor};
+    flex-shrink: 0;
+  `;
+  statusChip.appendChild(statusDot);
+  const statusText = document.createElement('span');
+  statusText.textContent = isActivated ? 'ACTIVATED' : 'NOT ACTIVATED';
+  statusChip.appendChild(statusText);
+  statusRow.appendChild(statusChip);
+
+  // Activation date/time or instruction
+  if (isActivated && terminal.activated_at) {
+    const dateEl = document.createElement('div');
+    dateEl.style.cssText = `
+      font-size: ${T.fs.base}px;
+      color: ${T.textMuted};
+      font-family: ${T.font.mono};
+      letter-spacing: 0.5px;
+    `;
+    const d = new Date(terminal.activated_at);
+    dateEl.textContent = `Activated: ${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
+    statusRow.appendChild(dateEl);
+  } else {
+    const infoEl = document.createElement('div');
+    infoEl.style.cssText = `
+      font-size: ${T.fs.base}px;
+      color: ${T.textMuted};
+      line-height: 1.5;
+    `;
+    infoEl.textContent = 'Enter the activation code on the POS terminal to register this terminal.';
+    statusRow.appendChild(infoEl);
+  }
+
+  // Terminal ID (read-only, copyable)
+  const idRowEl = document.createElement('div');
+  idRowEl.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+  const idActLbl = document.createElement('label');
+  idActLbl.style.cssText = `
+    font-family: ${T.font.body};
+    font-size: ${T.fs.base}px;
+    color: ${T.textMuted};
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  `;
+  idActLbl.textContent = 'Terminal ID (for Activation)';
+  idRowEl.appendChild(idActLbl);
+
+  const idBox = document.createElement('div');
+  idBox.style.cssText = `
+    padding: 10px 14px;
+    background: ${T.well};
+    border: 1px solid ${T.border};
+    border-radius: ${T.r.sm}px;
+    font-family: ${T.font.mono};
+    font-size: 16px;
+    letter-spacing: 2px;
+    color: ${T.text};
+    user-select: all;
+    cursor: pointer;
+  `;
+  idBox.textContent = draft.terminal_id;
+  idBox.title = 'Click to copy';
+  idBox.addEventListener('click', () => {
+    navigator.clipboard.writeText(draft.terminal_id);
+    showToast('Terminal ID copied');
+  });
+  idRowEl.appendChild(idBox);
+  statusRow.appendChild(idRowEl);
+
+  activationCard.body.appendChild(statusRow);
+  content.appendChild(activationCard.card);
+
+  // SECTION 2 — HARDWARE ASSIGNMENT (read-only)
+  const hardwareCard = sectionCard({
+    label: 'Assigned Hardware',
+    accent: T.elec,
+  });
+  const deviceRow = document.createElement('div');
+  deviceRow.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+
+  const devices = (terminal && terminal.devices) ? terminal.devices : { printers: [], readers: [] };
+  const totalDevices = (devices.printers || []).length + (devices.readers || []).length;
+
+  if (totalDevices === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.style.cssText = `
+      font-size: ${T.fs.base}px;
+      color: ${T.textDim};
+      font-style: italic;
+    `;
+    emptyEl.textContent = 'No devices assigned. Scan for hardware in the Hardware tab after activation.';
+    deviceRow.appendChild(emptyEl);
+  } else {
+    // Printers
+    if (devices.printers && devices.printers.length > 0) {
+      const printerLabel = document.createElement('div');
+      printerLabel.style.cssText = `
+        font-size: ${T.fs.xs}px;
+        color: ${T.textMuted};
+        font-family: ${T.font.mono};
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        font-weight: 700;
+        margin-top: 4px;
+      `;
+      printerLabel.textContent = 'Printers';
+      deviceRow.appendChild(printerLabel);
+
+      devices.printers.forEach(p => {
+        const chip = document.createElement('div');
+        chip.style.cssText = `
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 6px 12px; border-radius: 6px;
+          background: ${withAlpha(T.green, 0.12)};
+          color: ${T.green};
+          font-size: ${T.fs.base}px;
+          font-family: ${T.font.body};
+          font-weight: 600;
+        `;
+        chip.textContent = `${p.name} (${p.ip_address}:${p.port})`;
+        deviceRow.appendChild(chip);
+      });
+    }
+
+    // Card readers
+    if (devices.readers && devices.readers.length > 0) {
+      const readerLabel = document.createElement('div');
+      readerLabel.style.cssText = `
+        font-size: ${T.fs.xs}px;
+        color: ${T.textMuted};
+        font-family: ${T.font.mono};
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        font-weight: 700;
+        margin-top: 4px;
+      `;
+      readerLabel.textContent = 'Card Readers';
+      deviceRow.appendChild(readerLabel);
+
+      devices.readers.forEach(r => {
+        const chip = document.createElement('div');
+        chip.style.cssText = `
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 6px 12px; border-radius: 6px;
+          background: ${withAlpha(T.cyan, 0.12)};
+          color: ${T.cyan};
+          font-size: ${T.fs.base}px;
+          font-family: ${T.font.body};
+          font-weight: 600;
+        `;
+        chip.textContent = `${r.name} (${r.ip_address}:${r.port})`;
+        deviceRow.appendChild(chip);
+      });
+    }
+  }
+
+  hardwareCard.body.appendChild(deviceRow);
+  content.appendChild(hardwareCard.card);
+
   // Footer buttons
   let modalRef = null;
   const cancelBtn = button({

@@ -239,6 +239,14 @@ async def process_sale(
     device_id = manager._terminal_device_map.get(request.terminal_id)
     device = manager._devices.get(device_id) if device_id else None
 
+    # Guard: ensure device is assigned to this terminal
+    if not device:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No card reader assigned to terminal '{request.terminal_id}'. "
+                   "Assign a reader in Hardware settings and try again."
+        )
+
     # 2. Validate
     v_result = await validator.validate(request, device)
     if v_result.status == ValidationStatus.REJECTED:
