@@ -352,7 +352,7 @@ async def _probe_spin(ip: str, port: int) -> dict:
                     "status":      root.findtext("RespMSG") or root.findtext("Message") or "",
                 }
     except Exception as e:
-        logger.debug(f"[SCANNER] SPIn probe failed for {ip}:{port}: {e}")
+        logger.warning(f"[SCANNER] SPIn probe failed for {ip}:{port}: {e}")
     return {}
 
 
