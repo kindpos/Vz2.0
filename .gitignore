@@ -65,3 +65,18 @@ venv/
 # Vitest / node
 node_modules/
 coverage/
+
+# PyInstaller / installer build outputs.
+build/
+dist/
+kindpos_setup.spec
+
+# Per-install runtime DBs that aren't part of the source tree.
+/hardware_config.db
+backend/data/hardware_config.db
+
+# Local triage / scratch.
+triage_manifest.txt
+
+# Per-workstream lockfile that does not belong in this repo.
+pi/cloudflare/package-lock.json

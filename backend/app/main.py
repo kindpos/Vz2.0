@@ -50,6 +50,7 @@ from app.api.routes import modifier_groups as modifier_groups_routes
 from app.api.routes import modifiers as modifiers_routes
 from app.api.routes import menu_items as menu_items_routes
 from app.api.routes import licenses
+from app.api.routes import v1_auth
 from app.api.routes.licenses import start_license_checkin_loop
 from app.api.routes.printing import print_queue
 
@@ -477,6 +478,7 @@ app.include_router(modifier_groups_routes.router, prefix="/api/v1")
 app.include_router(modifiers_routes.router, prefix="/api/v1")
 app.include_router(menu_items_routes.router, prefix="/api/v1")
 app.include_router(licenses.router, prefix="/api/v1")
+app.include_router(v1_auth.router)
 
 
 # Serve frontend
