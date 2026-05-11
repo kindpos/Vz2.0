@@ -26,6 +26,17 @@ from ..money import money_round
 
 logger = logging.getLogger("kindpos.payment.manager")
 
+# Module-level lock spanning the idempotency-check → device-lookup →
+# PAYMENT_INITIATED append window in `initiate_sale`. Two concurrent
+# calls for the same transaction_id were able to slip past
+# `_check_idempotency` before either appended PAYMENT_INITIATED to the
+# ledger — both would then reach `device.initiate_sale` and a double
+# charge could be issued to the SPIn terminal. Held only across the
+# check + append (fast); released before the 90 s device round trip
+# so other terminals' sales are not serialized on the network call.
+_initiate_lock = asyncio.Lock()
+
+
 class PaymentManager:
     """
     The Brain — handles idempotency, event emission, device routing, 
@@ -56,24 +67,32 @@ class PaymentManager:
     async def initiate_sale(self, request: TransactionRequest, tax: Decimal = Decimal("0.00")) -> TransactionResult:
         """Core sale entry point with idempotency and event emission."""
 
-        # 5.1 Idempotency check
-        existing_result = await self._check_idempotency(request.transaction_id)
-        if existing_result:
-            logger.info(f"Idempotency hit for {request.transaction_id}")
-            return existing_result
+        # Lock-protected critical section: idempotency check → device
+        # lookup → PAYMENT_INITIATED append. Without the lock, two
+        # concurrent calls with the same transaction_id can both see
+        # "no INITIATED yet" before either has written the event, and
+        # both reach the device. The lock is released before the
+        # 90 s device round trip so other transactions are not serialized.
+        async with _initiate_lock:
+            # 5.1 Idempotency check
+            existing_result = await self._check_idempotency(request.transaction_id)
+            if existing_result:
+                logger.info(f"Idempotency hit for {request.transaction_id}")
+                return existing_result
 
-        # Get device for this terminal
-        device_id = self._terminal_device_map.get(request.terminal_id)
-        if not device_id or device_id not in self._devices:
-            return self._error_result(request.transaction_id, PaymentErrorCategory.SYSTEM, "NO_DEVICE", f"No payment device mapped to terminal {request.terminal_id}")
+            # Get device for this terminal
+            device_id = self._terminal_device_map.get(request.terminal_id)
+            if not device_id or device_id not in self._devices:
+                return self._error_result(request.transaction_id, PaymentErrorCategory.SYSTEM, "NO_DEVICE", f"No payment device mapped to terminal {request.terminal_id}")
 
-        device = self._devices[device_id]
+            device = self._devices[device_id]
 
-        # 5.2 Event Emission - Initiated
-        event = self._create_payment_event(EventType.PAYMENT_INITIATED, request.model_dump())
-        await self._ledger.append(event)
+            # 5.2 Event Emission - Initiated
+            event = self._create_payment_event(EventType.PAYMENT_INITIATED, request.model_dump())
+            await self._ledger.append(event)
 
-        # 5.4 Timeout Enforcement (90s)
+        # 5.4 Timeout Enforcement (90s) — outside the lock so the SPIn
+        # round trip doesn't block other terminals' sales.
         try:
             result = await asyncio.wait_for(device.initiate_sale(request), timeout=90.0)
         except asyncio.TimeoutError:
@@ -125,8 +144,9 @@ class PaymentManager:
         checked the completed states — which left a window between
         PAYMENT_INITIATED (emitted at the start of the manager flow) and
         the result event where a retry could push a second sale onto the
-        device. Returning a synthetic TIMEOUT for that in-flight case
-        tells the route "it's already going; don't fire another one."
+        device. Returning a synthetic ERROR with error_code=IN_FLIGHT
+        (see lines below) for that in-flight case tells the route
+        "it's already going; don't fire another one."
         """
         # Completed (confirmed) — replay the recorded result.
         events = await self._ledger.get_events_by_type(EventType.PAYMENT_CONFIRMED)

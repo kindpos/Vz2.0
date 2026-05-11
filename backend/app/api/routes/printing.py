@@ -123,9 +123,28 @@ async def print_receipt(
     builder = PrintContextBuilder(ledger)
     context = await builder.build_receipt_context(order_id, copy_type=copy_type)
 
-    sent_count = 0
+    job_ids: list[str] = []
     for printer in printers:
         try:
+            printer_mac = printer.printer_id
+
+            # Audit follow-up: dedup window covers queued/sent/completed
+            # within 60 s so a back-to-back identical press doesn't push
+            # a second job onto the printer adapter.
+            recent = await print_queue.get_recent_job(
+                order_id=order_id,
+                template_id="guest_receipt",
+                printer_mac=printer_mac,
+                copy_type=copy_type,
+            )
+            if recent:
+                _logger.info(
+                    "Dedup hit: receipt %s/%s/%s → existing job %s",
+                    order_id, printer.name, copy_type, recent["job_id"],
+                )
+                job_ids.append(recent["job_id"])
+                continue
+
             chars_per_line = getattr(printer, 'chars_per_line', 48)
             formatter = ESCPOSFormatter(
                 chars_per_line=chars_per_line,
@@ -135,8 +154,21 @@ async def print_receipt(
             commands = template.render(context)
             raw_bytes = formatter.format(commands)
 
+            # Allocate the job_id via enqueue so the row exists for
+            # future dedup. enqueue's own 'queued'/'sent' check also
+            # collapses simultaneous concurrent calls. Status flips to
+            # 'completed' (or 'failed') below before this handler returns.
+            job_id = await print_queue.enqueue(
+                order_id=order_id,
+                template_id="guest_receipt",
+                printer_mac=printer_mac,
+                ticket_number=context.get('ticket_number', 'N/A'),
+                context=context,
+                copy_type=copy_type,
+            )
+
             job = PrintJob(
-                job_id=str(uuid.uuid4()),
+                job_id=job_id,
                 order_id=order_id,
                 template_id="guest_receipt",
                 job_type=PrintJobType.RECEIPT,
@@ -151,28 +183,55 @@ async def print_receipt(
 
             result = await printer.print_job(job)
             if result.success:
-                sent_count += 1
+                await print_queue.mark_completed(job_id)
+                job_ids.append(job_id)
                 _logger.info(f"Receipt printed on {printer.name}")
             else:
+                await print_queue.mark_failed(job_id)
                 _logger.warning(f"Receipt print failed on {printer.name}: {result.message}")
         except Exception as e:
             _logger.error(f"Error printing receipt on {printer.name}: {e}")
 
-    if sent_count == 0:
+    if not job_ids:
         return {"status": "error", "detail": "Failed to print on any receipt printer"}
 
-    if sent_count > 0 and terminal_id and await _get_print_itemized(terminal_id, ledger):
+    if terminal_id and await _get_print_itemized(terminal_id, ledger):
         itemized_ctx = dict(context)
         itemized_ctx["copy_type"] = "itemized"
         for printer in printers:
             try:
+                printer_mac = printer.printer_id
+
+                recent_itemized = await print_queue.get_recent_job(
+                    order_id=order_id,
+                    template_id="guest_receipt",
+                    printer_mac=printer_mac,
+                    copy_type="itemized",
+                )
+                if recent_itemized:
+                    _logger.info(
+                        "Dedup hit: itemized receipt %s/%s → existing job %s",
+                        order_id, printer.name, recent_itemized["job_id"],
+                    )
+                    continue
+
                 chars_per_line = getattr(printer, 'chars_per_line', 48)
                 formatter = ESCPOSFormatter(chars_per_line=chars_per_line, supports_red=False)
                 template = GuestReceiptTemplate(chars_per_line=chars_per_line)
                 commands = template.render(itemized_ctx)
                 raw_bytes = formatter.format(commands)
+
+                itemized_job_id = await print_queue.enqueue(
+                    order_id=order_id,
+                    template_id="guest_receipt",
+                    printer_mac=printer_mac,
+                    ticket_number=itemized_ctx.get('ticket_number', 'N/A'),
+                    context=itemized_ctx,
+                    copy_type="itemized",
+                )
+
                 job = PrintJob(
-                    job_id=str(uuid.uuid4()),
+                    job_id=itemized_job_id,
                     order_id=order_id,
                     template_id="guest_receipt",
                     job_type=PrintJobType.RECEIPT,
@@ -186,13 +245,15 @@ async def print_receipt(
                 )
                 result = await printer.print_job(job)
                 if result.success:
+                    await print_queue.mark_completed(itemized_job_id)
                     _logger.info(f"Itemized receipt printed on {printer.name}")
                 else:
+                    await print_queue.mark_failed(itemized_job_id)
                     _logger.warning(f"Itemized receipt print failed on {printer.name}: {result.message}")
             except Exception as e:
                 _logger.error(f"Error printing itemized receipt on {printer.name}: {e}")
 
-    return {"status": "sent", "printers": sent_count, "copy_type": copy_type}
+    return {"status": "sent", "printers": len(job_ids), "copy_type": copy_type, "job_ids": job_ids}
 
 @router.post("/ticket/{order_id}", dependencies=[Depends(require_manager)])
 async def print_ticket(
@@ -270,11 +331,33 @@ async def print_ticket(
     if not printers:
         return {"status": "error", "detail": "No kitchen printer available"}
 
+    template_id = "kitchen_ticket_void" if void else "kitchen_ticket"
+
     job_ids = []
     ticket_index = 1
 
     for printer in printers:
         try:
+            printer_mac = printer.printer_id
+
+            # Audit follow-up: dedup window covers queued/sent/completed
+            # within 60 s so a back-to-back identical press doesn't push
+            # a second job onto the printer adapter. Keyed on
+            # (order_id, template_id, printer_mac, copy_type=None).
+            recent = await print_queue.get_recent_job(
+                order_id=order_id,
+                template_id=template_id,
+                printer_mac=printer_mac,
+                copy_type=None,
+            )
+            if recent:
+                _logger.info(
+                    "Dedup hit: kitchen ticket %s/%s → existing job %s",
+                    order_id, printer.name, recent["job_id"],
+                )
+                job_ids.append(recent["job_id"])
+                continue
+
             # Determine station name from printer config
             station_name = getattr(printer, 'location_tag', None) or printer.name or "Kitchen"
 
@@ -310,10 +393,24 @@ async def print_ticket(
             commands = template.render(context)
             raw_bytes = formatter.format(commands)
 
-            job = PrintJob(
-                job_id=str(uuid.uuid4()),
+            # Reuse the queue's enqueue for the job_id + 'queued'/'sent'
+            # dedup window. Status moves to 'completed' / 'failed' below
+            # before the handler returns, so the dispatcher never picks
+            # it up (and in PrinterManager mode the dispatcher isn't
+            # running anyway).
+            job_id = await print_queue.enqueue(
                 order_id=order_id,
-                template_id="kitchen_ticket_void" if void else "kitchen_ticket",
+                template_id=template_id,
+                printer_mac=printer_mac,
+                ticket_number=context.get('ticket_number', 'N/A'),
+                context=context,
+                copy_type=None,
+            )
+
+            job = PrintJob(
+                job_id=job_id,
+                order_id=order_id,
+                template_id=template_id,
                 job_type=PrintJobType.KITCHEN_TICKET,
                 order_context=OrderContext.DINE_IN,
                 target_role="kitchen",
@@ -326,9 +423,11 @@ async def print_ticket(
 
             result = await printer.print_job(job)
             if result.success:
-                job_ids.append(job.job_id)
+                await print_queue.mark_completed(job_id)
+                job_ids.append(job_id)
                 _logger.info(f"Kitchen ticket printed on {printer.name}")
             else:
+                await print_queue.mark_failed(job_id)
                 _logger.warning(f"Kitchen ticket print failed on {printer.name}: {result.message}")
         except Exception as e:
             _logger.error(f"Error printing kitchen ticket on {printer.name}: {e}")

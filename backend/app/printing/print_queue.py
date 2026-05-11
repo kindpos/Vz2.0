@@ -100,6 +100,52 @@ class PrintJobQueue:
             await self._db.commit()
             return job_id
 
+    async def get_recent_job(
+        self,
+        order_id: str,
+        template_id: str,
+        printer_mac: str,
+        copy_type: Optional[str] = None,
+        *,
+        within_seconds: int = 60,
+    ) -> Optional[Dict[str, Any]]:
+        """Return the most recent print job matching the dedup key whose
+        status is in ('queued','sent','completed') and whose `created_at`
+        falls within the last `within_seconds` seconds. Returns `None`
+        when no such row exists.
+
+        Wider than the dedup check inside `enqueue()` (which only covers
+        the in-flight 'queued'/'sent' window) — this helper also catches
+        recently-completed jobs so back-to-back PrinterManager-path
+        dispatches in routes/printing.py don't double-print.
+
+        Read-only. Does not mutate the queue.
+        """
+        from datetime import timedelta
+
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(seconds=int(within_seconds))
+        ).isoformat()
+        async with self._db.execute(
+            """
+            SELECT * FROM print_queue
+            WHERE order_id    = ?
+              AND template_id = ?
+              AND printer_mac = ?
+              AND (copy_type = ? OR (copy_type IS NULL AND ? IS NULL))
+              AND status IN ('queued','sent','completed')
+              AND created_at >= ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (order_id, template_id, printer_mac, copy_type, copy_type, cutoff),
+        ) as cur:
+            row = await cur.fetchone()
+            if not row:
+                return None
+            cols = [c[0] for c in cur.description]
+            return dict(zip(cols, row))
+
     async def mark_sent(self, job_id: str, attempt_number: int):
         """Mark a job as currently being sent."""
         now = datetime.now(timezone.utc).isoformat()
