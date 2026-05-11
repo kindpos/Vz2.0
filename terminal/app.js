@@ -16,6 +16,7 @@ import { fetchWithTimeout } from './net.js';
 import { performLogout, fmtTime, fmtDate, greetingFor } from './header.js';
 import { getSession } from './auth-client.js';
 import { T, applyStoreTheme } from '../common/tokens.js';
+import { validateToken } from './token-validator.js';
 
 // ── Scene imports ─────────────────────────────────
 import { defineActivationScene } from './scenes/activation.js';
@@ -287,6 +288,83 @@ async function boot() {
 
   // 1. Init scene manager — wire DOM layers
   SceneManager.init();
+
+  // 1a. Overseer binding-token gate (OVERSEER_AUTH.md §7).
+  //     If a cached token is present, validate it locally — five §7 checks,
+  //     no network. Invalid → wipe the cached binding so the next operator
+  //     action funnels through rebind. Valid → publish window._kindpos and
+  //     start the 5-minute revocations poll (§7.2 refresh + §7.3 revoke).
+  const TOK_KEYS = [
+    'kindpos_token', 'kindpos_slot_id', 'kindpos_public_key',
+    'kindpos_fingerprint', 'kindpos_revocations', 'kindpos_token_expires_at',
+  ];
+  function clearKindposKeys() {
+    for (const k of TOK_KEYS) {
+      try { localStorage.removeItem(k); } catch (e) { /* private mode */ }
+    }
+  }
+  const storedToken       = localStorage.getItem('kindpos_token');
+  const storedSlotId      = localStorage.getItem('kindpos_slot_id');
+  const storedPublicKey   = localStorage.getItem('kindpos_public_key');
+  const storedFingerprint = localStorage.getItem('kindpos_fingerprint');
+  let storedRevocations = [];
+  try {
+    const raw = localStorage.getItem('kindpos_revocations');
+    storedRevocations = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(storedRevocations)) storedRevocations = [];
+  } catch (e) { storedRevocations = []; }
+
+  if (storedToken && storedSlotId && storedPublicKey && storedFingerprint) {
+    const result = await validateToken(
+      storedToken, storedPublicKey, storedFingerprint, storedRevocations,
+    );
+    if (!result.valid) {
+      console.info('[kindpos] cached binding token invalid:', result.reason);
+      clearKindposKeys();
+    } else {
+      window._kindpos = {
+        slotId: storedSlotId,
+        token: storedToken,
+        publicKey: storedPublicKey,
+        fingerprint: storedFingerprint,
+      };
+      // 5-minute revocations poll. Only runs while a valid binding exists.
+      const pollRevocations = async () => {
+        try {
+          const res = await fetchWithTimeout(
+            '/api/v1/terminals/revocations',
+            { headers: { Authorization: 'Bearer ' + window._kindpos.token } },
+            10000,
+          );
+          if (res.status === 401) {
+            clearKindposKeys();
+            window.location.reload();
+            return;
+          }
+          if (!res.ok) return;
+          const body = await res.json();
+          const revoked = Array.isArray(body.revoked_slot_ids) ? body.revoked_slot_ids : [];
+          localStorage.setItem('kindpos_revocations', JSON.stringify(revoked));
+          if (revoked.includes(window._kindpos.slotId)) {
+            clearKindposKeys();
+            window.location.reload();
+            return;
+          }
+          if (body.refreshed_token) {
+            localStorage.setItem('kindpos_token', body.refreshed_token);
+            window._kindpos.token = body.refreshed_token;
+            if (body.refreshed_token_expires_at) {
+              localStorage.setItem('kindpos_token_expires_at', body.refreshed_token_expires_at);
+            }
+          }
+        } catch (e) {
+          // §8 — heartbeat / revocations poll failures are best-effort.
+          console.debug('[kindpos] revocations poll failed:', e && e.message);
+        }
+      };
+      setInterval(pollRevocations, 5 * 60 * 1000);
+    }
+  }
 
   // 2. Register activation scene
   SceneManager.register(defineActivationScene());
