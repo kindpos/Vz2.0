@@ -1,6 +1,7 @@
 [Unit]
 Description=KINDpos Server
 After=network.target
+Wants=kindpos-first-boot.service
 
 [Service]
 User=kindpos
