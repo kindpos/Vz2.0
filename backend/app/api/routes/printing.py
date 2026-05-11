@@ -19,6 +19,7 @@ from ...printing.escpos_formatter import ESCPOSFormatter
 from ...printing.templates.guest_receipt import GuestReceiptTemplate
 from ...printing.templates.kitchen_ticket import KitchenTicketTemplate
 from ...services.print_context_builder import PrintContextBuilder
+from ...services.routing_resolver import resolve_routing_rule
 from ...services.store_config_service import StoreConfigService
 from ...core.adapters.base_printer import (
     PrintJob,
@@ -38,6 +39,36 @@ print_queue = PrintJobQueue()
 # Note: In production, PrintContextBuilder would be injected with the ledger
 
 _logger = logging.getLogger(__name__)
+
+
+async def _fetch_routing_rules(printer_mac: str) -> list[dict]:
+    """Return all active `printer_routing` rows for `printer_mac`.
+
+    Empty list on any read failure / missing DB — the resolver treats an
+    empty list as "no rule applies" so the dispatch path falls through
+    to its pre-resolver behavior unchanged."""
+    try:
+        async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM printer_routing"
+                " WHERE printer_mac = ? AND is_active = 1",
+                (printer_mac,),
+            ) as cur:
+                rows = await cur.fetchall()
+                return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def _find_ready_printer_by_mac(manager, mac: str):
+    """Look up a ready printer adapter by MAC for `redirect_to_mac`.
+    Returns None if no such adapter exists or it isn't ready — caller
+    falls back to the originally-matched printer (§3.2)."""
+    for p in manager.get_all_printers():
+        if p.printer_id == mac and p.is_ready():
+            return p
+    return None
 
 
 async def _resolve_receipt_printer(terminal_id: str) -> str:
@@ -163,7 +194,32 @@ async def print_receipt(
                 job_ids.append(recent["job_id"])
                 continue
 
-            chars_per_line = getattr(printer, 'chars_per_line', 48)
+            # HARDWARE_ROUTING.md §3 — receipts only honor the redirect
+            # half of the resolver; receipts don't have a category
+            # filter, so we ignore winning_rule.category_id here.
+            rules = await _fetch_routing_rules(printer_mac)
+            winning_rule = resolve_routing_rule(
+                rules, category_id="", now=datetime.utcnow()
+            )
+            dispatch_printer = printer
+            if winning_rule:
+                redirect_mac = (winning_rule.get("redirect_to_mac") or "").strip()
+                if redirect_mac:
+                    target = _find_ready_printer_by_mac(manager, redirect_mac)
+                    if target is not None:
+                        dispatch_printer = target
+                        _logger.info(
+                            "Routing redirect: receipt %s → %s (order %s)",
+                            printer_mac, redirect_mac, order_id,
+                        )
+                    else:
+                        _logger.warning(
+                            "Routing redirect target %s not ready — "
+                            "falling back to %s",
+                            redirect_mac, printer_mac,
+                        )
+
+            chars_per_line = getattr(dispatch_printer, 'chars_per_line', 48)
             formatter = ESCPOSFormatter(chars_per_line=chars_per_line)
             template = GuestReceiptTemplate(chars_per_line=chars_per_line)
             commands = template.render(context)
@@ -188,21 +244,21 @@ async def print_receipt(
                 job_type=PrintJobType.RECEIPT,
                 order_context=OrderContext.DINE_IN,
                 target_role="receipt",
-                target_printer_id=printer.printer_id,
+                target_printer_id=dispatch_printer.printer_id,
                 content=PrintJobContent(body_lines=raw_bytes),
                 server_name="",
                 terminal_id=terminal_id,
                 priority=PrintJobPriority.NORMAL,
             )
 
-            result = await printer.print_job(job)
+            result = await dispatch_printer.print_job(job)
             if result.success:
                 await print_queue.mark_completed(job_id)
                 job_ids.append(job_id)
-                _logger.info(f"Receipt printed on {printer.name}")
+                _logger.info(f"Receipt printed on {dispatch_printer.name}")
             else:
                 await print_queue.mark_failed(job_id)
-                _logger.warning(f"Receipt print failed on {printer.name}: {result.message}")
+                _logger.warning(f"Receipt print failed on {dispatch_printer.name}: {result.message}")
         except Exception as e:
             _logger.error(f"Error printing receipt on {printer.name}: {e}")
 
@@ -371,17 +427,52 @@ async def print_ticket(
                 job_ids.append(recent["job_id"])
                 continue
 
-            # Determine station name from printer config
-            station_name = getattr(printer, 'location_tag', None) or printer.name or "Kitchen"
+            # HARDWARE_ROUTING.md §3 — resolve printer_routing rules
+            # for this printer. The dedup key above stays on the
+            # originally-requested MAC so a redirected print and the
+            # request-for-the-original-printer share a dedup row.
+            rules = await _fetch_routing_rules(printer_mac)
+            winning_rule = resolve_routing_rule(
+                rules, category_id="", now=datetime.utcnow()
+            )
+            dispatch_printer = printer
+            station_categories: Optional[list] = None
+            if winning_rule:
+                redirect_mac = (winning_rule.get("redirect_to_mac") or "").strip()
+                if redirect_mac:
+                    target = _find_ready_printer_by_mac(manager, redirect_mac)
+                    if target is not None:
+                        dispatch_printer = target
+                        _logger.info(
+                            "Routing redirect: kitchen %s → %s (order %s)",
+                            printer_mac, redirect_mac, order_id,
+                        )
+                    else:
+                        _logger.warning(
+                            "Routing redirect target %s not ready — "
+                            "falling back to %s",
+                            redirect_mac, printer_mac,
+                        )
+                rule_cat = (winning_rule.get("category_id") or "").strip()
+                if rule_cat:
+                    station_categories = [rule_cat]
 
-            # Get chars_per_line from printer adapter
-            chars_per_line = getattr(printer, 'chars_per_line', 33)
+            # Determine station name from the actual dispatch printer
+            station_name = (
+                getattr(dispatch_printer, 'location_tag', None)
+                or dispatch_printer.name
+                or "Kitchen"
+            )
 
-            # Build context for this station
+            # chars_per_line tracks the printer that will actually print
+            chars_per_line = getattr(dispatch_printer, 'chars_per_line', 33)
+
+            # Build context for this station — pass station_categories
+            # from the winning rule if it carried a category filter.
             context = await builder.build_kitchen_context(
                 order_id,
                 station_name=station_name,
-                station_categories=None,  # PrinterManager printers don't have category filtering
+                station_categories=station_categories,
             )
 
             # Skip printers that would get zero items for this order
@@ -423,21 +514,21 @@ async def print_ticket(
                 job_type=PrintJobType.KITCHEN_TICKET,
                 order_context=OrderContext.DINE_IN,
                 target_role="kitchen",
-                target_printer_id=printer.printer_id,
+                target_printer_id=dispatch_printer.printer_id,
                 content=PrintJobContent(body_lines=raw_bytes),
                 server_name="",
                 terminal_id="",
                 priority=PrintJobPriority.NORMAL,
             )
 
-            result = await printer.print_job(job)
+            result = await dispatch_printer.print_job(job)
             if result.success:
                 await print_queue.mark_completed(job_id)
                 job_ids.append(job_id)
-                _logger.info(f"Kitchen ticket printed on {printer.name}")
+                _logger.info(f"Kitchen ticket printed on {dispatch_printer.name}")
             else:
                 await print_queue.mark_failed(job_id)
-                _logger.warning(f"Kitchen ticket print failed on {printer.name}: {result.message}")
+                _logger.warning(f"Kitchen ticket print failed on {dispatch_printer.name}: {result.message}")
         except Exception as e:
             _logger.error(f"Error printing kitchen ticket on {printer.name}: {e}")
 

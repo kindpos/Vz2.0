@@ -1004,6 +1004,159 @@ async def list_routing_rules():
             return [dict(row) async for row in cur]
 
 
+# ── printer_routing CRUD (HARDWARE_ROUTING.md §3) ───────────────────────
+#
+# The §2.4 schema migration adds time / day / redirect / override
+# columns to `printer_routing` but provides no writer beyond the
+# catch-all row that `POST /devices` plants for new kitchen printers.
+# These four endpoints let the Overseer UI build category rules, time
+# windows, redirects, and manual overrides — what the resolver in
+# `app/services/routing_resolver.py` evaluates at print time.
+
+class CreateRoutingRuleRequest(BaseModel):
+    printer_mac: str
+    rule_type: str = "all"
+    category_id: str = ""
+    item_tag: str = ""
+    priority: int = 0
+    time_from: str = ""
+    time_to: str = ""
+    days_of_week: str = "[]"
+    redirect_to_mac: str = ""
+    override_active: int = 0
+    override_expires_at: str = ""
+
+
+class UpdateRoutingRuleRequest(BaseModel):
+    rule_type: Optional[str] = None
+    category_id: Optional[str] = None
+    item_tag: Optional[str] = None
+    priority: Optional[int] = None
+    time_from: Optional[str] = None
+    time_to: Optional[str] = None
+    days_of_week: Optional[str] = None
+    redirect_to_mac: Optional[str] = None
+    override_active: Optional[int] = None
+    override_expires_at: Optional[str] = None
+
+
+class RoutingOverrideRequest(BaseModel):
+    active: bool
+    expires_at: Optional[str] = None
+
+
+async def _select_routing_row(db, rule_id: int) -> Optional[dict]:
+    """Read one routing row by id. Returns None if absent."""
+    async with db.execute(
+        "SELECT * FROM printer_routing WHERE id = ?", (rule_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+@router.post("/routing", dependencies=[Depends(require_manager)])
+async def create_routing_rule(req: CreateRoutingRuleRequest):
+    """Insert a new printer_routing row and return it."""
+    await _ensure_db()
+    now = datetime.utcnow().isoformat()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """
+            INSERT INTO printer_routing
+                (printer_mac, rule_type, category_id, item_tag, priority,
+                 time_from, time_to, days_of_week, redirect_to_mac,
+                 override_active, override_expires_at, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            """,
+            (
+                req.printer_mac, req.rule_type, req.category_id, req.item_tag,
+                req.priority, req.time_from, req.time_to, req.days_of_week,
+                req.redirect_to_mac, req.override_active, req.override_expires_at,
+                now,
+            ),
+        )
+        rule_id = cursor.lastrowid
+        await db.commit()
+        return await _select_routing_row(db, rule_id)
+
+
+@router.put("/routing/{rule_id}", dependencies=[Depends(require_manager)])
+async def update_routing_rule(rule_id: int, req: UpdateRoutingRuleRequest):
+    """Patch an existing rule. Only fields present in the body are
+    updated. 404 if the rule_id doesn't exist."""
+    await _ensure_db()
+    fields = req.model_dump(exclude_unset=True)
+    if not fields:
+        # Nothing to update — just return the current row.
+        async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            row = await _select_routing_row(db, rule_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="routing rule not found")
+        return row
+
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [rule_id]
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            f"UPDATE printer_routing SET {set_clause} WHERE id = ?", values
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="routing rule not found")
+        await db.commit()
+        return await _select_routing_row(db, rule_id)
+
+
+@router.delete("/routing/{rule_id}", status_code=204, dependencies=[Depends(require_manager)])
+async def delete_routing_rule(rule_id: int):
+    """Soft-delete (is_active=0). The row stays visible to audits."""
+    await _ensure_db()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE printer_routing SET is_active = 0 WHERE id = ?", (rule_id,)
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="routing rule not found")
+        await db.commit()
+    # 204 No Content
+
+
+@router.post("/routing/{rule_id}/override", dependencies=[Depends(require_manager)])
+async def set_routing_override(rule_id: int, req: RoutingOverrideRequest):
+    """Set or clear the manual override on a routing rule. With
+    `active=true`, the resolver elevates this rule above any
+    time/day/category match until `expires_at` (optional)."""
+    await _ensure_db()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if req.active:
+            cursor = await db.execute(
+                """
+                UPDATE printer_routing
+                   SET override_active = 1,
+                       override_expires_at = ?
+                 WHERE id = ?
+                """,
+                (req.expires_at or "", rule_id),
+            )
+        else:
+            cursor = await db.execute(
+                """
+                UPDATE printer_routing
+                   SET override_active = 0,
+                       override_expires_at = ''
+                 WHERE id = ?
+                """,
+                (rule_id,),
+            )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="routing rule not found")
+        await db.commit()
+        return await _select_routing_row(db, rule_id)
+
+
 @router.get("/kitchen-printers", dependencies=[Depends(require_manager)])
 async def list_kitchen_printers():
     """Return kitchen printers with their assigned categories."""
