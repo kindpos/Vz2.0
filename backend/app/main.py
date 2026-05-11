@@ -52,7 +52,9 @@ from app.api.routes import menu_items as menu_items_routes
 from app.api.routes import licenses
 from app.api.routes import v1_auth
 from app.api.routes import v1_admin
+from app.api.routes import v1_terminals
 from app.api.routes.licenses import start_license_checkin_loop
+from app.services.phone_home_drain import phone_home_drain_loop
 from app.persistence.accounts_db import init_accounts_db
 from app.api.routes.printing import print_queue
 
@@ -336,6 +338,10 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_run_daily_retention(diagnostic_collector))
     print("Diagnostic retention scheduler started (daily)")
 
+    # Start phone_home_queue drain loop (OVERSEER_AUTH.md §9 / PROVISIONING_FLOW.md §7.6)
+    asyncio.create_task(phone_home_drain_loop(accounts_db_path))
+    print("Phone-home drain loop started (60-second interval)")
+
     if settings.store_mode == "demo":
         await seed_demo_data_if_empty(ledger)
     else:
@@ -492,6 +498,7 @@ app.include_router(menu_items_routes.router, prefix="/api/v1")
 app.include_router(licenses.router, prefix="/api/v1")
 app.include_router(v1_auth.router)
 app.include_router(v1_admin.router)
+app.include_router(v1_terminals.router)
 
 
 # Serve frontend

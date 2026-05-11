@@ -53,6 +53,14 @@ from app.auth.recovery import (
     verify_recovery_code,
 )
 from app.auth.sessions import Session, SessionsRepository
+from app.persistence.phone_home_repository import enqueue_phone_home
+from app.persistence.provisioning_keys import (
+    CUSTOMER_API_KEY,
+    FIRST_BOOT_PENDING,
+    KINDPOS_API_BASE,
+    STORE_REF,
+)
+from app.persistence.provisioning_repository import ProvisioningRepository
 from app.persistence.users_repository import User, UsersRepository
 
 
@@ -122,6 +130,10 @@ def _set_session_cookie(response: Response, session_id: str) -> None:
         samesite="strict",
         path="/",
     )
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _clear_must_change_password(db_path: str, user_id: str) -> None:
@@ -275,6 +287,34 @@ def password_change(
 
     users.update_password(user.user_id, payload.new_password)
     _clear_must_change_password(users.db_path, user.user_id)
+
+    # OVERSEER_AUTH.md §4 / §9.1 — first-boot activation phone-home.
+    # If first_boot_pending is 'true', this is the first successful password
+    # change after SD image provisioning. Enqueue the activation phone-home
+    # and clear the flag. The queue drain (V3) handles delivery + retry.
+    provisioning_repo = ProvisioningRepository(users.db_path)
+    first_boot = provisioning_repo.get_value(FIRST_BOOT_PENDING)
+    if first_boot == "true":
+        store_ref = provisioning_repo.get_value(STORE_REF)
+        api_key = provisioning_repo.get_value(CUSTOMER_API_KEY)
+        api_base = provisioning_repo.get_value(KINDPOS_API_BASE) or "https://kindpos.com"
+        if store_ref and api_key:
+            accounts_conn = sqlite3.connect(users.db_path)
+            try:
+                enqueue_phone_home(
+                    accounts_conn,
+                    endpoint=f"{api_base}/api/notify/activated",
+                    payload={
+                        "store_ref": store_ref,
+                        "activated_at": _now_iso(),
+                        "hub_fingerprint": None,
+                        "terminal_count": 0,
+                    },
+                )
+            finally:
+                accounts_conn.close()
+        provisioning_repo.set_value(FIRST_BOOT_PENDING, "false")
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
