@@ -1,14 +1,10 @@
 """
-Terminal binding endpoints (OVERSEER_AUTH.md §6.3, §9.2).
+Terminal binding endpoints (OVERSEER_AUTH.md §6.3, §7, §9.2).
 
 `POST /v1/terminals/bind` — store_admin-gated. Transitions an unbound slot
 to bound by writing `hardware_fingerprint`, `bound_at`, `bound_by_user_id`,
-and (optionally) the preferred `terminal_name`. On success the §9.2
-terminal-bound phone-home is enqueued via `phone_home_queue`.
-
-Minimal slice: this does NOT yet issue the §7 Ed25519-signed binding token.
-That `token`/`token_expires_at` work is deferred to a later prompt; the
-columns remain NULL until then.
+the preferred `terminal_name`, and the freshly-issued Ed25519 binding
+token (§7). On success the §9.2 terminal-bound phone-home is enqueued.
 """
 
 from __future__ import annotations
@@ -25,10 +21,13 @@ from app.persistence.phone_home_repository import enqueue_phone_home
 from app.persistence.provisioning_keys import (
     CUSTOMER_API_KEY,
     KINDPOS_API_BASE,
+    OVERSEER_PRIVATE_KEY,
+    OVERSEER_PUBLIC_KEY,
     STORE_REF,
 )
 from app.persistence.provisioning_repository import ProvisioningRepository
 from app.persistence.users_repository import User
+from app.services.token_service import issue_terminal_token
 
 
 router = APIRouter(prefix="/v1/terminals", tags=["terminals"])
@@ -60,7 +59,9 @@ class BindRequest(BaseModel):
 class BindResponse(BaseModel):
     slot_id: str
     terminal_name: str
-    bound_at: str
+    token: str
+    token_expires_at: str
+    overseer_public_key: str
 
 
 @router.post("/bind", response_model=BindResponse)
@@ -117,13 +118,34 @@ def bind_terminal(
         terminal_name = payload.terminal_name_preferred or row["terminal_name"]
         bound_at = _now_iso()
 
+        # Read provisioning values needed to sign the §7 token. Without these
+        # the bind cannot complete per OVERSEER_AUTH.md §6.3 Step 3.
+        provisioning_repo = ProvisioningRepository(db_path)
+        store_ref = provisioning_repo.get_value(STORE_REF)
+        private_key_b64url = provisioning_repo.get_value(OVERSEER_PRIVATE_KEY)
+        public_key_b64url = provisioning_repo.get_value(OVERSEER_PUBLIC_KEY)
+        if not store_ref or not private_key_b64url or not public_key_b64url:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="overseer not provisioned for token issuance",
+            )
+
+        issued = issue_terminal_token(
+            slot_id=slot_id,
+            store_ref=store_ref,
+            fingerprint=payload.hardware_fingerprint,
+            private_key_b64url=private_key_b64url,
+        )
+
         conn.execute(
             """
             UPDATE terminal_bindings
                SET hardware_fingerprint = ?,
                    bound_at             = ?,
                    bound_by_user_id     = ?,
-                   terminal_name        = ?
+                   terminal_name        = ?,
+                   token                = ?,
+                   token_expires_at     = ?
              WHERE slot_id = ?
             """,
             (
@@ -131,20 +153,20 @@ def bind_terminal(
                 bound_at,
                 user.user_id,
                 terminal_name,
+                issued["token"],
+                issued["token_expires_at"],
                 slot_id,
             ),
         )
         conn.commit()
 
         # OVERSEER_AUTH.md §9.2 — enqueue terminal-bound phone-home.
-        # Skipped when provisioning hasn't been baked in (dev installs).
-        provisioning_repo = ProvisioningRepository(db_path)
-        store_ref = provisioning_repo.get_value(STORE_REF)
+        # Skipped when the kindpos.com side hasn't been provisioned (dev installs).
         api_key = provisioning_repo.get_value(CUSTOMER_API_KEY)
         api_base = (
             provisioning_repo.get_value(KINDPOS_API_BASE) or "https://kindpos.com"
         )
-        if store_ref and api_key:
+        if api_key:
             enqueue_phone_home(
                 conn,
                 endpoint=f"{api_base}/api/notify/terminal-bound",
@@ -160,7 +182,9 @@ def bind_terminal(
         return BindResponse(
             slot_id=slot_id,
             terminal_name=terminal_name,
-            bound_at=bound_at,
+            token=issued["token"],
+            token_expires_at=issued["token_expires_at"],
+            overseer_public_key=public_key_b64url,
         )
     finally:
         conn.close()

@@ -3,16 +3,21 @@ Test that POST /v1/terminals/bind enqueues a terminal-bound phone-home.
 OVERSEER_AUTH.md §6.3, §9.2.
 
 Uses the same sync TestClient pattern as tests/api/test_v1_auth.py and the
-V1 first-boot hook test. The minimal bind route in app/api/routes/v1_terminals.py
-issues no §7 token yet; the enqueue is the only side effect we assert here.
+V1 first-boot hook test. Bind now also issues a §7 Ed25519-signed token —
+covered separately by tests/api/test_v1_terminals_bind_token.py — so these
+fixtures seed the keypair as well to let the handler reach the phone-home
+enqueue step.
 """
 from __future__ import annotations
 
+import base64
 import sqlite3
 from pathlib import Path
 from typing import Iterator
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -22,6 +27,8 @@ from app.persistence.accounts_db import init_accounts_db
 from app.persistence.provisioning_keys import (
     CUSTOMER_API_KEY,
     FIRST_BOOT_PENDING,
+    OVERSEER_PRIVATE_KEY,
+    OVERSEER_PUBLIC_KEY,
     STORE_REF,
 )
 from app.persistence.provisioning_repository import ProvisioningRepository
@@ -78,6 +85,34 @@ def provisioning_repo(db_path: Path) -> ProvisioningRepository:
     return ProvisioningRepository(str(db_path))
 
 
+def _b64url_nopad(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+@pytest.fixture
+def seeded_keypair(provisioning_repo: ProvisioningRepository) -> dict:
+    """Seed Ed25519 keypair + STORE_REF — without these the bind handler
+    returns 503 per §6.3."""
+    private_key = Ed25519PrivateKey.generate()
+    priv_b64 = _b64url_nopad(
+        private_key.private_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PrivateFormat.Raw,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    pub_b64 = _b64url_nopad(
+        private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+    )
+    provisioning_repo.set_value(OVERSEER_PRIVATE_KEY, priv_b64)
+    provisioning_repo.set_value(OVERSEER_PUBLIC_KEY, pub_b64)
+    provisioning_repo.set_value(STORE_REF, "STORE-PILOT-1")
+    return {"private_b64": priv_b64, "public_b64": pub_b64}
+
+
 @pytest.fixture
 def seeded_store_admin(db_path: Path) -> dict:
     repo = UsersRepository(db_path)
@@ -112,11 +147,11 @@ def test_bind_enqueues_terminal_bound_phone_home(
     accounts_db_conn: sqlite3.Connection,
     provisioning_repo: ProvisioningRepository,
     seeded_store_admin: dict,
+    seeded_keypair: dict,
 ):
     """A successful bind should insert one phone_home_queue row
     whose endpoint contains `terminal-bound`."""
     # Arrange
-    provisioning_repo.set_value(STORE_REF, "STORE-PILOT-1")
     provisioning_repo.set_value(CUSTOMER_API_KEY, "test-key-xyz")
     provisioning_repo.set_value(FIRST_BOOT_PENDING, "false")
 
@@ -156,10 +191,14 @@ def test_bind_no_enqueue_when_provisioning_keys_missing(
     accounts_db_conn: sqlite3.Connection,
     provisioning_repo: ProvisioningRepository,
     seeded_store_admin: dict,
+    seeded_keypair: dict,
 ):
-    """If store_ref or customer_api_key are not set in provisioning
-    (e.g. dev environment), bind should succeed without enqueueing."""
-    # No provisioning keys set — simulates a non-provisioned dev install
+    """If customer_api_key is not set in provisioning (e.g. dev environment
+    that has the local keypair but no kindpos.com creds), bind should still
+    succeed and just skip the phone-home enqueue."""
+    # CUSTOMER_API_KEY intentionally unset — simulates a dev install with no
+    # kindpos.com credentials. STORE_REF + keypair are seeded via fixture,
+    # since bind itself can't proceed without those (§6.3 Step 3).
     slot_id = _seed_slot(accounts_db_conn, slot_id="KIND-002-CCCC-DDDD-EEEE")
 
     login = client.post(
