@@ -55,6 +55,10 @@ class BindRequest(BaseModel):
     hardware_fingerprint: str = Field(..., min_length=1)
     terminal_name_preferred: Optional[str] = None
     slot_id: Optional[str] = None
+    # HARDWARE_ROUTING.md §2.3 — raw MAC stored alongside the hashed
+    # fingerprint so the hub proxy can resolve MAC → IP on each request.
+    # Empty string is allowed for dev installs that don't supply a MAC.
+    mac_address: str = ""
 
 
 class BindResponse(BaseModel):
@@ -146,7 +150,8 @@ def bind_terminal(
                    bound_by_user_id     = ?,
                    terminal_name        = ?,
                    token                = ?,
-                   token_expires_at     = ?
+                   token_expires_at     = ?,
+                   mac_address          = ?
              WHERE slot_id = ?
             """,
             (
@@ -156,10 +161,32 @@ def bind_terminal(
                 terminal_name,
                 issued["token"],
                 issued["token_expires_at"],
+                payload.mac_address,
                 slot_id,
             ),
         )
         conn.commit()
+
+        # HARDWARE_ROUTING.md §2.2 — back-fill slot_id onto the matching
+        # hardware_config.db terminals row so the proxy layer can map
+        # node_number → slot_id without crossing DBs at request time.
+        # Skipped when no MAC was supplied (dev installs).
+        if payload.mac_address:
+            from app.api.routes import hardware as _hw_mod
+            hw_conn = sqlite3.connect(_hw_mod.HARDWARE_DB_PATH)
+            try:
+                hw_conn.execute(
+                    """
+                    UPDATE terminals
+                       SET slot_id = ?
+                     WHERE mac_address = ?
+                       AND mac_address != ''
+                    """,
+                    (slot_id, payload.mac_address),
+                )
+                hw_conn.commit()
+            finally:
+                hw_conn.close()
 
         # OVERSEER_AUTH.md §9.2 — enqueue terminal-bound phone-home.
         # Skipped when the kindpos.com side hasn't been provisioned (dev installs).

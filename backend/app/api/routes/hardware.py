@@ -172,6 +172,28 @@ async def _ensure_db():
             await db.execute("ALTER TABLE terminals ADD COLUMN role TEXT NOT NULL DEFAULT 'server'")
         if 'is_hub' not in term_cols:
             await db.execute("ALTER TABLE terminals ADD COLUMN is_hub INTEGER NOT NULL DEFAULT 0")
+        # HARDWARE_ROUTING.md §2.2 — slot_id convention-FK to accounts.db
+        # terminal_bindings.slot_id; populated by POST /v1/terminals/bind.
+        if 'slot_id' not in term_cols:
+            await db.execute("ALTER TABLE terminals ADD COLUMN slot_id TEXT DEFAULT ''")
+
+        # HARDWARE_ROUTING.md §2.4 — time-based / day-of-week / redirect /
+        # manual-override columns on printer_routing. Additive migration on
+        # existing DBs so the routing-rule resolver (§3) can evaluate them.
+        async with db.execute("PRAGMA table_info(printer_routing)") as cur:
+            pr_cols = [row[1] async for row in cur]
+        if 'time_from' not in pr_cols:
+            await db.execute("ALTER TABLE printer_routing ADD COLUMN time_from TEXT NOT NULL DEFAULT ''")
+        if 'time_to' not in pr_cols:
+            await db.execute("ALTER TABLE printer_routing ADD COLUMN time_to TEXT NOT NULL DEFAULT ''")
+        if 'days_of_week' not in pr_cols:
+            await db.execute("ALTER TABLE printer_routing ADD COLUMN days_of_week TEXT NOT NULL DEFAULT '[]'")
+        if 'redirect_to_mac' not in pr_cols:
+            await db.execute("ALTER TABLE printer_routing ADD COLUMN redirect_to_mac TEXT NOT NULL DEFAULT ''")
+        if 'override_active' not in pr_cols:
+            await db.execute("ALTER TABLE printer_routing ADD COLUMN override_active INTEGER NOT NULL DEFAULT 0")
+        if 'override_expires_at' not in pr_cols:
+            await db.execute("ALTER TABLE printer_routing ADD COLUMN override_expires_at TEXT NOT NULL DEFAULT ''")
 
         await db.commit()
 

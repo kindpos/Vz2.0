@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS terminal_bindings (
   bound_by_user_id     TEXT REFERENCES users(user_id),
   token                TEXT,
   token_expires_at     TEXT,
+  mac_address          TEXT NOT NULL DEFAULT '',
   is_active            INTEGER NOT NULL DEFAULT 1,
   is_hub               INTEGER NOT NULL DEFAULT 0
 );

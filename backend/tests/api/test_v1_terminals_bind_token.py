@@ -289,3 +289,147 @@ def test_bind_persists_token_and_expiry_on_terminal_bindings_row(
     ).fetchone()
     assert row["token"] == body["token"]
     assert row["token_expires_at"] == body["token_expires_at"]
+
+
+# ─── HARDWARE_ROUTING.md §2.3 + §2.2 ─────────────────────────────────────
+
+
+@pytest.fixture
+def hardware_db_path(tmp_path: Path, monkeypatch) -> Path:
+    """Point the hardware module's HARDWARE_DB_PATH at a temp file and
+    create the minimal `terminals` schema the bind handler will UPDATE.
+
+    Mirrors the columns produced by hardware.py `_ensure_db()` so the
+    real UPDATE statement matches against a realistic row shape, but
+    avoids spinning up the full aiosqlite migration path inside a sync
+    test fixture."""
+    path = tmp_path / "hardware_config.db"
+    monkeypatch.setattr(
+        "app.api.routes.hardware.HARDWARE_DB_PATH", str(path)
+    )
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE terminals (
+                terminal_id     TEXT PRIMARY KEY,
+                auth_key_hash   TEXT NOT NULL DEFAULT '',
+                activated_at    TEXT NOT NULL DEFAULT '',
+                is_active       INTEGER NOT NULL DEFAULT 1,
+                name            TEXT NOT NULL DEFAULT '',
+                ip_address      TEXT NOT NULL DEFAULT '',
+                mac_address     TEXT NOT NULL DEFAULT '',
+                role            TEXT NOT NULL DEFAULT 'server',
+                is_hub          INTEGER NOT NULL DEFAULT 0,
+                slot_id         TEXT DEFAULT ''
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return path
+
+
+def test_bind_writes_mac_address_to_terminal_bindings(
+    logged_in_admin: TestClient,
+    accounts_db_conn: sqlite3.Connection,
+    seeded_keypair: dict,
+    seeded_store_ref: str,
+    seeded_slot: str,
+    hardware_db_path: Path,
+):
+    """When a MAC is supplied, it is persisted on the terminal_bindings row
+    (HARDWARE_ROUTING.md §2.3)."""
+    mac = "AA:BB:CC:DD:EE:01"
+    resp = logged_in_admin.post(
+        BIND_URL,
+        json={
+            "hardware_fingerprint": "fp-abc123def456",
+            "slot_id": seeded_slot,
+            "mac_address": mac,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+    row = accounts_db_conn.execute(
+        "SELECT mac_address FROM terminal_bindings WHERE slot_id = ?",
+        (seeded_slot,),
+    ).fetchone()
+    assert row["mac_address"] == mac
+
+
+def test_bind_backfills_slot_id_on_hardware_terminals_row(
+    logged_in_admin: TestClient,
+    seeded_keypair: dict,
+    seeded_store_ref: str,
+    seeded_slot: str,
+    hardware_db_path: Path,
+):
+    """When a MAC is supplied AND a terminals row in hardware_config.db has
+    that MAC, the row's slot_id is back-filled to the bound slot
+    (HARDWARE_ROUTING.md §2.2)."""
+    mac = "AA:BB:CC:DD:EE:02"
+    # Seed a terminals row whose mac_address matches the bind request's MAC.
+    hw_conn = sqlite3.connect(str(hardware_db_path))
+    try:
+        hw_conn.execute(
+            """
+            INSERT INTO terminals
+                (terminal_id, auth_key_hash, activated_at, is_active,
+                 mac_address, slot_id)
+            VALUES ('T-01', 'hashval', '2026-05-01T00:00:00+00:00', 1, ?, '')
+            """,
+            (mac,),
+        )
+        hw_conn.commit()
+    finally:
+        hw_conn.close()
+
+    resp = logged_in_admin.post(
+        BIND_URL,
+        json={
+            "hardware_fingerprint": "fp-abc123def456",
+            "slot_id": seeded_slot,
+            "mac_address": mac,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+    hw_conn = sqlite3.connect(str(hardware_db_path))
+    hw_conn.row_factory = sqlite3.Row
+    try:
+        row = hw_conn.execute(
+            "SELECT slot_id FROM terminals WHERE mac_address = ?", (mac,)
+        ).fetchone()
+    finally:
+        hw_conn.close()
+    assert row is not None
+    assert row["slot_id"] == seeded_slot
+
+
+def test_bind_without_mac_address_succeeds_and_skips_hardware_write(
+    logged_in_admin: TestClient,
+    accounts_db_conn: sqlite3.Connection,
+    seeded_keypair: dict,
+    seeded_store_ref: str,
+    seeded_slot: str,
+):
+    """Omitting mac_address must not raise. terminal_bindings.mac_address
+    stays at its '' default and no hardware_config.db connection is opened
+    (no fixture here — if the handler tried to touch the prod hardware DB
+    in this test environment it would fail)."""
+    resp = logged_in_admin.post(
+        BIND_URL,
+        json={
+            "hardware_fingerprint": "fp-abc123def456",
+            "slot_id": seeded_slot,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+    row = accounts_db_conn.execute(
+        "SELECT mac_address FROM terminal_bindings WHERE slot_id = ?",
+        (seeded_slot,),
+    ).fetchone()
+    assert row["mac_address"] == ""
