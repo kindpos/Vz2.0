@@ -91,7 +91,7 @@ def patched_builders(monkeypatch: pytest.MonkeyPatch):
     minimal dicts instantly. Avoids needing a seeded order in the
     ledger for these dedup-focused tests."""
 
-    async def _fake_receipt(self, order_id, copy_type="customer", is_reprint=False):
+    async def _fake_receipt(self, order_id, copy_type="customer", is_reprint=False, seat_numbers=None):
         return {"order_id": order_id, "ticket_number": "T-001", "items": [{"name": "x"}]}
 
     async def _fake_kitchen(

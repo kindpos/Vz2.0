@@ -1368,6 +1368,28 @@ function renderActionBar(state) {
   barDiv.style.margin     = '2px 0';
   bar.appendChild(barDiv);
 
+  // ── PRINT SEATS pill (per-seat receipt, pre-payment) ──
+  // Enabled when at least one seat tile is selected and the order is
+  // not yet paid/closed. seat IDs in state.selected map back to integer
+  // .number via state.seats. Handler POSTs /print/receipt?seats=…
+  const _selectedSeatIds = Object.keys(state.selected || {})
+    .filter(function(id) { return state.selected[id]; });
+  const _orderStatus = (state.order && state.order.status) || 'open';
+  const _orderPaid = _orderStatus === 'paid' || _orderStatus === 'closed';
+  const _printSeatsEnabled = _selectedSeatIds.length > 0 && !_orderPaid;
+
+  const printSeatsBtn = buildPillButton({
+    label:    'PRINT SEATS',
+    variant:  'elec',
+    padding:  '10px 18px',
+    fontSize: T.fsB3,
+    disabled: !_printSeatsEnabled,
+    onClick:  function() { handlePrintSeats(state); },
+  });
+  printSeatsBtn.style.alignSelf = 'center';
+  printSeatsBtn.style.flexShrink = '0';
+  bar.appendChild(printSeatsBtn);
+
   const actionsWrap = document.createElement('div');
   actionsWrap.style.cssText =
     'display:flex;gap:10px;align-items:stretch;height:112px;flex-shrink:0;';
@@ -3763,6 +3785,53 @@ function handlePrint(state) {
       else      showToast('Print failed', { bg: T.verm });
     })
     .catch(() => { state._printing = false; showToast('Print failed', { bg: T.verm }); });
+}
+
+// ═══════════════════════════════════════════════════
+//  PRINT SEATS (per-seat receipt, items + subtotal only)
+// ═══════════════════════════════════════════════════
+
+function handlePrintSeats(state) {
+  if (state._printingSeats) return;
+  if (!state.orderId) {
+    entReport({
+      code: 'UI-007', level: 'INFO',
+      source: 'check-overview.handlePrintSeats',
+      message: 'dead-end tap: PRINT SEATS before any items saved',
+      ctx: {
+        orderId: null,
+        selectedCount: Object.keys(state.selected || {}).length,
+      },
+    });
+    showToast('Save items first', { bg: T.gold });
+    return;
+  }
+
+  // Selection model: state.selected is keyed by seat.id ("S-001"); map
+  // back to the integer .number the backend expects in the query string.
+  const seatNums = Object.keys(state.selected || {})
+    .filter((id) => state.selected[id])
+    .map((id) => {
+      const seat = (state.seats || []).find((s) => s.id === id);
+      return seat ? seat.number : null;
+    })
+    .filter((n) => n != null);
+
+  if (seatNums.length === 0) return;
+
+  state._printingSeats = true;
+  showToast('Printing seat receipt…', { bg: T.green });
+  const url = `/api/v1/print/receipt/${state.orderId}?seats=${seatNums.join(',')}`;
+  fetchWithTimeout(url, { method: 'POST' }, 8000)
+    .then((r) => {
+      state._printingSeats = false;
+      if (r.ok) showToast('Seat receipt sent', { bg: T.greenWarm });
+      else      showToast('Print failed', { bg: T.verm });
+    })
+    .catch(() => {
+      state._printingSeats = false;
+      showToast('Print failed', { bg: T.verm });
+    });
 }
 
 // ═══════════════════════════════════════════════════

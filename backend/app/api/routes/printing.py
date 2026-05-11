@@ -20,7 +20,13 @@ from ...printing.templates.guest_receipt import GuestReceiptTemplate
 from ...printing.templates.kitchen_ticket import KitchenTicketTemplate
 from ...services.print_context_builder import PrintContextBuilder
 from ...services.store_config_service import StoreConfigService
-from ...core.adapters.base_printer import PrintJob, PrintJobType, PrintJobPriority, OrderContext
+from ...core.adapters.base_printer import (
+    PrintJob,
+    PrintJobContent,
+    PrintJobType,
+    PrintJobPriority,
+    OrderContext,
+)
 from .auth import _record_diag, require_manager
 from .hardware import HARDWARE_DB_PATH, _ensure_db
 
@@ -83,16 +89,26 @@ async def print_receipt(
     request: Request,
     order_id: str,
     copy_type: str = "customer",   # query param: customer | merchant | itemized
+    seats: str = "",               # query param: comma-separated seat numbers
     ledger: EventLedger = Depends(get_ledger),
 ):
-    """Trigger receipt print for completed order. copy_type defaults to customer."""
+    """Trigger receipt print for completed order. copy_type defaults to customer.
+
+    `seats=1,3` switches the receipt into per-seat mode — only items on
+    those seats render and totals collapse to a simple subtotal (no
+    tax/tip/payment). Empty `seats` → existing whole-order behavior."""
     terminal_id = request.headers.get("X-Terminal-Id", "")
     manager = get_printer_manager()
+
+    parsed_seats = [int(s.strip()) for s in seats.split(",") if s.strip()]
+    seat_numbers = parsed_seats if parsed_seats else None
 
     # Fallback to print_queue (PrintDispatcher) if PrinterManager not available
     if not manager:
         builder = PrintContextBuilder(ledger)
-        context = await builder.build_receipt_context(order_id, copy_type=copy_type)
+        context = await builder.build_receipt_context(
+            order_id, copy_type=copy_type, seat_numbers=seat_numbers,
+        )
         printer_mac = await _resolve_receipt_printer(terminal_id)
         job_id = await print_queue.enqueue(
             order_id=order_id,
@@ -121,7 +137,9 @@ async def print_receipt(
         return {"status": "error", "detail": "No receipt printer available"}
 
     builder = PrintContextBuilder(ledger)
-    context = await builder.build_receipt_context(order_id, copy_type=copy_type)
+    context = await builder.build_receipt_context(
+        order_id, copy_type=copy_type, seat_numbers=seat_numbers,
+    )
 
     job_ids: list[str] = []
     for printer in printers:
@@ -146,10 +164,7 @@ async def print_receipt(
                 continue
 
             chars_per_line = getattr(printer, 'chars_per_line', 48)
-            formatter = ESCPOSFormatter(
-                chars_per_line=chars_per_line,
-                supports_red=False
-            )
+            formatter = ESCPOSFormatter(chars_per_line=chars_per_line)
             template = GuestReceiptTemplate(chars_per_line=chars_per_line)
             commands = template.render(context)
             raw_bytes = formatter.format(commands)
@@ -170,12 +185,11 @@ async def print_receipt(
             job = PrintJob(
                 job_id=job_id,
                 order_id=order_id,
-                template_id="guest_receipt",
                 job_type=PrintJobType.RECEIPT,
                 order_context=OrderContext.DINE_IN,
                 target_role="receipt",
-                printer_id=printer.printer_id,
-                raw_bytes=raw_bytes,
+                target_printer_id=printer.printer_id,
+                content=PrintJobContent(body_lines=raw_bytes),
                 server_name="",
                 terminal_id=terminal_id,
                 priority=PrintJobPriority.NORMAL,
@@ -216,7 +230,7 @@ async def print_receipt(
                     continue
 
                 chars_per_line = getattr(printer, 'chars_per_line', 48)
-                formatter = ESCPOSFormatter(chars_per_line=chars_per_line, supports_red=False)
+                formatter = ESCPOSFormatter(chars_per_line=chars_per_line)
                 template = GuestReceiptTemplate(chars_per_line=chars_per_line)
                 commands = template.render(itemized_ctx)
                 raw_bytes = formatter.format(commands)
@@ -233,12 +247,11 @@ async def print_receipt(
                 job = PrintJob(
                     job_id=itemized_job_id,
                     order_id=order_id,
-                    template_id="guest_receipt",
                     job_type=PrintJobType.RECEIPT,
                     order_context=OrderContext.DINE_IN,
                     target_role="receipt",
-                    printer_id=printer.printer_id,
-                    raw_bytes=raw_bytes,
+                    target_printer_id=printer.printer_id,
+                    content=PrintJobContent(body_lines=raw_bytes),
                     server_name="",
                     terminal_id=terminal_id,
                     priority=PrintJobPriority.NORMAL,
@@ -385,10 +398,7 @@ async def print_ticket(
 
             # Create template and formatter with actual printer specs
             template = KitchenTicketTemplate(chars_per_line=chars_per_line)
-            formatter = ESCPOSFormatter(
-                chars_per_line=chars_per_line,
-                supports_red=getattr(printer, 'supports_red', False)
-            )
+            formatter = ESCPOSFormatter(chars_per_line=chars_per_line)
 
             commands = template.render(context)
             raw_bytes = formatter.format(commands)
@@ -410,12 +420,11 @@ async def print_ticket(
             job = PrintJob(
                 job_id=job_id,
                 order_id=order_id,
-                template_id=template_id,
                 job_type=PrintJobType.KITCHEN_TICKET,
                 order_context=OrderContext.DINE_IN,
                 target_role="kitchen",
-                printer_id=printer.printer_id,
-                raw_bytes=raw_bytes,
+                target_printer_id=printer.printer_id,
+                content=PrintJobContent(body_lines=raw_bytes),
                 server_name="",
                 terminal_id="",
                 priority=PrintJobPriority.NORMAL,

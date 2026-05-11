@@ -263,6 +263,7 @@ class PrintContextBuilder:
         order_id: str,
         copy_type: str = "customer",
         is_reprint: bool = False,
+        seat_numbers: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
 
         events = await self.ledger.get_events_by_correlation(order_id)
@@ -294,8 +295,14 @@ class PrintContextBuilder:
                     card_last_four = p.transaction_id[-4:]
 
         # ── Items ─────────────────────────────────────────────────────────────
+        # Per-seat receipt mode: filter to items whose seat_number is in the
+        # requested set. Items with seat_number=None are excluded — they
+        # belong to the whole-check view, not any individual seat.
         items = []
         for item in (order.items or []):
+            if seat_numbers is not None:
+                if item.seat_number is None or item.seat_number not in seat_numbers:
+                    continue
             mods = []
             for m in (item.modifiers or []):
                 if isinstance(m, dict):
@@ -332,7 +339,7 @@ class PrintContextBuilder:
             "tip_calculation_base":    rs.get("tip_calc_base", "pretax"),
         }
 
-        return {
+        context = {
             "order_id":                   order_id,
             "ticket_number":              ticket_number,
             "copy_type":                  copy_type,
@@ -358,6 +365,31 @@ class PrintContextBuilder:
             "phone":                      venue["phone"],
             "footer_message":             venue["footer_message"],
         }
+
+        # Per-seat receipt: override order-level totals with a sum over the
+        # filtered items, zero out tax/tip/payment so the slip prints as a
+        # "what this seat owes" snapshot, and stamp a header label + flag
+        # the template can branch on.
+        if seat_numbers is not None:
+            seat_subtotal = money_round(
+                sum((it["subtotal"] for it in items), Decimal("0"))
+            )
+            context["subtotal"]       = seat_subtotal
+            context["tax_lines"]      = []
+            context["total"]          = seat_subtotal
+            context["tip_amount"]     = Decimal("0.00")
+            context["payment_method"] = None
+            context["card_last_four"] = None
+            sorted_seats = sorted(seat_numbers)
+            if len(sorted_seats) == 1:
+                context["seat_label"] = f"Seat {sorted_seats[0]}"
+            else:
+                context["seat_label"] = (
+                    "Seats " + ", ".join(str(n) for n in sorted_seats)
+                )
+            context["is_seat_receipt"] = True
+
+        return context
 
     # ─────────────────────────────────────────────────────────────────────────
     #  KITCHEN TICKET
