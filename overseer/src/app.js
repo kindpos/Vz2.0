@@ -62,6 +62,7 @@ import { buildKINDnosticInterpreterScene, cleanupKINDnosticInterpreter } from '.
 // endpoints live under /v1/* and don't trip the interceptor.
 import { probeAuth, logout as authLogout } from './auth/auth_state.js';
 import { renderLoginScene } from './auth/login_scene.js';
+import { renderPasswordChangeScene } from './auth/password_change_scene.js';
 
 /* ------------------------------------------
    NAVIGATION STRUCTURE
@@ -512,6 +513,39 @@ const _wireFooterUser = (user) => {
 // Run the existing Overseer initialization. Split out of boot() so we can
 // call it both on a fresh probeAuth() hit and after a successful login.
 const _initOverseerUI = async (user) => {
+    // Forced password-change gate (OVERSEER_AUTH §2 must_change_password,
+    // §5.3 password-change endpoint). New installs ship with a temporary
+    // password and the flag set; we cannot proceed to the Overseer chrome
+    // until the rotation completes. After a successful change the in-memory
+    // user is stale, so the callback re-probes /v1/auth/me to get a
+    // refreshed object (with the flag cleared) before recursing.
+    //
+    // Recursion is bounded — the recursive call always carries the
+    // refreshed user with must_change_password=false, so the full init
+    // body below runs exactly once per boot.
+    if (user && user.must_change_password === true) {
+        const gate = document.getElementById('gate-layer');
+        if (gate) {
+            renderPasswordChangeScene(gate, async () => {
+                gate.innerHTML = '';
+                gate.style.display = 'none';
+                const fresh = await probeAuth();
+                if (fresh) {
+                    await _initOverseerUI(fresh);
+                } else {
+                    // The session evaporated between change and probe
+                    // (e.g. server revoked, network died). Reload to
+                    // land on the login screen cleanly.
+                    window.location.reload();
+                }
+            });
+            return;
+        }
+        // gate-layer missing — fall through to normal init rather than
+        // hard-blocking. Subsequent admin operations will still 401 against
+        // the server side until the password is rotated elsewhere.
+    }
+
     SceneManager.init({
         layers: {
             working:       document.getElementById('working-layer'),

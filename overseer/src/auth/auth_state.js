@@ -19,9 +19,10 @@
    ============================================ */
 
 const ENDPOINTS = {
-  me:     '/v1/auth/me',
-  login:  '/v1/auth/login',
-  logout: '/v1/auth/logout',
+  me:             '/v1/auth/me',
+  login:          '/v1/auth/login',
+  logout:         '/v1/auth/logout',
+  passwordChange: '/v1/auth/password-change',
 };
 
 let _user = null;
@@ -100,6 +101,53 @@ export async function login(email, password) {
       status: 429,
       retryAfter: Number.isFinite(parsed) && parsed > 0 ? parsed : null,
     };
+  }
+  return { ok: false, status: resp.status };
+}
+
+/**
+ * Rotate the current user's password. Returns:
+ *   { ok: true }                              on 204
+ *   { ok: false, status: 401 }                on bad current password
+ *   { ok: false, status: 400, message: ... }  on validation failure
+ *   { ok: false, status: 0, error: 'network' } on transport failure
+ *   { ok: false, status: <other> }            on anything else
+ *
+ * After a successful change the cached in-memory user is now stale
+ * (its `must_change_password` will still read `true`). Callers should
+ * `probeAuth()` to refresh before consulting `currentUser()`.
+ */
+export async function changePassword(currentPassword, newPassword) {
+  let resp;
+  try {
+    resp = await fetch(ENDPOINTS.passwordChange, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    });
+  } catch (e) {
+    return { ok: false, status: 0, error: 'network' };
+  }
+  if (resp.status === 204) {
+    return { ok: true };
+  }
+  if (resp.status === 400) {
+    let detail = '';
+    try {
+      const body = await resp.json();
+      detail = (body && body.detail) ? String(body.detail) : '';
+    } catch (e) { /* empty / non-JSON body — leave detail empty */ }
+    return { ok: false, status: 400, message: detail };
+  }
+  if (resp.status === 401) {
+    return { ok: false, status: 401 };
   }
   return { ok: false, status: resp.status };
 }
