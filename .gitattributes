@@ -1,0 +1,6 @@
+# Force LF for Pi deployment files — CRLF will break bash scripts
+pi/**/*.sh    text eol=lf
+pi/**/*.service text eol=lf
+pi/**/*.conf  text eol=lf
+pi/**/*.toml  text eol=lf
+pi/**/*.md    text eol=lf
