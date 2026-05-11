@@ -14,11 +14,19 @@ echo "Repo: $BASE"
 # 1. System dependencies
 echo "[1/7] Installing dependencies..."
 apt-get update -q
-apt-get install -y nginx avahi-daemon python3 python3-pip
+apt-get install -y nginx avahi-daemon libnss-mdns python3 python3-pip python3-venv
+
+# Set hostname so avahi advertises kindpos.local
+hostnamectl set-hostname kindpos
+echo "kindpos" > /etc/hostname
+sed -i 's/^127\.0\.1\.1.*/127.0.1.1\tkindpos/' /etc/hosts
+
+# Patch nsswitch.conf for mDNS (.local resolution)
+sed -i 's/^hosts:.*/hosts: files mdns4_minimal [NOTFOUND=return] dns/' \
+  /etc/nsswitch.conf
 
 # 2. Python dependencies
 echo "[2/7] Installing Python dependencies..."
-apt-get install -y python3-venv
 if [ ! -d "/home/kindpos/venv" ]; then
     python3 -m venv /home/kindpos/venv
     chown -R kindpos:kindpos /home/kindpos/venv
@@ -38,13 +46,8 @@ rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/kindpos /etc/nginx/sites-enabled/kindpos
 systemctl enable nginx
 
-# 5. avahi-daemon (provides kindpos.local mDNS name)
-echo "[5/7] Enabling avahi-daemon..."
-systemctl enable avahi-daemon
-systemctl start avahi-daemon
-
 # 6. eth0 static IP (192.168.50.1/24 — direct terminal connection)
-echo "[6/7] Configuring eth0 static IP..."
+echo "[5/7] Configuring eth0 static IP..."
 if ! nmcli -g ipv4.addresses connection show netplan-eth0 2>/dev/null | grep -q "192.168.50.1/24"; then
     nmcli connection modify netplan-eth0 ipv4.addresses 192.168.50.1/24 ipv4.method manual
     nmcli connection up netplan-eth0
@@ -52,6 +55,12 @@ if ! nmcli -g ipv4.addresses connection show netplan-eth0 2>/dev/null | grep -q 
 else
     echo "eth0 already configured — skipping."
 fi
+
+# avahi-daemon — start after eth0 has its static IP
+# so avahi registers on both wlan0 and eth0
+echo "[6/7] Enabling avahi-daemon..."
+systemctl enable avahi-daemon
+systemctl restart avahi-daemon
 
 # 7. Sudoers — allow kindpos user to restart its own service without a password
 echo "[7/7] Configuring sudoers..."
