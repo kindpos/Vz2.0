@@ -80,3 +80,18 @@ triage_manifest.txt
 
 # Per-workstream lockfile that does not belong in this repo.
 pi/cloudflare/package-lock.json
+
+# Python bytecode + cache (supersedes the older 311/313-only rules at the
+# top of this file; new commits should never carry .pyc artifacts).
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Overseer accounts.db (auth-rebuild slice) — recreated at uvicorn startup
+# via the lifespan init. The -shm/-wal sidecars are SQLite WAL-mode state.
+backend/data/*.db
+backend/data/*.db-shm
+backend/data/*.db-wal
+
+# Per-user editor / Claude Code local state.
+.claude/settings.local.json

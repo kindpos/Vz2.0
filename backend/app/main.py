@@ -51,7 +51,9 @@ from app.api.routes import modifiers as modifiers_routes
 from app.api.routes import menu_items as menu_items_routes
 from app.api.routes import licenses
 from app.api.routes import v1_auth
+from app.api.routes import v1_admin
 from app.api.routes.licenses import start_license_checkin_loop
+from app.persistence.accounts_db import init_accounts_db
 from app.api.routes.printing import print_queue
 
 
@@ -280,6 +282,16 @@ async def lifespan(app: FastAPI):
     ledger = await init_ledger()
     print("Event Ledger initialized")
 
+    # Overseer accounts.db (auth-rebuild slice). Set the module-level _DB_PATH
+    # so /v1/auth and /v1/admin dependencies resolve the binding at request
+    # time. Same default the seed script uses; KINDPOS_ACCOUNTS_DB_PATH
+    # overrides for image-builder / CI scenarios.
+    accounts_db_path = os.environ.get(
+        "KINDPOS_ACCOUNTS_DB_PATH", str(DATA_DIR / "accounts.db")
+    )
+    init_accounts_db(accounts_db_path)
+    print(f"Accounts DB initialized at {accounts_db_path}")
+
     # Log resolved database paths
     print(f"Data directory:  {DATA_DIR}")
     print(f"Hardware DB:     {HARDWARE_DB_PATH}")
@@ -479,6 +491,7 @@ app.include_router(modifiers_routes.router, prefix="/api/v1")
 app.include_router(menu_items_routes.router, prefix="/api/v1")
 app.include_router(licenses.router, prefix="/api/v1")
 app.include_router(v1_auth.router)
+app.include_router(v1_admin.router)
 
 
 # Serve frontend

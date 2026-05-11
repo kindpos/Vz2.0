@@ -56,6 +56,13 @@ import { buildKINDnosticSettingsScene, cleanupKINDnosticSettings } from './secti
 import { buildKINDnosticSurveyScene, cleanupKINDnosticSurvey } from './sections/kindnostic-survey.js';
 import { buildKINDnosticInterpreterScene, cleanupKINDnosticInterpreter } from './sections/kindnostic-interpreter.js';
 
+// Cookie-auth scaffolding (OVERSEER_AUTH §5.1, §5.2, §5.5). Distinct from
+// `services/auth-client.js` which still handles the legacy Bearer/PIN flow
+// for /api/* paths; the two coexist without interfering because the new
+// endpoints live under /v1/* and don't trip the interceptor.
+import { probeAuth, logout as authLogout } from './auth/auth_state.js';
+import { renderLoginScene } from './auth/login_scene.js';
+
 /* ------------------------------------------
    NAVIGATION STRUCTURE
    Order: STORE → STAFF → REPORTING → MENU → HARDWARE & TERMINAL CONFIGURATION
@@ -465,9 +472,46 @@ const registerAllSections = () => {
 /* ------------------------------------------
    BOOT
 ------------------------------------------ */
-const boot = async () => {
-    console.log('[Overseer] Booting...');
 
+// Initials from a user's email — left of '@', up to two characters.
+const _initialsForEmail = (email) => {
+    if (!email) return '··';
+    const local = String(email).split('@')[0] || '';
+    const tokens = local.split(/[._-]+/).filter(Boolean);
+    if (tokens.length >= 2) return (tokens[0][0] + tokens[1][0]).toUpperCase();
+    return local.slice(0, 2).toUpperCase() || '··';
+};
+
+const _wireFooterUser = (user) => {
+    const avatarEl = document.getElementById('nav-footer-avatar');
+    if (avatarEl) avatarEl.textContent = _initialsForEmail(user.email);
+
+    const userEl = document.getElementById('nav-footer-user');
+    if (!userEl) return;
+    userEl.innerHTML = '';
+    const label = document.createElement('span');
+    label.textContent = user.email + ' · ';
+    userEl.appendChild(label);
+    const out = document.createElement('a');
+    out.textContent = 'sign out';
+    out.href = '#';
+    out.style.color = 'inherit';
+    out.style.textDecoration = 'underline';
+    out.style.cursor = 'pointer';
+    out.dataset.role = 'logout-link';
+    out.addEventListener('click', async (e) => {
+        e.preventDefault();
+        await authLogout();
+        // Simplest "re-run the bootstrap path" — a full reload re-fires
+        // DOMContentLoaded → boot → probeAuth → login screen.
+        window.location.reload();
+    });
+    userEl.appendChild(out);
+};
+
+// Run the existing Overseer initialization. Split out of boot() so we can
+// call it both on a fresh probeAuth() hit and after a successful login.
+const _initOverseerUI = async (user) => {
     SceneManager.init({
         layers: {
             working:       document.getElementById('working-layer'),
@@ -485,17 +529,47 @@ const boot = async () => {
     await refreshBadges();
     await setVersionStamp();
 
-    // Populate avatar placeholder (until login ships, this is just a marker)
-    const avatarEl = document.getElementById('nav-footer-avatar');
-    if (avatarEl) avatarEl.textContent = 'AK';
-    const userEl = document.getElementById('nav-footer-user');
-    if (userEl) userEl.textContent = 'Alex K. · sign out';
+    _wireFooterUser(user);
 
     // Boot into HOME by default
     navigateTo('home');
 
     setInterval(refreshBadges, 60_000);
-    console.log('[Overseer] Boot complete.');
+};
+
+const boot = async () => {
+    console.log('[Overseer] Booting...');
+
+    let user = null;
+    try {
+        user = await probeAuth();
+    } catch (e) {
+        // Server unreachable or 5xx — fall through to the login screen
+        // so the operator at least gets a clear error path instead of
+        // a blank Overseer.
+        console.error('[Overseer] auth probe failed:', e);
+        user = null;
+    }
+
+    if (user) {
+        await _initOverseerUI(user);
+        console.log('[Overseer] Boot complete (authenticated).');
+        return;
+    }
+
+    const gate = document.getElementById('gate-layer');
+    if (!gate) {
+        console.error('[Overseer] gate-layer not found — cannot render login');
+        return;
+    }
+    renderLoginScene(gate, async (loggedInUser) => {
+        // Tear the gate down before mounting the Overseer underneath.
+        gate.innerHTML = '';
+        gate.style.display = 'none';
+        await _initOverseerUI(loggedInUser);
+        console.log('[Overseer] Boot complete (post-login).');
+    });
+    console.log('[Overseer] Awaiting login.');
 }
 
 window._overseerNav = navigateTo;
