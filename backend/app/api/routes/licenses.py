@@ -72,33 +72,21 @@ def write_node_hostname(node_number: int) -> None:
 
 
 def _get_hardware_fingerprint() -> str:
-    """Extract hardware fingerprint from Pi: SHA256(serial + mac)."""
+    """Extract hardware fingerprint from Pi: SHA256(serial + mac).
+
+    Body extracted to `app/services/hardware_fingerprint.py` per
+    HARDWARE_ROUTING.md §6 — this wrapper survives only so existing
+    callers keep their HTTP-500 contract on read failure.
+    """
+    from app.services.hardware_fingerprint import get_hardware_fingerprint
+
     try:
-        serial = ""
-        try:
-            with open("/proc/cpuinfo", "r") as f:
-                for line in f:
-                    if line.startswith("Serial"):
-                        serial = line.split(":")[1].strip()
-                        break
-        except Exception as e:
-            _log.warning(f"Could not read /proc/cpuinfo: {e}")
-            serial = "unknown"
-
-        mac = ""
-        try:
-            with open("/sys/class/net/eth0/address", "r") as f:
-                mac = f.read().strip()
-        except Exception as e:
-            _log.warning(f"Could not read eth0 MAC: {e}")
-            mac = "unknown"
-
-        combined = f"{serial}:{mac}"
-        fingerprint = hashlib.sha256(combined.encode()).hexdigest()
-        return fingerprint
-    except Exception as e:
+        return get_hardware_fingerprint()
+    except RuntimeError as e:
         _log.error(f"Error getting hardware fingerprint: {e}")
-        raise HTTPException(status_code=500, detail="Could not read hardware fingerprint")
+        raise HTTPException(
+            status_code=500, detail="Could not read hardware fingerprint"
+        )
 
 
 def _write_license_file(data: dict) -> None:
