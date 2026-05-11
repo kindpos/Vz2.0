@@ -18,7 +18,11 @@ import base64
 import json
 from datetime import datetime, timedelta, timezone
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 
 def _b64url_nopad(data: bytes) -> str:
@@ -63,3 +67,49 @@ def issue_terminal_token(
 
     token = f"{_b64url_nopad(payload_json)}.{_b64url_nopad(signature)}"
     return {"token": token, "token_expires_at": payload["expires_at"]}
+
+
+def verify_terminal_token(
+    *,
+    token: str,
+    public_key_b64url: str,
+) -> dict | None:
+    """Verify an Overseer binding token's Ed25519 signature (§7 step 2).
+
+    Returns the decoded payload dict on success, or `None` if the token is
+    malformed, the signature fails, or the payload isn't valid JSON.
+
+    Expiry, fingerprint, slot-active, and revocation checks are out of scope
+    here — the caller (e.g. `require_terminal_token`) is responsible for those.
+    """
+    try:
+        payload_b64, sig_b64 = token.split(".", 1)
+    except ValueError:
+        return None
+    if "." in sig_b64:
+        return None
+
+    try:
+        payload_bytes = _b64url_decode_nopad(payload_b64)
+        signature = _b64url_decode_nopad(sig_b64)
+        pub_raw = _b64url_decode_nopad(public_key_b64url)
+    except (ValueError, base64.binascii.Error):
+        return None
+
+    try:
+        pub_key = Ed25519PublicKey.from_public_bytes(pub_raw)
+    except ValueError:
+        return None
+
+    try:
+        pub_key.verify(signature, payload_bytes)
+    except InvalidSignature:
+        return None
+
+    try:
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload

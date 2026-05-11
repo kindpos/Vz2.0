@@ -10,13 +10,13 @@ token (§7). On success the §9.2 terminal-bound phone-home is enqueued.
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.auth.dependencies import require_role
+from app.auth.dependencies import require_role, require_terminal_token
 from app.persistence.phone_home_repository import enqueue_phone_home
 from app.persistence.provisioning_keys import (
     CUSTOMER_API_KEY,
@@ -26,6 +26,7 @@ from app.persistence.provisioning_keys import (
     STORE_REF,
 )
 from app.persistence.provisioning_repository import ProvisioningRepository
+from app.persistence.terminals_repository import get_store_revocations
 from app.persistence.users_repository import User
 from app.services.token_service import issue_terminal_token
 
@@ -188,3 +189,74 @@ def bind_terminal(
         )
     finally:
         conn.close()
+
+
+class RevocationsResponse(BaseModel):
+    revoked_slot_ids: list[str]
+    as_of: str
+    refreshed_token: Optional[str] = None
+    refreshed_token_expires_at: Optional[str] = None
+
+
+# §7.2 refresh window: silently re-issue when the bearer token is within
+# 7 days of its `expires_at`.
+_REFRESH_WINDOW = timedelta(days=7)
+
+
+@router.get("/revocations", response_model=RevocationsResponse)
+def get_revocations(
+    payload: dict = Depends(require_terminal_token),
+) -> RevocationsResponse:
+    """Return the store-wide revocations list (§7.3) and, when the bearer
+    token is within 7 days of expiry, a freshly-signed replacement token
+    (§7.2). The terminal silently overwrites its cached token on receipt."""
+    db_path = _accounts_db_path()
+    now = datetime.now(timezone.utc)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        revs = get_store_revocations(conn)
+        revoked_slot_ids = [r["slot_id"] for r in revs]
+
+        refreshed_token: Optional[str] = None
+        refreshed_expires: Optional[str] = None
+
+        expires_at = datetime.fromisoformat(payload["expires_at"])
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if expires_at - now <= _REFRESH_WINDOW:
+            # Re-sign with the same slot/store/fingerprint claims so the
+            # terminal can swap tokens without any state change client-side.
+            provisioning_repo = ProvisioningRepository(db_path)
+            store_ref = provisioning_repo.get_value(STORE_REF)
+            private_key_b64url = provisioning_repo.get_value(OVERSEER_PRIVATE_KEY)
+            if store_ref and private_key_b64url:
+                issued = issue_terminal_token(
+                    slot_id=payload["slot_id"],
+                    store_ref=store_ref,
+                    fingerprint=payload["fingerprint"],
+                    private_key_b64url=private_key_b64url,
+                )
+                refreshed_token = issued["token"]
+                refreshed_expires = issued["token_expires_at"]
+                conn.execute(
+                    """
+                    UPDATE terminal_bindings
+                       SET token            = ?,
+                           token_expires_at = ?
+                     WHERE slot_id = ?
+                    """,
+                    (refreshed_token, refreshed_expires, payload["slot_id"]),
+                )
+                conn.commit()
+    finally:
+        conn.close()
+
+    return RevocationsResponse(
+        revoked_slot_ids=revoked_slot_ids,
+        as_of=now.isoformat(),
+        refreshed_token=refreshed_token,
+        refreshed_token_expires_at=refreshed_expires,
+    )

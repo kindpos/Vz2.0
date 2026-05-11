@@ -9,9 +9,11 @@ role-gated routes.
 
 from __future__ import annotations
 
+import sqlite3
+from datetime import datetime, timezone
 from typing import Iterable, Optional
 
-from fastapi import Cookie, Depends, HTTPException, Request, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 
 from app.persistence.accounts_db import _DB_PATH
 from app.persistence.users_repository import User, UsersRepository
@@ -91,6 +93,82 @@ def get_current_user(
             detail="not authenticated",
         )
     return user
+
+
+def require_terminal_token(
+    authorization: Optional[str] = Header(default=None),
+) -> dict:
+    """Validate an Overseer-issued binding token from the Authorization
+    header (OVERSEER_AUTH.md §7).
+
+    Performs the five local checks specified in §7:
+      1. parse `Bearer <token>` and base64-decode the payload,
+      2. verify the Ed25519 signature with the stored Overseer public key,
+      3. confirm `expires_at > now`,
+      4. confirm the slot is bound and active,
+      5. confirm `payload.fingerprint` matches the stored hardware fingerprint.
+
+    The revocation check (step 5 of §7's terminal-side list) is handled by
+    the route itself, since the revocations list is exactly what the only
+    consumer of this dependency — `GET /v1/terminals/revocations` — returns.
+
+    Returns the verified payload dict; raises HTTP 401 on any failure.
+    """
+    # Lazy import to avoid a circular import at module load
+    # (token_service has no FastAPI deps, but persistence imports do).
+    from app.persistence.provisioning_keys import OVERSEER_PUBLIC_KEY
+    from app.persistence.provisioning_repository import ProvisioningRepository
+    from app.persistence.terminals_repository import get_slot_by_token_payload
+    from app.services.token_service import verify_terminal_token
+
+    def _unauthorized() -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid terminal token",
+        )
+
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise _unauthorized()
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise _unauthorized()
+
+    db_path = _require_db_path()
+    public_key_b64url = ProvisioningRepository(db_path).get_value(OVERSEER_PUBLIC_KEY)
+    if not public_key_b64url:
+        raise _unauthorized()
+
+    payload = verify_terminal_token(token=token, public_key_b64url=public_key_b64url)
+    if payload is None:
+        raise _unauthorized()
+
+    expires_at_raw = payload.get("expires_at")
+    slot_id = payload.get("slot_id")
+    fingerprint = payload.get("fingerprint")
+    if not expires_at_raw or not slot_id or not fingerprint:
+        raise _unauthorized()
+
+    try:
+        expires_at = datetime.fromisoformat(expires_at_raw)
+    except ValueError:
+        raise _unauthorized()
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        raise _unauthorized()
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = get_slot_by_token_payload(conn, slot_id)
+    finally:
+        conn.close()
+    if row is None or not row.get("is_active"):
+        raise _unauthorized()
+    if row.get("hardware_fingerprint") != fingerprint:
+        raise _unauthorized()
+
+    return payload
 
 
 def require_role(*roles: str):
