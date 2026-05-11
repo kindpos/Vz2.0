@@ -882,6 +882,20 @@ async def save_device(
         except Exception as e:
             logger.error(f"Failed to reload PrinterManager: {e}")
 
+    # HARDWARE_ROUTING.md §4 — refresh PaymentManager when a card reader
+    # row changes so the new terminal_ids assignment takes effect without
+    # restarting the process. _ensure_devices is incremental (adds entries
+    # on top of the existing map); flipping the guard is enough to make
+    # it re-read the DB on the next call.
+    if device.role == 'card_reader' or device.type == 'card_reader':
+        try:
+            from app.api.routes import payment_routes
+            payment_routes._devices_initialized = False
+            pm = payment_routes.get_payment_manager(ledger)
+            await payment_routes._ensure_devices(pm)
+        except Exception as e:
+            logger.error(f"Failed to reload PaymentManager: {e}")
+
     new_categories = _parse_categories(effective_categories)
     events = []
     if existing is None:
@@ -1397,7 +1411,7 @@ async def activate_server(
             SET terminal_ids = ?
             WHERE (terminal_ids IS NULL OR terminal_ids = '' OR terminal_ids = '[]')
             AND is_active = 1
-        """, (f'["{terminal_id}"]',))
+        """, (json.dumps([terminal_id]),))
 
         await db.commit()
 

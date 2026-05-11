@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from decimal import Decimal
 import uuid
 import aiosqlite
+import json
 import os
 import logging
 import httpx
@@ -89,8 +90,26 @@ async def _ensure_devices(manager: PaymentManager):
                             connected = await adapter.connect(config)
                             if connected:
                                 manager.register_device(adapter)
-                                # Map this terminal and any explicitly configured terminals to the device
+                                # (a) Backward compat: the process that
+                                # owns this DB row always claims the reader
+                                # for its own terminal_id.
                                 manager.map_terminal_to_device(settings.terminal_id, device['mac'])
+                                # (b) HARDWARE_ROUTING.md §4 — every
+                                # terminal_id in the JSON array also gets
+                                # mapped to this reader's MAC.
+                                raw_terminal_ids = device.get('terminal_ids') or ''
+                                try:
+                                    parsed_ids = json.loads(raw_terminal_ids) if raw_terminal_ids else []
+                                except (json.JSONDecodeError, ValueError):
+                                    parsed_ids = []
+                                if not isinstance(parsed_ids, list):
+                                    parsed_ids = []
+                                for tid in parsed_ids:
+                                    if isinstance(tid, str) and tid:
+                                        manager.map_terminal_to_device(tid, device['mac'])
+                                # (c) Legacy singular terminal_id column
+                                # — still honored so older rows that
+                                # predate the JSON array keep working.
                                 if device.get('terminal_id'):
                                     manager.map_terminal_to_device(device['terminal_id'], device['mac'])
                                 reader_found = True
