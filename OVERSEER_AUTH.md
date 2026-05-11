@@ -420,8 +420,44 @@ Recommend 6 groups of 4 lowercase letters separated by hyphens (e.g., `kjsd-fhgi
 ### 11.2 Multi-user creation at provisioning time
 Should the image carry only the `store_admin`, with all other users created post-hoc in Overseer UI? Or should the customer specify staff at order time? **Recommend post-hoc** — fewer support touchpoints, customer better knows their staff after install.
 
-### 11.3 Hub Pi auto-bind
-The Pi running the Overseer also occupies one terminal slot. **Recommend auto-bind for the hub** at first password change, using the Pi's own fingerprint, with `is_hub = 1`. UX simplification: customer doesn't need to "bind" the device they're already logged into.
+### 11.3 Hub Pi auto-bind (resolved)
+
+Role detection via provisioning table:
+
+- Hub: provisioning contains `overseer_private_key`
+- Terminal: provisioning contains `hub_url`
+- Single-Pi mode: hub with no additional terminals — hub IS t01
+
+Hub auto-bind on first password change:
+
+1. Collect local hardware fingerprint + MAC
+1. Find slot with `is_hub = 1`
+1. Auto-bind using own fingerprint + MAC
+1. Write token to `/var/lib/kindpos/terminal.token`
+1. Enqueue terminal-bound phone-home
+
+Terminal URL scheme:
+
+- `kindpos.local/overseer` → Overseer UI
+- `kindpos.local/t01` → hub terminal (served directly)
+- `kindpos.local/t02+` → reverse-proxied by MAC resolution
+
+Terminal Pi bind flow:
+
+1. Boots → no token → serves bind UI pointing at hub
+1. store_admin logs in → slot picker (`GET /v1/terminals/slots`)
+1. Terminal Pi backend collects fingerprint + MAC
+1. `POST /v1/terminals/bind` to hub with fingerprint + MAC + slot_id
+1. Hub writes MAC to `terminal_bindings` + slot_id to `hardware_config.db` terminals row
+1. Hub issues Ed25519 token → terminal Pi stores to `/var/lib/kindpos/terminal.token`
+1. Phone-home fires (terminal-bound)
+
+MAC-based proxy routing:
+
+- `accounts.db terminal_bindings` gains `mac_address TEXT`
+- `hardware_config.db terminals` gains `slot_id TEXT`
+- Hub resolves MAC → IP via ARP on each proxy request
+- Last known IP in `terminals.ip_address` as fallback
 
 ### 11.4 Concurrent sessions per user
 Recommend **allow** (owner on phone and laptop simultaneously) but expose a "current sessions" list with revoke action in user settings.
