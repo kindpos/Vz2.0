@@ -50,12 +50,7 @@ from app.api.routes import modifier_groups as modifier_groups_routes
 from app.api.routes import modifiers as modifiers_routes
 from app.api.routes import menu_items as menu_items_routes
 from app.api.routes import licenses
-from app.api.routes import v1_auth
-from app.api.routes import v1_admin
-from app.api.routes import v1_terminals
 from app.api.routes.licenses import start_license_checkin_loop
-from app.services.phone_home_drain import phone_home_drain_loop
-from app.persistence.accounts_db import init_accounts_db
 from app.api.routes.printing import print_queue
 
 
@@ -284,16 +279,6 @@ async def lifespan(app: FastAPI):
     ledger = await init_ledger()
     print("Event Ledger initialized")
 
-    # Overseer accounts.db (auth-rebuild slice). Set the module-level _DB_PATH
-    # so /v1/auth and /v1/admin dependencies resolve the binding at request
-    # time. Same default the seed script uses; KINDPOS_ACCOUNTS_DB_PATH
-    # overrides for image-builder / CI scenarios.
-    accounts_db_path = os.environ.get(
-        "KINDPOS_ACCOUNTS_DB_PATH", str(DATA_DIR / "accounts.db")
-    )
-    init_accounts_db(accounts_db_path)
-    print(f"Accounts DB initialized at {accounts_db_path}")
-
     # Log resolved database paths
     print(f"Data directory:  {DATA_DIR}")
     print(f"Hardware DB:     {HARDWARE_DB_PATH}")
@@ -337,10 +322,6 @@ async def lifespan(app: FastAPI):
     # Start daily retention background task
     asyncio.create_task(_run_daily_retention(diagnostic_collector))
     print("Diagnostic retention scheduler started (daily)")
-
-    # Start phone_home_queue drain loop (OVERSEER_AUTH.md §9 / PROVISIONING_FLOW.md §7.6)
-    asyncio.create_task(phone_home_drain_loop(accounts_db_path))
-    print("Phone-home drain loop started (60-second interval)")
 
     if settings.store_mode == "demo":
         await seed_demo_data_if_empty(ledger)
@@ -496,9 +477,6 @@ app.include_router(modifier_groups_routes.router, prefix="/api/v1")
 app.include_router(modifiers_routes.router, prefix="/api/v1")
 app.include_router(menu_items_routes.router, prefix="/api/v1")
 app.include_router(licenses.router, prefix="/api/v1")
-app.include_router(v1_auth.router)
-app.include_router(v1_admin.router)
-app.include_router(v1_terminals.router)
 
 
 # Serve frontend
