@@ -18,8 +18,6 @@ import { getSession } from './auth-client.js';
 import { T, applyStoreTheme } from '../common/tokens.js';
 
 // ── Scene imports ─────────────────────────────────
-import { defineActivationScene } from './scenes/activation.js';
-import './scenes/login.js';
 import './scenes/server-landing.js';
 import './scenes/manager-landing.js';
 import './scenes/check-overview.js';
@@ -288,26 +286,6 @@ async function boot() {
   // 1. Init scene manager — wire DOM layers
   SceneManager.init();
 
-  // 2. Register activation scene
-  SceneManager.register(defineActivationScene());
-
-  // 3. Check server-license activation (must come before login).
-  //    Any record with status='active' counts as activated; otherwise we
-  //    show the activation gate. A network failure here is treated as
-  //    "not activated" so a brand-new server can never silently bypass.
-  try {
-    const licRes = await fetchWithTimeout('/api/v1/licenses/status', {}, 8000);
-    const licData = await licRes.json();
-    if (!licData.activated) {
-      SceneManager.openGate('activation');
-      return;
-    }
-  } catch (e) {
-    console.info('[app] License check failed, opening activation gate');
-    SceneManager.openGate('activation');
-    return;
-  }
-
   // 4. Load store config from backend
   try {
     var res = await fetchWithTimeout('/api/v1/config/store', {}, 8000);
@@ -336,9 +314,6 @@ async function boot() {
   //    is active and reloads pricing config when the version advances.
   setInterval(pollConfigVersion, 30000);
   pollConfigVersion();
-
-  // 7. Open gate → login scene (only reached if license is activated)
-  SceneManager.openGate('login');
 }
 
 // ── Run ───────────────────────────────────────────
