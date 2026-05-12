@@ -5,7 +5,12 @@ Shared dependencies for API routes.
 The Event Ledger is managed here as a singleton.
 """
 
+import logging
+from datetime import datetime
 from typing import AsyncGenerator, Optional
+
+import aiosqlite
+
 from app.core.event_ledger import EventLedger
 from app.core.ephemeral_log import EphemeralLog
 from app.core.adapters.printer_manager import PrinterManager
@@ -97,13 +102,13 @@ async def check_license_activation(app) -> None:
 
     Delegates to app.services.license_verifier.check_terminal_license, which
     loads /data/kindpos.lic, verifies the Ed25519 signature, and confirms the
-    file is bound to this machine's hardware fingerprint. Never raises and
-    never blocks boot — an invalid or missing license simply leaves the
-    terminal flagged unactivated.
+    file is bound to this machine's hardware fingerprint. On success, upserts
+    the license into the server_license table. Never raises and never blocks boot.
     """
-    import logging
     from app.services.license_verifier import check_terminal_license
+    from app.services.hardware_fingerprint import get_hardware_fingerprint
     from app.api.routes.licenses import DEMO_MODE
+    from app.api.routes.hardware import HARDWARE_DB_PATH
 
     log = logging.getLogger(__name__)
 
@@ -116,8 +121,31 @@ async def check_license_activation(app) -> None:
     app.state.activated = ok
     if ok:
         log.info("License verified: %s", info)
+        # Upsert into server_license so the /status endpoint recognizes the file-based license
+        try:
+            hardware_fp = get_hardware_fingerprint()
+            activated_at = datetime.utcnow().isoformat()
+            async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+                await db.execute(
+                    """
+                    INSERT OR REPLACE INTO server_license
+                        (id, license_key, hardware_fingerprint, activated_at, status)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (1, info, hardware_fp, activated_at, "active"),
+                )
+                await db.commit()
+        except Exception as e:
+            log.warning("Could not write license to server_license table: %s", e)
     else:
         log.warning(
             "*** STARTUP WARNING: terminal running UNLICENSED — %s ***",
             info,
         )
+        # Delete any stale active license row
+        try:
+            async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+                await db.execute("DELETE FROM server_license WHERE id = 1")
+                await db.commit()
+        except Exception as e:
+            log.debug("Could not delete license from server_license table: %s", e)
