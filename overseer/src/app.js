@@ -23,17 +23,12 @@ import { registerEmployeeSections }   from './sections/employees.js';
 import { registerMenuCategories }     from './sections/menu-categories.js';
 import { registerConfigureModifiers } from './sections/configure-modifiers.js';
 import { registerPricingSpecials }    from './sections/pricing-specials.js';
-import { registerPrinterConfig }      from './sections/printer-config.js';
-import { registerPrinterSetup }       from './sections/printer-setup.js';
-import { buildNetworkSetupScene, cleanupNetworkSetup } from './sections/hardware/network-setup.js';
-import { buildTerminalDetailsScene, cleanupTerminalDetailsScene } from './sections/hardware/terminal-details.js';
 import { buildHardwareScene, cleanupHardware } from './sections/hardware.js';
 import { mount as buildHardwareNetworkScene, cleanupHardwareNetwork } from './sections/hardware-network.js';
 
 // Build-pattern sections (no register wrapper — wrap manually below)
 import { buildStoreInfoScene,     cleanupStoreInfo     } from './sections/store-info.js';
 import { buildOrderSettingsScene, cleanupOrderSettings } from './sections/order-settings.js';
-import { buildCardReadersScene,  cleanupCardReaders  } from './sections/card-readers.js';
 import { buildReceiptSettingsScene, cleanupReceiptSettings } from './sections/receipt-settings.js';
 import { buildTerminalSettingsScene, cleanupTerminalSettings } from './sections/terminal-settings.js';
 import { buildLaborReportsScene,  cleanupLaborReports  } from './sections/labor-reports.js';
@@ -319,11 +314,6 @@ const registerAllSections = () => {
     registerMenuCategories(adapter);
     registerConfigureModifiers(adapter);
     registerPricingSpecials(adapter);
-    registerPrinterConfig(adapter);
-
-    // printer-setup.js registers as 'printer-config' in source — remap to
-    // 'printer-setup' so it doesn't overwrite the real printer-config scene
-    registerPrinterSetup(createLegacyAdapter({ 'printer-config': 'printer-setup' }));
 
     // Build-pattern sections (already use correct format)
     SceneManager.register({
@@ -377,16 +367,6 @@ const registerAllSections = () => {
         unmount: (container) => cleanupOrderSettings(container),
     });
     SceneManager.register({
-        name: 'network-setup',
-        mount: (container) => buildNetworkSetupScene(container),
-        unmount: (container) => cleanupNetworkSetup(container),
-    });
-    SceneManager.register({
-        name: 'terminal-details',
-        mount: (container, params) => buildTerminalDetailsScene(container, params),
-        unmount: (container) => cleanupTerminalDetailsScene(container),
-    });
-    SceneManager.register({
         name: 'hardware-network',
         mount: (container) => buildHardwareNetworkScene(container),
         unmount: (container) => cleanupHardwareNetwork(container),
@@ -395,11 +375,6 @@ const registerAllSections = () => {
         name: 'hardware-management',
         mount: (container) => buildHardwareScene(container),
         unmount: (container) => cleanupHardware(),
-    });
-    SceneManager.register({
-        name: 'card-readers',
-        mount: (container) => buildCardReadersScene(container),
-        unmount: (container) => cleanupCardReaders(container),
     });
     SceneManager.register({
         name: 'receipt-settings',
