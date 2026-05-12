@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════
 
 import { T } from '../../common/tokens.js';
-import { fetchWithTimeout } from '../net.js';
+import { fetchWithTimeout, getTerminalId } from '../net.js';
 import { showToast } from '../components.js';
 import { SceneManager, defineScene } from '../scene-manager.js';
 import {
@@ -1370,7 +1370,7 @@ async function handleConfirm() {
           transaction_id:        _state._pendingTxId,
           order_id:              _state.sceneData.orderId,
           amount:                paymentAmount,
-          terminal_id:           'terminal_01',
+          terminal_id:           getTerminalId(),
           cash_discount_amount:  0,
           service_charge_amount: 0,
       };
@@ -1382,7 +1382,10 @@ async function handleConfirm() {
       // doesn't expose it, so we manage the signal manually here.
       const res = await fetch(API + '/payments/sale', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Terminal-Id': getTerminalId(),
+        },
         body: JSON.stringify(saleBody),
         signal: controller.signal,
       });

@@ -85,7 +85,13 @@ async def _resolve_receipt_printer(terminal_id: str) -> str:
         db.row_factory = aiosqlite.Row
         # Check for a terminal-specific assignment first
         async with db.execute(
-            "SELECT mac FROM devices WHERE type = 'receipt' AND terminal_id = ? LIMIT 1",
+            "SELECT mac FROM devices "
+            "WHERE role = 'receipt' "
+            "AND EXISTS ("
+            "    SELECT 1 FROM json_each(terminal_ids) "
+            "    WHERE value = ?"
+            ") "
+            "LIMIT 1",
             (terminal_id,),
         ) as cur:
             row = await cur.fetchone()
@@ -94,7 +100,7 @@ async def _resolve_receipt_printer(terminal_id: str) -> str:
 
         # Fall back to the first receipt printer regardless of terminal
         async with db.execute(
-            "SELECT mac FROM devices WHERE type = 'receipt' ORDER BY saved_at LIMIT 1"
+            "SELECT mac FROM devices WHERE role = 'receipt' ORDER BY saved_at LIMIT 1"
         ) as cur:
             row = await cur.fetchone()
         if row:
@@ -163,9 +169,16 @@ async def print_receipt(
         return {"status": "queued", "job_id": job_id, "copy_type": copy_type}
 
     # Use PrinterManager path
-    printers = manager.get_ready_printers_by_role("receipt")
-    if not printers:
+    all_receipt_printers = manager.get_ready_printers_by_role("receipt")
+    if not all_receipt_printers:
         return {"status": "error", "detail": "No receipt printer available"}
+
+    # Narrow to this terminal's assigned receipt printer when one resolves;
+    # fall back to the full set if no adapter matches (preserves
+    # single-terminal installs without terminal_ids bindings).
+    assigned_mac = await _resolve_receipt_printer(terminal_id)
+    matched = [p for p in all_receipt_printers if p.printer_id == assigned_mac]
+    printers = matched if matched else all_receipt_printers
 
     builder = PrintContextBuilder(ledger)
     context = await builder.build_receipt_context(

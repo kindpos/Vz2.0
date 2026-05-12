@@ -18,6 +18,21 @@ export function fetchWithTimeout(url, opts, ms) {
   if (ms == null) ms = 15000;
   const controller = new AbortController();
   const timer = setTimeout(() => { controller.abort(); }, ms);
-  const merged = Object.assign({}, opts, { signal: opts.signal || controller.signal });
+  const signal = opts.signal || controller.signal;
+  const headers = {
+    ...(opts.headers || {}),
+    ...(_terminalId ? { 'X-Terminal-Id': _terminalId } : {})
+  };
+  const merged = Object.assign({}, opts, { signal, headers });
   return fetch(url, merged).finally(() => { clearTimeout(timer); });
+}
+
+let _terminalId = '';
+
+export function setTerminalId(id) {
+  _terminalId = id || '';
+}
+
+export function getTerminalId() {
+  return _terminalId;
 }

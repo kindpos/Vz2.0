@@ -12,7 +12,7 @@
 import './auth-client.js';
 
 import { SceneManager } from './scene-manager.js';
-import { fetchWithTimeout } from './net.js';
+import { fetchWithTimeout, setTerminalId } from './net.js';
 import { performLogout, fmtTime, fmtDate, greetingFor } from './header.js';
 import { getSession } from './auth-client.js';
 import { T, applyStoreTheme } from '../common/tokens.js';
@@ -321,6 +321,7 @@ async function boot() {
         storeTertiaryDk: config.tertiary_dark   || null,
         storeLogoUrl:    (config.branding && config.branding.logo_url) || null,
       });
+      setTerminalId(config.terminal_id);
     }
   } catch (e) {
     console.info('[app] Store config unavailable, using defaults');

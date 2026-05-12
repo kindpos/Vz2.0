@@ -26,6 +26,7 @@
 import { defineScene, SceneManager } from '../scene-manager.js';
 import { T } from '../../common/tokens.js';
 import { hexToRgba, darkenHex } from '../theme-manager.js';
+import { getTerminalId } from '../net.js';
 
 // Local lighten helper — avoids adding theme-manager mock entries downstream.
 function _lighten(hex, pct) {
@@ -1126,7 +1127,7 @@ function initiateCardPayment() {
   var payload = {
     order_id:    orderId,
     amount:      state.currentSplitAmount,
-    terminal_id: 'T-001',
+    terminal_id: getTerminalId(),
   };
 
   fetch('/api/v1/payments/sale', {
