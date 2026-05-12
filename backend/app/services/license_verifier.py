@@ -14,6 +14,8 @@ import base64
 import binascii
 import json
 import logging
+import os
+import platform
 from pathlib import Path
 from typing import Optional
 
@@ -25,7 +27,14 @@ from app.services.hardware_fingerprint import get_hardware_fingerprint
 
 _log = logging.getLogger(__name__)
 
-DEFAULT_LICENSE_PATH = "/data/kindpos.lic"
+
+def _default_license_path() -> str:
+    if platform.system() == "Windows":
+        return str(Path(os.environ.get("APPDATA", "C:/ProgramData")) / "KINDpos" / "kindpos.lic")
+    return "/data/kindpos.lic"
+
+
+DEFAULT_LICENSE_PATH = os.environ.get("KINDPOS_LICENSE_PATH") or _default_license_path()
 
 
 def load_license(path: str = DEFAULT_LICENSE_PATH) -> Optional[dict]:
