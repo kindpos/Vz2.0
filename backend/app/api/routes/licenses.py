@@ -243,6 +243,8 @@ async def _has_active_server_license() -> bool:
     Reads hardware_config.db live on every call — never a cached flag —
     so revoking a license takes effect immediately without a restart.
     """
+    if DEMO_MODE:
+        return True
     if not os.path.exists(HARDWARE_DB_PATH):
         return False
     try:
