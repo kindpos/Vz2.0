@@ -19,6 +19,7 @@ import { T, applyStoreTheme } from '../common/tokens.js';
 
 // ── Scene imports ─────────────────────────────────
 import { defineActivationScene } from './scenes/activation.js';
+import './scenes/login.js';
 import './scenes/server-landing.js';
 import './scenes/manager-landing.js';
 import './scenes/check-overview.js';
@@ -135,6 +136,7 @@ async function boot() {
   var appRoot = document.getElementById('terminal');
   if (appRoot) {
     var placeholderHeader = document.createElement('div');
+    placeholderHeader.id = 'kindpos-header';
     placeholderHeader.style.cssText = [
       'width:100%;height:' + T.headerH + 'px;min-height:' + T.headerH + 'px;',
       'background:' + T.card + ';',
@@ -287,6 +289,19 @@ async function boot() {
   // 1. Init scene manager — wire DOM layers
   SceneManager.init();
 
+  // Show loading state while license check runs
+  const loadingEl = document.createElement('div');
+  loadingEl.id = 'boot-loading';
+  loadingEl.style.cssText = `
+    position:fixed; inset:0;
+    background:var(--bg, #383c42);
+    display:flex; align-items:center;
+    justify-content:center;
+    font:700 13px/1 'JetBrains Mono', monospace;
+    color:#7e8896; letter-spacing:0.1em;`;
+  loadingEl.textContent = 'KINDPOS';
+  document.body.appendChild(loadingEl);
+
   // 2. Check license
   let licensed = false;
   try {
@@ -302,6 +317,7 @@ async function boot() {
   if (!licensed) {
     SceneManager.register(defineActivationScene());
     SceneManager.openGate('activation');
+    document.getElementById('boot-loading')?.remove();
     return;
   }
 
@@ -334,6 +350,10 @@ async function boot() {
   //    is active and reloads pricing config when the version advances.
   setInterval(pollConfigVersion, 30000);
   pollConfigVersion();
+
+  SceneManager.openGate('login');
+
+  document.getElementById('boot-loading')?.remove();
 }
 
 // ── Run ───────────────────────────────────────────

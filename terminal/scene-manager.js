@@ -161,6 +161,9 @@ function openGate(sceneName) {
 
   const cleanup = scene.mount(container, {});
   _gateScene = { name: sceneName, cleanup, scrim, container };
+
+  document.getElementById('kindpos-header')
+    ?.style.setProperty('display', 'none');
 }
 
 function closeGate(sceneName) {
@@ -174,6 +177,9 @@ function closeGate(sceneName) {
   _gateScene.scrim.remove();
   _layerGate.style.pointerEvents = 'none';
   _gateScene = null;
+
+  document.getElementById('kindpos-header')
+    ?.style.removeProperty('display');
 
   _emit('gate:closed');
 }
