@@ -103,8 +103,14 @@ async def check_license_activation(app) -> None:
     """
     import logging
     from app.services.license_verifier import check_terminal_license
+    from app.api.routes.licenses import DEMO_MODE
 
     log = logging.getLogger(__name__)
+
+    if DEMO_MODE:
+        app.state.activated = True
+        log.info("Demo mode: license check bypassed")
+        return
 
     ok, info = check_terminal_license()
     app.state.activated = ok

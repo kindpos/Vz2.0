@@ -18,7 +18,7 @@ import subprocess
 import threading
 from pathlib import Path
 from datetime import datetime
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.routes.auth import require_manager
@@ -31,6 +31,17 @@ router = APIRouter(prefix="/system", tags=["system"])
 async def get_version():
     """Return the current KINDpos version for Overseer header badge."""
     return {"version": settings.app_version}
+
+
+@router.get("/info")
+async def system_info(request: Request):
+    """Return system configuration including store mode and demo status."""
+    from app.api.routes.licenses import DEMO_MODE
+    return {
+        "store_mode": settings.store_mode,
+        "activated": getattr(request.app.state, "activated", False),
+        "demo_mode": DEMO_MODE
+    }
 
 # Project root: walk up from system.py until we find a directory containing 'backend' or 'app'
 # Works both locally (deep nesting) and in Docker (/app/app/api/routes/system.py)
@@ -73,7 +84,7 @@ def classify_line(line: str) -> str:
     Classify a pytest output line to determine frontend STYLING.
     This controls color only — not test counting.
     """
-    if 'PASSED' in line or '\u2713' in line or '[PASS]' in line:
+    if 'PASSED' in line or '✓' in line or '[PASS]' in line:
         return 'passed'
     elif 'FAILED' in line or 'ERROR' in line:
         return 'failed'
