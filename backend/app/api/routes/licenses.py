@@ -1,1 +1,280 @@
-"""\nLicense Management Routes\n\nHandles license activation and status checking.\n"""\n\nimport hashlib\nimport json\nimport logging\nimport os\nimport socket\nimport sys\nfrom datetime import datetime\nimport aiosqlite\nimport httpx\nfrom typing import Optional\nfrom fastapi import APIRouter, HTTPException, Request\nfrom pydantic import BaseModel\n\nfrom app.api.routes.hardware import HARDWARE_DB_PATH, _ensure_db\n\n_log = logging.getLogger(__name__)\n\nrouter = APIRouter(prefix="/licenses", tags=["licenses"])\n\nDEMO_MODE = os.environ.get("KINDPOS_STORE_MODE") == "demo"\n\nif sys.platform == "win32":\n    LICENSE_FILE = os.path.join(\n        os.environ.get("APPDATA", "C:/ProgramData"),\n        "KINDpos", "data", "license.json"\n    )\nelse:\n    LICENSE_FILE = "/home/kindpos/data/license.json"\n\nWORKER_URL = "https://kindpos.com/api/activate"\n\n\ndef get_lan_ip() -> str:\n    """Detect local network IP address."""\n    try:\n        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\n        s.connect(('8.8.8.8', 80))\n        ip = s.getsockname()[0]\n        s.close()\n        return ip\n    except Exception:\n        return '127.0.0.1'\n\n\ndef write_node_hostname(node_number: int) -> None:\n    """Register node hostname in Windows hosts file."""\n    try:\n        ip = get_lan_ip()\n        hostname = f"kindpos.t{str(node_number).zfill(2)}.local"\n        hosts_path = r"C:\\Windows\\System32\\drivers\\etc\\hosts"\n\n        with open(hosts_path, 'r') as f:\n            existing = f.read()\n\n        if hostname not in existing:\n            with open(hosts_path, 'a') as f:\n                f.write(f"\\n{ip}    {hostname}")\n            _log.info(f"Registered {hostname} → {ip}")\n        else:\n            _log.info(f"{hostname} already registered")\n    except Exception as e:\n        _log.warning(f"Could not write hosts file: {e}")\n\n\ndef _get_hardware_fingerprint() -> str:\n    """Extract hardware fingerprint from Pi: SHA256(serial + mac).\n\n    Body extracted to `app/services/hardware_fingerprint.py` per\n    HARDWARE_ROUTING.md §6 — this wrapper survives only so existing\n    callers keep their HTTP-500 contract on read failure.\n    """\n    from app.services.hardware_fingerprint import get_hardware_fingerprint\n\n    try:\n        return get_hardware_fingerprint()\n    except RuntimeError as e:\n        _log.error(f"Error getting hardware fingerprint: {e}")\n        raise HTTPException(\n            status_code=500, detail="Could not read hardware fingerprint"\n        )\n\n\ndef _write_license_file(data: dict) -> None:\n    """Write license data to file."""\n    os.makedirs(os.path.dirname(LICENSE_FILE), exist_ok=True)\n    with open(LICENSE_FILE, "w") as f:\n        json.dump(data, f, indent=2)\n\n\ndef _read_license_file() -> Optional[dict]:\n    """Read license data from file."""\n    if not os.path.exists(LICENSE_FILE):\n        return None\n    try:\n        with open(LICENSE_FILE, "r") as f:\n            return json.load(f)\n    except Exception as e:\n        _log.warning(f"Could not read license file: {e}")\n        return None\n\n\nclass ActivateLicenseRequest(BaseModel):\n    license_key: str\n    store_name: str = ""\n    terminal_name: str = ""\n\n\nclass ActivateLicenseResponse(BaseModel):\n    success: bool\n    store_name: str\n    terminal_name: str\n\n\n@router.post("/activate")\nasync def activate_license(request: ActivateLicenseRequest, http_request: Request):\n    """Validate the license key against kindpos.com/admin and self-register\n    this terminal on success. License keys are issued and live on the admin\n    side; this endpoint searches for the key across all admin customers,\n    refuses if missing or already activated, then writes a local terminals\n    row and best-effort marks the admin record as activated.\n    """\n    if DEMO_MODE:\n        return {"activated": True, "demo": True, "message": "Demo mode — no activation required"}\n\n    # Step 1: Get admin secret\n    config_resp = await httpx.AsyncClient().get(\n        'https://kindpos.com/api/admin/config',\n        timeout=10.0\n    )\n    if not config_resp.is_success:\n        raise HTTPException(status_code=503,\n            detail='License server unavailable')\n    admin_secret = config_resp.json().get('admin_secret', '')\n\n    # Step 2: Fetch all customers and search for the key\n    customers_resp = await httpx.AsyncClient().get(\n        'https://kindpos.com/api/admin/customers',\n        headers={'Authorization': f'Bearer {admin_secret}'},\n        timeout=10.0\n    )\n    if not customers_resp.is_success:\n        raise HTTPException(status_code=503,\n            detail='License server unavailable')\n\n    customers = customers_resp.json().get('customers', [])\n    matched_terminal = None\n    for customer in customers:\n        for terminal in customer.get('terminals', []):\n            if terminal.get('license_key') == request.license_key:\n                matched_terminal = terminal\n                break\n        if matched_terminal:\n            break\n\n    if not matched_terminal:\n        raise HTTPException(status_code=400, detail='License key not found')\n\n    if str(matched_terminal.get('status', '')).upper() == 'ACTIVATED':\n        raise HTTPException(status_code=409,\n            detail='License key already activated on another terminal')\n\n    # Step 3: Mark as activated on admin (best effort)\n    mac_address = _get_hardware_fingerprint()\n    ip_address = http_request.client.host if http_request.client else ''\n\n    try:\n        await httpx.AsyncClient().put(\n            f'https://kindpos.com/api/admin/terminals/{request.license_key}',\n            headers={\n                'Authorization': f'Bearer {admin_secret}',\n                'Content-Type': 'application/json',\n            },\n            json={\n                'terminal_name': matched_terminal.get('terminal_name', ''),\n                'node_number':   matched_terminal.get('node_number'),\n                'prefix':        matched_terminal.get('prefix', ''),\n                'sku':           matched_terminal.get('sku', ''),\n                'mac':           mac_address,\n                'ip':            ip_address,\n                'status':        'ACTIVATED',\n            },\n            timeout=10.0\n        )\n    except Exception as e:\n        _log.warning(f'Could not update admin record: {e}')\n        # Non-fatal — continue with local activation\n\n    # Step 4: Write to local hardware_config.db\n    terminal_id = matched_terminal.get('terminal_name', '') or \\\n                  f"term-{request.license_key[-8:].lower()}"\n    terminal_name = matched_terminal.get('terminal_name') or terminal_id\n\n    await _ensure_db()\n    activated_at = datetime.utcnow().isoformat()\n    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:\n        await db.execute('''\n            INSERT OR REPLACE INTO terminals\n                (terminal_id, auth_key_hash, activated_at, is_active,\n                 name, ip_address, mac_address, role, is_hub)\n            VALUES (?, ?, ?, 1, ?, ?, ?, 'server', 0)\n        ''', (\n            terminal_id,\n            request.license_key,\n            activated_at,\n            terminal_name,\n            ip_address,\n            mac_address,\n        ))\n        await db.execute('''\n            INSERT OR REPLACE INTO server_license\n                (id, license_key, hardware_fingerprint, activated_at, status)\n            VALUES (?, ?, ?, ?, ?)\n        ''', (\n            1,\n            request.license_key,\n            mac_address,\n            activated_at,\n            'active',\n        ))\n        await db.commit()\n    _write_license_file({"license_key": request.license_key})\n\n    _log.info(\n        f'Terminal self-registered: {terminal_name} '\n        f'({ip_address}) [{mac_address}]'\n    )\n    return {\n        'status': 'activated',\n        'terminal_id': terminal_id,\n        'name': terminal_name,\n    }\n\n\nasync def _has_active_server_license() -> bool:\n    """Authoritative licensure check: any row in server_license with status='active'.\n\n    Reads hardware_config.db live on every call — never a cached flag —\n    so revoking a license takes effect immediately without a restart.\n    """\n    if DEMO_MODE:\n        return True\n    if not os.path.exists(HARDWARE_DB_PATH):\n        return False\n    try:\n        async with aiosqlite.connect(HARDWARE_DB_PATH) as db:\n            async with db.execute(\n                "SELECT 1 FROM server_license WHERE status = 'active' LIMIT 1"\n            ) as cur:\n                row = await cur.fetchone()\n                return row is not None\n    except aiosqlite.OperationalError:\n        # Table missing → treat as unlicensed. Never swallow into "licensed".\n        return False\n\n\n@router.get("/status")\nasync def license_status(request: Request):\n    """Live licensure check.\n\n    Queries the server_license table directly. If no row has status='active',\n    return HTTP 402 (Payment Required) so the frontend routes to the\n    activation scene. The previous implementation read a cached\n    app.state.activated flag set once at startup from license.json — that\n    flag could not see revocations, deleted DBs, or any change to\n    server_license, which is the bypass this endpoint is closing.\n    """\n    activated = await _has_active_server_license()\n    request.app.state.activated = activated  # keep cache in sync for any legacy reader\n    if not activated:\n        raise HTTPException(\n            status_code=402,\n            detail="No active license found. Activate this terminal at /activation.",\n        )\n    return {"activated": True}\n
+"""
+License Management Routes
+
+Handles license activation and status checking.
+"""
+
+import hashlib
+import json
+import logging
+import os
+import socket
+import sys
+from datetime import datetime
+import aiosqlite
+import httpx
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
+
+from app.api.routes.hardware import HARDWARE_DB_PATH, _ensure_db
+
+_log = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/licenses", tags=["licenses"])
+
+DEMO_MODE = os.environ.get("KINDPOS_STORE_MODE") == "demo"
+
+if sys.platform == "win32":
+    LICENSE_FILE = os.path.join(
+        os.environ.get("APPDATA", "C:/ProgramData"),
+        "KINDpos", "data", "license.json"
+    )
+else:
+    LICENSE_FILE = "/home/kindpos/data/license.json"
+
+WORKER_URL = "https://kindpos.com/api/activate"
+
+
+def get_lan_ip() -> str:
+    """Detect local network IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return '127.0.0.1'
+
+
+def write_node_hostname(node_number: int) -> None:
+    """Register node hostname in Windows hosts file."""
+    try:
+        ip = get_lan_ip()
+        hostname = f"kindpos.t{str(node_number).zfill(2)}.local"
+        hosts_path = r"C:\Windows\System32\drivers\etc\hosts"
+
+        with open(hosts_path, 'r') as f:
+            existing = f.read()
+
+        if hostname not in existing:
+            with open(hosts_path, 'a') as f:
+                f.write(f"\n{ip}    {hostname}")
+            _log.info(f"Registered {hostname} → {ip}")
+        else:
+            _log.info(f"{hostname} already registered")
+    except Exception as e:
+        _log.warning(f"Could not write hosts file: {e}")
+
+
+def _get_hardware_fingerprint() -> str:
+    """Extract hardware fingerprint from Pi: SHA256(serial + mac).
+
+    Body extracted to `app/services/hardware_fingerprint.py` per
+    HARDWARE_ROUTING.md §6 — this wrapper survives only so existing
+    callers keep their HTTP-500 contract on read failure.
+    """
+    from app.services.hardware_fingerprint import get_hardware_fingerprint
+
+    try:
+        return get_hardware_fingerprint()
+    except RuntimeError as e:
+        _log.error(f"Error getting hardware fingerprint: {e}")
+        raise HTTPException(
+            status_code=500, detail="Could not read hardware fingerprint"
+        )
+
+
+def _write_license_file(data: dict) -> None:
+    """Write license data to file."""
+    os.makedirs(os.path.dirname(LICENSE_FILE), exist_ok=True)
+    with open(LICENSE_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _read_license_file() -> Optional[dict]:
+    """Read license data from file."""
+    if not os.path.exists(LICENSE_FILE):
+        return None
+    try:
+        with open(LICENSE_FILE, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        _log.warning(f"Could not read license file: {e}")
+        return None
+
+
+class ActivateLicenseRequest(BaseModel):
+    license_key: str
+    store_name: str = ""
+    terminal_name: str = ""
+
+
+class ActivateLicenseResponse(BaseModel):
+    success: bool
+    store_name: str
+    terminal_name: str
+
+
+@router.post("/activate")
+async def activate_license(request: ActivateLicenseRequest, http_request: Request):
+    """Validate the license key against kindpos.com/admin and self-register
+    this terminal on success. License keys are issued and live on the admin
+    side; this endpoint searches for the key across all admin customers,
+    refuses if missing or already activated, then writes a local terminals
+    row and best-effort marks the admin record as activated.
+    """
+    if DEMO_MODE:
+        return {"activated": True, "demo": True, "message": "Demo mode — no activation required"}
+
+    # Step 1: Get admin secret
+    config_resp = await httpx.AsyncClient().get(
+        'https://kindpos.com/api/admin/config',
+        timeout=10.0
+    )
+    if not config_resp.is_success:
+        raise HTTPException(status_code=503,
+            detail='License server unavailable')
+    admin_secret = config_resp.json().get('admin_secret', '')
+
+    # Step 2: Fetch all customers and search for the key
+    customers_resp = await httpx.AsyncClient().get(
+        'https://kindpos.com/api/admin/customers',
+        headers={'Authorization': f'Bearer {admin_secret}'},
+        timeout=10.0
+    )
+    if not customers_resp.is_success:
+        raise HTTPException(status_code=503,
+            detail='License server unavailable')
+
+    customers = customers_resp.json().get('customers', [])
+    matched_terminal = None
+    for customer in customers:
+        for terminal in customer.get('terminals', []):
+            if terminal.get('license_key') == request.license_key:
+                matched_terminal = terminal
+                break
+        if matched_terminal:
+            break
+
+    if not matched_terminal:
+        raise HTTPException(status_code=400, detail='License key not found')
+
+    if str(matched_terminal.get('status', '')).upper() == 'ACTIVATED':
+        raise HTTPException(status_code=409,
+            detail='License key already activated on another terminal')
+
+    # Step 3: Mark as activated on admin (best effort)
+    mac_address = _get_hardware_fingerprint()
+    ip_address = http_request.client.host if http_request.client else ''
+
+    try:
+        await httpx.AsyncClient().put(
+            f'https://kindpos.com/api/admin/terminals/{request.license_key}',
+            headers={
+                'Authorization': f'Bearer {admin_secret}',
+                'Content-Type': 'application/json',
+            },
+            json={
+                'terminal_name': matched_terminal.get('terminal_name', ''),
+                'node_number':   matched_terminal.get('node_number'),
+                'prefix':        matched_terminal.get('prefix', ''),
+                'sku':           matched_terminal.get('sku', ''),
+                'mac':           mac_address,
+                'ip':            ip_address,
+                'status':        'ACTIVATED',
+            },
+            timeout=10.0
+        )
+    except Exception as e:
+        _log.warning(f'Could not update admin record: {e}')
+        # Non-fatal — continue with local activation
+
+    # Step 4: Write to local hardware_config.db
+    terminal_id = matched_terminal.get('terminal_name', '') or \\
+                  f"term-{request.license_key[-8:].lower()}"
+    terminal_name = matched_terminal.get('terminal_name') or terminal_id
+
+    await _ensure_db()
+    activated_at = datetime.utcnow().isoformat()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        await db.execute('''
+            INSERT OR REPLACE INTO terminals
+                (terminal_id, auth_key_hash, activated_at, is_active,
+                 name, ip_address, mac_address, role, is_hub)
+            VALUES (?, ?, ?, 1, ?, ?, ?, 'server', 0)
+        ''', (
+            terminal_id,
+            request.license_key,
+            activated_at,
+            terminal_name,
+            ip_address,
+            mac_address,
+        ))
+        await db.execute('''
+            INSERT OR REPLACE INTO server_license
+                (id, license_key, hardware_fingerprint, activated_at, status)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (
+            1,
+            request.license_key,
+            mac_address,
+            activated_at,
+            'active',
+        ))
+        await db.commit()
+    _write_license_file({"license_key": request.license_key})
+
+    _log.info(
+        f'Terminal self-registered: {terminal_name} '
+        f'({ip_address}) [{mac_address}]'
+    )
+    return {
+        'status': 'activated',
+        'terminal_id': terminal_id,
+        'name': terminal_name,
+    }
+
+
+async def _has_active_server_license() -> bool:
+    """Authoritative licensure check: any row in server_license with status='active'.
+
+    Reads hardware_config.db live on every call — never a cached flag —
+    so revoking a license takes effect immediately without a restart.
+    """
+    if DEMO_MODE:
+        return True
+    if not os.path.exists(HARDWARE_DB_PATH):
+        return False
+    try:
+        async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+            async with db.execute(
+                "SELECT 1 FROM server_license WHERE status = 'active' LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+                return row is not None
+    except aiosqlite.OperationalError:
+        # Table missing → treat as unlicensed. Never swallow into "licensed".
+        return False
+
+
+@router.get("/status")
+async def license_status(request: Request):
+    """Live licensure check.
+
+    Queries the server_license table directly. If no row has status='active',
+    return HTTP 402 (Payment Required) so the frontend routes to the
+    activation scene. The previous implementation read a cached
+    app.state.activated flag set once at startup from license.json — that
+    flag could not see revocations, deleted DBs, or any change to
+    server_license, which is the bypass this endpoint is closing.
+    """
+    activated = await _has_active_server_license()
+    request.app.state.activated = activated  # keep cache in sync for any legacy reader
+    if not activated:
+        raise HTTPException(
+            status_code=402,
+            detail="No active license found. Activate this terminal at /activation.",
+        )
+    return {"activated": True}
