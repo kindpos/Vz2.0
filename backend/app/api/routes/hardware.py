@@ -1435,3 +1435,17 @@ async def get_server_mac():
     node = uuid.getnode()
     mac = ":".join(f"{(node >> i) & 0xFF:02X}" for i in range(40, -8, -8))
     return {"mac": mac}
+
+
+@router.get("/fingerprint")
+async def get_fingerprint():
+    """Return this server's hardware fingerprint (sha256 of serial+mac).
+
+    Non-fatal: on any error returns {"fingerprint": None, "error": <msg>}
+    with status 200 so the activation scene can still render.
+    """
+    try:
+        from ...services.hardware_fingerprint import get_hardware_fingerprint
+        return {"fingerprint": get_hardware_fingerprint()}
+    except Exception as e:
+        return {"fingerprint": None, "error": str(e)}
