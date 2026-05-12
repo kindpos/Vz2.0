@@ -122,14 +122,11 @@ async def _ensure_db():
         # Server-license table — bound on activation, audited via ledger
         await db.execute("""
             CREATE TABLE IF NOT EXISTS server_license (
-                activation_code TEXT PRIMARY KEY,
-                server_mac      TEXT NOT NULL DEFAULT '',
-                platform        TEXT NOT NULL DEFAULT '',
-                status          TEXT NOT NULL DEFAULT 'pending',
-                store_id        TEXT NOT NULL DEFAULT '',
-                label           TEXT NOT NULL DEFAULT '',
-                created_at      TEXT NOT NULL,
-                activated_at    TEXT NOT NULL DEFAULT ''
+                id                   INTEGER PRIMARY KEY,
+                license_key          TEXT NOT NULL,
+                hardware_fingerprint TEXT NOT NULL,
+                activated_at         TEXT NOT NULL,
+                status               TEXT NOT NULL DEFAULT 'active'
             )
         """)
 
@@ -1395,228 +1392,26 @@ async def activate_server(
     req: ActivateServerRequest,
     ledger: EventLedger = Depends(get_ledger),
 ):
-    """Bind a pending activation code to this server's MAC.
-
-    Intentionally unauthenticated: this is the gate that runs *before*
-    the operator has any way to log in. Each code is single-use; once
-    flipped to active it cannot be re-bound to a different MAC.
-
-    INSTALLER NOTE: This call may take up to 75 seconds on slow networks.
-    The installer UI should show "Contacting activation server..."
-    during this wait. See kindpos_installer.py for UI integration point.
-    """
-    await _ensure_db()
-    code = req.activation_code.strip().upper()
-    server_mac = req.server_mac.strip().upper()
-    now = datetime.utcnow().isoformat()
-
-    node_number = None
-    terminal_id = None
-
-    # ─────────────────────────────────────────────────────────────
-    # STEP 2: External activation call to KINDpos-site
-    # ─────────────────────────────────────────────────────────────
-    activation_server_url = settings.activation_server_url
-    external_success = False
-    offline_fallback = False
-
-    for attempt in range(2):
-        try:
-            timeout = httpx.Timeout(connect=15.0, read=30.0)
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(
-                    f"{activation_server_url}/api/activate",
-                    json={
-                        "license_key": code,
-                        "hardware_fingerprint": server_mac,
-                    }
-                )
-
-            # CASE A: Success (key PENDING → ACTIVATED)
-            if resp.status_code == 200:
-                try:
-                    data = resp.json()
-                    node_number = int(data.get("node_number"))
-                    terminal_id = f"T-{str(node_number).zfill(2)}"
-                    logger.info(f"Activated via KINDpos-site as {terminal_id}")
-                    external_success = True
-                    break
-                except (ValueError, TypeError, KeyError):
-                    logger.warning(f"Invalid node_number in KINDpos-site response: {resp.text}")
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Activation server returned invalid response",
-                    )
-
-            # CASE B: Already activated on THIS hardware
-            if resp.status_code == 409:
-                try:
-                    data = resp.json()
-                    if data.get("error") == "already_activated":
-                        node_number = int(data.get("node_number"))
-                        terminal_id = f"T-{str(node_number).zfill(2)}"
-                        logger.info(f"Re-activation of existing terminal {terminal_id}")
-                        external_success = True
-                        break
-                except (ValueError, TypeError, KeyError):
-                    logger.warning(f"Invalid node_number in already_activated response: {resp.text}")
-
-            # CASE C: Already activated on DIFFERENT hardware
-            if resp.status_code == 409 and "already registered to another terminal" in resp.text:
-                raise HTTPException(
-                    status_code=409,
-                    detail="This license key is already registered to another terminal. Contact KIND Technologies to transfer or reissue.",
-                )
-
-            # CASE D: Key not found / revoked
-            if resp.status_code == 404:
-                raise HTTPException(
-                    status_code=404,
-                    detail="License key not recognized. Check the key and try again.",
-                )
-
-        except (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError) as e:
-            if attempt < 1:
-                logger.warning(f"Activation server unreachable (attempt {attempt + 1}/2): {e}")
-                await asyncio.sleep(5)
-                continue
-            else:
-                logger.warning(f"KINDpos-site unreachable after retries, checking local registry")
-                offline_fallback = True
-
-    # ─────────────────────────────────────────────────────────────
-    # CASE E: Network failure — fall back to local registry
-    # ─────────────────────────────────────────────────────────────
-    if not external_success and offline_fallback:
-        async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM server_license WHERE activation_code = ?",
-                (code,),
-            ) as cur:
-                row = await cur.fetchone()
-
-            if row and row["status"] == "active" and row["node_number"]:
-                try:
-                    node_number = int(row["node_number"])
-                    terminal_id = f"T-{str(node_number).zfill(2)}"
-                    logger.warning(f"Offline activation approved from local registry")
-                    external_success = True
-                except (ValueError, TypeError):
-                    pass
-
-    if not external_success:
-        if offline_fallback:
-            raise HTTPException(
-                status_code=503,
-                detail="Cannot reach activation server and no local record found. Ensure internet connectivity during first activation, or contact KIND Technologies for offline registration.",
-            )
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail="Activation server connection failed",
-            )
-
-    # ─────────────────────────────────────────────────────────────
-    # STEP 3: Local registration (regardless of how we got node_number)
-    # ─────────────────────────────────────────────────────────────
-    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-
-        # Fetch original row for label/store_id if available
-        async with db.execute(
-            "SELECT * FROM server_license WHERE activation_code = ?",
-            (code,),
-        ) as cur:
-            row = await cur.fetchone()
-
-        label = (row["label"] or "") if row else ""
-        store_id = (row["store_id"] or "") if row else ""
-
-        # Write to server_license with node_number
-        await db.execute(
-            """
-            INSERT OR REPLACE INTO server_license
-                (activation_code, server_mac, platform, status,
-                 store_id, label, created_at, activated_at, node_number)
-            VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)
-            """,
-            (code, server_mac, req.platform, store_id, label,
-             (row["created_at"] if row else now), now, node_number),
-        )
-        await db.commit()
-
-    # Write to terminals table
-    auth_key_hash = hashlib.sha256(code.encode()).hexdigest()
-    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
-        await db.execute("""
-            INSERT INTO terminals (terminal_id, auth_key_hash, activated_at, is_active)
-            VALUES (?, ?, ?, 1)
-            ON CONFLICT(terminal_id) DO UPDATE SET
-                auth_key_hash = excluded.auth_key_hash,
-                activated_at = excluded.activated_at,
-                is_active = 1
-        """, (terminal_id, auth_key_hash, now))
-
-        # Auto-assign unassigned devices to this terminal
-        await db.execute("""
-            UPDATE devices
-            SET terminal_ids = ?
-            WHERE (terminal_ids IS NULL OR terminal_ids = '' OR terminal_ids = '[]')
-            AND is_active = 1
-        """, (json.dumps([terminal_id]),))
-
-        await db.commit()
-
-    await ledger.append(server_activated(
-        terminal_id=terminal_id,
-        activation_code=code,
-        server_mac=server_mac,
-        platform=req.platform,
-        label=label,
-    ))
-
-    return {
-        "success": True,
-        "terminal_id": terminal_id,
-        "node_number": node_number,
-        "message": "Terminal activated successfully",
-    }
+    raise HTTPException(
+        status_code=410,
+        detail="This endpoint is retired. Use POST /api/v1/licenses/activate."
+    )
 
 
 @router.get("/license/list")
 async def list_licenses():
-    """All license records, newest first.
-
-    Unauthenticated so the terminal boot probe can decide whether the
-    server has ever been activated before any login flow exists.
-    """
-    await _ensure_db()
-    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM server_license ORDER BY created_at DESC"
-        ) as cur:
-            return [dict(row) async for row in cur]
+    raise HTTPException(
+        status_code=410,
+        detail="This endpoint is retired. Use POST /api/v1/licenses/activate."
+    )
 
 
 @router.delete("/license/{activation_code}", dependencies=[Depends(require_manager)])
 async def revoke_license(activation_code: str):
-    """Soft-revoke a license. Active rows stay visible but unusable."""
-    await _ensure_db()
-    code = activation_code.strip().upper()
-    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
-        async with db.execute(
-            "SELECT 1 FROM server_license WHERE activation_code = ?", (code,)
-        ) as cur:
-            if await cur.fetchone() is None:
-                raise HTTPException(status_code=404, detail="License not found")
-        await db.execute(
-            "UPDATE server_license SET status = 'revoked' WHERE activation_code = ?",
-            (code,),
-        )
-        await db.commit()
-    return {"revoked": code}
+    raise HTTPException(
+        status_code=410,
+        detail="This endpoint is retired. Use POST /api/v1/licenses/activate."
+    )
 
 
 @router.get("/server-mac")

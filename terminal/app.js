@@ -18,6 +18,7 @@ import { getSession } from './auth-client.js';
 import { T, applyStoreTheme } from '../common/tokens.js';
 
 // ── Scene imports ─────────────────────────────────
+import { defineActivationScene } from './scenes/activation.js';
 import './scenes/server-landing.js';
 import './scenes/manager-landing.js';
 import './scenes/check-overview.js';
@@ -285,6 +286,24 @@ async function boot() {
 
   // 1. Init scene manager — wire DOM layers
   SceneManager.init();
+
+  // 2. Check license
+  let licensed = false;
+  try {
+    const licRes = await fetchWithTimeout(
+      '/api/v1/licenses/status', {}, 6000
+    );
+    licensed = licRes.ok;
+  } catch (_) {
+    licensed = false;
+  }
+
+  // 3. Gate on activation if unlicensed
+  if (!licensed) {
+    SceneManager.register(defineActivationScene());
+    SceneManager.openGate('activation');
+    return;
+  }
 
   // 4. Load store config from backend
   try {

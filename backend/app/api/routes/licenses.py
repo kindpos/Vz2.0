@@ -145,8 +145,8 @@ async def start_license_checkin_loop() -> asyncio.Task:
     async def _checkin_loop():
         while True:
             try:
-                await asyncio.sleep(CHECKIN_INTERVAL_S)
                 await _perform_checkin()
+                await asyncio.sleep(CHECKIN_INTERVAL_S)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -247,6 +247,7 @@ async def activate_license(request: ActivateLicenseRequest, http_request: Reques
     terminal_name = matched_terminal.get('terminal_name') or terminal_id
 
     await _ensure_db()
+    activated_at = datetime.utcnow().isoformat()
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         await db.execute('''
             INSERT OR REPLACE INTO terminals
@@ -256,12 +257,24 @@ async def activate_license(request: ActivateLicenseRequest, http_request: Reques
         ''', (
             terminal_id,
             request.license_key,
-            datetime.utcnow().isoformat(),
+            activated_at,
             terminal_name,
             ip_address,
             mac_address,
         ))
+        await db.execute('''
+            INSERT OR REPLACE INTO server_license
+                (id, license_key, hardware_fingerprint, activated_at, status)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (
+            1,
+            request.license_key,
+            mac_address,
+            activated_at,
+            'active',
+        ))
         await db.commit()
+    _write_license_file({"license_key": request.license_key})
 
     _log.info(
         f'Terminal self-registered: {terminal_name} '

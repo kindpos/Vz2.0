@@ -167,12 +167,6 @@ export function defineActivationScene() {
         activateBtn.textContent = 'ACTIVATING…';
 
         try {
-          const macRes = await fetchWithTimeout('/api/v1/hardware/server-mac', {}, 8000);
-          if (!state._alive) return;
-          if (!macRes.ok) throw new Error(`Could not read server MAC (HTTP ${macRes.status})`);
-          const macData = await macRes.json();
-          const serverMac = (macData && macData.mac) ? macData.mac : '';
-
           const resp = await fetchWithTimeout('/api/v1/licenses/activate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
