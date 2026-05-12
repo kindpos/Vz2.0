@@ -4,7 +4,7 @@
 
 set -e
 
-BASE="$HOME/kindpos"
+BASE="/home/kindpos/Vz2.0"
 LOG_FILE="$HOME/kindpos-logs/setup.log"
 CONF="$BASE/pi/config/terminals.conf"
 

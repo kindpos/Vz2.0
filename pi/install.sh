@@ -12,7 +12,7 @@ echo "=== KINDpos Pi Installer ==="
 echo "Repo: $BASE"
 
 # 1. System dependencies
-echo "[1/8] Installing dependencies..."
+echo "[1/9] Installing dependencies..."
 apt-get update -q
 apt-get install -y nginx avahi-daemon libnss-mdns python3 python3-pip python3-venv
 
@@ -26,7 +26,7 @@ sed -i 's/^hosts:.*/hosts: files mdns4_minimal [NOTFOUND=return] dns/' \
   /etc/nsswitch.conf
 
 # 2. Python dependencies
-echo "[2/8] Installing Python dependencies..."
+echo "[2/9] Installing Python dependencies..."
 if [ ! -d "/home/kindpos/venv" ]; then
     python3 -m venv /home/kindpos/venv
     chown -R kindpos:kindpos /home/kindpos/venv
@@ -34,20 +34,27 @@ fi
 /home/kindpos/venv/bin/pip install -r "$BASE/backend/requirements.txt"
 
 # 3. Systemd service
-echo "[3/8] Installing kindpos.service..."
+echo "[3/9] Installing kindpos.service..."
 cp "$SCRIPT_DIR/systemd/kindpos.service" /etc/systemd/system/kindpos.service
 systemctl daemon-reload
 systemctl enable kindpos
 
-# 4. nginx config
-echo "[4/8] Configuring nginx..."
+# 4. Setup + watchdog services
+cp "$SCRIPT_DIR/systemd/kindpos-setup.service" /etc/systemd/system/kindpos-setup.service
+cp "$SCRIPT_DIR/systemd/kindpos-watchdog.service" /etc/systemd/system/kindpos-watchdog.service
+systemctl daemon-reload
+systemctl enable kindpos-setup.service kindpos-watchdog.service
+echo "[4/9] Setup and watchdog services installed"
+
+# 5. nginx config
+echo "[5/9] Configuring nginx..."
 cp "$SCRIPT_DIR/nginx/kindpos.conf" /etc/nginx/sites-available/kindpos
 rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/kindpos /etc/nginx/sites-enabled/kindpos
 systemctl enable nginx
 
 # 6. eth0 static IP (192.168.50.1/24 — direct terminal connection)
-echo "[5/8] Configuring eth0 static IP..."
+echo "[6/9] Configuring eth0 static IP..."
 if ! nmcli -g ipv4.addresses connection show netplan-eth0 2>/dev/null | grep -q "192.168.50.1/24"; then
     nmcli connection modify netplan-eth0 ipv4.addresses 192.168.50.1/24 ipv4.method manual
     nmcli connection up netplan-eth0
@@ -58,12 +65,12 @@ fi
 
 # avahi-daemon — start after eth0 has its static IP
 # so avahi registers on both wlan0 and eth0
-echo "[6/8] Enabling avahi-daemon..."
+echo "[7/9] Enabling avahi-daemon..."
 systemctl enable avahi-daemon
 systemctl restart avahi-daemon
 
 # 7. First-boot overlay service — PROVISIONING_FLOW.md §4.2
-echo "[7/8] Installing first-boot overlay service..."
+echo "[8/9] Installing first-boot overlay service..."
 cp "$SCRIPT_DIR/first-boot.sh" /boot/first-boot.sh
 chmod +x /boot/first-boot.sh
 cp "$SCRIPT_DIR/systemd/kindpos-first-boot.service" \
@@ -75,7 +82,7 @@ systemctl enable kindpos-first-boot
 # ConditionPathExists ensures this is a no-op on all subsequent boots.
 
 # 8. Sudoers — allow kindpos user to restart its own service without a password
-echo "[8/8] Configuring sudoers..."
+echo "[9/9] Configuring sudoers..."
 SUDOERS_FILE=/etc/sudoers.d/kindpos
 SUDOERS_LINE="kindpos ALL=(ALL) NOPASSWD: /bin/systemctl restart kindpos"
 if [ ! -f "$SUDOERS_FILE" ] || ! grep -qF "$SUDOERS_LINE" "$SUDOERS_FILE"; then

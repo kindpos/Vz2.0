@@ -2,7 +2,7 @@
 # Permanent Ethernet watchdog: keeps KINDpos kiosk in foreground on all registered terminals.
 # Runs as kindpos-watchdog.service — never exits.
 
-BASE="$HOME/kindpos"
+BASE="/home/kindpos/Vz2.0"
 LOG_FILE="$HOME/kindpos-logs/watchdog.log"
 CONF="$BASE/pi/config/terminals.conf"
 

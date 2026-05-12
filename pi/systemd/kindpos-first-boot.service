@@ -1,0 +1,12 @@
+[Unit]
+Description=KINDpos First Boot Setup
+After=network.target
+ConditionPathExists=/boot/first-boot.sh
+
+[Service]
+Type=oneshot
+ExecStart=/boot/first-boot.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -100,3 +100,9 @@ backend/data/*.db-wal
 tools/
 tools/kindpos-private.key
 tools/kindpos-seq.txt
+
+# Android build locals
+pi/kiosk-app/local.properties
+
+# Prebuilt binary (rebuild from source)
+pi/kindpos-kiosk.apk

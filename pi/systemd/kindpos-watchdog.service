@@ -5,7 +5,7 @@ Wants=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/kindpos/kindpos/pi/scripts/kindpos-watchdog.sh
+ExecStart=/home/kindpos/Vz2.0/pi/scripts/kindpos-watchdog.sh
 Restart=always
 RestartSec=10
 User=kindpos
