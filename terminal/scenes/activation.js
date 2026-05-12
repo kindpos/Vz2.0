@@ -1,29 +1,20 @@
 /**
  * KINDpos Activation Scene
- * Shown on first boot when no active server license is bound to this machine.
- * Operator enters a KIND-XXXX-XXXX code; we read the server MAC from the
- * backend and POST to /api/v1/hardware/activate.
+ * Shown on first boot when no valid offline license file is bound to this
+ * machine. The terminal is informational only — operators copy the hardware
+ * ID and send it to KIND Technologies, who return a signed license file out
+ * of band. No in-app activation.
  */
 
 import { T } from '../../common/tokens.js';
 import { defineScene } from '../scene-manager.js';
-import { buildStaticCard, buildPillButton } from '../theme-manager.js';
+import { buildStaticCard } from '../theme-manager.js';
 import { fetchWithTimeout } from '../net.js';
-
-// Normalize input: uppercase and strip anything that isn't alphanumeric or dash.
-function formatCode(raw) {
-  return (raw || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
-}
-
-function isComplete(formatted) {
-  return /^[A-Z0-9]+(-[A-Z0-9]+){2,}$/.test(formatted) && formatted.length >= 8;
-}
 
 export function defineActivationScene() {
   return defineScene({
     name: 'activation',
     render: (container, params, state) => {
-      state._submitting = false;
       state._alive = true;
 
       const background = document.createElement('div');
@@ -38,8 +29,8 @@ export function defineActivationScene() {
       `;
 
       const card = buildStaticCard();
-      card.style.width = '480px';
-      card.style.padding = '32px';
+      card.style.width = '520px';
+      card.style.padding = '36px';
 
       const title = document.createElement('h1');
       title.textContent = 'KINDpos';
@@ -55,164 +46,128 @@ export function defineActivationScene() {
       card.appendChild(title);
 
       const subtitle = document.createElement('div');
-      subtitle.textContent = 'Server Activation';
+      subtitle.textContent = 'TERMINAL UNLICENSED';
       subtitle.style.cssText = `
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 12px;
-        color: ${T.green};
-        text-align: center;
-        margin-bottom: 28px;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-      `;
-      card.appendChild(subtitle);
-
-      const codeLabel = document.createElement('label');
-      codeLabel.textContent = 'Enter Activation Code';
-      codeLabel.style.cssText = `
-        display: block;
-        margin-bottom: 8px;
-        font-size: 12px;
-        color: ${T.text};
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 600;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-      `;
-      card.appendChild(codeLabel);
-
-      const codeInput = document.createElement('input');
-      codeInput.type = 'text';
-      codeInput.placeholder = 'PREFIX-NNN-XXXX-XXXX-XXXX';
-      codeInput.autocomplete = 'off';
-      codeInput.spellcheck = false;
-      codeInput.maxLength = 64;
-      codeInput.style.cssText = `
-        width: 100%;
-        padding: 16px;
-        margin-bottom: 18px;
-        border: 1px solid ${T.border};
-        border-radius: 8px;
-        background: ${T.well};
-        color: ${T.text};
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 18px;
-        text-align: center;
-        letter-spacing: 0.18em;
-        box-sizing: border-box;
-        outline: none;
-        text-transform: uppercase;
-      `;
-      card.appendChild(codeInput);
-
-      // Auto-format on every keystroke. Cursor jump is acceptable here —
-      // operators read the field, they don't edit mid-string.
-      codeInput.addEventListener('input', () => {
-        codeInput.value = formatCode(codeInput.value);
-        updateButtonState();
-        clearError();
-      });
-
-      const errorEl = document.createElement('div');
-      errorEl.style.cssText = `
-        min-height: 22px;
-        margin-bottom: 14px;
-        padding: 0 4px;
         font-family: 'JetBrains Mono', monospace;
         font-size: 12px;
         color: ${T.verm};
         text-align: center;
-      `;
-      card.appendChild(errorEl);
-
-      function clearError() { errorEl.textContent = ''; }
-      function showError(msg) { errorEl.textContent = msg; }
-
-      const activateBtn = buildPillButton('ACTIVATE');
-      activateBtn.style.cssText = `
-        width: 100%;
-        padding: 16px 24px;
-        background: ${T.green};
-        color: ${T.well};
-        border: none;
-        border-radius: 999px;
-        font-weight: 700;
-        cursor: pointer;
-        font-size: 16px;
-        font-family: 'Outfit', sans-serif;
-        letter-spacing: 0.12em;
+        margin-bottom: 32px;
+        letter-spacing: 0.22em;
         text-transform: uppercase;
+        font-weight: 600;
       `;
-      card.appendChild(activateBtn);
+      card.appendChild(subtitle);
 
-      function updateButtonState() {
-        const ready = isComplete(codeInput.value) && !state._submitting;
-        activateBtn.disabled = !ready;
-        activateBtn.style.opacity = ready ? '1' : '0.45';
-        activateBtn.style.cursor = ready ? 'pointer' : 'not-allowed';
-      }
-      updateButtonState();
+      const fpBlock = document.createElement('div');
+      fpBlock.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 28px;
+        padding: 18px;
+        border: 1px solid ${T.border};
+        border-radius: 10px;
+        background: ${T.well};
+      `;
 
-      async function submit() {
-        if (!state._alive || state._submitting) return;
-        const code = codeInput.value.trim().toUpperCase();
-        if (!isComplete(code)) {
-          showError('Code must be in the format PREFIX-NNN-XXXX-XXXX-XXXX');
-          return;
-        }
+      const fpLabel = document.createElement('div');
+      fpLabel.textContent = 'HARDWARE ID';
+      fpLabel.style.cssText = `
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: ${T.moon};
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        font-weight: 600;
+      `;
+      fpBlock.appendChild(fpLabel);
 
-        state._submitting = true;
-        updateButtonState();
-        clearError();
-        activateBtn.textContent = 'ACTIVATING…';
+      const fpValue = document.createElement('div');
+      fpValue.textContent = 'Reading…';
+      fpValue.style.cssText = `
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 18px;
+        color: ${T.gold};
+        text-align: center;
+        word-break: break-all;
+        line-height: 1.4;
+        -webkit-user-select: text;
+        user-select: text;
+        cursor: text;
+      `;
+      fpBlock.appendChild(fpValue);
+      card.appendChild(fpBlock);
 
-        try {
-          const resp = await fetchWithTimeout('/api/v1/licenses/activate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              license_key: code,
-            }),
-          }, 10000);
-
-          if (!state._alive) return;
-
-          if (resp.ok) {
-            activateBtn.textContent = 'ACTIVATED ✓';
-            activateBtn.style.background = T.greenWarm;
-            setTimeout(() => {
-              if (state._alive) window.location.reload();
-            }, 900);
-            return;
-          }
-
-          let errBody = {};
-          try { errBody = await resp.json(); } catch (_) { /* ignore */ }
-          showError(errBody.detail || errBody.error || 'Activation failed.');
-        } catch (err) {
-          if (!state._alive) return;
-          showError(err && err.message ? err.message : 'Network error');
-        } finally {
-          if (state._alive) {
-            state._submitting = false;
-            activateBtn.textContent = 'ACTIVATE';
-            updateButtonState();
-          }
-        }
-      }
-
-      activateBtn.addEventListener('click', submit);
-      codeInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          submit();
-        }
-      });
+      const supportLine = document.createElement('div');
+      supportLine.style.cssText = `
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        color: ${T.moon};
+        text-align: center;
+        line-height: 1.6;
+        letter-spacing: 0.04em;
+      `;
+      const supportText = document.createTextNode(
+        'Contact KIND Technologies to activate this terminal.'
+      );
+      const supportBreak = document.createElement('br');
+      const supportEmail = document.createElement('span');
+      supportEmail.textContent = 'support@kindpos.com';
+      supportEmail.style.color = T.green;
+      supportLine.appendChild(supportText);
+      supportLine.appendChild(supportBreak);
+      supportLine.appendChild(supportEmail);
+      card.appendChild(supportLine);
 
       background.appendChild(card);
       container.appendChild(background);
 
-      setTimeout(() => { if (state._alive) codeInput.focus(); }, 0);
+      // Pull the hardware identifier. Prefer /fingerprint (canonical) and
+      // fall back to /server-mac if the route isn't deployed yet. Whatever
+      // string the backend returns is what operators read aloud.
+      function extractId(body) {
+        if (!body || typeof body !== 'object') return null;
+        return (
+          body.fingerprint
+          || body.hardware_fingerprint
+          || body.server_mac
+          || body.mac
+          || body.id
+          || null
+        );
+      }
+
+      async function loadHardwareId() {
+        const endpoints = [
+          '/api/v1/hardware/fingerprint',
+          '/api/v1/hardware/server-mac',
+        ];
+        for (const url of endpoints) {
+          try {
+            const resp = await fetchWithTimeout(url, {}, 6000);
+            if (!state._alive) return;
+            if (resp.status === 404) continue;
+            if (!resp.ok) continue;
+            let body = null;
+            try { body = await resp.json(); } catch (_) { /* non-JSON */ }
+            const id = extractId(body);
+            if (id) {
+              if (!state._alive) return;
+              fpValue.textContent = id;
+              return;
+            }
+          } catch (_) {
+            // try next endpoint
+          }
+        }
+        if (!state._alive) return;
+        fpValue.textContent = 'Unable to read hardware ID';
+        fpValue.style.color = T.verm;
+      }
+
+      loadHardwareId();
 
       return () => {
         state._alive = false;

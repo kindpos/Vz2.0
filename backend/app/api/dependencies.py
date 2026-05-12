@@ -93,41 +93,25 @@ def set_print_dispatcher(dispatcher: PrintDispatcher) -> None:
 
 async def check_license_activation(app) -> None:
     """
-    Boot probe: check the server_license table and set app.state.activated.
+    Boot probe: verify the offline-signed license file and set app.state.activated.
 
-    Authoritative source is hardware_config.db.server_license — any row with
-    status='active' counts as licensed. We deliberately ignore the legacy
-    license.json file because it can't see revocations or table truncation.
-    /api/v1/licenses/status re-queries on every call, so this flag is just
-    a startup hint plus the "log a clear warning" gate the audit requires.
+    Delegates to app.services.license_verifier.check_terminal_license, which
+    loads /data/kindpos.lic, verifies the Ed25519 signature, and confirms the
+    file is bound to this machine's hardware fingerprint. Never raises and
+    never blocks boot — an invalid or missing license simply leaves the
+    terminal flagged unactivated.
     """
-    # Local import keeps dependencies.py free of route-layer imports at module load.
-    from app.api.routes.licenses import _has_active_server_license
-
     import logging
+    from app.services.license_verifier import check_terminal_license
+
     log = logging.getLogger(__name__)
 
-    try:
-        activated = await _has_active_server_license()
-    except Exception as e:
-        activated = False
-        log.warning(f"License probe failed (treating as unlicensed): {e}")
-        if _diagnostic_collector:
-            try:
-                await _diagnostic_collector.record(
-                    category="system",
-                    severity="warning",
-                    source="check_license_activation",
-                    event_code="SEC-006",
-                    message=f"License check failed: {str(e)}",
-                    context={"error": str(e)},
-                )
-            except Exception:
-                pass
-
-    app.state.activated = activated
-    if not activated:
+    ok, info = check_terminal_license()
+    app.state.activated = ok
+    if ok:
+        log.info("License verified: %s", info)
+    else:
         log.warning(
-            "*** STARTUP WARNING: no active license in server_license table — "
-            "terminal is running UNLICENSED. Activate at /activation. ***"
+            "*** STARTUP WARNING: terminal running UNLICENSED — %s ***",
+            info,
         )

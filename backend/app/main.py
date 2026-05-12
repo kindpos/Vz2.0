@@ -50,7 +50,6 @@ from app.api.routes import modifier_groups as modifier_groups_routes
 from app.api.routes import modifiers as modifiers_routes
 from app.api.routes import menu_items as menu_items_routes
 from app.api.routes import licenses
-from app.api.routes.licenses import start_license_checkin_loop
 from app.api.routes.printing import print_queue
 
 
@@ -314,10 +313,6 @@ async def lifespan(app: FastAPI):
         print(f"mDNS service registered: kindpos.local ({lan_ip}:8000)")
     except Exception as e:
         logger.warning(f"mDNS registration failed: {e}")
-
-    # Start license checkin background task
-    _checkin_task = await start_license_checkin_loop()
-    print("License checkin scheduler started (60-minute interval)")
 
     # Start daily retention background task
     asyncio.create_task(_run_daily_retention(diagnostic_collector))

@@ -95,3 +95,8 @@ backend/data/*.db-wal
 
 # Per-user editor / Claude Code local state.
 .claude/settings.local.json
+
+# Offline license keygen — must never deploy to a Pi or get committed.
+tools/
+tools/kindpos-private.key
+tools/kindpos-seq.txt

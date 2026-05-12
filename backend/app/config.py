@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # Activation Server (KINDpos-site)
     activation_server_url: str = "https://kindpos.com"
 
+    # Ed25519 public key for verifying offline-signed terminal licenses.
+    # Private key lives in tools/kindpos-private.key (offline, never deployed).
+    license_public_key: str = "nex+HVMXNP0sXJq7IxD7qzb9k8r6VWD1obwn3nncenc="
+
     # Financial invariants. When True, aggregation paths raise
     # InvariantViolation if any P&L / tender / tips identity drifts
     # outside tolerance. When False (production default), the mismatch
@@ -79,3 +83,8 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+# Module-level alias for the license-signing public key. Kept as a constant
+# so verifier code can import a stable name without depending on the Settings
+# instance shape.
+KINDPOS_LICENSE_PUBLIC_KEY = settings.license_public_key

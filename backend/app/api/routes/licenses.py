@@ -4,7 +4,6 @@ License Management Routes
 Handles license activation and status checking.
 """
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -35,8 +34,6 @@ else:
     LICENSE_FILE = "/home/kindpos/data/license.json"
 
 WORKER_URL = "https://kindpos.com/api/activate"
-CHECKIN_URL = "https://kindpos.com/api/checkin"
-CHECKIN_INTERVAL_S = 3600  # 60 minutes
 
 
 def get_lan_ip() -> str:
@@ -106,53 +103,6 @@ def _read_license_file() -> Optional[dict]:
     except Exception as e:
         _log.warning(f"Could not read license file: {e}")
         return None
-
-
-async def _perform_checkin() -> None:
-    """Send periodic checkin to kindpos.com if license is active."""
-    if DEMO_MODE:
-        return
-
-    license_data = _read_license_file()
-    if not license_data:
-        return
-
-    license_key = license_data.get("license_key")
-    if not license_key:
-        return
-
-    try:
-        fingerprint = _get_hardware_fingerprint()
-        ip = get_lan_ip()
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                CHECKIN_URL,
-                json={
-                    "license_key": license_key,
-                    "hardware_fingerprint": fingerprint,
-                    "ip": ip,
-                },
-                timeout=5.0
-            )
-        _log.debug(f"License checkin: {resp.status_code}")
-    except Exception as e:
-        _log.debug(f"License checkin failed (non-fatal): {e}")
-
-
-async def start_license_checkin_loop() -> asyncio.Task:
-    """Start the periodic license checkin background task."""
-    async def _checkin_loop():
-        while True:
-            try:
-                await _perform_checkin()
-                await asyncio.sleep(CHECKIN_INTERVAL_S)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                _log.debug(f"Checkin loop error (non-fatal): {e}")
-
-    return asyncio.create_task(_checkin_loop())
 
 
 class ActivateLicenseRequest(BaseModel):
