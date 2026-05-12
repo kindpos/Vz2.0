@@ -10,6 +10,11 @@ import {
     field, numberField, checkboxChip, chipGroup,
     button, openModal, showToast,
 } from '../ui/forms.js';
+import {
+    startScan,
+    buildTerminalAssignmentChips,
+    openSaveDeviceDialog,
+} from '../hardware/shared.js';
 
 /* ─── TERMINAL COLORS ──────────────────────────────────────────── */
 const TERM_COLORS = [T.greenWarm, T.cyan, T.gold, T.verm, T.lavender];
@@ -243,6 +248,90 @@ const openDeviceModal = (device, deviceType, onSaved) => {
     content.appendChild(ipF.wrap);
     content.appendChild(portF.wrap);
 
+    // ── Role chip group ──────────────────────────────────────────
+    const ROLE_OPTIONS = [
+        { id: 'receipt',     label: 'Receipt' },
+        { id: 'kitchen',     label: 'Kitchen' },
+        { id: 'card_reader', label: 'Card Reader' },
+    ];
+
+    let currentRole;
+    if (device?.role === 'receipt' || device?.role === 'kitchen' || device?.role === 'card_reader') {
+        currentRole = device.role;
+    } else if (device?.type === 'card_reader') {
+        currentRole = 'card_reader';
+    } else {
+        currentRole = 'receipt';
+    }
+
+    const roleLabel = document.createElement('div');
+    roleLabel.textContent = 'Role';
+    roleLabel.style.cssText = `font-size: 14px; color: ${T.textMuted}; font-weight: 600;`;
+    content.appendChild(roleLabel);
+
+    const roleChips = chipGroup({
+        options: ROLE_OPTIONS,
+        selected: [currentRole],
+        mode: 'single',
+    });
+    content.appendChild(roleChips.wrap);
+
+    // ── Terminal assignment (receipt + card_reader) ──────────────
+    const selectedTerminalIds = new Set(
+        Array.isArray(device?.terminal_ids) ? device.terminal_ids : []
+    );
+
+    const termSection = document.createElement('div');
+    termSection.style.cssText = `display: flex; flex-direction: column; gap: 8px;`;
+    const termSectionLabel = document.createElement('div');
+    termSectionLabel.textContent = 'Assigned Terminals';
+    termSectionLabel.style.cssText = `font-size: 14px; color: ${T.textMuted}; font-weight: 600;`;
+    termSection.appendChild(termSectionLabel);
+    const termChips = buildTerminalAssignmentChips(
+        _state.terminals,
+        selectedTerminalIds,
+        () => { /* set mutated in place */ }
+    );
+    termSection.appendChild(termChips);
+    content.appendChild(termSection);
+
+    // ── Categories (kitchen) ─────────────────────────────────────
+    const catF = field({
+        label: 'Categories (comma-separated; blank = ALL)',
+        id: 'hwn-dev-cats',
+        value: (device?.categories === 'ALL' ? '' : (device?.categories || '')),
+        placeholder: 'apps, entrees',
+    });
+    content.appendChild(catF.wrap);
+
+    // ── register_id (card_reader) ────────────────────────────────
+    const regF = field({
+        label: 'SPIn Register ID',
+        id: 'hwn-dev-reg',
+        value: device?.register_id || '',
+        placeholder: 'REG-001',
+    });
+    content.appendChild(regF.wrap);
+
+    // ── Show/hide conditional sections based on role ─────────────
+    const refreshConditional = () => {
+        termSection.style.display =
+            (currentRole === 'receipt' || currentRole === 'card_reader') ? 'flex' : 'none';
+        catF.wrap.style.display = (currentRole === 'kitchen') ? '' : 'none';
+        regF.wrap.style.display = (currentRole === 'card_reader') ? '' : 'none';
+    };
+    refreshConditional();
+
+    // chipGroup mutates its internal state on click — poll after the click
+    // bubbles to the wrapper to detect the new selection and refresh.
+    roleChips.wrap.addEventListener('click', () => {
+        const sel = roleChips.getSelected()[0];
+        if (sel && sel !== currentRole) {
+            currentRole = sel;
+            refreshConditional();
+        }
+    });
+
     let modalRef = null;
     const saveBtn = button({
         label: 'Save',
@@ -259,6 +348,10 @@ const openDeviceModal = (device, deviceType, onSaved) => {
                         type: device?.type || deviceType,
                         ip: ipF.input.value.trim(),
                         port: parseInt(portF.input.value, 10) || 9100,
+                        role: currentRole,
+                        terminal_ids: [...selectedTerminalIds],
+                        categories: catF.input.value.trim(),
+                        register_id: regF.input.value.trim(),
                     }),
                 });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -728,6 +821,63 @@ const buildGroupCard = (title, devices, deviceType, icon) => {
     return card;
 };
 
+/* ─── DISCOVERED DEVICES PANEL ─────────────────────────────────── */
+function buildDiscoveredDevicesPanel() {
+    const devices = _state.discoveredDevices;
+    if (!devices.length) return null;
+
+    const panel = document.createElement('div');
+    panel.style.cssText = `margin-top:16px; display:flex;
+      flex-direction:column; gap:8px;`;
+
+    const heading = document.createElement('div');
+    heading.textContent = 'DISCOVERED DEVICES';
+    heading.style.cssText = `font:600 11px/1 'JetBrains Mono',
+      monospace; color:${T.moon}; letter-spacing:0.08em;
+      padding:0 4px;`;
+    panel.appendChild(heading);
+
+    devices.forEach(device => {
+        const row = document.createElement('div');
+        row.style.cssText = `display:flex; align-items:center;
+          justify-content:space-between; padding:8px 12px;
+          background:${T.card}; border-radius:6px;`;
+
+        const info = document.createElement('div');
+        info.innerHTML = `
+          <div style="font:600 13px/1 'JetBrains Mono',monospace;
+            color:${T.text}">${device.name || device.mac || '—'}</div>
+          <div style="font:11px/1.4 'JetBrains Mono',monospace;
+            color:${T.moon}">${device.ip || ''} · ${device.type || ''}</div>`;
+        row.appendChild(info);
+
+        const addBtn = document.createElement('button');
+        addBtn.textContent = 'ADD';
+        addBtn.style.cssText = `padding:4px 14px;
+          background:${T.green}; color:${T.bg};
+          border:none; border-radius:20px;
+          font:700 11px/1 'JetBrains Mono',monospace;
+          cursor:pointer; pointer-events:auto;
+          touch-action:manipulation;`;
+        addBtn.addEventListener('click', () => {
+            openSaveDeviceDialog({
+                device,
+                terminals: _state.terminals,
+                onSaved: async () => {
+                    _state.discoveredDevices =
+                        _state.discoveredDevices.filter(d => d !== device);
+                    await loadData();
+                    rebuild();
+                },
+                onCancel: () => {},
+            });
+        });
+        row.appendChild(addBtn);
+        panel.appendChild(row);
+    });
+    return panel;
+}
+
 /* ─── STATUS BAR ────────────────────────────────────────────────── */
 const buildStatusBar = () => {
     const bar = document.createElement('div');
@@ -782,45 +932,33 @@ const buildStatusBar = () => {
 };
 
 /* ─── NETWORK SCAN ─────────────────────────────────────────────── */
-const startNetworkScan = async (targetIp = null) => {
+function startNetworkScan(targetIp) {
+    if (_state.isScanning) return;
     _state.isScanning = true;
     _state.discoveredDevices = [];
     rebuild();
-
     if (_state.scanEventSource) {
         _state.scanEventSource.close();
     }
-
-    try {
-        const url = targetIp
-            ? `/api/v1/hardware/scan/stream?ip=${encodeURIComponent(targetIp)}`
-            : '/api/v1/hardware/scan/stream';
-        _state.scanEventSource = new EventSource(url);
-
-        _state.scanEventSource.onmessage = (e) => {
-            try {
-                const msg = JSON.parse(e.data);
-                if (msg.event !== 'device') return;
-                _state.discoveredDevices.push(msg);
-                rebuild();
-            } catch (err) {
-                console.error('[HardwareNetwork] Parse error:', err);
-            }
-        };
-
-        _state.scanEventSource.onerror = () => {
-            _state.scanEventSource.close();
-            _state.scanEventSource = null;
-            _state.isScanning = false;
-            showToast(`Scan complete — ${_state.discoveredDevices.length} devices found`, 'success');
+    _state.scanEventSource = startScan({
+        targetIp,
+        onStart:      (msg) => { /* optional: log */ },
+        onDevice:     (msg) => {
+            _state.discoveredDevices.push(msg);
             rebuild();
-        };
-    } catch (e) {
-        _state.isScanning = false;
-        showToast(`Scan failed: ${e.message}`, 'error');
-        rebuild();
-    }
-};
+        },
+        onDiagnostic: (msg) => showToast(msg.message || ''),
+        onComplete:   ()    => {
+            _state.isScanning = false;
+            showToast(`Scan complete — ${_state.discoveredDevices.length} devices found`);
+            rebuild();
+        },
+        onError:      (msg) => {
+            _state.isScanning = false;
+            rebuild();
+        },
+    });
+}
 
 /* ─── RENDER ────────────────────────────────────────────────────── */
 const rebuild = () => {
@@ -862,6 +1000,12 @@ const rebuild = () => {
     groupGrid.appendChild(buildGroupCard('Receipt Settings', [], 'settings', '⚙'));
 
     main.appendChild(groupGrid);
+
+    const discoveredPanel = buildDiscoveredDevicesPanel();
+    if (discoveredPanel) {
+        const mainEl = _state.container.querySelector('[data-hwn-main]');
+        if (mainEl) mainEl.appendChild(discoveredPanel);
+    }
 
     const svgContainer = document.createElement('div');
     svgContainer.style.cssText = `
