@@ -36,73 +36,20 @@ export function currentUser() {
   return _user;
 }
 
-/**
- * Probe the server for the current session. Returns the user object on
- * success, null on 401 (no session), and throws on transport or 5xx
- * errors so the bootstrap can distinguish "not logged in" from "server
- * unreachable" and surface them differently.
- */
 export async function probeAuth() {
-  let resp;
-  try {
-    resp = await fetch(ENDPOINTS.me, {
-      method: 'GET',
-      credentials: 'include',
-      headers: { 'Accept': 'application/json' },
-    });
-  } catch (e) {
-    throw new Error(`probeAuth: network error: ${e && e.message ? e.message : e}`);
-  }
-  if (resp.status === 401) {
-    _setUser(null);
-    return null;
-  }
-  if (!resp.ok) {
-    throw new Error(`probeAuth: unexpected status ${resp.status}`);
-  }
-  const body = await resp.json();
-  return _setUser(body);
+  // Auth removed — local-first POS, no login required
+  const user = {
+    user_id: 'local',
+    email: 'local',
+    role: 'store_admin',
+    must_change_password: false,
+  };
+  _setUser(user);
+  return user;
 }
 
-/**
- * POST credentials. Returns:
- *   { ok: true,  user }                                    on 200
- *   { ok: false, status: 401 }                             on bad creds
- *   { ok: false, status: 423 }                             on disabled account
- *   { ok: false, status: 429, retryAfter: <seconds|null> } on rate limit
- *   { ok: false, status: 0,   error: 'network' }           on transport failure
- *   { ok: false, status: <other> }                         on anything else
- */
-export async function login(email, password) {
-  let resp;
-  try {
-    resp = await fetch(ENDPOINTS.login, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    });
-  } catch (e) {
-    return { ok: false, status: 0, error: 'network' };
-  }
-  if (resp.ok) {
-    const body = await resp.json();
-    _setUser(body);
-    return { ok: true, user: body };
-  }
-  if (resp.status === 429) {
-    const ra = resp.headers.get('Retry-After');
-    const parsed = ra != null ? parseInt(ra, 10) : null;
-    return {
-      ok: false,
-      status: 429,
-      retryAfter: Number.isFinite(parsed) && parsed > 0 ? parsed : null,
-    };
-  }
-  return { ok: false, status: resp.status };
+export async function login() {
+  return { ok: true, user: currentUser() };
 }
 
 /**
@@ -152,22 +99,8 @@ export async function changePassword(currentPassword, newPassword) {
   return { ok: false, status: resp.status };
 }
 
-/**
- * Server-side session revoke + clear in-memory state. Best-effort —
- * a network failure here doesn't leave the user "logged in" from the
- * UI's perspective; the cookie may persist in the browser until it
- * expires server-side, but the in-memory user is gone either way.
- */
 export async function logout() {
-  try {
-    await fetch(ENDPOINTS.logout, {
-      method: 'POST',
-      credentials: 'include',
-    });
-  } catch (e) {
-    /* swallow — clear local state anyway */
-  }
-  _setUser(null);
+  return;
 }
 
 // Test-only escape hatch (not exported as part of the public API contract
