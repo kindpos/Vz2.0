@@ -20,7 +20,14 @@ import {
 const TERM_COLORS = [T.greenWarm, T.cyan, T.gold, T.verm, T.lavender];
 
 const getTerminalColor = (terminalId) => {
-    const idx = parseInt(terminalId.replace('T-', ''), 10) - 1;
+    let idx;
+    const tMatch = /^T-(\d+)$/.exec(terminalId || '');
+    if (tMatch) {
+        idx = parseInt(tMatch[1], 10) - 1;
+    } else {
+        idx = _state.terminals.findIndex(t => t.terminal_id === terminalId);
+        if (idx < 0) idx = 0;
+    }
     return TERM_COLORS[Math.max(0, idx % TERM_COLORS.length)];
 };
 

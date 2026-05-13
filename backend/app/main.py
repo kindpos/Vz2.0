@@ -318,6 +318,15 @@ async def lifespan(app: FastAPI):
                     (license_key, license_key, activated_at,
                      "KINDpos Server", "127.0.0.1", fp),
                 )
+                async with db.execute(
+                    "SELECT COUNT(*) FROM terminals"
+                ) as ccur:
+                    crow = await ccur.fetchone()
+                if crow and crow[0] == 1:
+                    await db.execute(
+                        "UPDATE terminals SET is_hub = 1 WHERE terminal_id = ?",
+                        (license_key,),
+                    )
                 await db.commit()
                 settings.terminal_id = await _load_terminal_id_from_db()
                 print(f"Server self-registered as terminal: {settings.terminal_id}")
