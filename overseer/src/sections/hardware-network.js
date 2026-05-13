@@ -62,6 +62,28 @@ const resetState = () => {
     };
 };
 
+/* ─── DEVICE HEALTH CACHE ─────────────────────────────────────
+   Keyed by MAC. `undefined` = unknown (pre-first-poll, render
+   the dot in T.border). Refreshed every 30s by fetchDeviceHealth.
+*/
+const deviceHealthCache = new Map();
+let _healthInterval = null;
+
+const fetchDeviceHealth = async () => {
+    try {
+        const resp = await fetchWithTimeout('/api/v1/hardware/devices/health');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const now = Date.now();
+        for (const d of data) {
+            deviceHealthCache.set(d.mac, { online: d.online, checkedAt: now });
+        }
+        if (_state.container) rebuild();
+    } catch (e) {
+        // silent — next interval retries; never disrupts the UI
+    }
+};
+
 /* ─── FETCH & LOAD ───────────────────────────────────────────── */
 const loadData = async () => {
     try {
@@ -107,6 +129,8 @@ const loadData = async () => {
             minute: '2-digit',
             hour12: false,
         });
+
+        fetchDeviceHealth();
     } catch (e) {
         showToast(`Failed to load hardware data: ${e.message}`, 'error');
         console.error('[HardwareNetwork] Load error:', e);
@@ -722,6 +746,22 @@ const buildDeviceCard = (device, deviceType) => {
         card.style.boxShadow = '';
     });
 
+    const health = deviceHealthCache.get(device.mac);
+    let dotColor;
+    if (!health) dotColor = T.border;
+    else if (health.online) dotColor = T.green;
+    else dotColor = T.verm;
+
+    const dot = document.createElement('div');
+    dot.style.cssText = `
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: ${dotColor};
+        margin: 0 auto 4px;
+    `;
+    card.appendChild(dot);
+
     const emoji = document.createElement('div');
     emoji.style.cssText = `font-size: 20px; margin-bottom: 4px;`;
     emoji.textContent = deviceType === 'printer' ? '🖨' : '💳';
@@ -1094,10 +1134,17 @@ export async function mount(container) {
     await loadData();
     rebuild();
 
+    if (_healthInterval) clearInterval(_healthInterval);
+    _healthInterval = setInterval(fetchDeviceHealth, 30000);
+
     return () => {
         if (_state.scanEventSource) {
             _state.scanEventSource.close();
             _state.scanEventSource = null;
+        }
+        if (_healthInterval) {
+            clearInterval(_healthInterval);
+            _healthInterval = null;
         }
         resetState();
     };
@@ -1106,6 +1153,10 @@ export async function mount(container) {
 export function cleanupHardwareNetwork(container) {
     if (_state.scanEventSource) {
         _state.scanEventSource.close();
+    }
+    if (_healthInterval) {
+        clearInterval(_healthInterval);
+        _healthInterval = null;
     }
     resetState();
 }

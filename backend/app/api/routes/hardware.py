@@ -810,6 +810,52 @@ async def list_devices():
             return rows
 
 
+@router.get("/devices/health", dependencies=[Depends(require_manager)])
+async def devices_health():
+    """Live reachability for all saved devices.
+
+    Parallel-probes each device's stored IP:port with a 1.5s TCP
+    connect. The whole gather is bounded by a 2.0s hard cap; any
+    probe that misses the budget is reported online=False rather
+    than blocking the response.
+    """
+    await _ensure_db()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT mac, ip, port, role, name FROM devices WHERE is_active = 1"
+        ) as cur:
+            rows = [dict(r) async for r in cur]
+
+    if not rows:
+        return []
+
+    loop = asyncio.get_running_loop()
+    probes = [
+        loop.run_in_executor(None, _tcp_probe, r['ip'], r['port'], 1.5)
+        for r in rows
+    ]
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*probes, return_exceptions=True),
+            timeout=2.0,
+        )
+    except asyncio.TimeoutError:
+        results = [False] * len(rows)
+
+    return [
+        {
+            'mac':    r['mac'],
+            'ip':     r['ip'],
+            'port':   r['port'],
+            'role':   r['role'],
+            'name':   r['name'],
+            'online': bool(res) if not isinstance(res, BaseException) else False,
+        }
+        for r, res in zip(rows, results)
+    ]
+
+
 def _parse_categories(raw: str) -> list[str]:
     return [c.strip() for c in (raw or "").split(",") if c.strip()]
 
