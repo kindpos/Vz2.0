@@ -263,7 +263,7 @@ const openTerminalModal = (terminal, onSaved) => {
 const openDeviceModal = (device, deviceType, onSaved) => {
     const isEdit = !!device;
     const content = document.createElement('div');
-    content.style.cssText = `display: flex; flex-direction: column; gap: 16px;`;
+    content.style.cssText = `display: flex; flex-direction: column; gap: 16px; font-family: ${T.fb};`; // modal root container font — every child inherits
 
     const nameF = field({
         label: 'Name',
@@ -423,6 +423,9 @@ const openDeviceModal = (device, deviceType, onSaved) => {
             catChipsWrap.style.display = 'none';
         }
     };
+    // Full rebuild only on initial mount and when categories data loads.
+    // Per-chip clicks repaint just the clicked chip — no DOM teardown —
+    // and stopPropagation prevents bubbling into ancestor toggle regions.
     const renderCatChips = () => {
         catChipsWrap.innerHTML = '';
         if (menuCategoriesLoaded.length === 0) {
@@ -434,30 +437,42 @@ const openDeviceModal = (device, deviceType, onSaved) => {
         }
         menuCategoriesLoaded.forEach(cat => {
             const chip = document.createElement('div');
-            const active = selectedCategoryIds.has(cat.id);
             chip.textContent = cat.name;
-            chip.style.cssText = `
-                padding: 4px 10px; border-radius: 6px;
-                font-size: 11px; font-weight: 600;
-                cursor: pointer; user-select: none;
-                background: ${active ? withAlpha(T.green, 0.18) : T.card};
-                border: 1px solid ${active ? T.green : T.border};
-                color: ${active ? T.green : T.textMuted};
-                transition: all 0.12s;
-            `;
-            chip.addEventListener('click', () => {
+            const paintChip = () => {
+                const active = selectedCategoryIds.has(cat.id);
+                chip.style.cssText = `
+                    padding: 4px 10px; border-radius: 6px;
+                    font-size: 11px; font-weight: 600;
+                    cursor: pointer; user-select: none;
+                    background: ${active ? withAlpha(T.green, 0.18) : T.card};
+                    border: 1px solid ${active ? T.green : T.border};
+                    color: ${active ? T.green : T.textMuted};
+                    transition: all 0.12s;
+                `;
+            };
+            paintChip();
+            chip._paintChip = paintChip;
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
                 if (selectedCategoryIds.has(cat.id)) selectedCategoryIds.delete(cat.id);
                 else selectedCategoryIds.add(cat.id);
-                renderCatChips();
+                paintChip();
                 updateCatBadge();
             });
             catChipsWrap.appendChild(chip);
         });
     };
+    const refreshCatChipStyles = () => {
+        Array.from(catChipsWrap.children).forEach(c => {
+            if (typeof c._paintChip === 'function') c._paintChip();
+        });
+    };
     catHeader.addEventListener('click', () => {
         categoriesEnabled = !categoriesEnabled;
-        if (!categoriesEnabled) selectedCategoryIds.clear();
-        renderCatChips();
+        if (!categoriesEnabled) {
+            selectedCategoryIds.clear();
+            refreshCatChipStyles();
+        }
         updateCatToggle();
         updateCatBadge();
     });
