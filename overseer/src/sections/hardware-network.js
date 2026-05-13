@@ -17,7 +17,7 @@ import {
 } from '../hardware/shared.js';
 
 /* ─── TERMINAL COLORS ──────────────────────────────────────────── */
-const TERM_COLORS = [T.greenWarm, T.cyan, T.gold, T.verm, T.lavender];
+const TERM_COLORS = [T.greenUp, T.cyan, T.gold, T.verm, T.lavender];
 
 const getTerminalColor = (terminalId) => {
     let idx;
