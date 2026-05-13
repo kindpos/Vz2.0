@@ -292,6 +292,37 @@ async def lifespan(app: FastAPI):
     await diagnostic_collector.connect()
     set_diagnostic_collector(diagnostic_collector)
     await check_license_activation(app)
+    # Self-register this server in `terminals` so Overseer reports a row
+    # for license-file activations (which only write `server_license`).
+    # Idempotent via INSERT OR REPLACE, keyed by terminal_id = license_key.
+    try:
+        from app.services.hardware_fingerprint import get_hardware_fingerprint
+        import aiosqlite
+        await hardware._ensure_db()
+        async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+            async with db.execute(
+                "SELECT license_key, activated_at FROM server_license "
+                "WHERE id = 1 AND status = 'active'"
+            ) as cur:
+                row = await cur.fetchone()
+            if row:
+                license_key, activated_at = row
+                fp = get_hardware_fingerprint()
+                await db.execute(
+                    """
+                    INSERT OR REPLACE INTO terminals
+                        (terminal_id, auth_key_hash, activated_at, is_active,
+                         name, ip_address, mac_address, role, is_hub)
+                    VALUES (?, ?, ?, 1, ?, ?, ?, 'server', 0)
+                    """,
+                    (license_key, license_key, activated_at,
+                     "KINDpos Server", "127.0.0.1", fp),
+                )
+                await db.commit()
+                settings.terminal_id = await _load_terminal_id_from_db()
+                print(f"Server self-registered as terminal: {settings.terminal_id}")
+    except Exception as e:
+        logger.warning(f"Server terminal self-registration failed: {e}")
     print(f"DiagnosticCollector initialized at {diagnostic_db_path}")
 
     # Register mDNS service (kindpos.local) for network discovery

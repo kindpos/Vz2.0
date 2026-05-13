@@ -373,6 +373,16 @@ def _get_arp_hosts(prefix: str) -> List[dict]:
     except Exception as e:
         logger.warning(f"[SCANNER] ARP cache read failed: {e}")
 
+    # Dedup by IP — a multi-homed Pi (eth0 + wlan0) lists the same neighbor
+    # once per interface, which would otherwise yield N identical probe results.
+    seen_ips = set()
+    deduped = []
+    for h in hosts:
+        if h['ip'] not in seen_ips:
+            seen_ips.add(h['ip'])
+            deduped.append(h)
+    hosts = deduped
+
     logger.info(f"[SCANNER] ARP parse: {len(hosts)} host(s) matched prefix {prefix!r}")
     return hosts
 
@@ -711,6 +721,28 @@ async def scan_network_stream(
                     )
                     for r in results:
                         if r is not None:
+                            found_ips.add(r['ip'])
+                            yield _sse({**_annotate(r), 'event': 'device'})
+
+                # Step 3b: Supplemental TCP sweep of the rest of the /24 on
+                # PRINTER_PORTS only. Many thermal printers ignore broadcast
+                # ICMP so they never appear in ARP — without this pass, the
+                # ARP-success path silently drops them.
+                arp_ips = {h['ip'] for h in arp_hosts}
+                remaining_ips = [
+                    str(h) for h in ipaddress.ip_network(
+                        f"{prefix}.0/24", strict=False
+                    ).hosts()
+                    if str(h) not in arp_ips and str(h) not in found_ips
+                ]
+                if remaining_ips:
+                    supplemental = await asyncio.gather(
+                        *[_probe_host(ip, None, PRINTER_PORTS, 0.5)
+                          for ip in remaining_ips],
+                        return_exceptions=True,
+                    )
+                    for r in supplemental:
+                        if isinstance(r, dict):
                             found_ips.add(r['ip'])
                             yield _sse({**_annotate(r), 'event': 'device'})
 
@@ -1302,25 +1334,20 @@ class ProbeRequest(BaseModel):
 
 @router.post("/probe", dependencies=[Depends(require_manager)])
 async def probe_device(req: ProbeRequest):
-    """Probe a specific IP:port, identify device type, model, and MAC."""
-    ports_to_try = list(dict.fromkeys([req.port] + ALL_SCAN_PORTS))
+    """Probe a known IP across printer / card-reader / terminal ports.
+
+    Returns the raw _probe_host result on a match — caller decides whether
+    to POST /devices to persist. Raises 404 when no port responds; this
+    endpoint never writes to the devices table on its own.
+    """
+    ports_to_try = PRINTER_PORTS + CARD_READER_PORTS + TERMINAL_PORTS
     result = await _probe_host(req.ip, None, ports_to_try, DIRECT_TIMEOUT)
     if not result:
-        return {"found": False}
-
-    protocol_map = {
-        9100: "TM", 9101: "TM", 9102: "TM",
-        9000: "SPIn", 8443: "SPIn", 9443: "SPIn",
-    }
-    return {
-        "found": True,
-        "model": result.get("name", "Unknown Device"),
-        "mac": result.get("mac", ""),
-        "protocol": protocol_map.get(result.get("port"), "Unknown"),
-        "type": result.get("type", ""),
-        "port": result.get("port", req.port),
-        "ip": req.ip,
-    }
+        raise HTTPException(
+            status_code=404,
+            detail=f"No device found at {req.ip}",
+        )
+    return result
 
 
 class TestConnectionRequest(BaseModel):
