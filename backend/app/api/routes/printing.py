@@ -4,6 +4,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -11,6 +12,7 @@ from pathlib import Path
 
 import aiosqlite
 
+from ...config import settings
 from ..dependencies import get_ledger, get_print_dispatcher, get_printer_manager
 from ...core.event_ledger import EventLedger
 from ...models.diagnostic_event import DiagnosticCategory, DiagnosticSeverity
@@ -39,6 +41,18 @@ print_queue = PrintJobQueue()
 # Note: In production, PrintContextBuilder would be injected with the ledger
 
 _logger = logging.getLogger(__name__)
+
+
+def _store_now() -> datetime:
+    """Return wall-clock time in the configured store timezone, falling
+    back to UTC if the host lacks IANA tzdata (e.g. Windows without the
+    `tzdata` package). The resolver only cares about HH:MM + weekday,
+    so UTC is correct as a last-resort default; deployments that need
+    accurate local-time rules should `pip install tzdata`."""
+    try:
+        return datetime.now(ZoneInfo(settings.store_tz))
+    except ZoneInfoNotFoundError:
+        return datetime.now(timezone.utc)
 
 
 async def _fetch_routing_rules(printer_mac: str) -> list[dict]:
@@ -212,7 +226,9 @@ async def print_receipt(
             # filter, so we ignore winning_rule.category_id here.
             rules = await _fetch_routing_rules(printer_mac)
             winning_rule = resolve_routing_rule(
-                rules, category_id="", now=datetime.utcnow()
+                rules,
+                category_id="",
+                now=_store_now(),
             )
             dispatch_printer = printer
             if winning_rule:
@@ -446,7 +462,9 @@ async def print_ticket(
             # request-for-the-original-printer share a dedup row.
             rules = await _fetch_routing_rules(printer_mac)
             winning_rule = resolve_routing_rule(
-                rules, category_id="", now=datetime.utcnow()
+                rules,
+                category_id="",
+                now=_store_now(),
             )
             dispatch_printer = printer
             station_categories: Optional[list] = None

@@ -392,6 +392,23 @@ class PrinterManager:
     # PRINTER RESOLUTION — Find the right printer
     # =================================================================
 
+    def get_printer_by_mac(self, mac: str) -> Optional[BasePrinter]:
+        """Return the registered printer adapter for a given MAC,
+        or None if not registered. Matches against either a `.mac`
+        attribute on the adapter or its `printer_id` (production
+        convention is printer_id = MAC for network adapters).
+        """
+        target = (mac or "").upper().strip()
+        if not target:
+            return None
+        for printer in self._printers.values():
+            adapter_mac = getattr(printer, 'mac', None)
+            if adapter_mac and adapter_mac.upper().strip() == target:
+                return printer
+            if (printer.printer_id or "").upper().strip() == target:
+                return printer
+        return None
+
     def _resolve_printer(self, job: PrintJob) -> Optional[BasePrinter]:
         """
         Find the best printer for this job.

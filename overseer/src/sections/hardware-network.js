@@ -190,17 +190,11 @@ const openTerminalModal = (terminal, onSaved) => {
         mode: 'single',
     });
 
-    const trainingChip = checkboxChip({
-        label: 'Training Mode',
-        checked: terminal?.training_mode || false,
-    });
-
     content.appendChild(nameF.wrap);
     content.appendChild(document.createElement('div'));
     content.lastChild.textContent = 'Role';
     content.lastChild.style.cssText = `font-size: 14px; color: ${T.textMuted}; font-weight: 600;`;
     content.appendChild(roleChips.wrap);
-    content.appendChild(trainingChip.wrap);
 
     let modalRef = null;
     const saveBtn = button({
@@ -209,32 +203,48 @@ const openTerminalModal = (terminal, onSaved) => {
         onClick: async () => {
             const name = nameF.input.value.trim();
             const role = roleChips.getSelected()[0] || 'register';
-            const training = trainingChip.input.checked;
 
             if (!name) {
                 showToast('Name is required', 'error');
                 return;
             }
 
+            if (!isEdit) {
+                // Add-flow is unreachable today (no caller passes a null
+                // terminal). Keep this branch as a guard so we don't try
+                // to PUT against an empty terminal_id.
+                showToast('Terminal add is not supported from this UI', 'error');
+                return;
+            }
+
+            const originalLabel = saveBtn.textContent;
             saveBtn.disabled = true;
+            saveBtn.textContent = 'SAVING…';
 
             try {
-                const result = await pushChanges([{
-                    event_type: isEdit ? 'terminal.updated' : 'terminal.registered',
-                    payload: {
-                        terminal_id: terminal?.terminal_id,
-                        name,
-                        role,
-                        training_mode: training,
-                    },
-                }]);
-                if (!result.ok) throw new Error('Push failed');
-                showToast(`Terminal ${isEdit ? 'updated' : 'added'}`);
+                const res = await fetchWithTimeout(
+                    `/api/v1/hardware/terminals/${terminal.terminal_id}`,
+                    {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, role }),
+                    }
+                );
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    const detail = err.detail?.message || err.detail || err.message || `HTTP ${res.status}`;
+                    showToast(`Save failed: ${detail}`, 'error');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = originalLabel;
+                    return;
+                }
+                showToast('Terminal updated');
                 modalRef.close();
                 onSaved();
             } catch (e) {
-                showToast('Failed to save terminal', 'error');
+                showToast(`Failed to save terminal: ${e.message}`, 'error');
                 saveBtn.disabled = false;
+                saveBtn.textContent = originalLabel;
             }
         },
     });
@@ -326,14 +336,591 @@ const openDeviceModal = (device, deviceType, onSaved) => {
     termSection.appendChild(termChips);
     content.appendChild(termSection);
 
-    // ── Categories (kitchen) ─────────────────────────────────────
-    const catF = field({
-        label: 'Categories (comma-separated; blank = ALL)',
-        id: 'hwn-dev-cats',
-        value: (device?.categories === 'ALL' ? '' : (device?.categories || '')),
-        placeholder: 'apps, entrees',
+    // ── Categories (kitchen) — toggle + chip multi-select ────────
+    const initialCategoriesCsv = (device?.categories === 'ALL' ? '' : (device?.categories || ''));
+    const selectedCategoryIds = new Set(
+        initialCategoriesCsv.split(',').map(s => s.trim()).filter(Boolean)
+    );
+    let categoriesEnabled = selectedCategoryIds.size > 0;
+    let menuCategoriesLoaded = [];
+
+    const catSection = document.createElement('div');
+    catSection.style.cssText = `display: flex; flex-direction: column; gap: 10px;`;
+
+    const catHeader = document.createElement('div');
+    catHeader.style.cssText = `
+        display: flex; align-items: center; gap: 10px;
+        cursor: pointer; user-select: none;
+    `;
+
+    const catToggle = document.createElement('div');
+    catToggle.style.cssText = `
+        width: 34px; height: 18px; border-radius: 999px;
+        background: ${T.well}; border: 1px solid ${T.border};
+        position: relative; flex-shrink: 0;
+        transition: background 0.15s, border-color 0.15s;
+    `;
+    const catToggleKnob = document.createElement('div');
+    catToggleKnob.style.cssText = `
+        position: absolute; top: 2px; left: 2px;
+        width: 12px; height: 12px; border-radius: 50%;
+        background: ${T.textMuted};
+        transition: left 0.15s, background 0.15s;
+    `;
+    catToggle.appendChild(catToggleKnob);
+    catHeader.appendChild(catToggle);
+
+    const catTitle = document.createElement('div');
+    catTitle.textContent = 'CATEGORIES';
+    catTitle.style.cssText = `
+        flex: 1;
+        font-size: 11px; font-weight: 700;
+        color: ${T.textMuted}; letter-spacing: 1px;
+    `;
+    catHeader.appendChild(catTitle);
+
+    const catBadge = document.createElement('div');
+    catBadge.style.cssText = `
+        padding: 2px 10px; border-radius: 999px;
+        font-size: 10px; font-weight: 700;
+        transition: all 0.15s;
+    `;
+    catHeader.appendChild(catBadge);
+    catSection.appendChild(catHeader);
+
+    const catChipsWrap = document.createElement('div');
+    catChipsWrap.style.cssText = `display: flex; flex-wrap: wrap; gap: 6px;`;
+    catSection.appendChild(catChipsWrap);
+
+    const updateCatBadge = () => {
+        const count = selectedCategoryIds.size;
+        if (categoriesEnabled && count > 0) {
+            catBadge.textContent = `${count} selected`;
+            catBadge.style.background = withAlpha(T.green, 0.18);
+            catBadge.style.border = `1px solid ${T.green}`;
+            catBadge.style.color = T.green;
+        } else {
+            catBadge.textContent = 'All';
+            catBadge.style.background = T.well;
+            catBadge.style.border = `1px solid ${T.border}`;
+            catBadge.style.color = T.textMuted;
+        }
+    };
+    const updateCatToggle = () => {
+        if (categoriesEnabled) {
+            catToggle.style.background = withAlpha(T.green, 0.25);
+            catToggle.style.borderColor = T.green;
+            catToggleKnob.style.left = '18px';
+            catToggleKnob.style.background = T.green;
+            catTitle.style.color = T.green;
+            catChipsWrap.style.display = 'flex';
+        } else {
+            catToggle.style.background = T.well;
+            catToggle.style.borderColor = T.border;
+            catToggleKnob.style.left = '2px';
+            catToggleKnob.style.background = T.textMuted;
+            catTitle.style.color = T.textMuted;
+            catChipsWrap.style.display = 'none';
+        }
+    };
+    const renderCatChips = () => {
+        catChipsWrap.innerHTML = '';
+        if (menuCategoriesLoaded.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.cssText = `font-size: 11px; color: ${T.textMuted};`;
+            empty.textContent = 'No categories loaded';
+            catChipsWrap.appendChild(empty);
+            return;
+        }
+        menuCategoriesLoaded.forEach(cat => {
+            const chip = document.createElement('div');
+            const active = selectedCategoryIds.has(cat.id);
+            chip.textContent = cat.name;
+            chip.style.cssText = `
+                padding: 4px 10px; border-radius: 6px;
+                font-size: 11px; font-weight: 600;
+                cursor: pointer; user-select: none;
+                background: ${active ? withAlpha(T.green, 0.18) : T.card};
+                border: 1px solid ${active ? T.green : T.border};
+                color: ${active ? T.green : T.textMuted};
+                transition: all 0.12s;
+            `;
+            chip.addEventListener('click', () => {
+                if (selectedCategoryIds.has(cat.id)) selectedCategoryIds.delete(cat.id);
+                else selectedCategoryIds.add(cat.id);
+                renderCatChips();
+                updateCatBadge();
+            });
+            catChipsWrap.appendChild(chip);
+        });
+    };
+    catHeader.addEventListener('click', () => {
+        categoriesEnabled = !categoriesEnabled;
+        if (!categoriesEnabled) selectedCategoryIds.clear();
+        renderCatChips();
+        updateCatToggle();
+        updateCatBadge();
     });
-    content.appendChild(catF.wrap);
+    updateCatToggle();
+    updateCatBadge();
+    renderCatChips();
+    content.appendChild(catSection);
+
+    const getCategoriesCSV = () => (
+        (categoriesEnabled && selectedCategoryIds.size > 0)
+            ? [...selectedCategoryIds].join(',')
+            : ''
+    );
+
+    // ── Reroute Rules (kitchen + receipt) ────────────────────────
+    const rerouteSection = document.createElement('div');
+    rerouteSection.style.cssText = `display: flex; flex-direction: column; gap: 10px;`;
+
+    const rerouteHeader = document.createElement('div');
+    rerouteHeader.style.cssText = `
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 10px;
+    `;
+    const rerouteLabel = document.createElement('div');
+    rerouteLabel.textContent = 'REROUTE RULES';
+    rerouteLabel.style.cssText = `
+        font-size: 11px; font-weight: 700;
+        color: ${T.textMuted}; letter-spacing: 1px;
+    `;
+    rerouteHeader.appendChild(rerouteLabel);
+
+    const addRuleBtn = document.createElement('button');
+    addRuleBtn.type = 'button';
+    addRuleBtn.textContent = '+ ADD RULE';
+    addRuleBtn.style.cssText = `
+        background: transparent;
+        border: 1px solid ${T.green};
+        color: ${T.green};
+        padding: 4px 12px; border-radius: 999px;
+        font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+        cursor: pointer;
+    `;
+    rerouteHeader.appendChild(addRuleBtn);
+    rerouteSection.appendChild(rerouteHeader);
+
+    const ruleListWrap = document.createElement('div');
+    ruleListWrap.style.cssText = `display: flex; flex-direction: column; gap: 8px;`;
+    rerouteSection.appendChild(ruleListWrap);
+    content.appendChild(rerouteSection);
+
+    const ruleCards = []; // { wrap, getRule }
+
+    const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+    const buildRuleCard = (rule) => {
+        const state = {
+            enabled: rule.is_active !== 0 && rule.is_active !== false,
+            days: new Set(Array.isArray(rule.days_of_week)
+                ? rule.days_of_week
+                : (() => { try { return JSON.parse(rule.days_of_week || '[]'); } catch { return []; } })()),
+            timeFrom: rule.time_from || '',
+            timeTo: rule.time_to || '',
+            categoryId: rule.category_id || '',
+            redirectToMac: rule.redirect_to_mac || '',
+            overrideActive: !!(rule.override_active),
+        };
+
+        const card = document.createElement('div');
+        card.style.cssText = `
+            background: ${T.card};
+            border: 1px solid ${state.enabled ? T.elec : T.border};
+            border-radius: 8px;
+            padding: 10px 12px;
+            display: flex; flex-direction: column; gap: 10px;
+            transition: border-color 0.15s;
+        `;
+
+        // Header row
+        const head = document.createElement('div');
+        head.style.cssText = `display: flex; align-items: center; gap: 10px;`;
+
+        const enableToggle = document.createElement('div');
+        enableToggle.style.cssText = `
+            width: 30px; height: 16px; border-radius: 999px;
+            position: relative; flex-shrink: 0; cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        `;
+        const enableKnob = document.createElement('div');
+        enableKnob.style.cssText = `
+            position: absolute; top: 2px;
+            width: 10px; height: 10px; border-radius: 50%;
+            transition: left 0.15s, background 0.15s;
+        `;
+        enableToggle.appendChild(enableKnob);
+        head.appendChild(enableToggle);
+
+        const summary = document.createElement('div');
+        summary.style.cssText = `
+            flex: 1; font-size: 11px; font-weight: 600;
+        `;
+        head.appendChild(summary);
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.textContent = '✕';
+        delBtn.style.cssText = `
+            width: 22px; height: 22px; border-radius: 4px;
+            background: ${T.verm};
+            color: white;
+            border: none;
+            font-size: 11px; font-weight: 700; line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 2px 0 ${withAlpha(T.verm, 0.6)};
+        `;
+        delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            card.remove();
+            const idx = ruleCards.findIndex(rc => rc.wrap === card);
+            if (idx >= 0) ruleCards.splice(idx, 1);
+        });
+        head.appendChild(delBtn);
+
+        card.appendChild(head);
+
+        // Body (collapsed when disabled)
+        const body = document.createElement('div');
+        body.style.cssText = `display: flex; flex-direction: column; gap: 10px;`;
+        card.appendChild(body);
+
+        // ── Days row ──
+        const daysWrap = document.createElement('div');
+        daysWrap.style.cssText = `display: flex; gap: 4px; flex-wrap: wrap;`;
+        DAY_LABELS.forEach((label, idx) => {
+            const dayChip = document.createElement('div');
+            dayChip.textContent = label;
+            const renderDay = () => {
+                const active = state.days.has(idx);
+                dayChip.style.cssText = `
+                    padding: 4px 8px; border-radius: 6px;
+                    font-size: 10px; font-weight: 700;
+                    cursor: pointer; user-select: none;
+                    background: ${active ? withAlpha(T.elec, 0.18) : T.card};
+                    border: 1px solid ${active ? T.elec : T.border};
+                    color: ${active ? T.elec : T.moon || T.textMuted};
+                    transition: all 0.12s;
+                `;
+            };
+            dayChip.addEventListener('click', () => {
+                if (state.days.has(idx)) state.days.delete(idx);
+                else state.days.add(idx);
+                renderDay();
+                updateSummary();
+            });
+            renderDay();
+            daysWrap.appendChild(dayChip);
+        });
+        body.appendChild(daysWrap);
+
+        // ── Time row ──
+        const timeRow = document.createElement('div');
+        timeRow.style.cssText = `
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+        `;
+        const buildTimeInput = (initial, onChange) => {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
+            const input = document.createElement('input');
+            input.type = 'time';
+            input.value = initial || '';
+            input.style.cssText = `
+                background: ${T.well}; border: 1px solid ${T.border};
+                color: ${T.text};
+                padding: 6px 8px; border-radius: 4px;
+                font-size: 11px;
+            `;
+            input.addEventListener('input', () => onChange(input.value));
+            wrap.appendChild(input);
+            return { wrap, input };
+        };
+        const timeFromLabel = document.createElement('div');
+        timeFromLabel.textContent = 'From';
+        timeFromLabel.style.cssText = `font-size: 9px; color: ${T.textMuted}; font-weight: 700;`;
+        const timeToLabel = document.createElement('div');
+        timeToLabel.textContent = 'To';
+        timeToLabel.style.cssText = `font-size: 9px; color: ${T.textMuted}; font-weight: 700;`;
+        const fromCol = document.createElement('div');
+        fromCol.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
+        fromCol.appendChild(timeFromLabel);
+        const fromI = buildTimeInput(state.timeFrom, v => { state.timeFrom = v; updateSummary(); });
+        fromCol.appendChild(fromI.input);
+        const toCol = document.createElement('div');
+        toCol.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
+        toCol.appendChild(timeToLabel);
+        const toI = buildTimeInput(state.timeTo, v => { state.timeTo = v; updateSummary(); });
+        toCol.appendChild(toI.input);
+        timeRow.appendChild(fromCol);
+        timeRow.appendChild(toCol);
+        body.appendChild(timeRow);
+
+        // ── Category + Reroute target row ──
+        const selectRow = document.createElement('div');
+        selectRow.style.cssText = `
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+        `;
+        const buildSelect = (label, value, options, onChange) => {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
+            const lab = document.createElement('div');
+            lab.textContent = label;
+            lab.style.cssText = `font-size: 9px; color: ${T.textMuted}; font-weight: 700;`;
+            wrap.appendChild(lab);
+            const sel = document.createElement('select');
+            sel.style.cssText = `
+                background: ${T.well}; border: 1px solid ${T.border};
+                color: ${T.text};
+                padding: 6px 8px; border-radius: 4px;
+                font-size: 11px;
+            `;
+            options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.label;
+                if (opt.value === value) o.selected = true;
+                sel.appendChild(o);
+            });
+            sel.addEventListener('change', () => onChange(sel.value));
+            wrap.appendChild(sel);
+            return { wrap, sel };
+        };
+
+        // The category and reroute selects need menuCategoriesLoaded and
+        // saved printers. Build with current snapshot; refreshed on data load.
+        let catSel = null;
+        let rerouteSel = null;
+        const rebuildSelects = () => {
+            const catOpts = [
+                { value: '', label: '— all —' },
+                ...menuCategoriesLoaded.map(c => ({ value: c.id, label: c.name })),
+            ];
+            const printerOpts = [
+                { value: '', label: '— none —' },
+                ...(_state.printers || [])
+                    .filter(p => (p.role === 'kitchen' || p.role === 'receipt'))
+                    .filter(p => (p.mac || '').toUpperCase() !== (device?.mac || '').toUpperCase())
+                    .map(p => ({ value: p.mac, label: p.name || p.mac })),
+            ];
+            const oldCatWrap = catSel?.wrap;
+            const oldRerouteWrap = rerouteSel?.wrap;
+            catSel = buildSelect('Category', state.categoryId, catOpts,
+                v => { state.categoryId = v; updateSummary(); });
+            rerouteSel = buildSelect('Reroute To', state.redirectToMac, printerOpts,
+                v => { state.redirectToMac = v; updateSummary(); });
+            if (oldCatWrap) selectRow.replaceChild(catSel.wrap, oldCatWrap);
+            else selectRow.appendChild(catSel.wrap);
+            if (oldRerouteWrap) selectRow.replaceChild(rerouteSel.wrap, oldRerouteWrap);
+            else selectRow.appendChild(rerouteSel.wrap);
+        };
+        rebuildSelects();
+        body.appendChild(selectRow);
+
+        // ── Terminals row (UI-only; not persisted, schema has no column) ──
+        const termWrap = document.createElement('div');
+        termWrap.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
+        const termLab = document.createElement('div');
+        termLab.style.cssText = `font-size: 9px; color: ${T.textMuted}; font-weight: 700;`;
+        termLab.textContent = 'Terminals · blank = all';
+        termWrap.appendChild(termLab);
+        const termChipsRow = document.createElement('div');
+        termChipsRow.style.cssText = `display: flex; flex-wrap: wrap; gap: 4px;`;
+        const selectedTerms = new Set();
+        (_state.terminals || []).forEach(t => {
+            const chip = document.createElement('div');
+            chip.textContent = t.name || t.terminal_id;
+            const renderTerm = () => {
+                const active = selectedTerms.has(t.terminal_id);
+                chip.style.cssText = `
+                    padding: 3px 8px; border-radius: 6px;
+                    font-size: 10px; font-weight: 600;
+                    cursor: pointer; user-select: none;
+                    background: ${active ? withAlpha(T.green, 0.18) : T.card};
+                    border: 1px solid ${active ? T.green : T.border};
+                    color: ${active ? T.green : T.moon || T.textMuted};
+                `;
+            };
+            chip.addEventListener('click', () => {
+                if (selectedTerms.has(t.terminal_id)) selectedTerms.delete(t.terminal_id);
+                else selectedTerms.add(t.terminal_id);
+                renderTerm();
+            });
+            renderTerm();
+            termChipsRow.appendChild(chip);
+        });
+        termWrap.appendChild(termChipsRow);
+        body.appendChild(termWrap);
+
+        // ── Override row (separated) ──
+        const divider = document.createElement('div');
+        divider.style.cssText = `height: 1px; background: ${T.border};`;
+        body.appendChild(divider);
+
+        const overrideRow = document.createElement('div');
+        overrideRow.style.cssText = `
+            display: flex; align-items: center; gap: 10px;
+        `;
+        const ovToggle = document.createElement('div');
+        ovToggle.style.cssText = `
+            width: 30px; height: 16px; border-radius: 999px;
+            position: relative; cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        `;
+        const ovKnob = document.createElement('div');
+        ovKnob.style.cssText = `
+            position: absolute; top: 2px;
+            width: 10px; height: 10px; border-radius: 50%;
+            transition: left 0.15s, background 0.15s;
+        `;
+        ovToggle.appendChild(ovKnob);
+        const ovLabel = document.createElement('div');
+        ovLabel.textContent = 'Manual Override Now';
+        ovLabel.style.cssText = `flex: 1; font-size: 11px; font-weight: 600;`;
+        overrideRow.appendChild(ovToggle);
+        overrideRow.appendChild(ovLabel);
+        body.appendChild(overrideRow);
+
+        const ovBanner = document.createElement('div');
+        ovBanner.style.cssText = `
+            padding: 6px 10px; border-radius: 4px;
+            background: ${withAlpha(T.gold, 0.18)};
+            border: 1px solid ${T.gold};
+            color: ${T.gold};
+            font-size: 10px; font-weight: 700;
+            display: none; align-items: center; justify-content: space-between;
+            gap: 8px;
+        `;
+        const ovBannerText = document.createElement('span');
+        ovBannerText.textContent = '⚡ MANUAL OVERRIDE ACTIVE';
+        const ovClear = document.createElement('button');
+        ovClear.type = 'button';
+        ovClear.textContent = 'Clear';
+        ovClear.style.cssText = `
+            background: transparent; border: 1px solid ${T.gold};
+            color: ${T.gold};
+            padding: 2px 8px; border-radius: 4px;
+            font-size: 9px; font-weight: 700; cursor: pointer;
+        `;
+        ovBanner.appendChild(ovBannerText);
+        ovBanner.appendChild(ovClear);
+        body.appendChild(ovBanner);
+
+        const renderOverride = () => {
+            if (state.overrideActive) {
+                ovToggle.style.background = withAlpha(T.gold, 0.25);
+                ovToggle.style.borderColor = T.gold;
+                ovKnob.style.left = '16px';
+                ovKnob.style.background = T.gold;
+                ovLabel.style.color = T.gold;
+                ovBanner.style.display = 'flex';
+            } else {
+                ovToggle.style.background = T.well;
+                ovToggle.style.borderColor = T.border;
+                ovKnob.style.left = '2px';
+                ovKnob.style.background = T.textMuted;
+                ovLabel.style.color = T.text;
+                ovBanner.style.display = 'none';
+            }
+            updateSummary();
+        };
+        ovToggle.addEventListener('click', () => {
+            state.overrideActive = !state.overrideActive;
+            renderOverride();
+        });
+        ovClear.addEventListener('click', () => {
+            state.overrideActive = false;
+            renderOverride();
+        });
+        renderOverride();
+
+        // ── Summary line builder ──
+        function updateSummary() {
+            const parts = [];
+            const sortedDays = [...state.days].sort((a, b) => a - b);
+            if (sortedDays.length > 0 && sortedDays.length < 7) {
+                parts.push(sortedDays.map(d => DAY_LABELS[d]).join(','));
+            } else if (sortedDays.length === 7) {
+                parts.push('Daily');
+            }
+            if (state.timeFrom && state.timeTo) {
+                parts.push(`${state.timeFrom}–${state.timeTo}`);
+            }
+            const catName = state.categoryId
+                ? (menuCategoriesLoaded.find(c => c.id === state.categoryId)?.name || state.categoryId)
+                : 'All';
+            const targetPrinter = (_state.printers || []).find(
+                p => (p.mac || '').toUpperCase() === (state.redirectToMac || '').toUpperCase()
+            );
+            const targetName = targetPrinter?.name || state.redirectToMac || '—';
+            parts.push(`${catName} → ${targetName}`);
+            summary.textContent = parts.join(' · ');
+            summary.style.color = state.enabled
+                ? (state.overrideActive ? T.gold : T.cyan)
+                : (T.moon || T.textMuted);
+        }
+
+        // ── Enable toggle ──
+        const renderEnable = () => {
+            if (state.enabled) {
+                enableToggle.style.background = withAlpha(T.elec, 0.25);
+                enableToggle.style.borderColor = T.elec;
+                enableKnob.style.left = '16px';
+                enableKnob.style.background = T.elec;
+                body.style.display = 'flex';
+                card.style.borderColor = T.elec;
+            } else {
+                enableToggle.style.background = T.well;
+                enableToggle.style.borderColor = T.border;
+                enableKnob.style.left = '2px';
+                enableKnob.style.background = T.textMuted;
+                body.style.display = 'none';
+                card.style.borderColor = T.border;
+            }
+            updateSummary();
+        };
+        enableToggle.style.border = `1px solid ${T.border}`;
+        enableToggle.addEventListener('click', () => {
+            state.enabled = !state.enabled;
+            renderEnable();
+        });
+        renderEnable();
+        updateSummary();
+
+        const controller = {
+            wrap: card,
+            state,
+            rebuildSelects, // called when menuCategoriesLoaded changes
+            getRule: () => ({
+                rule_type: 'category',
+                category_id: state.categoryId,
+                days_of_week: JSON.stringify([...state.days].sort((a, b) => a - b)),
+                time_from: state.timeFrom,
+                time_to: state.timeTo,
+                redirect_to_mac: state.redirectToMac,
+                override_active: state.overrideActive ? 1 : 0,
+                override_expires_at: '',
+                priority: 0,
+                item_tag: '',
+            }),
+        };
+        ruleCards.push(controller);
+        return controller;
+    };
+
+    addRuleBtn.addEventListener('click', () => {
+        const ctrl = buildRuleCard({
+            is_active: 1,
+            days_of_week: '[1,2,3,4,5]',
+            time_from: '',
+            time_to: '',
+            category_id: '',
+            redirect_to_mac: '',
+            override_active: 0,
+        });
+        ruleListWrap.appendChild(ctrl.wrap);
+    });
 
     // ── register_id (card_reader) ────────────────────────────────
     const regF = field({
@@ -348,10 +935,38 @@ const openDeviceModal = (device, deviceType, onSaved) => {
     const refreshConditional = () => {
         termSection.style.display =
             (currentRole === 'receipt' || currentRole === 'card_reader') ? 'flex' : 'none';
-        catF.wrap.style.display = (currentRole === 'kitchen') ? '' : 'none';
+        catSection.style.display = (currentRole === 'kitchen') ? 'flex' : 'none';
+        rerouteSection.style.display =
+            (currentRole === 'kitchen' || currentRole === 'receipt') ? 'flex' : 'none';
         regF.wrap.style.display = (currentRole === 'card_reader') ? '' : 'none';
     };
     refreshConditional();
+
+    // ── Async: fetch menu categories ─────────────────────────────
+    fetchWithTimeout('/api/v1/config/menu/categories').then(async (resp) => {
+        if (!resp.ok) return;
+        const cats = await resp.json().catch(() => []);
+        menuCategoriesLoaded = (cats || []).map(c => ({
+            id: c.id,
+            name: c.name || c.id,
+        }));
+        renderCatChips();
+        ruleCards.forEach(rc => rc.rebuildSelects());
+    }).catch(() => {});
+
+    // ── Async: fetch existing routing rules for this device ─────
+    if (device?.mac) {
+        fetchWithTimeout(`/api/v1/hardware/devices/${device.mac}/routing`).then(async (resp) => {
+            if (!resp.ok) return;
+            const rules = await resp.json().catch(() => []);
+            (rules || [])
+                .filter(r => r.rule_type !== 'all')
+                .forEach(r => {
+                    const ctrl = buildRuleCard(r);
+                    ruleListWrap.appendChild(ctrl.wrap);
+                });
+        }).catch(() => {});
+    }
 
     // chipGroup mutates its internal state on click — poll after the click
     // bubbles to the wrapper to detect the new selection and refresh.
@@ -383,7 +998,7 @@ const openDeviceModal = (device, deviceType, onSaved) => {
                         port: parseInt(portF.input.value, 10) || 9100,
                         role: currentRole,
                         terminal_ids: [...selectedTerminalIds],
-                        categories: catF.input.value.trim(),
+                        categories: getCategoriesCSV(),
                         register_id: regF.input.value.trim(),
                     }),
                 });
@@ -395,6 +1010,32 @@ const openDeviceModal = (device, deviceType, onSaved) => {
                     saveBtn.textContent = originalLabel;
                     return;
                 }
+
+                // Persist reroute rules under the saved MAC. The device
+                // POST may have just minted a fresh row, so prefer the
+                // response's mac over the form value.
+                const saved = await res.json().catch(() => ({}));
+                const macForRouting = (saved.mac || device?.mac || '').toUpperCase();
+                if (macForRouting && (currentRole === 'kitchen' || currentRole === 'receipt')) {
+                    const rulesPayload = ruleCards.map(rc => rc.getRule());
+                    const rr = await fetchWithTimeout(
+                        `/api/v1/hardware/devices/${macForRouting}/routing`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(rulesPayload),
+                        }
+                    );
+                    if (!rr.ok) {
+                        const rerr = await rr.json().catch(() => ({}));
+                        const rd = rerr.detail?.message || rerr.detail || rerr.message || `HTTP ${rr.status}`;
+                        showToast(`Routing save failed: ${rd}`, 'error');
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = originalLabel;
+                        return;
+                    }
+                }
+
                 showToast('Device saved');
                 modalRef.close();
                 onSaved();
@@ -643,6 +1284,7 @@ const buildTerminalCard = (terminal) => {
         border-radius: 8px;
         text-align: center;
         cursor: pointer;
+        position: relative;
         transition: all 0.15s ease;
         ${isActive ? `box-shadow: 0 0 12px ${withAlpha(color, 0.4)};` : ''}
     `;
@@ -653,6 +1295,34 @@ const buildTerminalCard = (terminal) => {
     card.addEventListener('mouseleave', () => {
         if (!isActive) card.style.borderColor = T.border;
     });
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.textContent = 'EDIT';
+    editBtn.style.cssText = `
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: transparent;
+        border: 1.5px solid ${T.border};
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-family: ${T.fb};
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: ${T.moon};
+        cursor: pointer;
+        pointer-events: auto;
+        touch-action: manipulation;
+    `;
+    editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openTerminalModal(terminal, () => {
+            loadData().then(() => rebuild());
+        });
+    });
+    card.appendChild(editBtn);
 
     const dot = document.createElement('div');
     dot.style.cssText = `
@@ -706,12 +1376,6 @@ const buildTerminalCard = (terminal) => {
             _state.activeTerminalId = terminal.terminal_id;
         }
         rebuild();
-    });
-
-    card.addEventListener('dblclick', () => {
-        openTerminalModal(terminal, () => {
-            loadData().then(() => rebuild());
-        });
     });
 
     return card;

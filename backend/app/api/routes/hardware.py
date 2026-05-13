@@ -1084,9 +1084,11 @@ async def delete_device(
 async def list_terminals():
     """Return all active terminals from hardware_config.db.
 
-    Read-only registry. Rows are written only by the activation flow
-    (POST /api/v1/licenses/activate); there is no manual registration
-    endpoint by design — terminals self-register on license activation.
+    Rows are first written by the activation flow
+    (POST /api/v1/licenses/activate). Operator-facing display fields
+    (name, role) can be patched via PUT /terminals/{terminal_id};
+    identity columns (terminal_id, mac_address, ip_address, is_hub,
+    activated_at) are never editable from this UI.
     """
     await _ensure_db()
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
@@ -1103,6 +1105,75 @@ async def list_terminals():
                 d['is_active'] = bool(d['is_active'])
                 rows.append(d)
             return rows
+
+
+class TerminalUpdateRequest(BaseModel):
+    name: str
+    role: str
+
+
+_VALID_TERMINAL_ROLES = {'register', 'kitchen', 'bar', 'manager', 'expo'}
+
+
+@router.put("/terminals/{terminal_id}", dependencies=[Depends(require_manager)])
+async def update_terminal(terminal_id: str, req: TerminalUpdateRequest):
+    """Update operator-facing fields (name, role) on a terminal row.
+
+    Identity columns (terminal_id, mac_address, ip_address, is_hub,
+    activated_at) are deliberately not editable — they are part of
+    the license-bound activation record. Rejects empty names and
+    role values outside the canonical set.
+    """
+    await _ensure_db()
+    name = (req.name or '').strip()
+    if not name:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_name",
+                "message": "Name must be a non-empty string",
+            },
+        )
+    if req.role not in _VALID_TERMINAL_ROLES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_role",
+                "message": "Role must be one of: register, kitchen, bar, manager, expo",
+            },
+        )
+
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "UPDATE terminals SET name = ?, role = ? WHERE terminal_id = ?",
+            (name, req.role, terminal_id),
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "terminal_not_found",
+                    "message": f"No terminal with id {terminal_id}",
+                },
+            )
+        await db.commit()
+        async with db.execute(
+            "SELECT terminal_id, name, role, ip_address, mac_address, "
+            "is_hub, is_active, activated_at FROM terminals "
+            "WHERE terminal_id = ?",
+            (terminal_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "terminal_not_found", "message": "row missing after update"},
+            )
+        d = dict(row)
+        d['is_hub'] = bool(d['is_hub'])
+        d['is_active'] = bool(d['is_active'])
+        return d
 
 
 @router.get("/routing", dependencies=[Depends(require_manager)])
@@ -1268,6 +1339,90 @@ async def set_routing_override(rule_id: int, req: RoutingOverrideRequest):
             raise HTTPException(status_code=404, detail="routing rule not found")
         await db.commit()
         return await _select_routing_row(db, rule_id)
+
+
+class DeviceRoutingRulePayload(BaseModel):
+    """One row in a POST /devices/{mac}/routing body. `id` is ignored
+    on save — the endpoint replaces all non-'all' rules per MAC.
+    """
+    id: Optional[int] = None
+    rule_type: str = 'category'
+    category_id: str = ''
+    item_tag: str = ''
+    priority: int = 0
+    time_from: str = ''
+    time_to: str = ''
+    days_of_week: str = '[]'
+    redirect_to_mac: str = ''
+    override_active: int = 0
+    override_expires_at: str = ''
+
+
+@router.get("/devices/{mac}/routing", dependencies=[Depends(require_manager)])
+async def list_device_routing(mac: str):
+    """Return all printer_routing rows for a single device MAC,
+    highest-priority first."""
+    await _ensure_db()
+    mac = mac.upper()
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM printer_routing WHERE printer_mac = ? "
+            "ORDER BY priority DESC, id ASC",
+            (mac,),
+        ) as cur:
+            return [dict(row) async for row in cur]
+
+
+@router.post("/devices/{mac}/routing", dependencies=[Depends(require_manager)])
+async def save_device_routing(mac: str, rules: list[DeviceRoutingRulePayload]):
+    """Replace all non-'all' rules for this printer with the supplied set.
+
+    Atomic — runs the DELETE + bulk INSERT in a single transaction;
+    rolls back on any error. The base catch-all rule (rule_type='all')
+    planted by save_device is preserved untouched.
+    """
+    await _ensure_db()
+    mac = mac.upper()
+    now = datetime.utcnow().isoformat()
+
+    async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+        async with db.execute("BEGIN"):
+            pass
+        try:
+            await db.execute(
+                "DELETE FROM printer_routing "
+                "WHERE printer_mac = ? AND rule_type != 'all'",
+                (mac,),
+            )
+            saved = 0
+            for r in rules:
+                await db.execute(
+                    """
+                    INSERT INTO printer_routing
+                        (printer_mac, rule_type, category_id, item_tag, priority,
+                         time_from, time_to, days_of_week, redirect_to_mac,
+                         override_active, override_expires_at, is_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    """,
+                    (
+                        mac, r.rule_type, r.category_id, r.item_tag, r.priority,
+                        r.time_from, r.time_to, r.days_of_week, r.redirect_to_mac,
+                        r.override_active, r.override_expires_at, now,
+                    ),
+                )
+                saved += 1
+            await db.execute("COMMIT")
+            return {"saved": saved}
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "routing_save_failed",
+                    "message": "Routing rules save rolled back — no changes were made",
+                },
+            )
 
 
 @router.get("/kitchen-printers", dependencies=[Depends(require_manager)])

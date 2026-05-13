@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # Store mode: "demo" seeds sample data, "production" starts clean
     store_mode: str = "production"
 
+    # Store local timezone — IANA name (e.g. "America/Chicago",
+    # "America/Los_Angeles"). Used by routing_resolver scheduled rules
+    # so "lunch shift 11:00-14:00" fires on local-store clock, not UTC.
+    store_tz: str = "America/Chicago"
+
     # Hardware Discovery
     default_subnet: str = "10.0.0.0/24"
     scan_timeout: float = 2.0
