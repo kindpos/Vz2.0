@@ -6,6 +6,10 @@ the Ed25519 signature against the public key baked into app.config, and
 binds the license to this machine's hardware fingerprint. All entry points
 return tuples and never raise — the boot path uses these to set an
 `activated` flag without crashing on malformed input.
+
+License path resolved from KINDPOS_LICENSE_PATH env var (via settings),
+or platform default (/data/kindpos.lic on Linux,
+%APPDATA%/KINDpos/kindpos.lic on Windows).
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ from typing import Optional
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from app.config import KINDPOS_LICENSE_PUBLIC_KEY
+from app.config import KINDPOS_LICENSE_PUBLIC_KEY, settings
 from app.services.hardware_fingerprint import get_hardware_fingerprint
 
 _log = logging.getLogger(__name__)
@@ -34,7 +38,7 @@ def _default_license_path() -> str:
     return "/data/kindpos.lic"
 
 
-DEFAULT_LICENSE_PATH = os.environ.get("KINDPOS_LICENSE_PATH") or _default_license_path()
+DEFAULT_LICENSE_PATH = settings.license_path or _default_license_path()
 
 
 def load_license(path: str = DEFAULT_LICENSE_PATH) -> Optional[dict]:

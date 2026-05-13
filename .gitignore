@@ -109,3 +109,9 @@ pi/kindpos-kiosk.apk
 
 # Per-machine license file — signed activation data, never commit.
 kindpos.lic
+
+# Local environment files — may contain secrets, never commit.
+.env
+
+# Process logs (uvicorn boot capture, ad-hoc tee outputs).
+*.log

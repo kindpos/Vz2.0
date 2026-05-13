@@ -119,6 +119,7 @@ async def check_license_activation(app) -> None:
 
     ok, info = check_terminal_license()
     app.state.activated = ok
+
     if ok:
         log.info("License verified: %s", info)
         # Upsert into server_license so the /status endpoint recognizes the file-based license
@@ -126,6 +127,17 @@ async def check_license_activation(app) -> None:
             hardware_fp = get_hardware_fingerprint()
             activated_at = datetime.utcnow().isoformat()
             async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS server_license (
+                        id                   INTEGER PRIMARY KEY,
+                        license_key          TEXT NOT NULL,
+                        hardware_fingerprint TEXT NOT NULL,
+                        activated_at         TEXT NOT NULL,
+                        status               TEXT NOT NULL DEFAULT 'active'
+                    )
+                    """
+                )
                 await db.execute(
                     """
                     INSERT OR REPLACE INTO server_license
@@ -145,6 +157,17 @@ async def check_license_activation(app) -> None:
         # Delete any stale active license row
         try:
             async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
+                await db.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS server_license (
+                        id                   INTEGER PRIMARY KEY,
+                        license_key          TEXT NOT NULL,
+                        hardware_fingerprint TEXT NOT NULL,
+                        activated_at         TEXT NOT NULL,
+                        status               TEXT NOT NULL DEFAULT 'active'
+                    )
+                    """
+                )
                 await db.execute("DELETE FROM server_license WHERE id = 1")
                 await db.commit()
         except Exception as e:

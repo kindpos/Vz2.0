@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     # Ed25519 public key for verifying offline-signed terminal licenses.
     # Private key lives in tools/kindpos-private.key (offline, never deployed).
     license_public_key: str = "nex+HVMXNP0sXJq7IxD7qzb9k8r6VWD1obwn3nncenc="
+    license_path: str = ""
 
     # Financial invariants. When True, aggregation paths raise
     # InvariantViolation if any P&L / tender / tips identity drifts
