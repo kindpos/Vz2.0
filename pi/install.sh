@@ -14,7 +14,7 @@ echo "Repo: $BASE"
 # 1. System dependencies
 echo "[1/9] Installing dependencies..."
 apt-get update -q
-apt-get install -y nginx avahi-daemon libnss-mdns python3 python3-pip python3-venv
+apt-get install -y nginx avahi-daemon avahi-utils libnss-mdns python3 python3-pip python3-venv
 
 # Set hostname so avahi advertises kindpos.local
 hostnamectl set-hostname kindpos
@@ -68,6 +68,25 @@ fi
 echo "[7/9] Enabling avahi-daemon..."
 systemctl enable avahi-daemon
 systemctl restart avahi-daemon
+
+# Configure nginx for kindpos.local
+echo "[7b/9] Configuring nginx for mDNS..."
+cat > /etc/nginx/sites-available/kindpos << 'EOF'
+server {
+    listen 80;
+    server_name kindpos.local;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+EOF
+rm -f /etc/nginx/sites-enabled/default
+ln -sf /etc/nginx/sites-available/kindpos /etc/nginx/sites-enabled/kindpos
+systemctl enable nginx
+systemctl restart nginx
 
 # 7. First-boot overlay service — PROVISIONING_FLOW.md §4.2
 echo "[8/9] Installing first-boot overlay service..."
