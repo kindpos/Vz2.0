@@ -173,6 +173,12 @@ async def _ensure_db():
         # terminal_bindings.slot_id; populated by POST /v1/terminals/bind.
         if 'slot_id' not in term_cols:
             await db.execute("ALTER TABLE terminals ADD COLUMN slot_id TEXT DEFAULT ''")
+        # Operator-assigned accent color. Empty string = use algorithmic
+        # palette fallback in the frontend (getTerminalColor).
+        if 'color' not in term_cols:
+            await db.execute(
+                "ALTER TABLE terminals ADD COLUMN color TEXT NOT NULL DEFAULT ''"
+            )
 
         # HARDWARE_ROUTING.md §2.4 — time-based / day-of-week / redirect /
         # manual-override columns on printer_routing. Additive migration on
@@ -927,9 +933,14 @@ async def save_device(
     if device.role == 'kitchen' and not device.categories.strip():
         effective_categories = 'ALL'
 
-    # terminal_ids apply to receipt role (new) or legacy receipt type
+    # terminal_ids apply to receipt role (new) or legacy receipt type,
+    # plus card_reader devices (each reader is bound to one or more terminals).
     is_receipt = device.role == 'receipt' or (not device.role and device.type == 'receipt')
-    terminal_ids_json = json.dumps(device.terminal_ids if is_receipt else [])
+    terminal_ids_json = json.dumps(
+        device.terminal_ids
+        if (device.role in ('receipt', 'card_reader') or is_receipt)
+        else []
+    )
 
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -1046,7 +1057,9 @@ async def save_device(
         'mac': mac,
         'categories': effective_categories,
         'role': device.role,
-        'terminal_ids': device.terminal_ids if is_receipt else [],
+        'terminal_ids': device.terminal_ids
+            if (device.role in ('receipt', 'card_reader') or is_receipt)
+            else [],
         'saved_at': now,
     }
 
@@ -1094,7 +1107,7 @@ async def list_terminals():
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT terminal_id, name, ip_address, mac_address, role, "
+            "SELECT terminal_id, name, ip_address, mac_address, role, color, "
             "is_hub, is_active, activated_at FROM terminals "
             "WHERE is_active = 1 ORDER BY activated_at"
         ) as cur:
@@ -1110,9 +1123,11 @@ async def list_terminals():
 class TerminalUpdateRequest(BaseModel):
     name: str
     role: str
+    color: str = ''
 
 
 _VALID_TERMINAL_ROLES = {'register', 'kitchen', 'bar', 'manager', 'expo'}
+VALID_TERMINAL_COLORS = {'green', 'cyan', 'gold', 'verm', ''}
 
 
 @router.put("/terminals/{terminal_id}", dependencies=[Depends(require_manager)])
@@ -1142,12 +1157,20 @@ async def update_terminal(terminal_id: str, req: TerminalUpdateRequest):
                 "message": "Role must be one of: register, kitchen, bar, manager, expo",
             },
         )
+    if req.color not in VALID_TERMINAL_COLORS:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_color",
+                "message": "Color must be one of: green, cyan, gold, verm, or empty",
+            },
+        )
 
     async with aiosqlite.connect(HARDWARE_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "UPDATE terminals SET name = ?, role = ? WHERE terminal_id = ?",
-            (name, req.role, terminal_id),
+            "UPDATE terminals SET name = ?, role = ?, color = ? WHERE terminal_id = ?",
+            (name, req.role, req.color, terminal_id),
         )
         if cursor.rowcount == 0:
             raise HTTPException(
@@ -1159,7 +1182,7 @@ async def update_terminal(terminal_id: str, req: TerminalUpdateRequest):
             )
         await db.commit()
         async with db.execute(
-            "SELECT terminal_id, name, role, ip_address, mac_address, "
+            "SELECT terminal_id, name, role, color, ip_address, mac_address, "
             "is_hub, is_active, activated_at FROM terminals "
             "WHERE terminal_id = ?",
             (terminal_id,),

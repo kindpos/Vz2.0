@@ -19,16 +19,27 @@ import {
 /* ─── TERMINAL COLORS ──────────────────────────────────────────── */
 const TERM_COLORS = [T.greenUp, T.cyan, T.gold, T.verm, T.lavender];
 
+const COLOR_MAP = {
+    green: T.green,
+    cyan:  T.elec,
+    gold:  T.gold,
+    verm:  T.verm,
+};
+
 const getTerminalColor = (terminalId) => {
-    let idx;
-    const tMatch = /^T-(\d+)$/.exec(terminalId || '');
-    if (tMatch) {
-        idx = parseInt(tMatch[1], 10) - 1;
-    } else {
-        idx = _state.terminals.findIndex(t => t.terminal_id === terminalId);
-        if (idx < 0) idx = 0;
+    const terminal = _state.terminals.find(t => t.terminal_id === terminalId);
+    if (terminal?.color && COLOR_MAP[terminal.color]) {
+        return COLOR_MAP[terminal.color];
     }
-    return TERM_COLORS[Math.max(0, idx % TERM_COLORS.length)];
+    // Algorithmic fallback — preserves the historical T-N → palette mapping.
+    const PALETTE = [T.green, T.elec, T.gold, T.verm, T.lavender];
+    const tMatch = /^T-(\d+)$/.exec(terminalId || '');
+    const idx = tMatch
+        ? parseInt(tMatch[1], 10) - 1
+        : Math.max(0, _state.terminals.findIndex(
+            t => t.terminal_id === terminalId
+          ));
+    return PALETTE[Math.max(0, idx % PALETTE.length)];
 };
 
 /* ─── STATE ───────────────────────────────────────────────────── */
@@ -196,6 +207,79 @@ const openTerminalModal = (terminal, onSaved) => {
     content.lastChild.style.cssText = `font-size: 14px; color: ${T.textMuted}; font-weight: 600;`;
     content.appendChild(roleChips.wrap);
 
+    // ── Color chip selector ────────────────────────────────────────
+    // Custom chips (not chipGroup) so each chip can render a filled
+    // swatch alongside the label. Empty selection = "Auto" (algorithmic).
+    const COLOR_CHIPS = [
+        { id: '',      label: 'Auto',  swatch: null },
+        { id: 'green', label: 'Green', swatch: T.green },
+        { id: 'cyan',  label: 'Cyan',  swatch: T.elec },
+        { id: 'gold',  label: 'Gold',  swatch: T.gold },
+        { id: 'verm',  label: 'Verm',  swatch: T.verm },
+    ];
+    let selectedColor = terminal?.color || '';
+    if (!COLOR_CHIPS.some(c => c.id === selectedColor)) selectedColor = '';
+
+    const colorLabel = document.createElement('div');
+    colorLabel.textContent = 'Color';
+    colorLabel.style.cssText = `font-size: 14px; color: ${T.textMuted}; font-weight: 600;`;
+    content.appendChild(colorLabel);
+
+    const colorRow = document.createElement('div');
+    colorRow.style.cssText = `display: flex; flex-wrap: wrap; gap: 8px;`;
+    const colorChipEls = [];
+    const paintColorChips = () => {
+        colorChipEls.forEach(({ chip, def }) => {
+            const active = def.id === selectedColor;
+            const accent = def.swatch || T.muted;
+            chip.style.background = active ? withAlpha(accent, 0.18) : T.card;
+            chip.style.borderColor = active ? accent : T.border;
+            chip.style.color = active ? accent : T.textMuted;
+        });
+    };
+    COLOR_CHIPS.forEach(def => {
+        const chip = document.createElement('div');
+        chip.setAttribute('data-color-id', def.id);
+        chip.style.cssText = `
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid ${T.border};
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+            font-weight: 600;
+            font-family: ${T.fb};
+            transition: all 0.12s;
+        `;
+        if (def.swatch) {
+            const dot = document.createElement('div');
+            dot.style.cssText = `
+                width: 10px; height: 10px; border-radius: 50%;
+                background: ${def.swatch};
+            `;
+            chip.appendChild(dot);
+        } else {
+            const dot = document.createElement('div');
+            dot.style.cssText = `
+                width: 10px; height: 10px; border-radius: 50%;
+                border: 1px dashed ${T.textMuted};
+            `;
+            chip.appendChild(dot);
+        }
+        const txt = document.createElement('span');
+        txt.textContent = def.label;
+        chip.appendChild(txt);
+        chip.addEventListener('click', () => {
+            selectedColor = def.id;
+            paintColorChips();
+        });
+        colorChipEls.push({ chip, def });
+        colorRow.appendChild(chip);
+    });
+    paintColorChips();
+    content.appendChild(colorRow);
+
     let modalRef = null;
     const saveBtn = button({
         label: isEdit ? 'Save' : 'Add Terminal',
@@ -203,6 +287,7 @@ const openTerminalModal = (terminal, onSaved) => {
         onClick: async () => {
             const name = nameF.input.value.trim();
             const role = roleChips.getSelected()[0] || 'register';
+            const color = selectedColor;
 
             if (!name) {
                 showToast('Name is required', 'error');
@@ -227,7 +312,7 @@ const openTerminalModal = (terminal, onSaved) => {
                     {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name, role }),
+                        body: JSON.stringify({ name, role, color }),
                     }
                 );
                 if (!res.ok) {
@@ -1468,11 +1553,60 @@ const buildDeviceCard = (device, deviceType) => {
     info.textContent = device.register_id || device.ip || '';
     card.appendChild(info);
 
+    // Terminal-assignment tags — receipts and card readers only.
+    // Kitchen printers fan out to every terminal so they have no tags.
+    if (device.role !== 'kitchen') {
+        const ids = Array.isArray(device.terminal_ids) ? device.terminal_ids : [];
+        if (ids.length > 0) {
+            const tagRow = document.createElement('div');
+            tagRow.style.cssText = `
+                display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
+                justify-content: center;
+            `;
+            ids.forEach(tid => {
+                const tColor = getTerminalColor(tid);
+                const tag = document.createElement('div');
+                tag.style.cssText = `
+                    border: 1px solid ${tColor};
+                    color: ${tColor};
+                    border-radius: 4px;
+                    padding: 1px 5px;
+                    font-size: 8px;
+                    font-weight: 700;
+                    letter-spacing: 0.06em;
+                    text-transform: uppercase;
+                    font-family: ${T.fb};
+                `;
+                tag.textContent = tid;
+                tagRow.appendChild(tag);
+            });
+            card.appendChild(tagRow);
+        }
+    }
+
     card.addEventListener('click', () => {
         openDeviceModal(device, deviceType, () => {
             loadData().then(() => rebuild());
         });
     });
+
+    // Dim/highlight based on the currently-selected terminal.
+    // Kitchen always matches (broadcast); others match only if their
+    // terminal_ids include the active terminal.
+    const activeTid = _state.activeTerminalId;
+    if (activeTid) {
+        const hColor = getTerminalColor(activeTid);
+        const isKitchen = device.role === 'kitchen';
+        const ids = Array.isArray(device.terminal_ids) ? device.terminal_ids : [];
+        const match = isKitchen || ids.includes(activeTid);
+        if (match) {
+            card.style.borderColor = hColor;
+            card.style.boxShadow = `0 0 0 2px ${withAlpha(hColor, 0.35)}`;
+            card.style.opacity = '1';
+        } else {
+            card.style.opacity = '0.3';
+        }
+    }
 
     return card;
 };
@@ -1721,7 +1855,7 @@ const rebuild = () => {
     const groupGrid = document.createElement('div');
     groupGrid.style.cssText = `
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr 1fr 1fr;
         gap: 12px;
         position: relative;
     `;
@@ -1733,9 +1867,65 @@ const rebuild = () => {
     groupGrid.appendChild(buildGroupCard('Kitchen Printers', kitchenPrinters, 'printer', '🖨'));
     groupGrid.appendChild(buildGroupCard('Receipt Printers', receiptPrinters, 'printer', '🧾'));
     groupGrid.appendChild(buildGroupCard('Card Readers', cardReaders, 'card', '💳'));
-    groupGrid.appendChild(buildGroupCard('Receipt Settings', [], 'settings', '⚙'));
 
     main.appendChild(groupGrid);
+
+    // Sub-page link rows — destinations not yet implemented; click is a stub.
+    const linkStack = document.createElement('div');
+    linkStack.style.cssText = `
+        display: flex; flex-direction: column; gap: 8px;
+        margin-top: 16px;
+    `;
+    const SUBPAGES = [
+        { label: 'Reroute Rules',     key: 'reroute' },
+        { label: 'Printer Templates', key: 'templates' },
+        { label: 'Receipt Settings',  key: 'receipt-settings' },
+    ];
+    SUBPAGES.forEach(({ label, key }) => {
+        const row = document.createElement('div');
+        row.setAttribute('data-hwn-subpage', key);
+        row.style.cssText = `
+            background: ${T.well};
+            border: 1.5px solid ${T.border};
+            border-radius: ${T.r.md}px;
+            padding: 10px 16px;
+            display: flex; align-items: center; gap: 10px;
+            cursor: pointer;
+            transition: border-color 0.15s ease;
+        `;
+        const labelEl = document.createElement('div');
+        labelEl.textContent = label;
+        labelEl.style.cssText = `
+            flex: 1;
+            font-family: ${T.fb};
+            font-size: ${T.fs.base}px;
+            font-weight: 700;
+            color: ${T.text};
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        `;
+        const arrow = document.createElement('div');
+        arrow.textContent = '›';
+        arrow.style.cssText = `
+            color: ${T.moon};
+            font-size: 18px;
+            font-weight: 700;
+        `;
+        row.appendChild(labelEl);
+        row.appendChild(arrow);
+        row.addEventListener('mouseenter', () => {
+            row.style.borderColor = T.green;
+        });
+        row.addEventListener('mouseleave', () => {
+            row.style.borderColor = T.border;
+        });
+        row.addEventListener('click', () => {
+            // Stub — destinations not implemented yet.
+            showToast(`${label} — coming soon`);
+        });
+        linkStack.appendChild(row);
+    });
+    main.appendChild(linkStack);
 
     const discoveredPanel = buildDiscoveredDevicesPanel();
     if (discoveredPanel) {
