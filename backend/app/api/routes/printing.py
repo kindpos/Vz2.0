@@ -248,7 +248,7 @@ async def print_receipt(
                             redirect_mac, printer_mac,
                         )
 
-            chars_per_line = getattr(dispatch_printer, 'chars_per_line', 48)
+            chars_per_line = getattr(dispatch_printer, 'chars_per_line', 42)
             formatter = ESCPOSFormatter(chars_per_line=chars_per_line)
             template = GuestReceiptTemplate(chars_per_line=chars_per_line)
             commands = template.render(context)

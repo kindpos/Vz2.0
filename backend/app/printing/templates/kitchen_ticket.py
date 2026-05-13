@@ -76,16 +76,18 @@ class KitchenTicketTemplate(BaseTemplate):
     def _render_zone1(self, ctx: Dict, ticket_type: str, supports_red: bool) -> List[Dict]:
         cmds: List[Dict] = []
 
-        # Table/Station header line — left: table or check, right: station name
+        # Table/Store header line — left: table or check, right: restaurant name
         table = ctx.get('table')
-        station = ctx.get('station_name', '')
+        restaurant = ctx.get('restaurant_name', '') or ''
         check = ctx.get('check_number') or ctx.get('ticket_number', 'N/A')
         left_text = f"TABLE {table}" if table else f"CHECK {check}"
 
-        if station:
-            available_width = self.chars_per_line - len(station)
+        if restaurant:
+            max_label = self.chars_per_line - len(left_text) - 1
+            label = restaurant[:max_label] if max_label > 0 else ''
+            available_width = self.chars_per_line - len(label)
             left_padded = left_text.ljust(available_width)
-            header_line = (left_padded + station)[:self.chars_per_line]
+            header_line = (left_padded + label)[:self.chars_per_line]
         else:
             header_line = left_text[:self.chars_per_line]
 
@@ -513,10 +515,13 @@ class KitchenTicketTemplate(BaseTemplate):
         cmds.append({'type': 'divider'})
 
         terminal_id = ctx.get('terminal_id', '')
+        station_name = ctx.get('station_name', '')
         ticket_index = ctx.get('ticket_index', 1)
         ticket_total = ctx.get('ticket_total', 1)
 
         footer_parts = []
+        if station_name:
+            footer_parts.append(station_name)
         if terminal_id:
             footer_parts.append(f"Terminal: {terminal_id}")
         footer_parts.append(f"Ticket {ticket_index} of {ticket_total}")

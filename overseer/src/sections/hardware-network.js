@@ -13,7 +13,6 @@ import {
 import {
     startScan,
     buildTerminalAssignmentChips,
-    openSaveDeviceDialog,
 } from '../hardware/shared.js';
 
 /* ─── TERMINAL COLORS ──────────────────────────────────────────── */
@@ -1067,7 +1066,7 @@ const openDeviceModal = (device, deviceType, onSaved) => {
                         categories: getCategoriesCSV(),
                         register_id: regF.input.value.trim(),
                     }),
-                });
+                }, 15000);
                 if (!res.ok) {
                     const err = await res.json().catch(() => ({}));
                     const detail = err.detail?.message || err.detail || err.message || `HTTP ${res.status}`;
@@ -1090,7 +1089,8 @@ const openDeviceModal = (device, deviceType, onSaved) => {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(rulesPayload),
-                        }
+                        },
+                        15000,
                     );
                     if (!rr.ok) {
                         const rerr = await rr.json().catch(() => ({}));
@@ -1632,16 +1632,11 @@ function buildDiscoveredDevicesPanel() {
           cursor:pointer; pointer-events:auto;
           touch-action:manipulation;`;
         addBtn.addEventListener('click', () => {
-            openSaveDeviceDialog({
-                device,
-                terminals: _state.terminals,
-                onSaved: async () => {
-                    _state.discoveredDevices =
-                        _state.discoveredDevices.filter(d => d !== device);
-                    await loadData();
-                    rebuild();
-                },
-                onCancel: () => {},
+            openDeviceModal(device, device.type || 'printer', async () => {
+                _state.discoveredDevices =
+                    _state.discoveredDevices.filter(d => d !== device);
+                await loadData();
+                rebuild();
             });
         });
         row.appendChild(addBtn);

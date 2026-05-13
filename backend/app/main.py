@@ -145,7 +145,7 @@ async def _init_printer_manager(ledger, ephemeral_log=None):
 
                     try:
                         if use_receipt:
-                            device_chars_per_line = int(device.get("chars_per_line", 48))
+                            device_chars_per_line = int(device.get("chars_per_line", 42))
                             device_has_drawer = bool(device.get("has_drawer", False))
                             adapter = make_thermal_printer(
                                 printer_id=device.get("id") or device.get("mac", device_ip),

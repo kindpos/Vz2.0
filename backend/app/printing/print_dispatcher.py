@@ -50,11 +50,11 @@ MAX_ATTEMPTS = len(RETRY_DELAYS)
 # thermal receipt printer and the TM-U220 impact printer in this fleet.
 PAPER_WIDTH_80MM = 80
 
-# Column width per printer class. Receipt = thermal (58 chars fits at our
-# font size). Kitchen = TM-U220 impact (33 chars at its smallest width).
-# These are deployment-specific — different fleet → different numbers, and
-# should ultimately come from hardware_config rather than live here.
-RECEIPT_CHARS_PER_LINE = 48
+# Column width per printer class. Receipt = Zywell P80 / 80mm thermal
+# at Font A → 42 chars/line. Kitchen = TM-U220 impact (33 chars).
+# These are deployment-specific and should ultimately come from
+# hardware_config rather than living here.
+RECEIPT_CHARS_PER_LINE = 42
 KITCHEN_CHARS_PER_LINE = 33
 
 
@@ -276,7 +276,7 @@ class PrintDispatcher:
     def _get_printer_chars_per_line_sync(self, printer_mac: str, printer_type: str) -> int:
         """Synchronously query printer's chars_per_line from hardware_config.db with sensible defaults."""
         if not os.path.exists(HARDWARE_DB_PATH):
-            return 48 if printer_type == "receipt" else 33
+            return RECEIPT_CHARS_PER_LINE if printer_type == "receipt" else KITCHEN_CHARS_PER_LINE
 
         try:
             conn = sqlite3.connect(HARDWARE_DB_PATH)
@@ -291,8 +291,7 @@ class PrintDispatcher:
         except Exception as e:
             logger.warning(f"Could not lookup chars_per_line for {printer_mac}: {e}")
 
-        # Default: 48 for thermal receipt, 33 for impact kitchen
-        return 48 if printer_type == "receipt" else 33
+        return RECEIPT_CHARS_PER_LINE if printer_type == "receipt" else KITCHEN_CHARS_PER_LINE
 
     def _render(self, template_id: str, context: dict, printer_type: str, printer_mac: str = "DEFAULT_RECEIPT") -> bytes:
         is_kitchen = (printer_type == "kitchen")
