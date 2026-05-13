@@ -48,7 +48,6 @@ let _state = {
     printers: [],
     cardReaders: [],
     routingRules: {},
-    connectionMap: {},
     activeTerminalId: null,
     isScanning: false,
     discoveredDevices: [],
@@ -63,7 +62,6 @@ const resetState = () => {
         printers: [],
         cardReaders: [],
         routingRules: {},
-        connectionMap: {},
         activeTerminalId: null,
         isScanning: false,
         discoveredDevices: [],
@@ -128,13 +126,6 @@ const loadData = async () => {
             }
         }
 
-        _state.connectionMap = buildConnectionMap(
-            _state.terminals,
-            _state.printers,
-            _state.cardReaders,
-            _state.routingRules
-        );
-
         _state.lastSyncTime = new Date().toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
@@ -147,31 +138,6 @@ const loadData = async () => {
         console.error('[HardwareNetwork] Load error:', e);
     }
 };
-
-/* ─── CONNECTION MAP ───────────────────────────────────────────── */
-function buildConnectionMap(terminals, printers, cardReaders, routingRules) {
-    const map = {};
-    for (const term of terminals) {
-        map[term.terminal_id] = { kitchen: [], receipt: [], card: [] };
-
-        for (const p of printers) {
-            if (p.role === 'kitchen') {
-                const rule = routingRules[p.mac];
-                if (!rule || rule[0]?.rule_type === 'all') {
-                    map[term.terminal_id].kitchen.push(p.mac);
-                }
-            }
-            if (p.role === 'receipt' && p.terminal_ids?.includes(term.terminal_id)) {
-                map[term.terminal_id].receipt.push(p.mac);
-            }
-        }
-
-        for (const reader of (term.devices?.readers || [])) {
-            map[term.terminal_id].card.push(reader.mac || reader);
-        }
-    }
-    return map;
-}
 
 /* ─── MODALS ────────────────────────────────────────────────────── */
 const openTerminalModal = (terminal, onSaved) => {
@@ -1303,70 +1269,6 @@ const openReceiptSettingsModal = async (onSaved) => {
     });
 };
 
-/* ─── SVG LINE DRAWING ──────────────────────────────────────────── */
-const buildSVG = (container) => {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.style.cssText = `
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        overflow: visible;
-        width: 100%;
-        height: 100%;
-    `;
-
-    const busY = 180;
-
-    for (const term of _state.terminals) {
-        const termCard = container.querySelector(`[data-term-id="${term.terminal_id}"]`);
-        if (!termCard) continue;
-
-        const x1 = termCard.offsetLeft + termCard.offsetWidth / 2;
-        const y1 = termCard.offsetTop + termCard.offsetHeight;
-
-        const connections = _state.connectionMap[term.terminal_id] || {};
-        const isActive = _state.activeTerminalId === term.terminal_id;
-        const termColor = getTerminalColor(term.terminal_id);
-
-        const drawLine = (targetEl) => {
-            if (!targetEl) return;
-            const x2 = targetEl.offsetLeft + targetEl.offsetWidth / 2;
-            const y2 = targetEl.offsetTop;
-
-            if (isActive) {
-                const glow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                glow.setAttribute('d', `M${x1},${y1} V${busY} H${x2} V${y2}`);
-                glow.style.cssText = `fill: none; stroke: ${termColor}; stroke-width: 7; opacity: 0.25; stroke-linecap: butt; stroke-linejoin: miter;`;
-                svg.appendChild(glow);
-            }
-
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            line.setAttribute('d', `M${x1},${y1} V${busY} H${x2} V${y2}`);
-            const strokeColor = isActive ? termColor : `rgba(90,95,102,0.15)`;
-            const strokeWidth = isActive ? 2 : 1.2;
-            line.style.cssText = `fill: none; stroke: ${strokeColor}; stroke-width: ${strokeWidth}; stroke-linecap: butt; stroke-linejoin: miter; transition: all 0.15s ease;`;
-            svg.appendChild(line);
-        };
-
-        for (const pmac of connections.kitchen || []) {
-            const groupEl = container.querySelector(`[data-device-group="kitchen"]`);
-            if (groupEl) drawLine(groupEl);
-        }
-
-        for (const pmac of connections.receipt || []) {
-            const devEl = container.querySelector(`[data-device-mac="${pmac}"]`);
-            if (devEl) drawLine(devEl);
-        }
-
-        for (const rmac of connections.card || []) {
-            const devEl = container.querySelector(`[data-device-mac="${rmac}"]`);
-            if (devEl) drawLine(devEl);
-        }
-    }
-
-    return svg;
-};
-
 /* ─── TERMINAL CARDS ───────────────────────────────────────────── */
 const buildTerminalCard = (terminal) => {
     const card = document.createElement('div');
@@ -1932,18 +1834,6 @@ const rebuild = () => {
         const mainEl = _state.container.querySelector('[data-hwn-main]');
         if (mainEl) mainEl.appendChild(discoveredPanel);
     }
-
-    const svgContainer = document.createElement('div');
-    svgContainer.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-    `;
-    svgContainer.appendChild(buildSVG(_state.container));
-    main.appendChild(svgContainer);
 };
 
 export async function mount(container) {
