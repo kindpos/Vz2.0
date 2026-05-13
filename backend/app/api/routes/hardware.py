@@ -297,6 +297,7 @@ def _get_subnet_prefix() -> str:
         return derived
     except Exception as e:
         logger.error(f"[SCANNER] Interface detection failed ({e}); using '10.0.0'")
+        # fallback — set KINDPOS_DEFAULT_SUBNET in env to override
         return '10.0.0'
 
 
@@ -457,21 +458,56 @@ async def _probe_host(ip: str, mac: Optional[str], ports: list, timeout: float) 
     """
     Probe a known-live host on all given ports. Collects ALL open ports,
     then classifies the device from the full picture.
+
+    Cheap thermal printers have a TCP backlog of ~1 and drop SYNs when
+    probed on many ports concurrently. We try the primary port for each
+    device class serially first; only fan out to the rest if it hits or
+    if no primary matches the requested port list.
     """
     loop = asyncio.get_running_loop()
+    # printer, card reader, terminal
+    PRIMARY_PORTS = [9100, 9000, 8000]
 
-    async def _try_port(port: int) -> Optional[int]:
-        try:
-            hit = await asyncio.wait_for(
-                loop.run_in_executor(None, _tcp_probe, ip, port, timeout),
-                timeout=timeout + 0.2,
+    open_ports: list = []
+    for primary in PRIMARY_PORTS:
+        if primary in ports:
+            hit = await loop.run_in_executor(
+                None, _tcp_probe, ip, primary, timeout
             )
-            return port if hit else None
-        except Exception:
-            return None
-
-    results = await asyncio.gather(*[_try_port(p) for p in ports])
-    open_ports = [p for p in results if p is not None]
+            if hit:
+                remaining = [p for p in ports if p != primary]
+                if remaining:
+                    results = await asyncio.wait_for(
+                        asyncio.gather(
+                            *[loop.run_in_executor(
+                                None, _tcp_probe, ip, p, timeout
+                            ) for p in remaining],
+                            return_exceptions=True,
+                        ),
+                        timeout=timeout + 0.5,
+                    )
+                    open_ports = [primary] + [
+                        remaining[i] for i, r in enumerate(results)
+                        if r is True
+                    ]
+                else:
+                    open_ports = [primary]
+                break
+    else:
+        # No primary port responded — fall through to full parallel scan
+        results = await asyncio.wait_for(
+            asyncio.gather(
+                *[loop.run_in_executor(
+                    None, _tcp_probe, ip, p, timeout
+                ) for p in ports],
+                return_exceptions=True,
+            ),
+            timeout=timeout + 0.5,
+        )
+        open_ports = [
+            ports[i] for i, r in enumerate(results)
+            if r is True
+        ]
 
     if not open_ports:
         return None
@@ -743,7 +779,7 @@ async def scan_network_stream(
                 ]
                 if remaining_ips:
                     supplemental = await asyncio.gather(
-                        *[_probe_host(ip, None, PRINTER_PORTS, 0.5)
+                        *[_probe_host(ip, None, PRINTER_PORTS, 1.5)
                           for ip in remaining_ips],
                         return_exceptions=True,
                     )
