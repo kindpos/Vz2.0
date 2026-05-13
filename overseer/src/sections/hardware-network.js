@@ -561,7 +561,7 @@ const buildSVG = (container) => {
             if (isActive) {
                 const glow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                 glow.setAttribute('d', `M${x1},${y1} V${busY} H${x2} V${y2}`);
-                glow.style.cssText = `stroke: ${termColor}; stroke-width: 7; opacity: 0.25; stroke-linecap: butt; stroke-linejoin: miter;`;
+                glow.style.cssText = `fill: none; stroke: ${termColor}; stroke-width: 7; opacity: 0.25; stroke-linecap: butt; stroke-linejoin: miter;`;
                 svg.appendChild(glow);
             }
 
@@ -569,7 +569,7 @@ const buildSVG = (container) => {
             line.setAttribute('d', `M${x1},${y1} V${busY} H${x2} V${y2}`);
             const strokeColor = isActive ? termColor : `rgba(90,95,102,0.15)`;
             const strokeWidth = isActive ? 2 : 1.2;
-            line.style.cssText = `stroke: ${strokeColor}; stroke-width: ${strokeWidth}; stroke-linecap: butt; stroke-linejoin: miter; transition: all 0.15s ease;`;
+            line.style.cssText = `fill: none; stroke: ${strokeColor}; stroke-width: ${strokeWidth}; stroke-linecap: butt; stroke-linejoin: miter; transition: all 0.15s ease;`;
             svg.appendChild(line);
         };
 
