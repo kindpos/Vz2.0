@@ -848,6 +848,31 @@ async def save_device(
             },
         )
 
+    VALID_ROLES = {'kitchen', 'receipt', 'card_reader', ''}
+    if device.role not in VALID_ROLES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_role",
+                "message": "Role must be one of: kitchen, receipt, card_reader"
+            }
+        )
+
+    if os.environ.get("KINDPOS_PROBE_ON_SAVE", "true").lower() == "true":
+        probe_result = await _probe_host(
+            device.ip, resolved_mac,
+            PRINTER_PORTS + CARD_READER_PORTS,
+            DIRECT_TIMEOUT
+        )
+        if not probe_result:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "device_unreachable",
+                    "message": f"Could not reach {device.ip} — verify IP before saving"
+                }
+            )
+
     mac = resolved_mac
     now = datetime.utcnow().isoformat()
 
@@ -868,39 +893,52 @@ async def save_device(
             existing = await cur.fetchone()
         previous_categories = _parse_categories(existing["categories"]) if existing else []
 
-        await db.execute("""
-            INSERT INTO devices (mac, ip, type, name, port, register_id, tpn, auth_key, categories, terminal_ids, role, saved_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(mac) DO UPDATE SET
-                ip           = excluded.ip,
-                type         = excluded.type,
-                name         = excluded.name,
-                port         = excluded.port,
-                register_id  = excluded.register_id,
-                tpn          = excluded.tpn,
-                auth_key     = excluded.auth_key,
-                categories   = excluded.categories,
-                terminal_ids = excluded.terminal_ids,
-                role         = excluded.role,
-                saved_at     = excluded.saved_at
-        """, (mac, device.ip, device.type,
-              device.name, device.port, device.register_id, device.tpn, device.auth_key,
-              effective_categories, terminal_ids_json, device.role, now))
-
-        # Kitchen printers get a catch-all routing rule so the dispatcher
-        # knows to send every order item to this printer.
-        if device.role == 'kitchen':
-            await db.execute(
-                "DELETE FROM printer_routing WHERE printer_mac = ? AND rule_type = 'all'",
-                (mac,)
-            )
+        async with db.execute("BEGIN"):
+            pass
+        try:
             await db.execute("""
-                INSERT INTO printer_routing
-                    (printer_mac, rule_type, category_id, item_tag, priority, is_active, created_at)
-                VALUES (?, 'all', '', '', 0, 1, ?)
-            """, (mac, now))
+                INSERT INTO devices (mac, ip, type, name, port, register_id, tpn, auth_key, categories, terminal_ids, role, saved_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(mac) DO UPDATE SET
+                    ip           = excluded.ip,
+                    type         = excluded.type,
+                    name         = excluded.name,
+                    port         = excluded.port,
+                    register_id  = excluded.register_id,
+                    tpn          = excluded.tpn,
+                    auth_key     = excluded.auth_key,
+                    categories   = excluded.categories,
+                    terminal_ids = excluded.terminal_ids,
+                    role         = excluded.role,
+                    saved_at     = excluded.saved_at
+            """, (mac, device.ip, device.type,
+                  device.name, device.port, device.register_id, device.tpn, device.auth_key,
+                  effective_categories, terminal_ids_json, device.role, now))
 
-        await db.commit()
+            # Clear stale routing rows for ALL roles — prevents orphan rules
+            # when a kitchen printer is re-roled to receipt or card_reader.
+            await db.execute(
+                "DELETE FROM printer_routing WHERE printer_mac = ?", (mac,)
+            )
+
+            # Kitchen printers get exactly one catch-all routing rule.
+            if device.role == 'kitchen':
+                await db.execute("""
+                    INSERT INTO printer_routing
+                        (printer_mac, rule_type, category_id, item_tag, priority, is_active, created_at)
+                    VALUES (?, 'all', '', '', 0, 1, ?)
+                """, (mac, now))
+
+            await db.execute("COMMIT")
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "save_failed",
+                    "message": "Device save rolled back — no changes were made"
+                }
+            )
 
     # Reload PrinterManager if this is a printer device
     if device.role in ('kitchen', 'receipt') or device.type in ('thermal', 'impact'):

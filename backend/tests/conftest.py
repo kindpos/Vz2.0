@@ -29,6 +29,10 @@ os.environ.setdefault('KINDPOS_STRICT_INVARIANTS', 'true')
 # flip auth_required to soft mode so SEC-005 diagnostics still fire but the
 # request is allowed through. Production leaves auth_enforced=True.
 os.environ.setdefault('KINDPOS_AUTH_ENFORCED', 'false')
+# Disable the save-time IP reachability probe in tests — fixtures POST
+# synthetic IPs that have no live device. Tests that exercise the probe
+# path flip this back on via monkeypatch.
+os.environ.setdefault('KINDPOS_PROBE_ON_SAVE', 'false')
 import pytest
 import pytest_asyncio
 from pathlib import Path

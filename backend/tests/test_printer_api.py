@@ -221,6 +221,28 @@ class TestDeviceSave:
         assert len(devices) == 1
         assert devices[0]["name"] == "Bar Printer (updated)"
 
+    async def test_save_device_unreachable_ip_blocked(self, client, monkeypatch):
+        """With KINDPOS_PROBE_ON_SAVE=true and probe returning None, save
+        is rejected with 422 device_unreachable before any DB write."""
+        monkeypatch.setenv("KINDPOS_PROBE_ON_SAVE", "true")
+
+        from app.api.routes import hardware
+
+        async def _fake_probe(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(hardware, "_probe_host", _fake_probe)
+
+        resp = await client.post("/api/v1/hardware/devices", json={
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "ip": "192.0.2.99",
+            "type": "printer",
+            "name": "Unreachable Printer",
+            "port": 9100,
+        })
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["error"] == "device_unreachable"
+
 
 # ── GET /api/v1/hardware/devices ──────────────────────
 

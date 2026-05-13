@@ -344,7 +344,9 @@ const openDeviceModal = (device, deviceType, onSaved) => {
         label: 'Save',
         variant: 'primary',
         onClick: async () => {
+            const originalLabel = saveBtn.textContent;
             saveBtn.disabled = true;
+            saveBtn.textContent = 'SAVING…';
             try {
                 const res = await fetchWithTimeout('/api/v1/hardware/devices', {
                     method: 'POST',
@@ -361,13 +363,21 @@ const openDeviceModal = (device, deviceType, onSaved) => {
                         register_id: regF.input.value.trim(),
                     }),
                 });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    const detail = err.detail?.message || err.detail || err.message || `HTTP ${res.status}`;
+                    showToast(`Save failed: ${detail}`, 'error');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = originalLabel;
+                    return;
+                }
                 showToast('Device saved');
                 modalRef.close();
                 onSaved();
             } catch (e) {
                 showToast(`Failed to save device: ${e.message}`, 'error');
                 saveBtn.disabled = false;
+                saveBtn.textContent = originalLabel;
             }
         },
     });
