@@ -137,11 +137,17 @@ class OverseerConfigService:
 
         rules = {}
         for e in events:
-            payload = e.payload
+            payload = dict(e.payload)
             rid = payload["rule_id"]
             if e.event_type == EventType.TIPOUT_RULE_DELETED:
                 rules.pop(rid, None)
             else:
+                if 'from' in payload:
+                    payload['role_from'] = payload.pop('from')
+                if 'to' in payload:
+                    payload['role_to'] = payload.pop('to')
+                if 'basis' in payload:
+                    payload['calculation_base'] = payload.pop('basis')
                 rules[rid] = TipoutRule(**payload)
         result = list(rules.values())
         cache.set(seq, result)
