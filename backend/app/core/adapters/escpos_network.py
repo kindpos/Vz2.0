@@ -257,57 +257,67 @@ class EscPosNetworkAdapter(BasePrinter):
                         error_code="printer_offline",
                     )
 
-            # Render the PrintJob into an ESC/POS command list, then format.
-            # Mirrors PrintDispatcher._render(): template.render(context) → list of
-            # command dicts → ESCPOSFormatter.format(commands) → raw bytes.
-            if job.job_type == PrintJobType.KITCHEN_TICKET:
-                template = KitchenTicketTemplate(chars_per_line=self.chars_per_line)
-            elif job.job_type == PrintJobType.RECEIPT:
-                template = GuestReceiptTemplate(chars_per_line=self.chars_per_line)
-            elif job.job_type == PrintJobType.REPRINT:
-                # Reprints don't carry the original document class on the enum;
-                # route by target_role so the document looks like its original.
-                role = (job.target_role or "").lower()
-                if role == "receipt":
-                    template = GuestReceiptTemplate(chars_per_line=self.chars_per_line)
-                elif role in ("kitchen", "bar"):
+            # Fast path: every current caller in routes/printing.py
+            # pre-renders the template and formatter on its own side, then
+            # stuffs the resulting raw bytes into PrintJobContent.body_lines.
+            # If we got bytes, send them directly — the document is already
+            # composed with the correct check_number, items, seats, etc.
+            if job.content.body_lines and isinstance(
+                job.content.body_lines, (bytes, bytearray)
+            ):
+                data = bytes(job.content.body_lines)
+            else:
+                # Re-render path for any future caller that hands us a
+                # structured PrintJob (metadata + line buckets) instead of
+                # pre-rendered bytes. Mirrors PrintDispatcher._render().
+                if job.job_type == PrintJobType.KITCHEN_TICKET:
                     template = KitchenTicketTemplate(chars_per_line=self.chars_per_line)
+                elif job.job_type == PrintJobType.RECEIPT:
+                    template = GuestReceiptTemplate(chars_per_line=self.chars_per_line)
+                elif job.job_type == PrintJobType.REPRINT:
+                    # Reprints don't carry the original document class on the enum;
+                    # route by target_role so the document looks like its original.
+                    role = (job.target_role or "").lower()
+                    if role == "receipt":
+                        template = GuestReceiptTemplate(chars_per_line=self.chars_per_line)
+                    elif role in ("kitchen", "bar"):
+                        template = KitchenTicketTemplate(chars_per_line=self.chars_per_line)
+                    else:
+                        raise ValueError(
+                            f"Cannot pick template for REPRINT job {job.job_id}: "
+                            f"unrecognized target_role {job.target_role!r}"
+                        )
                 else:
                     raise ValueError(
-                        f"Cannot pick template for REPRINT job {job.job_id}: "
-                        f"unrecognized target_role {job.target_role!r}"
+                        f"Unsupported PrintJob.job_type for ESC/POS network adapter: "
+                        f"{job.job_type}"
                     )
-            else:
-                raise ValueError(
-                    f"Unsupported PrintJob.job_type for ESC/POS network adapter: "
-                    f"{job.job_type}"
+
+                # Build the template context. `metadata` carries the rich
+                # template fields (check_number, table, items, etc.); the
+                # PrintJobContent line buckets and PrintJob identity fields
+                # are added as fallbacks so templates that read them still work.
+                context: dict = dict(job.content.metadata or {})
+                context.setdefault('header_lines', list(job.content.header_lines))
+                context.setdefault('body_lines', list(job.content.body_lines))
+                context.setdefault('footer_lines', list(job.content.footer_lines))
+                context.setdefault('order_id', job.order_id)
+                context.setdefault('server_name', job.server_name)
+                context.setdefault('terminal_id', job.terminal_id)
+                context.setdefault('order_context', job.order_context.value)
+                if job.is_reprint:
+                    context.setdefault('is_reprint', True)
+                    context.setdefault('ticket_type', 'REPRINT')
+                    if job.source_job_id:
+                        context.setdefault('source_job_id', job.source_job_id)
+
+                commands = template.render(context)
+
+                formatter = ESCPOSFormatter(
+                    paper_width=80,
+                    chars_per_line=self.chars_per_line,
                 )
-
-            # Build the template context. `metadata` carries the rich
-            # template fields (check_number, table, items, etc.); the
-            # PrintJobContent line buckets and PrintJob identity fields
-            # are added as fallbacks so templates that read them still work.
-            context: dict = dict(job.content.metadata or {})
-            context.setdefault('header_lines', list(job.content.header_lines))
-            context.setdefault('body_lines', list(job.content.body_lines))
-            context.setdefault('footer_lines', list(job.content.footer_lines))
-            context.setdefault('order_id', job.order_id)
-            context.setdefault('server_name', job.server_name)
-            context.setdefault('terminal_id', job.terminal_id)
-            context.setdefault('order_context', job.order_context.value)
-            if job.is_reprint:
-                context.setdefault('is_reprint', True)
-                context.setdefault('ticket_type', 'REPRINT')
-                if job.source_job_id:
-                    context.setdefault('source_job_id', job.source_job_id)
-
-            commands = template.render(context)
-
-            formatter = ESCPOSFormatter(
-                paper_width=80,
-                chars_per_line=self.chars_per_line,
-            )
-            data = formatter.format(commands)
+                data = formatter.format(commands)
 
             # Send over TCP with timeout
             await asyncio.wait_for(
