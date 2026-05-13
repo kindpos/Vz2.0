@@ -487,6 +487,9 @@ class PrintContextBuilder:
             # Prepend dispatched items to the front of this station's items
             items = dispatched_to_here + items
 
+        store_cfg = await StoreConfigService(self.ledger).get_projected_config()
+        restaurant_name = store_cfg.info.restaurant_name
+
         return {
             "order_id":           order_id,
             "ticket_number":      ticket_number,
@@ -504,6 +507,7 @@ class PrintContextBuilder:
             "items":              items,
             "companion_items":    companion_items,
             "station_name":       station_name,
+            "restaurant_name":    restaurant_name,
             "terminal_id":        settings.terminal_id,
             "supports_red":       False,
             "rush":               False,

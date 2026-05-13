@@ -21,6 +21,7 @@ const palette = {
   mint:       '#C6FFBB',
   green:      '#86efac',
   greenUp:    '#4ade80',
+  greenWarm:  '#4ade80',  // action-bar confirm / save
   lavender:   '#b48efa',
   verm:       '#e8472a',
   warning:    '#fbbf24',
@@ -28,6 +29,9 @@ const palette = {
   textMuted:  'rgba(232,234,237,0.55)',
   textDim:    'rgba(232,234,237,0.4)',
   border:     'rgba(232,234,237,0.08)',
+  moon:       '#7e8896',  // muted slate — unselected chips, secondary labels
+  moonDk:     '#4a5059',  // darker slate — pressed / shadow states
+  moonText:   '#22252a',  // text on moon fill
 };
 
 // ─── Type scale (px numbers — append 'px' at use site) ─────────────

@@ -58,7 +58,7 @@ class EscPosNetworkAdapter(BasePrinter):
         role: str,
         ip_address: str,
         port: int = 9100,
-        chars_per_line: int = 48,
+        chars_per_line: int = 42,
         has_cutter: bool = True,
         has_drawer: bool = False,
         connect_timeout: float = 3.0,
