@@ -69,6 +69,7 @@ function injectStyles() {
     .kh-root {
       height: 52px;
       min-height: 52px;
+      width: 100%;
       background: ${T.card};
       border-bottom: 1px solid ${border};
       display: flex;
@@ -92,7 +93,7 @@ function injectStyles() {
       pointer-events: none;
     }
     .kh-left  { display:flex; align-items:center; gap:14px; pointer-events:auto; }
-    .kh-right { display:flex; align-items:center; gap:10px; pointer-events:auto; }
+    .kh-right { display:flex; align-items:center; gap:10px; pointer-events:auto; flex-shrink:0; }
     .kh-center {
       position: absolute;
       left: 50%; top: 0; bottom: 0;
