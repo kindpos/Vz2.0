@@ -65,7 +65,7 @@ function _buildIfNeeded() {
   _root = document.createElement('div');
   _root.style.cssText = [
     'position:absolute;inset:0;z-index:200;',
-    'background:rgba(0,0,0,0.55);',
+    'background:' + T.scrimInterrupt + ';',
     'display:flex;align-items:center;justify-content:center;',
   ].join('');
 
