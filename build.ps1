@@ -42,12 +42,18 @@ Write-Host "Done: dist\installer\$OutputName.exe" -ForegroundColor Green
 # 5. Register key in D1 via Cloudflare Worker
 Write-Host "Registering key in D1..." -ForegroundColor Cyan
 $body = @{ key=$CustomerKey; store=$StoreName } | ConvertTo-Json
-Invoke-RestMethod `
+try {
+  $response = Invoke-RestMethod `
     -Uri "https://kindpos-license.myers-alexanderk.workers.dev/admin/create" `
     -Method POST `
     -Body $body `
     -ContentType "application/json" `
     -Headers @{ "X-Admin-Secret" = $env:KINDPOS_ADMIN_SECRET }
+  Write-Host "Key registered." -ForegroundColor Green
+  $response
+} catch {
+  Write-Host "Warning: D1 registration failed (key may already exist): $_" -ForegroundColor Yellow
+}
 
 # 6. Upload installer to R2 via S3-compatible API
 #    (wrangler's R2 PUT trips a Node 24 / undici fault on large binaries)
