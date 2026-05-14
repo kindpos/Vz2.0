@@ -51,12 +51,13 @@ Invoke-RestMethod `
 #    (wrangler's R2 PUT trips a Node 24 / undici fault on large binaries)
 Write-Host "Uploading installer to R2..." -ForegroundColor Cyan
 $installerPath = "dist\installer\$OutputName.exe"
-$env:AWS_ACCESS_KEY_ID     = $env:KINDPOS_R2_ACCESS_KEY_ID
+$env:AWS_ACCESS_KEY_ID = $env:KINDPOS_R2_ACCESS_KEY_ID
 $env:AWS_SECRET_ACCESS_KEY = $env:KINDPOS_R2_SECRET_ACCESS_KEY
-$env:AWS_DEFAULT_REGION    = "auto"
-aws s3 cp $installerPath "s3://kindpos-installers/$OutputName.exe" `
-    --endpoint-url "https://e676e34c04ae97499018af663941cca0.r2.cloudflarestorage.com" `
-    --content-type "application/octet-stream"
+aws s3 cp "$installerPath" `
+  "s3://kindpos-installers/$OutputName.exe" `
+  --endpoint-url https://e676e34c04ae97499018af663941cca0.r2.cloudflarestorage.com `
+  --region auto `
+  --expected-size (Get-Item $installerPath).Length
 
 # 7. Print download link
 $downloadLink = "https://pub-959f0ae9542041fdbe3eaec229df9914.r2.dev/$OutputName.exe"
