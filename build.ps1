@@ -50,7 +50,9 @@ Invoke-RestMethod `
 # 6. Upload installer to R2
 Write-Host "Uploading installer to R2..." -ForegroundColor Cyan
 $installerPath = "dist\installer\$OutputName.exe"
-wrangler r2 object put "kindpos-installers/$OutputName.exe" --file=$installerPath
+wrangler r2 object put "kindpos-installers/$OutputName.exe" `
+    --file="$installerPath" `
+    --content-type="application/octet-stream"
 
 # 7. Print download link
 $downloadLink = "https://pub-959f0ae9542041fdbe3eaec229df9914.r2.dev/$OutputName.exe"
