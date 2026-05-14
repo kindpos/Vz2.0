@@ -61,11 +61,7 @@ Write-Host "Uploading installer to R2..." -ForegroundColor Cyan
 $installerPath = "dist\installer\$OutputName.exe"
 $env:AWS_ACCESS_KEY_ID = $env:KINDPOS_R2_ACCESS_KEY_ID
 $env:AWS_SECRET_ACCESS_KEY = $env:KINDPOS_R2_SECRET_ACCESS_KEY
-aws s3 cp "$installerPath" `
-  "s3://kindpos-installers/$OutputName.exe" `
-  --endpoint-url https://e676e34c04ae97499018af663941cca0.r2.cloudflarestorage.com `
-  --region auto `
-  --expected-size (Get-Item $installerPath).Length
+.venv\Scripts\python upload_to_r2.py "$installerPath" "$OutputName.exe"
 
 # 7. Print download link
 $downloadLink = "https://pub-959f0ae9542041fdbe3eaec229df9914.r2.dev/$OutputName.exe"
