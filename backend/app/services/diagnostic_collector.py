@@ -776,7 +776,7 @@ class DiagnosticCollector:
                 "KINDpos", "data", "license.json"
             )
         else:
-            license_file = "/home/kindpos/data/license.json"
+            license_file = os.environ.get('KINDPOS_DATA_PATH', '/home/kindpos/data') + '/license.json'
         required_fields = {"store_name", "terminal_name", "prefix", "node_number"}
 
         if not os.path.exists(license_file):
