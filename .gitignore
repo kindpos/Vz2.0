@@ -70,6 +70,8 @@ coverage/
 build/
 dist/
 kindpos_setup.spec
+*.spec.bak
+kindpos_build.iss
 
 # Per-install runtime DBs that aren't part of the source tree.
 /hardware_config.db

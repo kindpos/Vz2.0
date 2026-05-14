@@ -19,7 +19,7 @@ import binascii
 import json
 import logging
 import os
-import platform
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -33,9 +33,9 @@ _log = logging.getLogger(__name__)
 
 
 def _default_license_path() -> str:
-    if platform.system() == "Windows":
-        return str(Path(os.environ.get("APPDATA", "C:/ProgramData")) / "KINDpos" / "kindpos.lic")
-    return "/data/kindpos.lic"
+    if sys.platform == "win32":
+        return os.path.join(os.environ.get("APPDATA", "C:/ProgramData"), "KINDpos", "kindpos.lic")
+    return os.environ.get('KINDPOS_DATA_PATH', '/data') + '/kindpos.lic'
 
 
 DEFAULT_LICENSE_PATH = settings.license_path or _default_license_path()
