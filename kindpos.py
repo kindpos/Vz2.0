@@ -1,15 +1,21 @@
 import sys
 import os
+import uvicorn
 
-# Ensure backend is on the path when running as PyInstaller bundle
 if getattr(sys, 'frozen', False):
+    # Inside PyInstaller bundle — modules are in sys._MEIPASS
     base = sys._MEIPASS
-    sys.path.insert(0, os.path.join(base, 'backend'))
+    # Add backend dir so 'app' package resolves
+    backend_dir = os.path.join(base, 'backend')
+    if os.path.isdir(backend_dir):
+        sys.path.insert(0, backend_dir)
+    # Also try base directly
+    sys.path.insert(0, base)
 else:
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+    base = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(base, 'backend'))
 
 from app.main import app
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
