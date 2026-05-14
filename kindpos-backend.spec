@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['kindpos.py'],
-    pathex=[],
+    pathex=['backend'],
     binaries=[],
     datas=[('backend/data/demo_seed.json', 'data'), ('terminal', 'terminal'), ('overseer', 'overseer'), ('entomology', 'entomology'), ('common', 'common'), ('install', 'install')],
     hiddenimports=['datetime', 'aiosqlite', 'uvicorn.lifespan', 'uvicorn.loops', 'uvicorn.protocols'],
