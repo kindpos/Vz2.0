@@ -47,4 +47,19 @@ Invoke-RestMethod `
     -ContentType "application/json" `
     -Headers @{ "X-Admin-Secret" = $env:KINDPOS_ADMIN_SECRET }
 
+# 6. Upload installer to R2
+Write-Host "Uploading installer to R2..." -ForegroundColor Cyan
+$installerPath = "dist\installer\$OutputName.exe"
+wrangler r2 object put "kindpos-installers/$OutputName.exe" --file=$installerPath
+
+# 7. Print download link
+$downloadLink = "https://pub-959f0ae9542041fdbe3eaec229df9914.r2.dev/$OutputName.exe"
+Write-Host ""
+Write-Host "==========================================" -ForegroundColor Green
+Write-Host "READY TO SEND" -ForegroundColor Green
+Write-Host "Store:    $StoreName" -ForegroundColor White
+Write-Host "Key:      $CustomerKey" -ForegroundColor White
+Write-Host "Download: $downloadLink" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Green
+
 Write-Host "Key registered. Send $OutputName.exe to $StoreName" -ForegroundColor Green

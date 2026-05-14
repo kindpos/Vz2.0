@@ -6,7 +6,6 @@ AppPublisherURL=https://kindpos.com
 DefaultDirName={autopf}\KINDpos
 DefaultGroupName=KINDpos
 OutputBaseFilename=KINDpos-Setup
-SetupIconFile=install\kindpos.ico
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin
@@ -26,14 +25,14 @@ Name: "{group}\KINDpos";          Filename: "{app}\kindpos-backend.exe"
 Name: "{commondesktop}\KINDpos";  Filename: "{app}\kindpos-backend.exe"
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
   ValueType: string; ValueName: "KINDpos"; \
   ValueData: """{app}\kindpos-backend.exe"""; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\activate.exe"; \
   Parameters: "KIND-XXXX-XXXX-XXXX"; \
-  Flags: runhidden waitprocuntilterminated; \
+  Flags: runhidden waituntilterminated; \
   StatusMsg: "Activating license..."
 
 Filename: "{app}\kindpos-backend.exe"; \
@@ -43,4 +42,5 @@ Filename: "{app}\kindpos-backend.exe"; \
 [UninstallRun]
 Filename: "{cmd}"; \
   Parameters: "/C schtasks /delete /tn KINDpos /f"; \
-  Flags: runhidden
+  Flags: runhidden; \
+  RunOnceId: "DeleteKINDposTask"
