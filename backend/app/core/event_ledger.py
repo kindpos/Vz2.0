@@ -38,6 +38,10 @@ _MONETARY_KEYS = frozenset({
     "price", "amount", "tip_amount", "total", "total_amount",
     "cash_total", "card_total", "modifier_price", "total_sales",
     "total_tips", "previous_tip", "half_price",
+    "tax", "service_charge_amount", "cash_discount_amount",
+    "recon_diff", "new_amount", "previous_amount",
+    "previous_price", "new_price",
+    "total_tipout", "total_distributed",
 })
 _TWO_DP = Decimal("0.01")
 
