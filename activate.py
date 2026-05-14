@@ -1,6 +1,6 @@
 import requests, uuid, json, sys, os
 
-EMBEDDED_KEY = "KIND-B2C3-D4E5-F6G7"
+EMBEDDED_KEY = "KIND-XXXX-XXXX-XXXX"
 
 def activate():
     fingerprint = str(uuid.getnode())

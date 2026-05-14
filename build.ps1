@@ -21,6 +21,10 @@ Write-Host "Building activate.exe..." -ForegroundColor Cyan
     --hidden-import=requests `
     activate.py
 
+(Get-Content activate.py) `
+    -replace 'EMBEDDED_KEY = ".*"', 'EMBEDDED_KEY = "KIND-XXXX-XXXX-XXXX"' |
+    Set-Content activate.py
+
 # 3. Build kindpos-backend.exe from spec
 Write-Host "Building kindpos-backend.exe..." -ForegroundColor Cyan
 & ".venv\Scripts\pyinstaller.exe" kindpos-backend.spec
