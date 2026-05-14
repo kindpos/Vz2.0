@@ -14,6 +14,11 @@ Write-Host "Key: $CustomerKey"
     -replace 'EMBEDDED_KEY = ".*"', "EMBEDDED_KEY = `"$CustomerKey`"" |
     Set-Content activate.py
 
+# Inject key into kindpos_setup.py
+(Get-Content install\kindpos_setup.py) `
+    -replace 'EMBEDDED_KEY = ".*"', "EMBEDDED_KEY = `"$CustomerKey`"" |
+    Set-Content install\kindpos_setup.py
+
 # 2. Build activate.exe from venv
 Write-Host "Building activate.exe..." -ForegroundColor Cyan
 & ".venv\Scripts\pyinstaller.exe" `
@@ -24,6 +29,16 @@ Write-Host "Building activate.exe..." -ForegroundColor Cyan
 (Get-Content activate.py) `
     -replace 'EMBEDDED_KEY = ".*"', 'EMBEDDED_KEY = "KIND-XXXX-XXXX-XXXX"' |
     Set-Content activate.py
+
+Write-Host "Building KINDpos-Setup.exe..." -ForegroundColor Cyan
+& ".venv\Scripts\pyinstaller.exe" `
+    --onefile --noconsole `
+    --name KINDpos-Setup `
+    install\kindpos_setup.py
+
+(Get-Content install\kindpos_setup.py) `
+    -replace 'EMBEDDED_KEY = ".*"', 'EMBEDDED_KEY = "KIND-XXXX-XXXX-XXXX"' |
+    Set-Content install\kindpos_setup.py
 
 # 3. Build kindpos-backend.exe from spec
 Write-Host "Building kindpos-backend.exe..." -ForegroundColor Cyan
@@ -73,7 +88,8 @@ $installerPath = "dist\installer\$OutputName.exe"
 . "$PSScriptRoot\build.secrets.ps1"
 $env:AWS_ACCESS_KEY_ID = $env:KINDPOS_R2_ACCESS_KEY_ID
 $env:AWS_SECRET_ACCESS_KEY = $env:KINDPOS_R2_SECRET_ACCESS_KEY
-.venv\Scripts\python upload_to_r2.py "$installerPath" "$OutputName.exe"
+.venv\Scripts\python upload_to_r2.py `
+    "dist\KINDpos-Setup.exe" "$OutputName.exe"
 
 # 7. Print download link
 $downloadLink = "https://pub-959f0ae9542041fdbe3eaec229df9914.r2.dev/$OutputName.exe"
