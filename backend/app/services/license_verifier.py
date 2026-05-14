@@ -35,7 +35,7 @@ _log = logging.getLogger(__name__)
 def _default_license_path() -> str:
     if sys.platform == "win32":
         return os.path.join(os.environ.get("APPDATA", "C:/ProgramData"), "KINDpos", "kindpos.lic")
-    return "/data/kindpos.lic"
+    return os.environ.get('KINDPOS_DATA_PATH', '/data') + '/kindpos.lic'
 
 
 DEFAULT_LICENSE_PATH = settings.license_path or _default_license_path()
