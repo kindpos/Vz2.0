@@ -14,14 +14,14 @@ Write-Host "Key: $CustomerKey"
 
 # 2. Build activate.exe from venv
 Write-Host "Building activate.exe..." -ForegroundColor Cyan
-.venv\Scripts\pyinstaller `
+& ".venv\Scripts\pyinstaller.exe" `
     --onefile --name activate `
     --hidden-import=requests `
     activate.py
 
 # 3. Build kindpos-backend.exe from spec
 Write-Host "Building kindpos-backend.exe..." -ForegroundColor Cyan
-.venv\Scripts\pyinstaller kindpos-backend.spec
+& ".venv\Scripts\pyinstaller.exe" kindpos-backend.spec
 
 # 4. Insert key into Inno Setup script + compile
 Write-Host "Compiling installer..." -ForegroundColor Cyan
@@ -41,7 +41,7 @@ Write-Host "Done: dist\installer\$OutputName.exe" -ForegroundColor Green
 Write-Host "Registering key in D1..." -ForegroundColor Cyan
 $body = @{ key=$CustomerKey; store=$StoreName } | ConvertTo-Json
 Invoke-RestMethod `
-    -Uri "https://license.kindpos.com/admin/create" `
+    -Uri "https://kindpos-license.myers-alexanderk.workers.dev/admin/create" `
     -Method POST `
     -Body $body `
     -ContentType "application/json" `

@@ -1,12 +1,12 @@
 import requests, uuid, json, sys, os
 
-EMBEDDED_KEY = "KIND-XXXX-XXXX-XXXX"
+EMBEDDED_KEY = "KIND-B2C3-D4E5-F6G7"
 
 def activate():
     fingerprint = str(uuid.getnode())
     try:
         r = requests.post(
-            "https://license.kindpos.com/activate",
+            "https://kindpos-license.myers-alexanderk.workers.dev/activate",
             json={"key": EMBEDDED_KEY, "fingerprint": fingerprint},
             timeout=10
         )
