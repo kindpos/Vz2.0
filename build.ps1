@@ -4,6 +4,8 @@ param(
     [Parameter(Mandatory=$false)] [string]$OutputName = "KINDpos-Setup"
 )
 
+$env:PATH += ";C:\Program Files\Amazon\AWSCLIV2"
+
 Write-Host "Building KINDpos installer for: $StoreName" -ForegroundColor Green
 Write-Host "Key: $CustomerKey"
 
