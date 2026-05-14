@@ -70,8 +70,12 @@ coverage/
 build/
 dist/
 kindpos_setup.spec
+activate.spec
 *.spec.bak
 kindpos_build.iss
+
+# Wrangler local dev cache (R2 simulator state, etc.).
+.wrangler/
 
 # Per-install runtime DBs that aren't part of the source tree.
 /hardware_config.db
