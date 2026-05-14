@@ -27,6 +27,13 @@ Write-Host "Building activate.exe..." -ForegroundColor Cyan
 
 # 3. Build kindpos-backend.exe from spec
 Write-Host "Building kindpos-backend.exe..." -ForegroundColor Cyan
+# Force clean rebuild — delete cached artifacts
+if (Test-Path "build\kindpos-backend") {
+    Remove-Item -Recurse -Force "build\kindpos-backend"
+}
+if (Test-Path "dist\kindpos-backend.exe") {
+    Remove-Item -Force "dist\kindpos-backend.exe"
+}
 & ".venv\Scripts\pyinstaller.exe" kindpos-backend.spec
 
 # 4. Insert key into Inno Setup script + compile
