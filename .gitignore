@@ -118,6 +118,7 @@ kindpos.lic
 
 # Local environment files — may contain secrets, never commit.
 .env
+build.secrets.ps1
 
 # Process logs (uvicorn boot capture, ad-hoc tee outputs).
 *.log

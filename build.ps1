@@ -63,6 +63,7 @@ try {
 #    (wrangler's R2 PUT trips a Node 24 / undici fault on large binaries)
 Write-Host "Uploading installer to R2..." -ForegroundColor Cyan
 $installerPath = "dist\installer\$OutputName.exe"
+. "$PSScriptRoot\build.secrets.ps1"
 $env:AWS_ACCESS_KEY_ID = $env:KINDPOS_R2_ACCESS_KEY_ID
 $env:AWS_SECRET_ACCESS_KEY = $env:KINDPOS_R2_SECRET_ACCESS_KEY
 .venv\Scripts\python upload_to_r2.py "$installerPath" "$OutputName.exe"

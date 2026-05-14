@@ -14,7 +14,7 @@ CloseApplications=yes
 CloseApplicationsFilter=kindpos-backend.exe
 
 [Files]
-Source: "dist\kindpos-backend.exe"; DestDir: "{app}"; Flags: ignoreversion replacesameversion
+Source: "dist\kindpos-backend.exe"; DestDir: "{app}"; Flags: comparetimestamp
 Source: "dist\activate.exe";         DestDir: "{app}"; Flags: ignoreversion
 Source: "terminal\*";    DestDir: "{app}\terminal";    Flags: ignoreversion recursesubdirs
 Source: "overseer\*";    DestDir: "{app}\overseer";    Flags: ignoreversion recursesubdirs
