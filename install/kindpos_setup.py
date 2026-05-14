@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import threading
@@ -19,6 +20,10 @@ GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 INSTALL_DIR = "C:\\KINDpos"
 EMBEDDED_KEY = "KIND-XXXX-XXXX-XXXX"
 ACTIVATION_URL = "https://kindpos-license.myers-alexanderk.workers.dev/activate"
+
+_SSL_CTX = ssl.create_default_context()
+_SSL_CTX.check_hostname = False
+_SSL_CTX.verify_mode = ssl.CERT_NONE
 
 BG = "#383c42"
 CARD = "#2e3236"
@@ -288,7 +293,7 @@ class Installer:
 
     def _download(self, url, dest, start_pct, end_pct):
         req = urllib.request.Request(url, headers={"User-Agent": "KINDpos-Installer/1.0"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=60, context=_SSL_CTX) as resp:
             total = int(resp.headers.get("Content-Length") or 0)
             downloaded = 0
             with open(dest, "wb") as f:
