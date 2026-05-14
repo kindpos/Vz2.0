@@ -354,3 +354,195 @@ class TestProjectOrder:
         assert order.tax == Decimal("1.00")
         # total = 10.00 + 1.00 = 11.00
         assert order.total == Decimal("11.00")
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Tier-1 Fix 2 — service_charge_amount / cash_discount_amount payload wiring
+# ───────────────────────────────────────────────────────────────────────────
+
+def _confirm_payment_with_extras(
+    payment_id="p1",
+    amount=Decimal("10.00"),
+    tax=Decimal("0.00"),
+    service_charge_amount=None,
+    cash_discount_amount=None,
+):
+    """PAYMENT_CONFIRMED via raw create_event so we can stuff payload keys
+    the high-level factory does not currently surface."""
+    payload = {
+        "order_id": ORDER_ID,
+        "payment_id": payment_id,
+        "transaction_id": f"txn_{payment_id}",
+        "amount": amount,
+        "tax": tax,
+    }
+    if service_charge_amount is not None:
+        payload["service_charge_amount"] = service_charge_amount
+    if cash_discount_amount is not None:
+        payload["cash_discount_amount"] = cash_discount_amount
+    return create_event(
+        event_type=EventType.PAYMENT_CONFIRMED,
+        terminal_id=TERMINAL,
+        payload=payload,
+        correlation_id=ORDER_ID,
+    )
+
+
+class TestPaymentExtraFields:
+
+    def test_service_charge_amount_propagates_from_payload(self):
+        events = [
+            _create_order_event(),
+            _add_item("item-1", "Steak", Decimal("50.00")),
+            payment_initiated(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", amount=Decimal("50.00"), method="card",
+            ),
+            _confirm_payment_with_extras(
+                amount=Decimal("50.00"),
+                service_charge_amount=Decimal("2.50"),
+            ),
+        ]
+        order = project_order(events, tax_rate=TAX_RATE)
+        assert order.payments[0].service_charge_amount == Decimal("2.50")
+        assert order.surcharge_total == Decimal("2.50")
+
+    def test_cash_discount_amount_propagates_from_payload(self):
+        events = [
+            _create_order_event(),
+            _add_item("item-1", "Steak", Decimal("50.00")),
+            payment_initiated(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", amount=Decimal("50.00"), method="cash",
+            ),
+            _confirm_payment_with_extras(
+                amount=Decimal("50.00"),
+                cash_discount_amount=Decimal("1.50"),
+            ),
+        ]
+        order = project_order(events, tax_rate=TAX_RATE)
+        assert order.payments[0].cash_discount_amount == Decimal("1.50")
+        assert order.cash_discount_total == Decimal("1.50")
+
+    def test_missing_extras_default_to_zero(self):
+        """Backwards-compat: payload without the new keys keeps totals at 0."""
+        events = [
+            _create_order_event(),
+            _add_item("item-1", "Burger", Decimal("10.00")),
+            payment_initiated(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", amount=Decimal("10.00"), method="card",
+            ),
+            payment_confirmed(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", transaction_id="txn1",
+                amount=Decimal("10.00"),
+            ),
+        ]
+        order = project_order(events, tax_rate=TAX_RATE)
+        assert order.payments[0].service_charge_amount == Decimal("0.00")
+        assert order.payments[0].cash_discount_amount == Decimal("0.00")
+        assert order.surcharge_total == Decimal("0.00")
+        assert order.cash_discount_total == Decimal("0.00")
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# Tier-1 Fix 3 — balance_due clamping + overpayment property
+# ───────────────────────────────────────────────────────────────────────────
+
+class TestBalanceDueAndOverpayment:
+
+    def test_unpaid_order_has_zero_overpayment_and_positive_balance(self):
+        events = [
+            _create_order_event(),
+            _add_item("item-1", "Burger", Decimal("10.00")),
+        ]
+        order = project_order(events, tax_rate=TAX_RATE)
+        # subtotal=10.00, tax=0.70, total=10.70, paid=0 → balance=10.70, overpay=0
+        assert order.balance_due == Decimal("10.70")
+        assert order.overpayment == Decimal("0.00")
+
+    def test_exact_payment_zero_balance_zero_overpayment(self):
+        events = [
+            _create_order_event(),
+            _add_item("item-1", "Burger", Decimal("10.00")),
+            payment_initiated(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", amount=Decimal("10.70"), method="card",
+            ),
+            payment_confirmed(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", transaction_id="txn1",
+                amount=Decimal("10.70"),
+            ),
+        ]
+        order = project_order(events, tax_rate=TAX_RATE)
+        assert order.balance_due == Decimal("0.00")
+        assert order.overpayment == Decimal("0.00")
+
+    def test_underpayment_positive_balance_zero_overpayment(self):
+        events = [
+            _create_order_event(),
+            _add_item("item-1", "Burger", Decimal("10.00")),
+            payment_initiated(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", amount=Decimal("5.00"), method="cash",
+            ),
+            payment_confirmed(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", transaction_id="txn1",
+                amount=Decimal("5.00"),
+            ),
+        ]
+        order = project_order(events, tax_rate=TAX_RATE)
+        # total = 10.70, paid = 5.00 → balance = 5.70, overpay = 0
+        assert order.balance_due == Decimal("5.70")
+        assert order.overpayment == Decimal("0.00")
+
+    def test_item_removed_after_close_clamps_balance_signals_overpayment(self):
+        """Sequence A from the audit: void after payment+close. balance_due
+        must clamp to zero and overpayment must equal the paid amount."""
+        events = [
+            _create_order_event(),
+            _add_item("item-1", "Burger", Decimal("12.99")),
+            payment_initiated(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", amount=Decimal("13.90"), method="card",
+            ),
+            payment_confirmed(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", transaction_id="txn1",
+                amount=Decimal("13.90"),
+            ),
+            order_closed(terminal_id=TERMINAL, order_id=ORDER_ID, total=Decimal("13.90")),
+            item_removed(terminal_id=TERMINAL, order_id=ORDER_ID, item_id="item-1"),
+        ]
+        order = project_order(events, tax_rate=TAX_RATE)
+        # After the void, subtotal=0, tax falls back to computed=0 (no captured tax),
+        # total=0, amount_paid=13.90 → balance clamps to 0, overpayment = 13.90.
+        assert order.balance_due == Decimal("0.00")
+        assert order.overpayment == Decimal("13.90")
+
+    def test_item_removed_after_close_emits_fin009_warning(self, caplog):
+        """The projection must log FIN-009 when overpayment > 0."""
+        import logging
+        caplog.set_level(logging.WARNING, logger="app.core.projections")
+        events = [
+            _create_order_event(),
+            _add_item("item-1", "Burger", Decimal("12.99")),
+            payment_initiated(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", amount=Decimal("13.90"), method="card",
+            ),
+            payment_confirmed(
+                terminal_id=TERMINAL, order_id=ORDER_ID,
+                payment_id="p1", transaction_id="txn1",
+                amount=Decimal("13.90"),
+            ),
+            order_closed(terminal_id=TERMINAL, order_id=ORDER_ID, total=Decimal("13.90")),
+            item_removed(terminal_id=TERMINAL, order_id=ORDER_ID, item_id="item-1"),
+        ]
+        project_order(events, tax_rate=TAX_RATE)
+        assert any("FIN-009" in rec.message for rec in caplog.records), (
+            "FIN-009 warning must fire when overpayment > 0"
+        )

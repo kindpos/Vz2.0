@@ -91,3 +91,65 @@ class TestLedgerPrecisionWarnings:
 
             count = await ledger.count_events()
             assert count == 1
+
+
+class TestWidenedMonetaryKeys:
+    """Tier-1 fix: keys recently added to _MONETARY_KEYS must reject 3dp values.
+
+    Each new key is exercised in isolation so a regression on any one of them
+    shows up as a single failing test rather than a generic precision failure.
+    """
+
+    NEW_KEYS = (
+        "tax",
+        "service_charge_amount",
+        "cash_discount_amount",
+        "recon_diff",
+        "new_amount",
+        "previous_amount",
+        "previous_price",
+        "new_price",
+        "total_tipout",
+        "total_distributed",
+    )
+
+    @pytest.mark.parametrize("key", NEW_KEYS)
+    def test_new_key_in_monetary_keys(self, key):
+        assert key in _MONETARY_KEYS, f"{key} must be in _MONETARY_KEYS"
+
+    @pytest.mark.parametrize("key", NEW_KEYS)
+    def test_new_key_rejects_three_decimal_value(self, key):
+        payload = {key: 1.234}
+        bad = _check_monetary_precision(payload)
+        assert any(b.startswith(f"{key}=") for b in bad), (
+            f"_check_monetary_precision should flag 3dp {key}, got {bad}"
+        )
+
+    @pytest.mark.parametrize("key", NEW_KEYS)
+    def test_new_key_accepts_two_decimal_value(self, key):
+        payload = {key: 1.23}
+        assert _check_monetary_precision(payload) == []
+
+    @pytest.fixture
+    def tmp_db(self, tmp_path):
+        return str(tmp_path / "test_widened_keys.db")
+
+    @pytest.mark.parametrize("key", NEW_KEYS)
+    async def test_ledger_rejects_bad_precision_for_new_key(self, tmp_db, key):
+        """Each new key, when carrying a 3dp value, fails append() with ValueError."""
+        event = create_event(
+            event_type=EventType.PAYMENT_CONFIRMED,
+            terminal_id="T1",
+            payload={
+                "order_id": "order-1",
+                "payment_id": "p1",
+                "transaction_id": "txn-1",
+                "amount": 10.00,
+                key: 1.234,
+            },
+            correlation_id="order-1",
+        )
+        async with EventLedger(tmp_db) as ledger:
+            with pytest.raises(ValueError, match="non-2dp monetary values"):
+                await ledger.append(event)
+            assert await ledger.count_events() == 0

@@ -231,10 +231,21 @@ class Order:
 
     @property
     def balance_due(self) -> Decimal:
-        """Remaining balance."""
-        return money_round(
-            self.total - self.amount_paid - self.cash_discount_total
-        )
+        """Remaining balance, clamped to zero.
+
+        Over-collection (e.g. items removed after payment-and-close) is
+        surfaced via the separate `overpayment` property so a positive
+        balance_due always means "money owed to the house" and never
+        "money owed back to the customer".
+        """
+        raw = self.total - self.amount_paid - self.cash_discount_total
+        return money_round(max(Decimal("0.00"), raw))
+
+    @property
+    def overpayment(self) -> Decimal:
+        """Amount collected beyond the order total, clamped to zero."""
+        raw = self.amount_paid + self.cash_discount_total - self.total
+        return money_round(max(Decimal("0.00"), raw))
 
     @property
     def paid_seats(self) -> list[int]:
@@ -495,6 +506,10 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                         payment.transaction_id = payload.get("transaction_id")
                         payment.confirmed_at = event.timestamp
                         payment.tax_amount = Decimal(str(payload.get("tax", Decimal("0.00"))))
+                        payment.service_charge_amount = Decimal(str(payload.get(
+                            "service_charge_amount", "0.00")))
+                        payment.cash_discount_amount = Decimal(str(payload.get(
+                            "cash_discount_amount", "0.00")))
                         payment.card_last_four = payload.get("card_last_four")
                         if payload.get("seat_numbers"):
                             payment.seat_numbers = payload["seat_numbers"]
@@ -656,6 +671,14 @@ def project_order(events: list[Event], tax_rate: Decimal = None) -> Optional[Ord
                 "Order %s identity violations: %s",
                 getattr(order, 'order_id', '?'),
                 violations
+            )
+        if order.overpayment > Decimal("0.00"):
+            import logging
+            logging.getLogger(__name__).warning(
+                "FIN-009 order %s overpaid by %s — possible post-close "
+                "item removal or duplicate payment",
+                order.order_id,
+                order.overpayment,
             )
 
     return order
